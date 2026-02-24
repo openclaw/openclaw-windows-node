@@ -41,10 +41,10 @@ public class GatewayUrlHelperTests
     [InlineData("ws://user:pass@localhost:18789", "user:pass")]
     [InlineData("https://user:pass@example.com", "user:pass")]
     [InlineData("http://user:pass@localhost:8080", "user:pass")]
-    public void ExtractCredentials_ExtractsCredentialsFromUrl(string inputUrl, string expectedToken)
+    public void ExtractCredentials_ExtractsCredentialsFromUrl(string inputUrl, string expectedCredentials)
     {
-        var token = GatewayUrlHelper.ExtractCredentials(inputUrl);
-        Assert.Equal(expectedToken, token);
+        var credentials = GatewayUrlHelper.ExtractCredentials(inputUrl);
+        Assert.Equal(expectedCredentials, credentials);
     }
 
     [Theory]
