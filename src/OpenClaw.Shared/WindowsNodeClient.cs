@@ -134,7 +134,28 @@ public class WindowsNodeClient : IDisposable
 
             if (!string.IsNullOrEmpty(_credentials))
             {
-                _webSocket.Options.SetRequestHeader("Authorization", $"Basic {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(_credentials))}");
+                var authCredentials = _credentials;
+                var separatorIndex = _credentials.IndexOf(':');
+                if (separatorIndex >= 0)
+                {
+                    var userPart = _credentials.Substring(0, separatorIndex);
+                    var passwordPart = _credentials.Substring(separatorIndex + 1);
+                    try
+                    {
+                        userPart = Uri.UnescapeDataString(userPart);
+                        passwordPart = Uri.UnescapeDataString(passwordPart);
+                        authCredentials = $"{userPart}:{passwordPart}";
+                    }
+                    catch (UriFormatException)
+                    {
+                        // If decoding fails, fall back to the original credentials string
+                        authCredentials = _credentials;
+                    }
+                }
+
+                _webSocket.Options.SetRequestHeader(
+                    "Authorization",
+                    $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes(authCredentials))}");
             }
 
             await _webSocket.ConnectAsync(uri, _cts.Token);
