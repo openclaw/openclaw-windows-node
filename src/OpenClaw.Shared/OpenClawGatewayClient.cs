@@ -82,7 +82,26 @@ public class OpenClawGatewayClient : IDisposable
 
             if (!string.IsNullOrEmpty(_credentials))
             {
-                _webSocket.Options.SetRequestHeader("Authorization", $"Basic {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(_credentials))}");
+                // Decode potential URL-encoded username and password before constructing Basic auth header
+                var credentialsToEncode = _credentials;
+                try
+                {
+                    var parts = _credentials.Split(new[] { ':' }, 2);
+                    if (parts.Length == 2)
+                    {
+                        var username = Uri.UnescapeDataString(parts[0]);
+                        var password = Uri.UnescapeDataString(parts[1]);
+                        credentialsToEncode = $"{username}:{password}";
+                    }
+                }
+                catch
+                {
+                    // If anything goes wrong during decoding, fall back to the original credentials string
+                }
+
+                _webSocket.Options.SetRequestHeader(
+                    "Authorization",
+                    $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes(credentialsToEncode))}");
             }
 
             await _webSocket.ConnectAsync(uri, _cts.Token);
