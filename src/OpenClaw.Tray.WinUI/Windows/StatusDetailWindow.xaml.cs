@@ -92,7 +92,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         }
 
         // Channels
-        var isHealthy = (string? s) => s?.ToLowerInvariant() is "ok" or "connected" or "running";
+        var isHealthy = (string? s) => s?.ToLowerInvariant() is "ok" or "connected" or "running" or "active" or "ready";
         ChannelsList.ItemsSource = channels.Select(c => new ChannelViewModel
         {
             Name = c.Name,
