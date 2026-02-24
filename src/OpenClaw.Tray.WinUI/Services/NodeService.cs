@@ -62,7 +62,7 @@ public class NodeService : IDisposable
             await DisconnectAsync();
         }
         
-        _logger.Info($"Starting Windows Node connection to {gatewayUrl}");
+        _logger.Info($"Starting Windows Node connection to {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
         
         _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger);
         _nodeClient.StatusChanged += OnNodeStatusChanged;

@@ -17,6 +17,7 @@ public class WindowsNodeClient : IDisposable
 {
     private ClientWebSocket? _webSocket;
     private readonly string _gatewayUrl;
+    private readonly string _gatewayUrlForDisplay;
     private readonly string _token;
     private readonly string? _credentials;
     private readonly IOpenClawLogger _logger;
@@ -43,7 +44,7 @@ public class WindowsNodeClient : IDisposable
     
     public bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
-    public string GatewayUrl => _gatewayUrl;
+    public string GatewayUrl => _gatewayUrlForDisplay;
     public IReadOnlyList<INodeCapability> Capabilities => _capabilities;
     
     /// <summary>True if connected but waiting for pairing approval on gateway</summary>
@@ -63,6 +64,7 @@ public class WindowsNodeClient : IDisposable
     public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null)
     {
         _gatewayUrl = GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl);
+        _gatewayUrlForDisplay = GatewayUrlHelper.SanitizeForDisplay(_gatewayUrl);
         _token = token;
         _credentials = GatewayUrlHelper.ExtractCredentials(gatewayUrl);
         _logger = logger ?? NullLogger.Instance;
@@ -121,7 +123,7 @@ public class WindowsNodeClient : IDisposable
         try
         {
             StatusChanged?.Invoke(this, ConnectionStatus.Connecting);
-            _logger.Info($"Connecting to gateway as node: {_gatewayUrl}");
+            _logger.Info($"Connecting to gateway as node: {_gatewayUrlForDisplay}");
             
             _webSocket = new ClientWebSocket();
             _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
@@ -134,24 +136,7 @@ public class WindowsNodeClient : IDisposable
 
             if (!string.IsNullOrEmpty(_credentials))
             {
-                var authCredentials = _credentials;
-                var separatorIndex = _credentials.IndexOf(':');
-                if (separatorIndex >= 0)
-                {
-                    var userPart = _credentials.Substring(0, separatorIndex);
-                    var passwordPart = _credentials.Substring(separatorIndex + 1);
-                    try
-                    {
-                        userPart = Uri.UnescapeDataString(userPart);
-                        passwordPart = Uri.UnescapeDataString(passwordPart);
-                        authCredentials = $"{userPart}:{passwordPart}";
-                    }
-                    catch (UriFormatException)
-                    {
-                        // If decoding fails, fall back to the original credentials string
-                        authCredentials = _credentials;
-                    }
-                }
+                var authCredentials = GatewayUrlHelper.DecodeCredentials(_credentials);
 
                 _webSocket.Options.SetRequestHeader(
                     "Authorization",
@@ -170,7 +155,6 @@ public class WindowsNodeClient : IDisposable
         {
             _logger.Error("Node connection failed", ex);
             StatusChanged?.Invoke(this, ConnectionStatus.Error);
-            throw;
         }
     }
     

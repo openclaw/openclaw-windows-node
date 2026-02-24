@@ -13,6 +13,7 @@ public class OpenClawGatewayClient : IDisposable
 {
     private ClientWebSocket? _webSocket;
     private readonly string _gatewayUrl;
+    private readonly string _gatewayUrlForDisplay;
     private readonly string _token;
     private readonly string? _credentials;
     private readonly IOpenClawLogger _logger;
@@ -58,6 +59,7 @@ public class OpenClawGatewayClient : IDisposable
     public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null)
     {
         _gatewayUrl = GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl);
+        _gatewayUrlForDisplay = GatewayUrlHelper.SanitizeForDisplay(_gatewayUrl);
         _token = token;
         _credentials = GatewayUrlHelper.ExtractCredentials(gatewayUrl);
         _logger = logger ?? NullLogger.Instance;
@@ -69,7 +71,7 @@ public class OpenClawGatewayClient : IDisposable
         try
         {
             StatusChanged?.Invoke(this, ConnectionStatus.Connecting);
-            _logger.Info($"Connecting to gateway: {_gatewayUrl}");
+            _logger.Info($"Connecting to gateway: {_gatewayUrlForDisplay}");
 
             _webSocket = new ClientWebSocket();
             _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
@@ -82,22 +84,7 @@ public class OpenClawGatewayClient : IDisposable
 
             if (!string.IsNullOrEmpty(_credentials))
             {
-                // Decode potential URL-encoded username and password before constructing Basic auth header
-                var credentialsToEncode = _credentials;
-                try
-                {
-                    var parts = _credentials.Split(new[] { ':' }, 2);
-                    if (parts.Length == 2)
-                    {
-                        var username = Uri.UnescapeDataString(parts[0]);
-                        var password = Uri.UnescapeDataString(parts[1]);
-                        credentialsToEncode = $"{username}:{password}";
-                    }
-                }
-                catch
-                {
-                    // If anything goes wrong during decoding, fall back to the original credentials string
-                }
+                var credentialsToEncode = GatewayUrlHelper.DecodeCredentials(_credentials);
 
                 _webSocket.Options.SetRequestHeader(
                     "Authorization",
@@ -117,7 +104,6 @@ public class OpenClawGatewayClient : IDisposable
         {
             _logger.Error("Connection failed", ex);
             StatusChanged?.Invoke(this, ConnectionStatus.Error);
-            throw;
         }
     }
 
