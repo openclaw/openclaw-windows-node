@@ -92,15 +92,21 @@ public sealed partial class StatusDetailWindow : WindowEx
         }
 
         // Channels
-        var isHealthy = ChannelHealth.IsHealthyStatus;
-        ChannelsList.ItemsSource = channels.Select(c => new ChannelViewModel
+        ChannelsList.ItemsSource = channels.Select(c =>
         {
-            Name = c.Name,
-            StatusIcon = isHealthy(c.Status) ? "🟢" : "🔴",
-            StatusText = c.Status ?? "Unknown",
-            StatusBrush = new SolidColorBrush(isHealthy(c.Status)
-                ? Color.FromArgb(255, 76, 175, 80) 
-                : Color.FromArgb(255, 244, 67, 54))
+            var (icon, brush) = ChannelHealth.IsHealthyStatus(c.Status)
+                ? ("🟢", new SolidColorBrush(Color.FromArgb(255, 76, 175, 80)))
+                : ChannelHealth.IsIntermediateStatus(c.Status)
+                ? ("🟡", new SolidColorBrush(Color.FromArgb(255, 241, 196, 15)))
+                : ("🔴", new SolidColorBrush(Color.FromArgb(255, 244, 67, 54)));
+
+            return new ChannelViewModel
+            {
+                Name = c.Name,
+                StatusIcon = icon,
+                StatusText = c.Status ?? "Unknown",
+                StatusBrush = brush
+            };
         }).ToList();
     }
 

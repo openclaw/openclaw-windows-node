@@ -255,6 +255,26 @@ public class ChannelHealthTests
     {
         Assert.Equal(expected, ChannelHealth.IsHealthyStatus(status));
     }
+
+    [Theory]
+    [InlineData("stopped", true)]
+    [InlineData("idle", true)]
+    [InlineData("paused", true)]
+    [InlineData("configured", true)]
+    [InlineData("pending", true)]
+    [InlineData("connecting", true)]
+    [InlineData("reconnecting", true)]
+    [InlineData("Stopped", true)]
+    [InlineData("IDLE", true)]
+    [InlineData("ok", false)]
+    [InlineData("ready", false)]
+    [InlineData("error", false)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    public void IsIntermediateStatus_ReturnsExpected(string? status, bool expected)
+    {
+        Assert.Equal(expected, ChannelHealth.IsIntermediateStatus(status));
+    }
 }
 
 public class SessionInfoTests
