@@ -275,6 +275,31 @@ public class ChannelHealthTests
     {
         Assert.Equal(expected, ChannelHealth.IsIntermediateStatus(status));
     }
+
+    [Theory]
+    [InlineData("ok")]
+    [InlineData("connected")]
+    [InlineData("running")]
+    [InlineData("active")]
+    [InlineData("ready")]
+    [InlineData("stopped")]
+    [InlineData("idle")]
+    [InlineData("paused")]
+    [InlineData("configured")]
+    [InlineData("pending")]
+    [InlineData("connecting")]
+    [InlineData("reconnecting")]
+    [InlineData("error")]
+    [InlineData("disconnected")]
+    [InlineData("failed")]
+    [InlineData("not configured")]
+    [InlineData(null)]
+    public void HealthyAndIntermediate_AreMutuallyExclusive(string? status)
+    {
+        Assert.False(
+            ChannelHealth.IsHealthyStatus(status) && ChannelHealth.IsIntermediateStatus(status),
+            $"Status '{status}' should not be both healthy and intermediate");
+    }
 }
 
 public class SessionInfoTests

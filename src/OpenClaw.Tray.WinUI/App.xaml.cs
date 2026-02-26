@@ -1047,7 +1047,7 @@ public partial class App : Application
                 var channelIcon = channel.Status?.ToLowerInvariant() switch
                 {
                     _ when ChannelHealth.IsHealthyStatus(channel.Status) => "🟢",
-                    "connecting" or "reconnecting" => "🟡",
+                    _ when ChannelHealth.IsIntermediateStatus(channel.Status) => "🟡",
                     _ => "🔴"
                 };
                 var channelItem = new MenuFlyoutItem
