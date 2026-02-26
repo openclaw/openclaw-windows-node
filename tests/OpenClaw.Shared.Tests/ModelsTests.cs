@@ -233,6 +233,28 @@ public class ChannelHealthTests
         var health = new ChannelHealth { Name = "", Status = "ok" };
         Assert.Contains(": ok", health.DisplayText);
     }
+
+    [Theory]
+    [InlineData("ok", true)]
+    [InlineData("connected", true)]
+    [InlineData("running", true)]
+    [InlineData("active", true)]
+    [InlineData("ready", true)]
+    [InlineData("OK", true)]
+    [InlineData("Active", true)]
+    [InlineData("Ready", true)]
+    [InlineData("CONNECTED", true)]
+    [InlineData("error", false)]
+    [InlineData("disconnected", false)]
+    [InlineData("stopped", false)]
+    [InlineData("not configured", false)]
+    [InlineData("unknown", false)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    public void IsHealthyStatus_ReturnsExpected(string? status, bool expected)
+    {
+        Assert.Equal(expected, ChannelHealth.IsHealthyStatus(status));
+    }
 }
 
 public class SessionInfoTests

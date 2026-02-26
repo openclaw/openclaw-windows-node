@@ -1046,7 +1046,7 @@ public partial class App : Application
             {
                 var channelIcon = channel.Status?.ToLowerInvariant() switch
                 {
-                    "ok" or "connected" or "running" => "🟢",
+                    _ when ChannelHealth.IsHealthyStatus(channel.Status) => "🟢",
                     "connecting" or "reconnecting" => "🟡",
                     _ => "🔴"
                 };
@@ -1786,7 +1786,7 @@ public partial class App : Application
 
         try
         {
-            var isRunning = channel.Status?.ToLowerInvariant() is "ok" or "connected" or "running";
+            var isRunning = ChannelHealth.IsHealthyStatus(channel.Status);
             if (isRunning)
             {
                 await _gatewayClient.StopChannelAsync(channelName);

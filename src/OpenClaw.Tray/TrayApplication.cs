@@ -376,7 +376,7 @@ public class TrayApplication : ApplicationContext
         var channel = _lastChannels.FirstOrDefault(c => c.Name.Equals(channelName, StringComparison.OrdinalIgnoreCase));
         if (channel == null) return;
 
-        var isRunning = channel.Status.ToLowerInvariant() is "ok" or "connected" or "running";
+        var isRunning = ChannelHealth.IsHealthyStatus(channel.Status);
         
         if (isRunning)
         {

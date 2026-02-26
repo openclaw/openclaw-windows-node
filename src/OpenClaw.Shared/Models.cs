@@ -106,6 +106,13 @@ public class ChannelHealth
     public string? AuthAge { get; set; }
     public string? Type { get; set; }
 
+    /// <summary>
+    /// Returns true if the given status string represents a healthy/running channel.
+    /// Use this instead of inline status checks to keep the healthy-status set consistent.
+    /// </summary>
+    public static bool IsHealthyStatus(string? status) =>
+        status?.ToLowerInvariant() is "ok" or "connected" or "running" or "active" or "ready";
+
     public string DisplayText
     {
         get
