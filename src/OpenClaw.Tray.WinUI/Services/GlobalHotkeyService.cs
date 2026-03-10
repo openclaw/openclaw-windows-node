@@ -1,5 +1,7 @@
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace OpenClawTray.Services;
 
@@ -16,10 +18,10 @@ public class GlobalHotkeyService : IDisposable
     private const uint VK_C = 0x43;
     private const int WM_HOTKEY = 0x0312;
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -52,8 +54,18 @@ public class GlobalHotkeyService : IDisposable
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostThreadMessage(uint idThread, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     private const uint WM_QUIT = 0x0012;
     private const uint WM_USER = 0x0400;
+    private const uint WM_APP_REGISTER = WM_USER + 1;
+    private const uint WM_APP_UNREGISTER = WM_USER + 2;
+
+    private const uint MOD_NOREPEAT = 0x4000;
 
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -97,6 +109,10 @@ public class GlobalHotkeyService : IDisposable
     private WndProcDelegate? _wndProcDelegate; // prevent GC collection
     private volatile bool _running;
 
+    private uint _messageThreadId;
+    private readonly ManualResetEventSlim _windowReady = new(false);
+    private readonly ManualResetEventSlim _opCompleted = new(false);
+
     public event EventHandler? HotkeyPressed;
 
     public GlobalHotkeyService()
@@ -110,12 +126,13 @@ public class GlobalHotkeyService : IDisposable
         try
         {
             // Create message window on a dedicated thread with message loop
-            _running = true;
-            _messageThread = new Thread(MessageLoop) { IsBackground = true, Name = "HotkeyMessageLoop" };
-            _messageThread.Start();
+            EnsureMessageLoop();
 
-            // Wait briefly for window creation
-            Thread.Sleep(100);
+            if (!_windowReady.Wait(TimeSpan.FromSeconds(2)))
+            {
+                Logger.Warn("Timed out waiting for hotkey message window");
+                return false;
+            }
 
             if (_hwnd == IntPtr.Zero)
             {
@@ -123,15 +140,9 @@ public class GlobalHotkeyService : IDisposable
                 return false;
             }
 
-            _registered = RegisterHotKey(_hwnd, HOTKEY_ID, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_C);
-            if (_registered)
-            {
-                Logger.Info("Global hotkey registered: Ctrl+Alt+Shift+C");
-            }
-            else
-            {
-                Logger.Warn("Failed to register global hotkey (may be in use by another app)");
-            }
+            _opCompleted.Reset();
+            PostMessage(_hwnd, WM_APP_REGISTER, IntPtr.Zero, IntPtr.Zero);
+            _opCompleted.Wait(TimeSpan.FromSeconds(2));
             return _registered;
         }
         catch (Exception ex)
@@ -141,10 +152,25 @@ public class GlobalHotkeyService : IDisposable
         }
     }
 
+    private void EnsureMessageLoop()
+    {
+        if (_messageThread != null) return;
+
+        _running = true;
+        _messageThread = new Thread(MessageLoop)
+        {
+            IsBackground = true,
+            Name = "HotkeyMessageLoop"
+        };
+        _messageThread.Start();
+    }
+
     private void MessageLoop()
     {
         try
         {
+            _messageThreadId = GetCurrentThreadId();
+
             // Create window class
             _wndProcDelegate = WndProc;
             var wndClass = new WNDCLASS
@@ -161,6 +187,8 @@ public class GlobalHotkeyService : IDisposable
                 new IntPtr(-3), // HWND_MESSAGE
                 IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
 
+            _windowReady.Set();
+
             // Message loop
             while (_running && GetMessage(out MSG msg, IntPtr.Zero, 0, 0))
             {
@@ -171,13 +199,59 @@ public class GlobalHotkeyService : IDisposable
         catch (Exception ex)
         {
             Logger.Error($"Hotkey message loop error: {ex.Message}");
+            _windowReady.Set();
         }
     }
 
     private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == WM_APP_REGISTER)
+        {
+            // Register from the message-loop thread that owns hWnd.
+            _registered = RegisterHotKey(hWnd, HOTKEY_ID,
+                MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+                VK_C);
+
+            if (_registered)
+            {
+                Logger.Info("Global hotkey registered: Ctrl+Alt+Shift+C");
+            }
+            else
+            {
+                var err = Marshal.GetLastWin32Error();
+                var errMsg = new Win32Exception(err).Message;
+                Logger.Warn($"Failed to register global hotkey (Win32Error={err}: {errMsg})");
+            }
+
+            _opCompleted.Set();
+            return IntPtr.Zero;
+        }
+
+        if (msg == WM_APP_UNREGISTER)
+        {
+            try
+            {
+                if (_registered)
+                {
+                    UnregisterHotKey(hWnd, HOTKEY_ID);
+                    _registered = false;
+                    Logger.Info("Global hotkey unregistered");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Hotkey unregistration error: {ex.Message}");
+            }
+            finally
+            {
+                _opCompleted.Set();
+            }
+            return IntPtr.Zero;
+        }
+
         if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
         {
+            Logger.Info("Hotkey pressed: Ctrl+Alt+Shift+C");
             OnHotkeyPressed();
         }
         return DefWindowProc(hWnd, msg, wParam, lParam);
@@ -189,12 +263,11 @@ public class GlobalHotkeyService : IDisposable
 
         try
         {
-            if (_hwnd != IntPtr.Zero)
-            {
-                UnregisterHotKey(_hwnd, HOTKEY_ID);
-            }
-            _registered = false;
-            Logger.Info("Global hotkey unregistered");
+            if (_hwnd == IntPtr.Zero) return;
+
+            _opCompleted.Reset();
+            PostMessage(_hwnd, WM_APP_UNREGISTER, IntPtr.Zero, IntPtr.Zero);
+            _opCompleted.Wait(TimeSpan.FromSeconds(2));
         }
         catch (Exception ex)
         {
@@ -215,10 +288,16 @@ public class GlobalHotkeyService : IDisposable
         Unregister();
 
         _running = false;
+
+        if (_messageThreadId != 0)
+        {
+            // WM_QUIT must be posted to the thread queue.
+            PostThreadMessage(_messageThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+        }
+
         if (_hwnd != IntPtr.Zero)
         {
-            PostMessage(_hwnd, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
-            DestroyWindow(_hwnd);
+            try { DestroyWindow(_hwnd); } catch { }
             _hwnd = IntPtr.Zero;
         }
 
