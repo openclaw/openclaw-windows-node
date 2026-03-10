@@ -17,6 +17,7 @@ public class SystemCapability : NodeCapabilityBase
     {
         "system.notify",
         "system.run",
+        "system.run.prepare",
         "system.which",
         "system.execApprovals.get",
         "system.execApprovals.set"
@@ -59,6 +60,7 @@ public class SystemCapability : NodeCapabilityBase
         {
             "system.notify" => await HandleNotifyAsync(request),
             "system.run" => await HandleRunAsync(request),
+            "system.run.prepare" => HandleRunPrepare(request),
             "system.which" => HandleWhich(request),
             "system.execApprovals.get" => HandleExecApprovalsGet(),
             "system.execApprovals.set" => HandleExecApprovalsSet(request),
@@ -156,6 +158,78 @@ public class SystemCapability : NodeCapabilityBase
         }
         
         return null;
+    }
+    
+    /// <summary>
+    /// Formats argv into a command string, quoting args that contain spaces or quotes.
+    /// Matches the gateway's formatExecCommand behavior.
+    /// </summary>
+    private static string FormatExecCommand(string[] argv)
+    {
+        return string.Join(" ", argv.Select(arg =>
+        {
+            if (arg.Length == 0) return "\"\"";
+            if (!arg.Contains(' ') && !arg.Contains('"')) return arg;
+            return "\"" + arg.Replace("\"", "\\\"") + "\"";
+        }));
+    }
+    
+    /// <summary>
+    /// Pre-flight for system.run: echoes back the execution plan without running anything.
+    /// The gateway uses this to build its approval context before the actual run.
+    /// </summary>
+    private NodeInvokeResponse HandleRunPrepare(NodeInvokeRequest request)
+    {
+        string? command = null;
+        string[]? argv = null;
+        string? rawCommand = null;
+        string? cwd = null;
+        
+        if (request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
+            request.Args.TryGetProperty("command", out var cmdEl))
+        {
+            if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var list = new List<string>();
+                foreach (var item in cmdEl.EnumerateArray())
+                {
+                    if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                        list.Add(item.GetString() ?? "");
+                }
+                argv = list.ToArray();
+                command = argv.Length > 0 ? argv[0] : null;
+            }
+            else if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                command = cmdEl.GetString();
+                argv = command != null ? new[] { command } : null;
+            }
+        }
+        
+        if (string.IsNullOrWhiteSpace(command) || argv == null || argv.Length == 0)
+        {
+            return Error("Missing command parameter");
+        }
+        
+        rawCommand = GetStringArg(request.Args, "rawCommand");
+        cwd = GetStringArg(request.Args, "cwd");
+        var agentId = GetStringArg(request.Args, "agentId");
+        var sessionKey = GetStringArg(request.Args, "sessionKey");
+        
+        Logger.Info($"system.run.prepare: {rawCommand} (cwd={cwd ?? "default"})");
+        
+        return Success(new
+        {
+            cmdText = rawCommand ?? FormatExecCommand(argv),
+            plan = new
+            {
+                argv,
+                cwd,
+                rawCommand,
+                agentId,
+                sessionKey
+            }
+        });
     }
     
     private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)
