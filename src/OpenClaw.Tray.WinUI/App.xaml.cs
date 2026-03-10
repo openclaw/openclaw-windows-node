@@ -68,6 +68,7 @@ public partial class App : Application
     private NotificationHistoryWindow? _notificationHistoryWindow;
     private ActivityStreamWindow? _activityStreamWindow;
     private TrayMenuWindow? _trayMenuWindow;
+    private QuickSendDialog? _quickSendDialog;
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -1668,9 +1669,41 @@ public partial class App : Application
 
     private void ShowQuickSend(string? prefillMessage = null)
     {
-        if (_gatewayClient == null) return;
-        var dialog = new QuickSendDialog(_gatewayClient, prefillMessage);
-        dialog.Activate();
+        if (_gatewayClient == null)
+        {
+            Logger.Warn("QuickSend blocked: gateway client not initialized");
+            return;
+        }
+
+        try
+        {
+            // Keep a strong reference to the window; otherwise the dialog can be GC'd
+            // and appear to not open (especially when triggered from a hotkey).
+            if (_quickSendDialog != null)
+            {
+                // If caller wants a prefill, re-create to apply it.
+                if (!string.IsNullOrEmpty(prefillMessage))
+                {
+                    try { _quickSendDialog.Close(); } catch { }
+                    _quickSendDialog = null;
+                }
+                else
+                {
+                    Logger.Info("QuickSend dialog already open; activating");
+                    _quickSendDialog.Activate();
+                    return;
+                }
+            }
+
+            Logger.Info("Showing QuickSend dialog");
+            _quickSendDialog = new QuickSendDialog(_gatewayClient, prefillMessage);
+            _quickSendDialog.Closed += (s, e) => _quickSendDialog = null;
+            _quickSendDialog.Activate();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to show QuickSend dialog: {ex.Message}");
+        }
     }
 
     private void ShowStatusDetail()
@@ -1827,7 +1860,19 @@ public partial class App : Application
 
     private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
     {
-        ShowQuickSend();
+        // Hotkey events are raised from a dedicated Win32 message-loop thread.
+        // Creating/activating WinUI windows must happen on the app's UI thread.
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("Hotkey pressed but DispatcherQueue is null");
+            return;
+        }
+
+        var enqueued = _dispatcherQueue.TryEnqueue(() => ShowQuickSend());
+        if (!enqueued)
+        {
+            Logger.Warn("Hotkey pressed but failed to enqueue QuickSend on UI thread");
+        }
     }
 
     #endregion

@@ -63,7 +63,7 @@ public static class BackdropHelper
     /// <summary>
     /// Applies Desktop Acrylic backdrop to a window with IsInputActive always true.
     /// </summary>
-    public static DesktopAcrylicController? TrySetAcrylicBackdrop(Window window)
+    public static DesktopAcrylicController? TrySetAcrylicBackdrop(Microsoft.UI.Xaml.Window window)
     {
         if (!DesktopAcrylicController.IsSupported())
             return null;

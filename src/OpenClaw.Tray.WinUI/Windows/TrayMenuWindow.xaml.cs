@@ -121,26 +121,71 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         if (GetCursorPos(out POINT pt))
         {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            uint dpi = GetDpiForWindow(hwnd);
-            if (dpi == 0) dpi = 96;
-            double scale = dpi / 96.0;
-
             // Get work area of monitor where cursor is
             var hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
             var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
             GetMonitorInfo(hMonitor, ref monitorInfo);
             var workArea = monitorInfo.rcWork;
 
-            // Scale menu dimensions
-            int menuWidthPhysical = (int)(280 * scale);
-            int menuHeightPhysical = (int)(_menuHeight * scale);
+            // Prefer using the AppWindow's actual pixel size. This is more reliable than
+            // estimating based on DPI and item counts, especially on Windows 10 when the
+            // cursor can be in the taskbar region (outside rcWork).
+            int menuWidthPx;
+            int menuHeightPx;
+            try
+            {
+                menuWidthPx = this.AppWindow.Size.Width;
+                menuHeightPx = this.AppWindow.Size.Height;
+            }
+            catch
+            {
+                menuWidthPx = 0;
+                menuHeightPx = 0;
+            }
 
-            // Position: keep on screen, prefer above cursor (tray is at bottom)
-            int x = Math.Clamp(pt.X, workArea.Left, workArea.Right - menuWidthPhysical);
-            int y = pt.Y - menuHeightPhysical - 10;
-            if (y < workArea.Top)
-                y = pt.Y + 10;
+            // Fallback to a conservative estimate if AppWindow size isn't available yet.
+            if (menuWidthPx <= 0 || menuHeightPx <= 0)
+            {
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+                uint dpi = GetDpiForWindow(hwnd);
+                if (dpi == 0) dpi = 96;
+                double scale = dpi / 96.0;
+                menuWidthPx = (int)(280 * scale);
+                menuHeightPx = (int)(_menuHeight * scale);
+            }
+
+            const int margin = 8;
+
+            int maxX = workArea.Right - menuWidthPx;
+            if (maxX < workArea.Left) maxX = workArea.Left;
+            int x = Math.Clamp(pt.X, workArea.Left, maxX);
+
+            int maxY = workArea.Bottom - menuHeightPx;
+            if (maxY < workArea.Top) maxY = workArea.Top;
+
+            // Candidate positions. Prefer above the cursor (typical tray behavior).
+            // On Windows 10 the cursor can be in the taskbar area, so clamp to rcWork
+            // to avoid the menu overflowing under the taskbar.
+            int yAbove = pt.Y - menuHeightPx - margin;
+            int yBelow = pt.Y + margin;
+
+            bool canShowAbove = yAbove >= workArea.Top;
+            bool canShowBelow = yBelow <= maxY;
+
+            int y;
+            if (canShowAbove)
+            {
+                y = Math.Min(yAbove, maxY);
+            }
+            else if (canShowBelow)
+            {
+                y = Math.Max(yBelow, workArea.Top);
+            }
+            else
+            {
+                // Worst case: clamp within the visible work area.
+                y = Math.Clamp(yAbove, workArea.Top, maxY);
+            }
 
             this.Move(x, y);
         }
