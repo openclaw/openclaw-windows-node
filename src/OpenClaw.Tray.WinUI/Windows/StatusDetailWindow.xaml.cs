@@ -66,7 +66,7 @@ public sealed partial class StatusDetailWindow : WindowEx
                 ? $"{usage.RequestCount:N0} / {usage.TotalTokens:N0}"
                 : $"{usage.TotalTokens:N0}";
             ProviderSummaryText.Text = string.IsNullOrWhiteSpace(usage.ProviderSummary)
-                ? "n/a"
+                ? "无"
                 : usage.ProviderSummary!;
         }
         else

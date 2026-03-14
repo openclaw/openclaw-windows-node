@@ -863,13 +863,16 @@ public partial class App : Application
                 var currentThinking = string.IsNullOrWhiteSpace(session.ThinkingLevel) ? "off" : session.ThinkingLevel;
                 var currentVerbose = string.IsNullOrWhiteSpace(session.VerboseLevel) ? "off" : session.VerboseLevel;
                 var nextVerbose = string.Equals(currentVerbose, "on", StringComparison.OrdinalIgnoreCase) ? "off" : "on";
+                var currentThinkingDisplay = string.Equals(currentThinking, "off", StringComparison.OrdinalIgnoreCase) ? "关" : currentThinking;
+                var currentVerboseDisplay = string.Equals(currentVerbose, "on", StringComparison.OrdinalIgnoreCase) ? "开" : "关";
+                var nextVerboseDisplay = string.Equals(nextVerbose, "on", StringComparison.OrdinalIgnoreCase) ? "开" : "关";
                 menu.AddMenuItem(
-                    $"↳ 思考模式: {currentThinking} → 高",
+                    $"↳ 思考模式: {currentThinkingDisplay} → 高",
                     "🧠",
                     $"session-thinking|high|{session.Key}",
                     indent: true);
                 menu.AddMenuItem(
-                    $"↳ 详细模式: {currentVerbose} → {nextVerbose}",
+                    $"↳ 详细模式: {currentVerboseDisplay} → {nextVerboseDisplay}",
                     "📝",
                     $"session-verbose|{nextVerbose}|{session.Key}",
                     indent: true);

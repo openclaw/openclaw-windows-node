@@ -8,7 +8,7 @@ using WinUIEx;
 namespace OpenClawTray.Dialogs;
 
 /// <summary>
-/// 首次运行欢迎对话框，用于新用户。
+/// First-run welcome dialog for new users.
 /// </summary>
 public sealed class WelcomeDialog : WindowEx
 {
