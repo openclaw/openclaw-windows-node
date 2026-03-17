@@ -35,9 +35,6 @@ jobs:
     - name: Build Shared Library
       run: dotnet build src/OpenClaw.Shared -c Debug
 
-    - name: Build Tray App (WinForms)
-      run: dotnet build src/OpenClaw.Tray -c Debug
-
     - name: Build Tray App (WinUI)
       run: dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64
 

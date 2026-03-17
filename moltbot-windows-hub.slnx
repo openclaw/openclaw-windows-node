@@ -4,7 +4,6 @@
       <Platform Project="x64" />
     </Project>
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
-    <Project Path="src/OpenClaw.Tray/OpenClaw.Tray.csproj" />
     <Project Path="src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj" />
   </Folder>
   <Folder Name="/tests/">
