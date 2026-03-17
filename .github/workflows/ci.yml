@@ -53,7 +53,7 @@ jobs:
 
   build:
     needs: test
-    runs-on: windows-latest
+    runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     strategy:
       matrix:
         rid: [win-x64, win-arm64]
@@ -105,7 +105,7 @@ jobs:
 
   build-msix:
     needs: test
-    runs-on: windows-latest
+    runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     continue-on-error: true
     strategy:
       fail-fast: false
