@@ -80,13 +80,13 @@ public static class DeepLinkHandler
 
             case "agent":
                 var agentMessage = OpenClaw.Shared.DeepLinkParser.GetQueryParam(query, "message");
-                if (!string.IsNullOrEmpty(agentMessage))
+                if (!string.IsNullOrEmpty(agentMessage) && actions.SendMessage != null)
                 {
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await actions.SendMessage!(agentMessage);
+                            await actions.SendMessage(agentMessage);
                             Logger.Info($"Sent message via deep link: {agentMessage}");
                         }
                         catch (Exception ex)
@@ -94,6 +94,10 @@ public static class DeepLinkHandler
                             Logger.Error($"Failed to send message: {ex.Message}");
                         }
                     });
+                }
+                else if (!string.IsNullOrEmpty(agentMessage))
+                {
+                    Logger.Warn("Deep link: agent message received but SendMessage handler is not registered");
                 }
                 break;
 
