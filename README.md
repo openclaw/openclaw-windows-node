@@ -278,14 +278,17 @@ Shared library containing:
 
 ### Project Structure
 ```
-moltbot-windows-hub/
+openclaw-windows-node/
 ├── src/
 │   ├── OpenClaw.Shared/           # Shared gateway library
-│   ├── OpenClaw.Tray/             # System tray app
+│   ├── OpenClaw.Tray.WinUI/       # System tray app (WinUI 3)
 │   └── OpenClaw.CommandPalette/   # PowerToys extension
+├── tests/
+│   ├── OpenClaw.Shared.Tests/     # Shared library tests
+│   └── OpenClaw.Tray.Tests/       # Tray app helper tests
 ├── docs/
-│   └── molty1.png                # Screenshot
-├── moltbot-windows-hub.sln
+│   └── molty1.png                 # Screenshot
+├── moltbot-windows-hub.slnx       # Solution file (historical name)
 ├── README.md
 ├── LICENSE
 └── .gitignore

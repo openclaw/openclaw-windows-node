@@ -1,7 +1,7 @@
 ; OpenClaw Tray Inno Setup Script (WinUI version)
 #define MyAppName "OpenClaw Tray"
 #define MyAppPublisher "Scott Hanselman"
-#define MyAppURL "https://github.com/shanselman/moltbot-windows-hub"
+#define MyAppURL "https://github.com/openclaw/openclaw-windows-node"
 #define MyAppExeName "OpenClaw.Tray.WinUI.exe"
 
 ; MyAppArch should be passed via /DMyAppArch=x64 or /DMyAppArch=arm64
@@ -15,8 +15,8 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-AppSupportURL=https://github.com/shanselman/moltbot-windows-hub/issues
-AppUpdatesURL=https://github.com/shanselman/moltbot-windows-hub/releases
+AppSupportURL=https://github.com/openclaw/openclaw-windows-node/issues
+AppUpdatesURL=https://github.com/openclaw/openclaw-windows-node/releases
 DefaultDirName={localappdata}\OpenClawTray
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
