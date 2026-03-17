@@ -1696,9 +1696,16 @@ public partial class App : Application
             }
 
             Logger.Info("Showing QuickSend dialog");
-            _quickSendDialog = new QuickSendDialog(_gatewayClient, prefillMessage);
-            _quickSendDialog.Closed += (s, e) => _quickSendDialog = null;
-            _quickSendDialog.Activate();
+            var dialog = new QuickSendDialog(_gatewayClient, prefillMessage);
+            dialog.Closed += (s, e) =>
+            {
+                if (ReferenceEquals(_quickSendDialog, dialog))
+                {
+                    _quickSendDialog = null;
+                }
+            };
+            _quickSendDialog = dialog;
+            dialog.Activate();
         }
         catch (Exception ex)
         {

@@ -141,8 +141,19 @@ public class GlobalHotkeyService : IDisposable
             }
 
             _opCompleted.Reset();
-            PostMessage(_hwnd, WM_APP_REGISTER, IntPtr.Zero, IntPtr.Zero);
-            _opCompleted.Wait(TimeSpan.FromSeconds(2));
+            if (!PostMessage(_hwnd, WM_APP_REGISTER, IntPtr.Zero, IntPtr.Zero))
+            {
+                Logger.Warn("Failed to post WM_APP_REGISTER message for hotkey registration");
+                _registered = false;
+                return false;
+            }
+
+            if (!_opCompleted.Wait(TimeSpan.FromSeconds(2)))
+            {
+                Logger.Warn("Timed out waiting for hotkey registration operation to complete");
+                _registered = false;
+                return false;
+            }
             return _registered;
         }
         catch (Exception ex)
@@ -154,7 +165,13 @@ public class GlobalHotkeyService : IDisposable
 
     private void EnsureMessageLoop()
     {
-        if (_messageThread != null) return;
+        if (_messageThread != null && _messageThread.IsAlive && _hwnd != IntPtr.Zero)
+            return;
+
+        // Reset state in case the previous thread died
+        _messageThread = null;
+        _hwnd = IntPtr.Zero;
+        _windowReady.Reset();
 
         _running = true;
         _messageThread = new Thread(MessageLoop)
@@ -266,8 +283,18 @@ public class GlobalHotkeyService : IDisposable
             if (_hwnd == IntPtr.Zero) return;
 
             _opCompleted.Reset();
-            PostMessage(_hwnd, WM_APP_UNREGISTER, IntPtr.Zero, IntPtr.Zero);
-            _opCompleted.Wait(TimeSpan.FromSeconds(2));
+            if (!PostMessage(_hwnd, WM_APP_UNREGISTER, IntPtr.Zero, IntPtr.Zero))
+            {
+                Logger.Warn("Failed to post WM_APP_UNREGISTER message; message loop may have exited");
+                _registered = false;
+                return;
+            }
+
+            if (!_opCompleted.Wait(TimeSpan.FromSeconds(2)))
+            {
+                Logger.Warn("Timed out waiting for hotkey unregistration to complete");
+                _registered = false;
+            }
         }
         catch (Exception ex)
         {
@@ -291,16 +318,22 @@ public class GlobalHotkeyService : IDisposable
 
         if (_messageThreadId != 0)
         {
-            // WM_QUIT must be posted to the thread queue.
+            // WM_QUIT must be posted to the thread queue so the loop exits cleanly
+            // and DestroyWindow runs on the owning thread.
             PostThreadMessage(_messageThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
         }
 
+        _messageThread?.Join(2000);
+
+        // Window should already be destroyed by the message loop exit,
+        // but clean up if it wasn't.
         if (_hwnd != IntPtr.Zero)
         {
             try { DestroyWindow(_hwnd); } catch { }
             _hwnd = IntPtr.Zero;
         }
 
-        _messageThread?.Join(1000);
+        _windowReady.Dispose();
+        _opCompleted.Dispose();
     }
 }
