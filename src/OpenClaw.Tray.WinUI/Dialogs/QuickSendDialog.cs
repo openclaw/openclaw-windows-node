@@ -123,6 +123,10 @@ public sealed class QuickSendDialog : WindowEx
             _messageTextBox.Focus(FocusState.Programmatic);
             TryBringToFront();
         };
+
+        Closed += (s, e) => Logger.Info("[QuickSend] Dialog closed");
+
+        Logger.Info($"[QuickSend] Dialog opened (prefill={!string.IsNullOrEmpty(prefillMessage)})");
     }
 
     private void TryBringToFront()
@@ -174,7 +178,7 @@ public sealed class QuickSendDialog : WindowEx
         try
         {
             await _client.SendChatMessageAsync(message);
-            Logger.Info($"Quick send: {message}");
+            Logger.Info($"[QuickSend] Message sent ({message.Length} chars)");
             new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("QuickSend_ToastTitle"))
                 .AddText(LocalizationHelper.GetString("QuickSend_ToastBody"))

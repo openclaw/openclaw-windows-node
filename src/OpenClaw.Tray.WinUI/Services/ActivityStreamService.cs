@@ -40,9 +40,14 @@ public static class ActivityStreamService
 
             if (_items.Count > MaxItems)
             {
-                _items.RemoveRange(MaxItems, _items.Count - MaxItems);
+                var trimmed = _items.Count - MaxItems;
+                _items.RemoveRange(MaxItems, trimmed);
+                Logger.Debug($"[ActivityStream] Trimmed {trimmed} items (exceeded max {MaxItems})");
             }
         }
+
+        var truncatedTitle = title.Length > 50 ? title[..50] + "…" : title;
+        Logger.Info($"[ActivityStream] Item added: [{category}] {truncatedTitle}");
 
         Updated?.Invoke(null, EventArgs.Empty);
     }

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using System;
 using System.Threading.Tasks;
 using WinUIEx;
@@ -88,11 +89,11 @@ public sealed class UpdateDialog : WindowEx
         };
 
         var skipButton = new Button { Content = LocalizationHelper.GetString("Update_SkipButton") };
-        skipButton.Click += (s, e) => { _result = UpdateDialogResult.Skip; Close(); };
+        skipButton.Click += (s, e) => { Logger.Info("[Update] User clicked 'Skip'"); _result = UpdateDialogResult.Skip; Close(); };
         buttonPanel.Children.Add(skipButton);
 
         var laterButton = new Button { Content = LocalizationHelper.GetString("Update_RemindLaterButton") };
-        laterButton.Click += (s, e) => { _result = UpdateDialogResult.RemindLater; Close(); };
+        laterButton.Click += (s, e) => { Logger.Info("[Update] User clicked 'Remind Later'"); _result = UpdateDialogResult.RemindLater; Close(); };
         buttonPanel.Children.Add(laterButton);
 
         var downloadButton = new Button
@@ -100,7 +101,7 @@ public sealed class UpdateDialog : WindowEx
             Content = LocalizationHelper.GetString("Update_DownloadButton"),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"]
         };
-        downloadButton.Click += (s, e) => { _result = UpdateDialogResult.Download; Close(); };
+        downloadButton.Click += (s, e) => { Logger.Info("[Update] User clicked 'Download'"); _result = UpdateDialogResult.Download; Close(); };
         buttonPanel.Children.Add(downloadButton);
 
         Grid.SetRow(buttonPanel, 2);
@@ -108,6 +109,8 @@ public sealed class UpdateDialog : WindowEx
 
         Content = root;
         Closed += (s, e) => _tcs.TrySetResult(_result);
+
+        Logger.Info($"[Update] Update dialog shown for version {version}");
     }
 
     public new Task<UpdateDialogResult> ShowAsync()
