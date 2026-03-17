@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
+using OpenClawTray.Services;
 using WinUIEx;
 using Windows.Storage.Streams;
 
@@ -111,7 +112,7 @@ public sealed partial class CanvasWindow : WindowEx
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[Canvas] Blocked pending URL: {url.Substring(0, Math.Min(50, url.Length))}...");
+                    Logger.Warn($"[Canvas] Blocked pending URL: {url.Substring(0, Math.Min(50, url.Length))}...");
                 }
             }
             else if (_pendingHtml != null)
@@ -223,8 +224,7 @@ public sealed partial class CanvasWindow : WindowEx
     /// </summary>
     public void LoadHtml(string html)
     {
-        // Log HTML loading for audit (truncated)
-        System.Diagnostics.Debug.WriteLine($"[Canvas] Loading HTML content ({html.Length} chars)");
+        Logger.Debug($"[Canvas] Loading HTML content ({html.Length} chars)");
         
         // Sanitize: strip iframes/objects/embeds that could bypass URL validation
         html = SanitizeHtml(html);
@@ -265,9 +265,8 @@ public sealed partial class CanvasWindow : WindowEx
         if (!_isWebViewInitialized)
             throw new InvalidOperationException("WebView2 not initialized");
         
-        // Log script execution for audit (truncated)
         var truncatedScript = script.Length > 100 ? script.Substring(0, 100) + "..." : script;
-        System.Diagnostics.Debug.WriteLine($"[Canvas] Executing script: {truncatedScript}");
+        Logger.Debug($"[Canvas] Executing script: {truncatedScript}");
         
         var result = await CanvasWebView.CoreWebView2.ExecuteScriptAsync(script);
         return result;

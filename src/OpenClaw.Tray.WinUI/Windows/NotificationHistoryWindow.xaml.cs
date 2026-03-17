@@ -28,6 +28,11 @@ public sealed partial class NotificationHistoryWindow : WindowEx
         Closed += (s, e) => IsClosed = true;
         
         LoadNotifications();
+
+        var count = NotificationHistoryService.GetHistory().Count;
+        Logger.Info($"[NotificationHistory] Window opened with {count} notifications");
+        if (count == 0)
+            Logger.Warn("[NotificationHistory] Notification list is empty on open");
     }
 
     private void LoadNotifications()
@@ -86,6 +91,8 @@ public sealed partial class NotificationHistoryWindow : WindowEx
 
     private void OnClearAll(object sender, RoutedEventArgs e)
     {
+        var count = NotificationHistoryService.GetHistory().Count;
+        Logger.Info($"[NotificationHistory] Clear clicked — {count} notifications cleared");
         NotificationHistoryService.Clear();
         LoadNotifications();
     }

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,6 +35,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         
         Closed += (s, e) => IsClosed = true;
         
+        Logger.Info("[StatusDetail] Window opened");
         UpdateStatus(status, channels, sessions, usage, lastCheck);
     }
 
@@ -44,6 +46,12 @@ public sealed partial class StatusDetailWindow : WindowEx
         GatewayUsageInfo? usage,
         DateTime lastCheck)
     {
+        Logger.Info($"[StatusDetail] UpdateStatus: connection={status}, channels={channels?.Length ?? 0}, sessions={sessions?.Length ?? 0}");
+        if (channels == null || channels.Length == 0)
+            Logger.Warn("[StatusDetail] Channel list is null or empty");
+        if (sessions == null || sessions.Length == 0)
+            Logger.Warn("[StatusDetail] Session list is null or empty");
+
         // Status
         StatusText.Text = LocalizationHelper.GetConnectionStatusText(status);
         LastCheckText.Text = string.Format(LocalizationHelper.GetString("Status_LastCheckFormat"), lastCheck.ToString("HH:mm:ss"));
@@ -113,6 +121,7 @@ public sealed partial class StatusDetailWindow : WindowEx
 
     private void OnRefresh(object sender, RoutedEventArgs e)
     {
+        Logger.Info("[StatusDetail] Refresh requested");
         RefreshRequested?.Invoke(this, EventArgs.Empty);
     }
 

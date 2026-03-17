@@ -31,6 +31,8 @@ public sealed partial class SettingsWindow : WindowEx
         LoadSettings();
         
         Closed += (s, e) => IsClosed = true;
+        
+        Logger.Info("[Settings] Window opened");
     }
 
     private void LoadSettings()
@@ -106,6 +108,7 @@ public sealed partial class SettingsWindow : WindowEx
             return;
         }
 
+        Logger.Info("[Settings] Test connection initiated");
         StatusLabel.Text = LocalizationHelper.GetString("Status_Testing");
         TestConnectionButton.IsEnabled = false;
 
@@ -141,6 +144,11 @@ public sealed partial class SettingsWindow : WindowEx
                 connected = false;
             }
 
+            if (connected)
+                Logger.Info("[Settings] Test connection succeeded");
+            else
+                Logger.Warn("[Settings] Test connection failed or timed out");
+
             StatusLabel.Text = connected
                 ? LocalizationHelper.GetString("Status_Connected")
                 : LocalizationHelper.GetString("Status_ConnectionFailed");
@@ -148,6 +156,7 @@ public sealed partial class SettingsWindow : WindowEx
         }
         catch (Exception ex)
         {
+            Logger.Error($"[Settings] Test connection error: {ex.Message}");
             StatusLabel.Text = $"❌ {ex.Message}";
         }
         finally
@@ -176,17 +185,32 @@ public sealed partial class SettingsWindow : WindowEx
         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
         if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
         {
+            Logger.Warn($"[Settings] Save blocked — invalid gateway URL");
             StatusLabel.Text = $"❌ {GatewayUrlHelper.ValidationMessage}";
             return;
         }
 
+        // Log key setting changes before saving
+        var oldGateway = _settings.GatewayUrl;
+        var oldAutoStart = _settings.AutoStart;
+        var oldNodeMode = _settings.EnableNodeMode;
         SaveSettings();
+
+        if (!string.Equals(oldGateway, _settings.GatewayUrl, StringComparison.Ordinal))
+            Logger.Info($"[Settings] GatewayUrl changed");
+        if (oldAutoStart != _settings.AutoStart)
+            Logger.Info($"[Settings] AutoStart changed to {_settings.AutoStart}");
+        if (oldNodeMode != _settings.EnableNodeMode)
+            Logger.Info($"[Settings] NodeMode changed to {_settings.EnableNodeMode}");
+
+        Logger.Info("[Settings] Settings saved");
         SettingsSaved?.Invoke(this, EventArgs.Empty);
         Close();
     }
 
     private void OnCancel(object sender, RoutedEventArgs e)
     {
+        Logger.Info("[Settings] Cancel clicked");
         Close();
     }
 

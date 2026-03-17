@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using System;
 using System.Threading.Tasks;
 using WinUIEx;
@@ -100,6 +101,7 @@ public sealed class WelcomeDialog : WindowEx
         var laterButton = new Button { Content = LocalizationHelper.GetString("Welcome_LaterButton") };
         laterButton.Click += (s, e) =>
         {
+            Logger.Info("[Welcome] User clicked 'Later'");
             _result = ContentDialogResult.None;
             Close();
         };
@@ -112,6 +114,7 @@ public sealed class WelcomeDialog : WindowEx
         };
         settingsButton.Click += (s, e) =>
         {
+            Logger.Info("[Welcome] User clicked 'Open Settings'");
             _result = ContentDialogResult.Primary;
             Close();
         };
@@ -123,6 +126,8 @@ public sealed class WelcomeDialog : WindowEx
         Content = root;
         
         Closed += (s, e) => _tcs.TrySetResult(_result);
+
+        Logger.Info("[Welcome] Welcome dialog shown");
     }
 
     public new Task<ContentDialogResult> ShowAsync()
