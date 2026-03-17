@@ -129,6 +129,8 @@ public partial class SettingsDialog : ModernForm
             ForeColor = ForegroundColor,
             FlatStyle = FlatStyle.Flat
         };
+        // Items are stable persistence keys (must match values in settings.json).
+        // Do not localize these strings — use a display/key mapping if localization is needed.
         _notificationSoundComboBox.Items.AddRange(new[] { "Default", "None", "Critical", "Information" });
         
         _testNotificationButton = CreateModernButton("Test");

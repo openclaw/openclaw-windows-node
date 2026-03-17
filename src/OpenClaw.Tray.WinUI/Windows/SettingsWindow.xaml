@@ -57,9 +57,9 @@
                     <ToggleSwitch x:Name="NotificationsToggle" Header="Show notifications"/>
                     
                     <ComboBox x:Name="NotificationSoundComboBox" Header="Sound" Width="200">
-                        <ComboBoxItem Content="Default"/>
-                        <ComboBoxItem Content="None"/>
-                        <ComboBoxItem Content="Subtle"/>
+                        <ComboBoxItem Content="Default" Tag="Default"/>
+                        <ComboBoxItem Content="None" Tag="None"/>
+                        <ComboBoxItem Content="Subtle" Tag="Subtle"/>
                     </ComboBox>
                     
                     <TextBlock Text="Show notifications for:" Margin="0,8,0,0"/>

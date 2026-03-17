@@ -39,11 +39,11 @@ public sealed partial class SettingsWindow : WindowEx
         GlobalHotkeyToggle.IsOn = _settings.GlobalHotkeyEnabled;
         NotificationsToggle.IsOn = _settings.ShowNotifications;
         
-        // Set sound combo
+        // Set sound combo — match by Tag (stable persistence key), not Content (display text)
         for (int i = 0; i < NotificationSoundComboBox.Items.Count; i++)
         {
             if (NotificationSoundComboBox.Items[i] is Microsoft.UI.Xaml.Controls.ComboBoxItem item &&
-                item.Content?.ToString() == _settings.NotificationSound)
+                item.Tag?.ToString() == _settings.NotificationSound)
             {
                 NotificationSoundComboBox.SelectedIndex = i;
                 break;
@@ -76,7 +76,7 @@ public sealed partial class SettingsWindow : WindowEx
         
         if (NotificationSoundComboBox.SelectedItem is Microsoft.UI.Xaml.Controls.ComboBoxItem item)
         {
-            _settings.NotificationSound = item.Content?.ToString() ?? "Default";
+            _settings.NotificationSound = item.Tag?.ToString() ?? "Default";
         }
 
         _settings.NotifyHealth = NotifyHealthCb.IsChecked ?? true;
