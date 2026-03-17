@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
@@ -113,19 +114,33 @@ public class NotificationCategorizer
         return ("🤖 OpenClaw", "info");
     }
 
+    // Regex cache: avoids recompiling the same pattern on every notification.
+    // The Regex instances are constructed with a 100ms match timeout to guard against ReDoS.
+    private static readonly ConcurrentDictionary<string, Regex?> _regexCache = new(StringComparer.Ordinal);
+
     private static bool MatchesRule(string text, UserNotificationRule rule)
     {
         if (string.IsNullOrEmpty(rule.Pattern)) return false;
 
         if (rule.IsRegex)
         {
+            var regex = _regexCache.GetOrAdd(rule.Pattern, static p =>
+            {
+                try
+                {
+                    return new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromMilliseconds(100));
+                }
+                catch (RegexParseException)
+                {
+                    return null;
+                }
+            });
+
+            if (regex == null) return false;
+
             try
             {
-                return Regex.IsMatch(text, rule.Pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
-            }
-            catch (RegexParseException)
-            {
-                return false;
+                return regex.IsMatch(text);
             }
             catch (RegexMatchTimeoutException)
             {

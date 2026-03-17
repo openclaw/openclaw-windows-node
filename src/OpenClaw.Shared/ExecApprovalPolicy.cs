@@ -95,6 +95,9 @@ public class ExecApprovalPolicy
             };
         }
         
+        // Compute once; only used if any rule has shell filters.
+        var normalizedShell = (shell ?? "powershell").ToLowerInvariant();
+
         foreach (var rule in _rules)
         {
             if (!rule.Enabled) continue;
@@ -102,7 +105,6 @@ public class ExecApprovalPolicy
             // Check shell filter
             if (rule.Shells is { Length: > 0 })
             {
-                var normalizedShell = (shell ?? "powershell").ToLowerInvariant();
                 if (!rule.Shells.Any(s => s.Equals(normalizedShell, StringComparison.OrdinalIgnoreCase)))
                     continue;
             }
