@@ -51,7 +51,7 @@ public sealed class QuickSendDialog : WindowEx
         _client = client;
         
         // Window setup
-        Title = "Settings — OpenClaw Tray";
+        Title = LocalizationHelper.GetString("WindowTitle_QuickSend");
         this.SetWindowSize(400, 200);
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
@@ -73,14 +73,14 @@ public sealed class QuickSendDialog : WindowEx
 
         var header = new TextBlock
         {
-            Text = "📤 Quick Send",
+            Text = LocalizationHelper.GetString("QuickSend_Header"),
             Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
         };
         root.Children.Add(header);
 
         _messageTextBox = new TextBox
         {
-            PlaceholderText = "Type your message...",
+            PlaceholderText = LocalizationHelper.GetString("QuickSend_Placeholder"),
             AcceptsReturn = false,
             Text = prefillMessage ?? ""
         };
@@ -101,13 +101,13 @@ public sealed class QuickSendDialog : WindowEx
         };
         buttonPanel.Children.Add(_statusText);
 
-        var cancelButton = new Button { Content = "Cancel" };
+        var cancelButton = new Button { Content = LocalizationHelper.GetString("QuickSend_CancelButton") };
         cancelButton.Click += (s, e) => Close();
         buttonPanel.Children.Add(cancelButton);
 
         _sendButton = new Button
         {
-            Content = "Send",
+            Content = LocalizationHelper.GetString("QuickSend_SendButton"),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"]
         };
         _sendButton.Click += OnSendClick;
@@ -169,22 +169,22 @@ public sealed class QuickSendDialog : WindowEx
         _isSending = true;
         _sendButton.IsEnabled = false;
         _messageTextBox.IsEnabled = false;
-        _statusText.Text = "Sending...";
+        _statusText.Text = LocalizationHelper.GetString("QuickSend_Sending");
 
         try
         {
             await _client.SendChatMessageAsync(message);
             Logger.Info($"Quick send: {message}");
             new ToastContentBuilder()
-                .AddText("Message Sent")
-                .AddText("Your message was sent to OpenClaw.")
+                .AddText(LocalizationHelper.GetString("QuickSend_ToastTitle"))
+                .AddText(LocalizationHelper.GetString("QuickSend_ToastBody"))
                 .Show();
             Close();
         }
         catch (Exception ex)
         {
             Logger.Error($"Quick send failed: {ex.Message}");
-            _statusText.Text = "❌ Failed";
+            _statusText.Text = LocalizationHelper.GetString("QuickSend_Failed");
             _sendButton.IsEnabled = true;
             _messageTextBox.IsEnabled = true;
             _isSending = false;

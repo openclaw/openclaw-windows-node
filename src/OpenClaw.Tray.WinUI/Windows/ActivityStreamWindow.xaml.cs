@@ -20,6 +20,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
     public ActivityStreamWindow(Action<string?> openDashboard)
     {
         InitializeComponent();
+        Title = LocalizationHelper.GetString("WindowTitle_ActivityStream");
 
         _openDashboard = openDashboard;
 
@@ -110,7 +111,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
             DetailText = detailText,
             DetailVisibility = string.IsNullOrWhiteSpace(detailText) ? Visibility.Collapsed : Visibility.Visible,
             DashboardPath = item.DashboardPath,
-            OpenHint = "Click to open in dashboard",
+            OpenHint = LocalizationHelper.GetString("Activity_ClickToOpen"),
             OpenHintVisibility = canOpen ? Visibility.Visible : Visibility.Collapsed
         };
     }
@@ -135,9 +136,10 @@ public sealed partial class ActivityStreamWindow : WindowEx
     {
         var diff = DateTime.Now - timestamp;
 
-        if (diff.TotalMinutes < 1) return "Just now";
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalMinutes < 1) return LocalizationHelper.GetString("TimeAgo_JustNow");
+        if (diff.TotalMinutes < 60) return string.Format(LocalizationHelper.GetString("TimeAgo_MinutesFormat"), (int)diff.TotalMinutes);
+        if (diff.TotalHours < 24) return string.Format(LocalizationHelper.GetString("TimeAgo_HoursFormat"), (int)diff.TotalHours);
+        if (diff.TotalDays < 7) return string.Format(LocalizationHelper.GetString("TimeAgo_DaysFormat"), (int)diff.TotalDays);
         return timestamp.ToString("MMM d, HH:mm");
     }
 

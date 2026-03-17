@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Helpers;
 using System;
 using System.Threading.Tasks;
 using WinUIEx;
@@ -25,7 +26,7 @@ public sealed class UpdateDialog : WindowEx
 
     public UpdateDialog(string version, string changelog)
     {
-        Title = "OpenClaw Update";
+        Title = LocalizationHelper.GetString("WindowTitle_Update");
         this.SetWindowSize(560, 420);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -43,7 +44,7 @@ public sealed class UpdateDialog : WindowEx
         // Header
         var header = new TextBlock
         {
-            Text = $"🎉 Version {version} is available!",
+            Text = string.Format(LocalizationHelper.GetString("Update_VersionAvailable"), version),
             Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
         };
         Grid.SetRow(header, 0);
@@ -55,13 +56,13 @@ public sealed class UpdateDialog : WindowEx
         var currentVersion = typeof(UpdateDialog).Assembly.GetName().Version?.ToString() ?? "Unknown";
         content.Children.Add(new TextBlock
         {
-            Text = $"Current version: {currentVersion}",
+            Text = string.Format(LocalizationHelper.GetString("Update_CurrentVersion"), currentVersion),
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
 
         content.Children.Add(new TextBlock
         {
-            Text = "What's New:",
+            Text = LocalizationHelper.GetString("Update_WhatsNew"),
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
         });
 
@@ -86,17 +87,17 @@ public sealed class UpdateDialog : WindowEx
             Spacing = 8
         };
 
-        var skipButton = new Button { Content = "Skip This Version" };
+        var skipButton = new Button { Content = LocalizationHelper.GetString("Update_SkipButton") };
         skipButton.Click += (s, e) => { _result = UpdateDialogResult.Skip; Close(); };
         buttonPanel.Children.Add(skipButton);
 
-        var laterButton = new Button { Content = "Remind Me Later" };
+        var laterButton = new Button { Content = LocalizationHelper.GetString("Update_RemindLaterButton") };
         laterButton.Click += (s, e) => { _result = UpdateDialogResult.RemindLater; Close(); };
         buttonPanel.Children.Add(laterButton);
 
         var downloadButton = new Button
         {
-            Content = "Download & Install",
+            Content = LocalizationHelper.GetString("Update_DownloadButton"),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"]
         };
         downloadButton.Click += (s, e) => { _result = UpdateDialogResult.Download; Close(); };

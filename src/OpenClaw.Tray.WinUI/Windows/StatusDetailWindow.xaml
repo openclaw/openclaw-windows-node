@@ -18,7 +18,7 @@
                 <FontIcon x:Name="StatusIcon" Glyph="&#xE8FB;" FontSize="32"
                           Foreground="#E74C3C"/>
                 <StackPanel>
-                    <TextBlock x:Name="StatusText" Text="Connected" 
+                    <TextBlock x:Name="StatusText" x:Uid="StatusConnectedText" Text="Connected" 
                                Style="{StaticResource SubtitleTextBlockStyle}"/>
                     <TextBlock x:Name="LastCheckText" Text="Last check: --"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -28,7 +28,7 @@
 
             <!-- Usage Section -->
             <StackPanel x:Name="UsageSection" Spacing="8">
-                <TextBlock Text="USAGE" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock x:Uid="StatusUsageHeader" Text="USAGE" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="#E74C3C" FontWeight="Bold"/>
                 
                 <Grid ColumnSpacing="16" RowSpacing="4">
@@ -42,15 +42,15 @@
                         <RowDefinition/>
                     </Grid.RowDefinitions>
                     
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Cost (window):"/>
+                    <TextBlock x:Uid="StatusCostLabel" Grid.Row="0" Grid.Column="0" Text="Cost (window):"/>
                     <TextBlock x:Name="TodayCostText" Grid.Row="0" Grid.Column="1" 
                                Text="$0.00" FontWeight="SemiBold"/>
                     
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Requests / Tokens:"/>
+                    <TextBlock x:Uid="StatusRequestsLabel" Grid.Row="1" Grid.Column="0" Text="Requests / Tokens:"/>
                     <TextBlock x:Name="TodayRequestsText" Grid.Row="1" Grid.Column="1" 
                                Text="0 / 0" FontWeight="SemiBold"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Providers:"/>
+                    <TextBlock x:Uid="StatusProvidersLabel" Grid.Row="2" Grid.Column="0" Text="Providers:"/>
                     <TextBlock x:Name="ProviderSummaryText" Grid.Row="2" Grid.Column="1"
                                Text="n/a" FontWeight="SemiBold" TextWrapping="Wrap"/>
                 </Grid>
@@ -58,7 +58,7 @@
 
             <!-- Sessions Section -->
             <StackPanel x:Name="SessionsSection" Spacing="8">
-                <TextBlock Text="ACTIVE SESSIONS" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock x:Uid="StatusSessionsHeader" Text="ACTIVE SESSIONS" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="#E74C3C" FontWeight="Bold"/>
                 
                 <ItemsControl x:Name="SessionsList">
@@ -83,7 +83,7 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 
-                <TextBlock x:Name="NoSessionsText" Text="No active sessions"
+                <TextBlock x:Name="NoSessionsText" x:Uid="StatusNoSessions" Text="No active sessions"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="Collapsed"/>
@@ -91,7 +91,7 @@
 
             <!-- Channels Section -->
             <StackPanel x:Name="ChannelsSection" Spacing="8">
-                <TextBlock Text="CHANNELS" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock x:Uid="StatusChannelsHeader" Text="CHANNELS" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="#E74C3C" FontWeight="Bold"/>
                 
                 <ItemsControl x:Name="ChannelsList">
@@ -114,7 +114,7 @@
             </StackPanel>
 
             <!-- Refresh Button -->
-            <Button Content="Refresh" Click="OnRefresh" HorizontalAlignment="Center"/>
+            <Button x:Uid="StatusRefreshButton" Content="Refresh" Click="OnRefresh" HorizontalAlignment="Center"/>
             
         </StackPanel>
     </ScrollViewer>

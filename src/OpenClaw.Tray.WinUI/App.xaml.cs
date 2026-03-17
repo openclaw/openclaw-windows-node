@@ -400,7 +400,7 @@ public partial class App : Application
         // Sessions
         if (_lastSessions.Length > 0)
         {
-            var sessionsMenu = new MenuFlyoutSubItem { Text = $"📋 Sessions ({_lastSessions.Length})" };
+            var sessionsMenu = new MenuFlyoutSubItem { Text = $"📋 {string.Format(LocalizationHelper.GetString("Menu_SessionsFormat"), _lastSessions.Length)}" };
             foreach (var session in _lastSessions.Take(5))
             {
                 var sessionItem = new MenuFlyoutItem { Text = session.DisplayText };
@@ -733,7 +733,7 @@ public partial class App : Application
 
         // Status
         var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
-        menu.AddMenuItem($"Status: {_currentStatus}", statusIcon, "status");
+        menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_StatusFormat"), LocalizationHelper.GetConnectionStatusText(_currentStatus)), statusIcon, "status");
 
         // Activity (if any)
         if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
@@ -745,14 +745,14 @@ public partial class App : Application
         if (_lastUsage != null || _lastUsageStatus != null || _lastUsageCost != null)
         {
             var usageText = _lastUsage?.DisplayText;
-            if (string.IsNullOrWhiteSpace(usageText) || string.Equals(usageText, "No usage data", StringComparison.Ordinal))
+            if (string.IsNullOrWhiteSpace(usageText) || string.Equals(usageText, "No usage data", StringComparison.Ordinal) || string.Equals(usageText, LocalizationHelper.GetString("Menu_NoUsageData"), StringComparison.Ordinal))
             {
                 usageText = _lastUsageStatus?.Providers.Count > 0
                     ? MenuDisplayHelper.FormatProviderSummary(_lastUsageStatus.Providers.Count)
-                    : "No usage data";
+                    : LocalizationHelper.GetString("Menu_NoUsageData");
             }
 
-            menu.AddMenuItem(usageText ?? "No usage data", "📊", "activity:usage");
+            menu.AddMenuItem(usageText ?? LocalizationHelper.GetString("Menu_NoUsageData"), "📊", "activity:usage");
 
             if (!string.IsNullOrWhiteSpace(_lastUsage?.ProviderSummary))
             {
@@ -793,20 +793,20 @@ public partial class App : Application
             
             if (_nodeService.IsPendingApproval)
             {
-                menu.AddMenuItem("⏳ Waiting for approval...", "", "", isEnabled: false, indent: true);
+                menu.AddMenuItem(LocalizationHelper.GetString("Menu_NodeWaitingApproval"), "", "", isEnabled: false, indent: true);
                 menu.AddMenuItem($"ID: {_nodeService.ShortDeviceId}...", "", "copydeviceid", indent: true);
             }
             else if (_nodeService.IsPaired && _nodeService.IsConnected)
             {
-                menu.AddMenuItem("✅ Paired & Connected", "", "", isEnabled: false, indent: true);
+                menu.AddMenuItem(LocalizationHelper.GetString("Menu_NodePairedConnected"), "", "", isEnabled: false, indent: true);
             }
             else if (_nodeService.IsConnected)
             {
-                menu.AddMenuItem("🔄 Connecting...", "", "", isEnabled: false, indent: true);
+                menu.AddMenuItem(LocalizationHelper.GetString("Menu_NodeConnecting"), "", "", isEnabled: false, indent: true);
             }
             else
             {
-                menu.AddMenuItem("⚪ Disconnected", "", "", isEnabled: false, indent: true);
+                menu.AddMenuItem(LocalizationHelper.GetString("Menu_NodeDisconnected"), "", "", isEnabled: false, indent: true);
             }
         }
 
@@ -814,7 +814,7 @@ public partial class App : Application
         if (_lastSessions.Length > 0)
         {
             menu.AddSeparator();
-            menu.AddMenuItem($"Sessions ({_lastSessions.Length})", "💬", "activity:sessions");
+            menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_SessionsFormat"), _lastSessions.Length), "💬", "activity:sessions");
 
             var visibleSessions = _lastSessions.Take(3).ToArray();
             foreach (var session in visibleSessions)
@@ -858,10 +858,10 @@ public partial class App : Application
                     "📝",
                     $"session-verbose|{nextVerbose}|{session.Key}",
                     indent: true);
-                menu.AddMenuItem("↳ Reset session", "♻️", $"session-reset|{session.Key}", indent: true);
-                menu.AddMenuItem("↳ Compact log", "🗜️", $"session-compact|{session.Key}", indent: true);
+                menu.AddMenuItem(LocalizationHelper.GetString("Menu_ResetSession"), "♻️", $"session-reset|{session.Key}", indent: true);
+                menu.AddMenuItem(LocalizationHelper.GetString("Menu_CompactLog"), "🗜️", $"session-compact|{session.Key}", indent: true);
                 if (!session.IsMain && !string.Equals(session.Key, "global", StringComparison.OrdinalIgnoreCase))
-                    menu.AddMenuItem("↳ Delete session", "🗑️", $"session-delete|{session.Key}", indent: true);
+                    menu.AddMenuItem(LocalizationHelper.GetString("Menu_DeleteSession"), "🗑️", $"session-delete|{session.Key}", indent: true);
             }
             if (_lastSessions.Length > visibleSessions.Length)
                 menu.AddMenuItem($"+{_lastSessions.Length - visibleSessions.Length} more...", "", "", isEnabled: false, indent: true);
@@ -885,7 +885,7 @@ public partial class App : Application
         if (_lastNodes.Length > 0)
         {
             menu.AddSeparator();
-            menu.AddMenuItem($"Nodes ({_lastNodes.Length})", "🖥️", "activity:nodes");
+            menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_NodesFormat"), _lastNodes.Length), "🖥️", "activity:nodes");
 
             var visibleNodes = _lastNodes.Take(3).ToArray();
             foreach (var node in visibleNodes)
@@ -898,7 +898,7 @@ public partial class App : Application
             if (_lastNodes.Length > visibleNodes.Length)
                 menu.AddMenuItem($"+{_lastNodes.Length - visibleNodes.Length} more...", "", "", isEnabled: false, indent: true);
 
-            menu.AddMenuItem("Copy node summary", "📋", "copynodesummary", indent: true);
+            menu.AddMenuItem(LocalizationHelper.GetString("Menu_CopyNodeSummary"), "📋", "copynodesummary", indent: true);
         }
 
         var recentActivity = GetRecentActivity(maxItems: 4);
@@ -906,7 +906,7 @@ public partial class App : Application
         {
             menu.AddSeparator();
             var totalActivity = ActivityStreamService.GetItems().Count;
-            menu.AddMenuItem($"Recent Activity ({totalActivity})", "⚡", "activity");
+            menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_RecentActivityFormat"), totalActivity), "⚡", "activity");
             foreach (var line in recentActivity)
             {
                 menu.AddMenuItem(TruncateMenuText(line, 94), "", "", isEnabled: false, indent: true);
@@ -916,24 +916,26 @@ public partial class App : Application
         menu.AddSeparator();
 
         // Actions
-        menu.AddMenuItem("Open Dashboard", "🌐", "dashboard");
-        menu.AddMenuItem("Open Web Chat", "💬", "webchat");
-        menu.AddMenuItem("Quick Send...", "📤", "quicksend");
-        menu.AddMenuItem("Activity Stream...", "⚡", "activity");
-        menu.AddMenuItem("Notification History...", "📋", "history");
-        menu.AddMenuItem("Run Health Check", "🔄", "healthcheck");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_OpenDashboard"), "🌐", "dashboard");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_OpenWebChat"), "💬", "webchat");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_QuickSend"), "📤", "quicksend");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_ActivityStream"), "⚡", "activity");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_NotificationHistory"), "📋", "history");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_RunHealthCheck"), "🔄", "healthcheck");
 
         menu.AddSeparator();
 
         // Settings
-        menu.AddMenuItem("Settings...", "⚙️", "settings");
-        var autoStartText = (_settings?.AutoStart ?? false) ? "Auto-start ✓" : "Auto-start";
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_Settings"), "⚙️", "settings");
+        var autoStartText = (_settings?.AutoStart ?? false)
+            ? LocalizationHelper.GetString("Menu_AutoStartEnabled")
+            : LocalizationHelper.GetString("Menu_AutoStart");
         menu.AddMenuItem(autoStartText, "🚀", "autostart");
 
         menu.AddSeparator();
 
-        menu.AddMenuItem("Open Log File", "📄", "log");
-        menu.AddMenuItem("Exit", "❌", "exit");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_OpenLogFile"), "📄", "log");
+        menu.AddMenuItem(LocalizationHelper.GetString("Menu_Exit"), "❌", "exit");
     }
 
     // Keep the old MenuFlyout method for reference but it won't be used
@@ -985,7 +987,7 @@ public partial class App : Application
             flyout.Items.Add(new MenuFlyoutSeparator());
             var sessionsHeader = new MenuFlyoutItem
             {
-                Text = $"💬 Sessions ({_lastSessions.Length})"
+                Text = $"💬 {string.Format(LocalizationHelper.GetString("Menu_SessionsFormat"), _lastSessions.Length)}"
             };
             sessionsHeader.Click += (s, e) => OpenDashboard("sessions");
             flyout.Items.Add(sessionsHeader);

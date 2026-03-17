@@ -18,6 +18,7 @@ public sealed partial class NotificationHistoryWindow : WindowEx
     public NotificationHistoryWindow()
     {
         InitializeComponent();
+        Title = LocalizationHelper.GetString("WindowTitle_NotificationHistory");
         
         // Window configuration
         this.SetWindowSize(450, 600);
@@ -61,9 +62,10 @@ public sealed partial class NotificationHistoryWindow : WindowEx
     {
         var diff = DateTime.Now - timestamp;
         
-        if (diff.TotalMinutes < 1) return "Just now";
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalMinutes < 1) return LocalizationHelper.GetString("TimeAgo_JustNow");
+        if (diff.TotalMinutes < 60) return string.Format(LocalizationHelper.GetString("TimeAgo_MinutesFormat"), (int)diff.TotalMinutes);
+        if (diff.TotalHours < 24) return string.Format(LocalizationHelper.GetString("TimeAgo_HoursFormat"), (int)diff.TotalHours);
+        if (diff.TotalDays < 7) return string.Format(LocalizationHelper.GetString("TimeAgo_DaysFormat"), (int)diff.TotalDays);
         return timestamp.ToString("MMM d, HH:mm");
     }
 

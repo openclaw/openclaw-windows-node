@@ -1,0 +1,469 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+
+  <!-- ==================== SettingsWindow.xaml ==================== -->
+
+  <!-- Section headers -->
+  <data name="SettingsConnectionHeader.Text" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="SettingsStartupHeader.Text" xml:space="preserve">
+    <value>启动</value>
+  </data>
+  <data name="SettingsNotificationsHeader.Text" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="SettingsAdvancedHeader.Text" xml:space="preserve">
+    <value>高级（实验性）</value>
+  </data>
+
+  <!-- TextBox headers and placeholders -->
+  <data name="SettingsGatewayUrlTextBox.Header" xml:space="preserve">
+    <value>网关地址</value>
+  </data>
+  <data name="SettingsGatewayUrlTextBox.PlaceholderText" xml:space="preserve">
+    <value>ws://localhost:18789 或 https://host.tailnet.ts.net</value>
+  </data>
+  <data name="SettingsTokenTextBox.Header" xml:space="preserve">
+    <value>令牌</value>
+  </data>
+  <data name="SettingsTokenTextBox.PlaceholderText" xml:space="preserve">
+    <value>您的 API 令牌</value>
+  </data>
+
+  <!-- Toggle headers -->
+  <data name="SettingsAutoStartToggle.Header" xml:space="preserve">
+    <value>随 Windows 自动启动</value>
+  </data>
+  <data name="SettingsGlobalHotkeyToggle.Header" xml:space="preserve">
+    <value>全局快捷键 (Ctrl+Alt+Shift+C → 快速发送)</value>
+  </data>
+  <data name="SettingsNotificationsToggle.Header" xml:space="preserve">
+    <value>显示通知</value>
+  </data>
+  <data name="SettingsNodeModeToggle.Header" xml:space="preserve">
+    <value>启用节点模式</value>
+  </data>
+
+  <!-- ComboBox -->
+  <data name="SettingsSoundComboBox.Header" xml:space="preserve">
+    <value>提示音</value>
+  </data>
+  <data name="SettingsSoundDefault.Content" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="SettingsSoundNone.Content" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="SettingsSoundSubtle.Content" xml:space="preserve">
+    <value>柔和</value>
+  </data>
+
+  <!-- Notification filter labels -->
+  <data name="SettingsNotifyForLabel.Text" xml:space="preserve">
+    <value>显示以下类型通知:</value>
+  </data>
+  <data name="SettingsNotifyFilterHint.Text" xml:space="preserve">
+    <value>按消息中的关键词过滤（例如"邮件"、"提醒"）</value>
+  </data>
+
+  <!-- Notification filter checkboxes -->
+  <data name="SettingsNotifyHealthCb.Content" xml:space="preserve">
+    <value>健康警报</value>
+  </data>
+  <data name="SettingsNotifyUrgentCb.Content" xml:space="preserve">
+    <value>紧急消息</value>
+  </data>
+  <data name="SettingsNotifyReminderCb.Content" xml:space="preserve">
+    <value>提醒</value>
+  </data>
+  <data name="SettingsNotifyEmailCb.Content" xml:space="preserve">
+    <value>邮件摘要</value>
+  </data>
+  <data name="SettingsNotifyCalendarCb.Content" xml:space="preserve">
+    <value>日历事件</value>
+  </data>
+  <data name="SettingsNotifyBuildCb.Content" xml:space="preserve">
+    <value>构建通知</value>
+  </data>
+  <data name="SettingsNotifyStockCb.Content" xml:space="preserve">
+    <value>股票提醒</value>
+  </data>
+  <data name="SettingsNotifyInfoCb.Content" xml:space="preserve">
+    <value>常规信息</value>
+  </data>
+
+  <!-- Buttons -->
+  <data name="SettingsTestConnectionButton.Content" xml:space="preserve">
+    <value>测试</value>
+  </data>
+  <data name="SettingsTestNotificationButton.Content" xml:space="preserve">
+    <value>发送测试通知</value>
+  </data>
+  <data name="SettingsSaveButton.Content" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="SettingsCancelButton.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+
+  <!-- Node mode description -->
+  <data name="SettingsNodeModeDescription.Text" xml:space="preserve">
+    <value>启用后，此电脑可以接收来自代理的命令（画布、截图等）</value>
+  </data>
+
+  <!-- ==================== StatusDetailWindow.xaml ==================== -->
+
+  <!-- Section headers -->
+  <data name="StatusUsageHeader.Text" xml:space="preserve">
+    <value>用量</value>
+  </data>
+  <data name="StatusSessionsHeader.Text" xml:space="preserve">
+    <value>活跃会话</value>
+  </data>
+  <data name="StatusChannelsHeader.Text" xml:space="preserve">
+    <value>频道</value>
+  </data>
+
+  <!-- Labels -->
+  <data name="StatusCostLabel.Text" xml:space="preserve">
+    <value>费用（窗口期）:</value>
+  </data>
+  <data name="StatusRequestsLabel.Text" xml:space="preserve">
+    <value>请求 / 令牌数:</value>
+  </data>
+  <data name="StatusProvidersLabel.Text" xml:space="preserve">
+    <value>提供者:</value>
+  </data>
+
+  <!-- Default values -->
+  <data name="StatusConnectedText.Text" xml:space="preserve">
+    <value>已连接</value>
+  </data>
+  <data name="StatusNoSessions.Text" xml:space="preserve">
+    <value>无活跃会话</value>
+  </data>
+
+  <!-- Buttons -->
+  <data name="StatusRefreshButton.Content" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+
+  <!-- ==================== ActivityStreamWindow.xaml ==================== -->
+
+  <!-- Header -->
+  <data name="ActivityStreamTitle.Text" xml:space="preserve">
+    <value>⚡ 活动流</value>
+  </data>
+
+  <!-- Filter items -->
+  <data name="ActivityFilterAll.Content" xml:space="preserve">
+    <value>全部活动</value>
+  </data>
+  <data name="ActivityFilterSessions.Content" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="ActivityFilterUsage.Content" xml:space="preserve">
+    <value>用量</value>
+  </data>
+  <data name="ActivityFilterNodes.Content" xml:space="preserve">
+    <value>节点</value>
+  </data>
+  <data name="ActivityFilterNotifications.Content" xml:space="preserve">
+    <value>通知</value>
+  </data>
+
+  <!-- Empty state -->
+  <data name="ActivityEmptyText.Text" xml:space="preserve">
+    <value>暂无活动</value>
+  </data>
+
+  <!-- Buttons -->
+  <data name="ActivityOpenDashboardButton.Content" xml:space="preserve">
+    <value>打开仪表板</value>
+  </data>
+  <data name="ActivityClearAllButton.Content" xml:space="preserve">
+    <value>全部清除</value>
+  </data>
+  <data name="ActivityCloseButton.Content" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+
+  <!-- ==================== NotificationHistoryWindow.xaml ==================== -->
+
+  <!-- Header -->
+  <data name="NotificationHistoryTitle.Text" xml:space="preserve">
+    <value>📋 通知历史</value>
+  </data>
+
+  <!-- Empty state -->
+  <data name="NotificationEmptyText.Text" xml:space="preserve">
+    <value>暂无通知</value>
+  </data>
+
+  <!-- Buttons -->
+  <data name="NotificationClearAllButton.Content" xml:space="preserve">
+    <value>全部清除</value>
+  </data>
+  <data name="NotificationCloseButton.Content" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+
+  <!-- ==================== Runtime strings (C# code) ==================== -->
+
+  <!-- Window titles -->
+  <data name="WindowTitle_Settings" xml:space="preserve">
+    <value>设置 — OpenClaw 托盘</value>
+  </data>
+  <data name="WindowTitle_Status" xml:space="preserve">
+    <value>状态 — OpenClaw 托盘</value>
+  </data>
+  <data name="WindowTitle_ActivityStream" xml:space="preserve">
+    <value>活动流 — OpenClaw 托盘</value>
+  </data>
+  <data name="WindowTitle_NotificationHistory" xml:space="preserve">
+    <value>通知历史 — OpenClaw 托盘</value>
+  </data>
+  <data name="WindowTitle_QuickSend" xml:space="preserve">
+    <value>快速发送 — OpenClaw</value>
+  </data>
+  <data name="WindowTitle_WebChat" xml:space="preserve">
+    <value>OpenClaw 聊天</value>
+  </data>
+  <data name="WindowTitle_Welcome" xml:space="preserve">
+    <value>欢迎使用 OpenClaw</value>
+  </data>
+  <data name="WindowTitle_Update" xml:space="preserve">
+    <value>OpenClaw 更新</value>
+  </data>
+
+  <!-- Settings runtime status -->
+  <data name="Status_Testing" xml:space="preserve">
+    <value>测试中...</value>
+  </data>
+  <data name="Status_Connected" xml:space="preserve">
+    <value>✅ 连接成功！</value>
+  </data>
+  <data name="Status_ConnectionFailed" xml:space="preserve">
+    <value>❌ 连接失败</value>
+  </data>
+
+  <!-- QuickSend dialog -->
+  <data name="QuickSend_Header" xml:space="preserve">
+    <value>📤 快速发送</value>
+  </data>
+  <data name="QuickSend_Placeholder" xml:space="preserve">
+    <value>输入您的消息...</value>
+  </data>
+  <data name="QuickSend_SendButton" xml:space="preserve">
+    <value>发送</value>
+  </data>
+  <data name="QuickSend_CancelButton" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="QuickSend_Sending" xml:space="preserve">
+    <value>发送中...</value>
+  </data>
+  <data name="QuickSend_Failed" xml:space="preserve">
+    <value>❌ 发送失败</value>
+  </data>
+  <data name="QuickSend_ToastTitle" xml:space="preserve">
+    <value>消息已发送</value>
+  </data>
+  <data name="QuickSend_ToastBody" xml:space="preserve">
+    <value>您的消息已发送至 OpenClaw。</value>
+  </data>
+
+  <!-- WelcomeDialog -->
+  <data name="Welcome_Title" xml:space="preserve">
+    <value>欢迎使用 OpenClaw！</value>
+  </data>
+  <data name="Welcome_Description" xml:space="preserve">
+    <value>OpenClaw 托盘是 OpenClaw 的 Windows 伴侣应用，一个 AI 驱动的个人助手。</value>
+  </data>
+  <data name="Welcome_GettingStarted" xml:space="preserve">
+    <value>开始使用前，您需要：</value>
+  </data>
+  <data name="Welcome_NeedGateway" xml:space="preserve">
+    <value>• 一个正在运行的 OpenClaw 网关</value>
+  </data>
+  <data name="Welcome_NeedToken" xml:space="preserve">
+    <value>• 从仪表板获取的 API 令牌</value>
+  </data>
+  <data name="Welcome_ViewDocs" xml:space="preserve">
+    <value>📚 查看文档</value>
+  </data>
+  <data name="Welcome_LaterButton" xml:space="preserve">
+    <value>稍后</value>
+  </data>
+  <data name="Welcome_OpenSettingsButton" xml:space="preserve">
+    <value>打开设置</value>
+  </data>
+
+  <!-- UpdateDialog -->
+  <data name="Update_VersionAvailable" xml:space="preserve">
+    <value>🎉 版本 {0} 已可用！</value>
+  </data>
+  <data name="Update_CurrentVersion" xml:space="preserve">
+    <value>当前版本: {0}</value>
+  </data>
+  <data name="Update_WhatsNew" xml:space="preserve">
+    <value>更新内容:</value>
+  </data>
+  <data name="Update_SkipButton" xml:space="preserve">
+    <value>跳过此版本</value>
+  </data>
+  <data name="Update_RemindLaterButton" xml:space="preserve">
+    <value>稍后提醒</value>
+  </data>
+  <data name="Update_DownloadButton" xml:space="preserve">
+    <value>下载并安装</value>
+  </data>
+
+  <!-- Tray menu items -->
+  <data name="Menu_OpenDashboard" xml:space="preserve">
+    <value>打开仪表板</value>
+  </data>
+  <data name="Menu_OpenWebChat" xml:space="preserve">
+    <value>打开网页聊天</value>
+  </data>
+  <data name="Menu_QuickSend" xml:space="preserve">
+    <value>快速发送...</value>
+  </data>
+  <data name="Menu_ActivityStream" xml:space="preserve">
+    <value>活动流...</value>
+  </data>
+  <data name="Menu_NotificationHistory" xml:space="preserve">
+    <value>通知历史...</value>
+  </data>
+  <data name="Menu_RunHealthCheck" xml:space="preserve">
+    <value>运行健康检查</value>
+  </data>
+  <data name="Menu_Settings" xml:space="preserve">
+    <value>设置...</value>
+  </data>
+  <data name="Menu_AutoStart" xml:space="preserve">
+    <value>自动启动</value>
+  </data>
+  <data name="Menu_AutoStartEnabled" xml:space="preserve">
+    <value>自动启动 ✓</value>
+  </data>
+  <data name="Menu_OpenLogFile" xml:space="preserve">
+    <value>打开日志文件</value>
+  </data>
+  <data name="Menu_Exit" xml:space="preserve">
+    <value>退出</value>
+  </data>
+  <data name="Menu_CopyNodeSummary" xml:space="preserve">
+    <value>复制节点摘要</value>
+  </data>
+
+  <!-- Tray menu dynamic text -->
+  <data name="Menu_StatusFormat" xml:space="preserve">
+    <value>状态: {0}</value>
+  </data>
+  <data name="Menu_SessionsFormat" xml:space="preserve">
+    <value>会话 ({0})</value>
+  </data>
+  <data name="Menu_NodesFormat" xml:space="preserve">
+    <value>节点 ({0})</value>
+  </data>
+  <data name="Menu_RecentActivityFormat" xml:space="preserve">
+    <value>最近活动 ({0})</value>
+  </data>
+  <data name="Menu_NoUsageData" xml:space="preserve">
+    <value>暂无用量数据</value>
+  </data>
+  <data name="Menu_ResetSession" xml:space="preserve">
+    <value>↳ 重置会话</value>
+  </data>
+  <data name="Menu_CompactLog" xml:space="preserve">
+    <value>↳ 压缩日志</value>
+  </data>
+  <data name="Menu_DeleteSession" xml:space="preserve">
+    <value>↳ 删除会话</value>
+  </data>
+  <data name="Menu_NodeWaitingApproval" xml:space="preserve">
+    <value>⏳ 等待批准...</value>
+  </data>
+  <data name="Menu_NodePairedConnected" xml:space="preserve">
+    <value>✅ 已配对并连接</value>
+  </data>
+  <data name="Menu_NodeConnecting" xml:space="preserve">
+    <value>🔄 连接中...</value>
+  </data>
+  <data name="Menu_NodeDisconnected" xml:space="preserve">
+    <value>⚪ 已断开</value>
+  </data>
+
+  <!-- Notification test -->
+  <data name="TestNotification_Title" xml:space="preserve">
+    <value>测试通知</value>
+  </data>
+  <data name="TestNotification_Body" xml:space="preserve">
+    <value>这是来自 OpenClaw 托盘的测试通知。</value>
+  </data>
+
+  <!-- Status detail runtime -->
+  <data name="Status_LastCheckFormat" xml:space="preserve">
+    <value>上次检查: {0}</value>
+  </data>
+
+  <!-- Time ago strings -->
+  <data name="TimeAgo_JustNow" xml:space="preserve">
+    <value>刚刚</value>
+  </data>
+  <data name="TimeAgo_MinutesFormat" xml:space="preserve">
+    <value>{0}分钟前</value>
+  </data>
+  <data name="TimeAgo_HoursFormat" xml:space="preserve">
+    <value>{0}小时前</value>
+  </data>
+
+  <!-- Activity stream runtime -->
+  <data name="Activity_ClickToOpen" xml:space="preserve">
+    <value>点击在仪表板中打开</value>
+  </data>
+
+  <data name="TimeAgo_DaysFormat" xml:space="preserve">
+    <value>{0}天前</value>
+  </data>
+
+  <!-- Status display text (plain, no emoji) -->
+  <data name="StatusDisplay_Connected" xml:space="preserve">
+    <value>已连接</value>
+  </data>
+  <data name="StatusDisplay_Connecting" xml:space="preserve">
+    <value>正在连接</value>
+  </data>
+  <data name="StatusDisplay_Disconnected" xml:space="preserve">
+    <value>已断开</value>
+  </data>
+  <data name="StatusDisplay_Error" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="StatusDisplay_Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="Status_NotAvailable" xml:space="preserve">
+    <value>无</value>
+  </data>
+
+</root>

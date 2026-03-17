@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Helpers;
 using System;
 using System.Threading.Tasks;
 using WinUIEx;
@@ -17,7 +18,7 @@ public sealed class WelcomeDialog : WindowEx
 
     public WelcomeDialog()
     {
-        Title = "Welcome to OpenClaw";
+        Title = LocalizationHelper.GetString("WindowTitle_Welcome");
         this.SetWindowSize(480, 440);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -49,7 +50,7 @@ public sealed class WelcomeDialog : WindowEx
         });
         headerPanel.Children.Add(new TextBlock
         {
-            Text = "Welcome to OpenClaw!",
+            Text = LocalizationHelper.GetString("Welcome_Title"),
             Style = (Style)Application.Current.Resources["TitleTextBlockStyle"],
             VerticalAlignment = VerticalAlignment.Center
         });
@@ -61,26 +62,26 @@ public sealed class WelcomeDialog : WindowEx
         
         content.Children.Add(new TextBlock
         {
-            Text = "OpenClaw Tray is your Windows companion for OpenClaw, the AI-powered personal assistant.",
+            Text = LocalizationHelper.GetString("Welcome_Description"),
             TextWrapping = TextWrapping.Wrap
         });
 
         var gettingStarted = new StackPanel { Spacing = 8 };
         gettingStarted.Children.Add(new TextBlock
         {
-            Text = "To get started, you'll need:",
+            Text = LocalizationHelper.GetString("Welcome_GettingStarted"),
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
         });
 
         var bulletList = new StackPanel { Spacing = 4, Margin = new Thickness(16, 0, 0, 0) };
-        bulletList.Children.Add(new TextBlock { Text = "• A running OpenClaw gateway" });
-        bulletList.Children.Add(new TextBlock { Text = "• Your API token from the dashboard" });
+        bulletList.Children.Add(new TextBlock { Text = LocalizationHelper.GetString("Welcome_NeedGateway") });
+        bulletList.Children.Add(new TextBlock { Text = LocalizationHelper.GetString("Welcome_NeedToken") });
         gettingStarted.Children.Add(bulletList);
         content.Children.Add(gettingStarted);
 
         var docsButton = new HyperlinkButton
         {
-            Content = "📚 View Documentation",
+            Content = LocalizationHelper.GetString("Welcome_ViewDocs"),
             NavigateUri = new Uri("https://docs.molt.bot/web/dashboard")
         };
         content.Children.Add(docsButton);
@@ -96,7 +97,7 @@ public sealed class WelcomeDialog : WindowEx
             Spacing = 8
         };
 
-        var laterButton = new Button { Content = "Later" };
+        var laterButton = new Button { Content = LocalizationHelper.GetString("Welcome_LaterButton") };
         laterButton.Click += (s, e) =>
         {
             _result = ContentDialogResult.None;
@@ -106,7 +107,7 @@ public sealed class WelcomeDialog : WindowEx
 
         var settingsButton = new Button
         {
-            Content = "Open Settings",
+            Content = LocalizationHelper.GetString("Welcome_OpenSettingsButton"),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"]
         };
         settingsButton.Click += (s, e) =>

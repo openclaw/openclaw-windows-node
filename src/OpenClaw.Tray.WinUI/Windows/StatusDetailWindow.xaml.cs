@@ -25,6 +25,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         DateTime lastCheck)
     {
         InitializeComponent();
+        Title = LocalizationHelper.GetString("WindowTitle_Status");
         
         // Window configuration
         this.SetWindowSize(420, 550);
@@ -44,8 +45,8 @@ public sealed partial class StatusDetailWindow : WindowEx
         DateTime lastCheck)
     {
         // Status
-        StatusText.Text = status.ToString();
-        LastCheckText.Text = $"Last check: {lastCheck:HH:mm:ss}";
+        StatusText.Text = LocalizationHelper.GetConnectionStatusText(status);
+        LastCheckText.Text = string.Format(LocalizationHelper.GetString("Status_LastCheckFormat"), lastCheck.ToString("HH:mm:ss"));
         
         var (glyph, color) = status switch
         {
@@ -66,7 +67,7 @@ public sealed partial class StatusDetailWindow : WindowEx
                 ? $"{usage.RequestCount:N0} / {usage.TotalTokens:N0}"
                 : $"{usage.TotalTokens:N0}";
             ProviderSummaryText.Text = string.IsNullOrWhiteSpace(usage.ProviderSummary)
-                ? "n/a"
+                ? LocalizationHelper.GetString("Status_NotAvailable")
                 : usage.ProviderSummary!;
         }
         else
@@ -79,7 +80,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         {
             SessionsList.ItemsSource = sessions.Select(s => new
             {
-                Channel = s.Channel ?? "Unknown",
+                Channel = s.Channel ?? LocalizationHelper.GetString("StatusDisplay_Unknown"),
                 LastMessage = s.DisplayText
             }).ToList();
             SessionsList.Visibility = Visibility.Visible;
@@ -104,7 +105,7 @@ public sealed partial class StatusDetailWindow : WindowEx
             {
                 Name = c.Name,
                 StatusIcon = icon,
-                StatusText = c.Status ?? "Unknown",
+                StatusText = c.Status ?? LocalizationHelper.GetString("StatusDisplay_Unknown"),
                 StatusBrush = brush
             };
         }).ToList();

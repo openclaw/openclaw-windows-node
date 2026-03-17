@@ -21,6 +21,8 @@ public sealed partial class SettingsWindow : WindowEx
         _settings = settings;
         InitializeComponent();
         
+        Title = LocalizationHelper.GetString("WindowTitle_Settings");
+        
         // Window configuration
         this.SetWindowSize(480, 700);
         this.CenterOnScreen();
@@ -104,7 +106,7 @@ public sealed partial class SettingsWindow : WindowEx
             return;
         }
 
-        StatusLabel.Text = "Testing...";
+        StatusLabel.Text = LocalizationHelper.GetString("Status_Testing");
         TestConnectionButton.IsEnabled = false;
 
         try
@@ -139,7 +141,9 @@ public sealed partial class SettingsWindow : WindowEx
                 connected = false;
             }
 
-            StatusLabel.Text = connected ? "✅ Connected!" : "❌ Connection failed";
+            StatusLabel.Text = connected
+                ? LocalizationHelper.GetString("Status_Connected")
+                : LocalizationHelper.GetString("Status_ConnectionFailed");
             client.Dispose();
         }
         catch (Exception ex)
@@ -157,8 +161,8 @@ public sealed partial class SettingsWindow : WindowEx
         try
         {
             new ToastContentBuilder()
-                .AddText("Test Notification")
-                .AddText("This is a test notification from OpenClaw Tray.")
+                .AddText(LocalizationHelper.GetString("TestNotification_Title"))
+                .AddText(LocalizationHelper.GetString("TestNotification_Body"))
                 .Show();
         }
         catch (Exception ex)

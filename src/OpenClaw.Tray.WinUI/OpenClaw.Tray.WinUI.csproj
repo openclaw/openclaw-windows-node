@@ -10,6 +10,7 @@
     <ApplicationIcon>Assets\openclaw.ico</ApplicationIcon>
     <RootNamespace>OpenClawTray</RootNamespace>
     <Version>0.4.4</Version>
+    <DefaultLanguage>en-US</DefaultLanguage>
   </PropertyGroup>
 
   <!-- Unpackaged (default): traditional EXE distribution via Inno Setup -->
