@@ -45,13 +45,12 @@ public static class DeepLinkHandler
 
     public static void Handle(string uri, DeepLinkActions actions)
     {
-        if (!uri.StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase))
+        var result = OpenClaw.Shared.DeepLinkParser.ParseDeepLink(uri);
+        if (result == null)
             return;
 
-        var path = uri["openclaw://".Length..].TrimEnd('/');
-        var queryIndex = path.IndexOf('?');
-        var query = queryIndex >= 0 ? path[(queryIndex + 1)..] : "";
-        path = queryIndex >= 0 ? path[..queryIndex] : path;
+        var path = result.Path;
+        var query = result.Query;
 
         Logger.Info($"Handling deep link: {path}");
 
@@ -75,12 +74,12 @@ public static class DeepLinkHandler
                 break;
 
             case "send":
-                var sendMessage = GetQueryParam(query, "message");
+                var sendMessage = OpenClaw.Shared.DeepLinkParser.GetQueryParam(query, "message");
                 actions.OpenQuickSend?.Invoke(sendMessage);
                 break;
 
             case "agent":
-                var agentMessage = GetQueryParam(query, "message");
+                var agentMessage = OpenClaw.Shared.DeepLinkParser.GetQueryParam(query, "message");
                 if (!string.IsNullOrEmpty(agentMessage))
                 {
                     _ = Task.Run(async () =>
@@ -102,19 +101,6 @@ public static class DeepLinkHandler
                 Logger.Warn($"Unknown deep link path: {path}");
                 break;
         }
-    }
-
-    private static string? GetQueryParam(string query, string key)
-    {
-        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var kv = part.Split('=', 2);
-            if (kv.Length == 2 && kv[0].Equals(key, StringComparison.OrdinalIgnoreCase))
-            {
-                return Uri.UnescapeDataString(kv[1]);
-            }
-        }
-        return null;
     }
 }
 

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -58,7 +59,7 @@ public class SettingsManager
             if (File.Exists(SettingsFilePath))
             {
                 var json = File.ReadAllText(SettingsFilePath);
-                var loaded = JsonSerializer.Deserialize<SettingsData>(json);
+                var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
                 {
                     GatewayUrl = loaded.GatewayUrl ?? GatewayUrl;
@@ -119,8 +120,7 @@ public class SettingsManager
                 UserRules = UserRules
             };
 
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            var json = JsonSerializer.Serialize(data, options);
+            var json = data.ToJson();
             File.WriteAllText(SettingsFilePath, json);
             
             Logger.Info("Settings saved");
@@ -129,28 +129,5 @@ public class SettingsManager
         {
             Logger.Error($"Failed to save settings: {ex.Message}");
         }
-    }
-
-    private class SettingsData
-    {
-        public string? GatewayUrl { get; set; }
-        public string? Token { get; set; }
-        public bool AutoStart { get; set; }
-        public bool GlobalHotkeyEnabled { get; set; } = true;
-        public bool ShowNotifications { get; set; } = true;
-        public string? NotificationSound { get; set; }
-        public bool NotifyHealth { get; set; } = true;
-        public bool NotifyUrgent { get; set; } = true;
-        public bool NotifyReminder { get; set; } = true;
-        public bool NotifyEmail { get; set; } = true;
-        public bool NotifyCalendar { get; set; } = true;
-        public bool NotifyBuild { get; set; } = true;
-        public bool NotifyStock { get; set; } = true;
-        public bool NotifyInfo { get; set; } = true;
-        public bool EnableNodeMode { get; set; } = false;
-        public bool HasSeenActivityStreamTip { get; set; } = false;
-        public bool NotifyChatResponses { get; set; } = true;
-        public bool PreferStructuredCategories { get; set; } = true;
-        public List<OpenClaw.Shared.UserNotificationRule>? UserRules { get; set; }
     }
 }

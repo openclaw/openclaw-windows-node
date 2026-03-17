@@ -370,13 +370,7 @@ public partial class App : Application
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         // Status
-        var statusIcon = _currentStatus switch
-        {
-            ConnectionStatus.Connected => "✅",
-            ConnectionStatus.Connecting => "🔄",
-            ConnectionStatus.Error => "❌",
-            _ => "⚪"
-        };
+        var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
         var statusItem = new MenuFlyoutItem { Text = $"{statusIcon} Status: {_currentStatus}" };
         statusItem.Click += (s, e) => ShowStatusDetail();
         flyout.Items.Add(statusItem);
@@ -704,12 +698,8 @@ public partial class App : Application
         return result == ContentDialogResult.Primary;
     }
 
-    private static string TruncateMenuText(string text, int maxLength = 96)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return text;
-        if (text.Length <= maxLength) return text;
-        return text[..(maxLength - 1)] + "…";
-    }
+    private static string TruncateMenuText(string text, int maxLength = 96) =>
+        MenuDisplayHelper.TruncateText(text, maxLength);
 
     private void AddRecentActivity(
         string line,
@@ -742,13 +732,7 @@ public partial class App : Application
         menu.AddSeparator();
 
         // Status
-        var statusIcon = _currentStatus switch
-        {
-            ConnectionStatus.Connected => "✅",
-            ConnectionStatus.Connecting => "🔄",
-            ConnectionStatus.Error => "❌",
-            _ => "⚪"
-        };
+        var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
         menu.AddMenuItem($"Status: {_currentStatus}", statusIcon, "status");
 
         // Activity (if any)
@@ -764,7 +748,7 @@ public partial class App : Application
             if (string.IsNullOrWhiteSpace(usageText) || string.Equals(usageText, "No usage data", StringComparison.Ordinal))
             {
                 usageText = _lastUsageStatus?.Providers.Count > 0
-                    ? $"{_lastUsageStatus.Providers.Count} provider{(_lastUsageStatus.Providers.Count == 1 ? "" : "s")} active"
+                    ? MenuDisplayHelper.FormatProviderSummary(_lastUsageStatus.Providers.Count)
                     : "No usage data";
             }
 
@@ -891,16 +875,7 @@ public partial class App : Application
 
             foreach (var channel in _lastChannels)
             {
-                var rawStatus = channel.Status?.ToLowerInvariant() ?? "";
-                
-                // Match status logic from WinForms version
-                var channelIcon = rawStatus switch
-                {
-                    "ok" or "connected" or "running" or "active" or "ready" => "🟢",
-                    "stopped" or "idle" or "paused" or "configured" or "pending" => "🟡",
-                    "error" or "disconnected" or "failed" => "🔴",
-                    _ => "⚪"
-                };
+                var channelIcon = MenuDisplayHelper.GetChannelStatusIcon(channel.Status);
                 
                 var channelName = char.ToUpper(channel.Name[0]) + channel.Name[1..];
                 menu.AddMenuItem(channelName, channelIcon, $"channel:{channel.Name}", indent: true);
@@ -974,13 +949,7 @@ public partial class App : Application
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         // Status
-        var statusIcon = _currentStatus switch
-        {
-            ConnectionStatus.Connected => "✅",
-            ConnectionStatus.Connecting => "🔄",
-            ConnectionStatus.Error => "❌",
-            _ => "⚪"
-        };
+        var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
         var statusItem = new MenuFlyoutItem
         {
             Text = $"{statusIcon} Status: {_currentStatus}"
@@ -1045,12 +1014,7 @@ public partial class App : Application
 
             foreach (var channel in _lastChannels)
             {
-                var channelIcon = channel.Status?.ToLowerInvariant() switch
-                {
-                    _ when ChannelHealth.IsHealthyStatus(channel.Status) => "🟢",
-                    _ when ChannelHealth.IsIntermediateStatus(channel.Status) => "🟡",
-                    _ => "🔴"
-                };
+                var channelIcon = MenuDisplayHelper.GetChannelStatusIcon(channel.Status);
                 var channelItem = new MenuFlyoutItem
                 {
                     Text = $"   {channelIcon} {channel.Name}"

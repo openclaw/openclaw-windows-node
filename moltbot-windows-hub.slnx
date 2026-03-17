@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj" />
+    <Project Path="tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj" />
   </Folder>
 </Solution>

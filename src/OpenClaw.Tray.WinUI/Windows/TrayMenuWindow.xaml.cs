@@ -156,36 +156,11 @@ public sealed partial class TrayMenuWindow : WindowEx
 
             const int margin = 8;
 
-            int maxX = workArea.Right - menuWidthPx;
-            if (maxX < workArea.Left) maxX = workArea.Left;
-            int x = Math.Clamp(pt.X, workArea.Left, maxX);
-
-            int maxY = workArea.Bottom - menuHeightPx;
-            if (maxY < workArea.Top) maxY = workArea.Top;
-
-            // Candidate positions. Prefer above the cursor (typical tray behavior).
-            // On Windows 10 the cursor can be in the taskbar area, so clamp to rcWork
-            // to avoid the menu overflowing under the taskbar.
-            int yAbove = pt.Y - menuHeightPx - margin;
-            int yBelow = pt.Y + margin;
-
-            bool canShowAbove = yAbove >= workArea.Top;
-            bool canShowBelow = yBelow <= maxY;
-
-            int y;
-            if (canShowAbove)
-            {
-                y = Math.Min(yAbove, maxY);
-            }
-            else if (canShowBelow)
-            {
-                y = Math.Max(yBelow, workArea.Top);
-            }
-            else
-            {
-                // Worst case: clamp within the visible work area.
-                y = Math.Clamp(yAbove, workArea.Top, maxY);
-            }
+            var (x, y) = OpenClaw.Shared.MenuPositioner.CalculatePosition(
+                pt.X, pt.Y,
+                menuWidthPx, menuHeightPx,
+                workArea.Left, workArea.Top, workArea.Right, workArea.Bottom,
+                margin);
 
             this.Move(x, y);
         }
