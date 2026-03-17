@@ -114,10 +114,11 @@ public sealed partial class SettingsWindow : WindowEx
 
         try
         {
+            var testLogger = new TestLogger();
             var client = new OpenClawGatewayClient(
                 gatewayUrl,
                 TokenTextBox.Text.Trim(),
-                new TestLogger());
+                testLogger);
 
             var connected = false;
             var tcs = new TaskCompletionSource<bool>();
@@ -145,13 +146,18 @@ public sealed partial class SettingsWindow : WindowEx
             }
 
             if (connected)
+            {
                 Logger.Info("[Settings] Test connection succeeded");
+                StatusLabel.Text = LocalizationHelper.GetString("Status_Connected");
+            }
             else
+            {
                 Logger.Warn("[Settings] Test connection failed or timed out");
-
-            StatusLabel.Text = connected
-                ? LocalizationHelper.GetString("Status_Connected")
-                : LocalizationHelper.GetString("Status_ConnectionFailed");
+                var lastError = testLogger.LastError;
+                StatusLabel.Text = !string.IsNullOrEmpty(lastError)
+                    ? $"❌ {lastError}"
+                    : $"❌ {LocalizationHelper.GetString("Status_ConnectionFailed")}";
+            }
             client.Dispose();
         }
         catch (Exception ex)
@@ -216,9 +222,19 @@ public sealed partial class SettingsWindow : WindowEx
 
     private class TestLogger : IOpenClawLogger
     {
-        public void Info(string message) { }
+        public string? LastError { get; private set; }
+
+        public void Info(string message) => Logger.Info($"[Settings:TestClient] {message}");
         public void Debug(string message) { }
-        public void Warn(string message) { }
-        public void Error(string message, Exception? ex = null) { }
+        public void Warn(string message)
+        {
+            LastError ??= message;
+            Logger.Warn($"[Settings:TestClient] {message}");
+        }
+        public void Error(string message, Exception? ex = null)
+        {
+            LastError = message;
+            Logger.Error($"[Settings:TestClient] {message}");
+        }
     }
 }
