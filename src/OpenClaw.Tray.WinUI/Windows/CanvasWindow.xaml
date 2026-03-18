@@ -31,7 +31,7 @@
                     VerticalAlignment="Center"
                     Spacing="16"
                     Padding="32">
-            <TextBlock Text="❌ Canvas Error" 
+            <TextBlock x:Uid="CanvasErrorTitle" Text="❌ Canvas Error" 
                        FontSize="18" 
                        FontWeight="SemiBold"
                        HorizontalAlignment="Center"/>
@@ -40,7 +40,7 @@
                        MaxWidth="400"
                        HorizontalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <Button Content="Retry" 
+            <Button x:Uid="CanvasRetryButton" Content="Retry" 
                     HorizontalAlignment="Center"
                     Click="OnRetryClick"/>
         </StackPanel>

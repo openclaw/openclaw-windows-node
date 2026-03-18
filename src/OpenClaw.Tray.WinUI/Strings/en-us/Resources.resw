@@ -466,4 +466,165 @@
     <value>n/a</value>
   </data>
 
+  <!-- ==================== CanvasWindow.xaml ==================== -->
+
+  <data name="WindowTitle_Canvas" xml:space="preserve">
+    <value>Canvas</value>
+  </data>
+  <data name="CanvasErrorTitle.Text" xml:space="preserve">
+    <value>❌ Canvas Error</value>
+  </data>
+  <data name="CanvasRetryButton.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Canvas_ReadyTitle" xml:space="preserve">
+    <value>🎨 Canvas Ready</value>
+  </data>
+  <data name="Canvas_WaitingForContent" xml:space="preserve">
+    <value>Waiting for content...</value>
+  </data>
+
+  <!-- ==================== WebChatWindow.xaml ==================== -->
+
+  <data name="WebChatErrorTitle.Text" xml:space="preserve">
+    <value>Web Chat Unavailable</value>
+  </data>
+  <data name="WebChatOpenBrowserButton.Content" xml:space="preserve">
+    <value>Open in Browser Instead</value>
+  </data>
+  <data name="WebChat_ConnectionError" xml:space="preserve">
+    <value>Can't reach OpenClaw Gateway</value>
+  </data>
+  <data name="WebChat_ConnectionErrorDetail" xml:space="preserve">
+    <value>The gateway at {0} is not responding.
+
+To connect:
+• Make sure your OpenClaw gateway is running
+• If remote, connect via VPN to your home network
+• Or use SSH tunnel: ssh -N -L 18789:localhost:18789 your-server</value>
+  </data>
+  <data name="WebChat_CertError" xml:space="preserve">
+    <value>The gateway HTTPS certificate is not trusted.
+
+To connect securely:
+• Use an HTTPS gateway URL (for example: https://host.tailnet.ts.net)
+• If self-signed, import the cert into Windows Trusted Root Certification Authorities
+• Or use SSH tunnel to localhost and keep using localhost URLs</value>
+  </data>
+  <data name="WebChat_InvalidUrl" xml:space="preserve">
+    <value>Invalid gateway URL: {0}</value>
+  </data>
+  <data name="WebChat_SecureContextRequired" xml:space="preserve">
+    <value>Web chat requires a secure context.
+
+There is no safe bypass for remote plain HTTP: browsers and WebView enforce this.
+
+Use one of these options:
+• Use a trusted HTTPS/WSS endpoint (Let's Encrypt, Tailscale Serve, Caddy)
+• If self-signed, import your gateway CA/cert into Windows Trusted Root (certmgr.msc)
+• Or tunnel to localhost: ssh -N -L 18789:localhost:18789 &lt;server&gt;</value>
+  </data>
+
+  <!-- ==================== TrayMenuWindow.xaml ==================== -->
+
+  <data name="WindowTitle_TrayMenu" xml:space="preserve">
+    <value>OpenClaw Menu</value>
+  </data>
+
+  <!-- ==================== Toast: Device / Node ==================== -->
+
+  <data name="Toast_DeviceIdCopied" xml:space="preserve">
+    <value>📋 Device ID Copied</value>
+  </data>
+  <data name="Toast_DeviceIdCopiedDetail" xml:space="preserve">
+    <value>Run: openclaw devices approve {0}...</value>
+  </data>
+  <data name="Toast_NodeSummaryCopied" xml:space="preserve">
+    <value>📋 Node summary copied</value>
+  </data>
+  <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
+    <value>{0} node(s) copied to clipboard</value>
+  </data>
+
+  <!-- ==================== Toast: Session ==================== -->
+
+  <data name="Toast_SessionActionFailed" xml:space="preserve">
+    <value>❌ Session action failed</value>
+  </data>
+  <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
+    <value>Could not send request to gateway.</value>
+  </data>
+
+  <!-- ==================== Toast: Node Mode ==================== -->
+
+  <data name="Toast_NodeModeActive" xml:space="preserve">
+    <value>🔌 Node Mode Active</value>
+  </data>
+  <data name="Toast_NodeModeActiveDetail" xml:space="preserve">
+    <value>This PC can now receive commands from the agent (canvas, screenshots)</value>
+  </data>
+  <data name="Toast_PairingPending" xml:space="preserve">
+    <value>⏳ Awaiting Pairing Approval</value>
+  </data>
+  <data name="Toast_PairingPendingDetail" xml:space="preserve">
+    <value>Run on gateway: openclaw devices approve {0}...</value>
+  </data>
+  <data name="Toast_NodePaired" xml:space="preserve">
+    <value>✅ Node Paired!</value>
+  </data>
+  <data name="Toast_NodePairedDetail" xml:space="preserve">
+    <value>This PC can now receive commands from the agent</value>
+  </data>
+
+  <!-- ==================== Toast: Health Check ==================== -->
+
+  <data name="Toast_HealthCheck" xml:space="preserve">
+    <value>Health Check</value>
+  </data>
+  <data name="Toast_HealthCheckNotConnected" xml:space="preserve">
+    <value>Gateway is not connected yet.</value>
+  </data>
+  <data name="Toast_HealthCheckSent" xml:space="preserve">
+    <value>Health check request sent.</value>
+  </data>
+  <data name="Toast_HealthCheckFailed" xml:space="preserve">
+    <value>Health Check Failed</value>
+  </data>
+
+  <!-- ==================== Toast: Screen / Camera ==================== -->
+
+  <data name="Toast_ScreenCaptured" xml:space="preserve">
+    <value>📸 Screen Captured</value>
+  </data>
+  <data name="Toast_ScreenCapturedDetail" xml:space="preserve">
+    <value>OpenClaw agent captured your screen</value>
+  </data>
+  <data name="Toast_CameraBlocked" xml:space="preserve">
+    <value>📷 Camera access blocked</value>
+  </data>
+  <data name="Toast_CameraBlockedDetail" xml:space="preserve">
+    <value>Enable camera access in Windows Privacy settings for OpenClaw Tray</value>
+  </data>
+
+  <!-- ==================== Toast: Activity Stream Tip ==================== -->
+
+  <data name="Toast_ActivityStreamTip" xml:space="preserve">
+    <value>⚡ New: Activity Stream</value>
+  </data>
+  <data name="Toast_ActivityStreamTipDetail" xml:space="preserve">
+    <value>Open the tray menu to view live sessions, usage, and node activity in one flyout.</value>
+  </data>
+  <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
+    <value>Open Activity Stream</value>
+  </data>
+
+  <!-- ==================== DownloadProgressDialog ==================== -->
+
+  <data name="WindowTitle_Downloading" xml:space="preserve">
+    <value>Downloading Update...</value>
+  </data>
+  <data name="Download_ProgressText" xml:space="preserve">
+    <value>Downloading update...</value>
+  </data>
+
 </root>

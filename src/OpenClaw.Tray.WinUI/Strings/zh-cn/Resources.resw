@@ -466,4 +466,165 @@
     <value>无</value>
   </data>
 
+  <!-- ==================== CanvasWindow.xaml ==================== -->
+
+  <data name="WindowTitle_Canvas" xml:space="preserve">
+    <value>画布</value>
+  </data>
+  <data name="CanvasErrorTitle.Text" xml:space="preserve">
+    <value>❌ 画布错误</value>
+  </data>
+  <data name="CanvasRetryButton.Content" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Canvas_ReadyTitle" xml:space="preserve">
+    <value>🎨 画布就绪</value>
+  </data>
+  <data name="Canvas_WaitingForContent" xml:space="preserve">
+    <value>等待内容...</value>
+  </data>
+
+  <!-- ==================== WebChatWindow.xaml ==================== -->
+
+  <data name="WebChatErrorTitle.Text" xml:space="preserve">
+    <value>网页聊天不可用</value>
+  </data>
+  <data name="WebChatOpenBrowserButton.Content" xml:space="preserve">
+    <value>在浏览器中打开</value>
+  </data>
+  <data name="WebChat_ConnectionError" xml:space="preserve">
+    <value>无法连接到 OpenClaw 网关</value>
+  </data>
+  <data name="WebChat_ConnectionErrorDetail" xml:space="preserve">
+    <value>网关 {0} 没有响应。
+
+连接方法：
+• 确保 OpenClaw 网关正在运行
+• 如果是远程网关，请通过 VPN 连接到您的家庭网络
+• 或使用 SSH 隧道：ssh -N -L 18789:localhost:18789 your-server</value>
+  </data>
+  <data name="WebChat_CertError" xml:space="preserve">
+    <value>网关 HTTPS 证书不受信任。
+
+安全连接方法：
+• 使用 HTTPS 网关地址（例如：https://host.tailnet.ts.net）
+• 如果是自签名证书，请将其导入 Windows 受信任的根证书颁发机构
+• 或使用 SSH 隧道连接到 localhost 并继续使用 localhost 地址</value>
+  </data>
+  <data name="WebChat_InvalidUrl" xml:space="preserve">
+    <value>无效的网关地址: {0}</value>
+  </data>
+  <data name="WebChat_SecureContextRequired" xml:space="preserve">
+    <value>网页聊天需要安全上下文。
+
+远程纯 HTTP 没有安全的绕过方法：浏览器和 WebView 强制执行此限制。
+
+请使用以下选项之一：
+• 使用受信任的 HTTPS/WSS 端点（Let's Encrypt、Tailscale Serve、Caddy）
+• 如果是自签名证书，请将网关 CA/证书导入 Windows 受信任的根证书（certmgr.msc）
+• 或通过隧道连接到 localhost：ssh -N -L 18789:localhost:18789 &lt;服务器&gt;</value>
+  </data>
+
+  <!-- ==================== TrayMenuWindow.xaml ==================== -->
+
+  <data name="WindowTitle_TrayMenu" xml:space="preserve">
+    <value>OpenClaw 菜单</value>
+  </data>
+
+  <!-- ==================== Toast: Device / Node ==================== -->
+
+  <data name="Toast_DeviceIdCopied" xml:space="preserve">
+    <value>📋 设备 ID 已复制</value>
+  </data>
+  <data name="Toast_DeviceIdCopiedDetail" xml:space="preserve">
+    <value>运行: openclaw devices approve {0}...</value>
+  </data>
+  <data name="Toast_NodeSummaryCopied" xml:space="preserve">
+    <value>📋 节点摘要已复制</value>
+  </data>
+  <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
+    <value>已复制 {0} 个节点到剪贴板</value>
+  </data>
+
+  <!-- ==================== Toast: Session ==================== -->
+
+  <data name="Toast_SessionActionFailed" xml:space="preserve">
+    <value>❌ 会话操作失败</value>
+  </data>
+  <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
+    <value>无法向网关发送请求。</value>
+  </data>
+
+  <!-- ==================== Toast: Node Mode ==================== -->
+
+  <data name="Toast_NodeModeActive" xml:space="preserve">
+    <value>🔌 节点模式已激活</value>
+  </data>
+  <data name="Toast_NodeModeActiveDetail" xml:space="preserve">
+    <value>此电脑现在可以接收来自代理的命令（画布、截图）</value>
+  </data>
+  <data name="Toast_PairingPending" xml:space="preserve">
+    <value>⏳ 等待配对批准</value>
+  </data>
+  <data name="Toast_PairingPendingDetail" xml:space="preserve">
+    <value>在网关上运行: openclaw devices approve {0}...</value>
+  </data>
+  <data name="Toast_NodePaired" xml:space="preserve">
+    <value>✅ 节点已配对！</value>
+  </data>
+  <data name="Toast_NodePairedDetail" xml:space="preserve">
+    <value>此电脑现在可以接收来自代理的命令</value>
+  </data>
+
+  <!-- ==================== Toast: Health Check ==================== -->
+
+  <data name="Toast_HealthCheck" xml:space="preserve">
+    <value>健康检查</value>
+  </data>
+  <data name="Toast_HealthCheckNotConnected" xml:space="preserve">
+    <value>网关尚未连接。</value>
+  </data>
+  <data name="Toast_HealthCheckSent" xml:space="preserve">
+    <value>健康检查请求已发送。</value>
+  </data>
+  <data name="Toast_HealthCheckFailed" xml:space="preserve">
+    <value>健康检查失败</value>
+  </data>
+
+  <!-- ==================== Toast: Screen / Camera ==================== -->
+
+  <data name="Toast_ScreenCaptured" xml:space="preserve">
+    <value>📸 屏幕已捕获</value>
+  </data>
+  <data name="Toast_ScreenCapturedDetail" xml:space="preserve">
+    <value>OpenClaw 代理捕获了您的屏幕</value>
+  </data>
+  <data name="Toast_CameraBlocked" xml:space="preserve">
+    <value>📷 相机访问被阻止</value>
+  </data>
+  <data name="Toast_CameraBlockedDetail" xml:space="preserve">
+    <value>请在 Windows 隐私设置中为 OpenClaw Tray 启用相机访问</value>
+  </data>
+
+  <!-- ==================== Toast: Activity Stream Tip ==================== -->
+
+  <data name="Toast_ActivityStreamTip" xml:space="preserve">
+    <value>⚡ 新功能: 活动流</value>
+  </data>
+  <data name="Toast_ActivityStreamTipDetail" xml:space="preserve">
+    <value>打开托盘菜单即可查看实时会话、用量和节点活动。</value>
+  </data>
+  <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
+    <value>打开活动流</value>
+  </data>
+
+  <!-- ==================== DownloadProgressDialog ==================== -->
+
+  <data name="WindowTitle_Downloading" xml:space="preserve">
+    <value>正在下载更新...</value>
+  </data>
+  <data name="Download_ProgressText" xml:space="preserve">
+    <value>正在下载更新...</value>
+  </data>
+
 </root>

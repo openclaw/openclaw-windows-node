@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Helpers;
 using Updatum;
 
 namespace OpenClawTray.Dialogs;
@@ -17,11 +18,11 @@ public sealed class DownloadProgressDialog
 
     public void ShowAsync()
     {
-        _window = new Window { Title = "Downloading Update..." };
+        _window = new Window { Title = LocalizationHelper.GetString("WindowTitle_Downloading") };
         _window.SystemBackdrop = new MicaBackdrop();
         
         var panel = new StackPanel { Padding = new Thickness(20) };
-        var progressText = new TextBlock { Text = "Downloading update...", Margin = new Thickness(0, 0, 0, 10) };
+        var progressText = new TextBlock { Text = LocalizationHelper.GetString("Download_ProgressText"), Margin = new Thickness(0, 0, 0, 10) };
         var progressBar = new ProgressBar { IsIndeterminate = true };
         
         panel.Children.Add(progressText);

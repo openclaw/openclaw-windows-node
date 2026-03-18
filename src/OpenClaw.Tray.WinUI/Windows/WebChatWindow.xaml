@@ -52,11 +52,11 @@
         <!-- Error display (hidden by default) -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
-                <TextBlock Text="Web Chat Unavailable" FontSize="18" FontWeight="SemiBold" 
+                <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" FontSize="18" FontWeight="SemiBold" 
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                 <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            FontFamily="Consolas" FontSize="12"/>
-                <Button Content="Open in Browser Instead" Click="OnPopout" HorizontalAlignment="Left"/>
+                <Button x:Uid="WebChatOpenBrowserButton" Content="Open in Browser Instead" Click="OnPopout" HorizontalAlignment="Left"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>

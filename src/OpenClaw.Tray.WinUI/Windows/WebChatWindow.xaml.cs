@@ -99,12 +99,8 @@ public sealed partial class WebChatWindow : WindowEx
                                       e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable))
                 {
                     Logger.Info("WebChatWindow: Gateway unreachable, showing friendly error");
-                    ShowErrorMessage("Can't reach OpenClaw Gateway\n\n" +
-                        $"The gateway at {_gatewayUrl} is not responding.\n\n" +
-                        "To connect:\n" +
-                        "• Make sure your OpenClaw gateway is running\n" +
-                        "• If remote, connect via VPN to your home network\n" +
-                        "• Or use SSH tunnel: ssh -N -L 18789:localhost:18789 your-server");
+                    ShowErrorMessage(LocalizationHelper.GetString("WebChat_ConnectionError") + "\n\n" +
+                        string.Format(LocalizationHelper.GetString("WebChat_ConnectionErrorDetail"), _gatewayUrl));
                     return;
                 }
 
@@ -112,12 +108,7 @@ public sealed partial class WebChatWindow : WindowEx
                     e.WebErrorStatus.ToString().Contains("Certificate", StringComparison.OrdinalIgnoreCase))
                 {
                     Logger.Info("WebChatWindow: TLS certificate issue detected");
-                    ShowErrorMessage(
-                        "The gateway HTTPS certificate is not trusted.\n\n" +
-                        "To connect securely:\n" +
-                        "• Use an HTTPS gateway URL (for example: https://host.tailnet.ts.net)\n" +
-                        "• If self-signed, import the cert into Windows Trusted Root Certification Authorities\n" +
-                        "• Or use SSH tunnel to localhost and keep using localhost URLs");
+                    ShowErrorMessage(LocalizationHelper.GetString("WebChat_CertError"));
                 }
             };
             WebView.CoreWebView2.NavigationCompleted += _navigationCompletedHandler;
@@ -184,7 +175,7 @@ public sealed partial class WebChatWindow : WindowEx
         if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedGatewayUrl) ||
             !Uri.TryCreate(normalizedGatewayUrl, UriKind.Absolute, out var gatewayUri))
         {
-            errorMessage = $"Invalid gateway URL: {_gatewayUrl}";
+            errorMessage = string.Format(LocalizationHelper.GetString("WebChat_InvalidUrl"), _gatewayUrl);
             return false;
         }
 
@@ -194,13 +185,7 @@ public sealed partial class WebChatWindow : WindowEx
 
         if (webScheme == "http" && !IsLocalHost(gatewayUri))
         {
-            errorMessage =
-                "Web chat requires a secure context.\n\n" +
-                "There is no safe bypass for remote plain HTTP: browsers and WebView enforce this.\n\n" +
-                "Use one of these options:\n" +
-                "• Use a trusted HTTPS/WSS endpoint (Let's Encrypt, Tailscale Serve, Caddy)\n" +
-                "• If self-signed, import your gateway CA/cert into Windows Trusted Root (certmgr.msc)\n" +
-                "• Or tunnel to localhost: ssh -N -L 18789:localhost:18789 <mac>";
+            errorMessage = LocalizationHelper.GetString("WebChat_SecureContextRequired");
             return false;
         }
 

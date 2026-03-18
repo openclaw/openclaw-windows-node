@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using WinUIEx;
 using Windows.Storage.Streams;
@@ -124,26 +125,26 @@ public sealed partial class CanvasWindow : WindowEx
             else
             {
                 // Default blank page with styling
-                CanvasWebView.CoreWebView2.NavigateToString(@"
+                CanvasWebView.CoreWebView2.NavigateToString($@"
                     <!DOCTYPE html>
                     <html>
                     <head>
                         <style>
-                            body { 
+                            body {{ 
                                 margin: 0; 
                                 padding: 20px;
                                 font-family: 'Segoe UI', sans-serif;
                                 background: transparent;
                                 color: #333;
-                            }
-                            @media (prefers-color-scheme: dark) {
-                                body { color: #eee; }
-                            }
+                            }}
+                            @media (prefers-color-scheme: dark) {{
+                                body {{ color: #eee; }}
+                            }}
                         </style>
                     </head>
                     <body>
-                        <h2>🎨 Canvas Ready</h2>
-                        <p>Waiting for content...</p>
+                        <h2>{LocalizationHelper.GetString("Canvas_ReadyTitle")}</h2>
+                        <p>{LocalizationHelper.GetString("Canvas_WaitingForContent")}</p>
                     </body>
                     </html>
                 ");

@@ -4,6 +4,7 @@ using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
 using Microsoft.UI.Xaml;
 
@@ -417,8 +418,8 @@ public class NodeService : IDisposable
             try
             {
                 new ToastContentBuilder()
-                    .AddText("📸 Screen Captured")
-                    .AddText("OpenClaw agent captured your screen")
+                    .AddText(LocalizationHelper.GetString("Toast_ScreenCaptured"))
+                    .AddText(LocalizationHelper.GetString("Toast_ScreenCapturedDetail"))
                     .Show();
             }
             catch { /* ignore notification errors */ }
@@ -457,8 +458,8 @@ public class NodeService : IDisposable
             try
             {
                 new ToastContentBuilder()
-                    .AddText("📷 Camera access blocked")
-                    .AddText("Enable camera access in Windows Privacy settings for OpenClaw Tray")
+                    .AddText(LocalizationHelper.GetString("Toast_CameraBlocked"))
+                    .AddText(LocalizationHelper.GetString("Toast_CameraBlockedDetail"))
                     .Show();
             }
             catch { }
