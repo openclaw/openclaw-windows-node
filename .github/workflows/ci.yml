@@ -77,13 +77,13 @@ jobs:
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained -p:Version=${{ needs.test.outputs.semVer }} -o publish
 
     - name: Azure Login for Signing
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
       uses: azure/login@v2
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
     - name: Sign Executable
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
       uses: azure/trusted-signing-action@v1
       with:
         azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -170,13 +170,13 @@ jobs:
         echo "msix_name=$($msix.Name)" >> $env:GITHUB_OUTPUT
 
     - name: Sign MSIX
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
       uses: azure/login@v2
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
     - name: Sign MSIX Package
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
       uses: azure/trusted-signing-action@v1
       with:
         azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -283,6 +283,44 @@ jobs:
         $arm64 = Get-ChildItem -Path artifacts/msix-arm64 -Filter "*.msix" | Select-Object -First 1
         if ($x64) { Copy-Item $x64.FullName "OpenClawTray-${{ needs.test.outputs.majorMinorPatch }}-win-x64.msix" }
         if ($arm64) { Copy-Item $arm64.FullName "OpenClawTray-${{ needs.test.outputs.majorMinorPatch }}-win-arm64.msix" }
+
+    # Sign ARM64 artifacts on x64 runner (ARM64 runner can't run the signing dlib)
+    - name: Azure Login for ARM64 Signing
+      uses: azure/login@v2
+      with:
+        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+    - name: Sign ARM64 Executables
+      uses: azure/trusted-signing-action@v1
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: https://wus2.codesigning.azure.net/
+        signing-account-name: hanselman
+        certificate-profile-name: WindowsEdgeLight
+        files-folder: artifacts/tray-win-arm64
+        files-folder-filter: exe
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Sign ARM64 MSIX
+      if: steps.msix-arm64.outcome == 'success'
+      uses: azure/trusted-signing-action@v1
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: https://wus2.codesigning.azure.net/
+        signing-account-name: hanselman
+        certificate-profile-name: WindowsEdgeLight
+        files-folder: artifacts/msix-arm64
+        files-folder-filter: msix
+        files-folder-depth: 3
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
 
     # Create ZIP files for Updatum auto-update (needs "win-x64" in filename)
     - name: Create Release ZIPs
