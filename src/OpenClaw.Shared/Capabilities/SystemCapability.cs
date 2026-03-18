@@ -293,15 +293,23 @@ public class SystemCapability : NodeCapabilityBase
             }
         }
         
-        Logger.Info($"system.run: {command} (shell={shell ?? "auto"}, timeout={timeoutMs}ms)");
+        // Build the full command string for policy evaluation and logging.
+        // When command arrives as an argv array, we must evaluate the entire
+        // command line — not just argv[0] — so policy rules like "rm *" correctly
+        // match "rm -rf /".
+        var fullCommand = args != null 
+            ? FormatExecCommand(new[] { command }.Concat(args).ToArray()) 
+            : command;
+        
+        Logger.Info($"system.run: {fullCommand} (shell={shell ?? "auto"}, timeout={timeoutMs}ms)");
         
         // Check exec approval policy
         if (_approvalPolicy != null)
         {
-            var approval = _approvalPolicy.Evaluate(command, shell);
+            var approval = _approvalPolicy.Evaluate(fullCommand, shell);
             if (!approval.Allowed)
             {
-                Logger.Warn($"system.run DENIED: {command} ({approval.Reason})");
+                Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
                 return Error($"Command denied by exec policy: {approval.Reason}");
             }
         }

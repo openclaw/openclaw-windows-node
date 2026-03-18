@@ -468,6 +468,113 @@ public class SystemCapabilityExecApprovalsTests
     }
     
     [Fact]
+    public async Task SystemRun_ArrayCommand_WithPolicy_DeniesBlockedCommands()
+    {
+        // Regression test: when command is an argv array like ["rm", "-rf", "/"],
+        // policy must evaluate the full "rm -rf /" string, not just "rm".
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(new[]
+            {
+                new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+            }, ExecApprovalAction.Deny);
+            
+            var cap = CreateCapability(policy);
+            
+            // Array-style command: ["rm", "-rf", "/"] — must be denied
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":[\"rm\",\"-rf\",\"/\"]}").RootElement
+            };
+            
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("denied", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+    
+    [Fact]
+    public async Task SystemRun_ArrayCommand_WithPolicy_AllowsApprovedCommands()
+    {
+        // Array-style command ["echo", "hello"] should match "echo *" and be allowed
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(new[]
+            {
+                new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+            }, ExecApprovalAction.Deny);
+            
+            var cap = CreateCapability(policy);
+            
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":[\"echo\",\"hello\"]}").RootElement
+            };
+            
+            var result = await cap.ExecuteAsync(request);
+            Assert.True(result.Ok);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+    
+    [Fact]
+    public async Task SystemRun_ArrayCommand_PolicyEvaluatesFullCommandLine()
+    {
+        // A rule blocking "rm -rf *" should catch ["rm", "-rf", "/"] but allow ["rm", "safe.txt"]
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(new[]
+            {
+                new ExecApprovalRule { Pattern = "rm -rf *", Action = ExecApprovalAction.Deny },
+                new ExecApprovalRule { Pattern = "rm *", Action = ExecApprovalAction.Allow },
+            }, ExecApprovalAction.Deny);
+            
+            var cap = CreateCapability(policy);
+            
+            // ["rm", "-rf", "/"] should be denied by "rm -rf *"
+            var dangerousRequest = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":[\"rm\",\"-rf\",\"/\"]}").RootElement
+            };
+            var result1 = await cap.ExecuteAsync(dangerousRequest);
+            Assert.False(result1.Ok);
+            Assert.Contains("denied", result1.Error!, StringComparison.OrdinalIgnoreCase);
+            
+            // ["rm", "safe.txt"] should be allowed by "rm *"
+            var safeRequest = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":[\"rm\",\"safe.txt\"]}").RootElement
+            };
+            var result2 = await cap.ExecuteAsync(safeRequest);
+            Assert.True(result2.Ok);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+    
+    [Fact]
     public async Task SystemRun_WithoutPolicy_AllowsAll()
     {
         var cap = CreateCapability(null);

@@ -30,6 +30,8 @@ public class OpenClawGatewayClient : IDisposable
     private GatewayCostUsageInfo? _usageCost;
     private readonly Dictionary<string, string> _pendingRequestMethods = new();
     private readonly object _pendingRequestLock = new();
+    private readonly object _sessionsLock = new();
+    private readonly object _nodesLock = new();
     private bool _usageStatusUnsupported;
     private bool _usageCostUnsupported;
     private bool _sessionPreviewUnsupported;
@@ -373,11 +375,23 @@ public class OpenClawGatewayClient : IDisposable
 
     private async Task SendRawAsync(string message)
     {
-        if (_webSocket?.State == WebSocketState.Open)
+        // Capture local reference to avoid TOCTOU race with reconnect/dispose
+        var ws = _webSocket;
+        if (ws?.State != WebSocketState.Open) return;
+
+        try
         {
             var bytes = Encoding.UTF8.GetBytes(message);
-            await _webSocket.SendAsync(new ArraySegment<byte>(bytes),
+            await ws.SendAsync(new ArraySegment<byte>(bytes),
                 WebSocketMessageType.Text, true, _cts.Token);
+        }
+        catch (ObjectDisposedException)
+        {
+            // WebSocket was disposed between state check and send
+        }
+        catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+        {
+            _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
         }
     }
 
@@ -990,23 +1004,37 @@ public class OpenClawGatewayClient : IDisposable
 
     private void UpdateTrackedSession(string sessionKey, bool isMain, string? currentActivity)
     {
-        if (!_sessions.ContainsKey(sessionKey))
+        SessionInfo[] snapshot;
+        lock (_sessionsLock)
         {
-            _sessions[sessionKey] = new SessionInfo
+            if (!_sessions.ContainsKey(sessionKey))
             {
-                Key = sessionKey,
-                IsMain = isMain,
-                Status = "active"
-            };
+                _sessions[sessionKey] = new SessionInfo
+                {
+                    Key = sessionKey,
+                    IsMain = isMain,
+                    Status = "active"
+                };
+            }
+
+            _sessions[sessionKey].CurrentActivity = currentActivity;
+            _sessions[sessionKey].LastSeen = DateTime.UtcNow;
+
+            snapshot = GetSessionListInternal();
         }
 
-        _sessions[sessionKey].CurrentActivity = currentActivity;
-        _sessions[sessionKey].LastSeen = DateTime.UtcNow;
-
-        SessionsUpdated?.Invoke(this, GetSessionList());
+        SessionsUpdated?.Invoke(this, snapshot);
     }
 
     public SessionInfo[] GetSessionList()
+    {
+        lock (_sessionsLock)
+        {
+            return GetSessionListInternal();
+        }
+    }
+
+    private SessionInfo[] GetSessionListInternal()
     {
         var list = new List<SessionInfo>(_sessions.Values);
         list.Sort((a, b) =>
@@ -1096,69 +1124,75 @@ public class OpenClawGatewayClient : IDisposable
     {
         try
         {
-            _sessions.Clear();
+            SessionInfo[] snapshot;
+            lock (_sessionsLock)
+            {
+                _sessions.Clear();
             
-            // Handle both Array format and Object (dictionary) format
-            if (sessions.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in sessions.EnumerateArray())
+                // Handle both Array format and Object (dictionary) format
+                if (sessions.ValueKind == JsonValueKind.Array)
                 {
-                    ParseSessionItem(item);
-                }
-            }
-            else if (sessions.ValueKind == JsonValueKind.Object)
-            {
-                // Object format: keys are session IDs, values could be session info objects or simple strings
-                foreach (var prop in sessions.EnumerateObject())
-                {
-                    var sessionKey = prop.Name;
-                    
-                    // Skip metadata fields that aren't actual sessions
-                    if (sessionKey is "recent" or "count" or "path" or "defaults" or "ts")
-                        continue;
-                    
-                    // Skip non-session keys (must look like a session key pattern)
-                    if (!sessionKey.Equals("global", StringComparison.OrdinalIgnoreCase) &&
-                        !sessionKey.Contains(':') &&
-                        !sessionKey.Contains("agent") &&
-                        !sessionKey.Contains("session"))
-                        continue;
-                    
-                    var session = new SessionInfo { Key = sessionKey };
-                    var item = prop.Value;
-                    
-                    // Detect main session from key pattern - "agent:main:main" ends with ":main"
-                    var endsWithMain = sessionKey.EndsWith(":main");
-                    session.IsMain = sessionKey == "main" || endsWithMain || sessionKey.Contains(":main:main");
-                    _logger.Debug($"Session key={sessionKey}, endsWithMain={endsWithMain}, IsMain={session.IsMain}");
-                    
-                    // Value might be an object with session details or just a string status
-                    if (item.ValueKind == JsonValueKind.Object)
+                    foreach (var item in sessions.EnumerateArray())
                     {
-                        // Only override IsMain if the JSON explicitly says true
-                        if (item.TryGetProperty("isMain", out var isMain) && isMain.GetBoolean())
-                            session.IsMain = true;
-                        PopulateSessionFromObject(session, item);
+                        ParseSessionItem(item);
                     }
-                    else if (item.ValueKind == JsonValueKind.String)
+                }
+                else if (sessions.ValueKind == JsonValueKind.Object)
+                {
+                    // Object format: keys are session IDs, values could be session info objects or simple strings
+                    foreach (var prop in sessions.EnumerateObject())
                     {
-                        // Simple string value - skip if it looks like a path (metadata)
-                        var strVal = item.GetString() ?? "";
-                        if (strVal.StartsWith("/") || strVal.Contains("/."))
+                        var sessionKey = prop.Name;
+                    
+                        // Skip metadata fields that aren't actual sessions
+                        if (sessionKey is "recent" or "count" or "path" or "defaults" or "ts")
                             continue;
-                        session.Status = strVal;
-                    }
-                    else if (item.ValueKind == JsonValueKind.Number)
-                    {
-                        // Skip numeric values (like count)
-                        continue;
-                    }
                     
-                    _sessions[session.Key] = session;
+                        // Skip non-session keys (must look like a session key pattern)
+                        if (!sessionKey.Equals("global", StringComparison.OrdinalIgnoreCase) &&
+                            !sessionKey.Contains(':') &&
+                            !sessionKey.Contains("agent") &&
+                            !sessionKey.Contains("session"))
+                            continue;
+                    
+                        var session = new SessionInfo { Key = sessionKey };
+                        var item = prop.Value;
+                    
+                        // Detect main session from key pattern - "agent:main:main" ends with ":main"
+                        var endsWithMain = sessionKey.EndsWith(":main");
+                        session.IsMain = sessionKey == "main" || endsWithMain || sessionKey.Contains(":main:main");
+                        _logger.Debug($"Session key={sessionKey}, endsWithMain={endsWithMain}, IsMain={session.IsMain}");
+                    
+                        // Value might be an object with session details or just a string status
+                        if (item.ValueKind == JsonValueKind.Object)
+                        {
+                            // Only override IsMain if the JSON explicitly says true
+                            if (item.TryGetProperty("isMain", out var isMain) && isMain.GetBoolean())
+                                session.IsMain = true;
+                            PopulateSessionFromObject(session, item);
+                        }
+                        else if (item.ValueKind == JsonValueKind.String)
+                        {
+                            // Simple string value - skip if it looks like a path (metadata)
+                            var strVal = item.GetString() ?? "";
+                            if (strVal.StartsWith("/") || strVal.Contains("/."))
+                                continue;
+                            session.Status = strVal;
+                        }
+                        else if (item.ValueKind == JsonValueKind.Number)
+                        {
+                            // Skip numeric values (like count)
+                            continue;
+                        }
+                    
+                        _sessions[session.Key] = session;
+                    }
                 }
+
+                snapshot = GetSessionListInternal();
             }
 
-            SessionsUpdated?.Invoke(this, GetSessionList());
+            SessionsUpdated?.Invoke(this, snapshot);
         }
         catch (Exception ex)
         {
@@ -1308,9 +1342,12 @@ public class OpenClawGatewayClient : IDisposable
                 .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            _nodes.Clear();
-            foreach (var node in ordered)
-                _nodes[node.NodeId] = node;
+            lock (_nodesLock)
+            {
+                _nodes.Clear();
+                foreach (var node in ordered)
+                    _nodes[node.NodeId] = node;
+            }
 
             NodesUpdated?.Invoke(this, ordered);
         }
@@ -1704,13 +1741,18 @@ public class OpenClawGatewayClient : IDisposable
 
     public void Dispose()
     {
-        if (!_disposed)
-        {
-            _disposed = true;
-            _cts.Cancel();
-            ClearPendingRequests();
-            _webSocket?.Dispose();
-            _cts.Dispose();
-        }
+        if (_disposed) return;
+        _disposed = true;
+
+        try { _cts.Cancel(); } catch { }
+
+        ClearPendingRequests();
+
+        var ws = _webSocket;
+        _webSocket = null;
+        try { ws?.Dispose(); } catch { }
+
+        // Don't dispose _cts immediately — listen loop or reconnect may still reference it.
+        // It will be GC'd after all pending tasks complete.
     }
 }
