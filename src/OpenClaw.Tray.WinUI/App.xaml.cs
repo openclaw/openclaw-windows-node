@@ -1603,15 +1603,21 @@ public partial class App : Application
 
     private void OnSettingsSaved(object? sender, EventArgs e)
     {
-        // Reconnect with new settings
+        // Reconnect with new settings — mirror the startup if/else pattern
+        // to avoid dual connections that cause gateway conflicts.
         _gatewayClient?.Dispose();
-        InitializeGatewayClient();
-        
-        // Reinitialize node service (safe dispose pattern)
         var oldNodeService = _nodeService;
         _nodeService = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
-        InitializeNodeService();
+        
+        if (_settings?.EnableNodeMode == true)
+        {
+            InitializeNodeService();
+        }
+        else
+        {
+            InitializeGatewayClient();
+        }
 
         // Update global hotkey
         if (_settings!.GlobalHotkeyEnabled)

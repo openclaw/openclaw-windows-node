@@ -623,15 +623,49 @@ public class CanvasCapabilityTests
     public async Task A2UIPush_WithMissingJsonlPath_ReturnsError()
     {
         var cap = new CanvasCapability(NullLogger.Instance);
+        // Use a path within the temp directory so path validation passes
+        var missingFile = Path.Combine(Path.GetTempPath(), $"nonexistent-{Guid.NewGuid():N}.jsonl");
         var req = new NodeInvokeRequest
         {
             Id = "c17",
             Command = "canvas.a2ui.push",
-            Args = Parse("""{"jsonlPath":"/nonexistent/path/file.jsonl"}""")
+            Args = Parse($"{{\"jsonlPath\":\"{missingFile.Replace("\\", "\\\\")}\"}}") 
         };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Failed to read jsonlPath", res.Error);
+    }
+    
+    [Fact]
+    public async Task A2UIPush_WithJsonlPathOutsideTempDir_ReturnsError()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "c18",
+            Command = "canvas.a2ui.push",
+            Args = Parse("""{"jsonlPath":"C:\\Windows\\System32\\config\\SAM"}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("temp directory", res.Error);
+    }
+    
+    [Fact]
+    public async Task A2UIPush_WithJsonlPathTraversal_ReturnsError()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        // Path traversal attempt to escape temp directory
+        var traversalPath = Path.Combine(Path.GetTempPath(), "..", "..", "Windows", "System32", "config", "SAM");
+        var req = new NodeInvokeRequest
+        {
+            Id = "c19",
+            Command = "canvas.a2ui.push",
+            Args = Parse($"{{\"jsonlPath\":\"{traversalPath.Replace("\\", "\\\\")}\"}}") 
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("temp directory", res.Error);
     }
 }
 

@@ -250,7 +250,7 @@ public class NodeService : IDisposable
     {
         var tcs = new TaskCompletionSource<string>();
         
-        _dispatcherQueue.TryEnqueue(async () =>
+        bool enqueued = _dispatcherQueue.TryEnqueue(async () =>
         {
             try
             {
@@ -269,6 +269,8 @@ public class NodeService : IDisposable
                 tcs.SetException(ex);
             }
         });
+        if (!enqueued)
+            tcs.TrySetException(new InvalidOperationException("Dispatcher queue unavailable"));
         
         return await tcs.Task;
     }
@@ -277,7 +279,7 @@ public class NodeService : IDisposable
     {
         var tcs = new TaskCompletionSource<string>();
         
-        _dispatcherQueue.TryEnqueue(async () =>
+        bool enqueued = _dispatcherQueue.TryEnqueue(async () =>
         {
             try
             {
@@ -296,6 +298,8 @@ public class NodeService : IDisposable
                 tcs.SetException(ex);
             }
         });
+        if (!enqueued)
+            tcs.TrySetException(new InvalidOperationException("Dispatcher queue unavailable"));
         
         return await tcs.Task;
     }

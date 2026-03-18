@@ -168,6 +168,23 @@ public class CanvasCapability : NodeCapabilityBase
         
         if (string.IsNullOrWhiteSpace(jsonl) && !string.IsNullOrWhiteSpace(jsonlPath))
         {
+            // Validate jsonlPath to prevent arbitrary file reads.
+            // Resolve to absolute path and reject traversal or suspicious paths.
+            try
+            {
+                var fullPath = Path.GetFullPath(jsonlPath);
+                var tempRoot = Path.GetFullPath(Path.GetTempPath());
+                if (!fullPath.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.Warn($"canvas.a2ui.push: jsonlPath outside temp directory: {fullPath}");
+                    return Error("jsonlPath must be within the system temp directory");
+                }
+            }
+            catch (Exception ex)
+            {
+                return Error($"Invalid jsonlPath: {ex.Message}");
+            }
+
             try
             {
                 jsonl = File.ReadAllText(jsonlPath);

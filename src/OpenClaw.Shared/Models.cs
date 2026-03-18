@@ -126,7 +126,7 @@ public class ChannelHealth
         {
             var label = Status.ToLowerInvariant() switch
             {
-                "ok" or "connected" or "running" => "[ON]",
+                "ok" or "connected" or "running" or "active" => "[ON]",
                 "linked" => "[LINKED]",
                 "ready" => "[READY]",
                 "connecting" or "reconnecting" => "[...]",
