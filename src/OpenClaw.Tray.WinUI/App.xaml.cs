@@ -568,10 +568,9 @@ public partial class App : Application
             global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
             
             // Show toast confirming copy
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_DeviceIdCopied"))
-                .AddText(string.Format(LocalizationHelper.GetString("Toast_DeviceIdCopiedDetail"), _nodeService.ShortDeviceId))
-                .Show();
+                .AddText(string.Format(LocalizationHelper.GetString("Toast_DeviceIdCopiedDetail"), _nodeService.ShortDeviceId)));
         }
         catch (Exception ex)
         {
@@ -597,10 +596,9 @@ public partial class App : Application
             dataPackage.SetText(summary);
             global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
 
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_NodeSummaryCopied"))
-                .AddText(string.Format(LocalizationHelper.GetString("Toast_NodeSummaryCopiedDetail"), _lastNodes.Length))
-                .Show();
+                .AddText(string.Format(LocalizationHelper.GetString("Toast_NodeSummaryCopiedDetail"), _lastNodes.Length)));
         }
         catch (Exception ex)
         {
@@ -654,10 +652,9 @@ public partial class App : Application
 
             if (!sent)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
-                    .AddText(LocalizationHelper.GetString("Toast_SessionActionFailedDetail"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_SessionActionFailedDetail")));
                 return;
             }
 
@@ -671,10 +668,9 @@ public partial class App : Application
             Logger.Warn($"Session action error ({action}): {ex.Message}");
             try
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
-                    .AddText(ex.Message)
-                    .Show();
+                    .AddText(ex.Message));
             }
             catch { }
         }
@@ -1157,10 +1153,9 @@ public partial class App : Application
         {
             try
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_NodeModeActive"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail")));
             }
             catch { /* ignore */ }
         }
@@ -1176,18 +1171,16 @@ public partial class App : Application
             {
                 AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                 // Show toast with approval instructions
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
-                    .Show();
+                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16))));
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
                 AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
             }
         }
         catch { /* ignore */ }
@@ -1200,10 +1193,9 @@ public partial class App : Application
         // Agent requested a notification via node.invoke system.notify
         try
         {
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(args.Title)
-                .AddText(args.Body)
-                .Show();
+                .AddText(args.Body));
         }
         catch (Exception ex)
         {
@@ -1376,10 +1368,9 @@ public partial class App : Application
                     dashboardPath: !string.IsNullOrWhiteSpace(result.Key) ? $"sessions/{result.Key}" : "sessions",
                     sessionKey: result.Key);
 
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(title)
-                    .AddText(message)
-                    .Show();
+                    .AddText(message));
             }
             catch (Exception ex)
             {
@@ -1434,7 +1425,7 @@ public partial class App : Application
                            .AddArgument("action", "open_chat"));
             }
 
-            builder.Show();
+            ShowToast(builder);
         }
         catch (Exception ex)
         {
@@ -1449,6 +1440,22 @@ public partial class App : Application
         var appDir = AppContext.BaseDirectory;
         var iconPath = System.IO.Path.Combine(appDir, "Assets", "claw.ico");
         return System.IO.File.Exists(iconPath) ? iconPath : null;
+    }
+
+    /// <summary>Applies the user's NotificationSound preference to a builder, then shows it.</summary>
+    private void ShowToast(ToastContentBuilder builder)
+    {
+        switch (_settings?.NotificationSound)
+        {
+            case "None":
+                builder.AddAudio(silent: true);
+                break;
+            case "Subtle":
+                builder.AddAudio(new Uri("ms-winsoundevent:Notification.IM"));
+                break;
+            // "Default" or null: no-op — let Windows use its default sound
+        }
+        builder.Show();
     }
 
     private bool ShouldShowNotification(OpenClawNotification notification)
@@ -1498,10 +1505,9 @@ public partial class App : Application
         {
             if (userInitiated)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_HealthCheck"))
-                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckNotConnected"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckNotConnected")));
             }
             return;
         }
@@ -1512,10 +1518,9 @@ public partial class App : Application
             await _gatewayClient.CheckHealthAsync();
             if (userInitiated)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_HealthCheck"))
-                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckSent"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckSent")));
             }
         }
         catch (Exception ex)
@@ -1523,10 +1528,9 @@ public partial class App : Application
             Logger.Warn($"Health check failed: {ex.Message}");
             if (userInitiated)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_HealthCheckFailed"))
-                    .AddText(ex.Message)
-                    .Show();
+                    .AddText(ex.Message));
             }
         }
     }
@@ -1749,13 +1753,12 @@ public partial class App : Application
 
         try
         {
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_ActivityStreamTip"))
                 .AddText(LocalizationHelper.GetString("Toast_ActivityStreamTipDetail"))
                 .AddButton(new ToastButton()
                     .SetContent(LocalizationHelper.GetString("Toast_ActivityStreamTipButton"))
-                    .AddArgument("action", "open_activity"))
-                .Show();
+                    .AddArgument("action", "open_activity")));
         }
         catch (Exception ex)
         {
