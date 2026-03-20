@@ -14,7 +14,9 @@
             BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="8">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer VerticalScrollBarVisibility="Visible"
+                      VerticalScrollMode="Enabled"
+                      HorizontalScrollBarVisibility="Disabled">
             <StackPanel x:Name="MenuPanel" Padding="4,6">
                 <!-- Menu items will be added programmatically -->
             </StackPanel>

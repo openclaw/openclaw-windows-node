@@ -94,6 +94,13 @@ public class MenuPositionerTests
     }
 
     [Fact]
+    public void PixelHeight_IsConvertedToViewUnits_UsingDpi()
+    {
+        var viewHeight = MenuSizingHelper.ConvertPixelsToViewUnits(1200, 192);
+        Assert.Equal(600, viewHeight);
+    }
+
+    [Fact]
     public void OversizedMenuNearTray_WithClampedHeight_RemainsFullyVisibleWithinWorkArea()
     {
         // Regression test for the tray popup overflow bug:

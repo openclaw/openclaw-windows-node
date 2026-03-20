@@ -288,19 +288,21 @@ public sealed partial class TrayMenuWindow : WindowEx
         var contentHeight = (_itemCount * 36) + (_separatorCount * 13) + (_headerCount * 30) + 16;
         _menuHeight = Math.Max(contentHeight, 100); // minimum
 
-        if (TryGetCurrentMonitorWorkAreaHeight(out var workAreaHeight))
+        if (TryGetCurrentMonitorMetrics(out var workAreaHeightPx, out var dpi))
         {
             // Constrain the popup to the visible work area so the ScrollViewer gets
             // a viewport and the menu stays reachable near the tray/taskbar.
+            var workAreaHeight = MenuSizingHelper.ConvertPixelsToViewUnits(workAreaHeightPx, dpi);
             _menuHeight = MenuSizingHelper.CalculateWindowHeight(contentHeight, workAreaHeight);
         }
 
         this.SetWindowSize(280, _menuHeight);
     }
 
-    private static bool TryGetCurrentMonitorWorkAreaHeight(out int workAreaHeight)
+    private bool TryGetCurrentMonitorMetrics(out int workAreaHeight, out uint dpi)
     {
         workAreaHeight = 0;
+        dpi = 96;
 
         if (!GetCursorPos(out POINT pt))
             return false;
@@ -314,6 +316,8 @@ public sealed partial class TrayMenuWindow : WindowEx
             return false;
 
         workAreaHeight = monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        dpi = GetDpiForWindow(hwnd);
         return workAreaHeight > 0;
     }
 }

@@ -5,6 +5,14 @@ namespace OpenClaw.Shared;
 /// </summary>
 public static class MenuSizingHelper
 {
+    public static int ConvertPixelsToViewUnits(int pixels, uint dpi)
+    {
+        if (pixels <= 0) return 0;
+        if (dpi == 0) dpi = 96;
+
+        return Math.Max(1, (int)Math.Floor(pixels * 96.0 / dpi));
+    }
+
     public static int CalculateWindowHeight(int contentHeight, int workAreaHeight, int minimumHeight = 100)
     {
         if (contentHeight < 0) contentHeight = 0;
