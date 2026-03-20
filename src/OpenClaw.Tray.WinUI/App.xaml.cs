@@ -54,6 +54,7 @@ public partial class App : Application
     private GatewayCostUsageInfo? _lastUsageCost;
     private DateTime _lastCheckTime = DateTime.Now;
     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
+    private OpenClaw.Shared.PairingStatus? _lastNodePairingStatus;
 
     // Session-aware activity tracking
     private readonly Dictionary<string, AgentActivity> _sessionActivities = new();
@@ -1151,43 +1152,43 @@ public partial class App : Application
             _currentStatus = status;
             UpdateTrayIcon();
         }
-        
-        // Don't show "connected" toast if waiting for pairing - we'll show pairing status instead
-        if (status == ConnectionStatus.Connected && _nodeService?.IsPaired == true)
-        {
-            try
-            {
-                new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActive"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail"))
-                    .Show();
-            }
-            catch { /* ignore */ }
-        }
     }
     
     private void OnPairingStatusChanged(object? sender, OpenClaw.Shared.PairingStatusEventArgs args)
     {
         Logger.Info($"Pairing status: {args.Status}");
+
+        var previousStatus = _lastNodePairingStatus;
+        _lastNodePairingStatus = args.Status;
         
         try
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
                 AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                // Show toast with approval instructions
-                new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
-                    .Show();
+                if (previousStatus != OpenClaw.Shared.PairingStatus.Pending)
+                {
+                    new ToastContentBuilder()
+                        .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
+                        .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
+                        .Show();
+                }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
                 AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
-                    .Show();
+                if (previousStatus != OpenClaw.Shared.PairingStatus.Paired)
+                {
+                    new ToastContentBuilder()
+                        .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
+                        .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
+                        .Show();
+                }
+            }
+            else if (args.Status == OpenClaw.Shared.PairingStatus.Unknown)
+            {
+                AddRecentActivity("Node pairing requires repair", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
+                Logger.Warn($"Node pairing state is unknown for {args.DeviceId.Substring(0, 16)}. Repair the device token from the gateway or CLI, then reconnect.");
             }
         }
         catch { /* ignore */ }
