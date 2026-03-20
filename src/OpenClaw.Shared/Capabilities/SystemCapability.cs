@@ -161,46 +161,60 @@ public class SystemCapability : NodeCapabilityBase
     }
     
     private static string FormatExecCommand(string[] argv) => ShellQuoting.FormatExecCommand(argv);
-    
+
+    /// <summary>
+    /// Parses the "command" field from a request's JSON args into an argv array.
+    /// Accepts either a JSON string array or a single string.
+    /// Returns true when at least one non-empty element was extracted.
+    /// </summary>
+    private static bool TryParseArgv(System.Text.Json.JsonElement args, out string[] argv)
+    {
+        argv = [];
+        if (args.ValueKind == System.Text.Json.JsonValueKind.Undefined ||
+            !args.TryGetProperty("command", out var cmdEl))
+        {
+            return false;
+        }
+
+        if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            var list = new List<string>();
+            foreach (var item in cmdEl.EnumerateArray())
+            {
+                if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                    list.Add(item.GetString() ?? "");
+            }
+            argv = list.ToArray();
+            return argv.Length > 0;
+        }
+
+        if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            var cmd = cmdEl.GetString();
+            if (!string.IsNullOrWhiteSpace(cmd))
+            {
+                argv = [cmd];
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Pre-flight for system.run: echoes back the execution plan without running anything.
     /// The gateway uses this to build its approval context before the actual run.
     /// </summary>
     private NodeInvokeResponse HandleRunPrepare(NodeInvokeRequest request)
     {
-        string? command = null;
-        string[]? argv = null;
-        string? rawCommand = null;
-        string? cwd = null;
-        
-        if (request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
-            request.Args.TryGetProperty("command", out var cmdEl))
-        {
-            if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                var list = new List<string>();
-                foreach (var item in cmdEl.EnumerateArray())
-                {
-                    if (item.ValueKind == System.Text.Json.JsonValueKind.String)
-                        list.Add(item.GetString() ?? "");
-                }
-                argv = list.ToArray();
-                command = argv.Length > 0 ? argv[0] : null;
-            }
-            else if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                command = cmdEl.GetString();
-                argv = command != null ? new[] { command } : null;
-            }
-        }
-        
-        if (string.IsNullOrWhiteSpace(command) || argv == null || argv.Length == 0)
+        if (!TryParseArgv(request.Args, out var argv) || string.IsNullOrWhiteSpace(argv[0]))
         {
             return Error("Missing command parameter");
         }
-        
-        rawCommand = GetStringArg(request.Args, "rawCommand");
-        cwd = GetStringArg(request.Args, "cwd");
+
+        var command = argv[0];
+        var rawCommand = GetStringArg(request.Args, "rawCommand");
+        var cwd = GetStringArg(request.Args, "cwd");
         var agentId = GetStringArg(request.Args, "agentId");
         var sessionKey = GetStringArg(request.Args, "sessionKey");
         
@@ -226,52 +240,31 @@ public class SystemCapability : NodeCapabilityBase
         {
             return Error("Command execution not available");
         }
-        
+
         // Per OpenClaw spec, "command" is an argv array (e.g. ["echo","Hello"]).
         // Also accept a plain string for backward compatibility.
-        string? command = null;
-        string[]? args = null;
-        
-        if (request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
-            request.Args.TryGetProperty("command", out var cmdEl))
-        {
-            if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                var argv = new List<string>();
-                foreach (var item in cmdEl.EnumerateArray())
-                {
-                    if (item.ValueKind == System.Text.Json.JsonValueKind.String)
-                        argv.Add(item.GetString() ?? "");
-                }
-                if (argv.Count > 0)
-                {
-                    command = argv[0];
-                    args = argv.Count > 1 ? argv.Skip(1).ToArray() : null;
-                }
-            }
-            else if (cmdEl.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                command = cmdEl.GetString();
-                
-                // When command is a string, also check for separate "args" array
-                if (request.Args.TryGetProperty("args", out var argsEl) &&
-                    argsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-                {
-                    var list = new List<string>();
-                    foreach (var item in argsEl.EnumerateArray())
-                    {
-                        if (item.ValueKind == System.Text.Json.JsonValueKind.String)
-                            list.Add(item.GetString() ?? "");
-                    }
-                    if (list.Count > 0)
-                        args = list.ToArray();
-                }
-            }
-        }
-        
-        if (string.IsNullOrWhiteSpace(command))
+        if (!TryParseArgv(request.Args, out var argv) || string.IsNullOrWhiteSpace(argv[0]))
         {
             return Error("Missing command parameter");
+        }
+
+        var command = argv[0];
+        string[]? args = argv.Length > 1 ? argv[1..] : null;
+
+        // When command is a plain string (not an array), also check for a separate "args" array.
+        if (argv.Length == 1 &&
+            request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
+            request.Args.TryGetProperty("args", out var argsEl) &&
+            argsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            var list = new List<string>();
+            foreach (var item in argsEl.EnumerateArray())
+            {
+                if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                    list.Add(item.GetString() ?? "");
+            }
+            if (list.Count > 0)
+                args = list.ToArray();
         }
         
         var shell = GetStringArg(request.Args, "shell");
@@ -402,7 +395,7 @@ public class SystemCapability : NodeCapabilityBase
                     if (ruleEl.TryGetProperty("description", out var descEl) && descEl.ValueKind == System.Text.Json.JsonValueKind.String)
                         rule.Description = descEl.GetString();
                     
-                    if (ruleEl.TryGetProperty("enabled", out var enEl) && enEl.ValueKind == System.Text.Json.JsonValueKind.True || enEl.ValueKind == System.Text.Json.JsonValueKind.False)
+                    if (ruleEl.TryGetProperty("enabled", out var enEl) && (enEl.ValueKind == System.Text.Json.JsonValueKind.True || enEl.ValueKind == System.Text.Json.JsonValueKind.False))
                         rule.Enabled = enEl.GetBoolean();
                     
                     if (ruleEl.TryGetProperty("shells", out var shellsEl) && shellsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
