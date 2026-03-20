@@ -534,6 +534,7 @@ public class WindowsNodeClient : WebSocketClientBase
         // Handle hello-ok (successful registration)
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
+            var wasPairedBeforeHello = IsPaired;
             _isConnected = true;
             
             // Extract node ID if returned
@@ -552,21 +553,11 @@ public class WindowsNodeClient : WebSocketClientBase
                 if (!string.IsNullOrEmpty(deviceToken))
                 {
                     receivedDeviceToken = true;
-                    var wasWaiting = _isPendingApproval || _pairingApprovedAwaitingReconnect;
                     _isPendingApproval = false;
                     _isPaired = true;
                     _pairingApprovedAwaitingReconnect = false;
                     _logger.Info("Received device token in hello-ok - we are now paired!");
                     _deviceIdentity.StoreDeviceToken(deviceToken);
-                    
-                    // Fire pairing event if we were waiting on approval/token refresh
-                    if (wasWaiting)
-                    {
-                        PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
-                            PairingStatus.Paired, 
-                            _deviceIdentity.DeviceId,
-                            "Pairing approved!"));
-                    }
                 }
             }
             else if (_pairingApprovedAwaitingReconnect)
@@ -582,9 +573,13 @@ public class WindowsNodeClient : WebSocketClientBase
             _logger.Info(string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
                 ? "Gateway accepted the node without returning a device token; treating this device as paired"
                 : "Already paired with stored device token");
-            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
-                PairingStatus.Paired,
-                _deviceIdentity.DeviceId));
+            if (!wasPairedBeforeHello)
+            {
+                PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                    PairingStatus.Paired,
+                    _deviceIdentity.DeviceId,
+                    "Pairing approved!"));
+            }
             
             RaiseStatusChanged(ConnectionStatus.Connected);
             return;
@@ -659,10 +654,14 @@ public class WindowsNodeClient : WebSocketClientBase
             return true;
         }
 
-        if (TryGetString(payload, "nodeId", out var nodeId) &&
-            string.Equals(nodeId, _deviceIdentity.DeviceId, StringComparison.OrdinalIgnoreCase))
+        if (TryGetString(payload, "nodeId", out var nodeId))
         {
-            return true;
+            if (!string.IsNullOrEmpty(_nodeId))
+            {
+                return string.Equals(nodeId, _nodeId, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return string.Equals(nodeId, _deviceIdentity.DeviceId, StringComparison.OrdinalIgnoreCase);
         }
 
         if (TryGetString(payload, "instanceId", out var instanceId) &&

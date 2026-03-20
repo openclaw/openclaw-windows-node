@@ -1165,9 +1165,9 @@ public partial class App : Application
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
-                AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                 if (previousStatus != OpenClaw.Shared.PairingStatus.Pending)
                 {
+                    AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                     new ToastContentBuilder()
                         .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
                         .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
@@ -1176,9 +1176,9 @@ public partial class App : Application
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
-                AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                 if (previousStatus != OpenClaw.Shared.PairingStatus.Paired)
                 {
+                    AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                     new ToastContentBuilder()
                         .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
                         .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
