@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using System;
 using System.Runtime.InteropServices;
@@ -284,8 +285,35 @@ public sealed partial class TrayMenuWindow : WindowEx
         // Separators: ~13px each  
         // Headers: ~30px each
         // Plus padding: ~16px
-        _menuHeight = (_itemCount * 36) + (_separatorCount * 13) + (_headerCount * 30) + 16;
-        _menuHeight = Math.Max(_menuHeight, 100); // minimum
+        var contentHeight = (_itemCount * 36) + (_separatorCount * 13) + (_headerCount * 30) + 16;
+        _menuHeight = Math.Max(contentHeight, 100); // minimum
+
+        if (TryGetCurrentMonitorWorkAreaHeight(out var workAreaHeight))
+        {
+            // Constrain the popup to the visible work area so the ScrollViewer gets
+            // a viewport and the menu stays reachable near the tray/taskbar.
+            _menuHeight = MenuSizingHelper.CalculateWindowHeight(contentHeight, workAreaHeight);
+        }
+
         this.SetWindowSize(280, _menuHeight);
+    }
+
+    private static bool TryGetCurrentMonitorWorkAreaHeight(out int workAreaHeight)
+    {
+        workAreaHeight = 0;
+
+        if (!GetCursorPos(out POINT pt))
+            return false;
+
+        var hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        if (hMonitor == IntPtr.Zero)
+            return false;
+
+        var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(hMonitor, ref monitorInfo))
+            return false;
+
+        workAreaHeight = monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top;
+        return workAreaHeight > 0;
     }
 }
