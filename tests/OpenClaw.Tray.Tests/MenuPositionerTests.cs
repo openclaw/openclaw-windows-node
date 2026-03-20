@@ -83,6 +83,24 @@ public class MenuPositionerTests
     }
 
     [Fact]
+    public void OversizedMenuNearTray_RemainsFullyVisibleWithinWorkArea()
+    {
+        // Regression test for the tray popup overflow bug:
+        // when the menu window is sized taller than the monitor work area,
+        // positioning alone should still keep the full popup visible.
+        const int oversizedMenuHeight = 1200;
+
+        var (_, y) = MenuPositioner.CalculatePosition(
+            1800, 1060, MenuWidth, oversizedMenuHeight,
+            WorkLeft, WorkTop, WorkRight, WorkBottom);
+
+        Assert.True(y >= WorkTop, $"Menu Y {y} should not be above the work area top {WorkTop}");
+        Assert.True(
+            y + oversizedMenuHeight <= WorkBottom,
+            $"Menu bottom edge {y + oversizedMenuHeight} should not exceed work area bottom {WorkBottom}");
+    }
+
+    [Fact]
     public void TaskbarAtRight_Scenario()
     {
         // Taskbar on right side: work area is narrower
