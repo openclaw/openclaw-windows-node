@@ -186,30 +186,39 @@ public abstract class WebSocketClientBase : IDisposable
 
     protected async Task ReconnectWithBackoffAsync()
     {
-        var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
-        _reconnectAttempts++;
-        _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
-        RaiseStatusChanged(ConnectionStatus.Connecting);
-
-        try
+        while (!_disposed)
         {
-            await Task.Delay(delay, _cts.Token);
+            var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+            _reconnectAttempts++;
+            _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
+            RaiseStatusChanged(ConnectionStatus.Connecting);
 
-            // Check cancellation after delay
-            if (_cts.Token.IsCancellationRequested) return;
+            try
+            {
+                await Task.Delay(delay, _cts.Token);
 
-            // Safely dispose old socket
-            var oldSocket = _webSocket;
-            _webSocket = null;
-            try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
+                if (_cts.Token.IsCancellationRequested) return;
 
-            await ConnectAsync();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            _logger.Error($"{ClientRole} reconnect failed", ex);
-            RaiseStatusChanged(ConnectionStatus.Error);
+                // Safely dispose old socket before retrying the connection.
+                var oldSocket = _webSocket;
+                _webSocket = null;
+                try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
+
+                await ConnectAsync();
+                if (IsConnected)
+                {
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"{ClientRole} reconnect failed", ex);
+                RaiseStatusChanged(ConnectionStatus.Error);
+            }
         }
     }
 
