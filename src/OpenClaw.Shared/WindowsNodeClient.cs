@@ -185,6 +185,64 @@ public class WindowsNodeClient : WebSocketClientBase
             case "node.invoke.request":
                 await HandleNodeInvokeEventAsync(root);
                 break;
+            case "node.pair.resolved":
+            case "device.pair.resolved":
+                await HandlePairingResolvedEventAsync(root, eventType);
+                break;
+        }
+    }
+
+    private async Task HandlePairingResolvedEventAsync(JsonElement root, string? eventType)
+    {
+        if (!root.TryGetProperty("payload", out var payload))
+        {
+            _logger.Warn($"[NODE] {eventType} has no payload");
+            return;
+        }
+
+        string? resolvedDeviceId = null;
+        if (payload.TryGetProperty("deviceId", out var deviceIdProp))
+        {
+            resolvedDeviceId = deviceIdProp.GetString();
+        }
+        else if (payload.TryGetProperty("nodeId", out var nodeIdProp))
+        {
+            resolvedDeviceId = nodeIdProp.GetString();
+        }
+
+        if (!string.Equals(resolvedDeviceId, _deviceIdentity.DeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var decision = payload.TryGetProperty("decision", out var decisionProp)
+            ? decisionProp.GetString()
+            : null;
+
+        _logger.Info($"[NODE] Pairing resolution received for this device: decision={decision ?? "unknown"}");
+
+        if (string.Equals(decision, "approved", StringComparison.OrdinalIgnoreCase))
+        {
+            _isPendingApproval = false;
+            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                PairingStatus.Paired,
+                _deviceIdentity.DeviceId,
+                "Pairing approved; reconnecting to fetch device token."));
+
+            // Force a fresh handshake so the gateway can return auth.deviceToken and
+            // we can persist it locally for future reconnects.
+            _logger.Info("[NODE] Closing socket after pairing approval to refresh device token...");
+            await CloseWebSocketAsync();
+            return;
+        }
+
+        if (string.Equals(decision, "rejected", StringComparison.OrdinalIgnoreCase))
+        {
+            _isPendingApproval = false;
+            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                PairingStatus.Rejected,
+                _deviceIdentity.DeviceId,
+                "Pairing rejected"));
         }
     }
     

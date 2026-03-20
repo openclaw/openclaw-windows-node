@@ -300,7 +300,17 @@ public class OpenClawGatewayClient : WebSocketClientBase
                     displayName = "OpenClaw Windows Tray"
                 },
                 role = "operator",
-                scopes = new[] { "operator.admin", "operator.approvals", "operator.pairing" },
+                // The tray immediately requests read-oriented methods after hello-ok
+                // (health, sessions.list, usage.status, node.list), so the operator
+                // session must request read scope in addition to admin/approval/pairing.
+                scopes = new[]
+                {
+                    "operator.admin",
+                    "operator.read",
+                    "operator.write",
+                    "operator.approvals",
+                    "operator.pairing"
+                },
                 caps = Array.Empty<string>(),
                 commands = Array.Empty<string>(),
                 permissions = new { },
