@@ -38,6 +38,9 @@ public sealed partial class TrayMenuWindow : WindowEx
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    [DllImport("Shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hmonitor, MonitorDpiType dpiType, out uint dpiX, out uint dpiY);
+
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
@@ -66,6 +69,11 @@ public sealed partial class TrayMenuWindow : WindowEx
         public RECT rcMonitor;
         public RECT rcWork;
         public uint dwFlags;
+    }
+
+    private enum MonitorDpiType
+    {
+        MDT_EFFECTIVE_DPI = 0
     }
     #endregion
 
@@ -148,8 +156,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             if (menuWidthPx <= 0 || menuHeightPx <= 0)
             {
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-                uint dpi = GetDpiForWindow(hwnd);
-                if (dpi == 0) dpi = 96;
+                uint dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
                 double scale = dpi / 96.0;
                 menuWidthPx = (int)(280 * scale);
                 menuHeightPx = (int)(_menuHeight * scale);
@@ -317,7 +324,35 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         workAreaHeight = monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top;
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        dpi = GetDpiForWindow(hwnd);
+        dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
         return workAreaHeight > 0;
+    }
+
+    private static uint GetEffectiveMonitorDpi(IntPtr hMonitor, IntPtr hwnd)
+    {
+        if (hMonitor != IntPtr.Zero)
+        {
+            try
+            {
+                var hr = GetDpiForMonitor(hMonitor, MonitorDpiType.MDT_EFFECTIVE_DPI, out var dpiX, out var dpiY);
+                if (hr == 0)
+                {
+                    if (dpiY != 0)
+                        return dpiY;
+
+                    if (dpiX != 0)
+                        return dpiX;
+                }
+            }
+            catch (DllNotFoundException)
+            {
+            }
+            catch (EntryPointNotFoundException)
+            {
+            }
+        }
+
+        var dpi = hwnd != IntPtr.Zero ? GetDpiForWindow(hwnd) : 0;
+        return dpi == 0 ? 96u : dpi;
     }
 }

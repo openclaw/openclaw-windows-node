@@ -26,8 +26,8 @@ public class TrayMenuWindowMarkupTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) &&
-                File.Exists(Path.Combine(directory.FullName, "README.md")))
+            if (File.Exists(Path.Combine(directory.FullName, "moltbot-windows-hub.slnx")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "src")))
             {
                 return directory.FullName;
             }
