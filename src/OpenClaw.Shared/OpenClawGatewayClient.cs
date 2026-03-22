@@ -22,6 +22,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _usageCostUnsupported;
     private bool _sessionPreviewUnsupported;
     private bool _nodeListUnsupported;
+    private IReadOnlyList<UserNotificationRule>? _userRules;
 
     private void ResetUnsupportedMethodFlags()
     {
@@ -29,6 +30,16 @@ public class OpenClawGatewayClient : WebSocketClientBase
         _usageCostUnsupported = false;
         _sessionPreviewUnsupported = false;
         _nodeListUnsupported = false;
+    }
+
+    /// <summary>
+    /// Provides user-defined notification rules to the categorizer so custom rules
+    /// are applied when classifying incoming gateway notifications.
+    /// Call after construction and whenever settings change.
+    /// </summary>
+    public void SetUserRules(IReadOnlyList<UserNotificationRule>? rules)
+    {
+        _userRules = rules;
     }
 
     protected override int ReceiveBufferSize => 16384;
@@ -851,7 +862,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
             Message = displayText,
             IsChat = true
         };
-        var (title, type) = _categorizer.Classify(notification);
+        var (title, type) = _categorizer.Classify(notification, _userRules);
         notification.Title = title;
         notification.Type = type;
         NotificationReceived?.Invoke(this, notification);
@@ -1556,7 +1567,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         {
             Message = text.Length > 200 ? text[..200] + "…" : text
         };
-        var (title, type) = _categorizer.Classify(notification);
+        var (title, type) = _categorizer.Classify(notification, _userRules);
         notification.Title = title;
         notification.Type = type;
         NotificationReceived?.Invoke(this, notification);
