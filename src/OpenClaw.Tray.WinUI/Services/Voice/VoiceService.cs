@@ -483,6 +483,8 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             throw new InvalidOperationException($"Speech recognizer unavailable: {compilation.Status}");
         }
 
+        _logger.Info($"Speech recognizer compiled successfully ({compilation.Status})");
+
         return recognizer;
     }
 
@@ -583,6 +585,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             }
         }
 
+        _logger.Info("Starting speech recognition session");
         await recognizer.ContinuousRecognitionSession.StartAsync();
 
         lock (_gate)
@@ -597,6 +600,8 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
                     null);
             }
         }
+
+        _logger.Info("Speech recognition session started");
     }
 
     private async Task StopRecognitionSessionAsync()
@@ -1064,6 +1069,8 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
                                 !_awaitingReply &&
                                 !_isSpeaking;
             }
+
+            _logger.Warn($"Speech recognition session completed with status {args.Status}; restart={shouldRestart}");
 
             if (shouldRestart && !token.IsCancellationRequested)
             {

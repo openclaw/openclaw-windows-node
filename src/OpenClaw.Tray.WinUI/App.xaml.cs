@@ -1687,23 +1687,66 @@ public partial class App : Application
         _voiceModeWindow.Activate();
     }
 
-    private void OnSettingsSaved(object? sender, EventArgs e)
+    private async void OnSettingsSaved(object? sender, EventArgs e)
     {
         // Reconnect with new settings — mirror the startup if/else pattern
         // to avoid dual connections that cause gateway conflicts.
-        _gatewayClient?.Dispose();
-        var oldNodeService = _nodeService;
-        _nodeService = null;
-        try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
-        
-        if (_settings?.EnableNodeMode == true)
+        try
         {
-            InitializeNodeService();
+            if (_gatewayClient != null)
+            {
+                try
+                {
+                    await _gatewayClient.DisconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Gateway disconnect error: {ex.Message}");
+                }
+
+                _gatewayClient.Dispose();
+                _gatewayClient = null;
+            }
+
+            var oldNodeService = _nodeService;
+            _nodeService = null;
+            if (oldNodeService != null)
+            {
+                try
+                {
+                    await oldNodeService.DisconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Node disconnect error: {ex.Message}");
+                }
+
+                try
+                {
+                    oldNodeService.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Node dispose error: {ex.Message}");
+                }
+            }
+
+            if (_settings?.EnableNodeMode == true)
+            {
+                InitializeNodeService();
+            }
+            else
+            {
+                InitializeGatewayClient();
+                if (_voiceService != null)
+                {
+                    await _voiceService.StopAsync(new VoiceStopArgs { Reason = "Node mode disabled" });
+                }
+            }
         }
-        else
+        catch (Exception ex)
         {
-            InitializeGatewayClient();
-            _ = _voiceService?.StopAsync(new VoiceStopArgs { Reason = "Node mode disabled" });
+            Logger.Warn($"Settings reconnect failed: {ex.Message}");
         }
 
         // Update global hotkey
