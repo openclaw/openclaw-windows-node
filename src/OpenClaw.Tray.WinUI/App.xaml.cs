@@ -38,6 +38,7 @@ public partial class App : Application
     private GlobalHotkeyService? _globalHotkey;
     private System.Timers.Timer? _healthCheckTimer;
     private System.Timers.Timer? _sessionPollTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _voiceTrayIconTimer;
     private Mutex? _mutex;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private CancellationTokenSource? _deepLinkCts;
@@ -55,6 +56,7 @@ public partial class App : Application
     private GatewayCostUsageInfo? _lastUsageCost;
     private DateTime _lastCheckTime = DateTime.Now;
     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
+    private string? _lastTrayIconPath;
 
     // Session-aware activity tracking
     private readonly Dictionary<string, AgentActivity> _sessionActivities = new();
@@ -286,6 +288,7 @@ public partial class App : Application
 
         // Start health check timer
         StartHealthCheckTimer();
+        StartVoiceTrayIconTimer();
 
         // Start deep link server
         StartDeepLinkServer();
@@ -333,9 +336,24 @@ public partial class App : Application
         
         var iconPath = IconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
         _trayIcon = new TrayIcon(1, iconPath, "OpenClaw Tray — Disconnected");
+        _lastTrayIconPath = iconPath;
         _trayIcon.IsVisible = true;
         _trayIcon.Selected += OnTrayIconSelected;
         _trayIcon.ContextMenu += OnTrayContextMenu;
+    }
+
+    private void StartVoiceTrayIconTimer()
+    {
+        if (_dispatcherQueue == null || _voiceTrayIconTimer != null)
+        {
+            return;
+        }
+
+        _voiceTrayIconTimer = _dispatcherQueue.CreateTimer();
+        _voiceTrayIconTimer.Interval = TimeSpan.FromMilliseconds(250);
+        _voiceTrayIconTimer.IsRepeating = true;
+        _voiceTrayIconTimer.Tick += (s, e) => UpdateTrayIcon();
+        _voiceTrayIconTimer.Start();
     }
 
     private void InitializeTrayMenuWindow()
@@ -1622,13 +1640,7 @@ public partial class App : Application
     {
         if (_trayIcon == null) return;
 
-        var status = _currentStatus;
-        if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
-        {
-            status = ConnectionStatus.Connecting; // Use connecting icon for activity
-        }
-
-        var iconPath = IconHelper.GetStatusIconPath(status);
+        var iconPath = GetTrayIconPathForCurrentState();
         var tooltip = $"OpenClaw Tray — {_currentStatus}";
         
         if (_currentActivity != null && !string.IsNullOrEmpty(_currentActivity.DisplayText))
@@ -1640,13 +1652,57 @@ public partial class App : Application
 
         try
         {
-            _trayIcon.SetIcon(iconPath);
+            if (!string.Equals(_lastTrayIconPath, iconPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _trayIcon.SetIcon(iconPath);
+                _lastTrayIconPath = iconPath;
+            }
             _trayIcon.Tooltip = tooltip;
         }
         catch (Exception ex)
         {
             Logger.Warn($"Failed to update tray icon: {ex.Message}");
         }
+    }
+
+    private string GetTrayIconPathForCurrentState()
+    {
+        var voiceIconState = GetVoiceTrayIconState();
+        if (voiceIconState != VoiceTrayIconState.Off)
+        {
+            return IconHelper.GetVoiceTrayIconPath(voiceIconState);
+        }
+
+        if (_voiceService?.CurrentStatus.State == VoiceRuntimeState.Paused)
+        {
+            return IconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
+        }
+
+        var status = _currentStatus;
+        if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
+        {
+            status = ConnectionStatus.Connecting;
+        }
+
+        return IconHelper.GetStatusIconPath(status);
+    }
+
+    private VoiceTrayIconState GetVoiceTrayIconState()
+    {
+        var voiceStatus = _voiceService?.CurrentStatus;
+        if (voiceStatus == null || !voiceStatus.Running)
+        {
+            return VoiceTrayIconState.Off;
+        }
+
+        return voiceStatus.State switch
+        {
+            VoiceRuntimeState.PlayingResponse => VoiceTrayIconState.Speaking,
+            VoiceRuntimeState.RecordingUtterance => VoiceTrayIconState.Listening,
+            VoiceRuntimeState.Paused => VoiceTrayIconState.Off,
+            _ when voiceStatus.Mode == VoiceActivationMode.Off => VoiceTrayIconState.Off,
+            _ => VoiceTrayIconState.Armed
+        };
     }
 
     #endregion
@@ -2323,6 +2379,7 @@ public partial class App : Application
         _healthCheckTimer?.Dispose();
         _sessionPollTimer?.Stop();
         _sessionPollTimer?.Dispose();
+        _voiceTrayIconTimer?.Stop();
         
         // Cleanup hotkey
         _globalHotkey?.Dispose();

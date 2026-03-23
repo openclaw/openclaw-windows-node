@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services.Voice;
 using System.Linq;
 
@@ -8,6 +9,24 @@ namespace OpenClaw.Tray.Tests;
 
 public class VoiceProviderCatalogServiceTests
 {
+    [Fact]
+    public void GetVoiceTrayIconPath_ReturnsBundledAppIconForOff()
+    {
+        var path = IconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
+
+        Assert.Equal(IconHelper.GetAppIconPath(), path, ignoreCase: true);
+    }
+
+    [Fact]
+    public void GetVoiceTrayIconPath_GeneratesListeningVariant()
+    {
+        var path = IconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Listening);
+
+        Assert.True(File.Exists(path));
+        Assert.EndsWith(".ico", path, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(IconHelper.GetAppIconPath(), path, StringComparer.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void CatalogFilePath_ResolvesToExistingBundledAsset()
     {

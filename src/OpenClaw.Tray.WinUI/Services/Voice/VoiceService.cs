@@ -684,6 +684,14 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
 
             text = args.Hypothesis?.Text?.Trim();
             sessionKey = GetCurrentVoiceSessionKey();
+            if (_status.State != VoiceRuntimeState.RecordingUtterance)
+            {
+                _status = BuildRunningStatus(
+                    VoiceActivationMode.TalkMode,
+                    _status.SessionKey,
+                    VoiceRuntimeState.RecordingUtterance,
+                    _status.LastError);
+            }
         }
 
         if (string.IsNullOrWhiteSpace(text))
