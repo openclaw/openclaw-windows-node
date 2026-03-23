@@ -66,6 +66,54 @@ public class OpenClawGatewayClientTests
             return _client.GetSessionList();
         }
 
+        public string GetDefaultChatSessionKey()
+        {
+            return GetPrivateField<string>("_defaultChatSessionKey");
+        }
+
+        public void UpdateDefaultChatSessionKeyFromHello(string payloadJson)
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "UpdateDefaultChatSessionKeyFromHello",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method!.Invoke(_client, new object[] { doc.RootElement.Clone() });
+        }
+
+        public string SerializeChatSendRequest(string message, string sessionKey, string idempotencyKey)
+        {
+            var parametersMethod = typeof(OpenClawGatewayClient).GetMethod(
+                "BuildChatSendParameters",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var parameters = parametersMethod!.Invoke(_client, new object[] { message, sessionKey, idempotencyKey });
+
+            var serializeMethod = typeof(OpenClawGatewayClient).GetMethod(
+                "SerializeRequest",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (string)serializeMethod!.Invoke(null, new object[] { "request-123", "chat.send", parameters! })!;
+        }
+
+        public string SerializeConnectRequest()
+        {
+            var parametersMethod = typeof(OpenClawGatewayClient).GetMethod(
+                "BuildConnectParameters",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var parameters = parametersMethod!.Invoke(_client, Array.Empty<object>());
+
+            var serializeMethod = typeof(OpenClawGatewayClient).GetMethod(
+                "SerializeRequest",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (string)serializeMethod!.Invoke(null, new object[] { "request-456", "connect", parameters! })!;
+        }
+
+        public string NormalizeChatSessionKey(string? sessionKey)
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "NormalizeChatSessionKey",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (string)method!.Invoke(null, new object?[] { sessionKey })!;
+        }
+
         public void SetUnsupportedMethodFlags(bool usageStatus, bool usageCost, bool sessionPreview, bool nodeList)
         {
             SetPrivateField("_usageStatusUnsupported", usageStatus);
@@ -120,6 +168,58 @@ public class OpenClawGatewayClientTests
             }
 
             return parsed ?? new SessionsPreviewPayloadInfo();
+        }
+
+        public ChatMessageEventArgs? HandleChatEventAndCaptureMessage(string payloadJson)
+        {
+            ChatMessageEventArgs? captured = null;
+            EventHandler<ChatMessageEventArgs> handler = (_, args) => captured = args;
+            _client.ChatMessageReceived += handler;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(payloadJson);
+                var method = typeof(OpenClawGatewayClient).GetMethod(
+                    "HandleChatEvent",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                method!.Invoke(_client, new object[] { doc.RootElement.Clone() });
+            }
+            finally
+            {
+                _client.ChatMessageReceived -= handler;
+            }
+
+            return captured;
+        }
+
+        public int GetPendingChatPreviewSessionCount()
+        {
+            var pending = GetPrivateField<HashSet<string>>("_pendingChatPreviewSessionKeys");
+            return pending.Count;
+        }
+
+        public void AddPendingChatPreviewSession(string sessionKey)
+        {
+            var pending = GetPrivateField<HashSet<string>>("_pendingChatPreviewSessionKeys");
+            pending.Add(sessionKey);
+        }
+
+        public ChatMessageEventArgs? ParseSessionsPreviewPayloadAndCaptureMessage(string payloadJson)
+        {
+            ChatMessageEventArgs? captured = null;
+            EventHandler<ChatMessageEventArgs> handler = (_, args) => captured = args;
+            _client.ChatMessageReceived += handler;
+
+            try
+            {
+                InvokePrivatePayloadParser("ParseSessionsPreview", payloadJson);
+            }
+            finally
+            {
+                _client.ChatMessageReceived -= handler;
+            }
+
+            return captured;
         }
 
         public GatewayNodeInfo[] ParseNodeListPayload(string payloadJson)
@@ -669,5 +769,135 @@ public class OpenClawGatewayClientTests
 
         Assert.Single(channels);
         Assert.Equal("degraded", channels[0].Status);
+    }
+
+    [Fact]
+    public void UpdateDefaultChatSessionKeyFromHello_UsesSnapshotMainSessionKey()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        helper.UpdateDefaultChatSessionKeyFromHello("""
+            {
+              "type": "hello-ok",
+              "snapshot": {
+                "sessionDefaults": {
+                  "mainSessionKey": "agent:main:main"
+                }
+              }
+            }
+            """);
+
+        Assert.Equal("main", helper.GetDefaultChatSessionKey());
+    }
+
+    [Fact]
+    public void ParseSessions_MainSession_UpdatesDefaultChatSessionKey()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        helper.ParseSessionsPayload("""
+            {
+              "agent:main:main": {
+                "status": "active",
+                "displayName": "Main",
+                "isMain": true
+              },
+              "agent:other:test": {
+                "status": "active"
+              }
+            }
+            """);
+
+        Assert.Equal("main", helper.GetDefaultChatSessionKey());
+    }
+
+    [Fact]
+    public void SerializeChatSendRequest_IncludesSessionKeyAndIdempotencyKey()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var json = helper.SerializeChatSendRequest("hello", "main", "idem-123");
+        using var doc = JsonDocument.Parse(json);
+        var parameters = doc.RootElement.GetProperty("params");
+
+        Assert.Equal("hello", parameters.GetProperty("message").GetString());
+        Assert.Equal("main", parameters.GetProperty("sessionKey").GetString());
+        Assert.Equal("idem-123", parameters.GetProperty("idempotencyKey").GetString());
+    }
+
+    [Fact]
+    public void NormalizeChatSessionKey_CollapsesExpandedMainKey()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        Assert.Equal("main", helper.NormalizeChatSessionKey("agent:main:main"));
+        Assert.Equal("main", helper.NormalizeChatSessionKey("main"));
+        Assert.Equal("agent:sub:test", helper.NormalizeChatSessionKey("agent:sub:test"));
+    }
+
+    [Fact]
+    public void HandleChatEvent_FinalWithoutMessage_QueuesPreviewLookup()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var captured = helper.HandleChatEventAndCaptureMessage("""
+            {
+              "type": "event",
+              "event": "chat",
+              "payload": {
+                "sessionKey": "agent:main:main",
+                "state": "final"
+              }
+            }
+            """);
+
+        Assert.Null(captured);
+        Assert.Equal(1, helper.GetPendingChatPreviewSessionCount());
+    }
+
+    [Fact]
+    public void ParseSessionsPreview_EmitsAssistantMessage_ForQueuedFinalPreview()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.AddPendingChatPreviewSession("main");
+
+        var captured = helper.ParseSessionsPreviewPayloadAndCaptureMessage("""
+            {
+              "ts": 1739760000000,
+              "previews": [
+                {
+                  "key": "agent:main:main",
+                  "status": "ok",
+                  "items": [
+                    { "role": "user", "text": "hello" },
+                    { "role": "assistant", "text": "world" }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        Assert.NotNull(captured);
+        Assert.Equal("main", captured!.SessionKey);
+        Assert.Equal("assistant", captured.Role);
+        Assert.Equal("world", captured.Message);
+        Assert.True(captured.IsFinal);
+        Assert.Equal(0, helper.GetPendingChatPreviewSessionCount());
+    }
+
+    [Fact]
+    public void SerializeConnectRequest_UsesCliClientModeAndOperatorScopes()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var json = helper.SerializeConnectRequest();
+        using var doc = JsonDocument.Parse(json);
+        var parameters = doc.RootElement.GetProperty("params");
+        var client = parameters.GetProperty("client");
+        var scopes = parameters.GetProperty("scopes").EnumerateArray().Select(item => item.GetString()).ToArray();
+
+        Assert.Equal("cli", client.GetProperty("mode").GetString());
+        Assert.Contains("operator.read", scopes);
+        Assert.Contains("operator.write", scopes);
     }
 }

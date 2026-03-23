@@ -15,13 +15,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
     private readonly Dictionary<string, string> _pendingRequestMethods = new();
+    private readonly HashSet<string> _pendingChatPreviewSessionKeys = new();
     private readonly object _pendingRequestLock = new();
+    private readonly object _pendingChatPreviewLock = new();
     private readonly object _sessionsLock = new();
     private readonly object _nodesLock = new();
     private bool _usageStatusUnsupported;
     private bool _usageCostUnsupported;
     private bool _sessionPreviewUnsupported;
     private bool _nodeListUnsupported;
+    private string _defaultChatSessionKey = DefaultChatSessionKey;
+
+    private const string DefaultChatSessionKey = "main";
 
     private void ResetUnsupportedMethodFlags()
     {
@@ -49,15 +54,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
     protected override void OnDisconnected()
     {
         ClearPendingRequests();
+        ClearPendingChatPreviewSessions();
     }
 
     protected override void OnDisposing()
     {
         ClearPendingRequests();
+        ClearPendingChatPreviewSessions();
     }
 
     // Events
     public event EventHandler<OpenClawNotification>? NotificationReceived;
+    public event EventHandler<ChatMessageEventArgs>? ChatMessageReceived;
     public event EventHandler<AgentActivity>? ActivityChanged;
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;
@@ -118,19 +126,29 @@ public class OpenClawGatewayClient : WebSocketClientBase
         }
     }
 
-    public async Task SendChatMessageAsync(string message)
+    public async Task SendChatMessageAsync(string message, string? sessionKey = null, string? idempotencyKey = null)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
 
-        var req = new
+        var requestId = Guid.NewGuid().ToString();
+        var resolvedSessionKey = ResolveChatSessionKey(sessionKey);
+        var resolvedIdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey)
+            ? Guid.NewGuid().ToString()
+            : idempotencyKey;
+        var parameters = BuildChatSendParameters(message, resolvedSessionKey, resolvedIdempotencyKey);
+
+        TrackPendingRequest(requestId, "chat.send");
+        try
         {
-            type = "req",
-            id = Guid.NewGuid().ToString(),
-            method = "chat.send",
-            @params = new { message }
-        };
-        await SendRawAsync(JsonSerializer.Serialize(req));
+            await SendRawAsync(SerializeRequest(requestId, "chat.send", parameters));
+        }
+        catch
+        {
+            RemovePendingRequest(requestId);
+            throw;
+        }
+
         _logger.Info($"Sent chat message ({message.Length} chars)");
     }
 
@@ -281,35 +299,39 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private async Task SendConnectMessageAsync(string? nonce = null)
     {
-        // Use "cli" client ID for native apps - no browser security checks
         var msg = new
         {
             type = "req",
             id = Guid.NewGuid().ToString(),
             method = "connect",
-            @params = new
-            {
-                minProtocol = 3,
-                maxProtocol = 3,
-                client = new
-                {
-                    id = "cli",  // Native client ID
-                    version = "1.0.0",
-                    platform = "windows",
-                    mode = "cli",
-                    displayName = "OpenClaw Windows Tray"
-                },
-                role = "operator",
-                scopes = new[] { "operator.admin", "operator.approvals", "operator.pairing" },
-                caps = Array.Empty<string>(),
-                commands = Array.Empty<string>(),
-                permissions = new { },
-                auth = new { token = _token },
-                locale = "en-US",
-                userAgent = "openclaw-windows-tray/1.0.0"
-            }
+            @params = BuildConnectParameters()
         };
         await SendRawAsync(JsonSerializer.Serialize(msg));
+    }
+
+    private object BuildConnectParameters()
+    {
+        return new
+        {
+            minProtocol = 3,
+            maxProtocol = 3,
+            client = new
+            {
+                id = "cli",
+                version = "1.0.0",
+                platform = "windows",
+                mode = "cli",
+                displayName = "OpenClaw Windows Tray"
+            },
+            role = "operator",
+            scopes = new[] { "operator.read", "operator.write", "operator.admin", "operator.approvals", "operator.pairing" },
+            caps = Array.Empty<string>(),
+            commands = Array.Empty<string>(),
+            permissions = new { },
+            auth = new { token = _token },
+            locale = "en-US",
+            userAgent = "openclaw-windows-tray/1.0.0"
+        };
     }
 
     private async Task SendTrackedRequestAsync(string method, object? parameters = null)
@@ -456,6 +478,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         // Handle hello-ok
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
+            UpdateDefaultChatSessionKeyFromHello(payload);
             _logger.Info("Handshake complete (hello-ok)");
             RaiseStatusChanged(ConnectionStatus.Connected);
 
@@ -799,13 +822,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private void HandleChatEvent(JsonElement root)
     {
         _logger.Debug($"Chat event received: {root.GetRawText().Substring(0, Math.Min(200, root.GetRawText().Length))}");
-        
+
         if (!root.TryGetProperty("payload", out var payload)) return;
+        var sessionKey = NormalizeChatSessionKey(TryGetSessionKey(root, payload));
+        var isFinal = !payload.TryGetProperty("state", out var state) ||
+                      string.Equals(state.GetString(), "final", StringComparison.OrdinalIgnoreCase);
+        var emittedAssistantText = false;
 
         // Try new format: payload.message.role + payload.message.content[].text
         if (payload.TryGetProperty("message", out var message))
         {
-            if (message.TryGetProperty("role", out var role) && role.GetString() == "assistant")
+            var roleName = GetString(message, "role");
+            if (roleName == "assistant")
             {
                 // Extract text from content array
                 if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
@@ -816,11 +844,11 @@ public class OpenClawGatewayClient : WebSocketClientBase
                             item.TryGetProperty("text", out var textProp))
                         {
                             var text = textProp.GetString() ?? "";
-                            if (!string.IsNullOrEmpty(text) && 
-                                payload.TryGetProperty("state", out var state) && 
-                                state.GetString() == "final")
+                            if (!string.IsNullOrEmpty(text) && isFinal)
                             {
+                                emittedAssistantText = true;
                                 _logger.Info($"Assistant response: {text.Substring(0, Math.Min(100, text.Length))}...");
+                                EmitChatMessage(sessionKey, roleName ?? "assistant", text, isFinal);
                                 EmitChatNotification(text);
                             }
                         }
@@ -833,14 +861,32 @@ public class OpenClawGatewayClient : WebSocketClientBase
         else if (payload.TryGetProperty("text", out var textProp))
         {
             var text = textProp.GetString() ?? "";
-            if (payload.TryGetProperty("role", out var role) &&
-                role.GetString() == "assistant" &&
+            var roleName = GetString(payload, "role");
+            if (roleName == "assistant" &&
                 !string.IsNullOrEmpty(text))
             {
+                emittedAssistantText = true;
                 _logger.Info($"Assistant response (legacy): {text.Substring(0, Math.Min(100, text.Length))}");
+                EmitChatMessage(sessionKey, roleName, text, isFinal: true);
                 EmitChatNotification(text);
             }
         }
+
+        if (isFinal && !emittedAssistantText)
+        {
+            RequestChatPreviewForFinalState(sessionKey);
+        }
+    }
+
+    private void EmitChatMessage(string sessionKey, string role, string text, bool isFinal)
+    {
+        ChatMessageReceived?.Invoke(this, new ChatMessageEventArgs
+        {
+            SessionKey = sessionKey,
+            Role = role,
+            Message = text,
+            IsFinal = isFinal
+        });
     }
 
     private void EmitChatNotification(string text)
@@ -1053,6 +1099,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 }
 
                 snapshot = GetSessionListInternal();
+                UpdateDefaultChatSessionKeyFromSessions();
             }
 
             SessionsUpdated?.Invoke(this, snapshot);
@@ -1081,6 +1128,172 @@ public class OpenClawGatewayClient : WebSocketClientBase
         PopulateSessionFromObject(session, item);
 
         _sessions[session.Key] = session;
+        if (session.IsMain)
+        {
+            UpdateDefaultChatSessionKey(session.Key);
+        }
+    }
+
+    private object BuildChatSendParameters(string message, string sessionKey, string idempotencyKey)
+    {
+        return new
+        {
+            message,
+            sessionKey,
+            idempotencyKey
+        };
+    }
+
+    private string ResolveChatSessionKey(string? sessionKey)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionKey))
+        {
+            return NormalizeChatSessionKey(sessionKey);
+        }
+
+        return string.IsNullOrWhiteSpace(_defaultChatSessionKey)
+            ? DefaultChatSessionKey
+            : _defaultChatSessionKey;
+    }
+
+    private void UpdateDefaultChatSessionKeyFromHello(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("snapshot", out var snapshot) ||
+            snapshot.ValueKind != JsonValueKind.Object ||
+            !snapshot.TryGetProperty("sessionDefaults", out var sessionDefaults) ||
+            sessionDefaults.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var mainSessionKey = GetString(sessionDefaults, "mainKey") ??
+                             GetString(sessionDefaults, "mainSessionKey");
+        if (!string.IsNullOrWhiteSpace(mainSessionKey))
+        {
+            UpdateDefaultChatSessionKey(mainSessionKey);
+        }
+    }
+
+    private void UpdateDefaultChatSessionKeyFromSessions()
+    {
+        var mainSession = _sessions.Values.FirstOrDefault(s => s.IsMain && !string.IsNullOrWhiteSpace(s.Key));
+        if (!string.IsNullOrWhiteSpace(mainSession?.Key))
+        {
+            UpdateDefaultChatSessionKey(mainSession.Key);
+        }
+    }
+
+    private void UpdateDefaultChatSessionKey(string? sessionKey)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionKey))
+        {
+            _defaultChatSessionKey = NormalizeChatSessionKey(sessionKey);
+        }
+    }
+
+    private void RequestChatPreviewForFinalState(string sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey) || _sessionPreviewUnsupported)
+        {
+            return;
+        }
+
+        var normalizedSessionKey = NormalizeChatSessionKey(sessionKey);
+        lock (_pendingChatPreviewLock)
+        {
+            if (!_pendingChatPreviewSessionKeys.Add(normalizedSessionKey))
+            {
+                return;
+            }
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await RequestSessionPreviewAsync([normalizedSessionKey], limit: 2, maxChars: 4000);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"sessions.preview request failed for {normalizedSessionKey}: {ex.Message}");
+                lock (_pendingChatPreviewLock)
+                {
+                    _pendingChatPreviewSessionKeys.Remove(normalizedSessionKey);
+                }
+            }
+        });
+    }
+
+    private void EmitPendingChatPreviewMessages(SessionsPreviewPayloadInfo payload)
+    {
+        foreach (var preview in payload.Previews)
+        {
+            var normalizedSessionKey = NormalizeChatSessionKey(preview.Key);
+            var shouldEmit = false;
+
+            lock (_pendingChatPreviewLock)
+            {
+                if (_pendingChatPreviewSessionKeys.Remove(normalizedSessionKey))
+                {
+                    shouldEmit = true;
+                }
+            }
+
+            if (!shouldEmit)
+            {
+                continue;
+            }
+
+            var assistantText = preview.Items
+                .LastOrDefault(item => string.Equals(item.Role, "assistant", StringComparison.OrdinalIgnoreCase))?
+                .Text?
+                .Trim();
+
+            if (string.IsNullOrWhiteSpace(assistantText))
+            {
+                continue;
+            }
+
+            _logger.Info($"Assistant response (preview): {assistantText.Substring(0, Math.Min(100, assistantText.Length))}...");
+            EmitChatMessage(normalizedSessionKey, "assistant", assistantText, isFinal: true);
+            EmitChatNotification(assistantText);
+        }
+    }
+
+    private void ClearPendingChatPreviewSessions()
+    {
+        lock (_pendingChatPreviewLock)
+        {
+            _pendingChatPreviewSessionKeys.Clear();
+        }
+    }
+
+    private static string NormalizeChatSessionKey(string? sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey))
+        {
+            return DefaultChatSessionKey;
+        }
+
+        return sessionKey == "main" || sessionKey.Contains(":main:", StringComparison.Ordinal)
+            ? DefaultChatSessionKey
+            : sessionKey;
+    }
+
+    private static string? TryGetSessionKey(JsonElement root, JsonElement payload)
+    {
+        if (root.TryGetProperty("sessionKey", out var rootSessionKey))
+        {
+            return rootSessionKey.GetString();
+        }
+
+        if (payload.ValueKind == JsonValueKind.Object &&
+            payload.TryGetProperty("sessionKey", out var payloadSessionKey))
+        {
+            return payloadSessionKey.GetString();
+        }
+
+        return null;
     }
 
     private void PopulateSessionFromObject(SessionInfo session, JsonElement item)
@@ -1394,6 +1607,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
             }
 
             SessionPreviewUpdated?.Invoke(this, previewPayload);
+            EmitPendingChatPreviewMessages(previewPayload);
         }
         catch (Exception ex)
         {
