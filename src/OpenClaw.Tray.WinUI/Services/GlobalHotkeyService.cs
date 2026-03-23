@@ -7,15 +7,19 @@ namespace OpenClawTray.Services;
 
 /// <summary>
 /// Registers and handles global hotkeys using P/Invoke.
-/// Default: Ctrl+Alt+Shift+C for Quick Send.
+/// Defaults:
+/// - Ctrl+Alt+Shift+C for Quick Send
+/// - Ctrl+Alt+Shift+V for Voice pause/resume
 /// </summary>
 public class GlobalHotkeyService : IDisposable
 {
-    private const int HOTKEY_ID = 9001;
+    private const int QUICK_SEND_HOTKEY_ID = 9001;
+    private const int VOICE_TOGGLE_HOTKEY_ID = 9002;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_SHIFT = 0x0004;
     private const uint VK_C = 0x43;
+    private const uint VK_V = 0x56;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -113,7 +117,8 @@ public class GlobalHotkeyService : IDisposable
     private readonly ManualResetEventSlim _windowReady = new(false);
     private readonly ManualResetEventSlim _opCompleted = new(false);
 
-    public event EventHandler? HotkeyPressed;
+    public event EventHandler? QuickSendHotkeyPressed;
+    public event EventHandler? VoiceToggleHotkeyPressed;
 
     public GlobalHotkeyService()
     {
@@ -225,19 +230,34 @@ public class GlobalHotkeyService : IDisposable
         if (msg == WM_APP_REGISTER)
         {
             // Register from the message-loop thread that owns hWnd.
-            _registered = RegisterHotKey(hWnd, HOTKEY_ID,
+            var quickSendRegistered = RegisterHotKey(hWnd, QUICK_SEND_HOTKEY_ID,
                 MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
                 VK_C);
+            var voiceToggleRegistered = RegisterHotKey(hWnd, VOICE_TOGGLE_HOTKEY_ID,
+                MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+                VK_V);
+
+            _registered = quickSendRegistered && voiceToggleRegistered;
 
             if (_registered)
             {
-                Logger.Info("Global hotkey registered: Ctrl+Alt+Shift+C");
+                Logger.Info("Global hotkeys registered: Ctrl+Alt+Shift+C (Quick Send), Ctrl+Alt+Shift+V (Voice Pause)");
             }
             else
             {
+                if (quickSendRegistered)
+                {
+                    UnregisterHotKey(hWnd, QUICK_SEND_HOTKEY_ID);
+                }
+
+                if (voiceToggleRegistered)
+                {
+                    UnregisterHotKey(hWnd, VOICE_TOGGLE_HOTKEY_ID);
+                }
+
                 var err = Marshal.GetLastWin32Error();
                 var errMsg = new Win32Exception(err).Message;
-                Logger.Warn($"Failed to register global hotkey (Win32Error={err}: {errMsg})");
+                Logger.Warn($"Failed to register one or more global hotkeys (Win32Error={err}: {errMsg})");
             }
 
             _opCompleted.Set();
@@ -250,9 +270,10 @@ public class GlobalHotkeyService : IDisposable
             {
                 if (_registered)
                 {
-                    UnregisterHotKey(hWnd, HOTKEY_ID);
+                    UnregisterHotKey(hWnd, QUICK_SEND_HOTKEY_ID);
+                    UnregisterHotKey(hWnd, VOICE_TOGGLE_HOTKEY_ID);
                     _registered = false;
-                    Logger.Info("Global hotkey unregistered");
+                    Logger.Info("Global hotkeys unregistered");
                 }
             }
             catch (Exception ex)
@@ -266,10 +287,15 @@ public class GlobalHotkeyService : IDisposable
             return IntPtr.Zero;
         }
 
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+        if (msg == WM_HOTKEY && wParam.ToInt32() == QUICK_SEND_HOTKEY_ID)
         {
             Logger.Info("Hotkey pressed: Ctrl+Alt+Shift+C");
-            OnHotkeyPressed();
+            OnQuickSendHotkeyPressed();
+        }
+        else if (msg == WM_HOTKEY && wParam.ToInt32() == VOICE_TOGGLE_HOTKEY_ID)
+        {
+            Logger.Info("Hotkey pressed: Ctrl+Alt+Shift+V");
+            OnVoiceToggleHotkeyPressed();
         }
         return DefWindowProc(hWnd, msg, wParam, lParam);
     }
@@ -302,9 +328,14 @@ public class GlobalHotkeyService : IDisposable
         }
     }
 
-    internal void OnHotkeyPressed()
+    internal void OnQuickSendHotkeyPressed()
     {
-        HotkeyPressed?.Invoke(this, EventArgs.Empty);
+        QuickSendHotkeyPressed?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal void OnVoiceToggleHotkeyPressed()
+    {
+        VoiceToggleHotkeyPressed?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()

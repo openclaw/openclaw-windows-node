@@ -51,13 +51,75 @@ For macOS parity, `AlwaysOn` should follow Talk Mode's documented control flow:
 
 - the node captures audio locally
 - local speech recognition turns that audio into transcript text
-- the transcript is sent to OpenClaw via `chat.send` on the main session
+- if the tray chat window is open and ready, the final transcript is submitted through the tray chat window's own compose/send path
+- otherwise, the transcript is sent to OpenClaw via direct `chat.send` on the main session
 - OpenClaw returns the assistant reply as normal chat output
 - the node performs local TTS playback of that reply
 
 That means the first Windows parity target is transcript transport, not raw audio upload. Streaming audio frames in or out of OpenClaw remains a future protocol extension, not part of this design.
 
-The current Windows implementation uses a voice-local operator connection inside the tray app while node mode is active. That sidecar connection exists only to carry `chat.send` and assistant chat events for `AlwaysOn`.
+The current Windows implementation uses a voice-local operator connection inside the tray app while node mode is active. That sidecar connection exists to carry assistant chat events for `AlwaysOn`, and to provide a fallback direct `chat.send` path when the tray chat window is not open.
+
+## Tray Chat Integration Decision
+
+Voice mode and typed chat must remain part of the same user-visible conversation in the tray app. Creating a separate "voice session" would reduce implementation complexity, but it would make the chat experience harder to understand:
+
+- voice utterances would not appear in the same tray chat history as typed messages
+- the user would need to reason about two concurrent sessions for one tray app
+- voice replies and typed replies could diverge across windows
+
+### Problem Encountered
+
+When `AlwaysOn` sends transcript text to the main OpenClaw session, the upstream session can include scaffolding such as `<relevant-memories>...</relevant-memories>` in the rendered user message body shown in the tray chat window.
+
+That produced two UX problems:
+
+- the tray chat bubble did not show the clean spoken transcript the user actually said
+- the embedded tray chat window had no draft/update API for showing interim STT hypotheses while the user was still speaking
+
+### Routes Examined
+
+1. Dedicated voice session
+   - technically clean from a transport perspective
+   - rejected because it fragments the tray chat experience and is confusing for users
+2. Upstream OpenClaw change to suppress memory scaffolding for voice turns
+   - desirable long-term if OpenClaw exposes a first-class voice-aware chat surface
+   - rejected for the current phase because this Windows tray feature must work without waiting for upstream protocol/UI changes
+3. Tray-local DOM mediation in the embedded chat window
+   - chosen
+   - keeps a single session and single tray chat history
+   - allows interim hypotheses to appear in the tray compose box in near real time
+   - allows the tray app to submit through the same UI path as typed messages when the tray chat window is open
+4. Hybrid submission path
+   - chosen
+   - when the tray chat window is open, voice submits through the chat window DOM send path
+   - when the tray chat window is closed or unavailable, voice falls back to direct `chat.send`
+   - preserves windowless voice mode without forcing the transport layer to depend on WebView availability
+
+### Chosen Approach
+
+The tray app keeps a tray-local interim transcript buffer for the current utterance, independent of whether the chat window is open.
+
+The embedded [WebChatWindow.xaml.cs](C:/dev/openclaw-windows-node/src/OpenClaw.Tray.WinUI/Windows/WebChatWindow.xaml.cs) owns the tray-local chat integration layer:
+
+- interim STT hypotheses from Windows speech recognition are injected into the tray chat compose box while the user is speaking
+- if the chat window opens during an utterance, the current buffered transcript is copied into the compose box immediately
+- if the chat window closes during an utterance, voice continues windowless and the final utterance still submits
+- if the chat window is open and ready when the utterance finalizes, the tray app either auto-submits through the page's own send path or leaves the draft for manual send, depending on `Voice.AlwaysOn.ChatWindowSubmitMode`
+- in `WaitForUser` mode, voice capture pauses after finalizing the draft so the next utterance does not overwrite the unsent message
+- if the chat window is not open or not ready, the voice service falls back to direct `chat.send`
+- rendered chat content inside the tray window is still sanitized to remove `<relevant-memories>...</relevant-memories>` blocks as a fallback for messages that were sent while windowless
+
+This is intentionally a tray-local integration decision, not a protocol-level rewrite of the stored upstream transcript.
+
+### Tradeoffs
+
+- preserves a single visible conversation for the user
+- avoids a second voice-only session in the tray UI
+- when the tray chat window is open, voice follows the same send path as typed tray-chat messages
+- depends on DOM integration inside the embedded WebView chat surface because OpenClaw does not currently expose a dedicated draft/update or voice-submit API for the tray app
+- still requires a direct fallback path for windowless voice mode
+- only affects the tray app chat window; other clients still render upstream content according to their own rules
 
 ## Provider Selection
 
@@ -191,7 +253,8 @@ Voice settings are persisted as `SettingsData.Voice` in [SettingsData.cs](C:/dev
       "MinSpeechMs": 250,
       "EndSilenceMs": 900,
       "MaxUtteranceMs": 15000,
-      "AutoSubmit": true
+      "AutoSubmit": true,
+      "ChatWindowSubmitMode": "AutoSend"
     }
   }
 }
@@ -235,6 +298,7 @@ Voice settings are persisted as `SettingsData.Voice` in [SettingsData.cs](C:/dev
 | `Voice.AlwaysOn.EndSilenceMs` | int | `900` | always-on | Silence timeout used to finalize an utterance |
 | `Voice.AlwaysOn.MaxUtteranceMs` | int | `15000` | always-on | Hard cap on utterance length before forced submission/finalization |
 | `Voice.AlwaysOn.AutoSubmit` | bool | `true` | always-on | If `true`, completed utterances are submitted immediately without extra confirmation |
+| `Voice.AlwaysOn.ChatWindowSubmitMode` | enum | `AutoSend` | always-on | When the tray chat window is open, either auto-send the finalized utterance or leave it in the compose box for manual send |
 
 At runtime today, those device ids are persisted and surfaced in the UI, but the v1 `AlwaysOn` path still uses the Windows system speech stack defaults for capture and playback.
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
@@ -39,9 +40,15 @@ public sealed class VoiceService : IDisposable
     private bool _recognitionActive;
     private bool _awaitingReply;
     private bool _isSpeaking;
+    private bool _quickPaused;
     private string? _lastTranscript;
     private DateTime _lastTranscriptUtc;
+    private string? _pendingManualTranscript;
     private bool _disposed;
+
+    public event EventHandler<VoiceConversationTurnEventArgs>? ConversationTurnAvailable;
+    public event EventHandler<VoiceTranscriptDraftEventArgs>? TranscriptDraftUpdated;
+    public Func<string, string?, Task<VoiceTranscriptSubmitOutcome>>? TranscriptSubmitter { get; set; }
 
     public VoiceService(IOpenClawLogger logger, SettingsManager settings)
     {
@@ -82,7 +89,19 @@ public sealed class VoiceService : IDisposable
                 _settings.Save();
             }
 
-            if (_status.Running)
+            if (! _settings.Voice.Enabled || _settings.Voice.Mode == VoiceActivationMode.Off)
+            {
+                _quickPaused = false;
+                _status = BuildStoppedStatus(_status.SessionKey, _status.LastError);
+            }
+            else if (_quickPaused || _status.State == VoiceRuntimeState.Paused)
+            {
+                _status = BuildPausedStatus(
+                    _runtimeModeOverride ?? _settings.Voice.Mode,
+                    _status.SessionKey,
+                    _status.LastError);
+            }
+            else if (_status.Running)
             {
                 _status = BuildRunningStatus(
                     _runtimeModeOverride ?? _settings.Voice.Mode,
@@ -106,6 +125,59 @@ public sealed class VoiceService : IDisposable
         lock (_gate)
         {
             return Task.FromResult(Clone(_status));
+        }
+    }
+
+    public async Task<VoiceStatusInfo> ToggleQuickPauseAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        VoiceActivationMode mode;
+        string? sessionKey;
+        bool shouldResume;
+
+        lock (_gate)
+        {
+            mode = _runtimeModeOverride ?? _settings.Voice.Mode;
+            sessionKey = _status.SessionKey;
+
+            if (!_settings.Voice.Enabled || mode == VoiceActivationMode.Off)
+            {
+                _quickPaused = false;
+                _status = BuildStoppedStatus(sessionKey, "Voice mode is disabled");
+                return Clone(_status);
+            }
+
+            shouldResume = _quickPaused || _status.State == VoiceRuntimeState.Paused;
+            if (!shouldResume)
+            {
+                _quickPaused = true;
+            }
+        }
+
+        if (shouldResume)
+        {
+            lock (_gate)
+            {
+                _quickPaused = false;
+            }
+
+            var resumed = await StartAsync(new VoiceStartArgs
+            {
+                Mode = mode,
+                SessionKey = sessionKey
+            });
+            _logger.Info($"Voice runtime resumed via quick toggle ({mode})");
+            return resumed;
+        }
+
+        await StopRuntimeResourcesAsync(updateStoppedStatus: false);
+
+        lock (_gate)
+        {
+            _status = BuildPausedStatus(mode, sessionKey, null);
+            _logger.Info($"Voice runtime paused via quick toggle ({mode})");
+            return Clone(_status);
         }
     }
 
@@ -138,7 +210,14 @@ public sealed class VoiceService : IDisposable
 
             if (!effectiveSettings.Enabled || requestedMode == VoiceActivationMode.Off)
             {
+                _quickPaused = false;
                 _status = BuildStoppedStatus(sessionKey, "Voice mode is disabled");
+                return Clone(_status);
+            }
+
+            if (_quickPaused)
+            {
+                _status = BuildPausedStatus(requestedMode, sessionKey, _status.LastError);
                 return Clone(_status);
             }
         }
@@ -191,6 +270,7 @@ public sealed class VoiceService : IDisposable
 
         lock (_gate)
         {
+            _quickPaused = false;
             _runtimeModeOverride = null;
             _status = BuildStoppedStatus(_status.SessionKey, args.Reason);
             _logger.Info($"Voice runtime stopped{(string.IsNullOrWhiteSpace(args.Reason) ? string.Empty : $": {args.Reason}")}");
@@ -277,6 +357,7 @@ public sealed class VoiceService : IDisposable
 
     private async Task StartAlwaysOnRuntimeAsync(VoiceSettings settings, string? sessionKey)
     {
+        var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey) ? "main" : sessionKey;
         var selectedSpeechToText = VoiceProviderCatalogService.ResolveSpeechToTextProvider(
             settings.SpeechToTextProviderId,
             _logger);
@@ -302,6 +383,7 @@ public sealed class VoiceService : IDisposable
             _logger.Warn("Selected output device is saved, but AlwaysOn currently uses the default speech output device.");
         }
 
+        recognizer.HypothesisGenerated += OnSpeechHypothesisGenerated;
         recognizer.ContinuousRecognitionSession.ResultGenerated += OnSpeechResultGenerated;
         recognizer.ContinuousRecognitionSession.Completed += OnSpeechRecognitionCompleted;
 
@@ -313,7 +395,7 @@ public sealed class VoiceService : IDisposable
             _mediaPlayer = player;
             _status = BuildRunningStatus(
                 VoiceActivationMode.AlwaysOn,
-                sessionKey,
+                effectiveSessionKey,
                 VoiceRuntimeState.Arming,
                 fallbackMessage);
         }
@@ -327,7 +409,7 @@ public sealed class VoiceService : IDisposable
             {
                 _status = BuildRunningStatus(
                     VoiceActivationMode.AlwaysOn,
-                    sessionKey,
+                    effectiveSessionKey,
                     VoiceRuntimeState.ListeningContinuously,
                     fallbackMessage);
             }
@@ -392,7 +474,7 @@ public sealed class VoiceService : IDisposable
             {
                 _chatClient = new OpenClawGatewayClient(_settings.GatewayUrl, _settings.Token, _logger);
                 _chatClient.StatusChanged += OnChatTransportStatusChanged;
-                _chatClient.NotificationReceived += OnChatNotificationReceived;
+                _chatClient.ChatMessageReceived += OnChatMessageReceived;
                 existingClient = _chatClient;
                 _chatTransportStatus = ConnectionStatus.Connecting;
             }
@@ -510,12 +592,41 @@ public sealed class VoiceService : IDisposable
         }
     }
 
-    private async Task HandleRecognizedTextAsync(string text)
+    private void OnSpeechHypothesisGenerated(SpeechRecognizer sender, SpeechRecognitionHypothesisGeneratedEventArgs args)
     {
-        CancellationToken cancellationToken;
+        string? sessionKey = null;
+        string? text = null;
 
         lock (_gate)
         {
+            if (_runtimeCts == null ||
+                _status.Mode != VoiceActivationMode.AlwaysOn ||
+                !_status.Running ||
+                _awaitingReply ||
+                _isSpeaking)
+            {
+                return;
+            }
+
+            text = args.Hypothesis?.Text?.Trim();
+            sessionKey = GetCurrentVoiceSessionKey();
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        RaiseTranscriptDraft(text, sessionKey, clear: false);
+    }
+
+    private async Task HandleRecognizedTextAsync(string text)
+    {
+            CancellationToken cancellationToken;
+            string sessionKey;
+
+            lock (_gate)
+            {
             if (_runtimeCts == null || _status.Mode != VoiceActivationMode.AlwaysOn || !_status.Running)
             {
                 return;
@@ -534,15 +645,11 @@ public sealed class VoiceService : IDisposable
 
             _lastTranscript = text;
             _lastTranscriptUtc = DateTime.UtcNow;
-            _awaitingReply = true;
-            _status = BuildRunningStatus(
-                VoiceActivationMode.AlwaysOn,
-                _status.SessionKey,
-                VoiceRuntimeState.AwaitingResponse,
-                _status.LastError);
-            _status.LastUtteranceUtc = DateTime.UtcNow;
             cancellationToken = _runtimeCts.Token;
-        }
+            sessionKey = GetCurrentVoiceSessionKey();
+            }
+
+        RaiseTranscriptDraft(text, sessionKey, clear: false);
 
         await StopRecognitionSessionAsync();
 
@@ -551,9 +658,11 @@ public sealed class VoiceService : IDisposable
             await EnsureChatTransportAsync(cancellationToken);
 
             OpenClawGatewayClient? client;
+            Func<string, string?, Task<VoiceTranscriptSubmitOutcome>>? transcriptSubmitter;
             lock (_gate)
             {
                 client = _chatClient;
+                transcriptSubmitter = TranscriptSubmitter;
             }
 
             if (client == null)
@@ -562,7 +671,50 @@ public sealed class VoiceService : IDisposable
             }
 
             _logger.Info($"Voice transcript captured: {text}");
-            await client.SendChatMessageAsync(text);
+            var submitOutcome = VoiceTranscriptSubmitOutcome.Unavailable;
+            if (transcriptSubmitter != null)
+            {
+                submitOutcome = await transcriptSubmitter(text, sessionKey);
+            }
+
+            if (submitOutcome == VoiceTranscriptSubmitOutcome.Unavailable)
+            {
+                await client.SendChatMessageAsync(text, sessionKey);
+                submitOutcome = VoiceTranscriptSubmitOutcome.Submitted;
+            }
+
+            if (submitOutcome == VoiceTranscriptSubmitOutcome.DeferredToUser)
+            {
+                lock (_gate)
+                {
+                    _awaitingReply = false;
+                    _pendingManualTranscript = text;
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.AlwaysOn,
+                        _status.SessionKey,
+                        VoiceRuntimeState.PendingManualSend,
+                        "Draft ready in tray chat window. Send it manually to continue.");
+                    _status.LastUtteranceUtc = DateTime.UtcNow;
+                }
+
+                RaiseTranscriptDraft(text, sessionKey, clear: false);
+                return;
+            }
+
+            lock (_gate)
+            {
+                _awaitingReply = true;
+                _pendingManualTranscript = null;
+                _status = BuildRunningStatus(
+                    VoiceActivationMode.AlwaysOn,
+                    _status.SessionKey,
+                    VoiceRuntimeState.AwaitingResponse,
+                    _status.LastError);
+                _status.LastUtteranceUtc = DateTime.UtcNow;
+            }
+
+            RaiseConversationTurn(VoiceConversationDirection.Outgoing, text, sessionKey);
+            RaiseTranscriptDraft(string.Empty, sessionKey, clear: true);
             _ = MonitorReplyTimeoutAsync(text, cancellationToken);
         }
         catch (Exception ex)
@@ -581,6 +733,35 @@ public sealed class VoiceService : IDisposable
 
             await StartRecognitionSessionAsync();
         }
+    }
+
+    public void NotifyManualTranscriptSubmitted(string text, string? sessionKey = null)
+    {
+        CancellationToken cancellationToken;
+        string effectiveSessionKey;
+
+        lock (_gate)
+        {
+            if (_runtimeCts == null || _status.Mode != VoiceActivationMode.AlwaysOn || !_status.Running)
+            {
+                return;
+            }
+
+            cancellationToken = _runtimeCts.Token;
+            effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey) ? GetCurrentVoiceSessionKey() : sessionKey!;
+            _pendingManualTranscript = null;
+            _awaitingReply = true;
+            _status = BuildRunningStatus(
+                VoiceActivationMode.AlwaysOn,
+                _status.SessionKey,
+                VoiceRuntimeState.AwaitingResponse,
+                _status.LastError);
+            _status.LastUtteranceUtc = DateTime.UtcNow;
+        }
+
+        RaiseConversationTurn(VoiceConversationDirection.Outgoing, text, effectiveSessionKey);
+        RaiseTranscriptDraft(string.Empty, effectiveSessionKey, clear: true);
+        _ = MonitorReplyTimeoutAsync(text, cancellationToken);
     }
 
     private async Task MonitorReplyTimeoutAsync(string transcript, CancellationToken cancellationToken)
@@ -616,9 +797,11 @@ public sealed class VoiceService : IDisposable
         }
     }
 
-    private async void OnChatNotificationReceived(object? sender, OpenClawNotification notification)
+    private async void OnChatMessageReceived(object? sender, ChatMessageEventArgs args)
     {
-        if (!notification.IsChat || string.IsNullOrWhiteSpace(notification.Message))
+        if (!args.IsFinal ||
+            !string.Equals(args.Role, "assistant", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(args.Message))
         {
             return;
         }
@@ -632,18 +815,43 @@ public sealed class VoiceService : IDisposable
                 return;
             }
 
+            if (!IsMatchingSessionKey(args.SessionKey, GetCurrentVoiceSessionKey()))
+            {
+                return;
+            }
+
             _awaitingReply = false;
             _isSpeaking = true;
-                _status = BuildRunningStatus(
-                    VoiceActivationMode.AlwaysOn,
-                    _status.SessionKey,
-                    VoiceRuntimeState.PlayingResponse,
-                    _status.LastError);
-            text = notification.Message;
+            _status = BuildRunningStatus(
+                VoiceActivationMode.AlwaysOn,
+                _status.SessionKey,
+                VoiceRuntimeState.PlayingResponse,
+                _status.LastError);
+            text = PrepareReplyForSpeech(args.Message);
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            lock (_gate)
+            {
+                _isSpeaking = false;
+                if (_status.Running)
+                {
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.AlwaysOn,
+                        _status.SessionKey,
+                        VoiceRuntimeState.ListeningContinuously,
+                        _status.LastError);
+                }
+            }
+
+            await StartRecognitionSessionAsync();
+            return;
         }
 
         try
         {
+            RaiseConversationTurn(VoiceConversationDirection.Incoming, text, args.SessionKey);
             await SpeakTextAsync(text);
         }
         catch (Exception ex)
@@ -850,12 +1058,14 @@ public sealed class VoiceService : IDisposable
 
             _awaitingReply = false;
             _isSpeaking = false;
+            _pendingManualTranscript = null;
         }
 
         try { runtimeCts?.Cancel(); } catch { }
 
         if (recognizer != null)
         {
+            recognizer.HypothesisGenerated -= OnSpeechHypothesisGenerated;
             recognizer.ContinuousRecognitionSession.ResultGenerated -= OnSpeechResultGenerated;
             recognizer.ContinuousRecognitionSession.Completed -= OnSpeechRecognitionCompleted;
 
@@ -875,7 +1085,7 @@ public sealed class VoiceService : IDisposable
         if (chatClient != null)
         {
             chatClient.StatusChanged -= OnChatTransportStatusChanged;
-            chatClient.NotificationReceived -= OnChatNotificationReceived;
+            chatClient.ChatMessageReceived -= OnChatMessageReceived;
             try { await chatClient.DisconnectAsync(); } catch { }
             try { chatClient.Dispose(); } catch { }
         }
@@ -888,6 +1098,70 @@ public sealed class VoiceService : IDisposable
             {
                 _status = BuildStoppedStatus(sessionKey, "Disposed");
             }
+        }
+
+        RaiseTranscriptDraft(string.Empty, sessionKey, clear: true);
+    }
+
+    private string GetCurrentVoiceSessionKey()
+    {
+        return string.IsNullOrWhiteSpace(_status.SessionKey) ? "main" : _status.SessionKey!;
+    }
+
+    private static bool IsMatchingSessionKey(string? actualSessionKey, string? expectedSessionKey)
+    {
+        actualSessionKey = string.IsNullOrWhiteSpace(actualSessionKey) ? "main" : actualSessionKey;
+        expectedSessionKey = string.IsNullOrWhiteSpace(expectedSessionKey) ? "main" : expectedSessionKey;
+
+        if (string.Equals(actualSessionKey, expectedSessionKey, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return IsMainSessionKey(actualSessionKey) && IsMainSessionKey(expectedSessionKey);
+    }
+
+    private static bool IsMainSessionKey(string sessionKey)
+    {
+        return sessionKey == "main" || sessionKey.Contains(":main:", StringComparison.Ordinal);
+    }
+
+    private static string PrepareReplyForSpeech(string text)
+    {
+        var trimmed = text.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return string.Empty;
+        }
+
+        var firstNewline = trimmed.IndexOf('\n');
+        if (firstNewline <= 0)
+        {
+            return trimmed;
+        }
+
+        var firstLine = trimmed[..firstNewline].Trim();
+        if (!firstLine.StartsWith("{", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(firstLine);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                !doc.RootElement.TryGetProperty("voice", out _) &&
+                !doc.RootElement.TryGetProperty("voiceId", out _) &&
+                !doc.RootElement.TryGetProperty("voice_id", out _))
+            {
+                return trimmed;
+            }
+
+            return trimmed[(firstNewline + 1)..].TrimStart();
+        }
+        catch (JsonException)
+        {
+            return trimmed;
         }
     }
 
@@ -935,6 +1209,26 @@ public sealed class VoiceService : IDisposable
         };
     }
 
+    private VoiceStatusInfo BuildPausedStatus(VoiceActivationMode mode, string? sessionKey, string? reason)
+    {
+        var settings = _settings.Voice;
+        return new VoiceStatusInfo
+        {
+            Available = true,
+            Running = false,
+            Mode = mode,
+            State = VoiceRuntimeState.Paused,
+            SessionKey = sessionKey,
+            InputDeviceId = settings.InputDeviceId,
+            OutputDeviceId = settings.OutputDeviceId,
+            WakeWordModelId = settings.WakeWord.ModelId,
+            WakeWordLoaded = false,
+            LastWakeWordUtc = _status.LastWakeWordUtc,
+            LastUtteranceUtc = _status.LastUtteranceUtc,
+            LastError = reason
+        };
+    }
+
     private VoiceStatusInfo BuildErrorStatus(VoiceActivationMode mode, string? sessionKey, string? reason)
     {
         var status = BuildRunningStatus(mode, sessionKey, VoiceRuntimeState.Error, reason);
@@ -948,6 +1242,7 @@ public sealed class VoiceService : IDisposable
         {
             Mode = source.Mode,
             Enabled = source.Enabled,
+            ShowConversationToasts = source.ShowConversationToasts,
             SpeechToTextProviderId = source.SpeechToTextProviderId,
             TextToSpeechProviderId = source.TextToSpeechProviderId,
             InputDeviceId = source.InputDeviceId,
@@ -969,7 +1264,8 @@ public sealed class VoiceService : IDisposable
                 MinSpeechMs = source.AlwaysOn.MinSpeechMs,
                 EndSilenceMs = source.AlwaysOn.EndSilenceMs,
                 MaxUtteranceMs = source.AlwaysOn.MaxUtteranceMs,
-                AutoSubmit = source.AlwaysOn.AutoSubmit
+                AutoSubmit = source.AlwaysOn.AutoSubmit,
+                ChatWindowSubmitMode = source.AlwaysOn.ChatWindowSubmitMode
             }
         };
     }
@@ -1037,4 +1333,60 @@ public sealed class VoiceService : IDisposable
         return ex.Message.Contains("speech privacy policy", StringComparison.OrdinalIgnoreCase) ||
                ex.Message.Contains("online speech recognition", StringComparison.OrdinalIgnoreCase);
     }
+
+    private void RaiseConversationTurn(VoiceConversationDirection direction, string text, string? sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        ConversationTurnAvailable?.Invoke(this, new VoiceConversationTurnEventArgs
+        {
+            Direction = direction,
+            Message = text,
+            SessionKey = string.IsNullOrWhiteSpace(sessionKey) ? "main" : sessionKey,
+            Mode = _runtimeModeOverride ?? _settings.Voice.Mode
+        });
+    }
+
+    private void RaiseTranscriptDraft(string text, string? sessionKey, bool clear)
+    {
+        TranscriptDraftUpdated?.Invoke(this, new VoiceTranscriptDraftEventArgs
+        {
+            SessionKey = string.IsNullOrWhiteSpace(sessionKey) ? "main" : sessionKey,
+            Text = clear ? string.Empty : text,
+            Clear = clear,
+            Mode = _runtimeModeOverride ?? _settings.Voice.Mode
+        });
+    }
+}
+
+public enum VoiceConversationDirection
+{
+    Outgoing,
+    Incoming
+}
+
+public sealed class VoiceConversationTurnEventArgs : EventArgs
+{
+    public VoiceConversationDirection Direction { get; set; }
+    public string SessionKey { get; set; } = "main";
+    public string Message { get; set; } = "";
+    public VoiceActivationMode Mode { get; set; } = VoiceActivationMode.Off;
+}
+
+public sealed class VoiceTranscriptDraftEventArgs : EventArgs
+{
+    public string SessionKey { get; set; } = "main";
+    public string Text { get; set; } = "";
+    public bool Clear { get; set; }
+    public VoiceActivationMode Mode { get; set; } = VoiceActivationMode.Off;
+}
+
+public enum VoiceTranscriptSubmitOutcome
+{
+    Unavailable,
+    Submitted,
+    DeferredToUser
 }

@@ -74,6 +74,7 @@ public partial class App : Application
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
     private VoiceService? _voiceService;
+    private VoiceChatCoordinator? _voiceChatCoordinator;
     
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
@@ -253,6 +254,8 @@ public partial class App : Application
         // Initialize settings
         _settings = new SettingsManager();
         _voiceService = new VoiceService(new AppLogger(), _settings);
+        _voiceChatCoordinator = new VoiceChatCoordinator(_voiceService, _settings, _dispatcherQueue!);
+        _voiceChatCoordinator.ConversationTurnAvailable += OnVoiceConversationTurnAvailable;
 
         // First-run check
         if (string.IsNullOrWhiteSpace(_settings.Token))
@@ -287,7 +290,8 @@ public partial class App : Application
         if (_settings.GlobalHotkeyEnabled)
         {
             _globalHotkey = new GlobalHotkeyService();
-            _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
+            _globalHotkey.QuickSendHotkeyPressed += OnGlobalQuickSendHotkeyPressed;
+            _globalHotkey.VoiceToggleHotkeyPressed += OnGlobalVoiceToggleHotkeyPressed;
             _globalHotkey.Register();
         }
 
@@ -518,6 +522,7 @@ public partial class App : Application
         {
             case "status": ShowStatusDetail(); break;
             case "voice-settings": ShowVoiceModeSettings(); break;
+            case "voice-toggle-pause": _ = ToggleVoiceQuickPauseAsync(); break;
             case "dashboard": OpenDashboard(); break;
             case "webchat": ShowWebChat(); break;
             case "quicksend": ShowQuickSend(); break;
@@ -732,7 +737,17 @@ public partial class App : Application
     private string GetRunningVoiceModeLabel()
     {
         var status = _voiceService?.CurrentStatus;
-        if (status?.Running == true)
+        if (status == null)
+        {
+            return "Off";
+        }
+
+        if (status.State == VoiceRuntimeState.Paused)
+        {
+            return $"{status.Mode} (Paused)";
+        }
+
+        if (status.Running)
         {
             return status.Mode switch
             {
@@ -743,6 +758,30 @@ public partial class App : Application
         }
 
         return "Off";
+    }
+
+    private bool CanQuickToggleVoiceMode()
+    {
+        if (_settings?.EnableNodeMode != true || _voiceService == null)
+        {
+            return false;
+        }
+
+        var status = _voiceService.CurrentStatus;
+        if (status.State == VoiceRuntimeState.Paused)
+        {
+            return true;
+        }
+
+        return _settings.Voice.Enabled && _settings.Voice.Mode != VoiceActivationMode.Off;
+    }
+
+    private string GetVoiceQuickToggleLabel()
+    {
+        var status = _voiceService?.CurrentStatus;
+        return status?.State == VoiceRuntimeState.Paused
+            ? "Resume Voice"
+            : "Pause Voice";
     }
 
     private string GetVoiceDeviceSummary()
@@ -774,6 +813,7 @@ public partial class App : Application
 
         menu.AddMenuItem($"Voice Mode: {GetRunningVoiceModeLabel()}", "🎙️", "voice-settings");
         menu.AddMenuItem($"↳ {GetVoiceDeviceSummary()}", "", "", isEnabled: false, indent: true);
+        menu.AddMenuItem($"↳ {GetVoiceQuickToggleLabel()} (Ctrl+Alt+Shift+V)", "", "voice-toggle-pause", isEnabled: CanQuickToggleVoiceMode(), indent: true);
         if (_settings?.EnableNodeMode != true)
         {
             menu.AddMenuItem("↳ Enable Node Mode to activate voice runtime", "", "", isEnabled: false, indent: true);
@@ -1676,8 +1716,10 @@ public partial class App : Application
         if (_settings!.GlobalHotkeyEnabled)
         {
             _globalHotkey ??= new GlobalHotkeyService();
-            _globalHotkey.HotkeyPressed -= OnGlobalHotkeyPressed;
-            _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
+            _globalHotkey.QuickSendHotkeyPressed -= OnGlobalQuickSendHotkeyPressed;
+            _globalHotkey.QuickSendHotkeyPressed += OnGlobalQuickSendHotkeyPressed;
+            _globalHotkey.VoiceToggleHotkeyPressed -= OnGlobalVoiceToggleHotkeyPressed;
+            _globalHotkey.VoiceToggleHotkeyPressed += OnGlobalVoiceToggleHotkeyPressed;
             _globalHotkey.Register();
         }
         else
@@ -1694,7 +1736,12 @@ public partial class App : Application
         if (_webChatWindow == null || _webChatWindow.IsClosed)
         {
             _webChatWindow = new WebChatWindow(_settings!.GatewayUrl, _settings.Token);
-            _webChatWindow.Closed += (s, e) => _webChatWindow = null;
+            _webChatWindow.Closed += (s, e) =>
+            {
+                _voiceChatCoordinator?.DetachWindow(_webChatWindow);
+                _webChatWindow = null;
+            };
+            _voiceChatCoordinator?.AttachWindow(_webChatWindow);
         }
         _webChatWindow.Activate();
     }
@@ -1897,7 +1944,7 @@ public partial class App : Application
         }
     }
 
-    private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
+    private void OnGlobalQuickSendHotkeyPressed(object? sender, EventArgs e)
     {
         // Hotkey events are raised from a dedicated Win32 message-loop thread.
         // Creating/activating WinUI windows must happen on the app's UI thread.
@@ -1911,6 +1958,136 @@ public partial class App : Application
         if (!enqueued)
         {
             Logger.Warn("Hotkey pressed but failed to enqueue QuickSend on UI thread");
+        }
+    }
+
+    private void OnGlobalVoiceToggleHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("Voice hotkey pressed but DispatcherQueue is null");
+            return;
+        }
+
+        var enqueued = _dispatcherQueue.TryEnqueue(async () => await ToggleVoiceQuickPauseAsync());
+        if (!enqueued)
+        {
+            Logger.Warn("Voice hotkey pressed but failed to enqueue Voice quick pause on UI thread");
+        }
+    }
+
+    private async Task ToggleVoiceQuickPauseAsync()
+    {
+        if (_voiceService == null)
+        {
+            return;
+        }
+
+        if (_settings?.EnableNodeMode != true)
+        {
+            Logger.Warn("Voice quick pause blocked: Node Mode is disabled");
+            return;
+        }
+
+        if (!CanQuickToggleVoiceMode())
+        {
+            Logger.Warn("Voice quick pause blocked: Voice Mode is off");
+            return;
+        }
+
+        try
+        {
+            var status = await _voiceService.ToggleQuickPauseAsync();
+            _voiceModeWindow?.RefreshStatus();
+            ShowVoiceQuickToggleToast(status);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Voice quick pause failed: {ex.Message}");
+        }
+    }
+
+    private static void ShowVoiceQuickToggleToast(VoiceStatusInfo status)
+    {
+        try
+        {
+            var title = status.State == VoiceRuntimeState.Paused
+                ? "Voice paused"
+                : "Voice resumed";
+            var detail = status.State == VoiceRuntimeState.Paused
+                ? $"{status.Mode} is paused. Press Ctrl+Alt+Shift+V to resume."
+                : $"{status.Mode} is active again.";
+
+            new ToastContentBuilder()
+                .AddText(title)
+                .AddText(detail)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to show voice pause toast: {ex.Message}");
+        }
+    }
+
+    private void OnVoiceConversationTurnAvailable(object? sender, VoiceConversationTurnEventArgs args)
+    {
+        if (_dispatcherQueue == null)
+        {
+            return;
+        }
+
+        _dispatcherQueue.TryEnqueue(() => ShowVoiceConversationToast(args));
+    }
+
+    private void ShowVoiceConversationToast(VoiceConversationTurnEventArgs args)
+    {
+        if (_settings?.Voice.ShowConversationToasts != true)
+        {
+            return;
+        }
+
+        var title = args.Direction == VoiceConversationDirection.Outgoing
+            ? "Voice heard"
+            : "Voice reply";
+
+        AddRecentActivity(
+            $"voice: {title}",
+            category: "voice",
+            details: args.Message,
+            dashboardPath: "chat",
+            sessionKey: args.SessionKey);
+
+        NotificationHistoryService.AddNotification(new Services.GatewayNotification
+        {
+            Title = title,
+            Message = args.Message,
+            Category = "voice"
+        });
+
+        if (_settings.ShowNotifications != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var builder = new ToastContentBuilder()
+                .AddText(title)
+                .AddText(args.Message);
+
+            if (args.Direction == VoiceConversationDirection.Incoming)
+            {
+                builder.AddArgument("action", "open_chat")
+                    .AddButton(new ToastButton()
+                        .SetContent("Open Chat")
+                        .AddArgument("action", "open_chat"));
+            }
+
+            builder.Show();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to show voice conversation toast: {ex.Message}");
         }
     }
 
@@ -2123,6 +2300,15 @@ public partial class App : Application
         
         // Dispose cancellation token source
         _deepLinkCts?.Dispose();
+        if (_voiceChatCoordinator != null)
+        {
+            _voiceChatCoordinator.ConversationTurnAvailable -= OnVoiceConversationTurnAvailable;
+            _voiceChatCoordinator.Dispose();
+        }
+        if (_voiceService != null)
+        {
+            _voiceService.TranscriptSubmitter = null;
+        }
         _voiceService?.Dispose();
         
         Exit();

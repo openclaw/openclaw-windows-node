@@ -7,6 +7,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 using WinUIEx;
 using Windows.Foundation;
@@ -17,12 +18,171 @@ public sealed partial class WebChatWindow : WindowEx
 {
     private readonly string _gatewayUrl;
     private readonly string _token;
+    private string _pendingVoiceDraft = string.Empty;
     
     // Store event handlers for cleanup
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navigationCompletedHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navigationStartingHandler;
+    private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
     
     public bool IsClosed { get; private set; }
+    public event EventHandler<VoiceTranscriptSubmittedEventArgs>? VoiceTranscriptSubmitted;
+
+    private const string TrayVoiceIntegrationScript = """
+(() => {
+  const memoryPattern = /<relevant-memories>[\s\S]*?<\/relevant-memories>\s*/gi;
+  const sanitize = (value) => typeof value === 'string' ? value.replace(memoryPattern, '').trimStart() : value;
+  const isVisible = (el) => !!el && !(el.disabled === true) && el.getClientRects().length > 0;
+  let desiredDraft = '';
+  const findComposer = () => {
+    const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"], [contenteditable="plaintext-only"]'));
+    return candidates.find(isVisible) || null;
+  };
+  const setElementValue = (el, value) => {
+    if ('value' in el) {
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (descriptor && descriptor.set) {
+        descriptor.set.call(el, value);
+      } else {
+        el.value = value;
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    if (el.isContentEditable) {
+      el.textContent = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  };
+  const applyDraftIfPossible = () => {
+    const composer = findComposer();
+    if (!composer) return false;
+    setElementValue(composer, desiredDraft);
+    return true;
+  };
+  const findSendButton = () => {
+    const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
+    return buttons.find((button) => {
+      if (!isVisible(button)) return false;
+      if (button.disabled === true || button.getAttribute('aria-disabled') === 'true') return false;
+      const text = ((button.innerText || button.textContent || '') + ' ' + (button.getAttribute('aria-label') || '')).trim().toLowerCase();
+      return text === 'send' || text.startsWith('send ') || text.includes('send ↵') || text.includes('send');
+    }) || null;
+  };
+  const submitDraft = (text) => {
+    desiredDraft = sanitize(text || '');
+    pendingManual = false;
+    const composer = findComposer();
+    if (!composer) return false;
+    setElementValue(composer, desiredDraft);
+    const sendButton = findSendButton();
+    if (sendButton) {
+      sendButton.click();
+      desiredDraft = '';
+      return true;
+    }
+    composer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', which: 13, keyCode: 13, bubbles: true }));
+    composer.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', which: 13, keyCode: 13, bubbles: true }));
+    desiredDraft = '';
+    return true;
+  };
+  let pendingManual = false;
+  const emitManualSubmit = () => {
+    if (!pendingManual) return;
+    const composer = findComposer();
+    if (!composer) return;
+    const current = sanitize(('value' in composer ? composer.value : composer.textContent) || '');
+    if (!current) return;
+    pendingManual = false;
+    desiredDraft = '';
+    if (window.chrome?.webview?.postMessage) {
+      window.chrome.webview.postMessage(JSON.stringify({ type: 'voice-manual-submit', text: current }));
+    }
+  };
+  const cleanTextNodes = () => {
+    if (!document.body) return;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let current;
+    while ((current = walker.nextNode())) {
+      nodes.push(current);
+    }
+    for (const node of nodes) {
+      if (!node || !node.parentElement) continue;
+      const tag = node.parentElement.tagName;
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') continue;
+      const original = node.textContent || '';
+      const cleaned = sanitize(original);
+      if (cleaned !== original) {
+        node.textContent = cleaned;
+      }
+    }
+  };
+  let cleanScheduled = false;
+  const scheduleClean = () => {
+    if (cleanScheduled) return;
+    cleanScheduled = true;
+    queueMicrotask(() => {
+      cleanScheduled = false;
+      cleanTextNodes();
+      applyDraftIfPossible();
+    });
+  };
+  const observer = new MutationObserver(() => scheduleClean());
+  const start = () => {
+    if (!document.body) return;
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    document.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('button, [role="button"], input[type="submit"]') : null;
+      if (!target) return;
+      const sendButton = findSendButton();
+      if (sendButton && target === sendButton) {
+        emitManualSubmit();
+      }
+    }, true);
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      const composer = findComposer();
+      if (!composer) return;
+      if (event.target === composer) {
+        emitManualSubmit();
+      }
+    }, true);
+    scheduleClean();
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+  window.__openClawTrayVoice = {
+    setDraft(text) {
+      desiredDraft = sanitize(text || '');
+      return applyDraftIfPossible();
+    },
+    prepareManualDraft(text) {
+      desiredDraft = sanitize(text || '');
+      pendingManual = true;
+      return applyDraftIfPossible();
+    },
+    clearDraft() {
+      desiredDraft = '';
+      pendingManual = false;
+      return applyDraftIfPossible();
+    },
+    submitDraft(text) {
+      return submitDraft(text);
+    },
+    stripInjectedMemories() {
+      scheduleClean();
+      return true;
+    }
+  };
+})();
+""";
 
     public WebChatWindow(string gatewayUrl, string token)
     {
@@ -56,6 +216,8 @@ public sealed partial class WebChatWindow : WindowEx
                 WebView.CoreWebView2.NavigationCompleted -= _navigationCompletedHandler;
             if (_navigationStartingHandler != null)
                 WebView.CoreWebView2.NavigationStarting -= _navigationStartingHandler;
+            if (_webMessageReceivedHandler != null)
+                WebView.CoreWebView2.WebMessageReceived -= _webMessageReceivedHandler;
         }
     }
 
@@ -84,6 +246,7 @@ public sealed partial class WebChatWindow : WindowEx
             WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             WebView.CoreWebView2.Settings.IsZoomControlEnabled = true;
+            await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(TrayVoiceIntegrationScript);
 
             // Handle navigation events (store for cleanup)
             _navigationCompletedHandler = (s, e) =>
@@ -91,6 +254,7 @@ public sealed partial class WebChatWindow : WindowEx
                 Logger.Info($"WebChatWindow: Navigation completed, success={e.IsSuccess}, status={e.WebErrorStatus}");
                 LoadingRing.IsActive = false;
                 LoadingRing.Visibility = Visibility.Collapsed;
+                _ = RefreshTrayVoiceDomStateAsync();
                 
                 // Show friendly error if connection failed
                 if (!e.IsSuccess && (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
@@ -122,6 +286,38 @@ public sealed partial class WebChatWindow : WindowEx
                 LoadingRing.Visibility = Visibility.Visible;
             };
             WebView.CoreWebView2.NavigationStarting += _navigationStartingHandler;
+
+            _webMessageReceivedHandler = (s, e) =>
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+                    if (!doc.RootElement.TryGetProperty("type", out var typeProp) ||
+                        !string.Equals(typeProp.GetString(), "voice-manual-submit", StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+
+                    var text = doc.RootElement.TryGetProperty("text", out var textProp)
+                        ? textProp.GetString() ?? string.Empty
+                        : string.Empty;
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return;
+                    }
+
+                    VoiceTranscriptSubmitted?.Invoke(this, new VoiceTranscriptSubmittedEventArgs
+                    {
+                        Text = text,
+                        SessionKey = "main"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"WebChatWindow: Failed to process voice web message: {ex.Message}");
+                }
+            };
+            WebView.CoreWebView2.WebMessageReceived += _webMessageReceivedHandler;
 
             // Navigate to chat
             NavigateToChat();
@@ -266,4 +462,82 @@ public sealed partial class WebChatWindow : WindowEx
     {
         WebView.CoreWebView2?.OpenDevToolsWindow();
     }
+
+    public async Task UpdateVoiceTranscriptDraftAsync(string text, bool clear)
+    {
+        _pendingVoiceDraft = clear ? string.Empty : (text ?? string.Empty);
+        await RefreshTrayVoiceDomStateAsync();
+    }
+
+    public async Task<bool> TrySubmitVoiceTranscriptAsync(string text)
+    {
+        if (WebView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var textJson = JsonSerializer.Serialize(text ?? string.Empty);
+            var result = await WebView.CoreWebView2.ExecuteScriptAsync(
+                $"window.__openClawTrayVoice?.submitDraft?.({textJson}) ?? false;");
+            return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"WebChatWindow: Failed to submit voice draft through chat UI: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task<bool> PrepareVoiceTranscriptForManualSendAsync(string text)
+    {
+        if (WebView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var textJson = JsonSerializer.Serialize(text ?? string.Empty);
+            var result = await WebView.CoreWebView2.ExecuteScriptAsync(
+                $"window.__openClawTrayVoice?.prepareManualDraft?.({textJson}) ?? false;");
+            return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"WebChatWindow: Failed to prepare manual voice draft: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task RefreshTrayVoiceDomStateAsync()
+    {
+        if (WebView.CoreWebView2 == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await WebView.CoreWebView2.ExecuteScriptAsync("window.__openClawTrayVoice?.stripInjectedMemories?.();");
+
+            var draftJson = JsonSerializer.Serialize(_pendingVoiceDraft ?? string.Empty);
+            var script = string.IsNullOrWhiteSpace(_pendingVoiceDraft)
+                ? "window.__openClawTrayVoice?.clearDraft?.();"
+                : $"window.__openClawTrayVoice?.setDraft?.({draftJson});";
+
+            await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"WebChatWindow: Failed to apply voice DOM state: {ex.Message}");
+        }
+    }
+}
+
+public sealed class VoiceTranscriptSubmittedEventArgs : EventArgs
+{
+    public string Text { get; set; } = "";
+    public string SessionKey { get; set; } = "main";
 }
