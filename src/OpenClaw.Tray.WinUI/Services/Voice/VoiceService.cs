@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json;
 using System.Threading;
@@ -989,7 +990,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
 
         if (provider.TextToSpeechHttp != null)
         {
-            using var result = await _cloudTextToSpeechClient.SynthesizeAsync(text, provider, providerConfiguration);
+            using var result = await _cloudTextToSpeechClient.SynthesizeAsync(text, provider, providerConfiguration, _logger);
             await PlayStreamAsync(player, result.Stream, result.ContentType);
             return;
         }
@@ -999,7 +1000,9 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             throw new InvalidOperationException("Speech playback is not ready.");
         }
 
+        var stopwatch = Stopwatch.StartNew();
         using var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
+        _logger.Info($"Windows TTS latency: total={stopwatch.ElapsedMilliseconds}ms");
         await PlayStreamAsync(player, stream, stream.ContentType);
     }
 

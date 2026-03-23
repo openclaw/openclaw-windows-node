@@ -59,6 +59,25 @@ That means the first Windows target is transcript transport, not raw audio uploa
 
 The current Windows implementation uses a voice-local operator connection inside the tray app while node mode is active. That sidecar connection exists to carry assistant chat events for `TalkMode`, and to provide a fallback direct `chat.send` path when the tray chat window is not open.
 
+## Speech Output Latency
+
+Microsoft's Azure Speech SDK latency guidance is specifically about speech synthesis, not speech recognition, so it applies to Windows voice output rather than voice input. Source: [Lower speech synthesis latency using Speech SDK](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-lower-speech-synthesis-latency?pivots=programming-language-csharp).
+
+The current Windows implementation already follows the guidance where it maps cleanly:
+
+- the Windows `SpeechSynthesizer` is created once per `TalkMode` runtime and reused for subsequent replies
+- cloud TTS uses a shared static `HttpClient`, so HTTP/TLS connections can be reused across replies
+- cloud requests use `ResponseHeadersRead`, which lets the client observe response-header arrival without waiting for full buffering first
+- the tray app now logs per-reply synthesis timings for both Windows and cloud TTS paths so latency can be measured directly during testing
+
+The main remaining gap is streaming playback from the first audio chunk. The Azure guidance recommends chunked playback as soon as the first audio arrives, but the current Windows implementation still waits for a complete playable stream before starting output:
+
+- Windows `SpeechSynthesizer` is used through `SynthesizeTextToStreamAsync`, which returns a complete stream for playback
+- MiniMax currently returns audio inside a JSON body, so playback cannot begin until the full response is available
+- ElevenLabs is currently integrated through the non-streaming convert contract in the provider catalog
+
+So the current design minimizes avoidable setup and connection latency, but does not yet implement first-chunk playback streaming.
+
 ## Tray Chat Integration Decision
 
 Voice mode and typed chat must remain part of the same user-visible conversation in the tray app. Creating a separate "voice session" would reduce implementation complexity, but it would make the chat experience harder to understand:

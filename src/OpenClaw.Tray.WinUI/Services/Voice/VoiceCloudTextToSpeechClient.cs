@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -18,7 +19,8 @@ public sealed class VoiceCloudTextToSpeechClient
     public async Task<VoiceCloudTextToSpeechResult> SynthesizeAsync(
         string text,
         VoiceProviderOption provider,
-        VoiceProviderConfigurationStore configurationStore)
+        VoiceProviderConfigurationStore configurationStore,
+        IOpenClawLogger? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
         ArgumentNullException.ThrowIfNull(provider);
@@ -41,7 +43,9 @@ public sealed class VoiceCloudTextToSpeechClient
                 string.IsNullOrWhiteSpace(contract.RequestContentType) ? "application/json" : contract.RequestContentType);
         }
 
+        var stopwatch = Stopwatch.StartNew();
         using var response = await s_httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        var headersElapsedMs = stopwatch.ElapsedMilliseconds;
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
@@ -50,8 +54,10 @@ public sealed class VoiceCloudTextToSpeechClient
 
         if (string.Equals(contract.ResponseAudioMode, VoiceTextToSpeechResponseModes.Binary, StringComparison.OrdinalIgnoreCase))
         {
-            var audioBytes = await response.Content.ReadAsByteArrayAsync();
-            return await CreateResultAsync(audioBytes, contract.OutputContentType);
+            await using var responseStream = await response.Content.ReadAsStreamAsync();
+            var result = await CreateResultAsync(responseStream, contract.OutputContentType);
+            logger?.Info($"{provider.Name} TTS latency: headers={headersElapsedMs}ms total={stopwatch.ElapsedMilliseconds}ms (binary)");
+            return result;
         }
 
         var responseText = await response.Content.ReadAsStringAsync();
@@ -60,7 +66,9 @@ public sealed class VoiceCloudTextToSpeechClient
 
         var audioString = GetRequiredJsonString(document.RootElement, contract.ResponseAudioJsonPath);
         var audioBytesFromJson = DecodeAudioBytes(contract.ResponseAudioMode, audioString, provider.Name);
-        return await CreateResultAsync(audioBytesFromJson, contract.OutputContentType);
+        var jsonResult = await CreateResultAsync(audioBytesFromJson, contract.OutputContentType);
+        logger?.Info($"{provider.Name} TTS latency: headers={headersElapsedMs}ms total={stopwatch.ElapsedMilliseconds}ms ({contract.ResponseAudioMode})");
+        return jsonResult;
     }
 
     private static Dictionary<string, TemplateValue> BuildTemplateValues(
@@ -273,6 +281,19 @@ public sealed class VoiceCloudTextToSpeechClient
         await stream.FlushAsync();
         stream.Seek(0);
 
+        return new VoiceCloudTextToSpeechResult(stream, string.IsNullOrWhiteSpace(contentType) ? "audio/mpeg" : contentType);
+    }
+
+    private static async Task<VoiceCloudTextToSpeechResult> CreateResultAsync(Stream sourceStream, string contentType)
+    {
+        var stream = new InMemoryRandomAccessStream();
+        await using (var output = stream.AsStreamForWrite())
+        {
+            await sourceStream.CopyToAsync(output);
+            await output.FlushAsync();
+        }
+
+        stream.Seek(0);
         return new VoiceCloudTextToSpeechResult(stream, string.IsNullOrWhiteSpace(contentType) ? "audio/mpeg" : contentType);
     }
 
