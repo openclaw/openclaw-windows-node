@@ -10,13 +10,13 @@ This document defines the voice subsystem for the Windows node only. It introduc
   - `WakeWord` maps to Voice Wake
   - `AlwaysOn` maps to Talk Mode
 - Keep STT/TTS provider selection configurable, with Windows implementations as the default built-ins
-- Keep provider-specific STT/TTS concerns separate from the Windows node by default
+- Implement `MiniMax` STT and `ElevenLabs` TTS as required non-Windows providers after the Windows baseline
 - Reuse the existing node capability pattern instead of introducing a parallel control path
 
 ## Non-Goals
 
 - True full-duplex or chunk-streaming audio transport between node and gateway
-- Provider-specific STT/TTS routing in the Windows node
+- Arbitrary provider proliferation before the required `MiniMax` / `ElevenLabs` support is in place
 - Changes to unrelated project documentation
 
 ## Design Position
@@ -133,6 +133,7 @@ The built-in default for both is `windows`.
 Runtime behavior in the current phase:
 
 - `windows` is implemented for both STT and TTS
+- `minimax` and `elevenlabs` are required next-phase providers, not optional future nice-to-haves
 - non-Windows providers can be selected and persisted now
 - unsupported providers fall back to Windows at runtime with a status warning
 
@@ -159,7 +160,7 @@ Example:
       "name": "MiniMax Speech To Text",
       "runtime": "gateway",
       "enabled": true,
-      "description": "Planned future provider."
+      "description": "Required next-phase provider."
     }
   ],
   "textToSpeechProviders": [
@@ -175,7 +176,7 @@ Example:
       "name": "ElevenLabs",
       "runtime": "gateway",
       "enabled": true,
-      "description": "Planned future provider."
+      "description": "Required next-phase provider."
     }
   ]
 }
@@ -183,15 +184,18 @@ Example:
 
 This file only defines selectable providers. It does not carry API keys.
 
-### OpenClaw Configuration Discovery
+### OpenClaw Configuration and Credentials
 
-It may be technically possible to inspect parts of the OpenClaw configuration surface to infer preferred providers. However, the documented config protocol notes that sensitive fields have no redaction layer, so automatically pulling provider credentials into the Windows tray is not a safe default.
+For now, `MiniMax` and `ElevenLabs` credentials will be stored in the main OpenClaw configuration, not in the Windows tray settings or the local provider catalog file.
 
-Because of that, this design keeps provider selection local for now:
+That means the current design is:
 
 - local tray settings choose the preferred STT/TTS provider ids
+- provider API keys are read from the main OpenClaw configuration
 - OpenClaw remains the conversation endpoint for `chat.send`
-- future provider adapters can decide whether they use local credentials, gateway-owned credentials, or both
+- the local provider catalog remains metadata-only and must not contain secrets
+
+This is an intentional short-term design choice so the next implementation step can add `MiniMax` support without inventing a second credential store in Windows. It can be revisited later if provider ownership is split differently.
 
 For `WakeWord`, trigger words are gateway-owned global state. The Windows node should eventually consume the same shared trigger list and keep only a local enabled/disabled toggle plus device/runtime settings.
 
