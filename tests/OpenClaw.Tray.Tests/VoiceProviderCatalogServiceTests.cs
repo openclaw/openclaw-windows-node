@@ -41,7 +41,7 @@ public class VoiceProviderCatalogServiceTests
         var minimax = Assert.Single(catalog.TextToSpeechProviders, p => p.Id == VoiceProviderIds.MiniMax);
         Assert.Equal("MiniMax", minimax.Name);
         Assert.NotNull(minimax.TextToSpeechHttp);
-        Assert.Equal("https://api.minimax.io/v1/t2a_v2", minimax.TextToSpeechHttp!.EndpointTemplate);
+        Assert.Equal("https://api-uw.minimax.io/v1/t2a_v2", minimax.TextToSpeechHttp!.EndpointTemplate);
         Assert.Equal("Authorization", minimax.TextToSpeechHttp.AuthenticationHeaderName);
         Assert.Equal(VoiceTextToSpeechResponseModes.HexJsonString, minimax.TextToSpeechHttp.ResponseAudioMode);
         var minimaxModelSetting = minimax.Settings.Single(s => s.Key == VoiceProviderSettingKeys.Model);

@@ -59,7 +59,7 @@
         }
       ],
       "textToSpeechHttp": {
-        "endpointTemplate": "https://api.minimax.io/v1/t2a_v2",
+        "endpointTemplate": "https://api-uw.minimax.io/v1/t2a_v2",
         "httpMethod": "POST",
         "authenticationHeaderName": "Authorization",
         "authenticationScheme": "Bearer",
