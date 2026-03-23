@@ -63,15 +63,15 @@ public sealed class VoiceCloudTextToSpeechClient
         return await CreateResultAsync(audioBytesFromJson, contract.OutputContentType);
     }
 
-    private static Dictionary<string, string> BuildTemplateValues(
+    private static Dictionary<string, TemplateValue> BuildTemplateValues(
         string text,
         VoiceProviderOption provider,
         VoiceProviderConfiguration? providerConfiguration,
         VoiceTextToSpeechHttpContract contract)
     {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        var values = new Dictionary<string, TemplateValue>(StringComparer.OrdinalIgnoreCase)
         {
-            ["text"] = text
+            ["text"] = TemplateValue.FromString(text)
         };
 
         foreach (var setting in provider.Settings)
@@ -89,38 +89,45 @@ public sealed class VoiceCloudTextToSpeechClient
                         $"{provider.Name} API key is not configured. Open Settings and complete the {provider.Name} voice provider fields.");
                 }
 
-                throw new InvalidOperationException(
-                    $"{provider.Name} setting '{setting.Label}' is required. Open Settings and complete the {provider.Name} voice provider fields.");
+                if (setting.Required)
+                {
+                    throw new InvalidOperationException(
+                        $"{provider.Name} setting '{setting.Label}' is required. Open Settings and complete the {provider.Name} voice provider fields.");
+                }
+
+                continue;
             }
 
-            values[setting.Key] = effectiveValue;
+            values[setting.Key] = setting.JsonValue
+                ? TemplateValue.FromJson(effectiveValue, provider.Name, setting.Label, values)
+                : TemplateValue.FromString(effectiveValue);
         }
 
         return values;
     }
 
-    private static string ApplyUrlTemplate(string template, IReadOnlyDictionary<string, string> values)
+    private static string ApplyUrlTemplate(string template, IReadOnlyDictionary<string, TemplateValue> values)
     {
         var result = template;
         foreach (var entry in values)
         {
             result = result.Replace(
                 "{{" + entry.Key + "}}",
-                Uri.EscapeDataString(entry.Value),
+                Uri.EscapeDataString(entry.Value.Value),
                 StringComparison.Ordinal);
         }
 
         return result;
     }
 
-    private static string ApplyJsonTemplate(string template, IReadOnlyDictionary<string, string> values)
+    private static string ApplyJsonTemplate(string template, IReadOnlyDictionary<string, TemplateValue> values)
     {
         var result = template;
         foreach (var entry in values)
         {
             result = result.Replace(
                 "{{" + entry.Key + "}}",
-                JsonSerializer.Serialize(entry.Value),
+                entry.Value.JsonFragment ? entry.Value.Value : JsonSerializer.Serialize(entry.Value.Value),
                 StringComparison.Ordinal);
         }
 
@@ -130,9 +137,9 @@ public sealed class VoiceCloudTextToSpeechClient
     private static void ApplyAuthenticationHeader(
         HttpRequestMessage request,
         VoiceTextToSpeechHttpContract contract,
-        IReadOnlyDictionary<string, string> values)
+        IReadOnlyDictionary<string, TemplateValue> values)
     {
-        if (!values.TryGetValue(contract.ApiKeySettingKey, out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        if (!values.TryGetValue(contract.ApiKeySettingKey, out var apiKey) || string.IsNullOrWhiteSpace(apiKey.Value))
         {
             throw new InvalidOperationException("Voice provider API key is not configured.");
         }
@@ -140,13 +147,13 @@ public sealed class VoiceCloudTextToSpeechClient
         if (string.Equals(contract.AuthenticationHeaderName, "Authorization", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(contract.AuthenticationScheme))
         {
-            request.Headers.Authorization = new AuthenticationHeaderValue(contract.AuthenticationScheme, apiKey);
+            request.Headers.Authorization = new AuthenticationHeaderValue(contract.AuthenticationScheme, apiKey.Value);
             return;
         }
 
         var headerValue = string.IsNullOrWhiteSpace(contract.AuthenticationScheme)
-            ? apiKey
-            : $"{contract.AuthenticationScheme} {apiKey}";
+            ? apiKey.Value
+            : $"{contract.AuthenticationScheme} {apiKey.Value}";
         request.Headers.TryAddWithoutValidation(contract.AuthenticationHeaderName, headerValue);
     }
 
@@ -275,6 +282,45 @@ public sealed class VoiceCloudTextToSpeechClient
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
+    }
+
+    private readonly record struct TemplateValue(string Value, bool JsonFragment)
+    {
+        public static TemplateValue FromString(string value) => new(value, false);
+
+        public static TemplateValue FromJson(
+            string json,
+            string providerName,
+            string label,
+            IReadOnlyDictionary<string, TemplateValue>? templateValues = null)
+        {
+            var substituted = templateValues == null
+                ? json
+                : ApplyJsonTemplate(json, templateValues);
+
+            try
+            {
+                using var document = JsonDocument.Parse(substituted);
+                return new(document.RootElement.GetRawText(), true);
+            }
+            catch (JsonException ex)
+            {
+                try
+                {
+                    using var wrapped = JsonDocument.Parse("{ " + substituted + " }");
+                    var wrappedJson = wrapped.RootElement.GetRawText();
+                    return new(wrappedJson[1..^1], true);
+                }
+                catch (JsonException)
+                {
+                    throw new InvalidOperationException(
+                        $"{providerName} setting '{label}' must be valid JSON.",
+                        ex);
+                }
+            }
+        }
+
+        public static implicit operator string(TemplateValue value) => value.Value;
     }
 }
 

@@ -69,7 +69,8 @@ public class SettingsRoundTripTests
                         {
                             [VoiceProviderSettingKeys.ApiKey] = "minimax-key",
                             [VoiceProviderSettingKeys.Model] = "speech-2.8-turbo",
-                            [VoiceProviderSettingKeys.VoiceId] = "English_MatureBoss"
+                            [VoiceProviderSettingKeys.VoiceId] = "English_MatureBoss",
+                            [VoiceProviderSettingKeys.VoiceSettingsJson] = "{\"voice_id\":\"English_MatureBoss\",\"speed\":1.1}"
                         }
                     },
                     new VoiceProviderConfiguration
@@ -129,6 +130,7 @@ public class SettingsRoundTripTests
         Assert.Equal("minimax-key", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.ApiKey));
         Assert.Equal("speech-2.8-turbo", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.Model));
         Assert.Equal("English_MatureBoss", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.VoiceId));
+        Assert.Equal("{\"voice_id\":\"English_MatureBoss\",\"speed\":1.1}", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.VoiceSettingsJson));
         Assert.Equal("eleven-key", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.ElevenLabs, VoiceProviderSettingKeys.ApiKey));
         Assert.Equal("eleven_multilingual_v2", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.ElevenLabs, VoiceProviderSettingKeys.Model));
         Assert.Equal("voice-42", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.ElevenLabs, VoiceProviderSettingKeys.VoiceId));

@@ -167,14 +167,33 @@ Example:
     },
     {
       "id": "minimax",
-      "name": "MiniMax Speech 2.8 Turbo",
+      "name": "MiniMax",
       "runtime": "cloud",
       "enabled": true,
-      "description": "Cloud TTS using MiniMax HTTP text-to-speech.",
+      "description": "Cloud TTS using the MiniMax HTTP text-to-speech API.",
       "settings": [
         { "key": "apiKey", "label": "API key", "secret": true },
-        { "key": "model", "label": "Model", "defaultValue": "speech-2.8-turbo" },
-        { "key": "voiceId", "label": "Voice ID", "defaultValue": "English_MatureBoss" }
+        {
+          "key": "model",
+          "label": "Model",
+          "defaultValue": "speech-2.8-turbo",
+          "options": [
+            "speech-2.5-turbo-preview",
+            "speech-02-turbo",
+            "speech-02-hd",
+            "speech-2.6-turbo",
+            "speech-2.6-hd",
+            "speech-2.8-turbo",
+            "speech-2.8-hd"
+          ]
+        },
+        { "key": "voiceId", "label": "Voice ID", "defaultValue": "English_MatureBoss" },
+        {
+          "key": "voiceSettingsJson",
+          "label": "Voice settings JSON",
+          "defaultValue": "\"voice_setting\": { \"voice_id\": {{voiceId}}, \"speed\": 1, \"vol\": 1, \"pitch\": 0 }",
+          "placeholder": "\"voice_setting\": { \"voice_id\": \"English_MatureBoss\", \"speed\": 1, \"vol\": 1, \"pitch\": 0 }"
+        }
       ],
       "textToSpeechHttp": {
         "endpointTemplate": "https://api.minimax.io/v1/t2a_v2",
@@ -183,7 +202,7 @@ Example:
         "authenticationScheme": "Bearer",
         "apiKeySettingKey": "apiKey",
         "requestContentType": "application/json",
-        "requestBodyTemplate": "{ \"model\": {{model}}, \"text\": {{text}}, \"stream\": false, \"language_boost\": \"English\", \"output_format\": \"hex\", \"voice_setting\": { \"voice_id\": {{voiceId}}, \"speed\": 1, \"vol\": 1, \"pitch\": 0 }, \"audio_setting\": { \"sample_rate\": 32000, \"bitrate\": 128000, \"format\": \"mp3\", \"channel\": 1 } }",
+        "requestBodyTemplate": "{ \"model\": {{model}}, \"text\": {{text}}, \"stream\": false, \"language_boost\": \"English\", \"output_format\": \"hex\", {{voiceSettingsJson}}, \"audio_setting\": { \"sample_rate\": 32000, \"bitrate\": 128000, \"format\": \"mp3\", \"channel\": 1 } }",
         "responseAudioMode": "hexJsonString",
         "responseAudioJsonPath": "data.audio",
         "responseStatusCodeJsonPath": "base_resp.status_code",
@@ -200,8 +219,24 @@ Example:
       "description": "Cloud TTS using the ElevenLabs create speech API.",
       "settings": [
         { "key": "apiKey", "label": "API key", "secret": true },
-        { "key": "model", "label": "Model", "defaultValue": "eleven_multilingual_v2" },
-        { "key": "voiceId", "label": "Voice ID", "placeholder": "Enter an ElevenLabs voice ID" }
+        {
+          "key": "model",
+          "label": "Model",
+          "defaultValue": "eleven_multilingual_v2",
+          "options": [
+            "eleven_flash_v2_5",
+            "eleven_turbo_v2_5",
+            "eleven_multilingual_v2",
+            "eleven_monolingual_v1"
+          ]
+        },
+        { "key": "voiceId", "label": "Voice ID", "placeholder": "Enter an ElevenLabs voice ID" },
+        {
+          "key": "voiceSettingsJson",
+          "label": "Voice settings JSON",
+          "defaultValue": "\"voice_settings\": null",
+          "placeholder": "\"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.8 }"
+        }
       ],
       "textToSpeechHttp": {
         "endpointTemplate": "https://api.elevenlabs.io/v1/text-to-speech/{{voiceId}}?output_format=mp3_44100_128",
@@ -209,7 +244,7 @@ Example:
         "authenticationHeaderName": "xi-api-key",
         "apiKeySettingKey": "apiKey",
         "requestContentType": "application/json",
-        "requestBodyTemplate": "{ \"text\": {{text}}, \"model_id\": {{model}} }",
+        "requestBodyTemplate": "{ \"text\": {{text}}, \"model_id\": {{model}}, {{voiceSettingsJson}} }",
         "responseAudioMode": "binary",
         "outputContentType": "audio/mpeg"
       }
@@ -238,12 +273,23 @@ Current configuration values are keyed by provider id. The built-in providers us
 - `apiKey`
 - `model`
 - `voiceId`
+- `voiceSettingsJson`
 
-When the selected TTS provider in the Voice Mode window is not `windows`, the tray app shows provider-specific fields in the configuration form so the user can enter or edit:
+When the selected TTS provider in Settings is not `windows`, the tray app shows provider-specific fields in the configuration form so the user can enter or edit:
 
 - API key
 - model
 - voice id
+- voice settings JSON
+
+If a provider setting definition includes an `options` list, the settings UI renders that setting as a drop-down instead of a free-text field. That is how built-in cloud providers expose a provider-level choice plus a separate model choice without recompilation.
+
+If a provider setting definition is marked as JSON, the value is inserted into the provider request template as a raw JSON fragment rather than a quoted string. That allows the provider catalog to define whether the user is entering:
+
+- a bare object
+- or a full keyed fragment such as `"voice_setting": { ... }`
+
+without hard-coding provider-specific wrapper keys into the runtime.
 
 For `VoiceWake`, trigger words are gateway-owned global state. The Windows node should eventually consume the same shared trigger list and keep only a local enabled/disabled toggle plus device/runtime settings.
 
@@ -319,7 +365,8 @@ The tray `Voice Mode` window is a read-only runtime status/detail surface with a
         "Values": {
           "apiKey": "<local secret>",
           "model": "speech-2.8-turbo",
-          "voiceId": "English_MatureBoss"
+          "voiceId": "English_MatureBoss",
+          "voiceSettingsJson": "\"voice_setting\": { \"voice_id\": \"English_MatureBoss\", \"speed\": 1, \"vol\": 1, \"pitch\": 0 }"
         }
       },
       {
@@ -327,7 +374,8 @@ The tray `Voice Mode` window is a read-only runtime status/detail surface with a
         "Values": {
           "apiKey": "<local secret>",
           "model": "eleven_multilingual_v2",
-          "voiceId": "voice-id"
+          "voiceId": "voice-id",
+          "voiceSettingsJson": "\"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.8 }"
         }
       }
     ]
@@ -377,6 +425,7 @@ The tray `Voice Mode` window is a read-only runtime status/detail surface with a
 | `VoiceProviderConfiguration.Providers[].Values["apiKey"]` | string? | `null` | cloud providers | API key sent using the provider contract's configured auth header |
 | `VoiceProviderConfiguration.Providers[].Values["model"]` | string? | provider default | cloud providers | Model identifier inserted into the configured request template |
 | `VoiceProviderConfiguration.Providers[].Values["voiceId"]` | string? | provider default | cloud providers | Voice id inserted into the configured request template or URL |
+| `VoiceProviderConfiguration.Providers[].Values["voiceSettingsJson"]` | string? | provider default | cloud providers | Raw JSON fragment inserted into the configured request template; may be a keyed fragment like `"voice_setting": { ... }` |
 
 At runtime today, those device ids are persisted and surfaced in the UI, but the v1 `TalkMode` path still uses the Windows system speech stack defaults for capture and playback.
 

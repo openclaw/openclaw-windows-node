@@ -147,6 +147,7 @@ public static class VoiceProviderSettingKeys
     public const string ApiKey = "apiKey";
     public const string Model = "model";
     public const string VoiceId = "voiceId";
+    public const string VoiceSettingsJson = "voiceSettingsJson";
 }
 
 public static class VoiceTextToSpeechResponseModes
@@ -182,9 +183,12 @@ public sealed class VoiceProviderSettingDefinition
     public string Key { get; set; } = "";
     public string Label { get; set; } = "";
     public bool Secret { get; set; }
+    public bool Required { get; set; } = true;
+    public bool JsonValue { get; set; }
     public string? DefaultValue { get; set; }
     public string? Placeholder { get; set; }
     public string? Description { get; set; }
+    public List<string> Options { get; set; } = [];
 }
 
 public sealed class VoiceTextToSpeechHttpContract

@@ -118,9 +118,9 @@ public static class VoiceProviderCatalogService
                 new VoiceProviderOption
                 {
                     Id = VoiceProviderIds.MiniMax,
-                    Name = "MiniMax Speech 2.8 Turbo",
+                    Name = "MiniMax",
                     Runtime = "cloud",
-                    Description = "Cloud TTS using MiniMax HTTP text-to-speech.",
+                    Description = "Cloud TTS using the MiniMax HTTP text-to-speech API.",
                     Settings =
                     [
                         new VoiceProviderSettingDefinition
@@ -133,13 +133,34 @@ public static class VoiceProviderCatalogService
                         {
                             Key = VoiceProviderSettingKeys.Model,
                             Label = "Model",
-                            DefaultValue = "speech-2.8-turbo"
+                            DefaultValue = "speech-2.8-turbo",
+                            Options =
+                            [
+                                "speech-2.5-turbo-preview",
+                                "speech-02-turbo",
+                                "speech-02-hd",
+                                "speech-2.6-turbo",
+                                "speech-2.6-hd",
+                                "speech-2.8-turbo",
+                                "speech-2.8-hd"
+                            ]
                         },
                         new VoiceProviderSettingDefinition
                         {
                             Key = VoiceProviderSettingKeys.VoiceId,
                             Label = "Voice ID",
+                            Required = false,
                             DefaultValue = "English_MatureBoss"
+                        },
+                        new VoiceProviderSettingDefinition
+                        {
+                            Key = VoiceProviderSettingKeys.VoiceSettingsJson,
+                            Label = "Voice settings JSON",
+                            Required = false,
+                            JsonValue = true,
+                            DefaultValue = "\"voice_setting\": { \"voice_id\": {{voiceId}}, \"speed\": 1, \"vol\": 1, \"pitch\": 0 }",
+                            Placeholder = "\"voice_setting\": { \"voice_id\": \"English_MatureBoss\", \"speed\": 1, \"vol\": 1, \"pitch\": 0 }",
+                            Description = "Optional full MiniMax request fragment. If present, it controls the full voice_setting payload."
                         }
                     ],
                     TextToSpeechHttp = new VoiceTextToSpeechHttpContract
@@ -156,12 +177,7 @@ public static class VoiceProviderCatalogService
                           "stream": false,
                           "language_boost": "English",
                           "output_format": "hex",
-                          "voice_setting": {
-                            "voice_id": {{voiceId}},
-                            "speed": 1,
-                            "vol": 1,
-                            "pitch": 0
-                          },
+                          {{voiceSettingsJson}},
                           "audio_setting": {
                             "sample_rate": 32000,
                             "bitrate": 128000,
@@ -196,13 +212,31 @@ public static class VoiceProviderCatalogService
                         {
                             Key = VoiceProviderSettingKeys.Model,
                             Label = "Model",
-                            DefaultValue = "eleven_multilingual_v2"
+                            DefaultValue = "eleven_multilingual_v2",
+                            Options =
+                            [
+                                "eleven_flash_v2_5",
+                                "eleven_turbo_v2_5",
+                                "eleven_multilingual_v2",
+                                "eleven_monolingual_v1"
+                            ]
                         },
                         new VoiceProviderSettingDefinition
                         {
                             Key = VoiceProviderSettingKeys.VoiceId,
+                            Required = false,
                             Label = "Voice ID",
                             Placeholder = "Enter an ElevenLabs voice ID"
+                        },
+                        new VoiceProviderSettingDefinition
+                        {
+                            Key = VoiceProviderSettingKeys.VoiceSettingsJson,
+                            Label = "Voice settings JSON",
+                            Required = false,
+                            JsonValue = true,
+                            DefaultValue = "\"voice_settings\": null",
+                            Placeholder = "\"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.8 }",
+                            Description = "Optional full ElevenLabs request fragment. If present, it controls the full voice_settings payload."
                         }
                     ],
                     TextToSpeechHttp = new VoiceTextToSpeechHttpContract
@@ -215,7 +249,8 @@ public static class VoiceProviderCatalogService
                         RequestBodyTemplate = """
                         {
                           "text": {{text}},
-                          "model_id": {{model}}
+                          "model_id": {{model}},
+                          {{voiceSettingsJson}}
                         }
                         """,
                         ResponseAudioMode = VoiceTextToSpeechResponseModes.Binary,
@@ -291,9 +326,12 @@ public static class VoiceProviderCatalogService
             Key = source.Key,
             Label = source.Label,
             Secret = source.Secret,
+            Required = source.Required,
+            JsonValue = source.JsonValue,
             DefaultValue = source.DefaultValue,
             Placeholder = source.Placeholder,
-            Description = source.Description
+            Description = source.Description,
+            Options = source.Options.ToList()
         };
     }
 

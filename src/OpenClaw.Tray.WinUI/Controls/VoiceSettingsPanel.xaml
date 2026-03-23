@@ -31,11 +31,23 @@
             <PasswordBox x:Name="VoiceTtsApiKeyPasswordBox"
                          Header="API key"
                          PasswordChanged="OnVoiceProviderSettingsChanged"/>
+            <ComboBox x:Name="VoiceTtsModelComboBox"
+                      Header="Model"
+                      Visibility="Collapsed"
+                      SelectionChanged="OnVoiceProviderSettingsChanged"/>
             <TextBox x:Name="VoiceTtsModelTextBox"
                      Header="Model"
+                     Visibility="Collapsed"
                      TextChanged="OnVoiceProviderSettingsChanged"/>
             <TextBox x:Name="VoiceTtsVoiceIdTextBox"
                      Header="Voice ID"
+                     TextChanged="OnVoiceProviderSettingsChanged"/>
+            <TextBox x:Name="VoiceTtsVoiceSettingsJsonTextBox"
+                     Header="Voice settings JSON"
+                     Visibility="Collapsed"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     MinHeight="96"
                      TextChanged="OnVoiceProviderSettingsChanged"/>
         </StackPanel>
 

@@ -82,6 +82,7 @@ public class VoiceSchemaDefaultsTests
         Assert.Equal("windows", VoiceProviderIds.Windows);
         Assert.Equal("minimax", VoiceProviderIds.MiniMax);
         Assert.Equal("elevenlabs", VoiceProviderIds.ElevenLabs);
+        Assert.Equal("voiceSettingsJson", VoiceProviderSettingKeys.VoiceSettingsJson);
     }
 
     [Fact]

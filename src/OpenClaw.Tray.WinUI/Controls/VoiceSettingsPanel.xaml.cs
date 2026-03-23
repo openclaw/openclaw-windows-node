@@ -21,6 +21,7 @@ public sealed partial class VoiceSettingsPanel : UserControl
     private List<VoiceProviderOption> _textToSpeechOptions = new();
     private List<DeviceOption> _inputOptions = new();
     private List<DeviceOption> _outputOptions = new();
+    private List<string> _activeTtsModelOptions = new();
 
     public VoiceSettingsPanel()
     {
@@ -242,6 +243,8 @@ public sealed partial class VoiceSettingsPanel : UserControl
         var apiKeySetting = FindSetting(provider, VoiceProviderSettingKeys.ApiKey);
         var modelSetting = FindSetting(provider, VoiceProviderSettingKeys.Model);
         var voiceIdSetting = FindSetting(provider, VoiceProviderSettingKeys.VoiceId);
+        var voiceSettingsJsonSetting = FindSetting(provider, VoiceProviderSettingKeys.VoiceSettingsJson);
+        var modelValue = GetProviderValue(providerId, modelSetting) ?? string.Empty;
 
         _updatingVoiceProviderFields = true;
         try
@@ -251,15 +254,48 @@ public sealed partial class VoiceSettingsPanel : UserControl
             VoiceTtsApiKeyPasswordBox.Visibility = apiKeySetting != null ? Visibility.Visible : Visibility.Collapsed;
             VoiceTtsApiKeyPasswordBox.Password = GetProviderValue(providerId, apiKeySetting) ?? string.Empty;
 
-            VoiceTtsModelTextBox.Header = modelSetting?.Label ?? "Model";
-            VoiceTtsModelTextBox.PlaceholderText = modelSetting?.Placeholder ?? string.Empty;
-            VoiceTtsModelTextBox.Visibility = modelSetting != null ? Visibility.Visible : Visibility.Collapsed;
-            VoiceTtsModelTextBox.Text = GetProviderValue(providerId, modelSetting) ?? string.Empty;
+            _activeTtsModelOptions = modelSetting?.Options
+                .Where(option => !string.IsNullOrWhiteSpace(option))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                ?? [];
+
+            if (_activeTtsModelOptions.Count > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(modelValue) &&
+                    !_activeTtsModelOptions.Contains(modelValue, StringComparer.OrdinalIgnoreCase))
+                {
+                    _activeTtsModelOptions.Insert(0, modelValue);
+                }
+
+                VoiceTtsModelComboBox.Header = modelSetting?.Label ?? "Model";
+                VoiceTtsModelComboBox.ItemsSource = _activeTtsModelOptions;
+                VoiceTtsModelComboBox.SelectedItem = _activeTtsModelOptions
+                    .FirstOrDefault(option => string.Equals(option, modelValue, StringComparison.OrdinalIgnoreCase))
+                    ?? _activeTtsModelOptions.FirstOrDefault();
+                VoiceTtsModelComboBox.Visibility = Visibility.Visible;
+                VoiceTtsModelTextBox.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                VoiceTtsModelTextBox.Header = modelSetting?.Label ?? "Model";
+                VoiceTtsModelTextBox.PlaceholderText = modelSetting?.Placeholder ?? string.Empty;
+                VoiceTtsModelTextBox.Visibility = modelSetting != null ? Visibility.Visible : Visibility.Collapsed;
+                VoiceTtsModelTextBox.Text = modelValue;
+                VoiceTtsModelComboBox.ItemsSource = null;
+                VoiceTtsModelComboBox.SelectedItem = null;
+                VoiceTtsModelComboBox.Visibility = Visibility.Collapsed;
+            }
 
             VoiceTtsVoiceIdTextBox.Header = voiceIdSetting?.Label ?? "Voice ID";
             VoiceTtsVoiceIdTextBox.PlaceholderText = voiceIdSetting?.Placeholder ?? string.Empty;
             VoiceTtsVoiceIdTextBox.Visibility = voiceIdSetting != null ? Visibility.Visible : Visibility.Collapsed;
             VoiceTtsVoiceIdTextBox.Text = GetProviderValue(providerId, voiceIdSetting) ?? string.Empty;
+
+            VoiceTtsVoiceSettingsJsonTextBox.Header = voiceSettingsJsonSetting?.Label ?? "Voice settings JSON";
+            VoiceTtsVoiceSettingsJsonTextBox.PlaceholderText = voiceSettingsJsonSetting?.Placeholder ?? string.Empty;
+            VoiceTtsVoiceSettingsJsonTextBox.Visibility = voiceSettingsJsonSetting != null ? Visibility.Visible : Visibility.Collapsed;
+            VoiceTtsVoiceSettingsJsonTextBox.Text = GetProviderValue(providerId, voiceSettingsJsonSetting) ?? string.Empty;
             _activeTtsProviderId = providerId;
         }
         finally
@@ -299,8 +335,9 @@ public sealed partial class VoiceSettingsPanel : UserControl
         var provider = _textToSpeechOptions.FirstOrDefault(option =>
             string.Equals(option.Id, providerId, StringComparison.OrdinalIgnoreCase));
         SetProviderValue(providerId, FindSetting(provider, VoiceProviderSettingKeys.ApiKey), VoiceTtsApiKeyPasswordBox.Password);
-        SetProviderValue(providerId, FindSetting(provider, VoiceProviderSettingKeys.Model), VoiceTtsModelTextBox.Text);
+        SetProviderValue(providerId, FindSetting(provider, VoiceProviderSettingKeys.Model), GetSelectedProviderModelValue());
         SetProviderValue(providerId, FindSetting(provider, VoiceProviderSettingKeys.VoiceId), VoiceTtsVoiceIdTextBox.Text);
+        SetProviderValue(providerId, FindSetting(provider, VoiceProviderSettingKeys.VoiceSettingsJson), VoiceTtsVoiceSettingsJsonTextBox.Text);
     }
 
     private async void OnRefreshVoiceDevices(object sender, RoutedEventArgs e)
@@ -333,6 +370,16 @@ public sealed partial class VoiceSettingsPanel : UserControl
         }
 
         return _voiceProviderConfigurationDraft.GetValue(providerId, setting.Key) ?? setting.DefaultValue;
+    }
+
+    private string? GetSelectedProviderModelValue()
+    {
+        if (VoiceTtsModelComboBox.Visibility == Visibility.Visible)
+        {
+            return VoiceTtsModelComboBox.SelectedItem?.ToString();
+        }
+
+        return VoiceTtsModelTextBox.Text;
     }
 
     private sealed record DeviceOption(string? DeviceId, string Name);
@@ -376,7 +423,10 @@ public sealed partial class VoiceSettingsPanel : UserControl
                     Secret = setting.Secret,
                     DefaultValue = setting.DefaultValue,
                     Placeholder = setting.Placeholder,
-                    Description = setting.Description
+                    Description = setting.Description,
+                    Required = setting.Required,
+                    JsonValue = setting.JsonValue,
+                    Options = setting.Options.ToList()
                 })
                 .ToList(),
             TextToSpeechHttp = source.TextToSpeechHttp == null
