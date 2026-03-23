@@ -6,6 +6,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;

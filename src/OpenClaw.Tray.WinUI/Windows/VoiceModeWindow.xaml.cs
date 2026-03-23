@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

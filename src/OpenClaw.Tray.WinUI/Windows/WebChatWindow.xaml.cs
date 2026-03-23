@@ -3,6 +3,7 @@ using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 using System;
 using System.Diagnostics;
 using System.IO;

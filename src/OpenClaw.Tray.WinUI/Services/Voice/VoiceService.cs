@@ -15,7 +15,7 @@ using Windows.Media.Playback;
 using Windows.Media.SpeechRecognition;
 using Windows.Media.SpeechSynthesis;
 
-namespace OpenClawTray.Services;
+namespace OpenClawTray.Services.Voice;
 
 public sealed class VoiceService : IVoiceRuntime, IDisposable
 {

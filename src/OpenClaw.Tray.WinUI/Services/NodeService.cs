@@ -5,6 +5,7 @@ using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services.Voice;
 using OpenClawTray.Windows;
 using Microsoft.UI.Xaml;
 

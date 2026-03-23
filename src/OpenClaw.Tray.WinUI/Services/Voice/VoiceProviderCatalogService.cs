@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using OpenClaw.Shared;
 
-namespace OpenClawTray.Services;
+namespace OpenClawTray.Services.Voice;
 
 public static class VoiceProviderCatalogService
 {

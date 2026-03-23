@@ -2,7 +2,7 @@ using OpenClaw.Shared;
 using System;
 using System.Threading.Tasks;
 
-namespace OpenClawTray.Services;
+namespace OpenClawTray.Services.Voice;
 
 public sealed class VoiceChatCoordinator : IDisposable
 {

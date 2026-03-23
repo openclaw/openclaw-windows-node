@@ -1,6 +1,6 @@
 using System.Reflection;
 using OpenClaw.Shared;
-using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 
 namespace OpenClaw.Tray.Tests;
 
