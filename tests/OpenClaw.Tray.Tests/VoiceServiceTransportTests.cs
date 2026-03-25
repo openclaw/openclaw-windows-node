@@ -219,6 +219,24 @@ public class VoiceServiceTransportTests
     }
 
     [Theory]
+    [InlineData(0, true)]
+    [InlineData(500, true)]
+    [InlineData(749, true)]
+    [InlineData(750, false)]
+    [InlineData(1200, false)]
+    public void ShouldDelayRecognitionRecycleForOngoingSpeech_RequiresShortRecentSignal(int elapsedMs, bool expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "ShouldDelayRecognitionRecycleForOngoingSpeech",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var now = new DateTime(2026, 3, 25, 21, 36, 35, DateTimeKind.Utc);
+
+        var result = (bool)method.Invoke(null, [now.AddMilliseconds(-elapsedMs), now])!;
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
     [InlineData(16000, 80, 1280)]
     [InlineData(16000, 0, 1280)]
     [InlineData(0, 80, 1280)]
@@ -279,6 +297,29 @@ public class VoiceServiceTransportTests
 
         Assert.Equal(expected, result);
         Assert.Equal(expectedPromoted, (bool)args[4]!);
+    }
+
+    [Theory]
+    [InlineData(true, "Now again testing", 1, "Now again testing")]
+    [InlineData(true, "Now again testing", 3, null)]
+    [InlineData(false, "Now again testing", 1, null)]
+    [InlineData(true, "", 1, null)]
+    public void SelectCompletionFallbackText_PromotesRecentHypothesisWhenSessionHadActivity(
+        bool sessionHadActivity,
+        string hypothesis,
+        int hypothesisAgeSeconds,
+        string? expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "SelectCompletionFallbackText",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var now = new DateTime(2026, 3, 25, 21, 36, 35, DateTimeKind.Utc);
+
+        var result = (string?)method.Invoke(
+            null,
+            [sessionHadActivity, hypothesis, now.AddSeconds(-hypothesisAgeSeconds), now]);
+
+        Assert.Equal(expected, result);
     }
 
     [Theory]

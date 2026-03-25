@@ -544,6 +544,7 @@ At runtime today:
 - `Voice.InputDeviceId` is now used by that `AudioGraph` capture path, but transcript generation still uses the Windows default speech input path until the STT adapter migration is complete
 - Talk Mode only advertises `ListeningContinuously` after the capture graph has produced live frames and the recognizer warm-up window has elapsed, so the status acts as a real “you can start talking now” signal instead of a timer-only guess
 - recognizer recovery is now speech-triggered rather than silence-triggered: the Windows recognizer is only recycled when sustained capture speech is present but no recognition activity follows
+- when a recognizer session ends after real hypothesis activity but before a final result arrives, Talk Mode now promotes the last recent hypothesis and submits it instead of dropping the utterance
 - when the system default capture device changes and Talk Mode is using the default mic, the recognizer is rebuilt so device switches such as AirPods are picked up without a full app restart
 - explicit non-default microphone transcript generation is still pending the planned STT adapter migration
 
@@ -1059,3 +1060,4 @@ Append one new line to this timeline for every future voice-mode commit.
 - `2026-03-25` Fixed `VoiceCaptureService` frame-buffer interop for the current WinRT projection so AudioGraph quantum processing can read frame data instead of throwing invalid-cast warnings on every capture quantum.
 - `2026-03-25` Changed Talk Mode readiness so `Listening` only appears after the AudioGraph capture path is delivering frames and the recognizer warm-up completes, making it a user-facing “start talking now” signal rather than a timer-only state.
 - `2026-03-25` Changed recognizer recovery so silence no longer churns the Talk Mode pipeline; recycling now only happens when sustained capture speech is present but the Windows recognizer still produces no activity.
+- `2026-03-25` Delayed deaf-recognizer recovery until post-speech silence and added a completion fallback that submits the last recent hypothesis when Windows ends a session without ever producing a final result.
