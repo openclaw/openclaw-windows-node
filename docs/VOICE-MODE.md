@@ -10,13 +10,15 @@ This document defines the voice subsystem for the Windows node only. It introduc
 - Present the user-facing mode names as `Voice Wake` and `Talk Mode`
 - Keep STT/TTS provider selection configurable, with Windows implementations as the default built-ins
 - Implement `MiniMax` TTS and `ElevenLabs` TTS as required non-Windows providers after the Windows baseline
+- Make adding new voice providers an update to a Json catalog, rather than requiring code changes
 - Reuse the existing node capability pattern instead of introducing a parallel control path
+- Ensure that the voice sub-system is extensible
+- Ensure that the voice sub-system is controllable from other applications
 
 ## Non-Goals
 
 - True full-duplex or chunk-streaming audio transport between node and gateway
-- Arbitrary provider proliferation before the required `MiniMax` / `ElevenLabs` TTS support is in place
-- Changes to unrelated project documentation
+- Subtantial changes to the existing project
 
 ## Design Position
 
@@ -34,7 +36,7 @@ This keeps the Windows node lean for the first implementation and avoids introdu
 
 ## Visible Mode Names
 
-The tray app now uses user-facing names rather than exposing the internal enum names directly:
+The tray app now uses user-facing names (borrowed from the macOS app) rather than exposing the internal enum names directly:
 
 | Internal Mode | Visible Name | Availability |
 |---|---|---|
@@ -49,19 +51,19 @@ The contracts and persisted settings now use `VoiceWake` and `TalkMode` as well.
 `TalkMode` follows the current talk-mode style control flow:
 
 - the node captures audio locally
-- local speech recognition turns that audio into transcript text
+- local or remote speech recognition turns that audio into transcript text
 - interim hypotheses are surfaced live, but only final `Medium` or `High` confidence recognizer results are submitted
 - the tray chat window, when open, mirrors the live transcript draft locally
 - the finalized transcript is always sent to OpenClaw via direct `chat.send` on the main session
 - OpenClaw returns the assistant reply as normal chat output
-- the node performs local TTS playback of that reply
-- assistant replies are queued locally and spoken sequentially, with a short 500 ms pause between queued replies so overlapping responses are not lost
+- the node performs local or remote TTS playback of that reply
+- assistant replies are queued locally and spoken sequentially, with a short (500 ms currently) pause between queued replies so overlapping responses are not lost
 - if a reply arrives after the normal 45-second wait timeout, the tray still accepts and speaks that late reply for a short bounded grace window so slow upstream responses are not silently lost
 - the tray chat window can optionally strip injected `<relevant-memories>...</relevant-memories>` blocks from the rendered display without changing the underlying upstream message
 
 To avoid obvious duplicate sends from the Windows recognizer, exact duplicate final transcripts are suppressed within a short 750 ms window.
 
-That means the first Windows target is transcript transport, not raw audio upload. Streaming audio frames in or out of OpenClaw remains a future protocol extension, not part of this design.
+That means the first Windows target is transcript transport, not raw audio upload. Streaming audio frames in or out of OpenClaw remains a future protocol extension, and therefore not part of this design.
 
 The current Windows implementation uses a voice-local operator connection inside the tray app while node mode is active. That sidecar connection exists to carry assistant chat events for `TalkMode`, and to provide a fallback direct `chat.send` path when the tray chat window is not open.
 
@@ -155,7 +157,7 @@ The main remaining gap is streaming playback from the first audio chunk. The Azu
 - MiniMax now uses the provider catalog's WebSocket TTS contract, but the current player still waits for a complete playable stream before output starts
 - ElevenLabs is currently integrated through the non-streaming convert contract in the provider catalog
 
-So the current design minimizes avoidable setup and connection latency, but does not yet implement first-chunk playback streaming.
+So the current design minimizes avoidable setup and connection latency, but does not yet implement first-chunk playback streaming. This is, however, planned for an early release.
 
 ## Tray Chat Integration Decision
 
@@ -202,11 +204,14 @@ The embedded [WebChatWindow.xaml.cs](../src/OpenClaw.Tray.WinUI/Windows/WebChatW
 
 This is intentionally a tray-local integration decision, not a protocol-level rewrite of the stored upstream transcript.
 
+It also fits with the planned voice mode *repeater form*, which will act as an optional small display and control surface whilst voice mode is in operation.
+
 ### Tradeoffs
 
 - preserves a single visible conversation for the user
 - avoids a second voice-only session in the tray UI
 - uses only one send path for voice turns, which is simpler to reason about and debug
+- requires us to change the existing project, but not too significantly
 - keeps a light DOM integration inside the embedded WebView chat surface for draft mirroring only
 - only affects the tray app chat window; other clients still render upstream content according to their own rules
 
@@ -223,9 +228,9 @@ Runtime behavior in the current phase:
 
 - `windows` is implemented for both STT and TTS
 - built-in catalog entries exist for both `minimax` and `elevenlabs` TTS
-- `minimax` defaults to `speech-2.8-turbo` and `English_MatureBoss`
+- `minimax` defaults to `speech-2.8-turbo` and `English_MatureBoss` at present
 - `minimax` now uses a catalog-driven WebSocket contract for synchronous TTS
-- `elevenlabs` defaults to `eleven_multilingual_v2` and a user-supplied voice id
+- `elevenlabs` defaults to `eleven_multilingual_v2` and voice id `6aDn1KB0hjpdcocrUkmq (Tiffany)` for now
 - non-Windows providers can be selected and persisted now
 - unsupported providers fall back to Windows at runtime with a status warning
 
@@ -797,7 +802,7 @@ Status values used below:
 | Talk Mode interrupt-on-speech / barge-in | `NotSupported (planned)` | Windows is still half-duplex during reply playback. |
 | Talk Mode voice directives in replies | `NotSupported (planned)` | Windows does not yet parse or apply the JSON voice directive line described in the Talk Mode docs. |
 | Talk Mode true streaming TTS playback | `NotSupported (planned)` | MiniMax uses WebSocket transport, but playback still waits for a complete playable stream. |
-| Talk Mode cloud TTS provider flexibility | `Exceeded*` | Windows already supports Windows built-in TTS plus catalog-driven cloud providers rather than being limited to a single provider path.[^parity-tts] |
+| Talk Mode cloud TTS provider flexibility | `Exceeded` | Windows already supports Windows built-in TTS plus catalog-driven cloud providers rather than being limited to a single provider path. This exceeds the documented macOS baseline on provider flexibility, but not yet on true streaming playback latency because incremental playback is still pending. |
 | Voice Wake wake-word runtime | `NotSupported (planned)` | `VoiceWake` remains a documented target mode, but there is no active wake-word runtime yet. |
 | Voice Wake push-to-talk capture | `NotSupported (planned)` | There is no Windows push-to-talk path yet. |
 | Voice Wake overlay with committed / volatile transcript states | `NotSupported (planned)` | No Voice Wake overlay exists on Windows yet. |
@@ -807,8 +812,6 @@ Status values used below:
 | Voice Wake mic picker, live level meter, trigger-word table, and tester | `NotSupported (planned)` | Windows has general voice settings and device lists, but not the Voice Wake-specific settings surface from macOS. |
 | Voice mic device selection | `Partial` | Selected output device is implemented; selected microphone binding exists in `AudioGraph`, but actual transcript generation still follows the Windows speech-input path. |
 | Voice Wake send / trigger chimes | `NotSupported (planned)` | Windows currently has no configurable trigger/send sounds. |
-
-[^parity-tts]: Windows supports provider-catalog TTS contracts with Windows built-in, MiniMax, and ElevenLabs entries today, whereas the documented macOS baseline is ElevenLabs-centric. Windows does not yet exceed macOS on true streaming playback latency because incremental playback is still pending.
 
 ## Feature List (Backlog)
 
