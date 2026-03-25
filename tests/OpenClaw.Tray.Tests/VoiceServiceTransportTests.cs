@@ -1,6 +1,7 @@
 using System.Reflection;
 using OpenClaw.Shared;
 using OpenClawTray.Services.Voice;
+using Windows.Media.SpeechRecognition;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -145,6 +146,33 @@ public class VoiceServiceTransportTests
                 awaitingReply,
                 false
             ])!;
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, false, false, true)]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, true)]
+    [InlineData(SpeechRecognitionResultStatus.Success, false, false, false, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, true, false, false, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, true, false, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, true, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, false, true, false)]
+    public void ShouldRebuildRecognitionAfterCompletion_OnlyRebuildsForDeafCanceledSessions(
+        SpeechRecognitionResultStatus status,
+        bool sessionHadActivity,
+        bool restartInProgress,
+        bool awaitingReply,
+        bool isSpeaking,
+        bool expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "ShouldRebuildRecognitionAfterCompletion",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var result = (bool)method.Invoke(
+            null,
+            [status, sessionHadActivity, restartInProgress, awaitingReply, isSpeaking])!;
 
         Assert.Equal(expected, result);
     }

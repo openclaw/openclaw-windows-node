@@ -51,6 +51,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private MediaPlayer? _mediaPlayer;
     private bool _recognitionActive;
     private int _recognitionSessionGeneration;
+    private bool _recognitionSessionHadActivity;
     private bool _recognitionHealthCheckArmed;
     private bool _recognitionRestartInProgress;
     private bool _awaitingReply;
@@ -718,6 +719,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         lock (_gate)
         {
             _recognitionActive = true;
+            _recognitionSessionHadActivity = false;
             if (updateListeningStatus && _status.Running && !_awaitingReply && !_isSpeaking)
             {
                 _status = BuildRunningStatus(
@@ -735,7 +737,8 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private async Task ResumeRecognitionSessionAsync(
         CancellationToken cancellationToken,
         string reason,
-        string? lastError = null)
+        string? lastError = null,
+        bool rebuildRecognizer = false)
     {
         const int maxAttempts = 2;
         string? currentError = lastError;
@@ -746,6 +749,11 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             try
             {
+                if (rebuildRecognizer && attempt == 1)
+                {
+                    await RebuildSpeechRecognizerAsync(reason, cancellationToken);
+                }
+
                 await StartRecognitionSessionAsync();
                 return;
             }
@@ -800,6 +808,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             }
 
             _recognitionActive = false;
+            _recognitionHealthCheckArmed = false;
         }
 
         try
@@ -894,6 +903,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             text = args.Hypothesis?.Text?.Trim();
             sessionKey = GetCurrentVoiceSessionKey();
+            _recognitionSessionHadActivity = true;
             _recognitionHealthCheckArmed = false;
             if (_status.State != VoiceRuntimeState.RecordingUtterance)
             {
@@ -943,6 +953,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             _lastTranscript = text;
             _lastTranscriptUtc = DateTime.UtcNow;
+            _recognitionSessionHadActivity = true;
             _recognitionHealthCheckArmed = false;
             cancellationToken = _runtimeCts.Token;
             sessionKey = GetCurrentVoiceSessionKey();
@@ -1370,6 +1381,22 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                !isSpeaking;
     }
 
+    internal static bool ShouldRebuildRecognitionAfterCompletion(
+        SpeechRecognitionResultStatus status,
+        bool sessionHadActivity,
+        bool restartInProgress,
+        bool awaitingReply,
+        bool isSpeaking)
+    {
+        if (restartInProgress || awaitingReply || isSpeaking || sessionHadActivity)
+        {
+            return false;
+        }
+
+        return status == SpeechRecognitionResultStatus.UserCanceled ||
+               status == SpeechRecognitionResultStatus.TimeoutExceeded;
+    }
+
     private static string CreateReplyPreview(string text)
     {
         var trimmed = text.Trim();
@@ -1427,7 +1454,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         {
             CancellationToken token;
             var shouldRestart = false;
+            var shouldRebuildRecognizer = false;
             var restartInProgress = false;
+            var sessionHadActivity = false;
 
             lock (_gate)
             {
@@ -1437,6 +1466,8 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 }
 
                 _recognitionActive = false;
+                sessionHadActivity = _recognitionSessionHadActivity;
+                _recognitionSessionHadActivity = false;
                 restartInProgress = _recognitionRestartInProgress;
                 if (restartInProgress)
                 {
@@ -1456,14 +1487,24 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                     restartInProgress,
                     _awaitingReply,
                     _isSpeaking);
+                shouldRebuildRecognizer = ShouldRebuildRecognitionAfterCompletion(
+                    args.Status,
+                    sessionHadActivity,
+                    restartInProgress,
+                    _awaitingReply,
+                    _isSpeaking);
             }
 
-            _logger.Warn($"Speech recognition session completed with status {args.Status}; restart={shouldRestart}");
+            _logger.Warn(
+                $"Speech recognition session completed with status {args.Status}; restart={shouldRestart}; rebuild={shouldRebuildRecognizer}; hadActivity={sessionHadActivity}");
 
             if (shouldRestart && !token.IsCancellationRequested)
             {
                 await Task.Delay(250, token);
-                await ResumeRecognitionSessionAsync(token, $"recognition completed ({args.Status})");
+                await ResumeRecognitionSessionAsync(
+                    token,
+                    $"recognition completed ({args.Status})",
+                    rebuildRecognizer: shouldRebuildRecognizer);
             }
         }
         catch (OperationCanceledException)
@@ -1548,6 +1589,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             recognizer = _speechRecognizer;
             _speechRecognizer = null;
             _recognitionActive = false;
+            _recognitionSessionHadActivity = false;
             _recognitionRestartInProgress = false;
 
             synthesizer = _speechSynthesizer;
@@ -1708,6 +1750,69 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         }
     }
 
+    private async Task RebuildSpeechRecognizerAsync(string reason, CancellationToken cancellationToken)
+    {
+        SpeechRecognizer? oldRecognizer;
+        SpeechRecognizer? newRecognizer = null;
+        VoiceSettings settings;
+
+        lock (_gate)
+        {
+            if (_runtimeCts == null || _runtimeCts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            oldRecognizer = _speechRecognizer;
+            settings = Clone(_settings.Voice);
+            _speechRecognizer = null;
+            _recognitionActive = false;
+            _recognitionSessionHadActivity = false;
+            _recognitionHealthCheckArmed = false;
+        }
+
+        if (oldRecognizer != null)
+        {
+            try { oldRecognizer.HypothesisGenerated -= OnSpeechHypothesisGenerated; } catch { }
+            try { oldRecognizer.ContinuousRecognitionSession.ResultGenerated -= OnSpeechResultGenerated; } catch { }
+            try { oldRecognizer.ContinuousRecognitionSession.Completed -= OnSpeechRecognitionCompleted; } catch { }
+            try { await oldRecognizer.ContinuousRecognitionSession.CancelAsync(); } catch { }
+            try { oldRecognizer.Dispose(); } catch { }
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            newRecognizer = await CreateSpeechRecognizerAsync(settings);
+            newRecognizer.HypothesisGenerated += OnSpeechHypothesisGenerated;
+            newRecognizer.ContinuousRecognitionSession.ResultGenerated += OnSpeechResultGenerated;
+            newRecognizer.ContinuousRecognitionSession.Completed += OnSpeechRecognitionCompleted;
+
+            lock (_gate)
+            {
+                if (_runtimeCts == null || _runtimeCts.IsCancellationRequested || !_status.Running)
+                {
+                    return;
+                }
+
+                _speechRecognizer = newRecognizer;
+                newRecognizer = null;
+            }
+
+            _logger.Warn($"Speech recognizer rebuilt ({reason})");
+        }
+        finally
+        {
+            if (newRecognizer != null)
+            {
+                try { newRecognizer.HypothesisGenerated -= OnSpeechHypothesisGenerated; } catch { }
+                try { newRecognizer.ContinuousRecognitionSession.ResultGenerated -= OnSpeechResultGenerated; } catch { }
+                try { newRecognizer.ContinuousRecognitionSession.Completed -= OnSpeechRecognitionCompleted; } catch { }
+                try { newRecognizer.Dispose(); } catch { }
+            }
+        }
+    }
+
     private async Task MonitorRecognitionSessionHealthAsync(int generation, CancellationToken cancellationToken)
     {
         try
@@ -1747,7 +1852,10 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             _logger.Warn(
                 $"Speech recognition session produced no hypotheses/results within {RecognitionHealthCheckDelay.TotalSeconds:0}s; recycling session");
             await StopRecognitionSessionAsync();
-            await ResumeRecognitionSessionAsync(cancellationToken, "recognition health check");
+            await ResumeRecognitionSessionAsync(
+                cancellationToken,
+                "recognition health check",
+                rebuildRecognizer: true);
         }
         catch (OperationCanceledException)
         {
