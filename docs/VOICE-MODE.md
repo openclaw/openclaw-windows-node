@@ -1063,3 +1063,4 @@ Append one new line to this timeline for every future voice-mode commit.
 - `2026-03-25` Changed recognizer recovery so silence no longer churns the Talk Mode pipeline; recycling now only happens when sustained capture speech is present but the Windows recognizer still produces no activity.
 - `2026-03-25` Delayed deaf-recognizer recovery until post-speech silence and added a completion fallback that submits the last recent hypothesis when Windows ends a session without ever producing a final result.
 - `2026-03-25` Fixed overlapping Talk Mode recovery watchdogs so a new recognition session no longer launches duplicate deaf-recognizer recycle loops.
+- `2026-03-25` Fixed Talk Mode media playback failure handling so a failed reply no longer leaks an unobserved task exception after the reply audio arrives.

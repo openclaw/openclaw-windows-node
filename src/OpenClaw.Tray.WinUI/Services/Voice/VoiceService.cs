@@ -1613,8 +1613,17 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         endedHandler = (sender, _) => playbackEnded.TrySetResult(true);
         failedHandler = (sender, args) =>
         {
-            var exception = new InvalidOperationException(args.ErrorMessage);
-            mediaOpened.TrySetException(exception);
+            var errorMessage = string.IsNullOrWhiteSpace(args.ErrorMessage)
+                ? "Media playback failed."
+                : args.ErrorMessage;
+            var exception = new InvalidOperationException(errorMessage);
+
+            if (!mediaOpened.Task.IsCompleted)
+            {
+                mediaOpened.TrySetException(exception);
+                return;
+            }
+
             playbackEnded.TrySetException(exception);
         };
 
@@ -1635,6 +1644,15 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             await mediaOpened.Task;
             player.Play();
             await playbackEnded.Task;
+        }
+        catch
+        {
+            if (playbackEnded.Task.IsFaulted)
+            {
+                _ = playbackEnded.Task.Exception;
+            }
+
+            throw;
         }
         finally
         {
