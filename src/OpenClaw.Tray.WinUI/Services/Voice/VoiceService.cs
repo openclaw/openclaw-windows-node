@@ -550,23 +550,8 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             }
 
             await EnsureChatTransportAsync(runtimeCts.Token);
-            await StartRecognitionSessionAsync(updateListeningStatus: false);
+            await StartRecognitionSessionAsync();
             ArmRecognitionHealthCheck();
-            await Task.Delay(InitialRecognitionReadyDelay, runtimeCts.Token);
-
-            lock (_gate)
-            {
-                if (_status.Running)
-                {
-                    _status = BuildRunningStatus(
-                        VoiceActivationMode.TalkMode,
-                        effectiveSessionKey,
-                        VoiceRuntimeState.ListeningContinuously,
-                        fallbackMessage);
-                }
-            }
-
-            _logger.Info($"Speech recognition warm-up completed ({InitialRecognitionReadyDelay.TotalMilliseconds:0}ms)");
             _logger.Info("Voice runtime started in mode TalkMode");
         }
         catch
@@ -774,13 +759,79 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 _status = BuildRunningStatus(
                     VoiceActivationMode.TalkMode,
                     _status.SessionKey,
-                    VoiceRuntimeState.ListeningContinuously,
-                    null);
+                    VoiceRuntimeState.Arming,
+                    _status.LastError);
             }
         }
 
         _logger.Info("Speech recognition session started");
+        if (updateListeningStatus)
+        {
+            _ = MonitorListeningReadyAsync(generation, runtimeToken);
+        }
+
         _ = MonitorRecognitionSessionHealthAsync(generation, runtimeToken);
+    }
+
+    private async Task MonitorListeningReadyAsync(int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            VoiceCaptureService? captureService;
+
+            lock (_gate)
+            {
+                captureService = _voiceCaptureService;
+            }
+
+            if (captureService == null)
+            {
+                return;
+            }
+
+            await captureService.WaitForCaptureReadyAsync(cancellationToken);
+            await Task.Delay(InitialRecognitionReadyDelay, cancellationToken);
+
+            var transitionedToListening = false;
+
+            lock (_gate)
+            {
+                if (_runtimeCts == null ||
+                    _runtimeCts.IsCancellationRequested ||
+                    !_status.Running ||
+                    _status.Mode != VoiceActivationMode.TalkMode ||
+                    !_recognitionActive ||
+                    _recognitionSessionGeneration != generation ||
+                    _awaitingReply ||
+                    _isSpeaking)
+                {
+                    return;
+                }
+
+                if (_status.State != VoiceRuntimeState.ListeningContinuously)
+                {
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.TalkMode,
+                        _status.SessionKey,
+                        VoiceRuntimeState.ListeningContinuously,
+                        _status.LastError);
+                    transitionedToListening = true;
+                }
+            }
+
+            if (transitionedToListening)
+            {
+                _logger.Info(
+                    $"Speech pipeline ready; capture frames observed and recognizer warm-up completed ({InitialRecognitionReadyDelay.TotalMilliseconds:0}ms)");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Voice listening readiness check failed: {ex.Message}");
+        }
     }
 
     private async Task ResumeRecognitionSessionAsync(
@@ -1118,7 +1169,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                     _status = BuildRunningStatus(
                         VoiceActivationMode.TalkMode,
                         _status.SessionKey,
-                        VoiceRuntimeState.ListeningContinuously,
+                        VoiceRuntimeState.Arming,
                         "Timed out waiting for an assistant reply.");
                     shouldResume = true;
                 }
@@ -1201,7 +1252,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                         _status = BuildRunningStatus(
                             VoiceActivationMode.TalkMode,
                             _status.SessionKey,
-                            VoiceRuntimeState.ListeningContinuously,
+                            VoiceRuntimeState.Arming,
                             _status.LastError);
                         shouldResumeRecognition = true;
                     }
@@ -1276,7 +1327,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                             _status = BuildRunningStatus(
                                 VoiceActivationMode.TalkMode,
                                 _status.SessionKey,
-                                VoiceRuntimeState.ListeningContinuously,
+                                VoiceRuntimeState.Arming,
                                 _status.LastError);
                         }
 
@@ -1311,7 +1362,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                         _status = BuildRunningStatus(
                             VoiceActivationMode.TalkMode,
                             _status.SessionKey,
-                            shouldPauseBeforeNextReply ? VoiceRuntimeState.PlayingResponse : VoiceRuntimeState.ListeningContinuously,
+                            shouldPauseBeforeNextReply ? VoiceRuntimeState.PlayingResponse : VoiceRuntimeState.Arming,
                             GetUserFacingErrorMessage(ex));
                     }
                 }
@@ -1349,7 +1400,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                     _status = BuildRunningStatus(
                         VoiceActivationMode.TalkMode,
                         _status.SessionKey,
-                        VoiceRuntimeState.ListeningContinuously,
+                        VoiceRuntimeState.Arming,
                         _status.LastError);
                 }
             }
@@ -1649,18 +1700,6 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             if (status == ConnectionStatus.Connected)
             {
                 _transportReadyTcs?.TrySetResult(true);
-
-                if (_status.Running &&
-                    _status.Mode == VoiceActivationMode.TalkMode &&
-                    !_awaitingReply &&
-                    !_isSpeaking)
-                {
-                    _status = BuildRunningStatus(
-                        VoiceActivationMode.TalkMode,
-                        _status.SessionKey,
-                        VoiceRuntimeState.ListeningContinuously,
-                        _status.LastError);
-                }
             }
             else if (status == ConnectionStatus.Error)
             {

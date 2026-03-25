@@ -76,6 +76,8 @@ public sealed class VoiceCaptureService : IAsyncDisposable
     private DeviceInformation? _activeCaptureDevice;
     private int _sampleRateHz;
     private int _channelCount;
+    private bool _captureReady;
+    private TaskCompletionSource<bool> _captureReadyTcs = CreateCaptureReadyTcs();
 
     public VoiceCaptureService(IOpenClawLogger logger)
     {
@@ -124,6 +126,12 @@ public sealed class VoiceCaptureService : IAsyncDisposable
 
         await StopAsync();
         cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_gate)
+        {
+            _captureReady = false;
+            _captureReadyTcs = CreateCaptureReadyTcs();
+        }
 
         AudioGraph? audioGraph = null;
         AudioDeviceInputNode? deviceInputNode = null;
@@ -256,6 +264,18 @@ public sealed class VoiceCaptureService : IAsyncDisposable
         _logger.Info($"Voice capture graph stopped{(string.IsNullOrWhiteSpace(deviceName) ? string.Empty : $" ({deviceName})")}");
     }
 
+    public Task WaitForCaptureReadyAsync(CancellationToken cancellationToken)
+    {
+        Task readinessTask;
+
+        lock (_gate)
+        {
+            readinessTask = _captureReady ? Task.CompletedTask : _captureReadyTcs.Task;
+        }
+
+        return readinessTask.WaitAsync(cancellationToken);
+    }
+
     internal static uint ResolveDesiredSamplesPerQuantum(int sampleRateHz, int chunkMs)
     {
         if (sampleRateHz <= 0)
@@ -361,6 +381,19 @@ public sealed class VoiceCaptureService : IAsyncDisposable
                 return;
             }
 
+            TaskCompletionSource<bool>? captureReadyTcs = null;
+
+            lock (_gate)
+            {
+                if (!_captureReady)
+                {
+                    _captureReady = true;
+                    captureReadyTcs = _captureReadyTcs;
+                }
+            }
+
+            captureReadyTcs?.TrySetResult(true);
+
             var utcNow = DateTime.UtcNow;
             var peak = ComputePeakLevel(bytes);
             FrameCaptured?.Invoke(
@@ -408,6 +441,11 @@ public sealed class VoiceCaptureService : IAsyncDisposable
         bytes = new byte[capacity];
         Marshal.Copy(data, bytes, 0, (int)capacity);
         return true;
+    }
+
+    private static TaskCompletionSource<bool> CreateCaptureReadyTcs()
+    {
+        return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     [ComImport]
