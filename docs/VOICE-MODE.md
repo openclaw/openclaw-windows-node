@@ -758,3 +758,4 @@ Append one new line to this timeline for every future voice-mode commit.
 - `2026-03-25` `82e2958` Added voice control and configuration APIs.
 - `2026-03-25` `06d508f` Accepted late Talk Mode replies after timeout.
 - `2026-03-25` Delayed the Talk Mode ready state until recognizer warm-up completes, so the UI does not advertise listening before the first recognition session has settled.
+- `2026-03-25` Added a recognizer health-check watchdog so Talk Mode recycles a started-but-deaf recognition session instead of waiting minutes for Windows to cancel it.

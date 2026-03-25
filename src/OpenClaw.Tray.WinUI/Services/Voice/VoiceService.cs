@@ -30,6 +30,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private static readonly TimeSpan ReplyTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan LateReplyGraceWindow = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan InitialRecognitionReadyDelay = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan RecognitionHealthCheckDelay = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DuplicateTranscriptWindow = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan RecognitionResumeRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan QueuedReplyPlaybackGap = TimeSpan.FromMilliseconds(500);
@@ -49,6 +50,8 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private SpeechSynthesizer? _speechSynthesizer;
     private MediaPlayer? _mediaPlayer;
     private bool _recognitionActive;
+    private int _recognitionSessionGeneration;
+    private bool _recognitionHealthCheckArmed;
     private bool _awaitingReply;
     private bool _isSpeaking;
     private bool _replyPlaybackLoopActive;
@@ -539,6 +542,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             await EnsureChatTransportAsync(runtimeCts.Token);
             await StartRecognitionSessionAsync(updateListeningStatus: false);
+            ArmRecognitionHealthCheck();
             await Task.Delay(InitialRecognitionReadyDelay, runtimeCts.Token);
 
             lock (_gate)
@@ -694,14 +698,19 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private async Task StartRecognitionSessionAsync(bool updateListeningStatus = true)
     {
         SpeechRecognizer? recognizer;
+        CancellationToken runtimeToken;
+        int generation;
 
         lock (_gate)
         {
             recognizer = _speechRecognizer;
-            if (recognizer == null || _recognitionActive)
+            if (recognizer == null || _recognitionActive || _runtimeCts == null)
             {
                 return;
             }
+
+            runtimeToken = _runtimeCts.Token;
+            generation = ++_recognitionSessionGeneration;
         }
 
         _logger.Info("Starting speech recognition session");
@@ -721,6 +730,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         }
 
         _logger.Info("Speech recognition session started");
+        _ = MonitorRecognitionSessionHealthAsync(generation, runtimeToken);
     }
 
     private async Task ResumeRecognitionSessionAsync(
@@ -885,6 +895,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             text = args.Hypothesis?.Text?.Trim();
             sessionKey = GetCurrentVoiceSessionKey();
+            _recognitionHealthCheckArmed = false;
             if (_status.State != VoiceRuntimeState.RecordingUtterance)
             {
                 _status = BuildRunningStatus(
@@ -934,6 +945,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             _lastTranscript = text;
             _lastTranscriptUtc = DateTime.UtcNow;
+            _recognitionHealthCheckArmed = false;
             cancellationToken = _runtimeCts.Token;
             sessionKey = GetCurrentVoiceSessionKey();
         }
@@ -1480,6 +1492,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 }
 
                 _recognitionActive = false;
+                _recognitionHealthCheckArmed =
+                    args.Status == SpeechRecognitionResultStatus.UserCanceled ||
+                    args.Status == SpeechRecognitionResultStatus.TimeoutExceeded;
                 token = _runtimeCts.Token;
                 shouldRestart = _status.Running &&
                                 _status.Mode == VoiceActivationMode.TalkMode &&
@@ -1727,6 +1742,62 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             CurrentReplyPreview = _currentReplyPreview,
             LastError = lastError
         };
+    }
+
+    private void ArmRecognitionHealthCheck()
+    {
+        lock (_gate)
+        {
+            _recognitionHealthCheckArmed = true;
+        }
+    }
+
+    private async Task MonitorRecognitionSessionHealthAsync(int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(RecognitionHealthCheckDelay, cancellationToken);
+
+            var shouldRecycle = false;
+            lock (_gate)
+            {
+                shouldRecycle =
+                    _recognitionHealthCheckArmed &&
+                    _recognitionActive &&
+                    _runtimeCts != null &&
+                    !_runtimeCts.IsCancellationRequested &&
+                    _status.Running &&
+                    _status.Mode == VoiceActivationMode.TalkMode &&
+                    !_awaitingReply &&
+                    !_isSpeaking &&
+                    generation == _recognitionSessionGeneration;
+
+                if (shouldRecycle)
+                {
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.TalkMode,
+                        _status.SessionKey,
+                        VoiceRuntimeState.Arming,
+                        "Speech recognizer stalled; restarting listening.");
+                }
+            }
+
+            if (!shouldRecycle)
+            {
+                return;
+            }
+
+            _logger.Warn(
+                $"Speech recognition session produced no hypotheses/results within {RecognitionHealthCheckDelay.TotalSeconds:0}s; recycling session");
+            await ResumeRecognitionSessionAsync(cancellationToken, "recognition health check");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Speech recognition health check failed: {ex.Message}");
+        }
     }
 
     private VoiceStatusInfo BuildStoppedStatus(string? sessionKey, string? reason)
