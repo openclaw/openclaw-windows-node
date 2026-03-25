@@ -1786,10 +1786,10 @@ public partial class App : Application
                 }
             }
 
-            if (_settings?.EnableNodeMode == true)
-            {
-                InitializeNodeService();
-            }
+        if (_settings?.EnableNodeMode == true)
+        {
+            InitializeNodeService();
+        }
             else
             {
                 InitializeGatewayClient();
@@ -1819,6 +1819,18 @@ public partial class App : Application
             _globalHotkey?.Unregister();
         }
 
+        if (_webChatWindow != null && ! _webChatWindow.IsClosed)
+        {
+            try
+            {
+                await _webChatWindow.SetStripInjectedMemoriesEnabledAsync(_settings.Voice.StripInjectedMemoriesInChat);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Failed to refresh tray chat cleanup setting: {ex.Message}");
+            }
+        }
+
         // Update auto-start
         AutoStartManager.SetAutoStart(_settings.AutoStart);
     }
@@ -1827,7 +1839,10 @@ public partial class App : Application
     {
         if (_webChatWindow == null || _webChatWindow.IsClosed)
         {
-            _webChatWindow = new WebChatWindow(_settings!.GatewayUrl, _settings.Token);
+            _webChatWindow = new WebChatWindow(
+                _settings!.GatewayUrl,
+                _settings.Token,
+                _settings.Voice.StripInjectedMemoriesInChat);
             _webChatWindow.Closed += (s, e) =>
             {
                 _voiceChatCoordinator?.DetachWindow(_webChatWindow);

@@ -20,6 +20,7 @@ public sealed partial class WebChatWindow : WindowEx
 {
     private readonly string _gatewayUrl;
     private readonly string _token;
+    private bool _stripInjectedMemories;
     private string _pendingVoiceDraft = string.Empty;
     
     // Store event handlers for cleanup
@@ -28,10 +29,12 @@ public sealed partial class WebChatWindow : WindowEx
     
     public bool IsClosed { get; private set; }
 
-    private const string TrayVoiceIntegrationScript = """
+private const string TrayVoiceIntegrationScript = """
 (() => {
   const isVisible = (el) => !!el && !(el.disabled === true) && el.getClientRects().length > 0;
+  const memoryPattern = /<relevant-memories>[\s\S]*?<\/relevant-memories>\s*/gi;
   let desiredDraft = '';
+  let stripInjectedMemories = true;
   const findComposer = () => {
     const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"], [contenteditable="plaintext-only"]'));
     return candidates.find(isVisible) || null;
@@ -61,11 +64,43 @@ public sealed partial class WebChatWindow : WindowEx
     setElementValue(composer, desiredDraft);
     return true;
   };
-  const observer = new MutationObserver(() => applyDraftIfPossible());
+  const cleanTextNodes = () => {
+    if (!stripInjectedMemories || !document.body) return false;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let current;
+    while ((current = walker.nextNode())) {
+      nodes.push(current);
+    }
+    let changed = false;
+    for (const node of nodes) {
+      if (!node || !node.parentElement) continue;
+      const tag = node.parentElement.tagName;
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') continue;
+      const original = node.textContent || '';
+      const cleaned = original.replace(memoryPattern, '').trimStart();
+      if (cleaned !== original) {
+        node.textContent = cleaned;
+        changed = true;
+      }
+    }
+    return changed;
+  };
+  let refreshScheduled = false;
+  const refreshView = () => {
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    queueMicrotask(() => {
+      refreshScheduled = false;
+      cleanTextNodes();
+      applyDraftIfPossible();
+    });
+  };
+  const observer = new MutationObserver(() => refreshView());
   const start = () => {
     if (!document.body) return;
     observer.observe(document.body, { childList: true, subtree: true });
-    applyDraftIfPossible();
+    refreshView();
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, { once: true });
@@ -77,6 +112,11 @@ public sealed partial class WebChatWindow : WindowEx
       desiredDraft = text || '';
       return applyDraftIfPossible();
     },
+    setStripInjectedMemories(enabled) {
+      stripInjectedMemories = !!enabled;
+      refreshView();
+      return true;
+    },
     clearDraft() {
       desiredDraft = '';
       return true;
@@ -85,11 +125,12 @@ public sealed partial class WebChatWindow : WindowEx
 })();
 """;
 
-    public WebChatWindow(string gatewayUrl, string token)
+    public WebChatWindow(string gatewayUrl, string token, bool stripInjectedMemories)
     {
         Logger.Info($"WebChatWindow: Constructor called, gateway={gatewayUrl}");
         _gatewayUrl = gatewayUrl;
         _token = token;
+        _stripInjectedMemories = stripInjectedMemories;
         
         InitializeComponent();
         
@@ -336,6 +377,12 @@ public sealed partial class WebChatWindow : WindowEx
         await RefreshTrayVoiceDomStateAsync();
     }
 
+    public async Task SetStripInjectedMemoriesEnabledAsync(bool enabled)
+    {
+        _stripInjectedMemories = enabled;
+        await RefreshTrayVoiceDomStateAsync();
+    }
+
     private async Task RefreshTrayVoiceDomStateAsync()
     {
         if (WebView.CoreWebView2 == null)
@@ -345,6 +392,10 @@ public sealed partial class WebChatWindow : WindowEx
 
         try
         {
+            var stripJson = _stripInjectedMemories ? "true" : "false";
+            await WebView.CoreWebView2.ExecuteScriptAsync(
+                $"window.__openClawTrayVoice?.setStripInjectedMemories?.({stripJson});");
+
             var draftJson = JsonSerializer.Serialize(_pendingVoiceDraft ?? string.Empty);
             var script = string.IsNullOrWhiteSpace(_pendingVoiceDraft)
                 ? "window.__openClawTrayVoice?.clearDraft?.();"

@@ -57,6 +57,7 @@ The contracts and persisted settings now use `VoiceWake` and `TalkMode` as well.
 - the node performs local TTS playback of that reply
 - assistant replies are queued locally and spoken sequentially, with a short 500 ms pause between queued replies so overlapping responses are not lost
 - if a reply arrives after the normal 45-second wait timeout, the tray still accepts and speaks that late reply for a short bounded grace window so slow upstream responses are not silently lost
+- the tray chat window can optionally strip injected `<relevant-memories>...</relevant-memories>` blocks from the rendered display without changing the underlying upstream message
 
 To avoid obvious duplicate sends from the Windows recognizer, exact duplicate final transcripts are suppressed within a short 750 ms window.
 
@@ -502,6 +503,7 @@ The tray `Voice Mode` window is a read-only runtime status/detail surface with a
 |---|---|---|---|---|
 | `Voice.Mode` | enum | `Off` | all | Activation mode: `Off`, `VoiceWake`, `TalkMode` |
 | `Voice.Enabled` | bool | `false` | all | Master enable/disable flag for voice mode |
+| `Voice.StripInjectedMemoriesInChat` | bool | `true` | all | If `true`, the tray chat window strips injected `<relevant-memories>` scaffolding from rendered chat text |
 | `Voice.SpeechToTextProviderId` | string | `windows` | all | Preferred speech-to-text provider id |
 | `Voice.TextToSpeechProviderId` | string | `windows` | all | Preferred text-to-speech provider id |
 | `Voice.InputDeviceId` | string? | `null` | all | Preferred microphone device id; `null` means system default |
@@ -750,3 +752,4 @@ Append one new line to this timeline for every future voice-mode commit.
 - `2026-03-25` Delayed the Talk Mode ready state until recognizer warm-up completes, so the UI does not advertise listening before the first recognition session has settled.
 - `2026-03-25` Added a recognizer health-check watchdog so Talk Mode recycles a started-but-deaf recognition session instead of waiting minutes for Windows to cancel it.
 - `2026-03-25` Reverted Talk Mode to a single direct `chat.send` path and reduced the tray chat integration back to draft mirroring only.
+- `2026-03-25` Added a configurable tray-chat display filter for injected `<relevant-memories>` blocks.

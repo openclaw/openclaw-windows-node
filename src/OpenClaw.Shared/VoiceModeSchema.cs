@@ -62,6 +62,7 @@ public sealed class VoiceSettings
     public VoiceActivationMode Mode { get; set; } = VoiceActivationMode.Off;
     public bool Enabled { get; set; }
     public bool ShowConversationToasts { get; set; }
+    public bool StripInjectedMemoriesInChat { get; set; } = true;
     public string SpeechToTextProviderId { get; set; } = VoiceProviderIds.Windows;
     public string TextToSpeechProviderId { get; set; } = VoiceProviderIds.Windows;
     public string? InputDeviceId { get; set; }

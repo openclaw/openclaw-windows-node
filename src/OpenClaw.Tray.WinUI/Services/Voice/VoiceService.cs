@@ -1788,6 +1788,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             Mode = source.Mode,
             Enabled = source.Enabled,
             ShowConversationToasts = source.ShowConversationToasts,
+            StripInjectedMemoriesInChat = source.StripInjectedMemoriesInChat,
             SpeechToTextProviderId = source.SpeechToTextProviderId,
             TextToSpeechProviderId = source.TextToSpeechProviderId,
             InputDeviceId = source.InputDeviceId,

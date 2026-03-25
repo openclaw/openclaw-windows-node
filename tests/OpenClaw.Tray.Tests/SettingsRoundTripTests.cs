@@ -34,6 +34,7 @@ public class SettingsRoundTripTests
                 Enabled = true,
                 Mode = VoiceActivationMode.VoiceWake,
                 ShowConversationToasts = true,
+                StripInjectedMemoriesInChat = false,
                 SpeechToTextProviderId = "windows",
                 TextToSpeechProviderId = "elevenlabs",
                 InputDeviceId = "mic-1",
@@ -116,6 +117,7 @@ public class SettingsRoundTripTests
         Assert.True(restored.Voice.Enabled);
         Assert.Equal(VoiceActivationMode.VoiceWake, restored.Voice.Mode);
         Assert.True(restored.Voice.ShowConversationToasts);
+        Assert.False(restored.Voice.StripInjectedMemoriesInChat);
         Assert.Equal("windows", restored.Voice.SpeechToTextProviderId);
         Assert.Equal("elevenlabs", restored.Voice.TextToSpeechProviderId);
         Assert.Equal("mic-1", restored.Voice.InputDeviceId);
@@ -181,6 +183,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.Voice.Enabled);
         Assert.Equal(VoiceActivationMode.Off, settings.Voice.Mode);
         Assert.False(settings.Voice.ShowConversationToasts);
+        Assert.True(settings.Voice.StripInjectedMemoriesInChat);
         Assert.Equal(VoiceProviderIds.Windows, settings.Voice.SpeechToTextProviderId);
         Assert.Equal(VoiceProviderIds.Windows, settings.Voice.TextToSpeechProviderId);
         Assert.NotNull(settings.VoiceProviderConfiguration);
@@ -249,6 +252,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.Voice.Enabled);
         Assert.Equal(VoiceActivationMode.Off, settings.Voice.Mode);
         Assert.False(settings.Voice.ShowConversationToasts);
+        Assert.True(settings.Voice.StripInjectedMemoriesInChat);
         Assert.Equal(VoiceProviderIds.Windows, settings.Voice.SpeechToTextProviderId);
         Assert.Equal(VoiceProviderIds.Windows, settings.Voice.TextToSpeechProviderId);
         Assert.Null(settings.UserRules);
