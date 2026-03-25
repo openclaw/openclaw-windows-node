@@ -407,6 +407,9 @@ The voice subsystem is introduced as a new node capability category: `voice`.
 | `voice.status.get` | Return runtime voice status | none | `VoiceStatusInfo` |
 | `voice.start` | Start the voice runtime with the supplied or persisted mode | `VoiceStartArgs` | `VoiceStatusInfo` |
 | `voice.stop` | Stop the voice runtime | `VoiceStopArgs` | `VoiceStatusInfo` |
+| `voice.pause` | Pause the active voice runtime | `VoicePauseArgs` | `VoiceStatusInfo` |
+| `voice.resume` | Resume a paused voice runtime | `VoiceResumeArgs` | `VoiceStatusInfo` |
+| `voice.skip` | Skip the currently spoken reply and advance the queue if another reply is pending | `VoiceSkipArgs` | `VoiceStatusInfo` |
 
 ### Payload Types
 
@@ -417,6 +420,9 @@ The voice subsystem is introduced as a new node capability category: `voice`.
 - `VoiceStatusInfo`
 - `VoiceStartArgs`
 - `VoiceStopArgs`
+- `VoicePauseArgs`
+- `VoiceResumeArgs`
+- `VoiceSkipArgs`
 - `VoiceSettingsUpdateArgs`
 
 These contracts are defined in [VoiceModeSchema.cs](../src/OpenClaw.Shared/VoiceModeSchema.cs).
@@ -519,11 +525,6 @@ The tray `Voice Mode` window is a read-only runtime status/detail surface with a
 | `Voice.VoiceWake.EndSilenceMs` | int | `900` | voice wake | Silence timeout used to finalize the post-trigger utterance |
 | `Voice.TalkMode.MinSpeechMs` | int | `250` | talk mode | Minimum detected speech duration before an utterance is treated as real input |
 | `Voice.TalkMode.EndSilenceMs` | int | `900` | talk mode | Silence timeout used to finalize an utterance |
-
-Current status:
-
-- `Voice.OutputDeviceId` is now applied to Talk Mode playback through `MediaPlayer.AudioDevice`
-- `Voice.InputDeviceId` is still persisted and shown in settings, but explicit non-default microphone binding is not implemented yet
 | `Voice.TalkMode.MaxUtteranceMs` | int | `15000` | talk mode | Hard cap on utterance length before forced submission/finalization |
 | `VoiceProviderConfiguration.Providers[].ProviderId` | string | none | cloud providers | Provider id matching an `Assets\\voice-providers.json` entry |
 | `VoiceProviderConfiguration.Providers[].Values["apiKey"]` | string? | `null` | cloud providers | API key sent using the provider contract's configured auth header |
@@ -531,80 +532,160 @@ Current status:
 | `VoiceProviderConfiguration.Providers[].Values["voiceId"]` | string? | provider default | cloud providers | Voice id inserted into the configured request template or URL |
 | `VoiceProviderConfiguration.Providers[].Values["voiceSettingsJson"]` | string? | provider default | cloud providers | Raw JSON fragment inserted into the configured request template; may be a keyed fragment like `"voice_setting": { ... }` |
 
-At runtime today, those device ids are persisted and surfaced in the UI, but the v1 `TalkMode` path still uses the Windows system speech stack defaults for capture and playback.
+At runtime today:
 
-## Component Architecture
+- `Voice.OutputDeviceId` is applied to Talk Mode playback through `MediaPlayer.AudioDevice`
+- `Voice.InputDeviceId` is still persisted and shown in the UI, but Talk Mode capture still uses the Windows default speech input path
+- when the system default capture device changes and Talk Mode is using the default mic, the recognizer is rebuilt so device switches such as AirPods are picked up without a full app restart
+- explicit non-default microphone binding is still pending the planned `AudioGraph` capture refactor
+
+## Current Runtime Architecture
+
+The current Windows implementation is still centred on `VoiceService`, with a few supporting seams around it:
+
+- `VoiceCapability`
+  exposes shared `voice.*` commands to the node/gateway surface
+- `VoiceService`
+  owns Talk Mode runtime state, Windows STT/TTS integration, reply queuing, timeouts, and gateway reply handling
+- `VoiceChatCoordinator`
+  mirrors interim transcript drafts and conversation turns into the tray UI without making the chat window part of the transport path
+- `OpenClawGatewayClient`
+  carries direct `chat.send`, final chat events, and the `sessions.preview` fallback path for bare final markers
+- `WebChatWindow`
+  mirrors live transcript drafts locally and optionally strips injected `<relevant-memories>` blocks from rendered chat text
+
+### Current End-to-End Talk Mode
 
 ```mermaid
 flowchart LR
-    A["NodeService<br/>control + lifecycle"] --> B["VoiceCapability<br/>command surface"]
-    B --> C["VoiceCoordinator<br/>runtime state machine"]
-    C --> D["SpeechRecognizer<br/>Windows continuous dictation"]
-    C --> E["VoiceWakeService<br/>NanoWakeWord scores"]
-    C --> F["VoiceActivityDetector<br/>speech/silence segments"]
-    C --> G["VoiceTransport<br/>operator sidecar + chat.send exchange"]
-    C --> H["SpeechSynthesizer + MediaPlayer<br/>reply playback"]
-    B --> I["SettingsManager / SettingsData.Voice<br/>persisted config JSON"]
+    A["User speech"] --> B["Windows SpeechRecognizer<br/>continuous dictation on current default mic"]
+    B --> C["HypothesisGenerated<br/>interim text"]
+    C --> D["VoiceService<br/>draft event"]
+    D --> E["VoiceChatCoordinator"]
+    E --> F["WebChatWindow<br/>local compose-box mirror only"]
+
+    B --> G["ResultGenerated<br/>final Medium/High text"]
+    G --> H["VoiceService<br/>duplicate guard + late hypothesis promotion"]
+    H --> I["Stop recognition session"]
+    I --> J["OpenClawGatewayClient.SendChatMessageAsync<br/>direct chat.send(main, transcript)"]
+    J --> K["OpenClaw / session pipeline"]
+    K --> L["Chat final event"]
+    L --> M{"assistant text present?"}
+    M -- "yes" --> N["assistant text"]
+    M -- "no" --> O["sessions.preview fallback<br/>with stale-preview retry guard"]
+    O --> N
+
+    N --> P["VoiceService reply queue"]
+    P --> Q{"TTS provider"}
+    Q -- "windows" --> R["SpeechSynthesizer"]
+    Q -- "cloud" --> S["VoiceCloudTextToSpeechClient<br/>MiniMax websocket or other provider"]
+    R --> T["Complete playable stream"]
+    S --> T
+    T --> U["MediaPlayer<br/>selected OutputDeviceId if set"]
+    U --> V["Speaker / headset output"]
+    V --> W["Resume recognition when queue drains"]
 ```
 
-## Runtime Data Flow
-
-### Voice Wake Mode
-
-```mermaid
-flowchart TD
-    A["Microphone device<br/>float/PCM hardware frames"] --> B["AudioCaptureService<br/>PCM16 mono 16kHz chunks"]
-    B --> C["Ring Buffer<br/>bounded pre-roll PCM16 frames"]
-B --> D["VoiceWakeService (NanoWakeWord)<br/>wake score per chunk"]
-    D --> E{"score >= trigger threshold?"}
-    E -- "no" --> B
-E -- "yes" --> F["VoiceCoordinator<br/>VoiceWakeDetected(session state change)"]
-    F --> G["UtteranceAssembler<br/>seed with pre-roll PCM16 from Ring Buffer"]
-    C --> G
-    B --> G
-    G --> H["VoiceActivityDetector<br/>speech/silence state from PCM16 chunks"]
-    H --> I{"speech still active?"}
-    I -- "yes" --> B
-    I -- "no, end silence reached" --> J["Finalize utterance<br/>PCM16 buffer + timing metadata"]
-    J --> K["SpeechRecognizer<br/>utterance PCM16 -> transcript text"]
-    K --> L["VoiceTransport<br/>chat.send(main, transcript)"]
-    L --> M["OpenClaw conversation pipeline<br/>assistant reply text"]
-    M --> N["AudioPlaybackService<br/>TTS output bytes / decoded PCM"]
-    N --> O["Speaker device<br/>rendered audio"]
-    O --> P{"barge-in enabled?"}
-    P -- "yes" --> B
-    P -- "no, playback complete" --> B
-```
-
-### Always-On Mode
-
-```mermaid
-flowchart TD
-    A["Windows speech input<br/>default microphone path"] --> B["SpeechRecognizer<br/>continuous dictation result text"]
-    B --> C{"final recognized text?"}
-    C -- "no" --> A
-    C -- "yes" --> D["VoiceCoordinator<br/>pause listening and mark AwaitingResponse"]
-    D --> E["VoiceTransport<br/>chat.send(main, transcript)"]
-    E --> F["OpenClaw conversation pipeline<br/>assistant reply text"]
-    F --> G["SpeechSynthesizer<br/>assistant text -> audio stream"]
-    G --> H["MediaPlayer<br/>reply playback"]
-    H --> I["Windows audio output<br/>default speaker path"]
-    I --> J["VoiceCoordinator<br/>resume continuous listening"]
-    J --> A
-```
-
-## Processing Stages and Data Types
+### Current Processing Stages
 
 | Stage | Component | Input | Output |
 |---|---|---|---|
-| 1 | `SpeechRecognizer` | Windows microphone capture | recognized transcript text |
-| 2a | `VoiceWakeService` | PCM16 chunk | wake score / trigger decision |
-| 2b | `VoiceActivityDetector` | PCM16 chunk | speech/silence state |
-| 3 | `Ring Buffer` | PCM16 chunk stream | bounded pre-roll PCM16 window |
-| 4 | `UtteranceAssembler` | pre-roll + live PCM16 chunks | utterance PCM16 buffer |
-| 5 | `SpeechRecognizer` | utterance PCM16 + timing metadata | transcript text |
-| 6 | `VoiceTransport` | transcript text + session key | `chat.send` request / assistant reply text |
-| 7 | `SpeechSynthesizer + MediaPlayer` | assistant reply text | speaker render stream |
+| 1 | `SpeechRecognizer` | Windows default speech-input path | interim/final transcript text |
+| 2 | `VoiceService` | final transcript text | de-duplicated transcript + runtime state changes |
+| 3 | `VoiceChatCoordinator` | interim/final draft events | mirrored tray chat compose text |
+| 4 | `OpenClawGatewayClient` | transcript text + session key | `chat.send` request + assistant reply events |
+| 5 | `OpenClawGatewayClient` preview fallback | bare final chat marker | assistant preview text, guarded against stale replay |
+| 6 | `VoiceService` reply queue | assistant reply text | ordered reply playback work |
+| 7 | `VoiceCloudTextToSpeechClient` / `SpeechSynthesizer` | assistant reply text | complete playable audio stream |
+| 8 | `MediaPlayer` | complete playable audio stream | rendered audio on default or selected speaker |
+
+## Planned AudioGraph Input Architecture
+
+The next input-phase refactor should move microphone ownership away from `SpeechRecognizer` and into an explicit capture pipeline built around `AudioGraph`.
+
+The purpose of that change is to unlock:
+
+- true selected non-default microphone support
+- streaming rather than utterance-owned capture
+- a proper ring buffer and VAD pipeline
+- future non-Windows and streaming STT providers
+- future barge-in / duplex work
+
+### Target Input Stack
+
+```mermaid
+flowchart TD
+    A["Selected microphone device id<br/>or system default mic"] --> B["VoiceCaptureService<br/>AudioGraph input node"]
+    B --> C["PCM frame stream<br/>fixed chunk duration"]
+    C --> D["Ring buffer<br/>bounded pre-roll"]
+    C --> E["VoiceActivityDetector"]
+    C --> F["VoiceWake engine<br/>later"]
+    C --> G["SpeechToText adapter"]
+    E --> H["UtteranceAssembler<br/>for non-streaming STT adapters"]
+    D --> H
+    H --> G
+    G --> I["Transcript events<br/>interim + final"]
+    I --> J["VoiceService / runtime controller"]
+    J --> K["OpenClawGatewayClient<br/>chat.send + reply events"]
+```
+
+### Proposed Seams
+
+The target split should look like this:
+
+- `VoiceCaptureService`
+  - owns `AudioGraph`
+  - binds to an explicit input device id when one is selected
+  - emits continuous PCM frames
+- `IVoiceActivityDetector`
+  - emits speech / silence transitions from frame data
+- `IUtteranceAssembler`
+  - builds bounded utterances from frames for non-streaming STT backends
+- `ISpeechToTextAdapter`
+  - consumes either live frames or completed utterances
+  - emits interim and final transcript events
+- `VoiceService`
+  - remains the runtime orchestrator rather than the owner of low-level capture
+
+### Proposed STT Adapter Contract
+
+The STT conversion layer should no longer be "whatever `SpeechRecognizer` does internally". It should become an adapter boundary.
+
+Suggested shape:
+
+- `StartAsync(SpeechToTextStartArgs)`
+- `StopAsync()`
+- `PushFramesAsync(ReadOnlyMemory<byte> pcm16, FrameMetadata metadata)` for streaming-capable adapters
+- `SubmitUtteranceAsync(ReadOnlyMemory<byte> pcm16, UtteranceMetadata metadata)` for utterance-based adapters
+- events:
+  - `InterimTranscriptReceived`
+  - `FinalTranscriptReceived`
+  - `RecognitionFaulted`
+
+Likely first adapters:
+
+- `WindowsSpeechToTextAdapter`
+  only if Windows gives us a clean explicit-audio-input path
+- `StreamingCloudSpeechToTextAdapter`
+  for providers that accept pushed PCM/audio streams
+- `UtteranceCloudSpeechToTextAdapter`
+  for providers that still expect bounded utterance uploads
+
+## Selected-Device Roadmap
+
+The current selected-device position is now:
+
+- selected non-default speaker: implemented
+- selected non-default microphone: not implemented yet
+
+Recommended engineering order:
+
+1. keep the current selected-speaker playback support
+2. introduce `VoiceCaptureService` on `AudioGraph`
+3. move Talk Mode input from `SpeechRecognizer` ownership to captured PCM frames
+4. introduce `ISpeechToTextAdapter`
+5. add explicit selected-microphone binding
+6. then revisit duplex/barge-in and streaming STT
 
 ## Control Flow
 
@@ -612,7 +693,7 @@ flowchart TD
 sequenceDiagram
     participant Gateway as Gateway / Operator
     participant VoiceCap as VoiceCapability
-    participant Coord as VoiceCoordinator
+    participant Coord as VoiceService
     participant Store as SettingsData.Voice
 
     Gateway->>VoiceCap: voice.settings.get
@@ -622,12 +703,27 @@ sequenceDiagram
     VoiceCap->>Store: save VoiceSettings
     VoiceCap-->>Gateway: VoiceSettings
 
-Gateway->>VoiceCap: voice.start(mode=VoiceWake, sessionKey=...)
+Gateway->>VoiceCap: voice.start(mode=TalkMode, sessionKey=...)
     VoiceCap->>Coord: Start(VoiceStartArgs)
-Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningForVoiceWake)
+Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningContinuously)
     VoiceCap-->>Gateway: VoiceStatusInfo
 
     Gateway->>VoiceCap: voice.status.get
+    VoiceCap-->>Gateway: VoiceStatusInfo
+
+    Gateway->>VoiceCap: voice.pause(reason=...)
+    VoiceCap->>Coord: Pause()
+    Coord-->>VoiceCap: VoiceStatusInfo(state=Paused)
+    VoiceCap-->>Gateway: VoiceStatusInfo
+
+    Gateway->>VoiceCap: voice.resume(reason=...)
+    VoiceCap->>Coord: Resume()
+    Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningContinuously)
+    VoiceCap-->>Gateway: VoiceStatusInfo
+
+    Gateway->>VoiceCap: voice.skip(reason=...)
+    VoiceCap->>Coord: SkipCurrentReply()
+    Coord-->>VoiceCap: VoiceStatusInfo
     VoiceCap-->>Gateway: VoiceStatusInfo
 
     Gateway->>VoiceCap: voice.stop(reason=...)
@@ -650,10 +746,10 @@ Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningForVoiceWake)
 ### New Components Expected Later
 
 - `VoiceCapability` in `OpenClaw.Shared.Capabilities`
-- `AudioCaptureService` in `OpenClaw.Tray.WinUI.Services`
+- `VoiceCaptureService` in `OpenClaw.Tray.WinUI.Services`
 - `VoiceWakeService` in `OpenClaw.Tray.WinUI.Services`
-- `VoiceCoordinator` in `OpenClaw.Tray.WinUI.Services`
-- `AudioPlaybackService` in `OpenClaw.Tray.WinUI.Services`
+- `VoiceChatCoordinator` in `OpenClaw.Tray.WinUI.Services`
+- `VoicePlaybackService` in `OpenClaw.Tray.WinUI.Services`
 
 ## Provider Direction
 
@@ -675,13 +771,11 @@ This keeps the provider surface narrow while still meeting the required MiniMax/
 
 ### Story: Support non-local (or non-Windows, local) STT providers
 
-Allow the user to select a non-local STT provider like OpenAI Whisper, or a local non-Windows 
+Allow the user to select a non-local STT provider like OpenAI Whisper, or a local non-Windows recognizer, instead of being locked to the Windows built-in path.
 
 - Windows built-in local STT is working pretty well, however users should have the choice to utilise:
   - a non-local STT provider
   - a local non-Windows STT provider
-
-We're all about the choices, Baby!
 
 
 ### Story: Full-duplex / barge-in Talk Mode
@@ -779,3 +873,4 @@ Append one new line to this timeline for every future voice-mode commit.
 - `2026-03-25` Added live default-microphone change handling for Talk Mode, so using the system default capture device now refreshes the recognizer when Windows switches to a new default mic such as AirPods.
 - `2026-03-25` Applied `Voice.OutputDeviceId` to Talk Mode playback via `MediaPlayer.AudioDevice`, so selected non-default speaker devices now work even though explicit non-default microphone capture is still pending.
 - `2026-03-25` Hardened the gateway preview fallback so a bare final chat event does not replay the previous assistant reply when `sessions.preview` lags behind the real session update.
+- `2026-03-25` Updated the voice-mode architecture document with an accurate current Talk Mode flow, the planned `AudioGraph` input design, the STT adapter seam, and the selected-device roadmap.
