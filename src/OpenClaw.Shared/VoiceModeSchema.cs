@@ -13,6 +13,9 @@ public static class VoiceCommands
     public const string GetStatus = "voice.status.get";
     public const string Start = "voice.start";
     public const string Stop = "voice.stop";
+    public const string Pause = "voice.pause";
+    public const string Resume = "voice.resume";
+    public const string Skip = "voice.skip";
 
     private static readonly ReadOnlyCollection<string> s_all = Array.AsReadOnly(
     [
@@ -21,7 +24,10 @@ public static class VoiceCommands
         SetSettings,
         GetStatus,
         Start,
-        Stop
+        Stop,
+        Pause,
+        Resume,
+        Skip
     ]);
 
     public static IReadOnlyList<string> All => s_all;
@@ -115,6 +121,9 @@ public sealed class VoiceStatusInfo
     public bool VoiceWakeLoaded { get; set; }
     public DateTime? LastVoiceWakeUtc { get; set; }
     public DateTime? LastUtteranceUtc { get; set; }
+    public int PendingReplyCount { get; set; }
+    public bool CanSkipReply { get; set; }
+    public string? CurrentReplyPreview { get; set; }
     public string? LastError { get; set; }
 }
 
@@ -125,6 +134,21 @@ public sealed class VoiceStartArgs
 }
 
 public sealed class VoiceStopArgs
+{
+    public string? Reason { get; set; }
+}
+
+public sealed class VoicePauseArgs
+{
+    public string? Reason { get; set; }
+}
+
+public sealed class VoiceResumeArgs
+{
+    public string? Reason { get; set; }
+}
+
+public sealed class VoiceSkipArgs
 {
     public string? Reason { get; set; }
 }

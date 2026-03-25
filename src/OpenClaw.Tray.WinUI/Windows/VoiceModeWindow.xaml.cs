@@ -13,16 +13,21 @@ namespace OpenClawTray.Windows;
 public sealed partial class VoiceModeWindow : WindowEx
 {
     private readonly SettingsManager _settings;
-    private readonly VoiceService _voiceService;
+    private readonly IVoiceRuntimeControlApi _voiceRuntimeControlApi;
+    private readonly IVoiceConfigurationApi _voiceConfigurationApi;
 
     public bool IsClosed { get; private set; }
 
     public event EventHandler? OpenSettingsRequested;
 
-    public VoiceModeWindow(SettingsManager settings, VoiceService voiceService)
+    public VoiceModeWindow(
+        SettingsManager settings,
+        IVoiceRuntimeControlApi voiceRuntimeControlApi,
+        IVoiceConfigurationApi voiceConfigurationApi)
     {
         _settings = settings;
-        _voiceService = voiceService;
+        _voiceRuntimeControlApi = voiceRuntimeControlApi;
+        _voiceConfigurationApi = voiceConfigurationApi;
 
         InitializeComponent();
 
@@ -38,8 +43,8 @@ public sealed partial class VoiceModeWindow : WindowEx
 
     public void RefreshStatus()
     {
-        var running = _voiceService.CurrentStatus;
-        var catalog = _voiceService.GetProviderCatalog();
+        var running = _voiceRuntimeControlApi.CurrentStatus;
+        var catalog = _voiceConfigurationApi.GetProviderCatalog();
 
         StatusItemsControl.ItemsSource = new List<DetailRow>
         {
@@ -47,7 +52,8 @@ public sealed partial class VoiceModeWindow : WindowEx
             new("Runtime", VoiceDisplayHelper.GetRuntimeLabel(running)),
             new("Node Mode", _settings.EnableNodeMode ? "Enabled" : "Disabled"),
             new("Session", string.IsNullOrWhiteSpace(running.SessionKey) ? "main" : running.SessionKey!),
-            new("State", VoiceDisplayHelper.GetStateLabel(running.State))
+            new("State", VoiceDisplayHelper.GetStateLabel(running.State)),
+            new("Queued replies", running.PendingReplyCount.ToString())
         };
 
         ConfigurationItemsControl.ItemsSource = new List<DetailRow>

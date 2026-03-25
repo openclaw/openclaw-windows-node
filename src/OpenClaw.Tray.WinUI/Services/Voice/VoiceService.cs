@@ -22,7 +22,7 @@ using Windows.Storage.Streams;
 
 namespace OpenClawTray.Services.Voice;
 
-public sealed class VoiceService : IVoiceRuntime, IDisposable
+public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoiceRuntimeControlApi, IDisposable
 {
     private const string DefaultSessionKey = "main";
     private const int HResultSpeechPrivacyDeclined = unchecked((int)0x80045509);
@@ -55,6 +55,8 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
     private DateTime _lastTranscriptUtc;
     private string? _pendingManualTranscript;
     private readonly Queue<(string Text, string? SessionKey)> _pendingAssistantReplies = new();
+    private CancellationTokenSource? _playbackSkipCts;
+    private string? _currentReplyPreview;
     private bool _disposed;
 
     public event EventHandler<VoiceConversationTurnEventArgs>? ConversationTurnAvailable;
@@ -127,6 +129,24 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             }
 
             return Task.FromResult(Clone(_settings.Voice));
+        }
+    }
+
+    public VoiceProviderConfigurationStore GetProviderConfiguration()
+    {
+        lock (_gate)
+        {
+            return _settings.VoiceProviderConfiguration.Clone();
+        }
+    }
+
+    public void SetProviderConfiguration(VoiceProviderConfigurationStore configurationStore)
+    {
+        ArgumentNullException.ThrowIfNull(configurationStore);
+
+        lock (_gate)
+        {
+            _settings.VoiceProviderConfiguration = configurationStore.Clone();
         }
     }
 
@@ -369,6 +389,95 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
         catch (Exception ex)
         {
             _logger.Warn($"Voice runtime dispose cleanup failed: {ex.Message}");
+        }
+    }
+
+    public async Task<VoiceStatusInfo> PauseAsync(VoicePauseArgs? args = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        args ??= new VoicePauseArgs();
+
+        VoiceActivationMode mode;
+        string? sessionKey;
+
+        lock (_gate)
+        {
+            mode = _runtimeModeOverride ?? _settings.Voice.Mode;
+            sessionKey = _status.SessionKey;
+
+            if (!_settings.Voice.Enabled || mode == VoiceActivationMode.Off)
+            {
+                _quickPaused = false;
+                _status = BuildStoppedStatus(sessionKey, "Voice mode is disabled");
+                return Clone(_status);
+            }
+
+            if (_quickPaused || _status.State == VoiceRuntimeState.Paused)
+            {
+                return Clone(_status);
+            }
+
+            _quickPaused = true;
+        }
+
+        await StopRuntimeResourcesAsync(updateStoppedStatus: false);
+
+        lock (_gate)
+        {
+            _status = BuildPausedStatus(mode, sessionKey, args.Reason);
+            _logger.Info($"Voice runtime paused{(string.IsNullOrWhiteSpace(args.Reason) ? string.Empty : $": {args.Reason}")}");
+            return Clone(_status);
+        }
+    }
+
+    public async Task<VoiceStatusInfo> ResumeAsync(VoiceResumeArgs? args = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        args ??= new VoiceResumeArgs();
+
+        VoiceActivationMode mode;
+        string? sessionKey;
+
+        lock (_gate)
+        {
+            mode = _runtimeModeOverride ?? _settings.Voice.Mode;
+            sessionKey = _status.SessionKey;
+            _quickPaused = false;
+        }
+
+        var resumed = await StartAsync(new VoiceStartArgs
+        {
+            Mode = mode,
+            SessionKey = sessionKey
+        });
+
+        _logger.Info($"Voice runtime resumed{(string.IsNullOrWhiteSpace(args.Reason) ? string.Empty : $": {args.Reason}")}");
+        return resumed;
+    }
+
+    public async Task<VoiceStatusInfo> SkipCurrentReplyAsync(VoiceSkipArgs? args = null)
+    {
+        args ??= new VoiceSkipArgs();
+
+        CancellationTokenSource? playbackSkipCts;
+
+        lock (_gate)
+        {
+            playbackSkipCts = _playbackSkipCts;
+            if (playbackSkipCts == null && _pendingAssistantReplies.Count == 0)
+            {
+                return Clone(_status);
+            }
+        }
+
+        playbackSkipCts?.Cancel();
+
+        await Task.Yield();
+
+        lock (_gate)
+        {
+            _logger.Info($"Voice reply skipped{(string.IsNullOrWhiteSpace(args.Reason) ? string.Empty : $": {args.Reason}")}");
+            return Clone(_status);
         }
     }
 
@@ -1061,6 +1170,14 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
                         _status.LastError);
                     shouldStartPlaybackLoop = true;
                 }
+                else
+                {
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.TalkMode,
+                        _status.SessionKey,
+                        VoiceRuntimeState.PlayingResponse,
+                        _status.LastError);
+                }
             }
 
             if (shouldStartPlaybackLoop)
@@ -1082,6 +1199,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             {
                 (string Text, string? SessionKey) reply;
                 var shouldPauseBeforeNextReply = false;
+                CancellationTokenSource? playbackSkipCts = null;
 
                 lock (_gate)
                 {
@@ -1089,6 +1207,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
                     {
                         _replyPlaybackLoopActive = false;
                         _isSpeaking = false;
+                        _currentReplyPreview = null;
 
                         if (_status.Running)
                         {
@@ -1104,11 +1223,23 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
 
                     reply = _pendingAssistantReplies.Dequeue();
                     shouldPauseBeforeNextReply = _pendingAssistantReplies.Count > 0;
+                    _currentReplyPreview = CreateReplyPreview(reply.Text);
+                    _isSpeaking = true;
+                    _playbackSkipCts = playbackSkipCts = new CancellationTokenSource();
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.TalkMode,
+                        _status.SessionKey,
+                        VoiceRuntimeState.PlayingResponse,
+                        _status.LastError);
                 }
 
                 try
                 {
-                    await SpeakTextAsync(reply.Text);
+                    await SpeakTextAsync(reply.Text, playbackSkipCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.Info($"Voice reply playback canceled: remainingQueue={CurrentStatus.PendingReplyCount}");
                 }
                 catch (Exception ex)
                 {
@@ -1121,6 +1252,20 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
                             shouldPauseBeforeNextReply ? VoiceRuntimeState.PlayingResponse : VoiceRuntimeState.ListeningContinuously,
                             GetUserFacingErrorMessage(ex));
                     }
+                }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        if (ReferenceEquals(_playbackSkipCts, playbackSkipCts))
+                        {
+                            _playbackSkipCts = null;
+                        }
+
+                        _currentReplyPreview = null;
+                    }
+
+                    playbackSkipCts?.Dispose();
                 }
 
                 if (shouldPauseBeforeNextReply)
@@ -1136,6 +1281,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             {
                 _replyPlaybackLoopActive = false;
                 _isSpeaking = false;
+                _currentReplyPreview = null;
                 if (_status.Running)
                 {
                     _status = BuildRunningStatus(
@@ -1157,7 +1303,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
         }
     }
 
-    private async Task SpeakTextAsync(string text)
+    private async Task SpeakTextAsync(string text, CancellationToken cancellationToken)
     {
         VoiceSettings settings;
         VoiceProviderConfigurationStore providerConfiguration;
@@ -1184,7 +1330,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
         if (UsesCloudTextToSpeechRuntime(provider))
         {
             using var result = await _cloudTextToSpeechClient.SynthesizeAsync(text, provider, providerConfiguration, _logger);
-            await PlayStreamAsync(player, result.Stream, result.ContentType);
+            await PlayStreamAsync(player, result.Stream, result.ContentType, cancellationToken);
             return;
         }
 
@@ -1196,7 +1342,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
         var stopwatch = Stopwatch.StartNew();
         using var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
         _logger.Info($"Windows TTS latency: total={stopwatch.ElapsedMilliseconds}ms");
-        await PlayStreamAsync(player, stream, stream.ContentType);
+        await PlayStreamAsync(player, stream, stream.ContentType, cancellationToken);
     }
 
     private static bool UsesCloudTextToSpeechRuntime(VoiceProviderOption provider)
@@ -1209,10 +1355,22 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
         return awaitingReply || isSpeaking || queuedReplyCount > 0;
     }
 
+    private static string CreateReplyPreview(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length <= 120)
+        {
+            return trimmed;
+        }
+
+        return $"{trimmed[..117]}...";
+    }
+
     private static async Task PlayStreamAsync(
         MediaPlayer player,
         IRandomAccessStream stream,
-        string contentType)
+        string contentType,
+        CancellationToken cancellationToken)
     {
         stream.Seek(0);
         var playbackEnded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1225,6 +1383,12 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
 
         player.MediaEnded += endedHandler;
         player.MediaFailed += failedHandler;
+        using var registration = cancellationToken.Register(() =>
+        {
+            try { player.Pause(); } catch { }
+            try { player.Source = null; } catch { }
+            playbackEnded.TrySetCanceled(cancellationToken);
+        });
 
         try
         {
@@ -1334,6 +1498,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
     private async Task StopRuntimeResourcesAsync(bool updateStoppedStatus)
     {
         CancellationTokenSource? runtimeCts;
+        CancellationTokenSource? playbackSkipCts;
         OpenClawGatewayClient? chatClient;
         SpeechRecognizer? recognizer;
         SpeechSynthesizer? synthesizer;
@@ -1365,9 +1530,13 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             _replyPlaybackLoopActive = false;
             _pendingManualTranscript = null;
             _pendingAssistantReplies.Clear();
+            _currentReplyPreview = null;
+            playbackSkipCts = _playbackSkipCts;
+            _playbackSkipCts = null;
         }
 
         try { runtimeCts?.Cancel(); } catch { }
+        try { playbackSkipCts?.Cancel(); } catch { }
 
         if (recognizer != null)
         {
@@ -1397,6 +1566,7 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
         }
 
         try { runtimeCts?.Dispose(); } catch { }
+        try { playbackSkipCts?.Dispose(); } catch { }
 
         if (updateStoppedStatus)
         {
@@ -1491,6 +1661,9 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             VoiceWakeLoaded = mode == VoiceActivationMode.VoiceWake,
             LastVoiceWakeUtc = _status.LastVoiceWakeUtc,
             LastUtteranceUtc = _status.LastUtteranceUtc,
+            PendingReplyCount = _pendingAssistantReplies.Count,
+            CanSkipReply = _isSpeaking || _pendingAssistantReplies.Count > 0,
+            CurrentReplyPreview = _currentReplyPreview,
             LastError = lastError
         };
     }
@@ -1511,6 +1684,9 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             VoiceWakeLoaded = false,
             LastVoiceWakeUtc = _status.LastVoiceWakeUtc,
             LastUtteranceUtc = _status.LastUtteranceUtc,
+            PendingReplyCount = _pendingAssistantReplies.Count,
+            CanSkipReply = _isSpeaking || _pendingAssistantReplies.Count > 0,
+            CurrentReplyPreview = _currentReplyPreview,
             LastError = reason
         };
     }
@@ -1531,6 +1707,9 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             VoiceWakeLoaded = false,
             LastVoiceWakeUtc = _status.LastVoiceWakeUtc,
             LastUtteranceUtc = _status.LastUtteranceUtc,
+            PendingReplyCount = _pendingAssistantReplies.Count,
+            CanSkipReply = _isSpeaking || _pendingAssistantReplies.Count > 0,
+            CurrentReplyPreview = _currentReplyPreview,
             LastError = reason
         };
     }
@@ -1590,6 +1769,9 @@ public sealed class VoiceService : IVoiceRuntime, IDisposable
             VoiceWakeLoaded = source.VoiceWakeLoaded,
             LastVoiceWakeUtc = source.LastVoiceWakeUtc,
             LastUtteranceUtc = source.LastUtteranceUtc,
+            PendingReplyCount = source.PendingReplyCount,
+            CanSkipReply = source.CanSkipReply,
+            CurrentReplyPreview = source.CurrentReplyPreview,
             LastError = source.LastError
         };
     }

@@ -12,6 +12,40 @@ This document defines the voice subsystem for the Windows node only. It introduc
 - Implement `MiniMax` TTS and `ElevenLabs` TTS as required non-Windows providers after the Windows baseline
 - Reuse the existing node capability pattern instead of introducing a parallel control path
 
+## Feature List
+
+### Story: Full-duplex / barge-in Talk Mode
+
+Allow the node to keep listening while it is speaking, so the user can interrupt or interleave speech without waiting for reply playback to finish.
+
+Notes:
+
+- the current Windows implementation is half-duplex: recognition is stopped or ignored while a reply is being spoken
+- a true implementation will require a lower-level audio pipeline rather than only `SpeechRecognizer` plus `SpeechSynthesizer`
+- practical requirements are likely to include:
+  - microphone capture that can remain active during playback
+  - acoustic echo cancellation / echo suppression
+  - barge-in detection and playback interruption rules
+  - a policy for whether interrupt speech cancels the current reply or queues behind it
+  - additional runtime control/status so the UI can show when barge-in is armed
+- this should be treated as a separate engineering phase, not a small extension of the current Talk Mode runtime
+
+### Story: Compact Voice Status Strip
+
+Add an optional tiny always-on-top voice strip window for Talk Mode.
+
+Notes:
+
+- user-configurable show / hide
+- intended to be a minimal one-line-high display with a small amount of padding
+- should show:
+  - current voice state
+  - rolling live transcript while listening
+  - rolling assistant text while speaking
+  - a skip / cut-off control while speaking
+- the runtime control surface should drive this window rather than the window manipulating `VoiceService` internals directly
+- if implemented later, the strip should use the shared runtime control API described below
+
 ## Non-Goals
 
 - True full-duplex or chunk-streaming audio transport between node and gateway
@@ -62,6 +96,79 @@ To avoid obvious duplicate sends from the Windows recognizer, exact duplicate fi
 That means the first Windows target is transcript transport, not raw audio upload. Streaming audio frames in or out of OpenClaw remains a future protocol extension, not part of this design.
 
 The current Windows implementation uses a voice-local operator connection inside the tray app while node mode is active. That sidecar connection exists to carry assistant chat events for `TalkMode`, and to provide a fallback direct `chat.send` path when the tray chat window is not open.
+
+## Voice APIs
+
+The Windows tray implementation now has two API layers:
+
+- shared node-capability commands in `OpenClaw.Shared`
+- in-process tray interfaces used by the windows/forms
+
+### Shared Capability Commands
+
+The node capability command surface is:
+
+- `voice.devices.list`
+- `voice.settings.get`
+- `voice.settings.set`
+- `voice.status.get`
+- `voice.start`
+- `voice.stop`
+- `voice.pause`
+- `voice.resume`
+- `voice.skip`
+
+These commands are defined in [VoiceModeSchema.cs](../src/OpenClaw.Shared/VoiceModeSchema.cs) and handled by [VoiceCapability.cs](../src/OpenClaw.Shared/Capabilities/VoiceCapability.cs).
+
+`voice.settings.get` / `voice.settings.set` are the configuration API.
+
+`voice.start` / `voice.stop` / `voice.pause` / `voice.resume` / `voice.skip` are the runtime control API.
+
+### Status Surface
+
+`VoiceStatusInfo` now carries the basic state needed by control surfaces:
+
+- mode
+- runtime state
+- session key
+- input/output device ids
+- last wake / last utterance timestamps
+- pending reply count
+- whether a reply can currently be skipped
+- current reply preview
+- last error
+
+### In-Process Tray Interfaces
+
+The tray app also exposes in-process interfaces so its own windows do not need to bind directly to the concrete `VoiceService` implementation:
+
+- `IVoiceConfigurationApi`
+  - get voice settings
+  - update voice settings
+  - list devices
+  - get provider catalog
+  - get/set provider configuration
+- `IVoiceRuntimeControlApi`
+  - get runtime status
+  - start / stop
+  - pause / resume
+  - skip current reply
+- `IVoiceRuntime`
+  - transcript draft and conversation events for chat integration
+
+This is the intended base for future surfaces such as the compact voice strip.
+
+### Can the Settings Form Use This API?
+
+Yes. The Settings form can use the configuration API cleanly.
+
+The current tray implementation now uses the voice configuration interface for:
+
+- provider catalog loading
+- device enumeration
+- applying updated voice settings / provider configuration on save
+
+That means the settings UI is no longer hard-wired only to concrete `VoiceService` internals for its voice-specific behavior.
 
 ## Speech Output Latency
 

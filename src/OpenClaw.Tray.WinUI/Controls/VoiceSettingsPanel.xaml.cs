@@ -13,7 +13,7 @@ namespace OpenClawTray.Controls;
 public sealed partial class VoiceSettingsPanel : UserControl
 {
     private SettingsManager? _settings;
-    private VoiceService? _voiceService;
+    private IVoiceConfigurationApi? _voiceConfigurationApi;
     private VoiceProviderConfigurationStore _voiceProviderConfigurationDraft = new();
     private string _activeTtsProviderId = VoiceProviderIds.Windows;
     private bool _updatingVoiceProviderFields;
@@ -28,20 +28,20 @@ public sealed partial class VoiceSettingsPanel : UserControl
         InitializeComponent();
     }
 
-    public void Initialize(SettingsManager settings, VoiceService voiceService)
+    public void Initialize(SettingsManager settings, IVoiceConfigurationApi voiceConfigurationApi)
     {
         _settings = settings;
-        _voiceService = voiceService;
+        _voiceConfigurationApi = voiceConfigurationApi;
 
         LoadVoiceSettings();
         _ = LoadVoiceDevicesAsync();
     }
 
-    public void ApplyTo(SettingsManager settings)
+    public async Task ApplyAsync(SettingsManager settings)
     {
         CaptureSelectedVoiceProviderSettings();
 
-        settings.Voice = new VoiceSettings
+        var voiceSettings = new VoiceSettings
         {
             Mode = GetSelectedVoiceMode(),
             Enabled = GetSelectedVoiceMode() != VoiceActivationMode.Off,
@@ -70,12 +70,23 @@ public sealed partial class VoiceSettingsPanel : UserControl
                 ChatWindowSubmitMode = GetSelectedChatWindowSubmitMode()
             }
         };
+        settings.Voice = voiceSettings;
         settings.VoiceProviderConfiguration = _voiceProviderConfigurationDraft.Clone();
+
+        if (_voiceConfigurationApi != null)
+        {
+            _voiceConfigurationApi.SetProviderConfiguration(_voiceProviderConfigurationDraft);
+            await _voiceConfigurationApi.UpdateSettingsAsync(new VoiceSettingsUpdateArgs
+            {
+                Settings = voiceSettings,
+                Persist = false
+            });
+        }
     }
 
     private void LoadVoiceSettings()
     {
-        if (_settings == null || _voiceService == null)
+        if (_settings == null || _voiceConfigurationApi == null)
         {
             return;
         }
@@ -91,7 +102,7 @@ public sealed partial class VoiceSettingsPanel : UserControl
 
     private void LoadVoiceProviders()
     {
-        var catalog = _voiceService!.GetProviderCatalog();
+        var catalog = _voiceConfigurationApi!.GetProviderCatalog();
 
         _speechToTextOptions = catalog.SpeechToTextProviders
             .Select(Clone)
@@ -113,7 +124,7 @@ public sealed partial class VoiceSettingsPanel : UserControl
 
     private async Task LoadVoiceDevicesAsync()
     {
-        if (_settings == null || _voiceService == null)
+        if (_settings == null || _voiceConfigurationApi == null)
         {
             return;
         }
@@ -121,7 +132,7 @@ public sealed partial class VoiceSettingsPanel : UserControl
         try
         {
             VoiceSettingsInfoTextBlock.Text = "Loading voice devices...";
-            var devices = await _voiceService.ListDevicesAsync();
+            var devices = await _voiceConfigurationApi.ListDevicesAsync();
 
             _inputOptions =
             [

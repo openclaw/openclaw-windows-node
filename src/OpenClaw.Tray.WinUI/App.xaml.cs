@@ -1734,7 +1734,7 @@ public partial class App : Application
 
         if (_voiceModeWindow == null || _voiceModeWindow.IsClosed)
         {
-            _voiceModeWindow = new VoiceModeWindow(_settings, _voiceService);
+            _voiceModeWindow = new VoiceModeWindow(_settings, _voiceService, _voiceService);
             _voiceModeWindow.OpenSettingsRequested += (s, e) => ShowSettings();
             _voiceModeWindow.Closed += (s, e) => _voiceModeWindow = null;
         }

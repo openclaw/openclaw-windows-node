@@ -22,6 +22,9 @@ public class VoiceCapability : NodeCapabilityBase
     public event Func<Task<VoiceStatusInfo>>? StatusRequested;
     public event Func<VoiceStartArgs, Task<VoiceStatusInfo>>? StartRequested;
     public event Func<VoiceStopArgs, Task<VoiceStatusInfo>>? StopRequested;
+    public event Func<VoicePauseArgs, Task<VoiceStatusInfo>>? PauseRequested;
+    public event Func<VoiceResumeArgs, Task<VoiceStatusInfo>>? ResumeRequested;
+    public event Func<VoiceSkipArgs, Task<VoiceStatusInfo>>? SkipRequested;
 
     public VoiceCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -37,6 +40,9 @@ public class VoiceCapability : NodeCapabilityBase
             VoiceCommands.GetStatus => await HandleGetStatusAsync(),
             VoiceCommands.Start => await HandleStartAsync(request),
             VoiceCommands.Stop => await HandleStopAsync(request),
+            VoiceCommands.Pause => await HandlePauseAsync(request),
+            VoiceCommands.Resume => await HandleResumeAsync(request),
+            VoiceCommands.Skip => await HandleSkipAsync(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
@@ -169,6 +175,72 @@ public class VoiceCapability : NodeCapabilityBase
         {
             Logger.Error("Voice stop failed", ex);
             return Error($"Stop failed: {ex.Message}");
+        }
+    }
+
+    private async Task<NodeInvokeResponse> HandlePauseAsync(NodeInvokeRequest request)
+    {
+        Logger.Info(VoiceCommands.Pause);
+
+        if (PauseRequested == null)
+            return Error("Voice pause not available");
+
+        try
+        {
+            var rawArgs = request.Args.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+                ? "{}"
+                : request.Args.GetRawText();
+            var args = JsonSerializer.Deserialize<VoicePauseArgs>(rawArgs, s_jsonOptions) ?? new VoicePauseArgs();
+            return Success(await PauseRequested(args));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Voice pause failed", ex);
+            return Error($"Pause failed: {ex.Message}");
+        }
+    }
+
+    private async Task<NodeInvokeResponse> HandleResumeAsync(NodeInvokeRequest request)
+    {
+        Logger.Info(VoiceCommands.Resume);
+
+        if (ResumeRequested == null)
+            return Error("Voice resume not available");
+
+        try
+        {
+            var rawArgs = request.Args.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+                ? "{}"
+                : request.Args.GetRawText();
+            var args = JsonSerializer.Deserialize<VoiceResumeArgs>(rawArgs, s_jsonOptions) ?? new VoiceResumeArgs();
+            return Success(await ResumeRequested(args));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Voice resume failed", ex);
+            return Error($"Resume failed: {ex.Message}");
+        }
+    }
+
+    private async Task<NodeInvokeResponse> HandleSkipAsync(NodeInvokeRequest request)
+    {
+        Logger.Info(VoiceCommands.Skip);
+
+        if (SkipRequested == null)
+            return Error("Voice skip not available");
+
+        try
+        {
+            var rawArgs = request.Args.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+                ? "{}"
+                : request.Args.GetRawText();
+            var args = JsonSerializer.Deserialize<VoiceSkipArgs>(rawArgs, s_jsonOptions) ?? new VoiceSkipArgs();
+            return Success(await SkipRequested(args));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Voice skip failed", ex);
+            return Error($"Skip failed: {ex.Message}");
         }
     }
 }

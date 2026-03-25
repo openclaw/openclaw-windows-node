@@ -199,6 +199,9 @@ public class NodeService : IDisposable
         _voiceCapability.StatusRequested += OnVoiceGetStatus;
         _voiceCapability.StartRequested += OnVoiceStart;
         _voiceCapability.StopRequested += OnVoiceStop;
+        _voiceCapability.PauseRequested += OnVoicePause;
+        _voiceCapability.ResumeRequested += OnVoiceResume;
+        _voiceCapability.SkipRequested += OnVoiceSkip;
         _nodeClient.RegisterCapability(_voiceCapability);
         
         _logger.Info("All capabilities registered");
@@ -590,6 +593,30 @@ public class NodeService : IDisposable
             throw new InvalidOperationException("Voice service not available");
 
         return _voiceService.StopAsync(args);
+    }
+
+    private Task<VoiceStatusInfo> OnVoicePause(VoicePauseArgs args)
+    {
+        if (_voiceService == null)
+            throw new InvalidOperationException("Voice service not available");
+
+        return _voiceService.PauseAsync(args);
+    }
+
+    private Task<VoiceStatusInfo> OnVoiceResume(VoiceResumeArgs args)
+    {
+        if (_voiceService == null)
+            throw new InvalidOperationException("Voice service not available");
+
+        return _voiceService.ResumeAsync(args);
+    }
+
+    private Task<VoiceStatusInfo> OnVoiceSkip(VoiceSkipArgs args)
+    {
+        if (_voiceService == null)
+            throw new InvalidOperationException("Voice service not available");
+
+        return _voiceService.SkipCurrentReplyAsync(args);
     }
 
     #endregion

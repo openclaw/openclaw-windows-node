@@ -19,7 +19,7 @@ public sealed partial class SettingsWindow : WindowEx
 
     public event EventHandler? SettingsSaved;
 
-    public SettingsWindow(SettingsManager settings, VoiceService voiceService)
+    public SettingsWindow(SettingsManager settings, IVoiceConfigurationApi voiceConfigurationApi)
     {
         _settings = settings;
         InitializeComponent();
@@ -31,7 +31,7 @@ public sealed partial class SettingsWindow : WindowEx
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         LoadSettings();
-        VoiceSettingsPanel.Initialize(_settings, voiceService);
+        VoiceSettingsPanel.Initialize(_settings, voiceConfigurationApi);
 
         Closed += (s, e) => IsClosed = true;
 
@@ -72,7 +72,7 @@ public sealed partial class SettingsWindow : WindowEx
         NodeModeToggle.IsOn = _settings.EnableNodeMode;
     }
 
-    private void SaveSettings()
+    private async Task SaveSettingsAsync()
     {
         _settings.GatewayUrl = GatewayUrlTextBox.Text.Trim();
         _settings.Token = TokenTextBox.Text.Trim();
@@ -95,7 +95,7 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.NotifyInfo = NotifyInfoCb.IsChecked ?? true;
         _settings.EnableNodeMode = NodeModeToggle.IsOn;
 
-        VoiceSettingsPanel.ApplyTo(_settings);
+        await VoiceSettingsPanel.ApplyAsync(_settings);
 
         _settings.Save();
         AutoStartManager.SetAutoStart(_settings.AutoStart);
@@ -187,7 +187,7 @@ public sealed partial class SettingsWindow : WindowEx
         }
     }
 
-    private void OnSave(object sender, RoutedEventArgs e)
+    private async void OnSave(object sender, RoutedEventArgs e)
     {
         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
         if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
@@ -200,7 +200,7 @@ public sealed partial class SettingsWindow : WindowEx
         var oldGateway = _settings.GatewayUrl;
         var oldAutoStart = _settings.AutoStart;
         var oldNodeMode = _settings.EnableNodeMode;
-        SaveSettings();
+        await SaveSettingsAsync();
 
         if (!string.Equals(oldGateway, _settings.GatewayUrl, StringComparison.Ordinal))
         {

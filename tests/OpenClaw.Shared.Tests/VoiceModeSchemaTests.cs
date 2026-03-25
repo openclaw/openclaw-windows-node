@@ -15,7 +15,10 @@ public class VoiceCommandsTests
             "voice.settings.set",
             "voice.status.get",
             "voice.start",
-            "voice.stop"
+            "voice.stop",
+            "voice.pause",
+            "voice.resume",
+            "voice.skip"
         ],
         VoiceCommands.All);
     }
@@ -53,6 +56,9 @@ public class VoiceSchemaDefaultsTests
         Assert.Equal(VoiceActivationMode.Off, status.Mode);
         Assert.Equal(VoiceRuntimeState.Stopped, status.State);
         Assert.False(status.VoiceWakeLoaded);
+        Assert.Equal(0, status.PendingReplyCount);
+        Assert.False(status.CanSkipReply);
+        Assert.Null(status.CurrentReplyPreview);
         Assert.Null(status.LastError);
     }
 
