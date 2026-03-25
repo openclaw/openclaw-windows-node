@@ -1,6 +1,7 @@
 using System.Reflection;
 using OpenClaw.Shared;
 using OpenClawTray.Services.Voice;
+using Windows.Media.Devices;
 using Windows.Media.SpeechRecognition;
 
 namespace OpenClaw.Tray.Tests;
@@ -199,6 +200,29 @@ public class VoiceServiceTransportTests
 
         Assert.Equal(expected, result);
         Assert.Equal(expectedPromoted, (bool)args[4]!);
+    }
+
+    [Theory]
+    [InlineData(true, VoiceActivationMode.TalkMode, null, AudioDeviceRole.Default, true)]
+    [InlineData(true, VoiceActivationMode.TalkMode, "", AudioDeviceRole.Default, true)]
+    [InlineData(true, VoiceActivationMode.TalkMode, "device-1", AudioDeviceRole.Default, false)]
+    [InlineData(true, VoiceActivationMode.VoiceWake, null, AudioDeviceRole.Default, false)]
+    [InlineData(false, VoiceActivationMode.TalkMode, null, AudioDeviceRole.Default, false)]
+    [InlineData(true, VoiceActivationMode.TalkMode, null, AudioDeviceRole.Communications, false)]
+    public void ShouldRefreshRecognitionForDefaultCaptureDeviceChange_OnlyRefreshesTalkModeUsingSystemDefaultMic(
+        bool running,
+        VoiceActivationMode mode,
+        string? configuredInputDeviceId,
+        AudioDeviceRole role,
+        bool expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "ShouldRefreshRecognitionForDefaultCaptureDeviceChange",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var result = (bool)method.Invoke(null, [running, mode, configuredInputDeviceId, role])!;
+
+        Assert.Equal(expected, result);
     }
 
     private static MethodInfo GetMethod()

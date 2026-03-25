@@ -80,6 +80,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         _cloudTextToSpeechClient = new VoiceCloudTextToSpeechClient();
         _status = new VoiceStatusInfo();
         _status = BuildStoppedStatus(null, null);
+        MediaDevice.DefaultAudioCaptureDeviceChanged += OnDefaultAudioCaptureDeviceChanged;
     }
 
     public VoiceStatusInfo CurrentStatus
@@ -392,6 +393,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         }
 
         _disposed = true;
+        MediaDevice.DefaultAudioCaptureDeviceChanged -= OnDefaultAudioCaptureDeviceChanged;
         try
         {
             Task.Run(() => StopRuntimeResourcesAsync(updateStoppedStatus: true)).GetAwaiter().GetResult();
@@ -1750,6 +1752,18 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         return sessionKey == DefaultSessionKey || sessionKey.Contains(":main:", StringComparison.Ordinal);
     }
 
+    internal static bool ShouldRefreshRecognitionForDefaultCaptureDeviceChange(
+        bool running,
+        VoiceActivationMode mode,
+        string? configuredInputDeviceId,
+        AudioDeviceRole role)
+    {
+        return running &&
+               mode == VoiceActivationMode.TalkMode &&
+               string.IsNullOrWhiteSpace(configuredInputDeviceId) &&
+               role == AudioDeviceRole.Default;
+    }
+
     private static string PrepareReplyForSpeech(string text)
     {
         var trimmed = text.Trim();
@@ -1814,6 +1828,70 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             CurrentReplyPreview = _currentReplyPreview,
             LastError = lastError
         };
+    }
+
+    private async void OnDefaultAudioCaptureDeviceChanged(object sender, DefaultAudioCaptureDeviceChangedEventArgs args)
+    {
+        try
+        {
+            CancellationToken token;
+            bool shouldRefresh;
+            bool shouldRestartListening;
+            string? newDeviceId = args.Id;
+
+            lock (_gate)
+            {
+                if (_runtimeCts == null || _runtimeCts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                shouldRefresh = ShouldRefreshRecognitionForDefaultCaptureDeviceChange(
+                    _status.Running,
+                    _status.Mode,
+                    _settings.Voice.InputDeviceId,
+                    args.Role);
+                shouldRestartListening = shouldRefresh && _recognitionActive && !_awaitingReply && !_isSpeaking;
+                token = _runtimeCts.Token;
+
+                if (shouldRefresh)
+                {
+                    _recognitionRestartInProgress = shouldRestartListening;
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.TalkMode,
+                        _status.SessionKey,
+                        VoiceRuntimeState.Arming,
+                        "Microphone device changed; refreshing speech recognition.");
+                }
+            }
+
+            if (!shouldRefresh)
+            {
+                return;
+            }
+
+            _logger.Info(
+                $"Default capture device changed to {newDeviceId ?? "(unknown)"}; refreshing TalkMode recognizer");
+
+            if (shouldRestartListening)
+            {
+                await StopRecognitionSessionAsync();
+            }
+
+            await RebuildSpeechRecognizerAsync("default capture device changed", token);
+
+            if (shouldRestartListening && !token.IsCancellationRequested)
+            {
+                await ResumeRecognitionSessionAsync(token, "default capture device changed");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Default capture device refresh failed: {ex.Message}");
+        }
     }
 
     private void ArmRecognitionHealthCheck()
