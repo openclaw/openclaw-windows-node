@@ -1311,6 +1311,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         lock (_pendingChatPreviewLock)
         {
             _pendingChatPreviewSessionKeys.Clear();
+            _lastAssistantMessagesBySession.Clear();
         }
     }
 

@@ -78,8 +78,9 @@ private const string TrayVoiceIntegrationScript = """
       const tag = node.parentElement.tagName;
       if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') continue;
       const original = node.textContent || '';
-      const cleaned = original.replace(memoryPattern, '').trimStart();
-      if (cleaned !== original) {
+      const withoutMemories = original.replace(memoryPattern, '');
+      if (withoutMemories !== original) {
+        const cleaned = withoutMemories.trimStart();
         node.textContent = cleaned;
         changed = true;
       }

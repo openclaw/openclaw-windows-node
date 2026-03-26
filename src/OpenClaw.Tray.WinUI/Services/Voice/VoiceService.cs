@@ -1454,7 +1454,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
         if (UsesCloudTextToSpeechRuntime(provider))
         {
-            using var result = await _cloudTextToSpeechClient.SynthesizeAsync(text, provider, providerConfiguration, _logger);
+            using var result = await _cloudTextToSpeechClient.SynthesizeAsync(text, provider, providerConfiguration, _logger, cancellationToken);
             await PlayStreamAsync(player, result.Stream, result.ContentType, cancellationToken);
             return;
         }
