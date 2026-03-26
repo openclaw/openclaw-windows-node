@@ -563,11 +563,14 @@ public class WindowsNodeClient : WebSocketClientBase
             else if (_pairingApprovedAwaitingReconnect)
             {
                 _logger.Info("hello-ok arrived after pairing approval without auth.deviceToken; keeping local state paired.");
+                _pairingApprovedAwaitingReconnect = false;
             }
 
             _logger.Info($"Node registered successfully! ID: {_nodeId ?? _deviceIdentity.DeviceId.Substring(0, 16)}");
             _logger.Info($"[NODE] hello-ok auth present={hasAuthPayload}, receivedDeviceToken={receivedDeviceToken}, storedDeviceToken={!string.IsNullOrEmpty(_deviceIdentity.DeviceToken)}, pendingApproval={_isPendingApproval}, awaitingReconnect={_pairingApprovedAwaitingReconnect}");
             
+            // Current gateways only send hello-ok for approved/accepted nodes, even when
+            // auth.deviceToken is omitted, so treat handshake acceptance as paired state.
             _isPendingApproval = false;
             _isPaired = true;
             _logger.Info(string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
@@ -575,10 +578,14 @@ public class WindowsNodeClient : WebSocketClientBase
                 : "Already paired with stored device token");
             if (!wasPairedBeforeHello)
             {
+                var pairingMessage = receivedDeviceToken
+                    ? "Pairing approved!"
+                    : "Node registration accepted";
+
                 PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
                     PairingStatus.Paired,
                     _deviceIdentity.DeviceId,
-                    "Pairing approved!"));
+                    pairingMessage));
             }
             
             RaiseStatusChanged(ConnectionStatus.Connected);

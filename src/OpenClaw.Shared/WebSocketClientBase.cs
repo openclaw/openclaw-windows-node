@@ -186,12 +186,18 @@ public abstract class WebSocketClientBase : IDisposable
 
     protected async Task ReconnectWithBackoffAsync()
     {
+        var emittedConnecting = false;
+
         while (!_disposed)
         {
             var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
             _reconnectAttempts++;
             _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
-            RaiseStatusChanged(ConnectionStatus.Connecting);
+            if (!emittedConnecting)
+            {
+                RaiseStatusChanged(ConnectionStatus.Connecting);
+                emittedConnecting = true;
+            }
 
             try
             {

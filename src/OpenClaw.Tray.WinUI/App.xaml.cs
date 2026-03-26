@@ -1609,6 +1609,7 @@ public partial class App : Application
         _gatewayClient?.Dispose();
         var oldNodeService = _nodeService;
         _nodeService = null;
+        _lastNodePairingStatus = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
         
         if (_settings?.EnableNodeMode == true)
