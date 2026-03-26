@@ -1517,6 +1517,41 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                !isSpeaking;
     }
 
+    internal static string DescribeRecognitionCompletionRestartDecision(
+        bool running,
+        VoiceActivationMode mode,
+        bool restartInProgress,
+        bool awaitingReply,
+        bool isSpeaking)
+    {
+        if (!running)
+        {
+            return "runtime-not-running";
+        }
+
+        if (mode != VoiceActivationMode.TalkMode)
+        {
+            return $"mode={mode}";
+        }
+
+        if (restartInProgress)
+        {
+            return "controlled-restart-in-progress";
+        }
+
+        if (awaitingReply)
+        {
+            return "awaiting-reply";
+        }
+
+        if (isSpeaking)
+        {
+            return "speaking";
+        }
+
+        return "eligible";
+    }
+
     internal static bool ShouldRebuildRecognitionAfterCompletion(
         SpeechRecognitionResultStatus status,
         bool sessionHadActivity,
@@ -1533,6 +1568,47 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         return sessionHadCaptureSignal ||
                status == SpeechRecognitionResultStatus.UserCanceled ||
                status == SpeechRecognitionResultStatus.TimeoutExceeded;
+    }
+
+    internal static string DescribeRecognitionCompletionRebuildDecision(
+        SpeechRecognitionResultStatus status,
+        bool sessionHadActivity,
+        bool sessionHadCaptureSignal,
+        bool restartInProgress,
+        bool awaitingReply,
+        bool isSpeaking)
+    {
+        if (restartInProgress)
+        {
+            return "controlled-restart-in-progress";
+        }
+
+        if (awaitingReply)
+        {
+            return "awaiting-reply";
+        }
+
+        if (isSpeaking)
+        {
+            return "speaking";
+        }
+
+        if (sessionHadActivity)
+        {
+            return "session-had-activity";
+        }
+
+        if (sessionHadCaptureSignal)
+        {
+            return "capture-signal-without-recognition";
+        }
+
+        return status switch
+        {
+            SpeechRecognitionResultStatus.UserCanceled => "user-canceled-without-activity",
+            SpeechRecognitionResultStatus.TimeoutExceeded => "timeout-without-activity",
+            _ => $"status={status}"
+        };
     }
 
     internal static string SelectRecognizedText(
@@ -1675,6 +1751,8 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             var restartInProgress = false;
             var sessionHadActivity = false;
             var sessionHadCaptureSignal = false;
+            var restartDecisionReason = string.Empty;
+            var rebuildDecisionReason = string.Empty;
             string? fallbackText = null;
 
             lock (_gate)
@@ -1713,7 +1791,20 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                     restartInProgress,
                     _awaitingReply,
                     _isSpeaking);
+                restartDecisionReason = DescribeRecognitionCompletionRestartDecision(
+                    _status.Running,
+                    _status.Mode,
+                    restartInProgress,
+                    _awaitingReply,
+                    _isSpeaking);
                 shouldRebuildRecognizer = ShouldRebuildRecognitionAfterCompletion(
+                    args.Status,
+                    sessionHadActivity,
+                    sessionHadCaptureSignal,
+                    restartInProgress,
+                    _awaitingReply,
+                    _isSpeaking);
+                rebuildDecisionReason = DescribeRecognitionCompletionRebuildDecision(
                     args.Status,
                     sessionHadActivity,
                     sessionHadCaptureSignal,
@@ -1723,7 +1814,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             }
 
             _logger.Warn(
-                $"Speech recognition session completed with status {args.Status}; restart={shouldRestart}; rebuild={shouldRebuildRecognizer}; hadActivity={sessionHadActivity}; hadCaptureSignal={sessionHadCaptureSignal}");
+                $"Speech recognition session completed with status {args.Status}; restart={shouldRestart} ({restartDecisionReason}); rebuild={shouldRebuildRecognizer} ({rebuildDecisionReason}); hadActivity={sessionHadActivity}; hadCaptureSignal={sessionHadCaptureSignal}");
 
             if (!string.IsNullOrWhiteSpace(fallbackText) &&
                 !_awaitingReply &&

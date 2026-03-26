@@ -152,6 +152,32 @@ public class VoiceServiceTransportTests
     }
 
     [Theory]
+    [InlineData(true, VoiceActivationMode.TalkMode, false, false, false, "eligible")]
+    [InlineData(true, VoiceActivationMode.VoiceWake, false, false, false, "mode=VoiceWake")]
+    [InlineData(false, VoiceActivationMode.TalkMode, false, false, false, "runtime-not-running")]
+    [InlineData(true, VoiceActivationMode.TalkMode, true, false, false, "controlled-restart-in-progress")]
+    [InlineData(true, VoiceActivationMode.TalkMode, false, true, false, "awaiting-reply")]
+    [InlineData(true, VoiceActivationMode.TalkMode, false, false, true, "speaking")]
+    public void DescribeRecognitionCompletionRestartDecision_ExplainsWhyRestartIsBlocked(
+        bool running,
+        VoiceActivationMode mode,
+        bool restartInProgress,
+        bool awaitingReply,
+        bool isSpeaking,
+        string expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "DescribeRecognitionCompletionRestartDecision",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var result = (string)method.Invoke(
+            null,
+            [running, mode, restartInProgress, awaitingReply, isSpeaking])!;
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
     [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, false, false, false, true)]
     [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, false, true)]
     [InlineData(SpeechRecognitionResultStatus.Success, false, false, false, false, false, false)]
@@ -174,6 +200,35 @@ public class VoiceServiceTransportTests
             BindingFlags.NonPublic | BindingFlags.Static)!;
 
         var result = (bool)method.Invoke(
+            null,
+            [status, sessionHadActivity, sessionHadCaptureSignal, restartInProgress, awaitingReply, isSpeaking])!;
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, true, false, false, false, "capture-signal-without-recognition")]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, false, false, false, "user-canceled-without-activity")]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, false, "timeout-without-activity")]
+    [InlineData(SpeechRecognitionResultStatus.Success, false, false, false, false, false, "status=Success")]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, true, true, false, false, false, "session-had-activity")]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, true, true, false, false, "controlled-restart-in-progress")]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, true, false, true, false, "awaiting-reply")]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, true, false, false, true, "speaking")]
+    public void DescribeRecognitionCompletionRebuildDecision_ExplainsWhyRebuildIsBlocked(
+        SpeechRecognitionResultStatus status,
+        bool sessionHadActivity,
+        bool sessionHadCaptureSignal,
+        bool restartInProgress,
+        bool awaitingReply,
+        bool isSpeaking,
+        string expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "DescribeRecognitionCompletionRebuildDecision",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var result = (string)method.Invoke(
             null,
             [status, sessionHadActivity, sessionHadCaptureSignal, restartInProgress, awaitingReply, isSpeaking])!;
 
