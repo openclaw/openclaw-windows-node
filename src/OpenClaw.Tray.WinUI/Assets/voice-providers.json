@@ -5,7 +5,57 @@
       "name": "Windows Speech Recognition",
       "runtime": "windows",
       "enabled": true,
-      "description": "Built-in Windows dictation and speech recognition."
+      "description": "Built-in Windows.Media speech recognition without AudioGraph."
+    },
+    {
+      "id": "foundry-local",
+      "name": "Foundry Local",
+      "runtime": "streaming",
+      "enabled": true,
+      "description": "AudioGraph-fed streaming STT route for Foundry Local or compatible streaming adapters.",
+      "settings": [
+        {
+          "key": "endpoint",
+          "label": "Endpoint",
+          "required": false,
+          "defaultValue": "http://localhost:5273",
+          "placeholder": "http://localhost:5273",
+          "description": "Local Foundry-compatible transcription endpoint for the AudioGraph streaming STT route."
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "required": false,
+          "defaultValue": "whisper-tiny",
+          "placeholder": "whisper-tiny",
+          "description": "Transcription model identifier for the streaming STT adapter."
+        }
+      ]
+    },
+    {
+      "id": "sherpa-onnx",
+      "name": "sherpa-onnx",
+      "runtime": "embedded",
+      "enabled": true,
+      "description": "Local embedded STT route for user-supplied sherpa-onnx model bundles.",
+      "settings": [
+        {
+          "key": "modelPath",
+          "label": "Model path",
+          "required": false,
+          "defaultValue": "",
+          "placeholder": "C:\\models\\sherpa-onnx\\model.onnx",
+          "description": "Path to the downloaded sherpa-onnx model bundle the embedded STT route should use."
+        },
+        {
+          "key": "model",
+          "label": "Model preset",
+          "required": false,
+          "defaultValue": "",
+          "placeholder": "tiny / base / small / medium",
+          "description": "Optional human-readable model preset to help track which local bundle is selected."
+        }
+      ]
     }
   ],
   "textToSpeechProviders": [

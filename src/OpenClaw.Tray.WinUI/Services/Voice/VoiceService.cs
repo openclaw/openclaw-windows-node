@@ -51,6 +51,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private ConnectionStatus _chatTransportStatus = ConnectionStatus.Disconnected;
     private TaskCompletionSource<bool>? _transportReadyTcs;
     private VoiceCaptureService? _voiceCaptureService;
+    private IVoiceSpeechToTextRoute? _speechToTextRoute;
     private SpeechRecognizer? _speechRecognizer;
     private SpeechSynthesizer? _speechSynthesizer;
     private MediaPlayer? _mediaPlayer;
@@ -514,6 +515,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         await EnsureMicrophoneConsentAsync();
 
         CancellationTokenSource? runtimeCts = null;
+        IVoiceSpeechToTextRoute? speechToTextRoute = null;
         VoiceCaptureService? captureService = null;
         SpeechRecognizer? recognizer = null;
         SpeechSynthesizer? synthesizer = null;
@@ -522,28 +524,31 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         try
         {
             runtimeCts = new CancellationTokenSource();
-            captureService = new VoiceCaptureService(_logger);
-            captureService.SignalDetected += OnCaptureSignalDetected;
-            await captureService.StartAsync(settings, runtimeCts.Token);
-            recognizer = await CreateSpeechRecognizerAsync(settings);
+            speechToTextRoute = VoiceSpeechToTextRouteFactory.Create(selectedSpeechToText, _logger);
+            var speechToTextResources = await speechToTextRoute.StartAsync(selectedSpeechToText, settings, runtimeCts.Token);
+            captureService = speechToTextResources.CaptureService;
+            recognizer = speechToTextResources.SpeechRecognizer;
             synthesizer = new SpeechSynthesizer();
             player = new MediaPlayer();
             await ConfigurePlaybackOutputDeviceAsync(player, settings);
 
-            if (!string.IsNullOrWhiteSpace(settings.InputDeviceId))
+            if (captureService != null)
             {
-                _logger.Warn(
-                    "AudioGraph capture is bound to the selected input device, but Windows STT transcription still follows the system speech input path until the STT adapter migration is complete.");
+                captureService.SignalDetected += OnCaptureSignalDetected;
             }
 
-            recognizer.HypothesisGenerated += OnSpeechHypothesisGenerated;
-            recognizer.ContinuousRecognitionSession.ResultGenerated += OnSpeechResultGenerated;
-            recognizer.ContinuousRecognitionSession.Completed += OnSpeechRecognitionCompleted;
+            if (recognizer != null)
+            {
+                recognizer.HypothesisGenerated += OnSpeechHypothesisGenerated;
+                recognizer.ContinuousRecognitionSession.ResultGenerated += OnSpeechResultGenerated;
+                recognizer.ContinuousRecognitionSession.Completed += OnSpeechRecognitionCompleted;
+            }
 
             lock (_gate)
             {
                 _runtimeCts = runtimeCts;
                 _voiceCaptureService = captureService;
+                _speechToTextRoute = speechToTextRoute;
                 _speechRecognizer = recognizer;
                 _speechSynthesizer = synthesizer;
                 _mediaPlayer = player;
@@ -594,26 +599,6 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             throw;
         }
-    }
-
-    private async Task<SpeechRecognizer> CreateSpeechRecognizerAsync(VoiceSettings settings)
-    {
-        var recognizer = new SpeechRecognizer();
-        recognizer.Timeouts.EndSilenceTimeout = TimeSpan.FromMilliseconds(settings.TalkMode.EndSilenceMs);
-        recognizer.Timeouts.InitialSilenceTimeout = TimeSpan.FromSeconds(10);
-        recognizer.Timeouts.BabbleTimeout = TimeSpan.FromSeconds(4);
-        recognizer.Constraints.Add(new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "always-on-dictation"));
-
-        var compilation = await recognizer.CompileConstraintsAsync();
-        if (compilation.Status != SpeechRecognitionResultStatus.Success)
-        {
-            recognizer.Dispose();
-            throw new InvalidOperationException($"Speech recognizer unavailable: {compilation.Status}");
-        }
-
-        _logger.Info($"Speech recognizer compiled successfully ({compilation.Status})");
-
-        return recognizer;
     }
 
     private async Task ConfigurePlaybackOutputDeviceAsync(MediaPlayer player, VoiceSettings settings)
@@ -791,12 +776,10 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 captureService = _voiceCaptureService;
             }
 
-            if (captureService == null)
+            if (captureService != null)
             {
-                return;
+                await captureService.WaitForCaptureReadyAsync(cancellationToken);
             }
-
-            await captureService.WaitForCaptureReadyAsync(cancellationToken);
             await Task.Delay(InitialRecognitionReadyDelay, cancellationToken);
 
             var transitionedToListening = false;
@@ -1908,6 +1891,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             captureService = _voiceCaptureService;
             _voiceCaptureService = null;
+            _speechToTextRoute = null;
 
             recognizer = _speechRecognizer;
             _speechRecognizer = null;
@@ -2224,6 +2208,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     {
         SpeechRecognizer? oldRecognizer;
         SpeechRecognizer? newRecognizer = null;
+        IVoiceSpeechToTextRoute? speechToTextRoute;
         VoiceSettings settings;
 
         lock (_gate)
@@ -2234,6 +2219,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             }
 
             oldRecognizer = _speechRecognizer;
+            speechToTextRoute = _speechToTextRoute;
             settings = Clone(_settings.Voice);
             _speechRecognizer = null;
             _recognitionActive = false;
@@ -2256,7 +2242,12 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            newRecognizer = await CreateSpeechRecognizerAsync(settings);
+            if (speechToTextRoute is not WindowsMediaSpeechToTextRoute windowsRoute)
+            {
+                throw new InvalidOperationException("Speech recognizer rebuild is only available for the Windows.Media STT route.");
+            }
+
+            newRecognizer = await windowsRoute.CreateRecognizerAsync(settings);
             newRecognizer.HypothesisGenerated += OnSpeechHypothesisGenerated;
             newRecognizer.ContinuousRecognitionSession.ResultGenerated += OnSpeechResultGenerated;
             newRecognizer.ContinuousRecognitionSession.Completed += OnSpeechRecognitionCompleted;
@@ -2529,9 +2520,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     {
         var fallbacks = new List<string>();
 
-        if (!VoiceProviderCatalogService.SupportsWindowsRuntime(speechToTextProvider.Id))
+        if (!VoiceProviderCatalogService.SupportsSpeechToTextRuntime(speechToTextProvider.Id))
         {
-            fallbacks.Add($"STT '{speechToTextProvider.Name}' is not implemented yet; using Windows Speech Recognition.");
+            fallbacks.Add($"STT '{speechToTextProvider.Name}' is not implemented yet.");
         }
 
         if (!VoiceProviderCatalogService.SupportsTextToSpeechRuntime(textToSpeechProvider.Id))

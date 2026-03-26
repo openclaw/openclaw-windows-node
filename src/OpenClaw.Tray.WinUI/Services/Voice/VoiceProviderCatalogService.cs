@@ -71,6 +71,25 @@ public static class VoiceProviderCatalogService
         return string.Equals(providerId, VoiceProviderIds.Windows, StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool SupportsSpeechToTextRuntime(string? providerId)
+    {
+        try
+        {
+            var provider = ResolveSpeechToTextProvider(providerId);
+            return VoiceSpeechToTextRouteFactory.ResolveRouteKind(provider) == VoiceSpeechToTextRouteKind.WindowsMedia;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static VoiceSpeechToTextRouteKind ResolveSpeechToTextRouteKind(string? providerId, IOpenClawLogger? logger = null)
+    {
+        var provider = ResolveSpeechToTextProvider(providerId, logger);
+        return VoiceSpeechToTextRouteFactory.ResolveRouteKind(provider);
+    }
+
     public static bool SupportsTextToSpeechRuntime(string? providerId)
     {
         if (SupportsWindowsRuntime(providerId))

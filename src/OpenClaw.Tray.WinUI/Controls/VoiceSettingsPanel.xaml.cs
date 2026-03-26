@@ -204,10 +204,16 @@ public sealed partial class VoiceSettingsPanel : UserControl
         var output = (VoiceOutputDeviceComboBox.SelectedItem as DeviceOption)?.Name ?? "System default speaker";
         var fallbackNotice = string.Empty;
 
+        if (VoiceSpeechToTextProviderComboBox.SelectedItem is VoiceProviderOption sttOption &&
+            !VoiceProviderCatalogService.SupportsSpeechToTextRuntime(sttOption.Id))
+        {
+            fallbackNotice += " Selected non-Windows STT routes are scaffolded but not implemented yet.";
+        }
+
         if (VoiceTextToSpeechProviderComboBox.SelectedItem is VoiceProviderOption ttsOption &&
             !VoiceProviderCatalogService.SupportsTextToSpeechRuntime(ttsOption.Id))
         {
-            fallbackNotice = " Unsupported TTS providers will fall back to Windows until their runtime adapters are added.";
+            fallbackNotice += " Unsupported TTS providers will fall back to Windows until their runtime adapters are added.";
         }
 
         VoiceSettingsInfoTextBlock.Text =

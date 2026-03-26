@@ -35,13 +35,24 @@ public class VoiceProviderCatalogServiceTests
     }
 
     [Fact]
-    public void LoadCatalog_IncludesBuiltInMiniMaxAndElevenLabsTtsProviders()
+    public void LoadCatalog_IncludesBuiltInSpeechAndTtsProviders()
     {
         var catalog = VoiceProviderCatalogService.LoadCatalog();
 
+        Assert.Contains(catalog.SpeechToTextProviders, p => p.Id == VoiceProviderIds.Windows);
+        Assert.Contains(catalog.SpeechToTextProviders, p => p.Id == VoiceProviderIds.FoundryLocal);
+        Assert.Contains(catalog.SpeechToTextProviders, p => p.Id == VoiceProviderIds.SherpaOnnx);
         Assert.Contains(catalog.TextToSpeechProviders, p => p.Id == VoiceProviderIds.Windows);
         Assert.Contains(catalog.TextToSpeechProviders, p => p.Id == VoiceProviderIds.MiniMax);
         Assert.Contains(catalog.TextToSpeechProviders, p => p.Id == VoiceProviderIds.ElevenLabs);
+    }
+
+    [Fact]
+    public void SupportsSpeechToTextRuntime_ReturnsTrueOnlyForWindowsMediaRoute()
+    {
+        Assert.True(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.Windows));
+        Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.FoundryLocal));
+        Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.SherpaOnnx));
     }
 
     [Fact]
@@ -56,6 +67,15 @@ public class VoiceProviderCatalogServiceTests
     public void LoadCatalog_ExposesBuiltInCloudTtsContracts()
     {
         var catalog = VoiceProviderCatalogService.LoadCatalog();
+
+        var foundryLocal = Assert.Single(catalog.SpeechToTextProviders, p => p.Id == VoiceProviderIds.FoundryLocal);
+        Assert.Equal(VoiceProviderRuntimeIds.Streaming, foundryLocal.Runtime);
+        Assert.Equal("http://localhost:5273", foundryLocal.Settings.Single(s => s.Key == VoiceProviderSettingKeys.Endpoint).DefaultValue);
+        Assert.Equal("whisper-tiny", foundryLocal.Settings.Single(s => s.Key == VoiceProviderSettingKeys.Model).DefaultValue);
+
+        var sherpaOnnx = Assert.Single(catalog.SpeechToTextProviders, p => p.Id == VoiceProviderIds.SherpaOnnx);
+        Assert.Equal(VoiceProviderRuntimeIds.Embedded, sherpaOnnx.Runtime);
+        Assert.Equal(string.Empty, sherpaOnnx.Settings.Single(s => s.Key == VoiceProviderSettingKeys.ModelPath).DefaultValue);
 
         var minimax = Assert.Single(catalog.TextToSpeechProviders, p => p.Id == VoiceProviderIds.MiniMax);
         Assert.Equal("MiniMax", minimax.Name);

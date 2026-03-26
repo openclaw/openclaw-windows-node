@@ -154,14 +154,26 @@ public sealed class VoiceSettingsUpdateArgs
 public static class VoiceProviderIds
 {
     public const string Windows = "windows";
+    public const string FoundryLocal = "foundry-local";
+    public const string SherpaOnnx = "sherpa-onnx";
     public const string MiniMax = "minimax";
     public const string ElevenLabs = "elevenlabs";
+}
+
+public static class VoiceProviderRuntimeIds
+{
+    public const string Windows = "windows";
+    public const string Streaming = "streaming";
+    public const string Embedded = "embedded";
+    public const string Cloud = "cloud";
 }
 
 public static class VoiceProviderSettingKeys
 {
     public const string ApiKey = "apiKey";
+    public const string Endpoint = "endpoint";
     public const string Model = "model";
+    public const string ModelPath = "modelPath";
     public const string VoiceId = "voiceId";
     public const string VoiceSettingsJson = "voiceSettingsJson";
 }
@@ -249,7 +261,7 @@ public sealed class VoiceProviderOption
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    public string Runtime { get; set; } = "windows";
+    public string Runtime { get; set; } = VoiceProviderRuntimeIds.Windows;
     public bool Enabled { get; set; } = true;
     public string? Description { get; set; }
     public List<VoiceProviderSettingDefinition> Settings { get; set; } = [];

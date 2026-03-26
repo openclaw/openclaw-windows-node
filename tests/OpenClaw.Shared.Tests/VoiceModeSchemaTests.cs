@@ -86,8 +86,12 @@ public class VoiceSchemaDefaultsTests
     public void VoiceProviderIds_ExposeRequiredBuiltInProviders()
     {
         Assert.Equal("windows", VoiceProviderIds.Windows);
+        Assert.Equal("foundry-local", VoiceProviderIds.FoundryLocal);
+        Assert.Equal("sherpa-onnx", VoiceProviderIds.SherpaOnnx);
         Assert.Equal("minimax", VoiceProviderIds.MiniMax);
         Assert.Equal("elevenlabs", VoiceProviderIds.ElevenLabs);
+        Assert.Equal("endpoint", VoiceProviderSettingKeys.Endpoint);
+        Assert.Equal("modelPath", VoiceProviderSettingKeys.ModelPath);
         Assert.Equal("voiceSettingsJson", VoiceProviderSettingKeys.VoiceSettingsJson);
     }
 
