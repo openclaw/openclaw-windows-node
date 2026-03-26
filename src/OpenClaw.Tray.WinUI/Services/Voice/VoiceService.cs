@@ -611,7 +611,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             }
 
             player.AudioDevice = selectedRenderDevice;
-            _logger.Info($"Voice playback output device set to {selectedRenderDevice.Name}");
+        _logger.Debug($"Voice playback output device set to {selectedRenderDevice.Name}");
         }
         catch (Exception ex)
         {
@@ -722,7 +722,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             _recognitionSessionHadCaptureSignal = false;
         }
 
-        _logger.Info("Starting speech recognition session");
+        _logger.Debug("Starting speech recognition session");
         await recognizer.ContinuousRecognitionSession.StartAsync();
 
         lock (_gate)
@@ -742,7 +742,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             }
         }
 
-        _logger.Info("Speech recognition session started");
+        _logger.Debug("Speech recognition session started");
         if (updateListeningStatus)
         {
             _ = MonitorListeningReadyAsync(generation, runtimeToken);
@@ -799,7 +799,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 var readinessSource = captureService == null
                     ? "recognizer warm-up completed"
                     : "capture frames observed and recognizer warm-up completed";
-                _logger.Info(
+                _logger.Debug(
                     $"Speech pipeline ready; {readinessSource} ({InitialRecognitionReadyDelay.TotalMilliseconds:0}ms)");
             }
         }
@@ -842,7 +842,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             catch (Exception ex)
             {
                 currentError = GetUserFacingErrorMessage(ex);
-                _logger.Warn(
+                _logger.Info(
                     $"Voice recognition resume failed ({reason}, attempt {attempt}/{maxAttempts}): {ex.Message}");
 
                 lock (_gate)
@@ -920,7 +920,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 result.Confidence == SpeechRecognitionConfidence.Rejected ||
                 result.Confidence == SpeechRecognitionConfidence.Low)
             {
-                _logger.Info($"Voice recognition ignored result with confidence {result.Confidence}: {text}");
+                _logger.Debug($"Voice recognition ignored result with confidence {result.Confidence}: {text}");
                 return;
             }
 
@@ -1045,7 +1045,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             if (string.Equals(text, _lastTranscript, StringComparison.OrdinalIgnoreCase) &&
                 DateTime.UtcNow - _lastTranscriptUtc < DuplicateTranscriptWindow)
             {
-                _logger.Info($"Voice recognition suppressed duplicate transcript: {text}");
+                _logger.Debug($"Voice recognition suppressed duplicate transcript: {text}");
                 return;
             }
 
@@ -1084,9 +1084,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             var directSendStopwatch = Stopwatch.StartNew();
             await client.SendChatMessageAsync(text, sessionKey);
             directSendElapsedMs = directSendStopwatch.ElapsedMilliseconds;
-            _logger.Info($"Voice direct send path: elapsed={directSendElapsedMs}ms");
+            _logger.Debug($"Voice direct send path: elapsed={directSendElapsedMs}ms");
 
-            _logger.Info(
+            _logger.Debug(
                 $"Voice pre-response latency: recognitionStop={recognitionStopElapsedMs}ms transportReady={transportReadyElapsedMs}ms directSend={directSendElapsedMs}ms total={pipelineStopwatch.ElapsedMilliseconds}ms");
             lock (_gate)
             {
@@ -1101,7 +1101,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 _status.LastUtteranceUtc = DateTime.UtcNow;
             }
 
-            _logger.Info("Voice response wait started");
+            _logger.Debug("Voice response wait started");
             RaiseConversationTurn(VoiceConversationDirection.Outgoing, text, sessionKey);
             RaiseTranscriptDraft(string.Empty, sessionKey, clear: true);
             _ = MonitorReplyTimeoutAsync(text, cancellationToken);
@@ -1153,7 +1153,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             if (shouldResume)
             {
-                _logger.Warn(
+                _logger.Info(
                     $"Voice reply wait timed out after {ReplyTimeout.TotalSeconds:0}s; accepting late replies for {LateReplyGraceWindow.TotalSeconds:0}s on session {lateReplySessionKey ?? "(none)"}");
                 await ResumeRecognitionSessionAsync(cancellationToken, "reply timeout");
             }
@@ -1215,7 +1215,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             if (acceptedViaLateReplyGrace)
             {
-                _logger.Warn($"Voice accepted late assistant reply after timeout for session {args.SessionKey}");
+                _logger.Info($"Voice accepted late assistant reply after timeout for session {args.SessionKey}");
             }
 
             if (string.IsNullOrWhiteSpace(text))
@@ -1257,7 +1257,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         lock (_gate)
         {
             _pendingAssistantReplies.Enqueue((text, sessionKey));
-            _logger.Info($"Voice reply queued: pending={_pendingAssistantReplies.Count}");
+            _logger.Debug($"Voice reply queued: pending={_pendingAssistantReplies.Count}");
 
             if (!_replyPlaybackLoopActive)
             {
@@ -1334,7 +1334,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.Info($"Voice reply playback canceled: remainingQueue={CurrentStatus.PendingReplyCount}");
+                    _logger.Debug($"Voice reply playback canceled: remainingQueue={CurrentStatus.PendingReplyCount}");
                 }
                 catch (Exception ex)
                 {
@@ -1365,7 +1365,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
                 if (shouldPauseBeforeNextReply)
                 {
-                    _logger.Info($"Voice reply playback paused before next queued response ({QueuedReplyPlaybackGap.TotalMilliseconds}ms)");
+                    _logger.Debug($"Voice reply playback paused before next queued response ({QueuedReplyPlaybackGap.TotalMilliseconds}ms)");
                     await Task.Delay(QueuedReplyPlaybackGap);
                 }
             }
@@ -1436,7 +1436,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
         var stopwatch = Stopwatch.StartNew();
         using var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
-        _logger.Info($"Windows TTS latency: total={stopwatch.ElapsedMilliseconds}ms");
+        _logger.Debug($"Windows TTS latency: total={stopwatch.ElapsedMilliseconds}ms");
         await PlayStreamAsync(player, stream, stream.ContentType, cancellationToken);
     }
 
@@ -1650,6 +1650,20 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                !usedFallbackTranscript;
     }
 
+    internal static bool ShouldWarnForRecognitionCompletion(
+        SpeechRecognitionResultStatus status,
+        bool rebuildRecognizer)
+    {
+        if (rebuildRecognizer)
+        {
+            return false;
+        }
+
+        return status != SpeechRecognitionResultStatus.Success &&
+               status != SpeechRecognitionResultStatus.TimeoutExceeded &&
+               status != SpeechRecognitionResultStatus.UserCanceled;
+    }
+
     private static string CreateReplyPreview(string text)
     {
         var trimmed = text.Trim();
@@ -1809,15 +1823,27 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                     !string.IsNullOrWhiteSpace(fallbackText));
             }
 
-            _logger.Warn(
-                $"Speech recognition session completed with status {args.Status}; restart={shouldRestart} ({restartDecisionReason}); rebuild={shouldRebuildRecognizer} ({rebuildDecisionReason}); hadActivity={sessionHadActivity}; hadCaptureSignal={sessionHadCaptureSignal}");
+            var completionMessage =
+                $"Speech recognition session completed with status {args.Status}; restart={shouldRestart} ({restartDecisionReason}); rebuild={shouldRebuildRecognizer} ({rebuildDecisionReason}); hadActivity={sessionHadActivity}; hadCaptureSignal={sessionHadCaptureSignal}";
+            if (ShouldWarnForRecognitionCompletion(args.Status, shouldRebuildRecognizer))
+            {
+                _logger.Warn(completionMessage);
+            }
+            else if (shouldRebuildRecognizer || args.Status == SpeechRecognitionResultStatus.UserCanceled)
+            {
+                _logger.Info(completionMessage);
+            }
+            else
+            {
+                _logger.Debug(completionMessage);
+            }
 
             if (!string.IsNullOrWhiteSpace(fallbackText) &&
                 !_awaitingReply &&
                 !_isSpeaking &&
                 !token.IsCancellationRequested)
             {
-                _logger.Warn(
+                _logger.Info(
                     $"Voice recognition completed without a final result; promoting recent hypothesis as fallback transcript: {fallbackText}");
                 await HandleRecognizedTextAsync(fallbackText);
                 return;
@@ -1830,7 +1856,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
             if (shouldReprompt)
             {
-                _logger.Warn("Voice recognition session ended after speech activity but without a usable transcript; prompting user to repeat.");
+                _logger.Info("Voice recognition session ended after speech activity but without a usable transcript; prompting user to repeat.");
                 QueueAssistantReplyForPlayback(LowConfidenceRepeatPrompt, sessionKey, out _);
                 return;
             }
@@ -2133,7 +2159,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 return;
             }
 
-            _logger.Info(
+            _logger.Debug(
                 $"Default capture device changed to {newDeviceId ?? "(unknown)"}; refreshing TalkMode recognizer");
 
             if (shouldRestartListening)
@@ -2214,7 +2240,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 newRecognizer = null;
             }
 
-            _logger.Warn($"Speech recognizer rebuilt ({reason})");
+        _logger.Info($"Speech recognizer rebuilt ({reason})");
         }
         finally
         {
@@ -2252,7 +2278,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
         cancellationToken.ThrowIfCancellationRequested();
         await captureService.StartAsync(settings, cancellationToken);
-        _logger.Info($"Voice capture graph rebuilt ({reason})");
+        _logger.Debug($"Voice capture graph rebuilt ({reason})");
     }
 
     private VoiceStatusInfo BuildStoppedStatus(string? sessionKey, string? reason)

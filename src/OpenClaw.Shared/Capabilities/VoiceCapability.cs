@@ -7,6 +7,8 @@ namespace OpenClaw.Shared.Capabilities;
 
 public class VoiceCapability : NodeCapabilityBase
 {
+    private const string LegacySkipCommand = "voice.skip";
+
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -42,7 +44,7 @@ public class VoiceCapability : NodeCapabilityBase
             VoiceCommands.Stop => await HandleStopAsync(request),
             VoiceCommands.Pause => await HandlePauseAsync(request),
             VoiceCommands.Resume => await HandleResumeAsync(request),
-            VoiceCommands.Skip => await HandleSkipAsync(request),
+            VoiceCommands.Skip or LegacySkipCommand => await HandleSkipAsync(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }

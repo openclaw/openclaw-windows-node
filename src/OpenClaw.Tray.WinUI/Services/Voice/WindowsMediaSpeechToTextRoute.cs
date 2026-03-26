@@ -48,7 +48,7 @@ internal sealed class WindowsMediaSpeechToTextRoute : IVoiceSpeechToTextRoute
             throw new InvalidOperationException($"Speech recognizer unavailable: {compilation.Status}");
         }
 
-        _logger.Info(
+        _logger.Debug(
             $"Speech recognizer compiled successfully ({compilation.Status}); endSilenceMs={recognizer.Timeouts.EndSilenceTimeout.TotalMilliseconds:0}; initialSilenceMs={recognizer.Timeouts.InitialSilenceTimeout.TotalMilliseconds:0}; babbleMs={recognizer.Timeouts.BabbleTimeout.TotalMilliseconds:0}");
         return recognizer;
     }

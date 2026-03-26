@@ -15,7 +15,7 @@ public static class VoiceCommands
     public const string Stop = "voice.stop";
     public const string Pause = "voice.pause";
     public const string Resume = "voice.resume";
-    public const string Skip = "voice.skip";
+    public const string Skip = "voice.response.skip";
 
     private static readonly ReadOnlyCollection<string> s_all = Array.AsReadOnly(
     [

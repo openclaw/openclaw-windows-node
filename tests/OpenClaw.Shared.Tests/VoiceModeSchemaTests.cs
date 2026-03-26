@@ -18,7 +18,7 @@ public class VoiceCommandsTests
             "voice.stop",
             "voice.pause",
             "voice.resume",
-            "voice.skip"
+            "voice.response.skip"
         ],
         VoiceCommands.All);
     }

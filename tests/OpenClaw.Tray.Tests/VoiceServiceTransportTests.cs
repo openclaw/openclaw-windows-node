@@ -236,6 +236,26 @@ public class VoiceServiceTransportTests
     }
 
     [Theory]
+    [InlineData(SpeechRecognitionResultStatus.Success, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false)]
+    [InlineData(SpeechRecognitionResultStatus.UserCanceled, true, false)]
+    [InlineData(SpeechRecognitionResultStatus.GrammarCompilationFailure, false, true)]
+    public void ShouldWarnForRecognitionCompletion_OnlyWarnsForUnexpectedStatuses(
+        SpeechRecognitionResultStatus status,
+        bool rebuildRecognizer,
+        bool expected)
+    {
+        var method = typeof(VoiceService).GetMethod(
+            "ShouldWarnForRecognitionCompletion",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var result = (bool)method.Invoke(null, [status, rebuildRecognizer])!;
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
     [InlineData(16000, 80, 1280)]
     [InlineData(16000, 0, 1280)]
     [InlineData(0, 80, 1280)]

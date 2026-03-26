@@ -1132,4 +1132,33 @@ public class VoiceCapabilityTests
         Assert.False(res.Ok);
         Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task LegacyVoiceSkipCommand_RemainsAccepted()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        VoiceSkipArgs? received = null;
+        cap.SkipRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new VoiceStatusInfo
+            {
+                Available = true,
+                Running = true,
+                Mode = VoiceActivationMode.TalkMode,
+                State = VoiceRuntimeState.PlayingResponse
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice8",
+            Command = "voice.skip",
+            Args = Parse("""{"reason":"legacy caller"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal("legacy caller", received!.Reason);
+    }
 }

@@ -31,9 +31,9 @@ public sealed partial class WebChatWindow : WindowEx
     
     public bool IsClosed { get; private set; }
 
-    private sealed record VoiceConversationTurnMirror(string Direction, string Text);
+    internal sealed record VoiceConversationTurnMirror(string Direction, string Text);
 
-private const string TrayVoiceIntegrationScript = """
+internal const string TrayVoiceIntegrationScript = """
 (() => {
   const isVisible = (el) => !!el && !(el.disabled === true) && el.getClientRects().length > 0;
   const memoryPattern = /<relevant-memories>[\s\S]*?<\/relevant-memories>\s*/gi;
@@ -63,17 +63,39 @@ private const string TrayVoiceIntegrationScript = """
     }
   };
   let desiredTurns = [];
-  const ensureTurnsHost = () => {
-    if (!document.body) return null;
-    let host = document.getElementById('openclaw-tray-voice-turns');
-    if (host) return host;
-    host = document.createElement('div');
-    host.id = 'openclaw-tray-voice-turns';
+  const getTurnsAnchor = () => {
+    const composer = findComposer();
+    if (!composer) return null;
+    return composer.closest('form, footer, [role="form"], [data-slot="composer"]') || composer.parentElement || composer;
+  };
+  const applyInlineHostLayout = (host) => {
+    Object.assign(host.style, {
+      position: 'relative',
+      left: 'auto',
+      right: 'auto',
+      bottom: 'auto',
+      width: '100%',
+      maxWidth: '100%',
+      margin: '0 0 12px 0',
+      padding: '0',
+      zIndex: 'auto',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      pointerEvents: 'none',
+      alignItems: 'stretch'
+    });
+  };
+  const applyFallbackHostLayout = (host) => {
     Object.assign(host.style, {
       position: 'fixed',
       left: '16px',
       right: '16px',
       bottom: '88px',
+      width: 'auto',
+      maxWidth: 'none',
+      margin: '0',
+      padding: '0',
       zIndex: '2147483000',
       display: 'flex',
       flexDirection: 'column',
@@ -81,7 +103,28 @@ private const string TrayVoiceIntegrationScript = """
       pointerEvents: 'none',
       alignItems: 'stretch'
     });
-    document.body.appendChild(host);
+  };
+  const ensureTurnsHost = () => {
+    if (!document.body) return null;
+    let host = document.getElementById('openclaw-tray-voice-turns');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'openclaw-tray-voice-turns';
+      host.setAttribute('data-openclaw-tray-voice-turns', 'true');
+      host.setAttribute('aria-live', 'polite');
+    }
+    const anchor = getTurnsAnchor();
+    if (anchor && anchor.parentElement) {
+      applyInlineHostLayout(host);
+      if (host.parentElement !== anchor.parentElement || host.nextSibling !== anchor) {
+        anchor.parentElement.insertBefore(host, anchor);
+      }
+      return host;
+    }
+    applyFallbackHostLayout(host);
+    if (host.parentElement !== document.body) {
+      document.body.appendChild(host);
+    }
     return host;
   };
   const renderTurns = () => {
@@ -196,9 +239,22 @@ private const string TrayVoiceIntegrationScript = """
 })();
 """;
 
+    internal static string BuildSetStripInjectedMemoriesScript(bool enabled)
+        => $"window.__openClawTrayVoice?.setStripInjectedMemories?.({(enabled ? "true" : "false")});";
+
+    internal static string BuildDraftScript(string? draft)
+    {
+        return string.IsNullOrWhiteSpace(draft)
+            ? "window.__openClawTrayVoice?.clearDraft?.();"
+            : $"window.__openClawTrayVoice?.setDraft?.({JsonSerializer.Serialize(draft)});";
+    }
+
+    internal static string BuildTurnsScript(IReadOnlyCollection<VoiceConversationTurnMirror> turns)
+        => $"window.__openClawTrayVoice?.setTurns?.({JsonSerializer.Serialize(turns)});";
+
     public WebChatWindow(string gatewayUrl, string token, bool stripInjectedMemories)
     {
-        Logger.Info($"WebChatWindow: Constructor called, gateway={gatewayUrl}");
+        Logger.Debug($"WebChatWindow: Constructor called, gateway={gatewayUrl}");
         _gatewayUrl = gatewayUrl;
         _token = token;
         _stripInjectedMemories = stripInjectedMemories;
@@ -214,7 +270,7 @@ private const string TrayVoiceIntegrationScript = """
         
         Closed += OnWindowClosed;
         
-        Logger.Info("WebChatWindow: Starting InitializeWebViewAsync");
+        Logger.Debug("WebChatWindow: Starting InitializeWebViewAsync");
         _ = InitializeWebViewAsync();
     }
 
@@ -236,7 +292,7 @@ private const string TrayVoiceIntegrationScript = """
     {
         try
         {
-            Logger.Info("WebChatWindow: Initializing WebView2...");
+        Logger.Debug("WebChatWindow: Initializing WebView2...");
             
             // Set up user data folder for WebView2
             var userDataFolder = Path.Combine(
@@ -244,14 +300,14 @@ private const string TrayVoiceIntegrationScript = """
                 "OpenClawTray", "WebView2");
             
             Directory.CreateDirectory(userDataFolder);
-            Logger.Info($"WebChatWindow: User data folder: {userDataFolder}");
+        Logger.Debug($"WebChatWindow: User data folder: {userDataFolder}");
 
             // Set environment variable for user data folder
             Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
             
-            Logger.Info("WebChatWindow: Calling EnsureCoreWebView2Async...");
+        Logger.Debug("WebChatWindow: Calling EnsureCoreWebView2Async...");
             await WebView.EnsureCoreWebView2Async();
-            Logger.Info("WebChatWindow: CoreWebView2 initialized successfully");
+        Logger.Debug("WebChatWindow: CoreWebView2 initialized successfully");
             
             // Configure WebView2
             WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
@@ -262,7 +318,7 @@ private const string TrayVoiceIntegrationScript = """
             // Handle navigation events (store for cleanup)
             _navigationCompletedHandler = (s, e) =>
             {
-                Logger.Info($"WebChatWindow: Navigation completed, success={e.IsSuccess}, status={e.WebErrorStatus}");
+        Logger.Debug($"WebChatWindow: Navigation completed, success={e.IsSuccess}, status={e.WebErrorStatus}");
                 LoadingRing.IsActive = false;
                 LoadingRing.Visibility = Visibility.Collapsed;
                 _ = RefreshTrayVoiceDomStateAsync();
@@ -292,7 +348,7 @@ private const string TrayVoiceIntegrationScript = """
             {
                 // Strip query params to avoid logging tokens
                 var safeUri = e.Uri?.Split('?')[0] ?? "unknown";
-                Logger.Info($"WebChatWindow: Navigation starting to {safeUri}");
+        Logger.Debug($"WebChatWindow: Navigation starting to {safeUri}");
                 LoadingRing.IsActive = true;
                 LoadingRing.Visibility = Visibility.Visible;
             };
@@ -391,7 +447,7 @@ private const string TrayVoiceIntegrationScript = """
         // If debug URL is set, use it instead of gateway
         if (!string.IsNullOrEmpty(DEBUG_TEST_URL))
         {
-            Logger.Info($"WebChatWindow: DEBUG MODE - Navigating to test URL: {DEBUG_TEST_URL}");
+            Logger.Debug($"WebChatWindow: DEBUG MODE - Navigating to test URL: {DEBUG_TEST_URL}");
             WebView.CoreWebView2.Navigate(DEBUG_TEST_URL);
             return;
         }
@@ -404,7 +460,7 @@ private const string TrayVoiceIntegrationScript = """
         }
 
         var safeBaseUrl = url.Split('?')[0];
-        Logger.Info($"WebChatWindow: Navigating to {safeBaseUrl} (token hidden)");
+        Logger.Debug($"WebChatWindow: Navigating to {safeBaseUrl} (token hidden)");
         WebView.CoreWebView2.Navigate(url);
     }
 
@@ -482,20 +538,14 @@ private const string TrayVoiceIntegrationScript = """
 
         try
         {
-            var stripJson = _stripInjectedMemories ? "true" : "false";
             await WebView.CoreWebView2.ExecuteScriptAsync(
-                $"window.__openClawTrayVoice?.setStripInjectedMemories?.({stripJson});");
+                BuildSetStripInjectedMemoriesScript(_stripInjectedMemories));
 
-            var draftJson = JsonSerializer.Serialize(_pendingVoiceDraft ?? string.Empty);
-            var script = string.IsNullOrWhiteSpace(_pendingVoiceDraft)
-                ? "window.__openClawTrayVoice?.clearDraft?.();"
-                : $"window.__openClawTrayVoice?.setDraft?.({draftJson});";
-
-            await WebView.CoreWebView2.ExecuteScriptAsync(script);
-
-            var turnsJson = JsonSerializer.Serialize(_pendingVoiceTurns);
             await WebView.CoreWebView2.ExecuteScriptAsync(
-                $"window.__openClawTrayVoice?.setTurns?.({turnsJson});");
+                BuildDraftScript(_pendingVoiceDraft));
+
+            await WebView.CoreWebView2.ExecuteScriptAsync(
+                BuildTurnsScript(_pendingVoiceTurns));
         }
         catch (Exception ex)
         {

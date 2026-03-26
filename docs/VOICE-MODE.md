@@ -8,7 +8,7 @@ This document defines the voice subsystem for the Windows node only. It introduc
 - Utilise minimal touch points to the existing app to reduce the potential for screw-ups.
 - Use NanoWakeWord for wakeword detection on-device
 - Present the user-facing mode names as `Voice Wake` and `Talk Mode`
-- Keep STT/TTS provider selection configurable, with Windows implementations as the default built-ins
+- Keep STT/TTS provider selection configurable, with Windows implementations as the default built-ins (available to all)
 - Implement `MiniMax` TTS and `ElevenLabs` TTS as required non-Windows providers after the Windows baseline
 - Make adding new voice providers an update to a Json catalog, rather than requiring code changes
 - Reuse the existing node capability pattern instead of introducing a parallel control path
@@ -17,7 +17,7 @@ This document defines the voice subsystem for the Windows node only. It introduc
 
 ## Non-Goals
 
-- True full-duplex or chunk-streaming audio transport between node and gateway
+- True full-duplex, chunk-streaming audio transport between node and gateway
 - Subtantial changes to the existing project
 
 ## Design Position
@@ -41,7 +41,7 @@ The tray app now uses user-facing names (borrowed from the macOS app) rather tha
 | Internal Mode | Visible Name | Availability |
 |---|---|---|
 | `Off` | Off | available |
-| `VoiceWake` | Voice Wake | visible but disabled for now |
+| `VoiceWake` | Voice Wake | visible but disabled for now (coming soon) |
 | `TalkMode` | Talk Mode | available |
 
 The contracts and persisted settings now use `VoiceWake` and `TalkMode` as well.
@@ -87,13 +87,13 @@ The node capability command surface is:
 - `voice.stop`
 - `voice.pause`
 - `voice.resume`
-- `voice.skip`
+- `voice.response.skip`
 
 These commands are defined in [VoiceModeSchema.cs](../src/OpenClaw.Shared/VoiceModeSchema.cs) and handled by [VoiceCapability.cs](../src/OpenClaw.Shared/Capabilities/VoiceCapability.cs).
 
-`voice.settings.get` / `voice.settings.set` are the configuration API.
+`voice.devices.list` / `voice.settings.get` / `voice.settings.set` are the configuration API.
 
-`voice.start` / `voice.stop` / `voice.pause` / `voice.resume` / `voice.skip` are the runtime control API.
+`voice.start` / `voice.stop` / `voice.pause` / `voice.resume` / `voice.response.skip` are the runtime control API.
 
 ### Status Surface
 
@@ -158,7 +158,7 @@ The main remaining gap is streaming playback from the first audio chunk. The Azu
 - MiniMax now uses the provider catalog's WebSocket TTS contract, but the current player still waits for a complete playable stream before output starts
 - ElevenLabs now uses the provider catalog's `stream-input` WebSocket contract, but the current player still waits for a complete playable stream before output starts
 
-So the current design minimizes avoidable setup and connection latency, but does not yet implement first-chunk playback streaming. This is, however, planned for an early release.
+So the current design minimizes avoidable setup and connection latency, but does not yet implement first-chunk playback streaming. **This is planned for an early release, so will be upgraded soon!**
 
 ## Tray Chat Integration Decision
 
@@ -218,6 +218,8 @@ It also fits with the planned voice mode *repeater form*, which will act as an o
 
 ## Provider Selection
 
+Voice providers are contained in a JSON catalogue rather than being hard-coded. See below.
+
 Voice settings now carry explicit provider ids for both STT and TTS:
 
 - `Voice.SpeechToTextProviderId`
@@ -229,7 +231,7 @@ Runtime behavior in the current phase:
 
 - `windows` is implemented for both STT and TTS
 - the `windows` STT route is a pure `Windows.Media.SpeechRecognition.SpeechRecognizer` path with no `AudioGraph` dependency
-- `windows` STT is currently treated as `half-duplex, non-streamed`
+- `windows` STT is `half-duplex, non-streamed`
 - `http/ws` is now catalogued as a visible "coming soon" STT slot for generic streaming HTTP/WebSocket adapters
 - built-in catalog entries exist for both `minimax` and `elevenlabs` TTS
 - `minimax` defaults to `speech-2.8-turbo` and `English_MatureBoss` at present
@@ -249,7 +251,7 @@ The Settings panel now shows short inline descriptions for:
 
 Those provider descriptions are drawn directly from the provider catalog.
 
-When `Windows Speech Recognition` is selected for STT, the Settings panel now forces both audio device pickers back to the system defaults and greys them out. That matches the current Windows route limitation and avoids advertising per-device microphone routing that does not exist on this route yet.
+When `Windows Speech Recognition` is selected for STT, the Settings panel now forces both audio device pickers back to the system defaults and greys them out. That matches the current Windows route limitation.
 
 ### Provider Catalog
 
@@ -446,7 +448,7 @@ The voice subsystem is introduced as a new node capability category: `voice`.
 | `voice.stop` | Stop the voice runtime | `VoiceStopArgs` | `VoiceStatusInfo` |
 | `voice.pause` | Pause the active voice runtime | `VoicePauseArgs` | `VoiceStatusInfo` |
 | `voice.resume` | Resume a paused voice runtime | `VoiceResumeArgs` | `VoiceStatusInfo` |
-| `voice.skip` | Skip the currently spoken reply and advance the queue if another reply is pending | `VoiceSkipArgs` | `VoiceStatusInfo` |
+| `voice.response.skip` | Skip the currently spoken reply and advance the queue if another reply is pending | `VoiceSkipArgs` | `VoiceStatusInfo` |
 
 ### Payload Types
 
@@ -572,51 +574,50 @@ The tray `Voice Mode` window is a read-only runtime status/detail surface with a
 At runtime today:
 
 - `Voice.OutputDeviceId` is applied to Talk Mode playback through `MediaPlayer.AudioDevice`
-- `VoiceCaptureService` now runs an `AudioGraph` capture pipeline in parallel with Talk Mode and binds it to the selected or default microphone device
-- `Voice.InputDeviceId` is now used by that `AudioGraph` capture path, but transcript generation still uses the Windows default speech input path until the STT adapter migration is complete
-- Talk Mode only advertises `ListeningContinuously` after the capture graph has produced live frames and the recognizer warm-up window has elapsed, so the status acts as a real “you can start talking now” signal instead of a timer-only guess
-- recognizer recovery is now speech-triggered rather than silence-triggered: the Windows recognizer is only recycled when sustained capture speech is present but no recognition activity follows
-- when a recognizer session ends after real hypothesis activity but before a final result arrives, Talk Mode now promotes the last recent hypothesis and submits it instead of dropping the utterance
-- the speech-mismatch recovery watchdog is single-owner and only armed from capture speech, so a new recognition session does not spawn overlapping recovery loops
-- when the system default capture device changes and Talk Mode is using the default mic, the recognizer is rebuilt so device switches such as AirPods are picked up without a full app restart
-- explicit non-default microphone transcript generation is still pending the planned STT adapter migration
+- the selectable `windows` STT route is a pure `Windows.Media.SpeechRecognition.SpeechRecognizer` path with no `AudioGraph` running in parallel
+- when `windows` STT is selected, Windows owns speech input on the system default speech device, so Settings forces both device pickers back to system defaults and greys them out
+- Talk Mode only advertises `ListeningContinuously` after the current recognizer session starts and the recognizer warm-up window elapses, so the status acts as a real “you can start talking now” signal instead of a timer-only guess
+- if a recognition session ends with speech activity but no usable transcript, Talk Mode clears the draft and gives a short local repeat prompt instead of silently doing nothing
+- user voice turns are mirrored locally into the tray chat window through the WebView DOM bridge, separate from the upstream `chat.send` transport path
+- streaming `AudioGraph`-based STT routes remain scaffolded in code but are not implemented or user-selectable yet
 
 ## Current Runtime Architecture
 
-The current Windows implementation is still centred on `VoiceService`, with a few supporting seams around it:
+The current Windows implementation is still centred on `VoiceService`, with a few supporting components around it:
 
 - `VoiceCapability`
   exposes shared `voice.*` commands to the node/gateway surface
-- `VoiceCaptureService`
-  owns the new `AudioGraph` capture backbone, selected/default microphone binding, and live signal detection
 - `VoiceService`
-  owns Talk Mode runtime state, recognizer/TTS integration, reply queuing, timeouts, gateway reply handling, and the transition layer between `AudioGraph` capture and the current recognizer-owned STT path
+  owns Talk Mode runtime state, Windows speech recognizer/TTS integration, reply queuing, timeouts, gateway reply handling, repeat prompts, and recognition-session restart/rebuild decisions
 - `VoiceChatCoordinator`
   mirrors interim transcript drafts and conversation turns into the tray UI without making the chat window part of the transport path
 - `OpenClawGatewayClient`
   carries direct `chat.send`, final chat events, and the `sessions.preview` fallback path for bare final markers
 - `WebChatWindow`
-  mirrors live transcript drafts locally and optionally strips injected `<relevant-memories>` blocks from rendered chat text
+  mirrors live transcript drafts and outgoing voice turns locally and optionally strips injected `<relevant-memories>` blocks from rendered chat text
+- `VoiceCaptureService`
+  remains in the codebase as the planned `AudioGraph` capture backbone for future streaming/selected-device STT routes, but is not part of the active `windows` STT runtime path
 
 ### Current End-to-End Talk Mode
 
 ```mermaid
 flowchart LR
-    A["User speech"] --> B["VoiceCaptureService<br/>AudioGraph on selected/default mic"]
-    A --> C["Windows SpeechRecognizer<br/>continuous dictation on current default mic"]
+    A["User speech"] --> B["Windows SpeechRecognizer<br/>continuous dictation on default speech input"]
+    B --> C["HypothesisGenerated<br/>interim text"]
+    C --> D["VoiceService<br/>draft event"]
+    D --> E["VoiceChatCoordinator"]
+    E --> F["WebChatWindow<br/>local compose-box mirror"]
 
-    B --> D["FrameCaptured / SignalDetected"]
-    D --> E["VoiceService<br/>capture-backed health + device state"]
+    B --> G["ResultGenerated<br/>final text + confidence"]
+    G --> H{"confidence Medium/High?"}
+    H -- "yes" --> I["VoiceService<br/>duplicate guard + direct submit"]
+    H -- "no" --> J["Ignore as unsendable final"]
 
-    C --> F["HypothesisGenerated<br/>interim text"]
-    F --> G["VoiceService<br/>draft event"]
-    G --> H["VoiceChatCoordinator"]
-    H --> I["WebChatWindow<br/>local compose-box mirror only"]
-
-    C --> J["ResultGenerated<br/>final Medium/High text"]
-    J --> K["VoiceService<br/>duplicate guard + late hypothesis promotion"]
-    K --> L["Stop recognition session"]
-    L --> M["OpenClawGatewayClient.SendChatMessageAsync<br/>direct chat.send(main, transcript)"]
+    I --> K["Raise outgoing conversation turn"]
+    K --> E
+    I --> L["Clear local draft"]
+    L --> E
+    I --> M["OpenClawGatewayClient.SendChatMessageAsync<br/>direct chat.send(main, transcript)"]
     M --> N["OpenClaw / session pipeline"]
     N --> O["Chat final event"]
     O --> P{"assistant text present?"}
@@ -633,21 +634,22 @@ flowchart LR
     W --> X["MediaPlayer<br/>selected OutputDeviceId if set"]
     X --> Y["Speaker / headset output"]
     Y --> Z["Resume recognition when queue drains"]
+    J --> AA["Session completes without usable transcript"]
+    AA --> AB["Clear draft + local repeat prompt"]
 ```
 
 ### Current Processing Stages
 
 | Stage | Component | Input | Output |
 |---|---|---|---|
-| 1 | `VoiceCaptureService` | selected/default microphone device | continuous frame and signal events from `AudioGraph` |
-| 2 | `SpeechRecognizer` | Windows default speech-input path | interim/final transcript text |
-| 3 | `VoiceService` | capture signal + final transcript text | health/restart decisions, de-duplicated transcript, runtime state changes |
-| 4 | `VoiceChatCoordinator` | interim/final draft events | mirrored tray chat compose text |
-| 5 | `OpenClawGatewayClient` | transcript text + session key | `chat.send` request + assistant reply events |
-| 6 | `OpenClawGatewayClient` preview fallback | bare final chat marker | assistant preview text, guarded against stale replay |
-| 7 | `VoiceService` reply queue | assistant reply text | ordered reply playback work |
-| 8 | `VoiceCloudTextToSpeechClient` / `SpeechSynthesizer` | assistant reply text | complete playable audio stream |
-| 9 | `MediaPlayer` | complete playable audio stream | rendered audio on default or selected speaker |
+| 1 | `SpeechRecognizer` | Windows default speech-input path | interim/final transcript text |
+| 2 | `VoiceService` | interim/final transcript text | runtime state changes, transcript submission, repeat-prompt decisions |
+| 3 | `VoiceChatCoordinator` | draft/conversation events | mirrored tray chat compose text and mirrored outgoing voice turns |
+| 4 | `OpenClawGatewayClient` | transcript text + session key | `chat.send` request + assistant reply events |
+| 5 | `OpenClawGatewayClient` preview fallback | bare final chat marker | assistant preview text, guarded against stale replay |
+| 6 | `VoiceService` reply queue | assistant reply text | ordered reply playback work |
+| 7 | `VoiceCloudTextToSpeechClient` / `SpeechSynthesizer` | assistant reply text | complete playable audio stream |
+| 8 | `MediaPlayer` | complete playable audio stream | rendered audio on default or selected speaker |
 
 ## Planned AudioGraph Input Architecture
 
@@ -679,7 +681,7 @@ flowchart TD
     J --> K["OpenClawGatewayClient<br/>chat.send + reply events"]
 ```
 
-### Proposed Seams
+### Planned Component Boundaries
 
 The target split should look like this:
 
@@ -687,6 +689,7 @@ The target split should look like this:
   - owns `AudioGraph`
   - binds to an explicit input device id when one is selected
   - emits continuous PCM frames
+  - supports streaming/full-duplex STT engines
 - `IVoiceActivityDetector`
   - emits speech / silence transitions from frame data
 - `IUtteranceAssembler`
@@ -714,29 +717,19 @@ Suggested shape:
 
 Likely first adapters:
 
-- `WindowsSpeechToTextAdapter`
-  only if Windows gives us a clean explicit-audio-input path
 - `StreamingCloudSpeechToTextAdapter`
-  for providers that accept pushed PCM/audio streams
+  - for providers that accept pushed PCM/audio streams
+  - will also support Foundry Local and other self-contained models
 - `UtteranceCloudSpeechToTextAdapter`
-  for providers that still expect bounded utterance uploads
+  - for providers that still expect bounded utterance uploads
 
 ## Selected-Device Roadmap
 
 The current selected-device position is now:
 
 - selected non-default speaker: implemented
-- selected/default microphone binding for `AudioGraph` capture: implemented
+- selected/default microphone binding for future `AudioGraph` capture routes: scaffolded, but not active in the current selectable runtime
 - selected non-default microphone for actual transcript generation: not implemented yet
-
-Recommended engineering order:
-
-1. keep the current selected-speaker playback support
-2. extend the live `VoiceCaptureService` path into the STT side
-3. move Talk Mode input from `SpeechRecognizer` ownership to captured PCM frames
-4. introduce `ISpeechToTextAdapter`
-5. complete explicit selected-microphone transcript generation
-6. then revisit duplex/barge-in and streaming STT
 
 ## Control Flow
 
@@ -772,7 +765,7 @@ Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningContinuously)
     Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningContinuously)
     VoiceCap-->>Gateway: VoiceStatusInfo
 
-    Gateway->>VoiceCap: voice.skip(reason=...)
+    Gateway->>VoiceCap: voice.response.skip(reason=...)
     VoiceCap->>Coord: SkipCurrentReply()
     Coord-->>VoiceCap: VoiceStatusInfo
     VoiceCap-->>Gateway: VoiceStatusInfo
@@ -804,7 +797,7 @@ Coord-->>VoiceCap: VoiceStatusInfo(state=ListeningContinuously)
 
 ## Provider Direction
 
-Provider support is now part of the Windows voice subsystem roadmap, not a hypothetical extension:
+Provider support is now part of the Windows voice subsystem roadmap:
 
 - `MiniMax` and `ElevenLabs` TTS are both expressed through built-in catalog contracts
 - additional HTTP or WebSocket TTS providers can be added by extending the shipped catalog without recompiling the tray app itself
@@ -825,7 +818,7 @@ Status values used below:
 - `Supported`
 - `Partial`
 - `NotSupported (planned)`
-- `Exceeded*`
+- `Exceeded`
 
 | macOS feature | Current Windows state | Notes |
 |---|---|---|
@@ -870,15 +863,37 @@ Notes:
 - it should remain visible but disabled in Settings until the adapter contract is real and testable
 - it should become the shared base path for provider-specific adapters when a generic contract is sufficient
 
-### Story: Talk Mode overlay and visible phase parity
+### Story: True streaming TTS playback
 
-Add a Talk Mode overlay that makes `Listening`, `Thinking`, and `Speaking` visible to the user in the same way the macOS experience does.
+Start speaking assistant replies from the first usable audio chunk instead of waiting for a complete playable stream.
 
 Notes:
 
-- the current tray icon and status window are not equivalent to an always-visible Talk Mode surface
-- the overlay should expose phase transitions clearly and support later stop / dismiss controls
-- this should be designed alongside the existing compact voice-strip idea so the two UI surfaces do not conflict
+- the current implementation uses WebSocket transport for MiniMax, but still buffers the entire audio response before playback begins
+- `firstChunk=...ms` in the log is currently provider-chunk arrival time, not actual speech-start time
+- implement a playback path that can consume incremental audio data as it arrives from the provider
+- the provider catalog contract should remain transport-driven and provider-agnostic, so streaming behavior should be expressed through the existing TTS contract model rather than hard-coded for MiniMax
+- preserve the existing queued reply behavior, skip support, and late-reply handling while switching playback to progressive output
+- add timing logs that separate `firstChunk`, `playbackStart`, and `playbackEnd` so latency improvements are measurable
+
+
+### Story: Compact Voice Status Strip
+
+Add an optional tiny always-on-top voice strip window for all Voice Modes. This strip will also provide parity
+with the macOS talk mode overlay with visible phase (currently implemented via dynamic icon updates).
+
+Notes:
+
+- user-configurable show / hide
+- intended to be a minimal one-line-high display with a small amount of padding
+- should show:
+  - current voice state
+  - rolling live transcript while listening
+  - rolling assistant text while speaking
+  - a skip / cut-off control while speaking
+- the runtime control surface should drive this window rather than the window manipulating `VoiceService` internals directly
+- if implemented later, the strip should use the shared runtime control API described elsewhere in this document.
+
 
 ### Story: Talk Mode overlay controls
 
@@ -890,15 +905,6 @@ Notes:
 - Windows currently requires tray or settings interaction instead
 - this should plug into the shared runtime control API rather than directly manipulating `VoiceService`
 
-### Story: Same-as-typing WebChat parity for Talk Mode
-
-Decide whether Windows Talk Mode should optionally route sent transcripts through a typed-chat equivalent path so WebChat behavior matches manual typing more closely.
-
-Notes:
-
-- current Windows Talk Mode intentionally uses direct `chat.send`
-- replies still appear in WebChat through session updates, but the send path is not literally the same as typed WebChat submission
-- this should only be revisited if the memory / prompt-shaping issues can be fixed without reintroducing transport fragility
 
 ### Story: Voice directives in replies
 
@@ -960,7 +966,8 @@ Notes:
 
 - keep this visible but greyed out in settings until the embedded runtime is implemented
 - the user should be able to choose their own downloaded model bundle and language-appropriate package
-- model lifecycle, validation, and error reporting should be handled in the embedded adapter rather than in the Windows.Media route
+  - should we provide them with any assistance? Probably, point them to Whisper downloads, but the final choice must be theirs.
+- model lifecycle, validation, and error reporting should be handled in the embedded adapter
 
 
 ### Story: Full-duplex / barge-in Talk Mode
@@ -977,7 +984,8 @@ Notes:
   - barge-in detection and playback interruption rules
   - a policy for whether interrupt speech cancels the current reply or queues behind it
   - additional runtime control/status so the UI can show when barge-in is armed
-- this should be treated as a separate engineering phase, not a small extension of the current Talk Mode runtime
+- the macOS app uses barge-in to cancel/skip the current playback.
+
 
 ### Story: Voice Wake wake-word runtime
 
@@ -995,9 +1003,11 @@ Implement a Windows push-to-talk capture path alongside wake-word activation.
 
 Notes:
 
+- Implement as a separate Voice Mode and have a button on the overlay
 - this should support press-to-capture, release-to-finalize semantics
 - it should pause the wake runtime while push-to-talk capture is active, then resume it cleanly afterward
-- Windows-specific hotkey and permissions behavior should be documented explicitly once chosen
+- Windows-specific hotkey and permissions behavior should be documented explicitly once chosen if any
+
 
 ### Story: Voice Wake overlay lifecycle
 
@@ -1009,17 +1019,6 @@ Notes:
 - manual dismiss must never block recognizer restart
 - overlay and runtime should be coordinated through a session controller rather than direct UI coupling
 
-### Story: Voice Wake settings parity
-
-Add the user-facing Voice Wake settings surface that exists on macOS.
-
-Notes:
-
-- include language and mic pickers
-- include a live level meter
-- include trigger-word editing or table management
-- include a local-only tester that does not forward
-- preserve the chosen mic if it disconnects, surface a disconnected hint, and fall back to the system default until it returns
 
 ### Story: Voice Wake sounds and chimes
 
@@ -1061,35 +1060,6 @@ Notes:
 - include a hard maximum capture duration
 - expose the tuning through voice settings rather than hard-coded constants alone
 
-
-### Story: Compact Voice Status Strip
-
-Add an optional tiny always-on-top voice strip window for Talk Mode.
-
-Notes:
-
-- user-configurable show / hide
-- intended to be a minimal one-line-high display with a small amount of padding
-- should show:
-  - current voice state
-  - rolling live transcript while listening
-  - rolling assistant text while speaking
-  - a skip / cut-off control while speaking
-- the runtime control surface should drive this window rather than the window manipulating `VoiceService` internals directly
-- if implemented later, the strip should use the shared runtime control API described elsewhere in this document.
-
-### Story: True streaming TTS playback
-
-Start speaking assistant replies from the first usable audio chunk instead of waiting for a complete playable stream.
-
-Notes:
-
-- the current implementation uses WebSocket transport for MiniMax, but still buffers the entire audio response before playback begins
-- `firstChunk=...ms` in the log is currently provider-chunk arrival time, not actual speech-start time
-- implement a playback path that can consume incremental audio data as it arrives from the provider
-- the provider catalog contract should remain transport-driven and provider-agnostic, so streaming behavior should be expressed through the existing TTS contract model rather than hard-coded for MiniMax
-- preserve the existing queued reply behavior, skip support, and late-reply handling while switching playback to progressive output
-- add timing logs that separate `firstChunk`, `playbackStart`, and `playbackEnd` so latency improvements are measurable
 
 ## Commit Timeline
 
@@ -1157,3 +1127,4 @@ Append one new line to this timeline for every future voice-mode commit.
 - `2026-03-26` Cleared the controlled-restart latch as soon as a new recognition session successfully starts, and on failed resume attempts, so Talk Mode does not get stranded in `controlled-restart-in-progress` after an idle/deaf recognizer recycle.
 - `2026-03-26` Split Talk Mode STT startup into explicit route classes: the built-in `windows` provider now uses a pure `Windows.Media` path with no AudioGraph, while `foundry-local` and `sherpa-onnx` are separated into dedicated future AudioGraph/embedded route classes instead of sharing the Windows pipeline.
 - `2026-03-26` Updated Talk Mode to mirror sent voice turns back into the tray chat window, clear stale low-confidence drafts, locally reprompt when speech activity ends without a usable transcript, surface provider and mode descriptions in Settings, expose `http/ws` and `sherpa-onnx` as coming-soon STT catalog entries, and lock device selection to system defaults when Windows Speech Recognition is selected.
+- `2026-03-26` Re-anchored mirrored outgoing voice turns beside the live tray-chat composer instead of rendering them in a floating overlay, added seam-level DOM bridge tests for that WebView path, renamed the reply-skip command to `voice.response.skip`, and corrected the architecture document to match the current pure Windows.Media runtime.
