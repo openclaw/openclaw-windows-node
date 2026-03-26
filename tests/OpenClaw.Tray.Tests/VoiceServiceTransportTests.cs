@@ -179,7 +179,7 @@ public class VoiceServiceTransportTests
 
     [Theory]
     [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, false, false, false, true)]
-    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, false, true)]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, false, false)]
     [InlineData(SpeechRecognitionResultStatus.Success, false, false, false, false, false, false)]
     [InlineData(SpeechRecognitionResultStatus.Success, false, true, false, false, false, true)]
     [InlineData(SpeechRecognitionResultStatus.UserCanceled, true, false, false, false, false, false)]
@@ -209,7 +209,7 @@ public class VoiceServiceTransportTests
     [Theory]
     [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, true, false, false, false, "capture-signal-without-recognition")]
     [InlineData(SpeechRecognitionResultStatus.UserCanceled, false, false, false, false, false, "user-canceled-without-activity")]
-    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, false, "timeout-without-activity")]
+    [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, false, false, false, false, "timeout-without-capture-signal")]
     [InlineData(SpeechRecognitionResultStatus.Success, false, false, false, false, false, "status=Success")]
     [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, true, true, false, false, false, "session-had-activity")]
     [InlineData(SpeechRecognitionResultStatus.TimeoutExceeded, false, true, true, false, false, "controlled-restart-in-progress")]

@@ -1551,8 +1551,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         }
 
         return sessionHadCaptureSignal ||
-               status == SpeechRecognitionResultStatus.UserCanceled ||
-               status == SpeechRecognitionResultStatus.TimeoutExceeded;
+               status == SpeechRecognitionResultStatus.UserCanceled;
     }
 
     internal static string DescribeRecognitionCompletionRebuildDecision(
@@ -1591,7 +1590,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         return status switch
         {
             SpeechRecognitionResultStatus.UserCanceled => "user-canceled-without-activity",
-            SpeechRecognitionResultStatus.TimeoutExceeded => "timeout-without-activity",
+            SpeechRecognitionResultStatus.TimeoutExceeded => "timeout-without-capture-signal",
             _ => $"status={status}"
         };
     }
