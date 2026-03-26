@@ -758,6 +758,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         lock (_gate)
         {
             _recognitionActive = true;
+            _recognitionRestartInProgress = false;
             _recognitionSessionHadActivity = false;
             _lastHypothesisText = null;
             _lastHypothesisUtc = default;
@@ -875,6 +876,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
                 lock (_gate)
                 {
+                    _recognitionRestartInProgress = false;
                     if (_runtimeCts == null ||
                         !_status.Running ||
                         _status.Mode != VoiceActivationMode.TalkMode ||
