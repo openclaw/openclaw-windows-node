@@ -78,8 +78,16 @@ public static class VoiceProviderCatalogService
             return true;
         }
 
-        var provider = ResolveTextToSpeechProvider(providerId);
-        return provider.TextToSpeechHttp != null || provider.TextToSpeechWebSocket != null;
+        try
+        {
+            var provider = ResolveTextToSpeechProvider(providerId);
+            return provider.TextToSpeechHttp != null || provider.TextToSpeechWebSocket != null;
+        }
+        catch
+        {
+            // If the catalog or provider cannot be resolved, treat as unsupported
+            return false;
+        }
     }
 
     private static VoiceProviderCatalog NormalizeCatalog(VoiceProviderCatalog catalog)
