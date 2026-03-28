@@ -12,6 +12,7 @@ namespace OpenClawTray.Windows;
 public sealed partial class SettingsWindow : WindowEx
 {
     private readonly SettingsManager _settings;
+    private string _manualGatewayUrl = "";
     public bool IsClosed { get; private set; }
 
     public event EventHandler? SettingsSaved;
@@ -37,7 +38,14 @@ public sealed partial class SettingsWindow : WindowEx
 
     private void LoadSettings()
     {
+        UseSshTunnelToggle.IsOn = _settings.UseSshTunnel;
+        SshTunnelUserTextBox.Text = _settings.SshTunnelUser;
+        SshTunnelHostTextBox.Text = _settings.SshTunnelHost;
+        SshTunnelRemotePortTextBox.Text = _settings.SshTunnelRemotePort.ToString();
+        SshTunnelLocalPortTextBox.Text = _settings.SshTunnelLocalPort.ToString();
+        _manualGatewayUrl = _settings.GatewayUrl;
         GatewayUrlTextBox.Text = _settings.GatewayUrl;
+        UpdateSshTunnelUiState();
         TokenTextBox.Text = _settings.Token;
         AutoStartToggle.IsOn = _settings.AutoStart;
         GlobalHotkeyToggle.IsOn = _settings.GlobalHotkeyEnabled;
@@ -72,7 +80,16 @@ public sealed partial class SettingsWindow : WindowEx
 
     private void SaveSettings()
     {
-        _settings.GatewayUrl = GatewayUrlTextBox.Text.Trim();
+        _settings.UseSshTunnel = UseSshTunnelToggle.IsOn;
+        _settings.SshTunnelUser = SshTunnelUserTextBox.Text.Trim();
+        _settings.SshTunnelHost = SshTunnelHostTextBox.Text.Trim();
+        _settings.SshTunnelRemotePort = ParsePortOrDefault(SshTunnelRemotePortTextBox.Text, _settings.SshTunnelRemotePort);
+        _settings.SshTunnelLocalPort = ParsePortOrDefault(SshTunnelLocalPortTextBox.Text, _settings.SshTunnelLocalPort);
+        if (!_settings.UseSshTunnel)
+        {
+            _settings.GatewayUrl = GatewayUrlTextBox.Text.Trim();
+            _manualGatewayUrl = _settings.GatewayUrl;
+        }
         _settings.Token = TokenTextBox.Text.Trim();
         _settings.AutoStart = AutoStartToggle.IsOn;
         _settings.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn;
@@ -101,10 +118,23 @@ public sealed partial class SettingsWindow : WindowEx
 
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
+        var useSshTunnel = UseSshTunnelToggle.IsOn;
+        var sshUser = "";
+        var sshHost = "";
+        var remotePort = 0;
+        var localPort = 0;
+        SshTunnelService? testTunnel = null;
+
         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
-        if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
+        if (!useSshTunnel && !GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
         {
             StatusLabel.Text = $"❌ {GatewayUrlHelper.ValidationMessage}";
+            return;
+        }
+
+        if (useSshTunnel && !TryReadTunnelSettings(out sshUser, out sshHost, out remotePort, out localPort, out var tunnelError))
+        {
+            StatusLabel.Text = $"❌ {tunnelError}";
             return;
         }
 
@@ -115,8 +145,15 @@ public sealed partial class SettingsWindow : WindowEx
         try
         {
             var testLogger = new TestLogger();
+            if (useSshTunnel)
+            {
+                testTunnel = new SshTunnelService(testLogger);
+                Logger.Info($"[Settings] Starting temporary SSH tunnel for test: {sshUser}@{sshHost} local:{localPort} remote:{remotePort}");
+                testTunnel.EnsureStarted(sshUser, sshHost, remotePort, localPort);
+            }
+
             var client = new OpenClawGatewayClient(
-                gatewayUrl,
+                useSshTunnel ? $"ws://127.0.0.1:{localPort}" : gatewayUrl,
                 TokenTextBox.Text.Trim(),
                 testLogger);
 
@@ -167,6 +204,7 @@ public sealed partial class SettingsWindow : WindowEx
         }
         finally
         {
+            testTunnel?.Dispose();
             TestConnectionButton.IsEnabled = true;
         }
     }
@@ -188,11 +226,19 @@ public sealed partial class SettingsWindow : WindowEx
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        var useSshTunnel = UseSshTunnelToggle.IsOn;
         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
-        if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
+        if (!useSshTunnel && !GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
         {
             Logger.Warn($"[Settings] Save blocked — invalid gateway URL");
             StatusLabel.Text = $"❌ {GatewayUrlHelper.ValidationMessage}";
+            return;
+        }
+
+        if (useSshTunnel && !TryReadTunnelSettings(out _, out _, out _, out _, out var tunnelError))
+        {
+            Logger.Warn("[Settings] Save blocked — invalid SSH tunnel settings");
+            StatusLabel.Text = $"❌ {tunnelError}";
             return;
         }
 
@@ -220,6 +266,96 @@ public sealed partial class SettingsWindow : WindowEx
         Close();
     }
 
+    private static int ParsePortOrDefault(string? value, int fallback)
+    {
+        if (int.TryParse(value?.Trim(), out var parsed) && parsed is >= 1 and <= 65535)
+        {
+            return parsed;
+        }
+
+        return fallback;
+    }
+
+    private bool TryReadTunnelSettings(
+        out string user,
+        out string host,
+        out int remotePort,
+        out int localPort,
+        out string? error)
+    {
+        user = SshTunnelUserTextBox.Text.Trim();
+        host = SshTunnelHostTextBox.Text.Trim();
+        remotePort = 0;
+        localPort = 0;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(user))
+        {
+            error = "SSH User is required when tunnel mode is enabled.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            error = "SSH Host is required when tunnel mode is enabled.";
+            return false;
+        }
+
+        if (!int.TryParse(SshTunnelRemotePortTextBox.Text.Trim(), out remotePort) || remotePort is < 1 or > 65535)
+        {
+            error = "Remote Gateway Port must be a number from 1 to 65535.";
+            return false;
+        }
+
+        if (!int.TryParse(SshTunnelLocalPortTextBox.Text.Trim(), out localPort) || localPort is < 1 or > 65535)
+        {
+            error = "Local Forward Port must be a number from 1 to 65535.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private void OnUseSshTunnelToggled(object sender, RoutedEventArgs e)
+    {
+        UpdateSshTunnelUiState();
+    }
+
+    private void OnSshTunnelLocalPortTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
+    {
+        if (UseSshTunnelToggle.IsOn)
+        {
+            UpdateSshTunnelUiState();
+        }
+    }
+
+    private void UpdateSshTunnelUiState()
+    {
+        var useSshTunnel = UseSshTunnelToggle.IsOn;
+        var wasReadOnly = GatewayUrlTextBox.IsReadOnly;
+
+        SshTunnelDetailsPanel.Visibility = useSshTunnel ? Visibility.Visible : Visibility.Collapsed;
+        GatewayUrlTextBox.IsReadOnly = useSshTunnel;
+
+        if (useSshTunnel)
+        {
+            if (!wasReadOnly)
+            {
+                _manualGatewayUrl = GatewayUrlTextBox.Text.Trim();
+            }
+
+            var localPort = ParsePortOrDefault(SshTunnelLocalPortTextBox.Text, 18789);
+            GatewayUrlTextBox.Text = $"ws://127.0.0.1:{localPort}";
+        }
+        else
+        {
+            if (GatewayUrlTextBox.Text.StartsWith("ws://127.0.0.1:", StringComparison.OrdinalIgnoreCase))
+            {
+                GatewayUrlTextBox.Text = _manualGatewayUrl;
+            }
+        }
+    }
+
     private class TestLogger : IOpenClawLogger
     {
         public string? LastError { get; private set; }
@@ -233,8 +369,10 @@ public sealed partial class SettingsWindow : WindowEx
         }
         public void Error(string message, Exception? ex = null)
         {
-            LastError = message;
-            Logger.Error($"[Settings:TestClient] {message}");
+            LastError = ex != null
+                ? $"{message}: {ex.Message}"
+                : message;
+            Logger.Error($"[Settings:TestClient] {LastError}");
         }
     }
 }

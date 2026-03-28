@@ -25,6 +25,35 @@
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="SettingsConnectionHeader" Text="CONNECTION" Style="{StaticResource CaptionTextBlockStyle}" 
                                Foreground="#E74C3C" FontWeight="Bold"/>
+
+                    <ToggleSwitch x:Name="UseSshTunnelToggle" Header="Connect through SSH tunnel" Toggled="OnUseSshTunnelToggled"/>
+
+                    <StackPanel x:Name="SshTunnelDetailsPanel" Spacing="8" Visibility="Collapsed">
+                        <TextBlock Text="When enabled, the app will connect through ws://127.0.0.1:&lt;local-port&gt; and create an SSH forward to the remote gateway host."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="SshTunnelUserTextBox" Grid.Column="0" Header="SSH User" PlaceholderText="user"/>
+                            <TextBox x:Name="SshTunnelHostTextBox" Grid.Column="1" Header="SSH Host" PlaceholderText="machine-name or IP"/>
+                        </Grid>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="SshTunnelRemotePortTextBox" Grid.Column="0" Header="Remote Gateway Port" PlaceholderText="18789"/>
+                            <TextBox x:Name="SshTunnelLocalPortTextBox" Grid.Column="1" Header="Local Forward Port" PlaceholderText="18789" TextChanged="OnSshTunnelLocalPortTextChanged"/>
+                        </Grid>
+                    </StackPanel>
                     
                     <TextBox x:Name="GatewayUrlTextBox" x:Uid="SettingsGatewayUrlTextBox" Header="Gateway URL" 
                              PlaceholderText="ws://localhost:18789 or https://host.tailnet.ts.net"/>

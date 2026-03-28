@@ -9,6 +9,11 @@ public class SettingsData
 {
     public string? GatewayUrl { get; set; }
     public string? Token { get; set; }
+    public bool UseSshTunnel { get; set; } = false;
+    public string? SshTunnelUser { get; set; }
+    public string? SshTunnelHost { get; set; }
+    public int SshTunnelRemotePort { get; set; } = 18789;
+    public int SshTunnelLocalPort { get; set; } = 18789;
     public bool AutoStart { get; set; }
     public bool GlobalHotkeyEnabled { get; set; } = true;
     public bool ShowNotifications { get; set; } = true;

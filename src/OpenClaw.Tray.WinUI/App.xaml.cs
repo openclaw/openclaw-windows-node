@@ -34,6 +34,7 @@ public partial class App : Application
     private TrayIcon? _trayIcon;
     private OpenClawGatewayClient? _gatewayClient;
     private SettingsManager? _settings;
+    private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
     private System.Timers.Timer? _healthCheckTimer;
     private System.Timers.Timer? _sessionPollTimer;
@@ -250,6 +251,7 @@ public partial class App : Application
 
         // Initialize settings
         _settings = new SettingsManager();
+        _sshTunnelService = new SshTunnelService(new AppLogger());
 
         // First-run check
         if (string.IsNullOrWhiteSpace(_settings.Token))
@@ -1080,11 +1082,12 @@ public partial class App : Application
     private void InitializeGatewayClient()
     {
         if (_settings == null) return;
+        if (!EnsureSshTunnelConfigured()) return;
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
 
-        _gatewayClient = new OpenClawGatewayClient(_settings.GatewayUrl, _settings.Token, new AppLogger());
+        _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
         _gatewayClient.ActivityChanged += OnActivityChanged;
         _gatewayClient.NotificationReceived += OnNotificationReceived;
@@ -1121,6 +1124,7 @@ public partial class App : Application
     {
         if (_settings == null || !_settings.EnableNodeMode) return;
         if (_dispatcherQueue == null) return;
+        if (!EnsureSshTunnelConfigured()) return;
         
         try
         {
@@ -1132,7 +1136,7 @@ public partial class App : Application
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             
             // Connect to gateway as a node (separate connection from operator)
-            _ = _nodeService.ConnectAsync(_settings.GatewayUrl, _settings.Token);
+            _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token);
         }
         catch (Exception ex)
         {
@@ -1609,6 +1613,10 @@ public partial class App : Application
         var oldNodeService = _nodeService;
         _nodeService = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
+        if (_settings?.UseSshTunnel != true)
+        {
+            _sshTunnelService?.Stop();
+        }
         
         if (_settings?.EnableNodeMode == true)
         {
@@ -1638,9 +1646,12 @@ public partial class App : Application
 
     private void ShowWebChat()
     {
+        if (_settings == null) return;
+        if (!EnsureSshTunnelConfigured()) return;
+
         if (_webChatWindow == null || _webChatWindow.IsClosed)
         {
-            _webChatWindow = new WebChatWindow(_settings!.GatewayUrl, _settings.Token);
+            _webChatWindow = new WebChatWindow(_settings.GetEffectiveGatewayUrl(), _settings.Token);
             _webChatWindow.Closed += (s, e) => _webChatWindow = null;
         }
         _webChatWindow.Activate();
@@ -1770,8 +1781,9 @@ public partial class App : Application
     private void OpenDashboard(string? path = null)
     {
         if (_settings == null) return;
+        if (!EnsureSshTunnelConfigured()) return;
         
-        var baseUrl = _settings.GatewayUrl
+        var baseUrl = _settings.GetEffectiveGatewayUrl()
             .Replace("ws://", "http://")
             .Replace("wss://", "https://")
             .TrimEnd('/');
@@ -2063,6 +2075,7 @@ public partial class App : Application
         // Unsubscribe and dispose gateway client
         UnsubscribeGatewayEvents();
         _gatewayClient?.Dispose();
+        _sshTunnelService?.Dispose();
         
         // Dispose tray and mutex
         _trayIcon?.Dispose();
@@ -2072,6 +2085,47 @@ public partial class App : Application
         _deepLinkCts?.Dispose();
         
         Exit();
+    }
+
+    private bool EnsureSshTunnelConfigured()
+    {
+        if (_settings == null)
+        {
+            return false;
+        }
+
+        if (_settings.UseSshTunnel)
+        {
+            if (string.IsNullOrWhiteSpace(_settings.SshTunnelUser) ||
+                string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ||
+                _settings.SshTunnelRemotePort is < 1 or > 65535 ||
+                _settings.SshTunnelLocalPort is < 1 or > 65535)
+            {
+                Logger.Warn("SSH tunnel is enabled but settings are incomplete");
+                _currentStatus = ConnectionStatus.Error;
+                UpdateTrayIcon();
+                return false;
+            }
+
+            try
+            {
+                _sshTunnelService ??= new SshTunnelService(new AppLogger());
+                _sshTunnelService.EnsureStarted(_settings);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
+                _currentStatus = ConnectionStatus.Error;
+                UpdateTrayIcon();
+                return false;
+            }
+        }
+        else
+        {
+            _sshTunnelService?.Stop();
+        }
+
+        return true;
     }
 
     #endregion
