@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
 using OpenClawTray.Helpers;
@@ -16,6 +17,22 @@ namespace OpenClawTray.Windows;
 /// </summary>
 public sealed partial class CanvasWindow : WindowEx
 {
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+    private const int SW_SHOWNORMAL = 1;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+
     private bool _isWebViewInitialized;
     private string? _pendingUrl;
     private string? _pendingHtml;
@@ -330,6 +347,34 @@ public sealed partial class CanvasWindow : WindowEx
     public void SetAlwaysOnTop(bool alwaysOnTop)
     {
         this.IsAlwaysOnTop = alwaysOnTop;
+    }
+
+    /// <summary>
+    /// Force the window to the front so canvas content is visible immediately.
+    /// </summary>
+    public void BringToFront(bool keepTopMost)
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            ShowWindow(hwnd, SW_SHOWNORMAL);
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetForegroundWindow(hwnd);
+
+            if (!keepTopMost)
+            {
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            }
+        }
+        catch
+        {
+            // Best-effort focus behavior only.
+        }
     }
     
     public async Task EnsureA2UIHostAsync(string url)

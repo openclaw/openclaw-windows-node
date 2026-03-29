@@ -194,6 +194,7 @@ public class NodeService : IDisposable
                 
                 // Show window
                 _canvasWindow.Activate();
+                _canvasWindow.BringToFront(args.AlwaysOnTop);
                 
                 _logger.Info($"Canvas presented: {args.Width}x{args.Height}");
             }
