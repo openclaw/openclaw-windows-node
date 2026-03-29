@@ -28,6 +28,7 @@ public class SettingsData
     public bool NotifyInfo { get; set; } = true;
     public bool EnableNodeMode { get; set; } = false;
     public bool HasSeenActivityStreamTip { get; set; } = false;
+    public string? SkippedUpdateTag { get; set; }
     public bool NotifyChatResponses { get; set; } = true;
     public bool PreferStructuredCategories { get; set; } = true;
     public List<UserNotificationRule>? UserRules { get; set; }

@@ -61,6 +61,24 @@ public class OpenClawGatewayClientTests
             return (string)result!;
         }
 
+        public Task<bool> RegisterPendingChatSend(string requestId)
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "TrackPendingChatSend",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method!.Invoke(_client, new object[] { requestId, completion });
+            return completion.Task;
+        }
+
+        public void ProcessRawMessage(string json)
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ProcessMessage",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method!.Invoke(_client, new object[] { json });
+        }
+
         public SessionInfo[] GetSessionList()
         {
             return _client.GetSessionList();
@@ -138,6 +156,26 @@ public class OpenClawGatewayClientTests
             }
 
             return parsed;
+        }
+
+        public string? ParseHandshakeMainSessionKey(string payloadJson)
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "TryGetHandshakeMainSessionKey",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var result = method!.Invoke(null, new object[] { doc.RootElement.Clone() });
+            return result as string;
+        }
+
+        public string? ParseHandshakeDeviceToken(string payloadJson)
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "TryGetHandshakeDeviceToken",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var result = method!.Invoke(null, new object[] { doc.RootElement.Clone() });
+            return result as string;
         }
 
         public (ChannelHealth[] channels, bool eventFired) ParseChannelHealthPayload(string payloadJson)
@@ -342,6 +380,109 @@ public class OpenClawGatewayClientTests
         var helper = new GatewayClientTestHelper();
         Assert.Equal(ActivityKind.Edit, helper.ClassifyTool("edit"));
     }
+
+    [Fact]
+    public async Task PendingChatSend_CompletesOnSuccessfulResponse()
+    {
+        var helper = new GatewayClientTestHelper();
+        var task = helper.RegisterPendingChatSend("chat-1");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "chat-1",
+            "ok": true,
+            "payload": { "accepted": true }
+        }
+        """);
+
+        Assert.True(await task);
+    }
+
+    [Fact]
+    public async Task PendingChatSend_FailsOnErrorResponse()
+    {
+        var helper = new GatewayClientTestHelper();
+        var task = helper.RegisterPendingChatSend("chat-2");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "chat-2",
+            "ok": false,
+            "error": "missing scope: operator.write"
+        }
+        """);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
+        Assert.Contains("operator.write", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+        [Fact]
+        public void ParseHandshakeMainSessionKey_ReturnsMainKey_WhenPresent()
+        {
+                var helper = new GatewayClientTestHelper();
+                var key = helper.ParseHandshakeMainSessionKey("""
+                {
+                    "type": "hello-ok",
+                    "snapshot": {
+                        "sessionDefaults": {
+                            "mainKey": "agent:main:123"
+                        }
+                    }
+                }
+                """);
+
+                Assert.Equal("agent:main:123", key);
+        }
+
+        [Fact]
+        public void ParseHandshakeMainSessionKey_ReturnsNull_WhenMissing()
+        {
+                var helper = new GatewayClientTestHelper();
+                var key = helper.ParseHandshakeMainSessionKey("""
+                {
+                    "type": "hello-ok",
+                    "snapshot": {
+                        "sessionDefaults": {
+                        }
+                    }
+                }
+                """);
+
+                Assert.Null(key);
+        }
+
+        [Fact]
+        public void ParseHandshakeDeviceToken_ReturnsValue_WhenPresent()
+        {
+                var helper = new GatewayClientTestHelper();
+                var token = helper.ParseHandshakeDeviceToken("""
+                {
+                    "type": "hello-ok",
+                    "auth": {
+                        "deviceToken": "device-token-123"
+                    }
+                }
+                """);
+
+                Assert.Equal("device-token-123", token);
+        }
+
+        [Fact]
+        public void ParseHandshakeDeviceToken_ReturnsNull_WhenMissing()
+        {
+                var helper = new GatewayClientTestHelper();
+                var token = helper.ParseHandshakeDeviceToken("""
+                {
+                    "type": "hello-ok",
+                    "auth": {
+                    }
+                }
+                """);
+
+                Assert.Null(token);
+        }
 
     [Fact]
     public void ClassifyTool_MapsWebSearch()

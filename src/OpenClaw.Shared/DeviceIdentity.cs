@@ -134,6 +134,118 @@ public class DeviceIdentity
         // Return base64url encoded signature
         return Base64UrlEncode(signature);
     }
+
+    /// <summary>
+    /// Sign a v3 connect payload for operator/client connections.
+    /// Format: v3|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}|{platform}|{deviceFamily}
+    /// </summary>
+    public string SignConnectPayloadV3(
+        string nonce,
+        long signedAtMs,
+        string clientId,
+        string clientMode,
+        string role,
+        IEnumerable<string> scopes,
+        string authToken,
+        string platform,
+        string deviceFamily)
+    {
+        if (_privateKey == null)
+            throw new InvalidOperationException("Device not initialized");
+
+        var payload = BuildConnectPayloadV3(
+            nonce,
+            signedAtMs,
+            clientId,
+            clientMode,
+            role,
+            scopes,
+            authToken,
+            platform,
+            deviceFamily);
+
+        var dataBytes = Encoding.UTF8.GetBytes(payload);
+        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
+        return Base64UrlEncode(signature);
+    }
+
+    /// <summary>
+    /// Build the v3 connect payload string for signing/debugging.
+    /// Format: v3|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}|{platform}|{deviceFamily}
+    /// </summary>
+    public string BuildConnectPayloadV3(
+        string nonce,
+        long signedAtMs,
+        string clientId,
+        string clientMode,
+        string role,
+        IEnumerable<string> scopes,
+        string authToken,
+        string platform,
+        string deviceFamily)
+    {
+        if (_deviceId == null)
+            throw new InvalidOperationException("Device not initialized");
+
+        var scopesCsv = string.Join(",", scopes ?? Array.Empty<string>());
+        var safeToken = authToken ?? string.Empty;
+        var safeNonce = nonce ?? string.Empty;
+
+        return $"v3|{_deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{safeToken}|{safeNonce}|{platform}|{deviceFamily}";
+    }
+
+    /// <summary>
+    /// Sign a v2 connect payload for compatibility mode.
+    /// Format: v2|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}
+    /// </summary>
+    public string SignConnectPayloadV2(
+        string nonce,
+        long signedAtMs,
+        string clientId,
+        string clientMode,
+        string role,
+        IEnumerable<string> scopes,
+        string authToken)
+    {
+        if (_privateKey == null)
+            throw new InvalidOperationException("Device not initialized");
+
+        var payload = BuildConnectPayloadV2(
+            nonce,
+            signedAtMs,
+            clientId,
+            clientMode,
+            role,
+            scopes,
+            authToken);
+
+        var dataBytes = Encoding.UTF8.GetBytes(payload);
+        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
+        return Base64UrlEncode(signature);
+    }
+
+    /// <summary>
+    /// Build the v2 connect payload string for signing/debugging.
+    /// Format: v2|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}
+    /// </summary>
+    public string BuildConnectPayloadV2(
+        string nonce,
+        long signedAtMs,
+        string clientId,
+        string clientMode,
+        string role,
+        IEnumerable<string> scopes,
+        string authToken)
+    {
+        if (_deviceId == null)
+            throw new InvalidOperationException("Device not initialized");
+
+        var scopesCsv = string.Join(",", scopes ?? Array.Empty<string>());
+        var safeToken = authToken ?? string.Empty;
+        var safeNonce = nonce ?? string.Empty;
+
+        return $"v2|{_deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{safeToken}|{safeNonce}";
+    }
     
     /// <summary>
     /// Build the payload string (for debugging)

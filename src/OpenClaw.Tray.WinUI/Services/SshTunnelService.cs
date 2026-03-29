@@ -13,6 +13,7 @@ public sealed class SshTunnelService : IDisposable
     private readonly IOpenClawLogger _logger;
     private Process? _process;
     private string? _lastSpec;
+    private bool _stopping;
 
     public SshTunnelService(IOpenClawLogger logger)
     {
@@ -60,6 +61,9 @@ public sealed class SshTunnelService : IDisposable
             return;
         }
 
+        _stopping = true;
+        _logger.Info("Stopping SSH tunnel process");
+
         try
         {
             if (!_process.HasExited)
@@ -77,6 +81,7 @@ public sealed class SshTunnelService : IDisposable
             try { _process.Dispose(); } catch { }
             _process = null;
             _lastSpec = null;
+            _stopping = false;
         }
     }
 
@@ -117,7 +122,14 @@ public sealed class SshTunnelService : IDisposable
         process.Exited += (_, _) =>
         {
             var exitCode = process.ExitCode;
-            _logger.Warn($"SSH tunnel exited (code {exitCode})");
+            if (_stopping)
+            {
+                _logger.Info($"SSH tunnel exited during shutdown (code {exitCode})");
+            }
+            else
+            {
+                _logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode})");
+            }
         };
 
         try

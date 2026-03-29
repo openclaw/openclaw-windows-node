@@ -31,6 +31,7 @@ public class SettingsRoundTripTests
             NotifyInfo = true,
             EnableNodeMode = true,
             HasSeenActivityStreamTip = true,
+            SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
             PreferStructuredCategories = true,
             UserRules = new List<UserNotificationRule>
@@ -64,6 +65,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NotifyInfo, restored.NotifyInfo);
         Assert.Equal(original.EnableNodeMode, restored.EnableNodeMode);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
+        Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
         Assert.NotNull(restored.UserRules);
@@ -114,6 +116,7 @@ public class SettingsRoundTripTests
         Assert.True(settings.NotifyInfo);
         Assert.False(settings.EnableNodeMode);
         Assert.False(settings.HasSeenActivityStreamTip);
+        Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
         Assert.Null(settings.UserRules);
@@ -156,6 +159,7 @@ public class SettingsRoundTripTests
         Assert.True(settings.PreferStructuredCategories);
         Assert.False(settings.EnableNodeMode);
         Assert.False(settings.HasSeenActivityStreamTip);
+        Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);
         Assert.Null(settings.UserRules);
     }

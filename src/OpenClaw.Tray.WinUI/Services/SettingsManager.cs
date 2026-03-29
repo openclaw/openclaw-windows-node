@@ -51,6 +51,7 @@ public class SettingsManager
     // Node mode (enables Windows as a node, not just operator)
     public bool EnableNodeMode { get; set; } = false;
     public bool HasSeenActivityStreamTip { get; set; } = false;
+    public string SkippedUpdateTag { get; set; } = "";
 
     public SettingsManager()
     {
@@ -88,6 +89,7 @@ public class SettingsManager
                     NotifyInfo = loaded.NotifyInfo;
                     EnableNodeMode = loaded.EnableNodeMode;
                     HasSeenActivityStreamTip = loaded.HasSeenActivityStreamTip;
+                    SkippedUpdateTag = loaded.SkippedUpdateTag ?? SkippedUpdateTag;
                     NotifyChatResponses = loaded.NotifyChatResponses;
                     PreferStructuredCategories = loaded.PreferStructuredCategories;
                     if (loaded.UserRules != null)
@@ -130,6 +132,7 @@ public class SettingsManager
                 NotifyInfo = NotifyInfo,
                 EnableNodeMode = EnableNodeMode,
                 HasSeenActivityStreamTip = HasSeenActivityStreamTip,
+                SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
                 NotifyChatResponses = NotifyChatResponses,
                 PreferStructuredCategories = PreferStructuredCategories,
                 UserRules = UserRules

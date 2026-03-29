@@ -41,6 +41,7 @@ public partial class App : Application
     private Mutex? _mutex;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private CancellationTokenSource? _deepLinkCts;
+    private bool _isExiting;
     
     private ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
     private AgentActivity? _currentActivity;
@@ -235,6 +236,9 @@ public partial class App : Application
         // Store protocol URI for processing after setup
         _pendingProtocolUri = protocolUri;
 
+        // Initialize settings before update check so skip selections can be remembered.
+        _settings = new SettingsManager();
+
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
@@ -249,8 +253,6 @@ public partial class App : Application
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
-        // Initialize settings
-        _settings = new SettingsManager();
         _sshTunnelService = new SshTunnelService(new AppLogger());
 
         // First-run check
@@ -1680,7 +1682,7 @@ public partial class App : Application
                 else
                 {
                     Logger.Info("QuickSend dialog already open; activating");
-                    _quickSendDialog.Activate();
+                    _quickSendDialog.ShowAsync();
                     return;
                 }
             }
@@ -1695,7 +1697,7 @@ public partial class App : Application
                 }
             };
             _quickSendDialog = dialog;
-            dialog.Activate();
+            dialog.ShowAsync();
         }
         catch (Exception ex)
         {
@@ -1894,13 +1896,31 @@ public partial class App : Application
             var changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
             Logger.Info($"Update available: {release.TagName}");
 
+            if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
+                string.Equals(_settings.SkippedUpdateTag, release.TagName, StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Info($"Skipping update prompt for remembered version {release.TagName}");
+                return true;
+            }
+
             var dialog = new UpdateDialog(release.TagName, changelog);
             var result = await dialog.ShowAsync();
 
             if (result == UpdateDialogResult.Download)
             {
+                if (_settings != null)
+                {
+                    _settings.SkippedUpdateTag = string.Empty;
+                    _settings.Save();
+                }
                 var installed = await DownloadAndInstallUpdateAsync();
                 return !installed; // Don't launch if update succeeded
+            }
+
+            if (result == UpdateDialogResult.Skip && _settings != null)
+            {
+                _settings.SkippedUpdateTag = release.TagName ?? string.Empty;
+                _settings.Save();
             }
 
             return true; // RemindLater or Skip - continue
@@ -1969,6 +1989,7 @@ public partial class App : Application
                 }
                 catch (OperationCanceledException)
                 {
+                    Logger.Info("Deep link server stopping (canceled)");
                     break; // Normal shutdown
                 }
                 catch (Exception ex)
@@ -2058,33 +2079,131 @@ public partial class App : Application
 
     private void ExitApplication()
     {
+        if (_isExiting)
+        {
+            Logger.Info("Exit requested while shutdown already in progress");
+            return;
+        }
+
+        _isExiting = true;
         Logger.Info("Application exiting");
-        
+
         // Cancel background tasks
-        _deepLinkCts?.Cancel();
-        
+        if (_deepLinkCts != null)
+        {
+            Logger.Info("Shutdown: canceling deep link server");
+            try { _deepLinkCts.Cancel(); } catch (Exception ex) { Logger.Warn($"Shutdown: deep link cancel failed: {ex.Message}"); }
+        }
+
         // Stop timers
-        _healthCheckTimer?.Stop();
-        _healthCheckTimer?.Dispose();
-        _sessionPollTimer?.Stop();
-        _sessionPollTimer?.Dispose();
-        
+        SafeShutdownStep("health timer", () =>
+        {
+            _healthCheckTimer?.Stop();
+            _healthCheckTimer?.Dispose();
+            _healthCheckTimer = null;
+        });
+
+        SafeShutdownStep("session poll timer", () =>
+        {
+            _sessionPollTimer?.Stop();
+            _sessionPollTimer?.Dispose();
+            _sessionPollTimer = null;
+        });
+
         // Cleanup hotkey
-        _globalHotkey?.Dispose();
-        
-        // Unsubscribe and dispose gateway client
-        UnsubscribeGatewayEvents();
-        _gatewayClient?.Dispose();
-        _sshTunnelService?.Dispose();
-        
+        SafeShutdownStep("global hotkey", () =>
+        {
+            _globalHotkey?.Dispose();
+            _globalHotkey = null;
+        });
+
+        // Dispose runtime services
+        SafeShutdownStep("gateway client", () =>
+        {
+            UnsubscribeGatewayEvents();
+            _gatewayClient?.Dispose();
+            _gatewayClient = null;
+        });
+
+        SafeShutdownStep("node service", () =>
+        {
+            _nodeService?.Dispose();
+            _nodeService = null;
+        });
+
+        SafeShutdownStep("ssh tunnel service", () =>
+        {
+            _sshTunnelService?.Dispose();
+            _sshTunnelService = null;
+        });
+
+        // Close windows explicitly for deterministic shutdown tracing.
+        SafeShutdownStep("settings window", () => CloseWindow(_settingsWindow));
+        _settingsWindow = null;
+        SafeShutdownStep("web chat window", () => CloseWindow(_webChatWindow));
+        _webChatWindow = null;
+        SafeShutdownStep("status detail window", () => CloseWindow(_statusDetailWindow));
+        _statusDetailWindow = null;
+        SafeShutdownStep("notification history window", () => CloseWindow(_notificationHistoryWindow));
+        _notificationHistoryWindow = null;
+        SafeShutdownStep("activity stream window", () => CloseWindow(_activityStreamWindow));
+        _activityStreamWindow = null;
+        SafeShutdownStep("tray menu window", () => CloseWindow(_trayMenuWindow));
+        _trayMenuWindow = null;
+        SafeShutdownStep("quick send dialog", () => CloseWindow(_quickSendDialog));
+        _quickSendDialog = null;
+        SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));
+        _keepAliveWindow = null;
+
         // Dispose tray and mutex
-        _trayIcon?.Dispose();
-        _mutex?.Dispose();
-        
+        SafeShutdownStep("tray icon", () =>
+        {
+            _trayIcon?.Dispose();
+            _trayIcon = null;
+        });
+
+        SafeShutdownStep("single-instance mutex", () =>
+        {
+            _mutex?.Dispose();
+            _mutex = null;
+        });
+
         // Dispose cancellation token source
-        _deepLinkCts?.Dispose();
-        
+        SafeShutdownStep("deep link token source", () =>
+        {
+            _deepLinkCts?.Dispose();
+            _deepLinkCts = null;
+        });
+
+        Logger.Info("Shutdown complete; calling Exit() now");
         Exit();
+    }
+
+    private static void CloseWindow(Window? window)
+    {
+        try
+        {
+            window?.Close();
+        }
+        catch
+        {
+            // Let caller log specific failure context.
+            throw;
+        }
+    }
+
+    private static void SafeShutdownStep(string name, Action action)
+    {
+        try
+        {
+            Logger.Info($"Shutdown: disposing {name}");
+            action();
+            Logger.Info($"Shutdown: disposed {name}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
+        }
     }
 
     private bool EnsureSshTunnelConfigured()

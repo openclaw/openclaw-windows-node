@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
     <Project Path="src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj">
       <Platform Project="x64" />
     </Project>

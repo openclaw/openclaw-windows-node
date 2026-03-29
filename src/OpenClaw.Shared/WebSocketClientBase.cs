@@ -19,6 +19,7 @@ public abstract class WebSocketClientBase : IDisposable
     private CancellationTokenSource _cts;
     private bool _disposed;
     private int _reconnectAttempts;
+    private int _reconnectLoopActive;
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
 
     protected readonly string _token;
@@ -68,6 +69,12 @@ public abstract class WebSocketClientBase : IDisposable
     /// <summary>Called at the start of Dispose, before CTS cancellation.</summary>
     protected virtual void OnDisposing() { }
 
+    /// <summary>
+    /// Whether auto-reconnect should run after an unexpected disconnect.
+    /// Subclasses can return false for known terminal states (for example awaiting pairing approval).
+    /// </summary>
+    protected virtual bool ShouldAutoReconnect() => true;
+
     protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl))
@@ -85,6 +92,12 @@ public abstract class WebSocketClientBase : IDisposable
 
     public async Task ConnectAsync()
     {
+        if (_disposed)
+        {
+            _logger.Debug($"Skipping {ClientRole} connect: client already disposed");
+            return;
+        }
+
         try
         {
             RaiseStatusChanged(ConnectionStatus.Connecting);
@@ -116,10 +129,23 @@ public abstract class WebSocketClientBase : IDisposable
 
             _ = Task.Run(() => ListenForMessagesAsync(), _cts.Token);
         }
+        catch (OperationCanceledException)
+        {
+            _logger.Debug($"{ClientRole} connect canceled (likely shutdown)");
+        }
+        catch (ObjectDisposedException)
+        {
+            _logger.Debug($"{ClientRole} connect aborted after dispose");
+        }
         catch (Exception ex)
         {
             _logger.Error($"{ClientRole} connection failed", ex);
             RaiseStatusChanged(ConnectionStatus.Error);
+
+            if (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
+            {
+                _ = ReconnectWithBackoffAsync();
+            }
         }
     }
 
@@ -175,7 +201,7 @@ public abstract class WebSocketClientBase : IDisposable
         {
             try
             {
-                if (!_cts.Token.IsCancellationRequested)
+                if (!_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
                 {
                     await ReconnectWithBackoffAsync();
                 }
@@ -186,30 +212,50 @@ public abstract class WebSocketClientBase : IDisposable
 
     protected async Task ReconnectWithBackoffAsync()
     {
-        var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
-        _reconnectAttempts++;
-        _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
-        RaiseStatusChanged(ConnectionStatus.Connecting);
+        if (Interlocked.CompareExchange(ref _reconnectLoopActive, 1, 0) != 0)
+        {
+            return;
+        }
 
         try
         {
-            await Task.Delay(delay, _cts.Token);
+            while (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
+            {
+                var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+                _reconnectAttempts++;
+                _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
+                RaiseStatusChanged(ConnectionStatus.Connecting);
 
-            // Check cancellation after delay
-            if (_cts.Token.IsCancellationRequested) return;
+                await Task.Delay(delay, _cts.Token);
 
-            // Safely dispose old socket
-            var oldSocket = _webSocket;
-            _webSocket = null;
-            try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
+                if (_cts.Token.IsCancellationRequested || _disposed || !ShouldAutoReconnect())
+                {
+                    break;
+                }
 
-            await ConnectAsync();
+                // Safely dispose old socket
+                var oldSocket = _webSocket;
+                _webSocket = null;
+                try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
+
+                await ConnectAsync();
+
+                if (IsConnected)
+                {
+                    break;
+                }
+            }
         }
         catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
             _logger.Error($"{ClientRole} reconnect failed", ex);
             RaiseStatusChanged(ConnectionStatus.Error);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _reconnectLoopActive, 0);
         }
     }
 

@@ -9,6 +9,7 @@ using OpenClawTray.Services;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using WinUIEx;
 
 namespace OpenClawTray.Dialogs;
@@ -20,8 +21,8 @@ public sealed class QuickSendDialog : WindowEx
 {
     private readonly OpenClawGatewayClient _client;
     private readonly TextBox _messageTextBox;
+    private readonly TextBox _errorDetailsTextBox;
     private readonly Button _sendButton;
-    private readonly TextBlock _statusText;
     private bool _isSending;
 
     [DllImport("user32.dll")]
@@ -52,7 +53,7 @@ public sealed class QuickSendDialog : WindowEx
         
         // Window setup
         Title = LocalizationHelper.GetString("WindowTitle_QuickSend");
-        this.SetWindowSize(400, 200);
+        this.SetWindowSize(420, 260);
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
         
@@ -65,17 +66,21 @@ public sealed class QuickSendDialog : WindowEx
         this.IsAlwaysOnTop = true;
         
         // Build UI programmatically (simple dialog)
-        var root = new StackPanel
+        var root = new Grid
         {
-            Spacing = 12,
-            Padding = new Thickness(24)
+            RowSpacing = 12
         };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var header = new TextBlock
         {
             Text = LocalizationHelper.GetString("QuickSend_Header"),
             Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
         };
+        Grid.SetRow(header, 0);
         root.Children.Add(header);
 
         _messageTextBox = new TextBox
@@ -85,7 +90,23 @@ public sealed class QuickSendDialog : WindowEx
             Text = prefillMessage ?? ""
         };
         _messageTextBox.KeyDown += OnKeyDown;
+        Grid.SetRow(_messageTextBox, 1);
         root.Children.Add(_messageTextBox);
+
+        _errorDetailsTextBox = new TextBox
+        {
+            Visibility = Visibility.Collapsed,
+            IsReadOnly = true,
+            IsTabStop = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 80,
+            MaxHeight = 240,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(_errorDetailsTextBox, ScrollBarVisibility.Auto);
+        Grid.SetRow(_errorDetailsTextBox, 2);
+        root.Children.Add(_errorDetailsTextBox);
 
         var buttonPanel = new StackPanel
         {
@@ -93,13 +114,6 @@ public sealed class QuickSendDialog : WindowEx
             Spacing = 8,
             HorizontalAlignment = HorizontalAlignment.Right
         };
-
-        _statusText = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0)
-        };
-        buttonPanel.Children.Add(_statusText);
 
         var cancelButton = new Button { Content = LocalizationHelper.GetString("QuickSend_CancelButton") };
         cancelButton.Click += (s, e) => Close();
@@ -113,15 +127,20 @@ public sealed class QuickSendDialog : WindowEx
         _sendButton.Click += OnSendClick;
         buttonPanel.Children.Add(_sendButton);
 
+        Grid.SetRow(buttonPanel, 3);
         root.Children.Add(buttonPanel);
 
-        Content = root;
+        Content = new Border
+        {
+            Padding = new Thickness(24),
+            Child = root
+        };
 
         // Focus the text box when shown
         Activated += (s, e) =>
         {
-            _messageTextBox.Focus(FocusState.Programmatic);
             TryBringToFront();
+            RequestInputFocus();
         };
 
         Closed += (s, e) => Logger.Info("[QuickSend] Dialog closed");
@@ -170,13 +189,22 @@ public sealed class QuickSendDialog : WindowEx
         var message = _messageTextBox.Text?.Trim();
         if (string.IsNullOrEmpty(message)) return;
 
+        _errorDetailsTextBox.Visibility = Visibility.Collapsed;
+        _errorDetailsTextBox.Text = string.Empty;
+        this.SetWindowSize(420, 260);
+
         _isSending = true;
         _sendButton.IsEnabled = false;
         _messageTextBox.IsEnabled = false;
-        _statusText.Text = LocalizationHelper.GetString("QuickSend_Sending");
+        ShowDetails(LocalizationHelper.GetString("QuickSend_Sending"));
 
         try
         {
+            if (!await EnsureGatewayConnectedAsync())
+            {
+                throw new InvalidOperationException("Gateway connection is not open");
+            }
+
             await _client.SendChatMessageAsync(message);
             Logger.Info($"[QuickSend] Message sent ({message.Length} chars)");
             new ToastContentBuilder()
@@ -188,15 +216,160 @@ public sealed class QuickSendDialog : WindowEx
         catch (Exception ex)
         {
             Logger.Error($"Quick send failed: {ex.Message}");
-            _statusText.Text = LocalizationHelper.GetString("QuickSend_Failed");
+            if (IsPairingRequired(ex.Message))
+            {
+                var commands = _client.BuildPairingApprovalFixCommands();
+                CopyTextToClipboard(commands);
+
+                ShowErrorDetails($"Pairing approval required\n\n{commands}");
+                new ToastContentBuilder()
+                    .AddText("Quick Send device approval required")
+                    .AddText("Gateway reported pairing required. Approval guidance copied to clipboard.")
+                    .Show();
+                Logger.Warn($"[QuickSend] Pairing required. Commands copied to clipboard.\n{commands}");
+            }
+            else if (TryExtractMissingScope(ex.Message, out var missingScope))
+            {
+                var commands = _client.BuildMissingScopeFixCommands(missingScope);
+                CopyTextToClipboard(commands);
+
+                ShowErrorDetails($"Missing scope: {missingScope}\n\n{commands}");
+                new ToastContentBuilder()
+                    .AddText("Quick Send permission required")
+                    .AddText($"Missing scope '{missingScope}'. Identity + remediation guidance copied to clipboard.")
+                    .Show();
+                Logger.Warn($"[QuickSend] Missing scope '{missingScope}'. Commands copied to clipboard.\n{commands}");
+            }
+            else
+            {
+                ShowErrorDetails(ex.Message);
+            }
+
             _sendButton.IsEnabled = true;
             _messageTextBox.IsEnabled = true;
             _isSending = false;
         }
     }
 
+    private void ShowErrorDetails(string details)
+    {
+        _errorDetailsTextBox.Header = LocalizationHelper.GetString("QuickSend_Failed");
+        _errorDetailsTextBox.MinHeight = 140;
+        _errorDetailsTextBox.Text = details;
+        _errorDetailsTextBox.Visibility = Visibility.Visible;
+        this.SetWindowSize(520, 400);
+
+        // Move focus to the details box so users can immediately select/copy text.
+        _errorDetailsTextBox.Focus(FocusState.Programmatic);
+    }
+
+    private void ShowDetails(string details)
+    {
+        _errorDetailsTextBox.Header = null;
+        _errorDetailsTextBox.MinHeight = 80;
+        _errorDetailsTextBox.Text = details;
+        _errorDetailsTextBox.Visibility = Visibility.Visible;
+        this.SetWindowSize(500, 320);
+    }
+
+    private static bool TryExtractMissingScope(string? message, out string scope)
+    {
+        scope = string.Empty;
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        var match = Regex.Match(message, @"missing\s+scope\s*:\s*([A-Za-z0-9._-]+)", RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        scope = match.Groups[1].Value;
+        return !string.IsNullOrWhiteSpace(scope);
+    }
+
+    private static bool IsPairingRequired(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        return message.Contains("pairing required", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("not paired", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("NOT_PAIRED", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void CopyTextToClipboard(string text)
+    {
+        var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
+        data.SetText(text);
+        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+    }
+
+    private void QueueFocusMessageInput()
+    {
+        DispatcherQueue?.TryEnqueue(FocusMessageInput);
+    }
+
+    private void RequestInputFocus()
+    {
+        QueueFocusMessageInput();
+        _ = RetryFocusMessageInputAsync();
+    }
+
+    private async Task RetryFocusMessageInputAsync()
+    {
+        var delaysMs = new[] { 60, 160, 320 };
+        foreach (var delay in delaysMs)
+        {
+            await Task.Delay(delay);
+            TryBringToFront();
+            QueueFocusMessageInput();
+        }
+    }
+
+    private async Task<bool> EnsureGatewayConnectedAsync(int timeoutMs = 3000)
+    {
+        if (_client.IsConnectedToGateway)
+        {
+            return true;
+        }
+
+        try
+        {
+            await _client.ConnectAsync();
+        }
+        catch
+        {
+            // Connect errors are handled by the send flow.
+        }
+
+        var started = Environment.TickCount64;
+        while (Environment.TickCount64 - started < timeoutMs)
+        {
+            if (_client.IsConnectedToGateway)
+            {
+                return true;
+            }
+
+            await Task.Delay(120);
+        }
+
+        return _client.IsConnectedToGateway;
+    }
+
+    public void FocusMessageInput()
+    {
+        _messageTextBox.Focus(FocusState.Programmatic);
+        _messageTextBox.SelectionStart = _messageTextBox.Text?.Length ?? 0;
+    }
+
     public new void ShowAsync()
     {
         Activate();
+        RequestInputFocus();
     }
 }
