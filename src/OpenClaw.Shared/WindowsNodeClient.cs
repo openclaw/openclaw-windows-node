@@ -119,9 +119,7 @@ public class WindowsNodeClient : WebSocketClientBase
         _logger.Info("Node disconnected");
         return Task.CompletedTask;
     }
-    
-    // --- Message handling ---
-    
+
     protected override async Task ProcessMessageAsync(string json)
     {
         try
@@ -669,10 +667,12 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override void OnDisconnected()
     {
         _isConnected = false;
+        _isPendingApproval = false;
     }
 
     protected override void OnError(Exception ex)
     {
         _isConnected = false;
+        _isPendingApproval = false;
     }
 }
