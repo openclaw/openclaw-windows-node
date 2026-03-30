@@ -84,7 +84,7 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
 - 🚀 **Auto-start** - Launch with Windows
 - ⚙️ **Settings** - Full configuration dialog
 - 🎯 **First-run experience** - Welcome dialog guides new users
-- 🦞🎧 **Voice Mode (new)** - Talk to your Claw via your Windows node
+- <img src="src/OpenClaw.Tray.WinUI/Assets/voice-mode-feature.png" alt="Voice Mode" width="20" height="20" /> **Voice Mode (new)** - Talk to your Claw via your Windows node
 
 ### Menu Sections
 - **Status** - Gateway connection status with click-to-view details
@@ -115,6 +115,7 @@ Comparing against [openclaw-menubar](https://github.com/magimetal/openclaw-menub
 | Refresh | ✅ | ✅ | Auto-refresh on menu open |
 | Launch at Login | ✅ | ✅ | |
 | Notifications toggle | ✅ | ✅ | |
+| Voice Mode | ✅ | 🟡 | Talk Mode implemented (half-duplex), WakeWord, Interrupt, etc. in progress
 
 ### Windows-Only Features
 
