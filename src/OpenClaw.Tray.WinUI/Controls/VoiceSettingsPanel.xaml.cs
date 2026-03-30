@@ -46,8 +46,8 @@ public sealed partial class VoiceSettingsPanel : UserControl
         {
             Mode = GetSelectedVoiceMode(),
             Enabled = GetSelectedVoiceMode() != VoiceActivationMode.Off,
+            ShowRepeaterAtStartup = (VoiceShowRepeaterAtStartupCheckBox.IsChecked ?? true) && GetSelectedVoiceMode() != VoiceActivationMode.Off,
             ShowConversationToasts = VoiceConversationToastsCheckBox.IsChecked ?? false,
-            StripInjectedMemoriesInChat = VoiceStripInjectedMemoriesCheckBox.IsChecked ?? true,
             SpeechToTextProviderId = (VoiceSpeechToTextProviderComboBox.SelectedItem as VoiceProviderOption)?.Id ?? VoiceProviderIds.Windows,
             TextToSpeechProviderId = (VoiceTextToSpeechProviderComboBox.SelectedItem as VoiceProviderOption)?.Id ?? VoiceProviderIds.Windows,
             InputDeviceId = (VoiceInputDeviceComboBox.SelectedItem as DeviceOption)?.DeviceId,
@@ -96,8 +96,10 @@ public sealed partial class VoiceSettingsPanel : UserControl
         LoadVoiceProviders();
         SelectVoiceMode(_settings.Voice.Mode);
         UpdateVoiceSelectionDescriptions();
+        VoiceShowRepeaterAtStartupCheckBox.IsChecked = _settings.Voice.Mode == VoiceActivationMode.Off
+            ? false
+            : _settings.Voice.ShowRepeaterAtStartup;
         VoiceConversationToastsCheckBox.IsChecked = _settings.Voice.ShowConversationToasts;
-        VoiceStripInjectedMemoriesCheckBox.IsChecked = _settings.Voice.StripInjectedMemoriesInChat;
         UpdateVoiceProviderSettingsEditor();
         UpdateVoiceSettingsInfo();
     }
@@ -244,7 +246,7 @@ public sealed partial class VoiceSettingsPanel : UserControl
         }
 
         VoiceSettingsInfoTextBlock.Text =
-            $"Mode: {VoiceDisplayHelper.GetModeLabel(GetSelectedVoiceMode())}. STT: {stt}. TTS: {tts}. Listen: {input}. Talk: {output}. Chat cleanup: {(VoiceStripInjectedMemoriesCheckBox.IsChecked ?? true ? "on" : "off")}.{fallbackNotice}";
+            $"Mode: {VoiceDisplayHelper.GetModeLabel(GetSelectedVoiceMode())}. STT: {stt}. TTS: {tts}. Listen: {input}. Talk: {output}.{fallbackNotice}";
     }
 
     private void UpdateDeviceSelectionAvailability()
@@ -391,6 +393,11 @@ public sealed partial class VoiceSettingsPanel : UserControl
 
     private void OnVoiceModeChanged(object sender, SelectionChangedEventArgs e)
     {
+        var mode = GetSelectedVoiceMode();
+        VoiceShowRepeaterAtStartupCheckBox.IsChecked = mode == VoiceActivationMode.Off
+            ? false
+            : (VoiceShowRepeaterAtStartupCheckBox.IsChecked ?? true);
+        VoiceShowRepeaterAtStartupCheckBox.IsEnabled = mode != VoiceActivationMode.Off;
         UpdateVoiceSelectionDescriptions();
         UpdateVoiceSettingsInfo();
     }

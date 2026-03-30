@@ -70,6 +70,8 @@ public class SettingsData
 public sealed class VoiceRepeaterWindowSettings
 {
     public bool AutoScroll { get; set; } = true;
+    public bool FloatingEnabled { get; set; } = true;
+    public bool HasSavedPlacement { get; set; }
     public double TextSize { get; set; } = 13;
     public int? Width { get; set; }
     public int? Height { get; set; }

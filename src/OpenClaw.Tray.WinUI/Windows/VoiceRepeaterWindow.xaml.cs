@@ -21,6 +21,7 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
     private const int MaxConversationItems = 24;
     private const int DefaultWidth = 360;
     private const int DefaultHeight = 170;
+    private const int DefaultMargin = 12;
     private const double DefaultTextSize = 13;
     private const double DefaultCaptionSize = 10;
 
@@ -32,6 +33,9 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
 
     private bool _controlActionInFlight;
     private bool _suppressSettingsEvents;
+    private bool _suppressPlacementSave = true;
+    private bool _initialPlacementPending = true;
+    private bool _placementDirty;
     private bool _autoScrollEnabled;
     private double _messageFontSize = DefaultTextSize;
     private double _captionFontSize = DefaultCaptionSize;
@@ -57,6 +61,7 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
         ConversationItemsControl.ItemsSource = _conversationItems;
 
         Closed += OnWindowClosed;
+        Activated += OnWindowActivated;
 
         var dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         if (dispatcherQueue != null)
@@ -217,6 +222,19 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
         _settings.Save(logSuccess: false);
     }
 
+    private void OnFloatingEnabledChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsEvents)
+        {
+            return;
+        }
+
+        var enabled = FloatingEnabledCheckBox.IsChecked == true;
+        _settings.VoiceRepeaterWindow.FloatingEnabled = enabled;
+        IsAlwaysOnTop = enabled;
+        _settings.Save(logSuccess: false);
+    }
+
     private void OnOpenVoiceStatusClick(object sender, RoutedEventArgs e)
     {
         OpenVoiceStatusRequested?.Invoke(this, EventArgs.Empty);
@@ -239,14 +257,35 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
             AppWindow.Changed -= OnAppWindowChanged;
         }
 
-        SaveWindowPlacement();
+        Activated -= OnWindowActivated;
+        FlushWindowPlacement();
         IsClosed = true;
+    }
+
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (!_initialPlacementPending)
+        {
+            return;
+        }
+
+        _initialPlacementPending = false;
+        ApplyStoredWindowPlacement();
+
+        var dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        _ = dispatcherQueue?.TryEnqueue(() => _suppressPlacementSave = false);
     }
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (_suppressPlacementSave)
+        {
+            return;
+        }
+
         if (args.DidPositionChange || args.DidSizeChange)
         {
+            _placementDirty = true;
             _layoutSaveTimer?.Stop();
             _layoutSaveTimer?.Start();
         }
@@ -272,7 +311,7 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
 
         var paused = status.State == VoiceRuntimeState.Paused;
         PauseResumeButton.IsEnabled = !_controlActionInFlight && status.Mode != VoiceActivationMode.Off;
-        PauseResumeIcon.Glyph = paused ? "\uE768" : "\uE769";
+        PauseResumeIcon.Symbol = paused ? Symbol.Play : Symbol.Pause;
         ToolTipService.SetToolTip(
             PauseResumeButton,
             paused ? "Resume voice mode" : "Pause voice mode");
@@ -282,21 +321,40 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
 
     private void ApplyStoredWindowPlacement()
     {
-        var prefs = _settings.VoiceRepeaterWindow;
-        var width = prefs.Width.GetValueOrDefault(DefaultWidth);
-        var height = prefs.Height.GetValueOrDefault(DefaultHeight);
-
-        this.SetWindowSize(
-            Math.Max(width, 320),
-            Math.Max(height, 150));
-
-        if (prefs.X.HasValue && prefs.Y.HasValue)
+        if (AppWindow is null)
         {
-            AppWindow.Move(new PointInt32(prefs.X.Value, prefs.Y.Value));
+            return;
         }
-        else
+
+        var prefs = _settings.VoiceRepeaterWindow;
+        var width = prefs.HasSavedPlacement
+            ? prefs.Width.GetValueOrDefault(DefaultWidth)
+            : DefaultWidth;
+        var height = prefs.HasSavedPlacement
+            ? prefs.Height.GetValueOrDefault(DefaultHeight)
+            : DefaultHeight;
+        var clampedWidth = Math.Max(width, 320);
+        var clampedHeight = Math.Max(height, 150);
+
+        IsAlwaysOnTop = prefs.FloatingEnabled;
+
+        var targetRect = prefs.HasSavedPlacement && prefs.X.HasValue && prefs.Y.HasValue
+            ? new RectInt32(prefs.X.Value, prefs.Y.Value, clampedWidth, clampedHeight)
+            : GetDefaultAnchorRect(clampedWidth, clampedHeight);
+
+        if (!IsPlacementVisible(targetRect))
         {
-            this.CenterOnScreen();
+            targetRect = GetDefaultAnchorRect(clampedWidth, clampedHeight);
+        }
+
+        try
+        {
+            AppWindow.MoveAndResize(targetRect);
+        }
+        catch
+        {
+            this.SetWindowSize(targetRect.Width, targetRect.Height);
+            AppWindow.Move(new PointInt32(targetRect.X, targetRect.Y));
         }
     }
 
@@ -323,6 +381,7 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
             }
 
             AutoScrollCheckBox.IsChecked = _autoScrollEnabled;
+            FloatingEnabledCheckBox.IsChecked = _settings.VoiceRepeaterWindow.FloatingEnabled;
             SelectTextSizeItem(_messageFontSize);
         }
         finally
@@ -333,7 +392,7 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
 
     private void SaveWindowPlacement()
     {
-        if (IsClosed || AppWindow is null)
+        if (IsClosed || AppWindow is null || _suppressPlacementSave)
         {
             return;
         }
@@ -344,7 +403,44 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
         _settings.VoiceRepeaterWindow.Height = size.Height;
         _settings.VoiceRepeaterWindow.X = position.X;
         _settings.VoiceRepeaterWindow.Y = position.Y;
+        _settings.VoiceRepeaterWindow.HasSavedPlacement = true;
         _settings.Save(logSuccess: false);
+        _placementDirty = false;
+    }
+
+    private void FlushWindowPlacement()
+    {
+        if (_placementDirty || !IsClosed)
+        {
+            SaveWindowPlacement();
+        }
+    }
+
+    private RectInt32 GetDefaultAnchorRect(int width, int height)
+    {
+        var displayArea = DisplayArea.Primary;
+        var x = displayArea.WorkArea.X + DefaultMargin;
+        var y = displayArea.WorkArea.Y + Math.Max(DefaultMargin, displayArea.WorkArea.Height - height - DefaultMargin);
+        return new RectInt32(x, y, width, height);
+    }
+
+    private static bool IsPlacementVisible(RectInt32 rect)
+    {
+        try
+        {
+            var displayArea = DisplayArea.GetFromRect(rect, DisplayAreaFallback.Nearest);
+            var workArea = displayArea.WorkArea;
+            return rect.Width > 0 &&
+                   rect.Height > 0 &&
+                   rect.X < workArea.X + workArea.Width &&
+                   rect.X + rect.Width > workArea.X &&
+                   rect.Y < workArea.Y + workArea.Height &&
+                   rect.Y + rect.Height > workArea.Y;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void SelectTextSizeItem(double size)

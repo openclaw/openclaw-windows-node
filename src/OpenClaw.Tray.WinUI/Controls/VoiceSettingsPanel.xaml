@@ -32,6 +32,9 @@
                        TextWrapping="Wrap"/>
         </Grid>
 
+        <CheckBox x:Name="VoiceShowRepeaterAtStartupCheckBox"
+                  Content="Show VoiceMode repeater form at startup"/>
+
         <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2*"/>
@@ -99,8 +102,6 @@
 
         <CheckBox x:Name="VoiceConversationToastsCheckBox"
                   Content="Show voice transcripts and replies as toasts"/>
-        <CheckBox x:Name="VoiceStripInjectedMemoriesCheckBox"
-                  Content="Hide injected &lt;relevant-memories&gt; blocks in the tray chat window"/>
 
         <TextBlock x:Name="VoiceSettingsInfoTextBlock"
                    Style="{StaticResource CaptionTextBlockStyle}"

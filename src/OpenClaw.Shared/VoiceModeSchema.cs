@@ -15,7 +15,7 @@ public static class VoiceCommands
     public const string Stop = "voice.stop";
     public const string Pause = "voice.pause";
     public const string Resume = "voice.resume";
-    public const string Skip = "voice.skip";
+    public const string Skip = "voice.response.skip";
 
     private static readonly ReadOnlyCollection<string> s_all = Array.AsReadOnly(
     [
@@ -61,8 +61,8 @@ public sealed class VoiceSettings
 {
     public VoiceActivationMode Mode { get; set; } = VoiceActivationMode.Off;
     public bool Enabled { get; set; }
+    public bool ShowRepeaterAtStartup { get; set; } = true;
     public bool ShowConversationToasts { get; set; }
-    public bool StripInjectedMemoriesInChat { get; set; } = true;
     public string SpeechToTextProviderId { get; set; } = VoiceProviderIds.Windows;
     public string TextToSpeechProviderId { get; set; } = VoiceProviderIds.Windows;
     public string? InputDeviceId { get; set; }

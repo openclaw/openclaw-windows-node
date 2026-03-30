@@ -7,14 +7,7 @@ internal static class WebChatVoiceDomBridge
     public const string DocumentCreatedScript = """
 (() => {
   const isVisible = (el) => !!el && !(el.disabled === true) && el.getClientRects().length > 0;
-  const memoryPattern = /<relevant-memories>[\s\S]*?<\/relevant-memories>\s*/gi;
   let desiredDraft = '';
-  let stripInjectedMemories = true;
-
-  const sanitize = (value) => {
-    const text = typeof value === 'string' ? value : '';
-    return stripInjectedMemories ? text.replace(memoryPattern, '').trimStart() : text;
-  };
 
   const findComposer = () => {
     const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"], [contenteditable="plaintext-only"]'));
@@ -22,23 +15,23 @@ internal static class WebChatVoiceDomBridge
   };
 
   const setElementValue = (el, value) => {
-    const sanitized = sanitize(value);
+    const text = typeof value === 'string' ? value : '';
     if ('value' in el) {
       const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
       const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
       if (descriptor && descriptor.set) {
-        descriptor.set.call(el, sanitized);
+        descriptor.set.call(el, text);
       } else {
-        el.value = sanitized;
+        el.value = text;
       }
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: sanitized, inputType: 'insertText' }));
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
 
     if (el.isContentEditable) {
-      el.textContent = sanitized;
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: sanitized, inputType: 'insertText' }));
+      el.textContent = text;
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }
   };
@@ -76,10 +69,6 @@ internal static class WebChatVoiceDomBridge
       desiredDraft = text || '';
       return applyDraftIfPossible();
     },
-    setStripInjectedMemories(enabled) {
-      stripInjectedMemories = !!enabled;
-      return applyDraftIfPossible();
-    },
     clearDraft() {
       desiredDraft = '';
       return applyDraftIfPossible();
@@ -88,15 +77,9 @@ internal static class WebChatVoiceDomBridge
       clearLegacyTurnsHost();
       return true;
     }
-  };
+    };
 })();
 """;
-
-    public static string BuildSetStripInjectedMemoriesScript(bool enabled)
-    {
-        var value = enabled ? "true" : "false";
-        return $"window.__openClawTrayVoice?.setStripInjectedMemories?.({value});";
-    }
 
     public static string BuildSetDraftScript(string? text)
     {

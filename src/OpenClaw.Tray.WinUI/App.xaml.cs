@@ -311,6 +311,11 @@ public partial class App : Application
             HandleDeepLink(startupDeepLink);
         }
 
+        if (ShouldShowVoiceRepeaterAtStartup())
+        {
+            _dispatcherQueue?.TryEnqueue(ShowVoiceModeSettings);
+        }
+
         Logger.Info("Application started (WinUI 3)");
     }
 
@@ -781,6 +786,14 @@ public partial class App : Application
         }
 
         return _settings.Voice.Enabled && _settings.Voice.Mode != VoiceActivationMode.Off;
+    }
+
+    private bool ShouldShowVoiceRepeaterAtStartup()
+    {
+        return _settings?.EnableNodeMode == true &&
+               _settings.Voice.Enabled &&
+               _settings.Voice.Mode != VoiceActivationMode.Off &&
+               _settings.Voice.ShowRepeaterAtStartup;
     }
 
     private string GetVoiceQuickToggleLabel()
@@ -1864,18 +1877,6 @@ public partial class App : Application
             _globalHotkey?.Unregister();
         }
 
-        if (_webChatWindow != null && !_webChatWindow.IsClosed)
-        {
-            try
-            {
-                await _webChatWindow.SetStripInjectedMemoriesEnabledAsync(_settings.Voice.StripInjectedMemoriesInChat);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Failed to refresh tray chat cleanup setting: {ex.Message}");
-            }
-        }
-
         _voiceRepeaterWindow?.RefreshStatus();
         _voiceModeWindow?.RefreshStatus();
 
@@ -1889,8 +1890,7 @@ public partial class App : Application
         {
             _webChatWindow = new WebChatWindow(
                 _settings!.GatewayUrl,
-                _settings.Token,
-                _settings.Voice.StripInjectedMemoriesInChat);
+                _settings.Token);
             _webChatWindow.Closed += (s, e) =>
             {
                 _voiceChatCoordinator?.DetachWindow(_webChatWindow);

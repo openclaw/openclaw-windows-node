@@ -98,26 +98,29 @@
                             Orientation="Horizontal"
                             Spacing="4">
                     <Button x:Name="PauseResumeButton"
-                            Width="30"
-                            Height="28"
+                            Width="28"
+                            Height="26"
+                            Padding="0"
                             Click="OnPauseResumeClick"
                             ToolTipService.ToolTip="Pause or resume voice mode">
-                        <FontIcon x:Name="PauseResumeIcon" Glyph="&#xE769;" FontSize="11"/>
+                        <SymbolIcon x:Name="PauseResumeIcon" Symbol="Pause"/>
                     </Button>
 
                     <Button x:Name="SkipReplyButton"
-                            Width="30"
-                            Height="28"
+                            Width="28"
+                            Height="26"
+                            Padding="0"
                             Click="OnSkipReplyClick"
                             ToolTipService.ToolTip="Skip current reply">
-                        <FontIcon Glyph="&#xE72A;" FontSize="11"/>
+                        <SymbolIcon Symbol="Forward"/>
                     </Button>
 
                     <Button x:Name="ViewSettingsButton"
-                            Width="30"
-                            Height="28"
+                            Width="28"
+                            Height="26"
+                            Padding="0"
                             ToolTipService.ToolTip="Voice repeater settings">
-                        <FontIcon Glyph="&#xE713;" FontSize="11"/>
+                        <SymbolIcon Symbol="Setting"/>
                         <Button.Flyout>
                             <Flyout Placement="TopEdgeAlignedRight">
                                 <StackPanel Width="220" Spacing="8" Padding="8">
@@ -125,6 +128,11 @@
                                               Content="Auto-scroll"
                                               Checked="OnAutoScrollChanged"
                                               Unchecked="OnAutoScrollChanged"/>
+
+                                    <CheckBox x:Name="FloatingEnabledCheckBox"
+                                              Content="Float above other windows"
+                                              Checked="OnFloatingEnabledChanged"
+                                              Unchecked="OnFloatingEnabledChanged"/>
 
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Text size"

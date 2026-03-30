@@ -27,12 +27,12 @@ public sealed partial class WebChatWindow : WindowEx
 
     public bool IsClosed { get; private set; }
 
-    public WebChatWindow(string gatewayUrl, string token, bool stripInjectedMemories)
+    public WebChatWindow(string gatewayUrl, string token)
     {
         Logger.Info($"WebChatWindow: Constructor called, gateway={gatewayUrl}");
         _gatewayUrl = gatewayUrl;
         _token = token;
-        _voiceDomState = new WebChatVoiceDomState(stripInjectedMemories);
+        _voiceDomState = new WebChatVoiceDomState();
 
         InitializeComponent();
 
@@ -281,12 +281,6 @@ public sealed partial class WebChatWindow : WindowEx
         await Task.CompletedTask;
     }
 
-    public async Task SetStripInjectedMemoriesEnabledAsync(bool enabled)
-    {
-        _voiceDomState.SetStripInjectedMemories(enabled);
-        await RefreshTrayVoiceDomStateAsync();
-    }
-
     private async Task RefreshTrayVoiceDomStateAsync()
     {
         if (WebView.CoreWebView2 == null || !_voiceDomReady || IsClosed)
@@ -296,8 +290,6 @@ public sealed partial class WebChatWindow : WindowEx
 
         try
         {
-            await WebView.CoreWebView2.ExecuteScriptAsync(
-                WebChatVoiceDomBridge.BuildSetStripInjectedMemoriesScript(_voiceDomState.StripInjectedMemories));
             await WebView.CoreWebView2.ExecuteScriptAsync(
                 WebChatVoiceDomBridge.BuildSetDraftScript(_voiceDomState.PendingDraft));
             await WebView.CoreWebView2.ExecuteScriptAsync(WebChatVoiceDomBridge.ClearLegacyTurnsScript);

@@ -84,16 +84,18 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
 - 🚀 **Auto-start** - Launch with Windows
 - ⚙️ **Settings** - Full configuration dialog
 - 🎯 **First-run experience** - Welcome dialog guides new users
+- 🦞🎧 **Voice Mode (new)** - Talk to your Claw via your Windows node
 
 ### Menu Sections
 - **Status** - Gateway connection status with click-to-view details
+- **Voice** - Access to Voice controls
 - **Sessions** - Active agent sessions with preview and per-session controls
 - **Usage** - Provider/cost summary with quick jump to activity details
 - **Channels** - Telegram/WhatsApp status with toggle control
 - **Nodes** - Online/offline node inventory and copyable summary
 - **Recent Activity** - Timestamped event stream for sessions, usage, nodes, and notifications
 - **Actions** - Dashboard, Web Chat, Quick Send, Activity Stream, History
-- **Settings** - Configuration, auto-start, logs
+- **Settings** - Configuration, auto-start, logs, voice
 
 ### Mac Parity Status
 
@@ -245,6 +247,14 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 | `openclaw://agent?message=Hello` | Send message directly (with confirmation) |
 
 Deep links work even when Molty is already running - they're forwarded via IPC.
+
+### Voice Mode
+*built by NichUK and his colleagues @codex and @copilot*
+
+Currently supports Talk Mode - Always on talk to your Claw! Wakeword and PTT modes coming soon
+- Uses internal Windows STT (cloud providers coming soon)
+- Windows/Minimax/Eleven Labs TTS voices
+  - Give your Claw a voice!
 
 ## 📦 OpenClaw.CommandPalette
 

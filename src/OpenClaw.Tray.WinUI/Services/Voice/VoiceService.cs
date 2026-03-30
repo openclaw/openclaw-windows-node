@@ -25,13 +25,14 @@ namespace OpenClawTray.Services.Voice;
 
 public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoiceRuntimeControlApi, IDisposable
 {
-    private const string DefaultSessionKey = "main";
+    private const string DefaultSessionKey = "agent:main:main";
     private const int HResultSpeechPrivacyDeclined = unchecked((int)0x80045509);
     private static readonly TimeSpan TransportConnectTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ReplyTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan LateReplyGraceWindow = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan InitialRecognitionReadyDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DuplicateTranscriptWindow = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan DuplicateAssistantReplyWindow = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HypothesisPromotionWindow = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RecognitionResumeRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan QueuedReplyPlaybackGap = TimeSpan.FromMilliseconds(500);
@@ -71,6 +72,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
     private string? _currentReplyPreview;
     private string? _lateReplySessionKey;
     private DateTime? _lateReplyGraceUntilUtc;
+    private string? _lastAcceptedAssistantReplyText;
+    private string? _lastAcceptedAssistantReplySessionKey;
+    private DateTime _lastAcceptedAssistantReplyUtc;
     private bool _disposed;
 
     public event EventHandler<VoiceConversationTurnEventArgs>? ConversationTurnAvailable;
@@ -659,18 +663,19 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 out shouldStartConnection);
             _transportReadyTcs = readySource;
 
-            if (shouldStartConnection)
-            {
-                _chatTransportStatus = ConnectionStatus.Connecting;
-
-                if (existingClient == null)
+                if (shouldStartConnection)
                 {
-                    _chatClient = new OpenClawGatewayClient(_settings.GatewayUrl, _settings.Token, _logger);
-                    _chatClient.StatusChanged += OnChatTransportStatusChanged;
-                    _chatClient.ChatMessageReceived += OnChatMessageReceived;
-                    existingClient = _chatClient;
+                    _chatTransportStatus = ConnectionStatus.Connecting;
+
+                    if (existingClient == null)
+                    {
+                        _chatClient = new OpenClawGatewayClient(_settings.GatewayUrl, _settings.Token, _logger);
+                        _chatClient.StatusChanged += OnChatTransportStatusChanged;
+                        _chatClient.ChatMessageReceived += OnChatMessageReceived;
+                        _chatClient.SessionPreviewUpdated += OnSessionPreviewUpdated;
+                        existingClient = _chatClient;
+                    }
                 }
-            }
         }
 
         if (shouldStartConnection)
@@ -1176,10 +1181,24 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                 return;
             }
 
-            string text;
-            bool shouldStartPlaybackLoop = false;
-            bool acceptedViaLateReplyGrace = false;
+            await AcceptAssistantReplyAsync(args.SessionKey, args.Message, "chat event");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Voice chat message handler failed: {ex.Message}");
+        }
+    }
 
+    private async void OnSessionPreviewUpdated(object? sender, SessionsPreviewPayloadInfo payload)
+    {
+        try
+        {
+            if (payload.Previews == null || payload.Previews.Count == 0)
+            {
+                return;
+            }
+
+            string? expectedSessionKey;
             lock (_gate)
             {
                 if (!_status.Running || _status.Mode != VoiceActivationMode.TalkMode)
@@ -1187,67 +1206,117 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                     return;
                 }
 
-                if (!IsMatchingSessionKey(args.SessionKey, GetCurrentVoiceSessionKey()))
-                {
-                    return;
-                }
-
-                acceptedViaLateReplyGrace = ShouldAcceptLateAssistantReply(
-                    _awaitingReply,
-                    _isSpeaking,
-                    _pendingAssistantReplies.Count,
-                    _lateReplySessionKey,
-                    _lateReplyGraceUntilUtc,
-                    args.SessionKey,
-                    DateTime.UtcNow);
-
-                if (!ShouldAcceptAssistantReply(_awaitingReply, _isSpeaking, _pendingAssistantReplies.Count, acceptedViaLateReplyGrace))
-                {
-                    return;
-                }
-
-                _awaitingReply = false;
-                if (acceptedViaLateReplyGrace)
-                {
-                    _lateReplySessionKey = null;
-                    _lateReplyGraceUntilUtc = null;
-                }
-                text = PrepareReplyForSpeech(args.Message);
+                expectedSessionKey = GetCurrentVoiceSessionKey();
             }
 
-            if (acceptedViaLateReplyGrace)
+            foreach (var preview in payload.Previews)
             {
-                _logger.Warn($"Voice accepted late assistant reply after timeout for session {args.SessionKey}");
-            }
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                var shouldResumeRecognition = false;
-                lock (_gate)
+                if (!IsMatchingSessionKey(preview.Key, expectedSessionKey))
                 {
-                    if (_status.Running && !_replyPlaybackLoopActive)
-                    {
-                        _status = BuildRunningStatus(
-                            VoiceActivationMode.TalkMode,
-                            _status.SessionKey,
-                            VoiceRuntimeState.Arming,
-                            _status.LastError);
-                        shouldResumeRecognition = true;
-                    }
+                    continue;
                 }
 
-                if (shouldResumeRecognition)
+                var assistantText = preview.Items
+                    .LastOrDefault(item =>
+                        string.Equals(item.Role, "assistant", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(item.Text))
+                    ?.Text;
+
+                if (string.IsNullOrWhiteSpace(assistantText))
                 {
-                    await ResumeRecognitionSessionAsync(CancellationToken.None, "empty assistant reply");
+                    continue;
                 }
+
+                await AcceptAssistantReplyAsync(preview.Key, assistantText, "session preview");
                 return;
             }
-
-            QueueAssistantReplyForPlayback(text, args.SessionKey, out shouldStartPlaybackLoop);
         }
         catch (Exception ex)
         {
-            _logger.Warn($"Voice chat message handler failed: {ex.Message}");
+            _logger.Warn($"Voice session preview handler failed: {ex.Message}");
+        }
+    }
+
+    private async Task AcceptAssistantReplyAsync(string? sessionKey, string? rawText, string source)
+    {
+        if (string.IsNullOrWhiteSpace(rawText))
+        {
+            return;
+        }
+
+        string text;
+        bool acceptedViaLateReplyGrace;
+        bool shouldResumeRecognition = false;
+        bool shouldStartPlaybackLoop = false;
+        var utcNow = DateTime.UtcNow;
+
+        lock (_gate)
+        {
+            if (!_status.Running || _status.Mode != VoiceActivationMode.TalkMode)
+            {
+                return;
+            }
+
+            if (!IsMatchingSessionKey(sessionKey, GetCurrentVoiceSessionKey()))
+            {
+                return;
+            }
+
+            acceptedViaLateReplyGrace = ShouldAcceptLateAssistantReply(
+                _awaitingReply,
+                _isSpeaking,
+                _pendingAssistantReplies.Count,
+                _lateReplySessionKey,
+                _lateReplyGraceUntilUtc,
+                sessionKey,
+                utcNow);
+
+            if (!ShouldAcceptAssistantReply(_awaitingReply, _isSpeaking, _pendingAssistantReplies.Count, acceptedViaLateReplyGrace))
+            {
+                return;
+            }
+
+            text = PrepareReplyForSpeech(rawText);
+            if (ShouldSuppressDuplicateAssistantReply(sessionKey, text, utcNow))
+            {
+                return;
+            }
+
+            _awaitingReply = false;
+            if (acceptedViaLateReplyGrace)
+            {
+                _lateReplySessionKey = null;
+                _lateReplyGraceUntilUtc = null;
+            }
+
+            RememberAcceptedAssistantReply(sessionKey, text, utcNow);
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                if (_status.Running && !_replyPlaybackLoopActive)
+                {
+                    _status = BuildRunningStatus(
+                        VoiceActivationMode.TalkMode,
+                        _status.SessionKey,
+                        VoiceRuntimeState.Arming,
+                        _status.LastError);
+                    shouldResumeRecognition = true;
+                }
+            }
+            else
+            {
+                QueueAssistantReplyForPlayback(text, sessionKey, out shouldStartPlaybackLoop);
+            }
+        }
+
+        if (acceptedViaLateReplyGrace)
+        {
+            _logger.Warn($"Voice accepted late assistant reply after timeout for session {sessionKey} via {source}");
+        }
+
+        if (string.IsNullOrWhiteSpace(text) && shouldResumeRecognition)
+        {
+            await ResumeRecognitionSessionAsync(CancellationToken.None, "empty assistant reply");
         }
     }
 
@@ -1465,6 +1534,10 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         catch (OperationCanceledException)
         {
         }
+        catch (ObjectDisposedException)
+        {
+            _logger.Info("Voice playback warm-up skipped because playback resources were disposed during initialization.");
+        }
         catch (Exception ex)
         {
             _logger.Warn($"Voice playback warm-up failed: {ex.Message}");
@@ -1499,7 +1572,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
                queuedReplyCount == 0 &&
                !string.IsNullOrWhiteSpace(lateReplySessionKey) &&
                !string.IsNullOrWhiteSpace(incomingSessionKey) &&
-               string.Equals(lateReplySessionKey, incomingSessionKey, StringComparison.OrdinalIgnoreCase) &&
+               IsMatchingSessionKey(incomingSessionKey, lateReplySessionKey) &&
                lateReplyGraceUntilUtc.HasValue &&
                utcNow <= lateReplyGraceUntilUtc.Value;
     }
@@ -1769,9 +1842,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         }
         finally
         {
-            player.MediaOpened -= openedHandler;
-            player.MediaFailed -= failedHandler;
-            player.Source = null;
+            try { player.MediaOpened -= openedHandler; } catch { }
+            try { player.MediaFailed -= failedHandler; } catch { }
+            try { player.Source = null; } catch { }
         }
     }
 
@@ -1836,10 +1909,10 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         }
         finally
         {
-            player.MediaOpened -= openedHandler;
-            player.MediaEnded -= endedHandler;
-            player.MediaFailed -= failedHandler;
-            player.Source = null;
+            try { player.MediaOpened -= openedHandler; } catch { }
+            try { player.MediaEnded -= endedHandler; } catch { }
+            try { player.MediaFailed -= failedHandler; } catch { }
+            try { player.Source = null; } catch { }
         }
     }
 
@@ -2052,6 +2125,9 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
             _currentReplyPreview = null;
             _lateReplySessionKey = null;
             _lateReplyGraceUntilUtc = null;
+            _lastAcceptedAssistantReplyText = null;
+            _lastAcceptedAssistantReplySessionKey = null;
+            _lastAcceptedAssistantReplyUtc = default;
             playbackSkipCts = _playbackSkipCts;
             _playbackSkipCts = null;
         }
@@ -2088,6 +2164,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         {
             chatClient.StatusChanged -= OnChatTransportStatusChanged;
             chatClient.ChatMessageReceived -= OnChatMessageReceived;
+            chatClient.SessionPreviewUpdated -= OnSessionPreviewUpdated;
             try { await chatClient.DisconnectAsync(); } catch { }
             try { chatClient.Dispose(); } catch { }
         }
@@ -2126,7 +2203,28 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
     private static bool IsMainSessionKey(string sessionKey)
     {
-        return sessionKey == DefaultSessionKey || sessionKey.Contains(":main:", StringComparison.Ordinal);
+        return string.Equals(sessionKey, "main", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(sessionKey, DefaultSessionKey, StringComparison.OrdinalIgnoreCase) ||
+               sessionKey.Contains(":main:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ShouldSuppressDuplicateAssistantReply(string? sessionKey, string text, DateTime utcNow)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return string.Equals(_lastAcceptedAssistantReplySessionKey, string.IsNullOrWhiteSpace(sessionKey) ? DefaultSessionKey : sessionKey, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(_lastAcceptedAssistantReplyText, text, StringComparison.Ordinal) &&
+               utcNow - _lastAcceptedAssistantReplyUtc <= DuplicateAssistantReplyWindow;
+    }
+
+    private void RememberAcceptedAssistantReply(string? sessionKey, string text, DateTime utcNow)
+    {
+        _lastAcceptedAssistantReplySessionKey = string.IsNullOrWhiteSpace(sessionKey) ? DefaultSessionKey : sessionKey;
+        _lastAcceptedAssistantReplyText = string.IsNullOrWhiteSpace(text) ? null : text;
+        _lastAcceptedAssistantReplyUtc = utcNow;
     }
 
     internal static bool ShouldRefreshRecognitionForDefaultCaptureDeviceChange(
@@ -2428,8 +2526,8 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         {
             Mode = source.Mode,
             Enabled = source.Enabled,
+            ShowRepeaterAtStartup = source.ShowRepeaterAtStartup,
             ShowConversationToasts = source.ShowConversationToasts,
-            StripInjectedMemoriesInChat = source.StripInjectedMemoriesInChat,
             SpeechToTextProviderId = source.SpeechToTextProviderId,
             TextToSpeechProviderId = source.TextToSpeechProviderId,
             InputDeviceId = source.InputDeviceId,
