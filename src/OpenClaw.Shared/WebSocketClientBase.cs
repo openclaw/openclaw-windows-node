@@ -137,11 +137,20 @@ public abstract class WebSocketClientBase : IDisposable
 
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-                    if (result.EndOfMessage)
+                    if (result.EndOfMessage && sb.Length == 0)
                     {
-                        await ProcessMessageAsync(sb.ToString());
-                        sb.Clear();
+                        // Fast path: single-frame message — decode directly, skip StringBuilder round-trip
+                        await ProcessMessageAsync(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                    }
+                    else
+                    {
+                        // Multi-frame path: accumulate until EndOfMessage
+                        sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        if (result.EndOfMessage)
+                        {
+                            await ProcessMessageAsync(sb.ToString());
+                            sb.Clear();
+                        }
                     }
                 }
                 else if (result.MessageType == WebSocketMessageType.Close)

@@ -437,7 +437,8 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
         
-        _logger.Debug($"[NODE] Response payload: {payload.ToString().Substring(0, Math.Min(200, payload.ToString().Length))}...");
+        var payloadText = payload.ToString();
+        _logger.Debug($"[NODE] Response payload: {payloadText.Substring(0, Math.Min(200, payloadText.Length))}...");
         
         // Handle hello-ok (successful registration)
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
