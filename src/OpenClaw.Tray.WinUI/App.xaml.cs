@@ -1200,10 +1200,15 @@ public partial class App : Application
         // Agent requested a notification via node.invoke system.notify
         try
         {
-            new ToastContentBuilder()
+            var builder = new ToastContentBuilder()
                 .AddText(args.Title)
-                .AddText(args.Body)
-                .Show();
+                .AddText(args.Body);
+
+            // Respect the per-notification sound flag from the agent (system.notify sound=false)
+            if (!args.PlaySound)
+                builder.AddAudio(silent: true);
+
+            builder.Show();
         }
         catch (Exception ex)
         {
