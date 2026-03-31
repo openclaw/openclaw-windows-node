@@ -194,6 +194,90 @@ public class SystemRunTests
         Assert.Contains("Execution failed", res.Error);
     }
 
+    [Fact]
+    public async Task SystemRunPrepare_ParsesArgvArray()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "rp1",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":["git","status","--short"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok, res.Error);
+    }
+
+    [Fact]
+    public async Task SystemRunPrepare_ParsesStringCommand()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "rp2",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":"echo hello"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok, res.Error);
+    }
+
+    [Fact]
+    public async Task SystemRunPrepare_ReturnsError_WhenMissingCommand()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "rp3",
+            Command = "system.run.prepare",
+            Args = Parse("""{}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Missing command", res.Error);
+    }
+
+    [Fact]
+    public async Task SystemRunPrepare_ReturnsError_WhenEmptyArray()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "rp4",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":[]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Missing command", res.Error);
+    }
+
+    [Fact]
+    public async Task SystemRun_ParsesArgvArrayForRun()
+    {
+        var runner = new FakeCommandRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "ra1",
+            Command = "system.run",
+            Args = Parse("""{"command":["git","push","origin","main"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.Equal("git", runner.LastRequest!.Command);
+        Assert.NotNull(runner.LastRequest.Args);
+        Assert.Equal(3, runner.LastRequest.Args!.Length);
+        Assert.Equal("push", runner.LastRequest.Args[0]);
+    }
+
     /// <summary>
     /// Fake runner for unit testing — no actual process execution.
     /// </summary>
