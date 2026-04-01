@@ -450,51 +450,52 @@ public class WindowsNodeClient : WebSocketClientBase
                 _nodeId = nodeIdProp.GetString();
             }
             
-            // Check for device token in auth (means we're paired!)
-            if (payload.TryGetProperty("auth", out var authPayload))
+            // Check for device token in auth — if present, pairing is confirmed in this response.
+            // Use gotNewToken to guard the fallback check below and avoid a double-fire of
+            // PairingStatusChanged when the gateway includes auth.deviceToken in hello-ok.
+            bool gotNewToken = false;
+            if (payload.TryGetProperty("auth", out var authPayload) &&
+                authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
             {
-                if (authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
+                var deviceToken = deviceTokenProp.GetString();
+                if (!string.IsNullOrEmpty(deviceToken))
                 {
-                    var deviceToken = deviceTokenProp.GetString();
-                    if (!string.IsNullOrEmpty(deviceToken))
-                    {
-                        var wasWaiting = _isPendingApproval;
-                        _isPendingApproval = false;
-                        _logger.Info("Received device token - we are now paired!");
-                        _deviceIdentity.StoreDeviceToken(deviceToken);
-                        
-                        // Fire pairing event if we were waiting
-                        if (wasWaiting)
-                        {
-                            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
-                                PairingStatus.Paired, 
-                                _deviceIdentity.DeviceId,
-                                "Pairing approved!"));
-                        }
-                    }
+                    gotNewToken = true;
+                    var wasWaiting = _isPendingApproval;
+                    _isPendingApproval = false;
+                    _logger.Info("Received device token - we are now paired!");
+                    _deviceIdentity.StoreDeviceToken(deviceToken);
+                    PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                        PairingStatus.Paired,
+                        _deviceIdentity.DeviceId,
+                        wasWaiting ? "Pairing approved!" : null));
                 }
             }
             
             _logger.Info($"Node registered successfully! ID: {_nodeId ?? _deviceIdentity.DeviceId.Substring(0, 16)}");
             
-            // Pairing happens at connect time via device identity, no separate request needed
-            if (string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+            // Pairing happens at connect time via device identity, no separate request needed.
+            // Skip this block if we already fired PairingStatusChanged above via gotNewToken.
+            if (!gotNewToken)
             {
-                _isPendingApproval = true;
-                _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
-                _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
-                PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
-                    PairingStatus.Pending, 
-                    _deviceIdentity.DeviceId,
-                    $"Run: openclaw devices approve {ShortDeviceId}..."));
-            }
-            else
-            {
-                _isPendingApproval = false;
-                _logger.Info("Already paired with stored device token");
-                PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
-                    PairingStatus.Paired, 
-                    _deviceIdentity.DeviceId));
+                if (string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+                {
+                    _isPendingApproval = true;
+                    _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
+                    _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
+                    PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                        PairingStatus.Pending, 
+                        _deviceIdentity.DeviceId,
+                        $"Run: openclaw devices approve {ShortDeviceId}..."));
+                }
+                else
+                {
+                    _isPendingApproval = false;
+                    _logger.Info("Already paired with stored device token");
+                    PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                        PairingStatus.Paired, 
+                        _deviceIdentity.DeviceId));
+                }
             }
             
             RaiseStatusChanged(ConnectionStatus.Connected);
