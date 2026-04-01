@@ -300,7 +300,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                     displayName = "OpenClaw Windows Tray"
                 },
                 role = "operator",
-                scopes = new[] { "operator.admin", "operator.approvals", "operator.pairing" },
+                scopes = new[] { "operator.admin", "operator.approvals", "operator.pairing", "operator.write" },
                 caps = Array.Empty<string>(),
                 commands = Array.Empty<string>(),
                 permissions = new { },
