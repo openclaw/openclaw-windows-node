@@ -60,6 +60,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private IReadOnlyList<UserNotificationRule>? _userRules;
+    private bool _preferStructuredCategories = true;
+
+    /// <summary>
+    /// Controls whether structured notification metadata (Intent, Channel) takes priority
+    /// over keyword-based classification. Call after construction and whenever settings change.
+    /// </summary>
+    public void SetPreferStructuredCategories(bool value) => _preferStructuredCategories = value;
 
     private void ResetUnsupportedMethodFlags()
     {
@@ -2005,7 +2012,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         {
             Message = text.Length > 200 ? text[..200] + "…" : text
         };
-        var (title, type) = _categorizer.Classify(notification, _userRules);
+        var (title, type) = _categorizer.Classify(notification, _userRules, _preferStructuredCategories);
         notification.Title = title;
         notification.Type = type;
         NotificationReceived?.Invoke(this, notification);

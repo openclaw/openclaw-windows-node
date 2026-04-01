@@ -51,16 +51,22 @@ public class NotificationCategorizer
 
     /// <summary>
     /// Classify a notification using the layered pipeline.
+    /// When <paramref name="preferStructuredCategories"/> is true (default),
+    /// structured metadata (Intent, Channel) is checked first.
+    /// When false, classification starts from user-defined rules then keyword fallback.
     /// </summary>
-    public (string title, string type) Classify(OpenClawNotification notification, IReadOnlyList<UserNotificationRule>? userRules = null)
+    public (string title, string type) Classify(OpenClawNotification notification, IReadOnlyList<UserNotificationRule>? userRules = null, bool preferStructuredCategories = true)
     {
-        // 1. Structured metadata: Intent
-        if (!string.IsNullOrEmpty(notification.Intent) && IntentMap.TryGetValue(notification.Intent, out var intentResult))
-            return intentResult;
+        if (preferStructuredCategories)
+        {
+            // 1. Structured metadata: Intent
+            if (!string.IsNullOrEmpty(notification.Intent) && IntentMap.TryGetValue(notification.Intent, out var intentResult))
+                return intentResult;
 
-        // 2. Structured metadata: Channel
-        if (!string.IsNullOrEmpty(notification.Channel) && ChannelMap.TryGetValue(notification.Channel, out var channelResult))
-            return channelResult;
+            // 2. Structured metadata: Channel
+            if (!string.IsNullOrEmpty(notification.Channel) && ChannelMap.TryGetValue(notification.Channel, out var channelResult))
+                return channelResult;
+        }
 
         // 3. User-defined rules (pattern match on title + message)
         if (userRules is { Count: > 0 })
