@@ -285,7 +285,8 @@ public class ExecApprovalPolicy
     
     /// <summary>
     /// Glob-style pattern matching: * matches any chars, ? matches single char.
-    /// Case-insensitive.
+    /// Case-insensitive. Returns false on regex timeout (guards against ReDoS in
+    /// user-supplied policy files) and denies the command as the safe default.
     /// </summary>
     internal bool MatchesPattern(string command, string pattern)
     {
@@ -298,11 +299,19 @@ public class ExecApprovalPolicy
                 .Replace("\\*", ".*")
                 .Replace("\\?", ".") + "$";
             
-            regex = new Regex(regexPattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            regex = new Regex(regexPattern, RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromMilliseconds(100));
             _regexCache[pattern] = regex;
         }
-        
-        return regex.IsMatch(command);
+
+        try
+        {
+            return regex.IsMatch(command);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            _logger.Warn($"[EXEC-POLICY] Pattern match timed out for '{pattern}'; denying as safe default");
+            return false;
+        }
     }
     
     private void ClearRegexCache() => _regexCache.Clear();
