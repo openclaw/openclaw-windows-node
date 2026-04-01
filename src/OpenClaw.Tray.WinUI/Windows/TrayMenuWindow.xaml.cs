@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using System;
 using System.Runtime.InteropServices;
@@ -37,6 +38,9 @@ public sealed partial class TrayMenuWindow : WindowEx
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    [DllImport("Shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hmonitor, MonitorDpiType dpiType, out uint dpiX, out uint dpiY);
+
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
@@ -65,6 +69,11 @@ public sealed partial class TrayMenuWindow : WindowEx
         public RECT rcMonitor;
         public RECT rcWork;
         public uint dwFlags;
+    }
+
+    private enum MonitorDpiType
+    {
+        MDT_EFFECTIVE_DPI = 0
     }
     #endregion
 
@@ -147,8 +156,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             if (menuWidthPx <= 0 || menuHeightPx <= 0)
             {
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-                uint dpi = GetDpiForWindow(hwnd);
-                if (dpi == 0) dpi = 96;
+                uint dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
                 double scale = dpi / 96.0;
                 menuWidthPx = (int)(280 * scale);
                 menuHeightPx = (int)(_menuHeight * scale);
@@ -284,8 +292,67 @@ public sealed partial class TrayMenuWindow : WindowEx
         // Separators: ~13px each  
         // Headers: ~30px each
         // Plus padding: ~16px
-        _menuHeight = (_itemCount * 36) + (_separatorCount * 13) + (_headerCount * 30) + 16;
-        _menuHeight = Math.Max(_menuHeight, 100); // minimum
+        var contentHeight = (_itemCount * 36) + (_separatorCount * 13) + (_headerCount * 30) + 16;
+        _menuHeight = Math.Max(contentHeight, 100); // minimum
+
+        if (TryGetCurrentMonitorMetrics(out var workAreaHeightPx, out var dpi))
+        {
+            // Constrain the popup to the visible work area so the ScrollViewer gets
+            // a viewport and the menu stays reachable near the tray/taskbar.
+            var workAreaHeight = MenuSizingHelper.ConvertPixelsToViewUnits(workAreaHeightPx, dpi);
+            _menuHeight = MenuSizingHelper.CalculateWindowHeight(contentHeight, workAreaHeight);
+        }
+
         this.SetWindowSize(280, _menuHeight);
+    }
+
+    private bool TryGetCurrentMonitorMetrics(out int workAreaHeight, out uint dpi)
+    {
+        workAreaHeight = 0;
+        dpi = 96;
+
+        if (!GetCursorPos(out POINT pt))
+            return false;
+
+        var hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        if (hMonitor == IntPtr.Zero)
+            return false;
+
+        var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(hMonitor, ref monitorInfo))
+            return false;
+
+        workAreaHeight = monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
+        return workAreaHeight > 0;
+    }
+
+    private static uint GetEffectiveMonitorDpi(IntPtr hMonitor, IntPtr hwnd)
+    {
+        if (hMonitor != IntPtr.Zero)
+        {
+            try
+            {
+                var hr = GetDpiForMonitor(hMonitor, MonitorDpiType.MDT_EFFECTIVE_DPI, out var dpiX, out var dpiY);
+                if (hr == 0)
+                {
+                    if (dpiY != 0)
+                        return dpiY;
+
+                    if (dpiX != 0)
+                        return dpiX;
+                }
+            }
+            catch (DllNotFoundException)
+            {
+            }
+            catch (EntryPointNotFoundException)
+            {
+            }
+        }
+
+        var dpi = hwnd != IntPtr.Zero ? GetDpiForWindow(hwnd) : 0;
+        return dpi == 0 ? 96u : dpi;
     }
 }

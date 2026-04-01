@@ -39,6 +39,14 @@ public sealed partial class CanvasWindow : WindowEx
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<bool>? _navigationTcs;
     
+    // HTML sanitization — block embedded iframes/objects/embeds/applets
+    private static readonly Regex s_sanitizeBlock = new(
+        @"<\s*(iframe|object|embed|applet)\b[^>]*>.*?<\s*/\s*\1\s*>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex s_sanitizeSelfClose = new(
+        @"<\s*(iframe|object|embed|applet)\b[^>]*/?\s*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // URL validation - block dangerous schemes and private networks (IPv4 + IPv6)
     private static readonly Regex DangerousUrlPattern = new(
         @"^(file|javascript|data|vbscript):|" +                           // Dangerous schemes
@@ -264,13 +272,9 @@ public sealed partial class CanvasWindow : WindowEx
     private static string SanitizeHtml(string html)
     {
         // Remove <iframe>, <object>, <embed>, <applet> tags and their content
-        html = System.Text.RegularExpressions.Regex.Replace(
-            html, @"<\s*(iframe|object|embed|applet)\b[^>]*>.*?<\s*/\s*\1\s*>",
-            "<!-- blocked -->", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+        html = s_sanitizeBlock.Replace(html, "<!-- blocked -->");
         // Remove self-closing variants
-        html = System.Text.RegularExpressions.Regex.Replace(
-            html, @"<\s*(iframe|object|embed|applet)\b[^>]*/?\s*>",
-            "<!-- blocked -->", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        html = s_sanitizeSelfClose.Replace(html, "<!-- blocked -->");
         return html;
     }
     

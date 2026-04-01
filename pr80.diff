@@ -1,0 +1,607 @@
+diff --git a/src/OpenClaw.Shared/WebSocketClientBase.cs b/src/OpenClaw.Shared/WebSocketClientBase.cs
+index 72c4d10..ec850f3 100644
+--- a/src/OpenClaw.Shared/WebSocketClientBase.cs
++++ b/src/OpenClaw.Shared/WebSocketClientBase.cs
+@@ -186,30 +186,45 @@ private async Task ListenForMessagesAsync()
+ 
+     protected async Task ReconnectWithBackoffAsync()
+     {
+-        var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+-        _reconnectAttempts++;
+-        _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
+-        RaiseStatusChanged(ConnectionStatus.Connecting);
++        var emittedConnecting = false;
+ 
+-        try
++        while (!_disposed)
+         {
+-            await Task.Delay(delay, _cts.Token);
++            var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
++            _reconnectAttempts++;
++            _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
++            if (!emittedConnecting)
++            {
++                RaiseStatusChanged(ConnectionStatus.Connecting);
++                emittedConnecting = true;
++            }
+ 
+-            // Check cancellation after delay
+-            if (_cts.Token.IsCancellationRequested) return;
++            try
++            {
++                await Task.Delay(delay, _cts.Token);
+ 
+-            // Safely dispose old socket
+-            var oldSocket = _webSocket;
+-            _webSocket = null;
+-            try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
++                if (_cts.Token.IsCancellationRequested) return;
+ 
+-            await ConnectAsync();
+-        }
+-        catch (OperationCanceledException) { }
+-        catch (Exception ex)
+-        {
+-            _logger.Error($"{ClientRole} reconnect failed", ex);
+-            RaiseStatusChanged(ConnectionStatus.Error);
++                // Safely dispose old socket before retrying the connection.
++                var oldSocket = _webSocket;
++                _webSocket = null;
++                try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
++
++                await ConnectAsync();
++                if (IsConnected)
++                {
++                    return;
++                }
++            }
++            catch (OperationCanceledException)
++            {
++                return;
++            }
++            catch (Exception ex)
++            {
++                _logger.Error($"{ClientRole} reconnect failed", ex);
++                RaiseStatusChanged(ConnectionStatus.Error);
++            }
+         }
+     }
+ 
+diff --git a/src/OpenClaw.Shared/WindowsNodeClient.cs b/src/OpenClaw.Shared/WindowsNodeClient.cs
+index 98df1e8..144e88d 100644
+--- a/src/OpenClaw.Shared/WindowsNodeClient.cs
++++ b/src/OpenClaw.Shared/WindowsNodeClient.cs
+@@ -25,6 +25,8 @@ public class WindowsNodeClient : WebSocketClientBase
+     private string? _nodeId;
+     private string? _pendingNonce;  // Store nonce from challenge for signing
+     private bool _isPendingApproval;  // True when connected but awaiting pairing approval
++    private bool _isPaired;
++    private bool _pairingApprovedAwaitingReconnect;  // True after approval event until the next successful reconnect
+     
+     // Cached serialization/validation ΓÇö reused on every message instead of allocating per-call
+     private static readonly JsonSerializerOptions s_ignoreNullOptions = new()
+@@ -46,8 +48,8 @@ public class WindowsNodeClient : WebSocketClientBase
+     /// <summary>True if connected but waiting for pairing approval on gateway</summary>
+     public bool IsPendingApproval => _isPendingApproval;
+     
+-    /// <summary>True if device is paired (has a device token)</summary>
+-    public bool IsPaired => !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
++    /// <summary>True if device is paired or approved for use by the gateway</summary>
++    public bool IsPaired => _isPaired || !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
+     
+     /// <summary>Device ID for display/approval (first 16 chars of full ID)</summary>
+     public string ShortDeviceId => _deviceIdentity.DeviceId.Length > 16 
+@@ -182,9 +184,93 @@ private async Task HandleEventAsync(JsonElement root)
+             case "connect.challenge":
+                 await HandleConnectChallengeAsync(root);
+                 break;
++            case "node.pair.requested":
++            case "device.pair.requested":
++                HandlePairingRequestedEvent(root, eventType);
++                break;
+             case "node.invoke.request":
+                 await HandleNodeInvokeEventAsync(root);
+                 break;
++            case "node.pair.resolved":
++            case "device.pair.resolved":
++                await HandlePairingResolvedEventAsync(root, eventType);
++                break;
++        }
++    }
++
++    private void HandlePairingRequestedEvent(JsonElement root, string? eventType)
++    {
++        if (!root.TryGetProperty("payload", out var payload))
++        {
++            _logger.Warn($"[NODE] {eventType} has no payload");
++            return;
++        }
++
++        if (!PayloadTargetsCurrentDevice(payload))
++        {
++            return;
++        }
++
++        if (_isPendingApproval)
++        {
++            return;
++        }
++
++        _isPendingApproval = true;
++        _isPaired = false;
++        _pairingApprovedAwaitingReconnect = false;
++        _logger.Info($"[NODE] Pairing request received for this device via {eventType}");
++        _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
++        PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
++            PairingStatus.Pending,
++            _deviceIdentity.DeviceId,
++            $"Run: openclaw devices approve {ShortDeviceId}..."));
++    }
++
++    private async Task HandlePairingResolvedEventAsync(JsonElement root, string? eventType)
++    {
++        if (!root.TryGetProperty("payload", out var payload))
++        {
++            _logger.Warn($"[NODE] {eventType} has no payload");
++            return;
++        }
++
++        if (!PayloadTargetsCurrentDevice(payload))
++        {
++            return;
++        }
++
++        var decision = payload.TryGetProperty("decision", out var decisionProp)
++            ? decisionProp.GetString()
++            : null;
++
++        _logger.Info($"[NODE] Pairing resolution received for this device: decision={decision ?? "unknown"}");
++
++        if (string.Equals(decision, "approved", StringComparison.OrdinalIgnoreCase))
++        {
++            _isPendingApproval = false;
++            _isPaired = true;
++            _pairingApprovedAwaitingReconnect = true;
++            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
++                PairingStatus.Paired,
++                _deviceIdentity.DeviceId,
++                "Pairing approved; reconnecting to refresh node state."));
++
++            // Force a fresh handshake so the approved connection can settle into its
++            // steady-state paired behavior on the next reconnect.
++            _logger.Info("[NODE] Closing socket after pairing approval to refresh node connection...");
++            await CloseWebSocketAsync();
++            return;
++        }
++
++        if (string.Equals(decision, "rejected", StringComparison.OrdinalIgnoreCase))
++        {
++            _isPendingApproval = false;
++            _isPaired = false;
++            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
++                PairingStatus.Rejected,
++                _deviceIdentity.DeviceId,
++                "Pairing rejected"));
+         }
+     }
+     
+@@ -430,6 +516,12 @@ private void HandleResponse(JsonElement root)
+     {
+         // DEBUG: Log entire response structure
+         _logger.Debug($"[NODE] HandleResponse - ok: {(root.TryGetProperty("ok", out var okVal) ? okVal.ToString() : "missing")}");
++        if (root.TryGetProperty("ok", out var okProp) &&
++            okProp.ValueKind == JsonValueKind.False)
++        {
++            HandleRequestError(root);
++            return;
++        }
+         
+         if (!root.TryGetProperty("payload", out var payload))
+         {
+@@ -442,6 +534,7 @@ private void HandleResponse(JsonElement root)
+         // Handle hello-ok (successful registration)
+         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
+         {
++            var wasPairedBeforeHello = IsPaired;
+             _isConnected = true;
+             
+             // Extract node ID if returned
+@@ -450,77 +543,155 @@ private void HandleResponse(JsonElement root)
+                 _nodeId = nodeIdProp.GetString();
+             }
+             
++            bool receivedDeviceToken = false;
++            bool hasAuthPayload = payload.TryGetProperty("auth", out var authPayload);
++
+             // Check for device token in auth (means we're paired!)
+-            if (payload.TryGetProperty("auth", out var authPayload))
++            if (hasAuthPayload && authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
+             {
+-                if (authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
++                var deviceToken = deviceTokenProp.GetString();
++                if (!string.IsNullOrEmpty(deviceToken))
+                 {
+-                    var deviceToken = deviceTokenProp.GetString();
+-                    if (!string.IsNullOrEmpty(deviceToken))
+-                    {
+-                        var wasWaiting = _isPendingApproval;
+-                        _isPendingApproval = false;
+-                        _logger.Info("Received device token - we are now paired!");
+-                        _deviceIdentity.StoreDeviceToken(deviceToken);
+-                        
+-                        // Fire pairing event if we were waiting
+-                        if (wasWaiting)
+-                        {
+-                            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+-                                PairingStatus.Paired, 
+-                                _deviceIdentity.DeviceId,
+-                                "Pairing approved!"));
+-                        }
+-                    }
++                    receivedDeviceToken = true;
++                    _isPendingApproval = false;
++                    _isPaired = true;
++                    _pairingApprovedAwaitingReconnect = false;
++                    _logger.Info("Received device token in hello-ok - we are now paired!");
++                    _deviceIdentity.StoreDeviceToken(deviceToken);
+                 }
+             }
+-            
++            else if (_pairingApprovedAwaitingReconnect)
++            {
++                _logger.Info("hello-ok arrived after pairing approval without auth.deviceToken; keeping local state paired.");
++                _pairingApprovedAwaitingReconnect = false;
++            }
++
+             _logger.Info($"Node registered successfully! ID: {_nodeId ?? _deviceIdentity.DeviceId.Substring(0, 16)}");
++            _logger.Info($"[NODE] hello-ok auth present={hasAuthPayload}, receivedDeviceToken={receivedDeviceToken}, storedDeviceToken={!string.IsNullOrEmpty(_deviceIdentity.DeviceToken)}, pendingApproval={_isPendingApproval}, awaitingReconnect={_pairingApprovedAwaitingReconnect}");
+             
+-            // Pairing happens at connect time via device identity, no separate request needed
+-            if (string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
++            // Current gateways only send hello-ok for approved/accepted nodes, even when
++            // auth.deviceToken is omitted, so treat handshake acceptance as paired state.
++            _isPendingApproval = false;
++            _isPaired = true;
++            _logger.Info(string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
++                ? "Gateway accepted the node without returning a device token; treating this device as paired"
++                : "Already paired with stored device token");
++            if (!wasPairedBeforeHello)
+             {
+-                _isPendingApproval = true;
+-                _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
+-                _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
++                var pairingMessage = receivedDeviceToken
++                    ? "Pairing approved!"
++                    : "Node registration accepted";
++
+                 PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+-                    PairingStatus.Pending, 
++                    PairingStatus.Paired,
+                     _deviceIdentity.DeviceId,
+-                    $"Run: openclaw devices approve {ShortDeviceId}..."));
+-            }
+-            else
+-            {
+-                _isPendingApproval = false;
+-                _logger.Info("Already paired with stored device token");
+-                PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+-                    PairingStatus.Paired, 
+-                    _deviceIdentity.DeviceId));
++                    pairingMessage));
+             }
+             
+             RaiseStatusChanged(ConnectionStatus.Connected);
++            return;
+         }
+         
+-        // Handle errors
+-        if (root.TryGetProperty("ok", out var okProp) && !okProp.GetBoolean())
++        _logger.Debug("[NODE] Unhandled response payload");
++    }
++
++    private void HandleRequestError(JsonElement root)
++    {
++        var error = "Unknown error";
++        var errorCode = "none";
++        string? pairingReason = null;
++        string? pairingRequestId = null;
++        if (root.TryGetProperty("error", out var errorProp))
+         {
+-            var error = "Unknown error";
+-            var errorCode = "none";
+-            if (root.TryGetProperty("error", out var errorProp))
++            if (errorProp.TryGetProperty("message", out var msgProp))
++            {
++                error = msgProp.GetString() ?? error;
++            }
++            if (errorProp.TryGetProperty("code", out var codeProp))
+             {
+-                if (errorProp.TryGetProperty("message", out var msgProp))
++                errorCode = codeProp.ToString();
++            }
++            if (errorProp.TryGetProperty("details", out var detailsProp))
++            {
++                if (detailsProp.TryGetProperty("reason", out var reasonProp))
+                 {
+-                    error = msgProp.GetString() ?? error;
++                    pairingReason = reasonProp.GetString();
+                 }
+-                if (errorProp.TryGetProperty("code", out var codeProp))
++                if (detailsProp.TryGetProperty("requestId", out var requestIdProp))
+                 {
+-                    errorCode = codeProp.ToString();
++                    pairingRequestId = requestIdProp.GetString();
+                 }
+             }
+-            _logger.Error($"Node registration failed: {error} (code: {errorCode})");
+-            RaiseStatusChanged(ConnectionStatus.Error);
+         }
++
++        if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase))
++        {
++            if (_isPendingApproval)
++            {
++                return;
++            }
++
++            _isPendingApproval = true;
++            _isPaired = false;
++            _pairingApprovedAwaitingReconnect = false;
++
++            var detail = $"Device {ShortDeviceId} requires approval";
++            if (!string.IsNullOrWhiteSpace(pairingRequestId))
++            {
++                detail += $" (request {pairingRequestId})";
++            }
++
++            _logger.Info($"[NODE] Pairing required for this device; waiting for gateway approval. reason={pairingReason ?? "unknown"}, requestId={pairingRequestId ?? "none"}");
++            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
++                PairingStatus.Pending,
++                _deviceIdentity.DeviceId,
++                detail));
++            return;
++        }
++
++        _logger.Error($"Node registration failed: {error} (code: {errorCode})");
++        RaiseStatusChanged(ConnectionStatus.Error);
+     }
+-    
++
++    private bool PayloadTargetsCurrentDevice(JsonElement payload)
++    {
++        if (TryGetString(payload, "deviceId", out var deviceId) &&
++            string.Equals(deviceId, _deviceIdentity.DeviceId, StringComparison.OrdinalIgnoreCase))
++        {
++            return true;
++        }
++
++        if (TryGetString(payload, "nodeId", out var nodeId))
++        {
++            if (!string.IsNullOrEmpty(_nodeId))
++            {
++                return string.Equals(nodeId, _nodeId, StringComparison.OrdinalIgnoreCase);
++            }
++
++            return string.Equals(nodeId, _deviceIdentity.DeviceId, StringComparison.OrdinalIgnoreCase);
++        }
++
++        if (TryGetString(payload, "instanceId", out var instanceId) &&
++            string.Equals(instanceId, _deviceIdentity.DeviceId, StringComparison.OrdinalIgnoreCase))
++        {
++            return true;
++        }
++
++        return false;
++    }
++
++    private static bool TryGetString(JsonElement element, string propertyName, out string? value)
++    {
++        value = null;
++        if (!element.TryGetProperty(propertyName, out var prop))
++        {
++            return false;
++        }
++
++        value = prop.GetString();
++        return !string.IsNullOrEmpty(value);
++    }
++
+     private async Task HandleRequestAsync(JsonElement root)
+     {
+         if (!root.TryGetProperty("method", out var methodProp)) return;
+diff --git a/src/OpenClaw.Tray.WinUI/App.xaml.cs b/src/OpenClaw.Tray.WinUI/App.xaml.cs
+index de0780f..76ea7d7 100644
+--- a/src/OpenClaw.Tray.WinUI/App.xaml.cs
++++ b/src/OpenClaw.Tray.WinUI/App.xaml.cs
+@@ -54,6 +54,7 @@ public partial class App : Application
+     private GatewayCostUsageInfo? _lastUsageCost;
+     private DateTime _lastCheckTime = DateTime.Now;
+     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
++    private OpenClaw.Shared.PairingStatus? _lastNodePairingStatus;
+ 
+     // Session-aware activity tracking
+     private readonly Dictionary<string, AgentActivity> _sessionActivities = new();
+@@ -1151,43 +1152,43 @@ private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
+             _currentStatus = status;
+             UpdateTrayIcon();
+         }
+-        
+-        // Don't show "connected" toast if waiting for pairing - we'll show pairing status instead
+-        if (status == ConnectionStatus.Connected && _nodeService?.IsPaired == true)
+-        {
+-            try
+-            {
+-                new ToastContentBuilder()
+-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActive"))
+-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail"))
+-                    .Show();
+-            }
+-            catch { /* ignore */ }
+-        }
+     }
+     
+     private void OnPairingStatusChanged(object? sender, OpenClaw.Shared.PairingStatusEventArgs args)
+     {
+         Logger.Info($"Pairing status: {args.Status}");
++
++        var previousStatus = _lastNodePairingStatus;
++        _lastNodePairingStatus = args.Status;
+         
+         try
+         {
+             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
+             {
+-                AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
+-                // Show toast with approval instructions
+-                new ToastContentBuilder()
+-                    .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
+-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
+-                    .Show();
++                if (previousStatus != OpenClaw.Shared.PairingStatus.Pending)
++                {
++                    AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
++                    new ToastContentBuilder()
++                        .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
++                        .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
++                        .Show();
++                }
+             }
+             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
+             {
+-                AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
+-                new ToastContentBuilder()
+-                    .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
+-                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
+-                    .Show();
++                if (previousStatus != OpenClaw.Shared.PairingStatus.Paired)
++                {
++                    AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
++                    new ToastContentBuilder()
++                        .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
++                        .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
++                        .Show();
++                }
++            }
++            else if (args.Status == OpenClaw.Shared.PairingStatus.Unknown)
++            {
++                AddRecentActivity("Node pairing requires repair", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
++                Logger.Warn($"Node pairing state is unknown for {args.DeviceId.Substring(0, 16)}. Repair the device token from the gateway or CLI, then reconnect.");
+             }
+         }
+         catch { /* ignore */ }
+@@ -1608,6 +1609,7 @@ private void OnSettingsSaved(object? sender, EventArgs e)
+         _gatewayClient?.Dispose();
+         var oldNodeService = _nodeService;
+         _nodeService = null;
++        _lastNodePairingStatus = null;
+         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
+         
+         if (_settings?.EnableNodeMode == true)
+diff --git a/tests/OpenClaw.Shared.Tests/WindowsNodeClientTests.cs b/tests/OpenClaw.Shared.Tests/WindowsNodeClientTests.cs
+index 8e9f269..4fdde3a 100644
+--- a/tests/OpenClaw.Shared.Tests/WindowsNodeClientTests.cs
++++ b/tests/OpenClaw.Shared.Tests/WindowsNodeClientTests.cs
+@@ -1,5 +1,7 @@
+ using System;
+ using System.IO;
++using System.Reflection;
++using System.Text.Json;
+ using OpenClaw.Shared;
+ using Xunit;
+ 
+@@ -34,4 +36,95 @@ public void Constructor_NormalizesGatewayUrl(string inputUrl, string expectedUrl
+             }
+         }
+     }
++
++    [Fact]
++    public void HandleResponse_HelloOkWithoutDeviceTokenAfterApproval_ClearsAwaitingReconnect()
++    {
++        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
++        Directory.CreateDirectory(dataPath);
++
++        try
++        {
++            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
++            SetPrivateField(client, "_isPaired", true);
++            SetPrivateField(client, "_pairingApprovedAwaitingReconnect", true);
++
++            InvokeHandleResponse(client, """
++                {
++                  "type": "res",
++                  "ok": true,
++                  "payload": {
++                    "type": "hello-ok",
++                    "nodeId": "node-123"
++                  }
++                }
++                """);
++
++            Assert.False((bool)GetPrivateField(client, "_pairingApprovedAwaitingReconnect")!);
++        }
++        finally
++        {
++            if (Directory.Exists(dataPath))
++            {
++                Directory.Delete(dataPath, true);
++            }
++        }
++    }
++
++    [Fact]
++    public void HandleResponse_HelloOkWithoutDeviceTokenWhenUnpaired_EmitsNeutralPairedMessage()
++    {
++        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
++        Directory.CreateDirectory(dataPath);
++
++        try
++        {
++            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
++            PairingStatusEventArgs? pairingEvent = null;
++            client.PairingStatusChanged += (_, args) => pairingEvent = args;
++
++            InvokeHandleResponse(client, """
++                {
++                  "type": "res",
++                  "ok": true,
++                  "payload": {
++                    "type": "hello-ok",
++                    "nodeId": "node-123"
++                  }
++                }
++                """);
++
++            Assert.NotNull(pairingEvent);
++            Assert.Equal(PairingStatus.Paired, pairingEvent!.Status);
++            Assert.Equal("Node registration accepted", pairingEvent.Message);
++        }
++        finally
++        {
++            if (Directory.Exists(dataPath))
++            {
++                Directory.Delete(dataPath, true);
++            }
++        }
++    }
++
++    private static void InvokeHandleResponse(WindowsNodeClient client, string json)
++    {
++        using var doc = JsonDocument.Parse(json);
++        var method = typeof(WindowsNodeClient).GetMethod(
++            "HandleResponse",
++            BindingFlags.NonPublic | BindingFlags.Instance);
++        method!.Invoke(client, new object[] { doc.RootElement.Clone() });
++    }
++
++    private static void SetPrivateField(object instance, string fieldName, object value)
++    {
++        var field = instance.GetType().GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
++        field!.SetValue(instance, value);
++    }
++
++    private static object? GetPrivateField(object instance, string fieldName)
++    {
++        var field = instance.GetType().GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
++        return field!.GetValue(instance);
++    }
+ }

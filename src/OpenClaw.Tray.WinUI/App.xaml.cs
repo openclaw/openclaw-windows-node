@@ -8,6 +8,7 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -56,6 +57,21 @@ public partial class App : Application
     private GatewayCostUsageInfo? _lastUsageCost;
     private DateTime _lastCheckTime = DateTime.Now;
     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
+
+    // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
+    private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
+        new Dictionary<string, Func<SettingsManager, bool>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["health"]    = s => s.NotifyHealth,
+            ["urgent"]    = s => s.NotifyUrgent,
+            ["reminder"]  = s => s.NotifyReminder,
+            ["email"]     = s => s.NotifyEmail,
+            ["calendar"]  = s => s.NotifyCalendar,
+            ["build"]     = s => s.NotifyBuild,
+            ["stock"]     = s => s.NotifyStock,
+            ["info"]      = s => s.NotifyInfo,
+            ["error"]     = s => s.NotifyUrgent,  // errors follow urgent setting
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     // Session-aware activity tracking
     private readonly Dictionary<string, AgentActivity> _sessionActivities = new();
@@ -572,10 +588,9 @@ public partial class App : Application
             global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
             
             // Show toast confirming copy
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_DeviceIdCopied"))
-                .AddText(string.Format(LocalizationHelper.GetString("Toast_DeviceIdCopiedDetail"), _nodeService.ShortDeviceId))
-                .Show();
+                .AddText(string.Format(LocalizationHelper.GetString("Toast_DeviceIdCopiedDetail"), _nodeService.ShortDeviceId)));
         }
         catch (Exception ex)
         {
@@ -601,10 +616,9 @@ public partial class App : Application
             dataPackage.SetText(summary);
             global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
 
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_NodeSummaryCopied"))
-                .AddText(string.Format(LocalizationHelper.GetString("Toast_NodeSummaryCopiedDetail"), _lastNodes.Length))
-                .Show();
+                .AddText(string.Format(LocalizationHelper.GetString("Toast_NodeSummaryCopiedDetail"), _lastNodes.Length)));
         }
         catch (Exception ex)
         {
@@ -658,10 +672,9 @@ public partial class App : Application
 
             if (!sent)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
-                    .AddText(LocalizationHelper.GetString("Toast_SessionActionFailedDetail"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_SessionActionFailedDetail")));
                 return;
             }
 
@@ -675,10 +688,9 @@ public partial class App : Application
             Logger.Warn($"Session action error ({action}): {ex.Message}");
             try
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
-                    .AddText(ex.Message)
-                    .Show();
+                    .AddText(ex.Message));
             }
             catch { }
         }
@@ -1090,6 +1102,7 @@ public partial class App : Application
         UnsubscribeGatewayEvents();
 
         _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
+        _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
         _gatewayClient.ActivityChanged += OnActivityChanged;
         _gatewayClient.NotificationReceived += OnNotificationReceived;
@@ -1163,10 +1176,9 @@ public partial class App : Application
         {
             try
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_NodeModeActive"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail")));
             }
             catch { /* ignore */ }
         }
@@ -1182,18 +1194,16 @@ public partial class App : Application
             {
                 AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                 // Show toast with approval instructions
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
-                    .Show();
+                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16))));
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
                 AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
             }
         }
         catch { /* ignore */ }
@@ -1206,10 +1216,9 @@ public partial class App : Application
         // Agent requested a notification via node.invoke system.notify
         try
         {
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(args.Title)
-                .AddText(args.Body)
-                .Show();
+                .AddText(args.Body));
         }
         catch (Exception ex)
         {
@@ -1382,10 +1391,9 @@ public partial class App : Application
                     dashboardPath: !string.IsNullOrWhiteSpace(result.Key) ? $"sessions/{result.Key}" : "sessions",
                     sessionKey: result.Key);
 
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(title)
-                    .AddText(message)
-                    .Show();
+                    .AddText(message));
             }
             catch (Exception ex)
             {
@@ -1440,7 +1448,7 @@ public partial class App : Application
                            .AddArgument("action", "open_chat"));
             }
 
-            builder.Show();
+            ShowToast(builder);
         }
         catch (Exception ex)
         {
@@ -1465,19 +1473,9 @@ public partial class App : Application
         if (notification.IsChat && !_settings.NotifyChatResponses)
             return false;
 
-        return notification.Type?.ToLowerInvariant() switch
-        {
-            "health" => _settings.NotifyHealth,
-            "urgent" => _settings.NotifyUrgent,
-            "reminder" => _settings.NotifyReminder,
-            "email" => _settings.NotifyEmail,
-            "calendar" => _settings.NotifyCalendar,
-            "build" => _settings.NotifyBuild,
-            "stock" => _settings.NotifyStock,
-            "info" => _settings.NotifyInfo,
-            "error" => _settings.NotifyUrgent, // errors follow urgent setting
-            _ => true
-        };
+        var type = notification.Type;
+        if (type == null) return true;
+        return s_notifTypeMap.TryGetValue(type, out var selector) ? selector(_settings) : true;
     }
 
     #endregion
@@ -1504,10 +1502,9 @@ public partial class App : Application
         {
             if (userInitiated)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_HealthCheck"))
-                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckNotConnected"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckNotConnected")));
             }
             return;
         }
@@ -1518,10 +1515,9 @@ public partial class App : Application
             await _gatewayClient.CheckHealthAsync();
             if (userInitiated)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_HealthCheck"))
-                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckSent"))
-                    .Show();
+                    .AddText(LocalizationHelper.GetString("Toast_HealthCheckSent")));
             }
         }
         catch (Exception ex)
@@ -1529,10 +1525,9 @@ public partial class App : Application
             Logger.Warn($"Health check failed: {ex.Message}");
             if (userInitiated)
             {
-                new ToastContentBuilder()
+                ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_HealthCheckFailed"))
-                    .AddText(ex.Message)
-                    .Show();
+                    .AddText(ex.Message));
             }
         }
     }
@@ -1611,7 +1606,9 @@ public partial class App : Application
     {
         // Reconnect with new settings — mirror the startup if/else pattern
         // to avoid dual connections that cause gateway conflicts.
+        UnsubscribeGatewayEvents();
         _gatewayClient?.Dispose();
+        _gatewayClient = null;
         var oldNodeService = _nodeService;
         _nodeService = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
@@ -1619,6 +1616,10 @@ public partial class App : Application
         {
             _sshTunnelService?.Stop();
         }
+
+        // Reset status so the tray doesn't show a stale "Connected" from the previous mode
+        _currentStatus = ConnectionStatus.Disconnected;
+        UpdateTrayIcon();
         
         if (_settings?.EnableNodeMode == true)
         {
@@ -1762,13 +1763,12 @@ public partial class App : Application
 
         try
         {
-            new ToastContentBuilder()
+            ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_ActivityStreamTip"))
                 .AddText(LocalizationHelper.GetString("Toast_ActivityStreamTipDetail"))
                 .AddButton(new ToastButton()
                     .SetContent(LocalizationHelper.GetString("Toast_ActivityStreamTipButton"))
-                    .AddArgument("action", "open_activity"))
-                .Show();
+                    .AddArgument("action", "open_activity")));
         }
         catch (Exception ex)
         {
@@ -1777,6 +1777,20 @@ public partial class App : Application
     }
 
     #endregion
+
+    private void ShowToast(ToastContentBuilder builder)
+    {
+        var sound = _settings?.NotificationSound;
+        if (string.Equals(sound, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AddAudio(new ToastAudio { Silent = true });
+        }
+        else if (string.Equals(sound, "Subtle", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AddAudio(new Uri("ms-winsoundevent:Notification.IM"), silent: false);
+        }
+        builder.Show();
+    }
 
     #region Actions
 

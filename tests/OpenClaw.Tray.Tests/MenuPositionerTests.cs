@@ -83,6 +83,45 @@ public class MenuPositionerTests
     }
 
     [Fact]
+    public void OversizedMenuHeight_IsClampedToWorkAreaHeight()
+    {
+        const int oversizedMenuHeight = 1200;
+        var visibleHeight = MenuSizingHelper.CalculateWindowHeight(
+            oversizedMenuHeight,
+            WorkBottom - WorkTop);
+
+        Assert.Equal(WorkBottom - WorkTop, visibleHeight);
+    }
+
+    [Fact]
+    public void PixelHeight_IsConvertedToViewUnits_UsingDpi()
+    {
+        var viewHeight = MenuSizingHelper.ConvertPixelsToViewUnits(1200, 192);
+        Assert.Equal(600, viewHeight);
+    }
+
+    [Fact]
+    public void OversizedMenuNearTray_WithClampedHeight_RemainsFullyVisibleWithinWorkArea()
+    {
+        // Regression test for the tray popup overflow bug:
+        // the popup height must be constrained before positioning so the
+        // ScrollViewer can handle overflow within the visible work area.
+        const int oversizedMenuHeight = 1200;
+        var visibleHeight = MenuSizingHelper.CalculateWindowHeight(
+            oversizedMenuHeight,
+            WorkBottom - WorkTop);
+
+        var (_, y) = MenuPositioner.CalculatePosition(
+            1800, 1060, MenuWidth, visibleHeight,
+            WorkLeft, WorkTop, WorkRight, WorkBottom);
+
+        Assert.True(y >= WorkTop, $"Menu Y {y} should not be above the work area top {WorkTop}");
+        Assert.True(
+            y + visibleHeight <= WorkBottom,
+            $"Menu bottom edge {y + visibleHeight} should not exceed work area bottom {WorkBottom}");
+    }
+
+    [Fact]
     public void TaskbarAtRight_Scenario()
     {
         // Taskbar on right side: work area is narrower

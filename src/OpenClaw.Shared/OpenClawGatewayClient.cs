@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -58,6 +59,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _nodeListUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
+    private IReadOnlyList<UserNotificationRule>? _userRules;
 
     private void ResetUnsupportedMethodFlags()
     {
@@ -66,6 +68,16 @@ public class OpenClawGatewayClient : WebSocketClientBase
         _sessionPreviewUnsupported = false;
         _nodeListUnsupported = false;
         _operatorReadScopeUnavailable = false;
+    }
+
+    /// <summary>
+    /// Provides user-defined notification rules to the categorizer so custom rules
+    /// are applied when classifying incoming gateway notifications.
+    /// Call after construction and whenever settings change.
+    /// </summary>
+    public void SetUserRules(IReadOnlyList<UserNotificationRule>? rules)
+    {
+        _userRules = rules;
     }
 
     protected override int ReceiveBufferSize => 16384;
@@ -1233,7 +1245,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private void HandleChatEvent(JsonElement root)
     {
-        _logger.Debug($"Chat event received: {root.GetRawText().Substring(0, Math.Min(200, root.GetRawText().Length))}");
+        var rawText = root.GetRawText();
+        _logger.Debug($"Chat event received: {rawText.Substring(0, Math.Min(200, rawText.Length))}");
         
         if (!root.TryGetProperty("payload", out var payload)) return;
 
@@ -1286,7 +1299,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
             Message = displayText,
             IsChat = true
         };
-        var (title, type) = _categorizer.Classify(notification);
+        var (title, type) = _categorizer.Classify(notification, _userRules);
         notification.Title = title;
         notification.Type = type;
         NotificationReceived?.Invoke(this, notification);
@@ -1305,18 +1318,19 @@ public class OpenClawGatewayClient : WebSocketClientBase
         SessionInfo[] snapshot;
         lock (_sessionsLock)
         {
-            if (!_sessions.ContainsKey(sessionKey))
+            if (!_sessions.TryGetValue(sessionKey, out var session))
             {
-                _sessions[sessionKey] = new SessionInfo
+                session = new SessionInfo
                 {
                     Key = sessionKey,
                     IsMain = isMain,
                     Status = "active"
                 };
+                _sessions[sessionKey] = session;
             }
 
-            _sessions[sessionKey].CurrentActivity = currentActivity;
-            _sessions[sessionKey].LastSeen = DateTime.UtcNow;
+            session.CurrentActivity = currentActivity;
+            session.LastSeen = DateTime.UtcNow;
 
             snapshot = GetSessionListInternal();
         }
@@ -1991,36 +2005,33 @@ public class OpenClawGatewayClient : WebSocketClientBase
         {
             Message = text.Length > 200 ? text[..200] + "…" : text
         };
-        var (title, type) = _categorizer.Classify(notification);
+        var (title, type) = _categorizer.Classify(notification, _userRules);
         notification.Title = title;
         notification.Type = type;
         NotificationReceived?.Invoke(this, notification);
     }
 
-    private static (string title, string type) ClassifyNotification(string text)
-    {
-        return NotificationCategorizer.ClassifyByKeywords(text);
-    }
-
     // --- Utility ---
 
-    private static ActivityKind ClassifyTool(string toolName)
-    {
-        return toolName.ToLowerInvariant() switch
+    // FrozenDictionary gives O(1) case-insensitive lookup without allocating a
+    // lowercased copy of toolName on every call.
+    private static readonly FrozenDictionary<string, ActivityKind> s_toolKindMap =
+        new Dictionary<string, ActivityKind>(StringComparer.OrdinalIgnoreCase)
         {
-            "exec" => ActivityKind.Exec,
-            "read" => ActivityKind.Read,
-            "write" => ActivityKind.Write,
-            "edit" => ActivityKind.Edit,
-            "web_search" => ActivityKind.Search,
-            "web_fetch" => ActivityKind.Search,
-            "browser" => ActivityKind.Browser,
-            "message" => ActivityKind.Message,
-            "tts" => ActivityKind.Tool,
-            "image" => ActivityKind.Tool,
-            _ => ActivityKind.Tool
-        };
-    }
+            ["exec"]       = ActivityKind.Exec,
+            ["read"]       = ActivityKind.Read,
+            ["write"]      = ActivityKind.Write,
+            ["edit"]       = ActivityKind.Edit,
+            ["web_search"] = ActivityKind.Search,
+            ["web_fetch"]  = ActivityKind.Search,
+            ["browser"]    = ActivityKind.Browser,
+            ["message"]    = ActivityKind.Message,
+            ["tts"]        = ActivityKind.Tool,
+            ["image"]      = ActivityKind.Tool,
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    private static ActivityKind ClassifyTool(string toolName) =>
+        s_toolKindMap.TryGetValue(toolName, out var kind) ? kind : ActivityKind.Tool;
 
     private static string ShortenPath(string path)
     {

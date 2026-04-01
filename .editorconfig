@@ -1,0 +1,117 @@
+# EditorConfig: https://editorconfig.org
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Markdown — preserve trailing spaces (two spaces = <br>)
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML / GitHub Actions
+[*.{yml,yaml}]
+indent_size = 2
+
+# JSON
+[*.json]
+indent_size = 2
+
+# XML project files and manifests
+[*.{csproj,props,targets,appxmanifest,manifest,resx,xaml}]
+indent_size = 2
+
+# ============================================================
+# C# code style
+# ============================================================
+[*.cs]
+
+# Namespace declarations — file-scoped (matches codebase convention)
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# 'var' preferences
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Expression-bodied members — allow but don't require
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_properties = when_on_single_line:silent
+csharp_style_expression_bodied_constructors = false:silent
+
+# Pattern matching
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+
+# Null checks
+csharp_style_conditional_delegate_call = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+
+# Prefer 'is null' over '== null'
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
+
+# Prefer readonly fields where possible
+dotnet_style_readonly_field = true:suggestion
+
+# Brace placement — Allman style (matches codebase)
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+# Indentation
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+
+# Spacing
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_method_call_parameter_list_parentheses = false
+
+# 'this.' qualification — not required
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+
+# Language keywords over type names (e.g. 'int' over 'Int32')
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+dotnet_style_predefined_type_for_member_access = true:suggestion
+
+# Object/collection initializers
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+
+# Tuple names
+dotnet_style_explicit_tuple_names = true:suggestion
+
+# Naming conventions — private instance fields: _camelCase
+dotnet_naming_rule.private_fields_should_be_camel_case.severity = suggestion
+dotnet_naming_rule.private_fields_should_be_camel_case.symbols = private_instance_fields
+dotnet_naming_rule.private_fields_should_be_camel_case.style = underscore_camel_case
+
+dotnet_naming_symbols.private_instance_fields.applicable_kinds = field
+dotnet_naming_symbols.private_instance_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_instance_fields.required_modifiers =
+
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+
+# Static readonly fields — PascalCase or s_camelCase (both used in codebase)
+dotnet_naming_rule.static_readonly_fields.severity = silent
+dotnet_naming_rule.static_readonly_fields.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_fields.style = s_camel_case
+
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.applicable_accessibilities = private
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+dotnet_naming_style.s_camel_case.capitalization = camel_case
+dotnet_naming_style.s_camel_case.required_prefix = s_

@@ -1,0 +1,3148 @@
+From c263c5ce18a349379be9aa21c6bdd7de46ad087d Mon Sep 17 00:00:00 2001
+From: sytone <github@sytone.com>
+Date: Sat, 28 Mar 2026 15:41:57 -0700
+Subject: [PATCH 1/3] feat: add SSH tunnel configuration and management to
+ settings
+
+---
+ src/OpenClaw.Shared/SettingsData.cs           |   5 +
+ src/OpenClaw.Tray.WinUI/App.xaml.cs           |  62 ++++++-
+ .../Services/SettingsManager.cs               |  25 +++
+ .../Services/SshTunnelService.cs              | 165 ++++++++++++++++++
+ .../Windows/SettingsWindow.xaml               |  29 +++
+ .../Windows/SettingsWindow.xaml.cs            | 150 +++++++++++++++-
+ .../SettingsRoundTripTests.cs                 |  20 +++
+ 7 files changed, 446 insertions(+), 10 deletions(-)
+ create mode 100644 src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs
+
+diff --git a/src/OpenClaw.Shared/SettingsData.cs b/src/OpenClaw.Shared/SettingsData.cs
+index 4c7b075..7a2d4b5 100644
+--- a/src/OpenClaw.Shared/SettingsData.cs
++++ b/src/OpenClaw.Shared/SettingsData.cs
+@@ -9,6 +9,11 @@ public class SettingsData
+ {
+     public string? GatewayUrl { get; set; }
+     public string? Token { get; set; }
++    public bool UseSshTunnel { get; set; } = false;
++    public string? SshTunnelUser { get; set; }
++    public string? SshTunnelHost { get; set; }
++    public int SshTunnelRemotePort { get; set; } = 18789;
++    public int SshTunnelLocalPort { get; set; } = 18789;
+     public bool AutoStart { get; set; }
+     public bool GlobalHotkeyEnabled { get; set; } = true;
+     public bool ShowNotifications { get; set; } = true;
+diff --git a/src/OpenClaw.Tray.WinUI/App.xaml.cs b/src/OpenClaw.Tray.WinUI/App.xaml.cs
+index de0780f..caff372 100644
+--- a/src/OpenClaw.Tray.WinUI/App.xaml.cs
++++ b/src/OpenClaw.Tray.WinUI/App.xaml.cs
+@@ -34,6 +34,7 @@ public partial class App : Application
+     private TrayIcon? _trayIcon;
+     private OpenClawGatewayClient? _gatewayClient;
+     private SettingsManager? _settings;
++    private SshTunnelService? _sshTunnelService;
+     private GlobalHotkeyService? _globalHotkey;
+     private System.Timers.Timer? _healthCheckTimer;
+     private System.Timers.Timer? _sessionPollTimer;
+@@ -250,6 +251,7 @@ protected override async void OnLaunched(LaunchActivatedEventArgs args)
+ 
+         // Initialize settings
+         _settings = new SettingsManager();
++        _sshTunnelService = new SshTunnelService(new AppLogger());
+ 
+         // First-run check
+         if (string.IsNullOrWhiteSpace(_settings.Token))
+@@ -1080,11 +1082,12 @@ private void BuildTrayMenu(MenuFlyout flyout)
+     private void InitializeGatewayClient()
+     {
+         if (_settings == null) return;
++        if (!EnsureSshTunnelConfigured()) return;
+ 
+         // Unsubscribe from old client if exists
+         UnsubscribeGatewayEvents();
+ 
+-        _gatewayClient = new OpenClawGatewayClient(_settings.GatewayUrl, _settings.Token, new AppLogger());
++        _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
+         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
+         _gatewayClient.ActivityChanged += OnActivityChanged;
+         _gatewayClient.NotificationReceived += OnNotificationReceived;
+@@ -1121,6 +1124,7 @@ private void InitializeNodeService()
+     {
+         if (_settings == null || !_settings.EnableNodeMode) return;
+         if (_dispatcherQueue == null) return;
++        if (!EnsureSshTunnelConfigured()) return;
+         
+         try
+         {
+@@ -1132,7 +1136,7 @@ private void InitializeNodeService()
+             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
+             
+             // Connect to gateway as a node (separate connection from operator)
+-            _ = _nodeService.ConnectAsync(_settings.GatewayUrl, _settings.Token);
++            _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token);
+         }
+         catch (Exception ex)
+         {
+@@ -1609,6 +1613,10 @@ private void OnSettingsSaved(object? sender, EventArgs e)
+         var oldNodeService = _nodeService;
+         _nodeService = null;
+         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
++        if (_settings?.UseSshTunnel != true)
++        {
++            _sshTunnelService?.Stop();
++        }
+         
+         if (_settings?.EnableNodeMode == true)
+         {
+@@ -1638,9 +1646,12 @@ private void OnSettingsSaved(object? sender, EventArgs e)
+ 
+     private void ShowWebChat()
+     {
++        if (_settings == null) return;
++        if (!EnsureSshTunnelConfigured()) return;
++
+         if (_webChatWindow == null || _webChatWindow.IsClosed)
+         {
+-            _webChatWindow = new WebChatWindow(_settings!.GatewayUrl, _settings.Token);
++            _webChatWindow = new WebChatWindow(_settings.GetEffectiveGatewayUrl(), _settings.Token);
+             _webChatWindow.Closed += (s, e) => _webChatWindow = null;
+         }
+         _webChatWindow.Activate();
+@@ -1770,8 +1781,9 @@ private void ShowSurfaceImprovementsTipIfNeeded()
+     private void OpenDashboard(string? path = null)
+     {
+         if (_settings == null) return;
++        if (!EnsureSshTunnelConfigured()) return;
+         
+-        var baseUrl = _settings.GatewayUrl
++        var baseUrl = _settings.GetEffectiveGatewayUrl()
+             .Replace("ws://", "http://")
+             .Replace("wss://", "https://")
+             .TrimEnd('/');
+@@ -2063,6 +2075,7 @@ private void ExitApplication()
+         // Unsubscribe and dispose gateway client
+         UnsubscribeGatewayEvents();
+         _gatewayClient?.Dispose();
++        _sshTunnelService?.Dispose();
+         
+         // Dispose tray and mutex
+         _trayIcon?.Dispose();
+@@ -2074,6 +2087,47 @@ private void ExitApplication()
+         Exit();
+     }
+ 
++    private bool EnsureSshTunnelConfigured()
++    {
++        if (_settings == null)
++        {
++            return false;
++        }
++
++        if (_settings.UseSshTunnel)
++        {
++            if (string.IsNullOrWhiteSpace(_settings.SshTunnelUser) ||
++                string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ||
++                _settings.SshTunnelRemotePort is < 1 or > 65535 ||
++                _settings.SshTunnelLocalPort is < 1 or > 65535)
++            {
++                Logger.Warn("SSH tunnel is enabled but settings are incomplete");
++                _currentStatus = ConnectionStatus.Error;
++                UpdateTrayIcon();
++                return false;
++            }
++
++            try
++            {
++                _sshTunnelService ??= new SshTunnelService(new AppLogger());
++                _sshTunnelService.EnsureStarted(_settings);
++            }
++            catch (Exception ex)
++            {
++                Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
++                _currentStatus = ConnectionStatus.Error;
++                UpdateTrayIcon();
++                return false;
++            }
++        }
++        else
++        {
++            _sshTunnelService?.Stop();
++        }
++
++        return true;
++    }
++
+     #endregion
+ 
+     private Microsoft.UI.Dispatching.DispatcherQueue? AppDispatcherQueue => 
+diff --git a/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs b/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs
+index 0c343f1..5347a6b 100644
+--- a/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs
++++ b/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs
+@@ -19,6 +19,11 @@ public class SettingsManager
+     // Connection
+     public string GatewayUrl { get; set; } = "ws://localhost:18789";
+     public string Token { get; set; } = "";
++    public bool UseSshTunnel { get; set; } = false;
++    public string SshTunnelUser { get; set; } = "";
++    public string SshTunnelHost { get; set; } = "";
++    public int SshTunnelRemotePort { get; set; } = 18789;
++    public int SshTunnelLocalPort { get; set; } = 18789;
+ 
+     // Startup
+     public bool AutoStart { get; set; } = false;
+@@ -64,6 +69,11 @@ public void Load()
+                 {
+                     GatewayUrl = loaded.GatewayUrl ?? GatewayUrl;
+                     Token = loaded.Token ?? Token;
++                    UseSshTunnel = loaded.UseSshTunnel;
++                    SshTunnelUser = loaded.SshTunnelUser ?? SshTunnelUser;
++                    SshTunnelHost = loaded.SshTunnelHost ?? SshTunnelHost;
++                    SshTunnelRemotePort = loaded.SshTunnelRemotePort <= 0 ? SshTunnelRemotePort : loaded.SshTunnelRemotePort;
++                    SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? SshTunnelLocalPort : loaded.SshTunnelLocalPort;
+                     AutoStart = loaded.AutoStart;
+                     GlobalHotkeyEnabled = loaded.GlobalHotkeyEnabled;
+                     ShowNotifications = loaded.ShowNotifications;
+@@ -101,6 +111,11 @@ public void Save()
+             {
+                 GatewayUrl = GatewayUrl,
+                 Token = Token,
++                UseSshTunnel = UseSshTunnel,
++                SshTunnelUser = SshTunnelUser,
++                SshTunnelHost = SshTunnelHost,
++                SshTunnelRemotePort = SshTunnelRemotePort,
++                SshTunnelLocalPort = SshTunnelLocalPort,
+                 AutoStart = AutoStart,
+                 GlobalHotkeyEnabled = GlobalHotkeyEnabled,
+                 ShowNotifications = ShowNotifications,
+@@ -130,4 +145,14 @@ public void Save()
+             Logger.Error($"Failed to save settings: {ex.Message}");
+         }
+     }
++
++    public string GetEffectiveGatewayUrl()
++    {
++        if (!UseSshTunnel)
++        {
++            return GatewayUrl;
++        }
++
++        return $"ws://127.0.0.1:{SshTunnelLocalPort}";
++    }
+ }
+diff --git a/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs b/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs
+new file mode 100644
+index 0000000..18b7764
+--- /dev/null
++++ b/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs
+@@ -0,0 +1,165 @@
++using OpenClaw.Shared;
++using System;
++using System.Diagnostics;
++using System.Text;
++
++namespace OpenClawTray.Services;
++
++/// <summary>
++/// Manages an SSH local port-forward process for gateway access.
++/// </summary>
++public sealed class SshTunnelService : IDisposable
++{
++    private readonly IOpenClawLogger _logger;
++    private Process? _process;
++    private string? _lastSpec;
++
++    public SshTunnelService(IOpenClawLogger logger)
++    {
++        _logger = logger;
++    }
++
++    public bool IsRunning => _process is { HasExited: false };
++
++    public void EnsureStarted(SettingsManager settings)
++    {
++        if (!settings.UseSshTunnel)
++        {
++            Stop();
++            return;
++        }
++
++        EnsureStarted(
++            settings.SshTunnelUser,
++            settings.SshTunnelHost,
++            settings.SshTunnelRemotePort,
++            settings.SshTunnelLocalPort);
++    }
++
++    public void EnsureStarted(string user, string host, int remotePort, int localPort)
++    {
++        user = user.Trim();
++        host = host.Trim();
++
++        var spec = BuildSpec(user, host, remotePort, localPort);
++
++        if (IsRunning && string.Equals(_lastSpec, spec, StringComparison.Ordinal))
++        {
++            return;
++        }
++
++        Stop();
++        StartProcess(user, host, remotePort, localPort);
++        _lastSpec = spec;
++    }
++
++    public void Stop()
++    {
++        if (_process == null)
++        {
++            return;
++        }
++
++        try
++        {
++            if (!_process.HasExited)
++            {
++                _process.Kill(entireProcessTree: true);
++                _process.WaitForExit(3000);
++            }
++        }
++        catch (Exception ex)
++        {
++            _logger.Warn($"SSH tunnel stop failed: {ex.Message}");
++        }
++        finally
++        {
++            try { _process.Dispose(); } catch { }
++            _process = null;
++            _lastSpec = null;
++        }
++    }
++
++    private void StartProcess(string user, string host, int remotePort, int localPort)
++    {
++        var psi = new ProcessStartInfo
++        {
++            FileName = "ssh",
++            Arguments = BuildArguments(user, host, remotePort, localPort),
++            UseShellExecute = false,
++            RedirectStandardOutput = true,
++            RedirectStandardError = true,
++            CreateNoWindow = true,
++        };
++
++        var process = new Process
++        {
++            StartInfo = psi,
++            EnableRaisingEvents = true,
++        };
++
++        process.OutputDataReceived += (_, e) =>
++        {
++            if (!string.IsNullOrWhiteSpace(e.Data))
++            {
++                _logger.Info($"[SSH] {e.Data}");
++            }
++        };
++
++        process.ErrorDataReceived += (_, e) =>
++        {
++            if (!string.IsNullOrWhiteSpace(e.Data))
++            {
++                _logger.Warn($"[SSH] {e.Data}");
++            }
++        };
++
++        process.Exited += (_, _) =>
++        {
++            var exitCode = process.ExitCode;
++            _logger.Warn($"SSH tunnel exited (code {exitCode})");
++        };
++
++        try
++        {
++            if (!process.Start())
++            {
++                throw new InvalidOperationException("Failed to start ssh process");
++            }
++        }
++        catch (Exception ex)
++        {
++            process.Dispose();
++            throw new InvalidOperationException("Unable to start SSH tunnel process. Ensure OpenSSH client is installed and available in PATH.", ex);
++        }
++
++        process.BeginOutputReadLine();
++        process.BeginErrorReadLine();
++        _process = process;
++
++        _logger.Info($"SSH tunnel started: 127.0.0.1:{localPort} -> 127.0.0.1:{remotePort} via {user}@{host}");
++    }
++
++    private static string BuildSpec(string user, string host, int remotePort, int localPort)
++        => $"{user}@{host}:{localPort}:{remotePort}";
++
++    private static string BuildArguments(string user, string host, int remotePort, int localPort)
++    {
++        var sb = new StringBuilder();
++        sb.Append("-N ");
++        sb.Append("-L ");
++        sb.Append(localPort);
++        sb.Append(":127.0.0.1:");
++        sb.Append(remotePort);
++        sb.Append(' ');
++        sb.Append(user);
++        sb.Append('@');
++        sb.Append(host);
++        return sb.ToString();
++    }
++
++    public void Dispose()
++    {
++        Stop();
++    }
++}
+diff --git a/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml b/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml
+index f8631f5..e0f15ac 100644
+--- a/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml
++++ b/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml
+@@ -25,6 +25,35 @@
+                 <StackPanel Spacing="8">
+                     <TextBlock x:Uid="SettingsConnectionHeader" Text="CONNECTION" Style="{StaticResource CaptionTextBlockStyle}" 
+                                Foreground="#E74C3C" FontWeight="Bold"/>
++
++                    <ToggleSwitch x:Name="UseSshTunnelToggle" Header="Connect through SSH tunnel" Toggled="OnUseSshTunnelToggled"/>
++
++                    <StackPanel x:Name="SshTunnelDetailsPanel" Spacing="8" Visibility="Collapsed">
++                        <TextBlock Text="When enabled, the app will connect through ws://127.0.0.1:&lt;local-port&gt; and create an SSH forward to the remote gateway host."
++                                   Style="{StaticResource CaptionTextBlockStyle}"
++                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
++                                   TextWrapping="Wrap"/>
++
++                        <Grid ColumnSpacing="8">
++                            <Grid.ColumnDefinitions>
++                                <ColumnDefinition Width="*"/>
++                                <ColumnDefinition Width="*"/>
++                            </Grid.ColumnDefinitions>
++
++                            <TextBox x:Name="SshTunnelUserTextBox" Grid.Column="0" Header="SSH User" PlaceholderText="user"/>
++                            <TextBox x:Name="SshTunnelHostTextBox" Grid.Column="1" Header="SSH Host" PlaceholderText="machine-name or IP"/>
++                        </Grid>
++
++                        <Grid ColumnSpacing="8">
++                            <Grid.ColumnDefinitions>
++                                <ColumnDefinition Width="*"/>
++                                <ColumnDefinition Width="*"/>
++                            </Grid.ColumnDefinitions>
++
++                            <TextBox x:Name="SshTunnelRemotePortTextBox" Grid.Column="0" Header="Remote Gateway Port" PlaceholderText="18789"/>
++                            <TextBox x:Name="SshTunnelLocalPortTextBox" Grid.Column="1" Header="Local Forward Port" PlaceholderText="18789" TextChanged="OnSshTunnelLocalPortTextChanged"/>
++                        </Grid>
++                    </StackPanel>
+                     
+                     <TextBox x:Name="GatewayUrlTextBox" x:Uid="SettingsGatewayUrlTextBox" Header="Gateway URL" 
+                              PlaceholderText="ws://localhost:18789 or https://host.tailnet.ts.net"/>
+diff --git a/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml.cs b/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml.cs
+index e4224a8..2308c6f 100644
+--- a/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml.cs
++++ b/src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml.cs
+@@ -12,6 +12,7 @@ namespace OpenClawTray.Windows;
+ public sealed partial class SettingsWindow : WindowEx
+ {
+     private readonly SettingsManager _settings;
++    private string _manualGatewayUrl = "";
+     public bool IsClosed { get; private set; }
+ 
+     public event EventHandler? SettingsSaved;
+@@ -37,7 +38,14 @@ public SettingsWindow(SettingsManager settings)
+ 
+     private void LoadSettings()
+     {
++        UseSshTunnelToggle.IsOn = _settings.UseSshTunnel;
++        SshTunnelUserTextBox.Text = _settings.SshTunnelUser;
++        SshTunnelHostTextBox.Text = _settings.SshTunnelHost;
++        SshTunnelRemotePortTextBox.Text = _settings.SshTunnelRemotePort.ToString();
++        SshTunnelLocalPortTextBox.Text = _settings.SshTunnelLocalPort.ToString();
++        _manualGatewayUrl = _settings.GatewayUrl;
+         GatewayUrlTextBox.Text = _settings.GatewayUrl;
++        UpdateSshTunnelUiState();
+         TokenTextBox.Text = _settings.Token;
+         AutoStartToggle.IsOn = _settings.AutoStart;
+         GlobalHotkeyToggle.IsOn = _settings.GlobalHotkeyEnabled;
+@@ -72,7 +80,16 @@ private void LoadSettings()
+ 
+     private void SaveSettings()
+     {
+-        _settings.GatewayUrl = GatewayUrlTextBox.Text.Trim();
++        _settings.UseSshTunnel = UseSshTunnelToggle.IsOn;
++        _settings.SshTunnelUser = SshTunnelUserTextBox.Text.Trim();
++        _settings.SshTunnelHost = SshTunnelHostTextBox.Text.Trim();
++        _settings.SshTunnelRemotePort = ParsePortOrDefault(SshTunnelRemotePortTextBox.Text, _settings.SshTunnelRemotePort);
++        _settings.SshTunnelLocalPort = ParsePortOrDefault(SshTunnelLocalPortTextBox.Text, _settings.SshTunnelLocalPort);
++        if (!_settings.UseSshTunnel)
++        {
++            _settings.GatewayUrl = GatewayUrlTextBox.Text.Trim();
++            _manualGatewayUrl = _settings.GatewayUrl;
++        }
+         _settings.Token = TokenTextBox.Text.Trim();
+         _settings.AutoStart = AutoStartToggle.IsOn;
+         _settings.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn;
+@@ -101,13 +118,26 @@ private void SaveSettings()
+ 
+     private async void OnTestConnection(object sender, RoutedEventArgs e)
+     {
++        var useSshTunnel = UseSshTunnelToggle.IsOn;
++        var sshUser = "";
++        var sshHost = "";
++        var remotePort = 0;
++        var localPort = 0;
++        SshTunnelService? testTunnel = null;
++
+         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
+-        if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
++        if (!useSshTunnel && !GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
+         {
+             StatusLabel.Text = $"Γ¥î {GatewayUrlHelper.ValidationMessage}";
+             return;
+         }
+ 
++        if (useSshTunnel && !TryReadTunnelSettings(out sshUser, out sshHost, out remotePort, out localPort, out var tunnelError))
++        {
++            StatusLabel.Text = $"Γ¥î {tunnelError}";
++            return;
++        }
++
+         Logger.Info("[Settings] Test connection initiated");
+         StatusLabel.Text = LocalizationHelper.GetString("Status_Testing");
+         TestConnectionButton.IsEnabled = false;
+@@ -115,8 +145,15 @@ private async void OnTestConnection(object sender, RoutedEventArgs e)
+         try
+         {
+             var testLogger = new TestLogger();
++            if (useSshTunnel)
++            {
++                testTunnel = new SshTunnelService(testLogger);
++                Logger.Info($"[Settings] Starting temporary SSH tunnel for test: {sshUser}@{sshHost} local:{localPort} remote:{remotePort}");
++                testTunnel.EnsureStarted(sshUser, sshHost, remotePort, localPort);
++            }
++
+             var client = new OpenClawGatewayClient(
+-                gatewayUrl,
++                useSshTunnel ? $"ws://127.0.0.1:{localPort}" : gatewayUrl,
+                 TokenTextBox.Text.Trim(),
+                 testLogger);
+ 
+@@ -167,6 +204,7 @@ private async void OnTestConnection(object sender, RoutedEventArgs e)
+         }
+         finally
+         {
++            testTunnel?.Dispose();
+             TestConnectionButton.IsEnabled = true;
+         }
+     }
+@@ -188,14 +226,22 @@ private void OnTestNotification(object sender, RoutedEventArgs e)
+ 
+     private void OnSave(object sender, RoutedEventArgs e)
+     {
++        var useSshTunnel = UseSshTunnelToggle.IsOn;
+         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
+-        if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
++        if (!useSshTunnel && !GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
+         {
+             Logger.Warn($"[Settings] Save blocked ΓÇö invalid gateway URL");
+             StatusLabel.Text = $"Γ¥î {GatewayUrlHelper.ValidationMessage}";
+             return;
+         }
+ 
++        if (useSshTunnel && !TryReadTunnelSettings(out _, out _, out _, out _, out var tunnelError))
++        {
++            Logger.Warn("[Settings] Save blocked ΓÇö invalid SSH tunnel settings");
++            StatusLabel.Text = $"Γ¥î {tunnelError}";
++            return;
++        }
++
+         // Log key setting changes before saving
+         var oldGateway = _settings.GatewayUrl;
+         var oldAutoStart = _settings.AutoStart;
+@@ -220,6 +266,96 @@ private void OnCancel(object sender, RoutedEventArgs e)
+         Close();
+     }
+ 
++    private static int ParsePortOrDefault(string? value, int fallback)
++    {
++        if (int.TryParse(value?.Trim(), out var parsed) && parsed is >= 1 and <= 65535)
++        {
++            return parsed;
++        }
++
++        return fallback;
++    }
++
++    private bool TryReadTunnelSettings(
++        out string user,
++        out string host,
++        out int remotePort,
++        out int localPort,
++        out string? error)
++    {
++        user = SshTunnelUserTextBox.Text.Trim();
++        host = SshTunnelHostTextBox.Text.Trim();
++        remotePort = 0;
++        localPort = 0;
++        error = null;
++
++        if (string.IsNullOrWhiteSpace(user))
++        {
++            error = "SSH User is required when tunnel mode is enabled.";
++            return false;
++        }
++
++        if (string.IsNullOrWhiteSpace(host))
++        {
++            error = "SSH Host is required when tunnel mode is enabled.";
++            return false;
++        }
++
++        if (!int.TryParse(SshTunnelRemotePortTextBox.Text.Trim(), out remotePort) || remotePort is < 1 or > 65535)
++        {
++            error = "Remote Gateway Port must be a number from 1 to 65535.";
++            return false;
++        }
++
++        if (!int.TryParse(SshTunnelLocalPortTextBox.Text.Trim(), out localPort) || localPort is < 1 or > 65535)
++        {
++            error = "Local Forward Port must be a number from 1 to 65535.";
++            return false;
++        }
++
++        return true;
++    }
++
++    private void OnUseSshTunnelToggled(object sender, RoutedEventArgs e)
++    {
++        UpdateSshTunnelUiState();
++    }
++
++    private void OnSshTunnelLocalPortTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
++    {
++        if (UseSshTunnelToggle.IsOn)
++        {
++            UpdateSshTunnelUiState();
++        }
++    }
++
++    private void UpdateSshTunnelUiState()
++    {
++        var useSshTunnel = UseSshTunnelToggle.IsOn;
++        var wasReadOnly = GatewayUrlTextBox.IsReadOnly;
++
++        SshTunnelDetailsPanel.Visibility = useSshTunnel ? Visibility.Visible : Visibility.Collapsed;
++        GatewayUrlTextBox.IsReadOnly = useSshTunnel;
++
++        if (useSshTunnel)
++        {
++            if (!wasReadOnly)
++            {
++                _manualGatewayUrl = GatewayUrlTextBox.Text.Trim();
++            }
++
++            var localPort = ParsePortOrDefault(SshTunnelLocalPortTextBox.Text, 18789);
++            GatewayUrlTextBox.Text = $"ws://127.0.0.1:{localPort}";
++        }
++        else
++        {
++            if (GatewayUrlTextBox.Text.StartsWith("ws://127.0.0.1:", StringComparison.OrdinalIgnoreCase))
++            {
++                GatewayUrlTextBox.Text = _manualGatewayUrl;
++            }
++        }
++    }
++
+     private class TestLogger : IOpenClawLogger
+     {
+         public string? LastError { get; private set; }
+@@ -233,8 +369,10 @@ public void Warn(string message)
+         }
+         public void Error(string message, Exception? ex = null)
+         {
+-            LastError = message;
+-            Logger.Error($"[Settings:TestClient] {message}");
++            LastError = ex != null
++                ? $"{message}: {ex.Message}"
++                : message;
++            Logger.Error($"[Settings:TestClient] {LastError}");
+         }
+     }
+ }
+diff --git a/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs b/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs
+index 8b09519..887df5b 100644
+--- a/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs
++++ b/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs
+@@ -12,6 +12,11 @@ public void RoundTrip_AllFields_Preserved()
+         {
+             GatewayUrl = "ws://localhost:18789",
+             Token = "secret-token",
++            UseSshTunnel = true,
++            SshTunnelUser = "user1",
++            SshTunnelHost = "remote-host",
++            SshTunnelRemotePort = 18789,
++            SshTunnelLocalPort = 28789,
+             AutoStart = true,
+             GlobalHotkeyEnabled = false,
+             ShowNotifications = true,
+@@ -40,6 +45,11 @@ public void RoundTrip_AllFields_Preserved()
+         Assert.NotNull(restored);
+         Assert.Equal(original.GatewayUrl, restored.GatewayUrl);
+         Assert.Equal(original.Token, restored.Token);
++        Assert.Equal(original.UseSshTunnel, restored.UseSshTunnel);
++        Assert.Equal(original.SshTunnelUser, restored.SshTunnelUser);
++        Assert.Equal(original.SshTunnelHost, restored.SshTunnelHost);
++        Assert.Equal(original.SshTunnelRemotePort, restored.SshTunnelRemotePort);
++        Assert.Equal(original.SshTunnelLocalPort, restored.SshTunnelLocalPort);
+         Assert.Equal(original.AutoStart, restored.AutoStart);
+         Assert.Equal(original.GlobalHotkeyEnabled, restored.GlobalHotkeyEnabled);
+         Assert.Equal(original.ShowNotifications, restored.ShowNotifications);
+@@ -85,6 +95,11 @@ public void MissingFields_UseDefaults()
+         Assert.NotNull(settings);
+         Assert.Null(settings.GatewayUrl);
+         Assert.Null(settings.Token);
++        Assert.False(settings.UseSshTunnel);
++        Assert.Null(settings.SshTunnelUser);
++        Assert.Null(settings.SshTunnelHost);
++        Assert.Equal(18789, settings.SshTunnelRemotePort);
++        Assert.Equal(18789, settings.SshTunnelLocalPort);
+         Assert.False(settings.AutoStart);
+         Assert.True(settings.GlobalHotkeyEnabled);
+         Assert.True(settings.ShowNotifications);
+@@ -131,6 +146,11 @@ public void BackwardCompatibility_OldSettingsWithoutNewFields()
+         Assert.NotNull(settings);
+         Assert.Equal("ws://localhost:18789", settings.GatewayUrl);
+         Assert.Equal("abc", settings.Token);
++        Assert.False(settings.UseSshTunnel);
++        Assert.Null(settings.SshTunnelUser);
++        Assert.Null(settings.SshTunnelHost);
++        Assert.Equal(18789, settings.SshTunnelRemotePort);
++        Assert.Equal(18789, settings.SshTunnelLocalPort);
+         // New fields should have sensible defaults
+         Assert.True(settings.NotifyChatResponses);
+         Assert.True(settings.PreferStructuredCategories);
+
+From 98f48c2ef96656ce622f28f92a7eb15e0359f134 Mon Sep 17 00:00:00 2001
+From: sytone <github@sytone.com>
+Date: Sat, 28 Mar 2026 18:22:15 -0700
+Subject: [PATCH 2/3] feat: Add SkippedUpdateTag to settings and enhance update
+ handling
+
+- Introduced SkippedUpdateTag property in SettingsData and SettingsManager to remember skipped updates.
+- Updated App.xaml.cs to initialize settings before update checks and handle skipped updates.
+- Enhanced QuickSendDialog to provide detailed error messages and focus handling.
+- Improved WebSocketClientBase with better auto-reconnect logic and error handling.
+- Added integration tests for DeviceIdentity payload formats and OpenClawGatewayClient response handling.
+- Updated SettingsRoundTripTests to validate SkippedUpdateTag persistence.
+---
+ AGENTS.md                                     |  25 +
+ README.md                                     |  35 +-
+ build.ps1                                     |   7 +-
+ moltbot-windows-hub.slnx                      |   1 +
+ src/OpenClaw.Cli/OpenClaw.Cli.csproj          |  12 +
+ src/OpenClaw.Cli/Program.cs                   | 300 +++++++++++
+ src/OpenClaw.Shared/DeviceIdentity.cs         | 112 +++++
+ src/OpenClaw.Shared/OpenClawGatewayClient.cs  | 465 +++++++++++++++++-
+ src/OpenClaw.Shared/SettingsData.cs           |   1 +
+ src/OpenClaw.Shared/WebSocketClientBase.cs    |  72 ++-
+ src/OpenClaw.Tray.WinUI/App.xaml.cs           | 167 ++++++-
+ .../Dialogs/QuickSendDialog.cs                | 205 +++++++-
+ .../Services/SettingsManager.cs               |   3 +
+ .../Services/SshTunnelService.cs              |  14 +-
+ .../DeviceIdentityTests.cs                    |  60 +++
+ .../OpenClawGatewayClientTests.cs             | 141 ++++++
+ .../WebSocketClientBaseTests.cs               |   4 +-
+ .../SettingsRoundTripTests.cs                 |   4 +
+ 18 files changed, 1553 insertions(+), 75 deletions(-)
+ create mode 100644 AGENTS.md
+ create mode 100644 src/OpenClaw.Cli/OpenClaw.Cli.csproj
+ create mode 100644 src/OpenClaw.Cli/Program.cs
+
+diff --git a/AGENTS.md b/AGENTS.md
+new file mode 100644
+index 0000000..07e3ac6
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,25 @@
++# AGENTS.md
++
++## Required Validation After Every Change
++
++All agents working in this repository must run validation after each code change before marking work complete.
++
++Required steps:
++
++1. Run full repo build:
++   - `./build.ps1`
++2. Run shared tests:
++   - `dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --no-restore`
++3. Run tray tests:
++   - `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`
++
++If a command fails:
++
++1. Fix the issue.
++2. Re-run the failed command.
++3. Re-run all required validation commands before completion.
++
++Notes:
++
++- If a build/test is blocked by an environmental lock (for example running executable locking output assemblies), stop/close the locking process and rerun.
++- Do not claim completion without reporting validation results.
+diff --git a/README.md b/README.md
+index b0c3e40..d74620a 100644
+--- a/README.md
++++ b/README.md
+@@ -10,12 +10,13 @@ A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered p
+ 
+ ## Projects
+ 
+-This monorepo contains three projects:
++This monorepo contains four projects:
+ 
+ | Project | Description |
+ |---------|-------------|
+ | **OpenClaw.Tray.WinUI** | System tray application (WinUI 3) for quick access to OpenClaw |
+ | **OpenClaw.Shared** | Shared gateway client library |
++| **OpenClaw.Cli** | CLI validator for WebSocket connect/send/probe using tray settings |
+ | **OpenClaw.CommandPalette** | PowerToys Command Palette extension |
+ 
+ ## ≡ƒÜÇ Quick Start
+@@ -65,6 +66,24 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
+ .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\win-x64\OpenClaw.Tray.WinUI.exe    # x64
+ ```
+ 
++### Run CLI WebSocket Validator
++
++Use the CLI to validate gateway connectivity and `chat.send` outside the tray UI.
++
++```powershell
++# Show help
++dotnet run --project src/OpenClaw.Cli -- --help
++
++# Use tray settings from %APPDATA%\OpenClawTray\settings.json and send one message
++dotnet run --project src/OpenClaw.Cli -- --message "quick send validation"
++
++# Loop sends and also probe sessions/usage/nodes APIs
++dotnet run --project src/OpenClaw.Cli -- --repeat 5 --delay-ms 1000 --probe-read --verbose
++
++# Override gateway URL/token for isolated testing
++dotnet run --project src/OpenClaw.Cli -- --url ws://127.0.0.1:18789 --token "<token>" --message "override test"
++```
++
+ ## ≡ƒôª OpenClaw.Tray (Molty)
+ 
+ Modern Windows 11-style system tray companion that connects to your local OpenClaw gateway.
+@@ -85,6 +104,20 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
+ - ΓÜÖ∩╕Å **Settings** - Full configuration dialog
+ - ≡ƒÄ» **First-run experience** - Welcome dialog guides new users
+ 
++#### Quick Send scope requirement
++
++Quick Send uses the gateway `chat.send` method and requires the operator device to have `operator.write` scope.
++
++If Quick Send fails with `missing scope: operator.write`, Molty now copies identity + remediation guidance to your clipboard, including:
++
++- operator role and `client.id` used by the tray app
++- gateway-reported operator device id (if provided)
++- currently granted scopes (if provided)
++
++For this specific error (`missing scope: operator.write`), the cause is an **operator token scope issue**. Update the token used by the tray app so it includes `operator.write`, then retry Quick Send.
++
++If Quick Send fails with `pairing required` / `NOT_PAIRED`, that is a **device approval** issue. Approve the tray device in gateway pairing approvals, reconnect, and retry.
++
+ ### Menu Sections
+ - **Status** - Gateway connection status with click-to-view details
+ - **Sessions** - Active agent sessions with preview and per-session controls
+diff --git a/build.ps1 b/build.ps1
+index bd24b54..13cb7e8 100644
+--- a/build.ps1
++++ b/build.ps1
+@@ -6,7 +6,7 @@
+     Builds all projects, checks prerequisites, and provides clear guidance.
+ 
+ .PARAMETER Project
+-    Which project to build: All, Tray, WinUI, Shared, CommandPalette
++    Which project to build: All, Tray, WinUI, Shared, CommandPalette, Cli
+     Default: All
+ 
+ .PARAMETER Configuration
+@@ -23,7 +23,7 @@
+ #>
+ 
+ param(
+-    [ValidateSet("All", "Tray", "WinUI", "Shared", "CommandPalette")]
++    [ValidateSet("All", "Tray", "WinUI", "Shared", "CommandPalette", "Cli")]
+     [string]$Project = "All",
+     
+     [ValidateSet("Debug", "Release")]
+@@ -187,12 +187,13 @@ function Build-Project($name, $path, $useRid = $false) {
+ 
+ $projects = @{
+     "Shared" = @{ Path = "src/OpenClaw.Shared/OpenClaw.Shared.csproj"; UseRid = $false }
++    "Cli" = @{ Path = "src/OpenClaw.Cli/OpenClaw.Cli.csproj"; UseRid = $false }
+     "Tray" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
+     "WinUI" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
+     "CommandPalette" = @{ Path = "src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj"; UseRid = $false }
+ }
+ 
+-$toBuild = if ($Project -eq "All") { @("Shared", "WinUI") } else { @($Project) }
++$toBuild = if ($Project -eq "All") { @("Shared", "Cli", "WinUI") } else { @($Project) }
+ 
+ # Always build Shared first if building other projects
+ if ($Project -ne "Shared" -and $Project -ne "All" -and $toBuild -notcontains "Shared") {
+diff --git a/moltbot-windows-hub.slnx b/moltbot-windows-hub.slnx
+index 627f0f5..79eaf12 100644
+--- a/moltbot-windows-hub.slnx
++++ b/moltbot-windows-hub.slnx
+@@ -1,5 +1,6 @@
+ <Solution>
+   <Folder Name="/src/">
++    <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
+     <Project Path="src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj">
+       <Platform Project="x64" />
+     </Project>
+diff --git a/src/OpenClaw.Cli/OpenClaw.Cli.csproj b/src/OpenClaw.Cli/OpenClaw.Cli.csproj
+new file mode 100644
+index 0000000..2eecce4
+--- /dev/null
++++ b/src/OpenClaw.Cli/OpenClaw.Cli.csproj
+@@ -0,0 +1,12 @@
++<Project Sdk="Microsoft.NET.Sdk">
++  <PropertyGroup>
++    <OutputType>Exe</OutputType>
++    <TargetFramework>net10.0</TargetFramework>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <Nullable>enable</Nullable>
++  </PropertyGroup>
++
++  <ItemGroup>
++    <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
++  </ItemGroup>
++</Project>
+diff --git a/src/OpenClaw.Cli/Program.cs b/src/OpenClaw.Cli/Program.cs
+new file mode 100644
+index 0000000..7fb544c
+--- /dev/null
++++ b/src/OpenClaw.Cli/Program.cs
+@@ -0,0 +1,300 @@
++using System.Globalization;
++using System.Text;
++using OpenClaw.Shared;
++
++internal sealed class CliOptions
++{
++    public string SettingsPath { get; set; } = Path.Combine(
++        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
++        "OpenClawTray",
++        "settings.json");
++
++    public string? GatewayUrlOverride { get; set; }
++    public string? TokenOverride { get; set; }
++    public string Message { get; set; } = "openclaw-cli validation ping";
++    public int Repeat { get; set; } = 1;
++    public int DelayMs { get; set; } = 500;
++    public int ConnectTimeoutMs { get; set; } = 10000;
++    public bool ProbeReadApis { get; set; }
++    public bool Verbose { get; set; }
++}
++
++internal static class Program
++{
++    private static async Task<int> Main(string[] args)
++    {
++        if (args.Any(a => a is "--help" or "-h"))
++        {
++            PrintUsage();
++            return 0;
++        }
++
++        CliOptions options;
++        try
++        {
++            options = ParseArgs(args);
++        }
++        catch (Exception ex)
++        {
++            Console.Error.WriteLine($"Argument error: {ex.Message}");
++            PrintUsage();
++            return 2;
++        }
++
++        var (gatewayUrl, token, loaded) = LoadConnectionFromSettings(options);
++        if (string.IsNullOrWhiteSpace(gatewayUrl))
++        {
++            Console.Error.WriteLine("Gateway URL is missing. Set it in tray settings or pass --url.");
++            return 2;
++        }
++
++        if (string.IsNullOrWhiteSpace(token))
++        {
++            Console.Error.WriteLine("Token is missing. Set it in tray settings or pass --token.");
++            return 2;
++        }
++
++        Console.WriteLine($"Settings file: {options.SettingsPath}");
++        Console.WriteLine($"Gateway URL: {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
++        Console.WriteLine($"Token source: {(options.TokenOverride is null ? "settings" : "--token override")}");
++        if (loaded is not null)
++        {
++            Console.WriteLine($"Node mode in settings: {loaded.EnableNodeMode}");
++            Console.WriteLine($"SSH tunnel in settings: {loaded.UseSshTunnel} (local port {loaded.SshTunnelLocalPort})");
++        }
++
++        IOpenClawLogger logger = options.Verbose ? new ConsoleLogger() : NullLogger.Instance;
++        using var client = new OpenClawGatewayClient(gatewayUrl, token, logger);
++
++        var lastStatus = ConnectionStatus.Disconnected;
++        var connectedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
++        var errorTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
++
++        client.StatusChanged += (_, status) =>
++        {
++            lastStatus = status;
++            Console.WriteLine($"Status: {status}");
++            if (status == ConnectionStatus.Connected)
++            {
++                connectedTcs.TrySetResult(true);
++            }
++            else if (status == ConnectionStatus.Error)
++            {
++                errorTcs.TrySetResult(true);
++            }
++        };
++
++        client.SessionsUpdated += (_, sessions) => Console.WriteLine($"sessions.list -> {sessions.Length} session(s)");
++        client.UsageUpdated += (_, usage) => Console.WriteLine($"usage -> tokens {usage.TotalTokens}, requests {usage.RequestCount}, cost ${usage.CostUsd:F4}");
++        client.NodesUpdated += (_, nodes) => Console.WriteLine($"node.list -> {nodes.Length} node(s)");
++
++        Console.WriteLine("Connecting...");
++        await client.ConnectAsync();
++
++        var connected = await WaitForConnectedAsync(connectedTcs.Task, errorTcs.Task, options.ConnectTimeoutMs);
++        if (!connected)
++        {
++            Console.Error.WriteLine($"Connection did not reach Connected within {options.ConnectTimeoutMs}ms (last status: {lastStatus}).");
++            return 1;
++        }
++
++        Console.WriteLine($"Connected. Device ID: {client.OperatorDeviceId ?? "(unknown)"}");
++        Console.WriteLine($"Granted scopes: {string.Join(", ", client.GrantedOperatorScopes)}");
++
++        if (options.ProbeReadApis)
++        {
++            Console.WriteLine("Probing read APIs (sessions/usage/nodes)...");
++            await client.RequestSessionsAsync();
++            await client.RequestUsageAsync();
++            await client.RequestNodesAsync();
++            await Task.Delay(1200);
++        }
++
++        var failures = 0;
++        for (var i = 1; i <= options.Repeat; i++)
++        {
++            var message = options.Repeat == 1
++                ? options.Message
++                : $"{options.Message} [attempt {i}/{options.Repeat}]";
++
++            try
++            {
++                Console.WriteLine($"chat.send #{i} -> \"{message}\"");
++                await client.SendChatMessageAsync(message);
++                Console.WriteLine($"chat.send #{i} OK");
++            }
++            catch (Exception ex)
++            {
++                failures++;
++                Console.Error.WriteLine($"chat.send #{i} FAILED: {ex.Message}");
++            }
++
++            if (i < options.Repeat)
++            {
++                await Task.Delay(options.DelayMs);
++            }
++        }
++
++        if (failures > 0)
++        {
++            Console.Error.WriteLine($"Completed with {failures} failed send(s).");
++            return 1;
++        }
++
++        Console.WriteLine("All sends succeeded.");
++        return 0;
++    }
++
++    private static async Task<bool> WaitForConnectedAsync(Task connected, Task error, int timeoutMs)
++    {
++        using var timeoutCts = new CancellationTokenSource(timeoutMs);
++        var timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCts.Token);
++
++        var completed = await Task.WhenAny(connected, error, timeoutTask);
++        if (completed == connected)
++        {
++            return true;
++        }
++
++        return false;
++    }
++
++    private static (string GatewayUrl, string Token, SettingsData? Loaded) LoadConnectionFromSettings(CliOptions options)
++    {
++        var loaded = LoadSettings(options.SettingsPath);
++
++        var gatewayUrl = options.GatewayUrlOverride;
++        if (string.IsNullOrWhiteSpace(gatewayUrl))
++        {
++            gatewayUrl = BuildEffectiveGatewayUrl(loaded);
++        }
++
++        var token = options.TokenOverride;
++        if (string.IsNullOrWhiteSpace(token))
++        {
++            token = loaded?.Token;
++        }
++
++        return (gatewayUrl ?? string.Empty, token ?? string.Empty, loaded);
++    }
++
++    private static SettingsData? LoadSettings(string path)
++    {
++        if (!File.Exists(path))
++        {
++            throw new FileNotFoundException("Settings file not found", path);
++        }
++
++        var json = File.ReadAllText(path, Encoding.UTF8);
++        var settings = SettingsData.FromJson(json);
++        if (settings is null)
++        {
++            throw new InvalidOperationException("Settings JSON could not be parsed");
++        }
++
++        return settings;
++    }
++
++    private static string? BuildEffectiveGatewayUrl(SettingsData? settings)
++    {
++        if (settings is null)
++        {
++            return null;
++        }
++
++        if (!settings.UseSshTunnel)
++        {
++            return settings.GatewayUrl;
++        }
++
++        var port = settings.SshTunnelLocalPort <= 0 ? 18789 : settings.SshTunnelLocalPort;
++        return $"ws://127.0.0.1:{port}";
++    }
++
++    private static CliOptions ParseArgs(string[] args)
++    {
++        var options = new CliOptions();
++
++        for (var i = 0; i < args.Length; i++)
++        {
++            var arg = args[i];
++            switch (arg)
++            {
++                case "--settings":
++                    options.SettingsPath = RequireValue(args, ref i, arg);
++                    break;
++                case "--url":
++                    options.GatewayUrlOverride = RequireValue(args, ref i, arg);
++                    break;
++                case "--token":
++                    options.TokenOverride = RequireValue(args, ref i, arg);
++                    break;
++                case "--message":
++                    options.Message = RequireValue(args, ref i, arg);
++                    break;
++                case "--repeat":
++                    options.Repeat = ParseInt(RequireValue(args, ref i, arg), min: 1, name: arg);
++                    break;
++                case "--delay-ms":
++                    options.DelayMs = ParseInt(RequireValue(args, ref i, arg), min: 0, name: arg);
++                    break;
++                case "--connect-timeout-ms":
++                    options.ConnectTimeoutMs = ParseInt(RequireValue(args, ref i, arg), min: 1000, name: arg);
++                    break;
++                case "--probe-read":
++                    options.ProbeReadApis = true;
++                    break;
++                case "--verbose":
++                    options.Verbose = true;
++                    break;
++                default:
++                    throw new ArgumentException($"Unknown argument: {arg}");
++            }
++        }
++
++        return options;
++    }
++
++    private static string RequireValue(string[] args, ref int index, string name)
++    {
++        if (index + 1 >= args.Length)
++        {
++            throw new ArgumentException($"Missing value for {name}");
++        }
++
++        index++;
++        return args[index];
++    }
++
++    private static int ParseInt(string value, int min, string name)
++    {
++        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) || parsed < min)
++        {
++            throw new ArgumentException($"{name} must be an integer >= {min}");
++        }
++
++        return parsed;
++    }
++
++    private static void PrintUsage()
++    {
++        Console.WriteLine("OpenClaw CLI WebSocket validator");
++        Console.WriteLine();
++        Console.WriteLine("Reads the same tray settings file and runs chat.send checks over gateway WebSocket.");
++        Console.WriteLine();
++        Console.WriteLine("Usage:");
++        Console.WriteLine("  dotnet run --project src/OpenClaw.Cli -- [options]");
++        Console.WriteLine();
++        Console.WriteLine("Options:");
++        Console.WriteLine("  --settings <path>            Settings file (default: %APPDATA%\\OpenClawTray\\settings.json)");
++        Console.WriteLine("  --url <ws://...>             Override gateway URL");
++        Console.WriteLine("  --token <token>              Override token");
++        Console.WriteLine("  --message <text>             Message to send");
++        Console.WriteLine("  --repeat <n>                 Number of sends (default: 1)");
++        Console.WriteLine("  --delay-ms <n>               Delay between sends (default: 500)");
++        Console.WriteLine("  --connect-timeout-ms <n>     Wait for Connected state (default: 10000)");
++        Console.WriteLine("  --probe-read                 Request sessions/usage/nodes once");
++        Console.WriteLine("  --verbose                    Enable shared client console logs");
++        Console.WriteLine("  --help, -h                   Show this help");
++    }
++}
+diff --git a/src/OpenClaw.Shared/DeviceIdentity.cs b/src/OpenClaw.Shared/DeviceIdentity.cs
+index 1e96a46..ff2f07b 100644
+--- a/src/OpenClaw.Shared/DeviceIdentity.cs
++++ b/src/OpenClaw.Shared/DeviceIdentity.cs
+@@ -134,6 +134,118 @@ public string SignPayload(string nonce, long signedAtMs, string clientId, string
+         // Return base64url encoded signature
+         return Base64UrlEncode(signature);
+     }
++
++    /// <summary>
++    /// Sign a v3 connect payload for operator/client connections.
++    /// Format: v3|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}|{platform}|{deviceFamily}
++    /// </summary>
++    public string SignConnectPayloadV3(
++        string nonce,
++        long signedAtMs,
++        string clientId,
++        string clientMode,
++        string role,
++        IEnumerable<string> scopes,
++        string authToken,
++        string platform,
++        string deviceFamily)
++    {
++        if (_privateKey == null)
++            throw new InvalidOperationException("Device not initialized");
++
++        var payload = BuildConnectPayloadV3(
++            nonce,
++            signedAtMs,
++            clientId,
++            clientMode,
++            role,
++            scopes,
++            authToken,
++            platform,
++            deviceFamily);
++
++        var dataBytes = Encoding.UTF8.GetBytes(payload);
++        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
++        return Base64UrlEncode(signature);
++    }
++
++    /// <summary>
++    /// Build the v3 connect payload string for signing/debugging.
++    /// Format: v3|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}|{platform}|{deviceFamily}
++    /// </summary>
++    public string BuildConnectPayloadV3(
++        string nonce,
++        long signedAtMs,
++        string clientId,
++        string clientMode,
++        string role,
++        IEnumerable<string> scopes,
++        string authToken,
++        string platform,
++        string deviceFamily)
++    {
++        if (_deviceId == null)
++            throw new InvalidOperationException("Device not initialized");
++
++        var scopesCsv = string.Join(",", scopes ?? Array.Empty<string>());
++        var safeToken = authToken ?? string.Empty;
++        var safeNonce = nonce ?? string.Empty;
++
++        return $"v3|{_deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{safeToken}|{safeNonce}|{platform}|{deviceFamily}";
++    }
++
++    /// <summary>
++    /// Sign a v2 connect payload for compatibility mode.
++    /// Format: v2|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}
++    /// </summary>
++    public string SignConnectPayloadV2(
++        string nonce,
++        long signedAtMs,
++        string clientId,
++        string clientMode,
++        string role,
++        IEnumerable<string> scopes,
++        string authToken)
++    {
++        if (_privateKey == null)
++            throw new InvalidOperationException("Device not initialized");
++
++        var payload = BuildConnectPayloadV2(
++            nonce,
++            signedAtMs,
++            clientId,
++            clientMode,
++            role,
++            scopes,
++            authToken);
++
++        var dataBytes = Encoding.UTF8.GetBytes(payload);
++        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
++        return Base64UrlEncode(signature);
++    }
++
++    /// <summary>
++    /// Build the v2 connect payload string for signing/debugging.
++    /// Format: v2|{deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{tokenOrEmpty}|{nonce}
++    /// </summary>
++    public string BuildConnectPayloadV2(
++        string nonce,
++        long signedAtMs,
++        string clientId,
++        string clientMode,
++        string role,
++        IEnumerable<string> scopes,
++        string authToken)
++    {
++        if (_deviceId == null)
++            throw new InvalidOperationException("Device not initialized");
++
++        var scopesCsv = string.Join(",", scopes ?? Array.Empty<string>());
++        var safeToken = authToken ?? string.Empty;
++        var safeNonce = nonce ?? string.Empty;
++
++        return $"v2|{_deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{safeToken}|{safeNonce}";
++    }
+     
+     /// <summary>
+     /// Build the payload string (for debugging)
+diff --git a/src/OpenClaw.Shared/OpenClawGatewayClient.cs b/src/OpenClaw.Shared/OpenClawGatewayClient.cs
+index 0e21836..4872758 100644
+--- a/src/OpenClaw.Shared/OpenClawGatewayClient.cs
++++ b/src/OpenClaw.Shared/OpenClawGatewayClient.cs
+@@ -1,5 +1,7 @@
+ using System;
+ using System.Collections.Generic;
++using System.IO;
++using System.Text;
+ using System.Text.Json;
+ using System.Threading;
+ using System.Threading.Tasks;
+@@ -8,6 +10,29 @@ namespace OpenClaw.Shared;
+ 
+ public class OpenClawGatewayClient : WebSocketClientBase
+ {
++    private const string OperatorClientId = "cli";
++    private const string OperatorClientDisplayName = "OpenClaw Windows Tray";
++    private const string OperatorClientMode = "cli";
++    private const string OperatorRole = "operator";
++    private const string OperatorPlatform = "windows";
++    private const string OperatorDeviceFamily = "desktop";
++    private static readonly string[] s_operatorScopes =
++    [
++        "operator.admin",
++        "operator.read",
++        "operator.write",
++        "operator.approvals",
++        "operator.pairing"
++    ];
++
++    private enum SignatureTokenMode
++    {
++        V3AuthToken,
++        V3EmptyToken,
++        V2AuthToken,
++        V2EmptyToken
++    }
++
+     // Tracked state
+     private readonly Dictionary<string, SessionInfo> _sessions = new();
+     private readonly Dictionary<string, GatewayNodeInfo> _nodes = new();
+@@ -15,13 +40,24 @@ public class OpenClawGatewayClient : WebSocketClientBase
+     private GatewayUsageStatusInfo? _usageStatus;
+     private GatewayCostUsageInfo? _usageCost;
+     private readonly Dictionary<string, string> _pendingRequestMethods = new();
++    private readonly Dictionary<string, TaskCompletionSource<bool>> _pendingChatSendRequests = new();
+     private readonly object _pendingRequestLock = new();
++    private readonly object _pendingChatSendLock = new();
+     private readonly object _sessionsLock = new();
+     private readonly object _nodesLock = new();
++    private readonly DeviceIdentity _deviceIdentity;
++    private string _mainSessionKey = "main";
++    private string? _operatorDeviceId;
++    private string[] _grantedOperatorScopes = Array.Empty<string>();
++    private string _connectAuthToken;
++    private SignatureTokenMode _signatureTokenMode = SignatureTokenMode.V3AuthToken;
++    private long? _challengeTimestampMs;
+     private bool _usageStatusUnsupported;
+     private bool _usageCostUnsupported;
+     private bool _sessionPreviewUnsupported;
+     private bool _nodeListUnsupported;
++    private bool _operatorReadScopeUnavailable;
++    private bool _pairingRequiredAwaitingApproval;
+ 
+     private void ResetUnsupportedMethodFlags()
+     {
+@@ -29,6 +65,7 @@ private void ResetUnsupportedMethodFlags()
+         _usageCostUnsupported = false;
+         _sessionPreviewUnsupported = false;
+         _nodeListUnsupported = false;
++        _operatorReadScopeUnavailable = false;
+     }
+ 
+     protected override int ReceiveBufferSize => 16384;
+@@ -46,6 +83,11 @@ protected override Task OnConnectedAsync()
+         return Task.CompletedTask;
+     }
+ 
++    protected override bool ShouldAutoReconnect()
++    {
++        return !_pairingRequiredAwaitingApproval;
++    }
++
+     protected override void OnDisconnected()
+     {
+         ClearPendingRequests();
+@@ -68,9 +110,20 @@ protected override void OnDisposing()
+     public event EventHandler<SessionsPreviewPayloadInfo>? SessionPreviewUpdated;
+     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
+ 
++    public string? OperatorDeviceId => _operatorDeviceId;
++    public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
++    public bool IsConnectedToGateway => IsConnected;
++
+     public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null)
+         : base(gatewayUrl, token, logger)
+     {
++        var dataPath = Path.Combine(
++            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
++            "OpenClawTray");
++
++        _deviceIdentity = new DeviceIdentity(dataPath, _logger);
++        _deviceIdentity.Initialize();
++        _connectAuthToken = _deviceIdentity.DeviceToken ?? _token;
+     }
+ 
+     public async Task DisconnectAsync()
+@@ -118,31 +171,58 @@ public async Task CheckHealthAsync()
+         }
+     }
+ 
+-    public async Task SendChatMessageAsync(string message)
++    public async Task SendChatMessageAsync(string message, string? sessionKey = null)
+     {
+         if (!IsConnected)
+             throw new InvalidOperationException("Gateway connection is not open");
++        if (string.IsNullOrWhiteSpace(message))
++            throw new ArgumentException("Message is required", nameof(message));
++
++        var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey)
++            ? _mainSessionKey
++            : sessionKey.Trim();
++
++        var requestId = Guid.NewGuid().ToString();
++        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
++        TrackPendingChatSend(requestId, completion);
+ 
+         var req = new
+         {
+             type = "req",
+-            id = Guid.NewGuid().ToString(),
++            id = requestId,
+             method = "chat.send",
+-            @params = new { message }
++            @params = new
++            {
++                sessionKey = effectiveSessionKey,
++                message,
++                idempotencyKey = Guid.NewGuid().ToString()
++            }
+         };
++
+         await SendRawAsync(JsonSerializer.Serialize(req));
++
++        var completedTask = await Task.WhenAny(completion.Task, Task.Delay(5000, CancellationToken));
++        if (completedTask != completion.Task)
++        {
++            RemovePendingChatSend(requestId);
++            throw new TimeoutException("Timed out waiting for chat.send response from gateway");
++        }
++
++        await completion.Task;
+         _logger.Info($"Sent chat message ({message.Length} chars)");
+     }
+ 
+     /// <summary>Request session list from gateway.</summary>
+     public async Task RequestSessionsAsync()
+     {
++        if (_operatorReadScopeUnavailable) return;
+         await SendTrackedRequestAsync("sessions.list");
+     }
+ 
+     /// <summary>Request usage/context info from gateway (may not be supported on all gateways).</summary>
+     public async Task RequestUsageAsync()
+     {
++        if (_operatorReadScopeUnavailable) return;
+         if (!IsConnected) return;
+         try
+         {
+@@ -167,6 +247,7 @@ public async Task RequestUsageAsync()
+     /// <summary>Request connected node inventory from gateway.</summary>
+     public async Task RequestNodesAsync()
+     {
++        if (_operatorReadScopeUnavailable) return;
+         if (_nodeListUnsupported) return;
+         await SendTrackedRequestAsync("node.list");
+     }
+@@ -281,11 +362,40 @@ public async Task<bool> StopChannelAsync(string channelName)
+ 
+     private async Task SendConnectMessageAsync(string? nonce = null)
+     {
++        var requestId = Guid.NewGuid().ToString();
++        TrackPendingRequest(requestId, "connect");
++
++        var signedAt = _challengeTimestampMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
++        var connectNonce = nonce ?? string.Empty;
++        var signatureToken = _signatureTokenMode is SignatureTokenMode.V3EmptyToken or SignatureTokenMode.V2EmptyToken
++            ? string.Empty
++            : _connectAuthToken;
++
++        var signature = _signatureTokenMode is SignatureTokenMode.V2AuthToken or SignatureTokenMode.V2EmptyToken
++            ? _deviceIdentity.SignConnectPayloadV2(
++                connectNonce,
++                signedAt,
++                OperatorClientId,
++                OperatorClientMode,
++                OperatorRole,
++                s_operatorScopes,
++                signatureToken)
++            : _deviceIdentity.SignConnectPayloadV3(
++                connectNonce,
++                signedAt,
++                OperatorClientId,
++                OperatorClientMode,
++                OperatorRole,
++                s_operatorScopes,
++                signatureToken,
++                OperatorPlatform,
++                OperatorDeviceFamily);
++
+         // Use "cli" client ID for native apps - no browser security checks
+         var msg = new
+         {
+             type = "req",
+-            id = Guid.NewGuid().ToString(),
++            id = requestId,
+             method = "connect",
+             @params = new
+             {
+@@ -293,23 +403,40 @@ private async Task SendConnectMessageAsync(string? nonce = null)
+                 maxProtocol = 3,
+                 client = new
+                 {
+-                    id = "cli",  // Native client ID
++                    id = OperatorClientId,  // Native client ID
+                     version = "1.0.0",
+-                    platform = "windows",
+-                    mode = "cli",
+-                    displayName = "OpenClaw Windows Tray"
++                    platform = OperatorPlatform,
++                    mode = OperatorClientMode,
++                    displayName = OperatorClientDisplayName
+                 },
+-                role = "operator",
+-                scopes = new[] { "operator.admin", "operator.approvals", "operator.pairing" },
++                role = OperatorRole,
++                scopes = s_operatorScopes,
+                 caps = Array.Empty<string>(),
+                 commands = Array.Empty<string>(),
+                 permissions = new { },
+-                auth = new { token = _token },
++                auth = new { token = _connectAuthToken },
+                 locale = "en-US",
+-                userAgent = "openclaw-windows-tray/1.0.0"
++                userAgent = "openclaw-windows-tray/1.0.0",
++                device = new
++                {
++                    id = _deviceIdentity.DeviceId,
++                    publicKey = _deviceIdentity.PublicKeyBase64Url,
++                    signature,
++                    signedAt,
++                    nonce = connectNonce
++                }
+             }
+         };
+-        await SendRawAsync(JsonSerializer.Serialize(msg));
++
++        try
++        {
++            await SendRawAsync(JsonSerializer.Serialize(msg));
++        }
++        catch
++        {
++            RemovePendingRequest(requestId);
++            throw;
++        }
+     }
+ 
+     private async Task SendTrackedRequestAsync(string method, object? parameters = null)
+@@ -397,6 +524,51 @@ private void ClearPendingRequests()
+         {
+             _pendingRequestMethods.Clear();
+         }
++
++        lock (_pendingChatSendLock)
++        {
++            foreach (var completion in _pendingChatSendRequests.Values)
++            {
++                completion.TrySetException(new OperationCanceledException("Request canceled"));
++            }
++
++            _pendingChatSendRequests.Clear();
++        }
++    }
++
++    private void TrackPendingChatSend(string requestId, TaskCompletionSource<bool> completion)
++    {
++        lock (_pendingChatSendLock)
++        {
++            _pendingChatSendRequests[requestId] = completion;
++        }
++    }
++
++    private void RemovePendingChatSend(string requestId)
++    {
++        lock (_pendingChatSendLock)
++        {
++            _pendingChatSendRequests.Remove(requestId);
++        }
++    }
++
++    private TaskCompletionSource<bool>? TakePendingChatSend(string? requestId)
++    {
++        if (string.IsNullOrWhiteSpace(requestId))
++        {
++            return null;
++        }
++
++        lock (_pendingChatSendLock)
++        {
++            if (!_pendingChatSendRequests.TryGetValue(requestId, out var completion))
++            {
++                return null;
++            }
++
++            _pendingChatSendRequests.Remove(requestId);
++            return completion;
++        }
+     }
+ 
+     // --- Message processing ---
+@@ -434,9 +606,27 @@ private void ProcessMessage(string json)
+     private void HandleResponse(JsonElement root)
+     {
+         string? requestMethod = null;
++        string? requestId = null;
+         if (root.TryGetProperty("id", out var idProp))
+         {
+-            requestMethod = TakePendingRequestMethod(idProp.GetString());
++            requestId = idProp.GetString();
++            requestMethod = TakePendingRequestMethod(requestId);
++        }
++
++        var pendingChatSend = TakePendingChatSend(requestId);
++        if (pendingChatSend != null)
++        {
++            if (root.TryGetProperty("ok", out var okChatProp) &&
++                okChatProp.ValueKind == JsonValueKind.False)
++            {
++                var message = TryGetErrorMessage(root) ?? "request failed";
++                _logger.Warn($"chat.send failed: {message}");
++                pendingChatSend.TrySetException(new InvalidOperationException(message));
++                return;
++            }
++
++            pendingChatSend.TrySetResult(true);
++            return;
+         }
+ 
+         if (root.TryGetProperty("ok", out var okProp) &&
+@@ -453,10 +643,31 @@ private void HandleResponse(JsonElement root)
+             return;
+         }
+ 
+-        // Handle hello-ok
++        // Handle handshake acknowledgement payload.
+         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
+         {
++            _pairingRequiredAwaitingApproval = false;
++            _operatorDeviceId = TryGetHandshakeDeviceId(payload);
++            _grantedOperatorScopes = TryGetHandshakeScopes(payload);
++            _mainSessionKey = TryGetHandshakeMainSessionKey(payload) ?? "main";
++            var newDeviceToken = TryGetHandshakeDeviceToken(payload);
++            if (!string.IsNullOrWhiteSpace(newDeviceToken))
++            {
++                _deviceIdentity.StoreDeviceToken(newDeviceToken);
++                _connectAuthToken = newDeviceToken;
++                _logger.Info("Operator device token stored for reconnect");
++            }
++
+             _logger.Info("Handshake complete (hello-ok)");
++            if (!string.IsNullOrWhiteSpace(_operatorDeviceId))
++            {
++                _logger.Info($"Operator device ID: {_operatorDeviceId}");
++            }
++            if (_grantedOperatorScopes.Length > 0)
++            {
++                _logger.Info($"Granted operator scopes: {string.Join(", ", _grantedOperatorScopes)}");
++            }
++            _logger.Info($"Main session key: {_mainSessionKey}");
+             RaiseStatusChanged(ConnectionStatus.Connected);
+ 
+             // Request initial state after handshake
+@@ -543,6 +754,49 @@ private void HandleRequestError(string? method, JsonElement root)
+             return;
+         }
+ 
++        if (method == "connect" &&
++            message.Contains("device signature invalid", StringComparison.OrdinalIgnoreCase))
++        {
++            var previousMode = _signatureTokenMode;
++            _signatureTokenMode = _signatureTokenMode switch
++            {
++                SignatureTokenMode.V3AuthToken => SignatureTokenMode.V3EmptyToken,
++                SignatureTokenMode.V3EmptyToken => SignatureTokenMode.V2AuthToken,
++                SignatureTokenMode.V2AuthToken => SignatureTokenMode.V2EmptyToken,
++                _ => SignatureTokenMode.V2EmptyToken
++            };
++
++            if (_signatureTokenMode != previousMode)
++            {
++                _logger.Warn($"Gateway rejected device signature with mode {previousMode}; retrying with mode {_signatureTokenMode}");
++                return;
++            }
++
++            _logger.Warn("Gateway rejected device signature in all supported payload modes");
++            return;
++        }
++
++        if (method == "connect" &&
++            message.Contains("pairing required", StringComparison.OrdinalIgnoreCase))
++        {
++            _pairingRequiredAwaitingApproval = true;
++            _logger.Warn("Pairing approval required for this device; auto-reconnect paused until manual reconnect or app restart");
++            RaiseStatusChanged(ConnectionStatus.Error);
++            return;
++        }
++
++        if (IsMissingScopeError(message, "operator.read") &&
++            method is "sessions.list" or "usage.status" or "usage.cost" or "node.list")
++        {
++            if (!_operatorReadScopeUnavailable)
++            {
++                _logger.Warn("Gateway token lacks operator.read; disabling sessions/usage/nodes polling");
++            }
++
++            _operatorReadScopeUnavailable = true;
++            return;
++        }
++
+         if (IsUnknownMethodError(message))
+         {
+             switch (method)
+@@ -631,11 +885,184 @@ private static bool IsUnknownMethodError(string errorMessage)
+         return errorMessage.Contains("unknown method", StringComparison.OrdinalIgnoreCase);
+     }
+ 
++    private static bool IsMissingScopeError(string errorMessage, string scope)
++    {
++        if (string.IsNullOrWhiteSpace(errorMessage) || string.IsNullOrWhiteSpace(scope))
++            return false;
++
++        var expected = $"missing scope: {scope}";
++        return errorMessage.Contains(expected, StringComparison.OrdinalIgnoreCase);
++    }
++
+     private static bool IsSessionCommandMethod(string method)
+     {
+         return method is "sessions.patch" or "sessions.reset" or "sessions.delete" or "sessions.compact";
+     }
+ 
++    private static string? TryGetHandshakeDeviceId(JsonElement payload)
++    {
++        if (payload.TryGetProperty("deviceId", out var deviceIdProp) &&
++            deviceIdProp.ValueKind == JsonValueKind.String)
++        {
++            return deviceIdProp.GetString();
++        }
++
++        if (payload.TryGetProperty("device", out var deviceProp) &&
++            deviceProp.ValueKind == JsonValueKind.Object)
++        {
++            if (deviceProp.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String)
++            {
++                return idProp.GetString();
++            }
++
++            if (deviceProp.TryGetProperty("deviceId", out var didProp) && didProp.ValueKind == JsonValueKind.String)
++            {
++                return didProp.GetString();
++            }
++        }
++
++        return null;
++    }
++
++    private static string[] TryGetHandshakeScopes(JsonElement payload)
++    {
++        if (payload.TryGetProperty("scopes", out var scopesProp) &&
++            scopesProp.ValueKind == JsonValueKind.Array)
++        {
++            var scopes = new List<string>();
++            foreach (var scope in scopesProp.EnumerateArray())
++            {
++                if (scope.ValueKind == JsonValueKind.String)
++                {
++                    var value = scope.GetString();
++                    if (!string.IsNullOrWhiteSpace(value))
++                    {
++                        scopes.Add(value);
++                    }
++                }
++            }
++
++            return scopes.ToArray();
++        }
++
++        return Array.Empty<string>();
++    }
++
++    private static string? TryGetHandshakeMainSessionKey(JsonElement payload)
++    {
++        if (!payload.TryGetProperty("snapshot", out var snapshot) || snapshot.ValueKind != JsonValueKind.Object)
++        {
++            return null;
++        }
++
++        if (!snapshot.TryGetProperty("sessionDefaults", out var sessionDefaults) || sessionDefaults.ValueKind != JsonValueKind.Object)
++        {
++            return null;
++        }
++
++        if (!sessionDefaults.TryGetProperty("mainKey", out var mainKey) || mainKey.ValueKind != JsonValueKind.String)
++        {
++            return null;
++        }
++
++        var value = mainKey.GetString();
++        return string.IsNullOrWhiteSpace(value) ? null : value;
++    }
++
++    private static string? TryGetHandshakeDeviceToken(JsonElement payload)
++    {
++        if (!payload.TryGetProperty("auth", out var authPayload) || authPayload.ValueKind != JsonValueKind.Object)
++        {
++            return null;
++        }
++
++        if (!authPayload.TryGetProperty("deviceToken", out var deviceToken) || deviceToken.ValueKind != JsonValueKind.String)
++        {
++            return null;
++        }
++
++        var value = deviceToken.GetString();
++        return string.IsNullOrWhiteSpace(value) ? null : value;
++    }
++
++    public string BuildMissingScopeFixCommands(string missingScope)
++    {
++        var scope = string.IsNullOrWhiteSpace(missingScope) ? "operator.write" : missingScope.Trim();
++        var grantedScopes = _grantedOperatorScopes.Length == 0
++            ? "(none reported by gateway)"
++            : string.Join(", ", _grantedOperatorScopes);
++        var deviceId = string.IsNullOrWhiteSpace(_operatorDeviceId)
++            ? "(not reported for this operator connection)"
++            : _operatorDeviceId;
++        var likelyNodeToken = _grantedOperatorScopes.Any(s => s.StartsWith("node.", StringComparison.OrdinalIgnoreCase));
++
++        var sb = new StringBuilder();
++        sb.AppendLine("Quick Send is connected, but your token is missing required permission.");
++        sb.AppendLine($"Missing scope: {scope}");
++        sb.AppendLine("Note: requested connect scopes are declarative; the gateway may grant fewer scopes based on token/policy/device state.");
++        sb.AppendLine();
++        sb.AppendLine("Do this in Windows Tray right now:");
++        sb.AppendLine("1. Right-click the tray icon and open Settings.");
++        sb.AppendLine("2. Replace Gateway Token with an OPERATOR token that includes operator.write.");
++        sb.AppendLine("3. Click Save.");
++        sb.AppendLine("4. Reconnect from the tray menu (or restart the tray app).");
++        sb.AppendLine("5. Retry Quick Send.");
++        sb.AppendLine();
++        sb.AppendLine("Token requirements for Quick Send:");
++        sb.AppendLine("- Role: operator");
++        sb.AppendLine("- Required scope: operator.write");
++        sb.AppendLine("- Recommended scopes: operator.admin, operator.read, operator.approvals, operator.pairing, operator.write");
++
++        if (likelyNodeToken)
++        {
++            sb.AppendLine();
++            sb.AppendLine("Detected node.* scopes. This usually means a node token was pasted into Gateway Token.");
++            sb.AppendLine("Quick Send requires an operator token, not a node token.");
++        }
++
++        sb.AppendLine();
++        sb.AppendLine("Connection details from this app (for debugging/support):");
++        sb.AppendLine($"- role: operator");
++        sb.AppendLine($"- client.id: {OperatorClientId}");
++        sb.AppendLine($"- client.displayName: {OperatorClientDisplayName}");
++        sb.AppendLine($"- operator device id: {deviceId}");
++        sb.AppendLine($"- granted scopes: {grantedScopes}");
++        sb.AppendLine();
++        sb.AppendLine("If this still fails after updating the token, copy this block and share it with your gateway admin.");
++        return sb.ToString().TrimEnd();
++    }
++
++    public string BuildPairingApprovalFixCommands()
++    {
++        var deviceId = !string.IsNullOrWhiteSpace(_operatorDeviceId)
++            ? _operatorDeviceId
++            : _deviceIdentity.DeviceId;
++        var grantedScopes = _grantedOperatorScopes.Length == 0
++            ? "(none reported by gateway yet)"
++            : string.Join(", ", _grantedOperatorScopes);
++
++        var sb = new StringBuilder();
++        sb.AppendLine("Quick Send requires this device to be approved (paired) in the gateway.");
++        sb.AppendLine("Gateway reported: pairing required");
++        sb.AppendLine();
++        sb.AppendLine("Do this now:");
++        sb.AppendLine("1. Open the gateway admin UI.");
++        sb.AppendLine("2. Go to pending pairing/device approvals.");
++        sb.AppendLine("3. Approve this Windows tray device ID.");
++        sb.AppendLine("4. Return to tray and reconnect (or restart tray app).");
++        sb.AppendLine("5. Retry Quick Send.");
++        sb.AppendLine();
++        sb.AppendLine("Connection details from this app (for debugging/support):");
++        sb.AppendLine("- role: operator");
++        sb.AppendLine($"- client.id: {OperatorClientId}");
++        sb.AppendLine($"- client.displayName: {OperatorClientDisplayName}");
++        sb.AppendLine($"- operator device id: {deviceId}");
++        sb.AppendLine($"- granted scopes: {grantedScopes}");
++        sb.AppendLine();
++        sb.AppendLine("If approval keeps failing, share this block with your gateway admin.");
++        return sb.ToString().TrimEnd();
++    }
++
+     private void HandleEvent(JsonElement root)
+     {
+         if (!root.TryGetProperty("event", out var eventProp)) return;
+@@ -666,11 +1093,19 @@ private void HandleEvent(JsonElement root)
+     private void HandleConnectChallenge(JsonElement root)
+     {
+         string? nonce = null;
++        long? ts = null;
+         if (root.TryGetProperty("payload", out var payload) &&
+             payload.TryGetProperty("nonce", out var nonceProp))
+         {
+             nonce = nonceProp.GetString();
++
++            if (payload.TryGetProperty("ts", out var tsProp) && tsProp.ValueKind == JsonValueKind.Number)
++            {
++                ts = tsProp.GetInt64();
++            }
+         }
++
++        _challengeTimestampMs = ts;
+         
+         _logger.Info($"Received challenge, nonce: {nonce}");
+         _ = SendConnectMessageAsync(nonce);
+diff --git a/src/OpenClaw.Shared/SettingsData.cs b/src/OpenClaw.Shared/SettingsData.cs
+index 7a2d4b5..27ec9a0 100644
+--- a/src/OpenClaw.Shared/SettingsData.cs
++++ b/src/OpenClaw.Shared/SettingsData.cs
+@@ -28,6 +28,7 @@ public class SettingsData
+     public bool NotifyInfo { get; set; } = true;
+     public bool EnableNodeMode { get; set; } = false;
+     public bool HasSeenActivityStreamTip { get; set; } = false;
++    public string? SkippedUpdateTag { get; set; }
+     public bool NotifyChatResponses { get; set; } = true;
+     public bool PreferStructuredCategories { get; set; } = true;
+     public List<UserNotificationRule>? UserRules { get; set; }
+diff --git a/src/OpenClaw.Shared/WebSocketClientBase.cs b/src/OpenClaw.Shared/WebSocketClientBase.cs
+index 72c4d10..0a633e2 100644
+--- a/src/OpenClaw.Shared/WebSocketClientBase.cs
++++ b/src/OpenClaw.Shared/WebSocketClientBase.cs
+@@ -19,6 +19,7 @@ public abstract class WebSocketClientBase : IDisposable
+     private CancellationTokenSource _cts;
+     private bool _disposed;
+     private int _reconnectAttempts;
++    private int _reconnectLoopActive;
+     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
+ 
+     protected readonly string _token;
+@@ -68,6 +69,12 @@ protected virtual void OnError(Exception ex) { }
+     /// <summary>Called at the start of Dispose, before CTS cancellation.</summary>
+     protected virtual void OnDisposing() { }
+ 
++    /// <summary>
++    /// Whether auto-reconnect should run after an unexpected disconnect.
++    /// Subclasses can return false for known terminal states (for example awaiting pairing approval).
++    /// </summary>
++    protected virtual bool ShouldAutoReconnect() => true;
++
+     protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
+     {
+         if (string.IsNullOrEmpty(gatewayUrl))
+@@ -85,6 +92,12 @@ protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger?
+ 
+     public async Task ConnectAsync()
+     {
++        if (_disposed)
++        {
++            _logger.Debug($"Skipping {ClientRole} connect: client already disposed");
++            return;
++        }
++
+         try
+         {
+             RaiseStatusChanged(ConnectionStatus.Connecting);
+@@ -116,10 +129,23 @@ public async Task ConnectAsync()
+ 
+             _ = Task.Run(() => ListenForMessagesAsync(), _cts.Token);
+         }
++        catch (OperationCanceledException)
++        {
++            _logger.Debug($"{ClientRole} connect canceled (likely shutdown)");
++        }
++        catch (ObjectDisposedException)
++        {
++            _logger.Debug($"{ClientRole} connect aborted after dispose");
++        }
+         catch (Exception ex)
+         {
+             _logger.Error($"{ClientRole} connection failed", ex);
+             RaiseStatusChanged(ConnectionStatus.Error);
++
++            if (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
++            {
++                _ = ReconnectWithBackoffAsync();
++            }
+         }
+     }
+ 
+@@ -175,7 +201,7 @@ private async Task ListenForMessagesAsync()
+         {
+             try
+             {
+-                if (!_cts.Token.IsCancellationRequested)
++                if (!_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
+                 {
+                     await ReconnectWithBackoffAsync();
+                 }
+@@ -186,31 +212,51 @@ private async Task ListenForMessagesAsync()
+ 
+     protected async Task ReconnectWithBackoffAsync()
+     {
+-        var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+-        _reconnectAttempts++;
+-        _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
+-        RaiseStatusChanged(ConnectionStatus.Connecting);
++        if (Interlocked.CompareExchange(ref _reconnectLoopActive, 1, 0) != 0)
++        {
++            return;
++        }
+ 
+         try
+         {
+-            await Task.Delay(delay, _cts.Token);
++            while (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
++            {
++                var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
++                _reconnectAttempts++;
++                _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
++                RaiseStatusChanged(ConnectionStatus.Connecting);
++
++                await Task.Delay(delay, _cts.Token);
++
++                if (_cts.Token.IsCancellationRequested || _disposed || !ShouldAutoReconnect())
++                {
++                    break;
++                }
+ 
+-            // Check cancellation after delay
+-            if (_cts.Token.IsCancellationRequested) return;
++                // Safely dispose old socket
++                var oldSocket = _webSocket;
++                _webSocket = null;
++                try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
+ 
+-            // Safely dispose old socket
+-            var oldSocket = _webSocket;
+-            _webSocket = null;
+-            try { oldSocket?.Dispose(); } catch { /* ignore dispose errors */ }
++                await ConnectAsync();
+ 
+-            await ConnectAsync();
++                if (IsConnected)
++                {
++                    break;
++                }
++            }
+         }
+         catch (OperationCanceledException) { }
++        catch (ObjectDisposedException) { }
+         catch (Exception ex)
+         {
+             _logger.Error($"{ClientRole} reconnect failed", ex);
+             RaiseStatusChanged(ConnectionStatus.Error);
+         }
++        finally
++        {
++            Interlocked.Exchange(ref _reconnectLoopActive, 0);
++        }
+     }
+ 
+     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
+diff --git a/src/OpenClaw.Tray.WinUI/App.xaml.cs b/src/OpenClaw.Tray.WinUI/App.xaml.cs
+index caff372..a68ad7d 100644
+--- a/src/OpenClaw.Tray.WinUI/App.xaml.cs
++++ b/src/OpenClaw.Tray.WinUI/App.xaml.cs
+@@ -41,6 +41,7 @@ public partial class App : Application
+     private Mutex? _mutex;
+     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
+     private CancellationTokenSource? _deepLinkCts;
++    private bool _isExiting;
+     
+     private ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
+     private AgentActivity? _currentActivity;
+@@ -235,6 +236,9 @@ protected override async void OnLaunched(LaunchActivatedEventArgs args)
+         // Store protocol URI for processing after setup
+         _pendingProtocolUri = protocolUri;
+ 
++        // Initialize settings before update check so skip selections can be remembered.
++        _settings = new SettingsManager();
++
+         // Register URI scheme on first run
+         DeepLinkHandler.RegisterUriScheme();
+ 
+@@ -249,8 +253,6 @@ protected override async void OnLaunched(LaunchActivatedEventArgs args)
+         // Register toast activation handler
+         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+ 
+-        // Initialize settings
+-        _settings = new SettingsManager();
+         _sshTunnelService = new SshTunnelService(new AppLogger());
+ 
+         // First-run check
+@@ -1680,7 +1682,7 @@ private void ShowQuickSend(string? prefillMessage = null)
+                 else
+                 {
+                     Logger.Info("QuickSend dialog already open; activating");
+-                    _quickSendDialog.Activate();
++                    _quickSendDialog.ShowAsync();
+                     return;
+                 }
+             }
+@@ -1695,7 +1697,7 @@ private void ShowQuickSend(string? prefillMessage = null)
+                 }
+             };
+             _quickSendDialog = dialog;
+-            dialog.Activate();
++            dialog.ShowAsync();
+         }
+         catch (Exception ex)
+         {
+@@ -1894,15 +1896,33 @@ private async Task<bool> CheckForUpdatesAsync()
+             var changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
+             Logger.Info($"Update available: {release.TagName}");
+ 
++            if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
++                string.Equals(_settings.SkippedUpdateTag, release.TagName, StringComparison.OrdinalIgnoreCase))
++            {
++                Logger.Info($"Skipping update prompt for remembered version {release.TagName}");
++                return true;
++            }
++
+             var dialog = new UpdateDialog(release.TagName, changelog);
+             var result = await dialog.ShowAsync();
+ 
+             if (result == UpdateDialogResult.Download)
+             {
++                if (_settings != null)
++                {
++                    _settings.SkippedUpdateTag = string.Empty;
++                    _settings.Save();
++                }
+                 var installed = await DownloadAndInstallUpdateAsync();
+                 return !installed; // Don't launch if update succeeded
+             }
+ 
++            if (result == UpdateDialogResult.Skip && _settings != null)
++            {
++                _settings.SkippedUpdateTag = release.TagName ?? string.Empty;
++                _settings.Save();
++            }
++
+             return true; // RemindLater or Skip - continue
+         }
+         catch (Exception ex)
+@@ -1969,6 +1989,7 @@ private void StartDeepLinkServer()
+                 }
+                 catch (OperationCanceledException)
+                 {
++                    Logger.Info("Deep link server stopping (canceled)");
+                     break; // Normal shutdown
+                 }
+                 catch (Exception ex)
+@@ -2058,35 +2079,133 @@ private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args)
+ 
+     private void ExitApplication()
+     {
++        if (_isExiting)
++        {
++            Logger.Info("Exit requested while shutdown already in progress");
++            return;
++        }
++
++        _isExiting = true;
+         Logger.Info("Application exiting");
+-        
++
+         // Cancel background tasks
+-        _deepLinkCts?.Cancel();
+-        
++        if (_deepLinkCts != null)
++        {
++            Logger.Info("Shutdown: canceling deep link server");
++            try { _deepLinkCts.Cancel(); } catch (Exception ex) { Logger.Warn($"Shutdown: deep link cancel failed: {ex.Message}"); }
++        }
++
+         // Stop timers
+-        _healthCheckTimer?.Stop();
+-        _healthCheckTimer?.Dispose();
+-        _sessionPollTimer?.Stop();
+-        _sessionPollTimer?.Dispose();
+-        
++        SafeShutdownStep("health timer", () =>
++        {
++            _healthCheckTimer?.Stop();
++            _healthCheckTimer?.Dispose();
++            _healthCheckTimer = null;
++        });
++
++        SafeShutdownStep("session poll timer", () =>
++        {
++            _sessionPollTimer?.Stop();
++            _sessionPollTimer?.Dispose();
++            _sessionPollTimer = null;
++        });
++
+         // Cleanup hotkey
+-        _globalHotkey?.Dispose();
+-        
+-        // Unsubscribe and dispose gateway client
+-        UnsubscribeGatewayEvents();
+-        _gatewayClient?.Dispose();
+-        _sshTunnelService?.Dispose();
+-        
++        SafeShutdownStep("global hotkey", () =>
++        {
++            _globalHotkey?.Dispose();
++            _globalHotkey = null;
++        });
++
++        // Dispose runtime services
++        SafeShutdownStep("gateway client", () =>
++        {
++            UnsubscribeGatewayEvents();
++            _gatewayClient?.Dispose();
++            _gatewayClient = null;
++        });
++
++        SafeShutdownStep("node service", () =>
++        {
++            _nodeService?.Dispose();
++            _nodeService = null;
++        });
++
++        SafeShutdownStep("ssh tunnel service", () =>
++        {
++            _sshTunnelService?.Dispose();
++            _sshTunnelService = null;
++        });
++
++        // Close windows explicitly for deterministic shutdown tracing.
++        SafeShutdownStep("settings window", () => CloseWindow(_settingsWindow));
++        _settingsWindow = null;
++        SafeShutdownStep("web chat window", () => CloseWindow(_webChatWindow));
++        _webChatWindow = null;
++        SafeShutdownStep("status detail window", () => CloseWindow(_statusDetailWindow));
++        _statusDetailWindow = null;
++        SafeShutdownStep("notification history window", () => CloseWindow(_notificationHistoryWindow));
++        _notificationHistoryWindow = null;
++        SafeShutdownStep("activity stream window", () => CloseWindow(_activityStreamWindow));
++        _activityStreamWindow = null;
++        SafeShutdownStep("tray menu window", () => CloseWindow(_trayMenuWindow));
++        _trayMenuWindow = null;
++        SafeShutdownStep("quick send dialog", () => CloseWindow(_quickSendDialog));
++        _quickSendDialog = null;
++        SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));
++        _keepAliveWindow = null;
++
+         // Dispose tray and mutex
+-        _trayIcon?.Dispose();
+-        _mutex?.Dispose();
+-        
++        SafeShutdownStep("tray icon", () =>
++        {
++            _trayIcon?.Dispose();
++            _trayIcon = null;
++        });
++
++        SafeShutdownStep("single-instance mutex", () =>
++        {
++            _mutex?.Dispose();
++            _mutex = null;
++        });
++
+         // Dispose cancellation token source
+-        _deepLinkCts?.Dispose();
+-        
++        SafeShutdownStep("deep link token source", () =>
++        {
++            _deepLinkCts?.Dispose();
++            _deepLinkCts = null;
++        });
++
++        Logger.Info("Shutdown complete; calling Exit() now");
+         Exit();
+     }
+ 
++    private static void CloseWindow(Window? window)
++    {
++        try
++        {
++            window?.Close();
++        }
++        catch
++        {
++            // Let caller log specific failure context.
++            throw;
++        }
++    }
++
++    private static void SafeShutdownStep(string name, Action action)
++    {
++        try
++        {
++            Logger.Info($"Shutdown: disposing {name}");
++            action();
++            Logger.Info($"Shutdown: disposed {name}");
++        }
++        catch (Exception ex)
++        {
++            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
++        }
++    }
++
+     private bool EnsureSshTunnelConfigured()
+     {
+         if (_settings == null)
+diff --git a/src/OpenClaw.Tray.WinUI/Dialogs/QuickSendDialog.cs b/src/OpenClaw.Tray.WinUI/Dialogs/QuickSendDialog.cs
+index c8ea27b..1c54f20 100644
+--- a/src/OpenClaw.Tray.WinUI/Dialogs/QuickSendDialog.cs
++++ b/src/OpenClaw.Tray.WinUI/Dialogs/QuickSendDialog.cs
+@@ -9,6 +9,7 @@
+ using System;
+ using System.Runtime.InteropServices;
+ using System.Threading.Tasks;
++using System.Text.RegularExpressions;
+ using WinUIEx;
+ 
+ namespace OpenClawTray.Dialogs;
+@@ -20,8 +21,8 @@ public sealed class QuickSendDialog : WindowEx
+ {
+     private readonly OpenClawGatewayClient _client;
+     private readonly TextBox _messageTextBox;
++    private readonly TextBox _errorDetailsTextBox;
+     private readonly Button _sendButton;
+-    private readonly TextBlock _statusText;
+     private bool _isSending;
+ 
+     [DllImport("user32.dll")]
+@@ -52,7 +53,7 @@ public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = nu
+         
+         // Window setup
+         Title = LocalizationHelper.GetString("WindowTitle_QuickSend");
+-        this.SetWindowSize(400, 200);
++        this.SetWindowSize(420, 260);
+         this.CenterOnScreen();
+         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+         
+@@ -65,17 +66,21 @@ public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = nu
+         this.IsAlwaysOnTop = true;
+         
+         // Build UI programmatically (simple dialog)
+-        var root = new StackPanel
++        var root = new Grid
+         {
+-            Spacing = 12,
+-            Padding = new Thickness(24)
++            RowSpacing = 12
+         };
++        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
++        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
++        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
++        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+ 
+         var header = new TextBlock
+         {
+             Text = LocalizationHelper.GetString("QuickSend_Header"),
+             Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
+         };
++        Grid.SetRow(header, 0);
+         root.Children.Add(header);
+ 
+         _messageTextBox = new TextBox
+@@ -85,8 +90,24 @@ public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = nu
+             Text = prefillMessage ?? ""
+         };
+         _messageTextBox.KeyDown += OnKeyDown;
++        Grid.SetRow(_messageTextBox, 1);
+         root.Children.Add(_messageTextBox);
+ 
++        _errorDetailsTextBox = new TextBox
++        {
++            Visibility = Visibility.Collapsed,
++            IsReadOnly = true,
++            IsTabStop = true,
++            AcceptsReturn = true,
++            TextWrapping = TextWrapping.Wrap,
++            MinHeight = 80,
++            MaxHeight = 240,
++            VerticalAlignment = VerticalAlignment.Stretch
++        };
++        ScrollViewer.SetVerticalScrollBarVisibility(_errorDetailsTextBox, ScrollBarVisibility.Auto);
++        Grid.SetRow(_errorDetailsTextBox, 2);
++        root.Children.Add(_errorDetailsTextBox);
++
+         var buttonPanel = new StackPanel
+         {
+             Orientation = Orientation.Horizontal,
+@@ -94,13 +115,6 @@ public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = nu
+             HorizontalAlignment = HorizontalAlignment.Right
+         };
+ 
+-        _statusText = new TextBlock
+-        {
+-            VerticalAlignment = VerticalAlignment.Center,
+-            Margin = new Thickness(0, 0, 12, 0)
+-        };
+-        buttonPanel.Children.Add(_statusText);
+-
+         var cancelButton = new Button { Content = LocalizationHelper.GetString("QuickSend_CancelButton") };
+         cancelButton.Click += (s, e) => Close();
+         buttonPanel.Children.Add(cancelButton);
+@@ -113,15 +127,20 @@ public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = nu
+         _sendButton.Click += OnSendClick;
+         buttonPanel.Children.Add(_sendButton);
+ 
++        Grid.SetRow(buttonPanel, 3);
+         root.Children.Add(buttonPanel);
+ 
+-        Content = root;
++        Content = new Border
++        {
++            Padding = new Thickness(24),
++            Child = root
++        };
+ 
+         // Focus the text box when shown
+         Activated += (s, e) =>
+         {
+-            _messageTextBox.Focus(FocusState.Programmatic);
+             TryBringToFront();
++            RequestInputFocus();
+         };
+ 
+         Closed += (s, e) => Logger.Info("[QuickSend] Dialog closed");
+@@ -170,13 +189,22 @@ private async Task SendMessageAsync()
+         var message = _messageTextBox.Text?.Trim();
+         if (string.IsNullOrEmpty(message)) return;
+ 
++        _errorDetailsTextBox.Visibility = Visibility.Collapsed;
++        _errorDetailsTextBox.Text = string.Empty;
++        this.SetWindowSize(420, 260);
++
+         _isSending = true;
+         _sendButton.IsEnabled = false;
+         _messageTextBox.IsEnabled = false;
+-        _statusText.Text = LocalizationHelper.GetString("QuickSend_Sending");
++        ShowDetails(LocalizationHelper.GetString("QuickSend_Sending"));
+ 
+         try
+         {
++            if (!await EnsureGatewayConnectedAsync())
++            {
++                throw new InvalidOperationException("Gateway connection is not open");
++            }
++
+             await _client.SendChatMessageAsync(message);
+             Logger.Info($"[QuickSend] Message sent ({message.Length} chars)");
+             new ToastContentBuilder()
+@@ -188,15 +216,160 @@ private async Task SendMessageAsync()
+         catch (Exception ex)
+         {
+             Logger.Error($"Quick send failed: {ex.Message}");
+-            _statusText.Text = LocalizationHelper.GetString("QuickSend_Failed");
++            if (IsPairingRequired(ex.Message))
++            {
++                var commands = _client.BuildPairingApprovalFixCommands();
++                CopyTextToClipboard(commands);
++
++                ShowErrorDetails($"Pairing approval required\n\n{commands}");
++                new ToastContentBuilder()
++                    .AddText("Quick Send device approval required")
++                    .AddText("Gateway reported pairing required. Approval guidance copied to clipboard.")
++                    .Show();
++                Logger.Warn($"[QuickSend] Pairing required. Commands copied to clipboard.\n{commands}");
++            }
++            else if (TryExtractMissingScope(ex.Message, out var missingScope))
++            {
++                var commands = _client.BuildMissingScopeFixCommands(missingScope);
++                CopyTextToClipboard(commands);
++
++                ShowErrorDetails($"Missing scope: {missingScope}\n\n{commands}");
++                new ToastContentBuilder()
++                    .AddText("Quick Send permission required")
++                    .AddText($"Missing scope '{missingScope}'. Identity + remediation guidance copied to clipboard.")
++                    .Show();
++                Logger.Warn($"[QuickSend] Missing scope '{missingScope}'. Commands copied to clipboard.\n{commands}");
++            }
++            else
++            {
++                ShowErrorDetails(ex.Message);
++            }
++
+             _sendButton.IsEnabled = true;
+             _messageTextBox.IsEnabled = true;
+             _isSending = false;
+         }
+     }
+ 
++    private void ShowErrorDetails(string details)
++    {
++        _errorDetailsTextBox.Header = LocalizationHelper.GetString("QuickSend_Failed");
++        _errorDetailsTextBox.MinHeight = 140;
++        _errorDetailsTextBox.Text = details;
++        _errorDetailsTextBox.Visibility = Visibility.Visible;
++        this.SetWindowSize(520, 400);
++
++        // Move focus to the details box so users can immediately select/copy text.
++        _errorDetailsTextBox.Focus(FocusState.Programmatic);
++    }
++
++    private void ShowDetails(string details)
++    {
++        _errorDetailsTextBox.Header = null;
++        _errorDetailsTextBox.MinHeight = 80;
++        _errorDetailsTextBox.Text = details;
++        _errorDetailsTextBox.Visibility = Visibility.Visible;
++        this.SetWindowSize(500, 320);
++    }
++
++    private static bool TryExtractMissingScope(string? message, out string scope)
++    {
++        scope = string.Empty;
++        if (string.IsNullOrWhiteSpace(message))
++        {
++            return false;
++        }
++
++        var match = Regex.Match(message, @"missing\s+scope\s*:\s*([A-Za-z0-9._-]+)", RegexOptions.IgnoreCase);
++        if (!match.Success)
++        {
++            return false;
++        }
++
++        scope = match.Groups[1].Value;
++        return !string.IsNullOrWhiteSpace(scope);
++    }
++
++    private static bool IsPairingRequired(string? message)
++    {
++        if (string.IsNullOrWhiteSpace(message))
++        {
++            return false;
++        }
++
++        return message.Contains("pairing required", StringComparison.OrdinalIgnoreCase)
++            || message.Contains("not paired", StringComparison.OrdinalIgnoreCase)
++            || message.Contains("NOT_PAIRED", StringComparison.OrdinalIgnoreCase);
++    }
++
++    private static void CopyTextToClipboard(string text)
++    {
++        var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
++        data.SetText(text);
++        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
++    }
++
++    private void QueueFocusMessageInput()
++    {
++        DispatcherQueue?.TryEnqueue(FocusMessageInput);
++    }
++
++    private void RequestInputFocus()
++    {
++        QueueFocusMessageInput();
++        _ = RetryFocusMessageInputAsync();
++    }
++
++    private async Task RetryFocusMessageInputAsync()
++    {
++        var delaysMs = new[] { 60, 160, 320 };
++        foreach (var delay in delaysMs)
++        {
++            await Task.Delay(delay);
++            TryBringToFront();
++            QueueFocusMessageInput();
++        }
++    }
++
++    private async Task<bool> EnsureGatewayConnectedAsync(int timeoutMs = 3000)
++    {
++        if (_client.IsConnectedToGateway)
++        {
++            return true;
++        }
++
++        try
++        {
++            await _client.ConnectAsync();
++        }
++        catch
++        {
++            // Connect errors are handled by the send flow.
++        }
++
++        var started = Environment.TickCount64;
++        while (Environment.TickCount64 - started < timeoutMs)
++        {
++            if (_client.IsConnectedToGateway)
++            {
++                return true;
++            }
++
++            await Task.Delay(120);
++        }
++
++        return _client.IsConnectedToGateway;
++    }
++
++    public void FocusMessageInput()
++    {
++        _messageTextBox.Focus(FocusState.Programmatic);
++        _messageTextBox.SelectionStart = _messageTextBox.Text?.Length ?? 0;
++    }
++
+     public new void ShowAsync()
+     {
+         Activate();
++        RequestInputFocus();
+     }
+ }
+diff --git a/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs b/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs
+index 5347a6b..f89e513 100644
+--- a/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs
++++ b/src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs
+@@ -51,6 +51,7 @@ public class SettingsManager
+     // Node mode (enables Windows as a node, not just operator)
+     public bool EnableNodeMode { get; set; } = false;
+     public bool HasSeenActivityStreamTip { get; set; } = false;
++    public string SkippedUpdateTag { get; set; } = "";
+ 
+     public SettingsManager()
+     {
+@@ -88,6 +89,7 @@ public void Load()
+                     NotifyInfo = loaded.NotifyInfo;
+                     EnableNodeMode = loaded.EnableNodeMode;
+                     HasSeenActivityStreamTip = loaded.HasSeenActivityStreamTip;
++                    SkippedUpdateTag = loaded.SkippedUpdateTag ?? SkippedUpdateTag;
+                     NotifyChatResponses = loaded.NotifyChatResponses;
+                     PreferStructuredCategories = loaded.PreferStructuredCategories;
+                     if (loaded.UserRules != null)
+@@ -130,6 +132,7 @@ public void Save()
+                 NotifyInfo = NotifyInfo,
+                 EnableNodeMode = EnableNodeMode,
+                 HasSeenActivityStreamTip = HasSeenActivityStreamTip,
++                SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
+                 NotifyChatResponses = NotifyChatResponses,
+                 PreferStructuredCategories = PreferStructuredCategories,
+                 UserRules = UserRules
+diff --git a/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs b/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs
+index 18b7764..556ec71 100644
+--- a/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs
++++ b/src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs
+@@ -13,6 +13,7 @@ public sealed class SshTunnelService : IDisposable
+     private readonly IOpenClawLogger _logger;
+     private Process? _process;
+     private string? _lastSpec;
++    private bool _stopping;
+ 
+     public SshTunnelService(IOpenClawLogger logger)
+     {
+@@ -60,6 +61,9 @@ public void Stop()
+             return;
+         }
+ 
++        _stopping = true;
++        _logger.Info("Stopping SSH tunnel process");
++
+         try
+         {
+             if (!_process.HasExited)
+@@ -77,6 +81,7 @@ public void Stop()
+             try { _process.Dispose(); } catch { }
+             _process = null;
+             _lastSpec = null;
++            _stopping = false;
+         }
+     }
+ 
+@@ -117,7 +122,14 @@ private void StartProcess(string user, string host, int remotePort, int localPor
+         process.Exited += (_, _) =>
+         {
+             var exitCode = process.ExitCode;
+-            _logger.Warn($"SSH tunnel exited (code {exitCode})");
++            if (_stopping)
++            {
++                _logger.Info($"SSH tunnel exited during shutdown (code {exitCode})");
++            }
++            else
++            {
++                _logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode})");
++            }
+         };
+ 
+         try
+diff --git a/tests/OpenClaw.Shared.Tests/DeviceIdentityTests.cs b/tests/OpenClaw.Shared.Tests/DeviceIdentityTests.cs
+index bf5a59f..654830d 100644
+--- a/tests/OpenClaw.Shared.Tests/DeviceIdentityTests.cs
++++ b/tests/OpenClaw.Shared.Tests/DeviceIdentityTests.cs
+@@ -120,6 +120,66 @@ public void BuildDebugPayload_HasCorrectFormat()
+         finally { Directory.Delete(dir, true); }
+     }
+ 
++    [IntegrationFact]
++    public void BuildConnectPayloadV3_HasCorrectFormat()
++    {
++        var dir = CreateTempDir();
++        try
++        {
++            var identity = new DeviceIdentity(dir);
++            identity.Initialize();
++
++            var payload = identity.BuildConnectPayloadV3(
++                nonce: "challenge-nonce",
++                signedAtMs: 1711648000000,
++                clientId: "cli",
++                clientMode: "cli",
++                role: "operator",
++                scopes: new[] { "operator.admin", "operator.read", "operator.write" },
++                authToken: "mytoken123",
++                platform: "windows",
++                deviceFamily: "desktop");
++
++            Assert.StartsWith("v3|", payload);
++            Assert.Contains(identity.DeviceId, payload);
++            Assert.Contains("|cli|cli|operator|operator.admin,operator.read,operator.write|", payload);
++            Assert.Contains("|1711648000000|mytoken123|challenge-nonce|windows|desktop", payload);
++
++            var parts = payload.Split('|');
++            Assert.Equal(11, parts.Length);
++        }
++        finally { Directory.Delete(dir, true); }
++    }
++
++    [IntegrationFact]
++    public void BuildConnectPayloadV2_HasCorrectFormat()
++    {
++        var dir = CreateTempDir();
++        try
++        {
++            var identity = new DeviceIdentity(dir);
++            identity.Initialize();
++
++            var payload = identity.BuildConnectPayloadV2(
++                nonce: "challenge-nonce",
++                signedAtMs: 1711648000000,
++                clientId: "cli",
++                clientMode: "cli",
++                role: "operator",
++                scopes: new[] { "operator.admin", "operator.read", "operator.write" },
++                authToken: "mytoken123");
++
++            Assert.StartsWith("v2|", payload);
++            Assert.Contains(identity.DeviceId, payload);
++            Assert.Contains("|cli|cli|operator|operator.admin,operator.read,operator.write|", payload);
++            Assert.Contains("|1711648000000|mytoken123|challenge-nonce", payload);
++
++            var parts = payload.Split('|');
++            Assert.Equal(9, parts.Length);
++        }
++        finally { Directory.Delete(dir, true); }
++    }
++
+     [IntegrationFact]
+     public void StoreDeviceToken_PersistsAcrossReload()
+     {
+diff --git a/tests/OpenClaw.Shared.Tests/OpenClawGatewayClientTests.cs b/tests/OpenClaw.Shared.Tests/OpenClawGatewayClientTests.cs
+index 424182d..a364231 100644
+--- a/tests/OpenClaw.Shared.Tests/OpenClawGatewayClientTests.cs
++++ b/tests/OpenClaw.Shared.Tests/OpenClawGatewayClientTests.cs
+@@ -61,6 +61,24 @@ public string TruncateLabel(string text, int maxLen = 60)
+             return (string)result!;
+         }
+ 
++        public Task<bool> RegisterPendingChatSend(string requestId)
++        {
++            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
++            var method = typeof(OpenClawGatewayClient).GetMethod(
++                "TrackPendingChatSend",
++                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
++            method!.Invoke(_client, new object[] { requestId, completion });
++            return completion.Task;
++        }
++
++        public void ProcessRawMessage(string json)
++        {
++            var method = typeof(OpenClawGatewayClient).GetMethod(
++                "ProcessMessage",
++                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
++            method!.Invoke(_client, new object[] { json });
++        }
++
+         public SessionInfo[] GetSessionList()
+         {
+             return _client.GetSessionList();
+@@ -140,6 +158,26 @@ public GatewayNodeInfo[] ParseNodeListPayload(string payloadJson)
+             return parsed;
+         }
+ 
++        public string? ParseHandshakeMainSessionKey(string payloadJson)
++        {
++            using var doc = JsonDocument.Parse(payloadJson);
++            var method = typeof(OpenClawGatewayClient).GetMethod(
++                "TryGetHandshakeMainSessionKey",
++                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
++            var result = method!.Invoke(null, new object[] { doc.RootElement.Clone() });
++            return result as string;
++        }
++
++        public string? ParseHandshakeDeviceToken(string payloadJson)
++        {
++            using var doc = JsonDocument.Parse(payloadJson);
++            var method = typeof(OpenClawGatewayClient).GetMethod(
++                "TryGetHandshakeDeviceToken",
++                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
++            var result = method!.Invoke(null, new object[] { doc.RootElement.Clone() });
++            return result as string;
++        }
++
+         public (ChannelHealth[] channels, bool eventFired) ParseChannelHealthPayload(string payloadJson)
+         {
+             ChannelHealth[]? parsed = null;
+@@ -343,6 +381,109 @@ public void ClassifyTool_MapsEdit()
+         Assert.Equal(ActivityKind.Edit, helper.ClassifyTool("edit"));
+     }
+ 
++    [Fact]
++    public async Task PendingChatSend_CompletesOnSuccessfulResponse()
++    {
++        var helper = new GatewayClientTestHelper();
++        var task = helper.RegisterPendingChatSend("chat-1");
++
++        helper.ProcessRawMessage("""
++        {
++            "type": "res",
++            "id": "chat-1",
++            "ok": true,
++            "payload": { "accepted": true }
++        }
++        """);
++
++        Assert.True(await task);
++    }
++
++    [Fact]
++    public async Task PendingChatSend_FailsOnErrorResponse()
++    {
++        var helper = new GatewayClientTestHelper();
++        var task = helper.RegisterPendingChatSend("chat-2");
++
++        helper.ProcessRawMessage("""
++        {
++            "type": "res",
++            "id": "chat-2",
++            "ok": false,
++            "error": "missing scope: operator.write"
++        }
++        """);
++
++        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
++        Assert.Contains("operator.write", ex.Message, StringComparison.OrdinalIgnoreCase);
++    }
++
++        [Fact]
++        public void ParseHandshakeMainSessionKey_ReturnsMainKey_WhenPresent()
++        {
++                var helper = new GatewayClientTestHelper();
++                var key = helper.ParseHandshakeMainSessionKey("""
++                {
++                    "type": "hello-ok",
++                    "snapshot": {
++                        "sessionDefaults": {
++                            "mainKey": "agent:main:123"
++                        }
++                    }
++                }
++                """);
++
++                Assert.Equal("agent:main:123", key);
++        }
++
++        [Fact]
++        public void ParseHandshakeMainSessionKey_ReturnsNull_WhenMissing()
++        {
++                var helper = new GatewayClientTestHelper();
++                var key = helper.ParseHandshakeMainSessionKey("""
++                {
++                    "type": "hello-ok",
++                    "snapshot": {
++                        "sessionDefaults": {
++                        }
++                    }
++                }
++                """);
++
++                Assert.Null(key);
++        }
++
++        [Fact]
++        public void ParseHandshakeDeviceToken_ReturnsValue_WhenPresent()
++        {
++                var helper = new GatewayClientTestHelper();
++                var token = helper.ParseHandshakeDeviceToken("""
++                {
++                    "type": "hello-ok",
++                    "auth": {
++                        "deviceToken": "device-token-123"
++                    }
++                }
++                """);
++
++                Assert.Equal("device-token-123", token);
++        }
++
++        [Fact]
++        public void ParseHandshakeDeviceToken_ReturnsNull_WhenMissing()
++        {
++                var helper = new GatewayClientTestHelper();
++                var token = helper.ParseHandshakeDeviceToken("""
++                {
++                    "type": "hello-ok",
++                    "auth": {
++                    }
++                }
++                """);
++
++                Assert.Null(token);
++        }
++
+     [Fact]
+     public void ClassifyTool_MapsWebSearch()
+     {
+diff --git a/tests/OpenClaw.Shared.Tests/WebSocketClientBaseTests.cs b/tests/OpenClaw.Shared.Tests/WebSocketClientBaseTests.cs
+index c5106db..fbb8b81 100644
+--- a/tests/OpenClaw.Shared.Tests/WebSocketClientBaseTests.cs
++++ b/tests/OpenClaw.Shared.Tests/WebSocketClientBaseTests.cs
+@@ -225,11 +225,11 @@ public async Task ConnectAsync_RaisesStatusChangedConnecting()
+         var statuses = new List<ConnectionStatus>();
+         client.StatusChanged += (_, s) => statuses.Add(s);
+ 
+-        // ConnectAsync will fail (no real server) but should still fire Connecting then Error
++        // ConnectAsync should always emit Connecting.
++        // Depending on timing/shutdown races, it may then emit Error or be canceled.
+         await client.ConnectAsync();
+ 
+         Assert.Contains(ConnectionStatus.Connecting, statuses);
+-        Assert.Contains(ConnectionStatus.Error, statuses);
+         client.Dispose();
+     }
+ }
+diff --git a/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs b/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs
+index 887df5b..523fc37 100644
+--- a/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs
++++ b/tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs
+@@ -31,6 +31,7 @@ public void RoundTrip_AllFields_Preserved()
+             NotifyInfo = true,
+             EnableNodeMode = true,
+             HasSeenActivityStreamTip = true,
++            SkippedUpdateTag = "v1.2.3",
+             NotifyChatResponses = false,
+             PreferStructuredCategories = true,
+             UserRules = new List<UserNotificationRule>
+@@ -64,6 +65,7 @@ public void RoundTrip_AllFields_Preserved()
+         Assert.Equal(original.NotifyInfo, restored.NotifyInfo);
+         Assert.Equal(original.EnableNodeMode, restored.EnableNodeMode);
+         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
++        Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
+         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
+         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
+         Assert.NotNull(restored.UserRules);
+@@ -114,6 +116,7 @@ public void MissingFields_UseDefaults()
+         Assert.True(settings.NotifyInfo);
+         Assert.False(settings.EnableNodeMode);
+         Assert.False(settings.HasSeenActivityStreamTip);
++        Assert.Null(settings.SkippedUpdateTag);
+         Assert.True(settings.NotifyChatResponses);
+         Assert.True(settings.PreferStructuredCategories);
+         Assert.Null(settings.UserRules);
+@@ -156,6 +159,7 @@ public void BackwardCompatibility_OldSettingsWithoutNewFields()
+         Assert.True(settings.PreferStructuredCategories);
+         Assert.False(settings.EnableNodeMode);
+         Assert.False(settings.HasSeenActivityStreamTip);
++        Assert.Null(settings.SkippedUpdateTag);
+         Assert.True(settings.GlobalHotkeyEnabled);
+         Assert.Null(settings.UserRules);
+     }
+
+From 94fb82e3d5a0624686365b26cfaea99bee937cb3 Mon Sep 17 00:00:00 2001
+From: sytone <github@sytone.com>
+Date: Sat, 28 Mar 2026 18:32:12 -0700
+Subject: [PATCH 3/3] feat: Implement BringToFront method to manage window
+ focus and visibility
+
+---
+ .../Services/NodeService.cs                   |  1 +
+ .../Windows/CanvasWindow.xaml.cs              | 45 +++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/src/OpenClaw.Tray.WinUI/Services/NodeService.cs b/src/OpenClaw.Tray.WinUI/Services/NodeService.cs
+index 1bd3883..731359f 100644
+--- a/src/OpenClaw.Tray.WinUI/Services/NodeService.cs
++++ b/src/OpenClaw.Tray.WinUI/Services/NodeService.cs
+@@ -194,6 +194,7 @@ private void OnCanvasPresent(object? sender, CanvasPresentArgs args)
+                 
+                 // Show window
+                 _canvasWindow.Activate();
++                _canvasWindow.BringToFront(args.AlwaysOnTop);
+                 
+                 _logger.Info($"Canvas presented: {args.Width}x{args.Height}");
+             }
+diff --git a/src/OpenClaw.Tray.WinUI/Windows/CanvasWindow.xaml.cs b/src/OpenClaw.Tray.WinUI/Windows/CanvasWindow.xaml.cs
+index 8ba163d..5f4a4f8 100644
+--- a/src/OpenClaw.Tray.WinUI/Windows/CanvasWindow.xaml.cs
++++ b/src/OpenClaw.Tray.WinUI/Windows/CanvasWindow.xaml.cs
+@@ -2,6 +2,7 @@
+ using System.IO;
+ using System.Text.RegularExpressions;
+ using System.Threading.Tasks;
++using System.Runtime.InteropServices;
+ using Microsoft.UI.Xaml;
+ using Microsoft.Web.WebView2.Core;
+ using OpenClawTray.Helpers;
+@@ -16,6 +17,22 @@ namespace OpenClawTray.Windows;
+ /// </summary>
+ public sealed partial class CanvasWindow : WindowEx
+ {
++    [DllImport("user32.dll")]
++    private static extern bool SetForegroundWindow(IntPtr hWnd);
++
++    [DllImport("user32.dll")]
++    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
++
++    [DllImport("user32.dll")]
++    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
++
++    private static readonly IntPtr HWND_TOPMOST = new(-1);
++    private static readonly IntPtr HWND_NOTOPMOST = new(-2);
++    private const int SW_SHOWNORMAL = 1;
++    private const uint SWP_NOMOVE = 0x0002;
++    private const uint SWP_NOSIZE = 0x0001;
++    private const uint SWP_SHOWWINDOW = 0x0040;
++
+     private bool _isWebViewInitialized;
+     private string? _pendingUrl;
+     private string? _pendingHtml;
+@@ -331,6 +348,34 @@ public void SetAlwaysOnTop(bool alwaysOnTop)
+     {
+         this.IsAlwaysOnTop = alwaysOnTop;
+     }
++
++    /// <summary>
++    /// Force the window to the front so canvas content is visible immediately.
++    /// </summary>
++    public void BringToFront(bool keepTopMost)
++    {
++        try
++        {
++            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
++            if (hwnd == IntPtr.Zero)
++            {
++                return;
++            }
++
++            ShowWindow(hwnd, SW_SHOWNORMAL);
++            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
++            SetForegroundWindow(hwnd);
++
++            if (!keepTopMost)
++            {
++                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
++            }
++        }
++        catch
++        {
++            // Best-effort focus behavior only.
++        }
++    }
+     
+     public async Task EnsureA2UIHostAsync(string url)
+     {

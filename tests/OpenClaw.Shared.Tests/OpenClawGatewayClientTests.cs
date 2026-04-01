@@ -21,20 +21,14 @@ public class OpenClawGatewayClientTests
 
         public string ClassifyNotification(string text)
         {
-            var method = typeof(OpenClawGatewayClient).GetMethod("ClassifyNotification",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var result = method!.Invoke(null, new object[] { text });
-            var tuple = ((string title, string type))result!;
-            return tuple.type;
+            var (_, type) = NotificationCategorizer.ClassifyByKeywords(text);
+            return type;
         }
 
         public string GetNotificationTitle(string text)
         {
-            var method = typeof(OpenClawGatewayClient).GetMethod("ClassifyNotification",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var result = method!.Invoke(null, new object[] { text });
-            var tuple = ((string title, string type))result!;
-            return tuple.title;
+            var (title, _) = NotificationCategorizer.ClassifyByKeywords(text);
+            return title;
         }
 
         public ActivityKind ClassifyTool(string toolName)
