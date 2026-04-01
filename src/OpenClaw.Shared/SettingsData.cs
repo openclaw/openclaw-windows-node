@@ -43,7 +43,7 @@ public class SettingsData
         {
             return JsonSerializer.Deserialize<SettingsData>(json);
         }
-        catch
+        catch (JsonException)
         {
             return null;
         }

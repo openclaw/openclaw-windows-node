@@ -59,8 +59,8 @@ public static class GatewayUrlHelper
             }
         }
 
-        var username = credentials.Substring(0, separatorIndex);
-        var password = credentials.Substring(separatorIndex + 1);
+        var username = credentials[..separatorIndex];
+        var password = credentials[(separatorIndex + 1)..];
 
         try
         {
@@ -113,7 +113,7 @@ public static class GatewayUrlHelper
                 return false;
             }
 
-            var remainder = trimmed.Substring(schemeSeparator);
+            var remainder = trimmed[schemeSeparator..];
             if (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase))
             {
                 candidate = "ws" + remainder;
@@ -153,7 +153,7 @@ public static class GatewayUrlHelper
             return url;
         }
 
-        return url.Substring(0, authorityStart) + url.Substring(atIndex + 1);
+        return string.Concat(url.AsSpan(0, authorityStart), url.AsSpan(atIndex + 1));
     }
 }
 
