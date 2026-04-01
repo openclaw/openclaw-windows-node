@@ -50,7 +50,6 @@ public static class DeepLinkHandler
             return;
 
         var path = result.Path;
-        var query = result.Query;
 
         Logger.Info($"Handling deep link: {path}");
 
@@ -74,12 +73,12 @@ public static class DeepLinkHandler
                 break;
 
             case "send":
-                var sendMessage = OpenClaw.Shared.DeepLinkParser.GetQueryParam(query, "message");
+                var sendMessage = result.Parameters.GetValueOrDefault("message");
                 actions.OpenQuickSend?.Invoke(sendMessage);
                 break;
 
             case "agent":
-                var agentMessage = OpenClaw.Shared.DeepLinkParser.GetQueryParam(query, "message");
+                var agentMessage = result.Parameters.GetValueOrDefault("message");
                 if (!string.IsNullOrEmpty(agentMessage) && actions.SendMessage != null)
                 {
                     _ = Task.Run(async () =>
