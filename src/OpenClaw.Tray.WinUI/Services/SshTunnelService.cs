@@ -2,6 +2,7 @@ using OpenClaw.Shared;
 using System;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
 
@@ -155,8 +156,17 @@ public sealed class SshTunnelService : IDisposable
     private static string BuildSpec(string user, string host, int remotePort, int localPort)
         => $"{user}@{host}:{localPort}:{remotePort}";
 
+    // Strict validation for SSH user/host to prevent command injection
+    private static readonly Regex s_validSshUser = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex s_validSshHost = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
+
     private static string BuildArguments(string user, string host, int remotePort, int localPort)
     {
+        if (!s_validSshUser.IsMatch(user))
+            throw new ArgumentException($"SSH user contains invalid characters: '{user}'");
+        if (!s_validSshHost.IsMatch(host))
+            throw new ArgumentException($"SSH host contains invalid characters: '{host}'");
+
         var sb = new StringBuilder();
         sb.Append("-N ");
         sb.Append("-L ");
