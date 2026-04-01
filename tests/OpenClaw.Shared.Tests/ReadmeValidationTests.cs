@@ -16,23 +16,27 @@ public class ReadmeValidationTests
         var matches = Regex.Matches(readmeContent, jsonPattern);
         Assert.True(matches.Count > 0, "No JSON code blocks found in README.");
 
-        var allowCommandsJson = matches
+        var allowCommandsBlocks = matches
             .Select(m => m.Groups[1].Value)
-            .FirstOrDefault(json => json.Contains("\"allowCommands\"", StringComparison.Ordinal));
+            .Where(json => json.Contains("\"allowCommands\"", StringComparison.Ordinal))
+            .ToList();
 
-        Assert.NotNull(allowCommandsJson);
+        Assert.True(allowCommandsBlocks.Count > 0, "No JSON block containing 'allowCommands' found in README.");
 
-        using var doc = JsonDocument.Parse(allowCommandsJson!);
-        var root = doc.RootElement;
-
-        Assert.True(root.TryGetProperty("gateway", out var gateway), "JSON should have a 'gateway' property.");
-        Assert.True(gateway.TryGetProperty("nodes", out var nodes), "gateway should have a 'nodes' property.");
-        Assert.True(nodes.TryGetProperty("allowCommands", out var allowCommands), "nodes should have an 'allowCommands' property.");
-        Assert.Equal(JsonValueKind.Array, allowCommands.ValueKind);
-
-        foreach (var command in allowCommands.EnumerateArray())
+        foreach (var allowCommandsJson in allowCommandsBlocks)
         {
-            Assert.Equal(JsonValueKind.String, command.ValueKind);
+            using var doc = JsonDocument.Parse(allowCommandsJson);
+            var root = doc.RootElement;
+
+            Assert.True(root.TryGetProperty("gateway", out var gateway), "JSON should have a 'gateway' property.");
+            Assert.True(gateway.TryGetProperty("nodes", out var nodes), "gateway should have a 'nodes' property.");
+            Assert.True(nodes.TryGetProperty("allowCommands", out var allowCommands), "nodes should have an 'allowCommands' property.");
+            Assert.Equal(JsonValueKind.Array, allowCommands.ValueKind);
+
+            foreach (var command in allowCommands.EnumerateArray())
+            {
+                Assert.Equal(JsonValueKind.String, command.ValueKind);
+            }
         }
     }
 

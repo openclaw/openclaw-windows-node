@@ -190,5 +190,18 @@ public class GatewayUrlHelperTests
     {
         Assert.NotEmpty(GatewayUrlHelper.ValidationMessage);
         Assert.Contains("ws://", GatewayUrlHelper.ValidationMessage);
+        Assert.Contains("wss://", GatewayUrlHelper.ValidationMessage);
+    }
+
+    [Theory]
+    [InlineData("user%ZZdomain:pass")]
+    [InlineData("user%:pass")]
+    [InlineData("user%%pass:token")]
+    public void DecodeCredentials_HandlesInvalidPercentEncoding(string input)
+    {
+        // Should not throw — gracefully fallback
+        var decoded = GatewayUrlHelper.DecodeCredentials(input);
+        Assert.NotNull(decoded);
+        Assert.NotEmpty(decoded);
     }
 }

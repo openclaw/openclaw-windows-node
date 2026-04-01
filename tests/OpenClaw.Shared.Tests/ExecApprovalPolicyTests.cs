@@ -608,6 +608,18 @@ public class SystemCapabilityExecApprovalsTests
             var result = await cap.ExecuteAsync(request);
             Assert.True(result.Ok);
             Assert.NotNull(result.Payload);
+            
+            // Verify payload contains expected policy structure
+            var json = JsonSerializer.Serialize(result.Payload);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            Assert.True(root.TryGetProperty("enabled", out var enabledEl));
+            Assert.True(enabledEl.GetBoolean());
+            Assert.True(root.TryGetProperty("defaultAction", out var defEl));
+            Assert.Equal("deny", defEl.GetString());
+            Assert.True(root.TryGetProperty("rules", out var rulesEl));
+            Assert.Equal(JsonValueKind.Array, rulesEl.ValueKind);
+            Assert.True(rulesEl.GetArrayLength() > 0, "Default policy should have rules");
         }
         finally
         {
@@ -628,6 +640,14 @@ public class SystemCapabilityExecApprovalsTests
         
         var result = await cap.ExecuteAsync(request);
         Assert.True(result.Ok);
+        Assert.NotNull(result.Payload);
+        
+        // Verify payload explicitly indicates disabled state
+        var json = JsonSerializer.Serialize(result.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("enabled", out var enabledEl));
+        Assert.False(enabledEl.GetBoolean());
     }
     
     [Fact]

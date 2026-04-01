@@ -121,7 +121,8 @@ public abstract class NodeCapabilityBase : INodeCapability
             return defaultValue;
         if (args.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.Number)
         {
-            return prop.GetInt32();
+            try { return prop.GetInt32(); }
+            catch (FormatException) { return defaultValue; }
         }
         return defaultValue;
     }

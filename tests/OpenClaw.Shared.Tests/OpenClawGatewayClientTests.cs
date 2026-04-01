@@ -716,19 +716,27 @@ public class OpenClawGatewayClientTests
     public void Constructor_InitializesWithProvidedValues()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("ws://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
         
-        // Should not throw
-        Assert.NotNull(client);
+        // Verify URL was normalized (http → ws) — field is now on base class WebSocketClientBase
+        var field = typeof(OpenClawGatewayClient).BaseType?.GetField(
+            "_gatewayUrl",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var actualUrl = field?.GetValue(client) as string;
+        Assert.Equal("ws://test:8080", actualUrl);
     }
 
     [Fact]
     public void Constructor_UsesNullLogger_WhenNotProvided()
     {
-        var client = new OpenClawGatewayClient("ws://test:8080", "my-token");
+        // Verify construction without logger doesn't throw and still normalizes URL
+        var client = new OpenClawGatewayClient("https://test:8080", "my-token");
         
-        // Should not throw
-        Assert.NotNull(client);
+        var field = typeof(OpenClawGatewayClient).BaseType?.GetField(
+            "_gatewayUrl",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var actualUrl = field?.GetValue(client) as string;
+        Assert.Equal("wss://test:8080", actualUrl);
     }
 
     [Theory]

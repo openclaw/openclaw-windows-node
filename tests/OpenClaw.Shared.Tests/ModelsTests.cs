@@ -399,11 +399,20 @@ public class SessionInfoTests
     public void ShortKey_ReturnsFilename_ForPathWithBackslashes()
     {
         var session = new SessionInfo { Key = @"C:\path\to\file.txt" };
-        // Path.GetFileName behavior depends on OS - on Windows it returns filename, on Linux it returns full path
-        // Since this is Windows-specific code, we check that it at least detects backslashes
         var result = session.ShortKey;
-        // On Windows: file.txt, On Linux: full path (Path.GetFileName doesn't split on backslash)
-        Assert.True(result.Contains("file.txt") || result.Contains("\\"));
+        // ShortKey uses Path.GetFileName which handles backslashes on Windows.
+        // On non-Windows, Path.GetFileName may not split on backslash, returning the full key
+        // which then gets truncated. Either way, the result must not be empty.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("file.txt", result);
+        }
+        else
+        {
+            // On Linux Path.GetFileName won't split on '\', so it falls through to truncation
+            Assert.NotEmpty(result);
+            Assert.DoesNotContain("unknown", result);
+        }
     }
 
     [Fact]

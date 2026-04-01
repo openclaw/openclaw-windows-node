@@ -731,6 +731,8 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest { Id = "s3", Command = "screen.list", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -746,6 +748,20 @@ public class ScreenCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
         Assert.NotNull(res.Payload);
+        
+        // Verify payload contains expected screen data
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("screens", out var screensEl));
+        Assert.Equal(System.Text.Json.JsonValueKind.Array, screensEl.ValueKind);
+        Assert.Equal(1, screensEl.GetArrayLength());
+        var screen = screensEl[0];
+        Assert.Equal("Main", screen.GetProperty("name").GetString());
+        Assert.True(screen.GetProperty("primary").GetBoolean());
+        var bounds = screen.GetProperty("bounds");
+        Assert.Equal(2560, bounds.GetProperty("width").GetInt32());
+        Assert.Equal(1440, bounds.GetProperty("height").GetInt32());
     }
 
     [Fact]
@@ -846,6 +862,8 @@ public class CameraCapabilityTests
         var req = new NodeInvokeRequest { Id = "cam1", Command = "camera.list", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -861,6 +879,20 @@ public class CameraCapabilityTests
         var req = new NodeInvokeRequest { Id = "cam2", Command = "camera.list", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
+        Assert.NotNull(res.Payload);
+        
+        // Verify payload contains expected camera entries
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("cameras", out var camerasEl));
+        Assert.Equal(System.Text.Json.JsonValueKind.Array, camerasEl.ValueKind);
+        Assert.Equal(2, camerasEl.GetArrayLength());
+        Assert.Equal("cam-1", camerasEl[0].GetProperty("DeviceId").GetString());
+        Assert.Equal("Front", camerasEl[0].GetProperty("Name").GetString());
+        Assert.True(camerasEl[0].GetProperty("IsDefault").GetBoolean());
+        Assert.Equal("cam-2", camerasEl[1].GetProperty("DeviceId").GetString());
+        Assert.False(camerasEl[1].GetProperty("IsDefault").GetBoolean());
     }
 
     [Fact]
@@ -870,6 +902,8 @@ public class CameraCapabilityTests
         var req = new NodeInvokeRequest { Id = "cam3", Command = "camera.snap", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -60,6 +60,11 @@ public class NodeCapabilityBaseTests
         Assert.True(res.Ok);
         Assert.NotNull(res.Payload);
         Assert.Null(res.Error);
+        
+        // Verify payload echoes the command back
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal("test.one", doc.RootElement.GetProperty("echo").GetString());
     }
 
     [Fact]
@@ -111,6 +116,15 @@ public class NodeCapabilityBaseTests
         var cap = new TestCapability();
         var args = Parse("""{"width":"not-a-number"}""");
         Assert.Equal(99, cap.PubGetIntArg(args, "width", 99));
+    }
+
+    [Fact]
+    public void GetIntArg_ReturnsDefault_WhenValueOverflowsInt32()
+    {
+        var cap = new TestCapability();
+        // Value exceeds Int32.MaxValue — should gracefully return default
+        var args = Parse("""{"big":9999999999999}""");
+        Assert.Equal(42, cap.PubGetIntArg(args, "big", 42));
     }
 
     [Fact]
@@ -168,13 +182,17 @@ public class NodeInvokeResponseTests
         {
             Id = "abc",
             Ok = true,
-            Payload = new { test = 1 },
+            Payload = new { test = 42 },
             Error = "nope"
         };
         Assert.Equal("abc", res.Id);
         Assert.True(res.Ok);
-        Assert.NotNull(res.Payload);
         Assert.Equal("nope", res.Error);
+        
+        // Verify payload content is preserved
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(42, doc.RootElement.GetProperty("test").GetInt32());
     }
 }
 

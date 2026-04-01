@@ -71,8 +71,8 @@ public class DeviceIdentityIntegrationTests
 
             Assert.Equal(sig1, sig2);
             Assert.NotEmpty(sig1);
-            // Ed25519 signature is 64 bytes -> base64url ~86 chars
-            Assert.True(sig1.Length > 40);
+            // Ed25519 signature is 64 bytes → base64url is 86 chars (no padding)
+            Assert.Equal(86, sig1.Length);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -252,6 +252,16 @@ public class DeviceIdentityIntegrationTests
             Assert.DoesNotContain("+", pubKey);
             Assert.DoesNotContain("/", pubKey);
             Assert.DoesNotContain("=", pubKey);
+            
+            // Decode and verify Ed25519 public key is exactly 32 bytes
+            var padded = pubKey.Replace('-', '+').Replace('_', '/');
+            switch (padded.Length % 4)
+            {
+                case 2: padded += "=="; break;
+                case 3: padded += "="; break;
+            }
+            var bytes = Convert.FromBase64String(padded);
+            Assert.Equal(32, bytes.Length);
         }
         finally { Directory.Delete(dir, true); }
     }
