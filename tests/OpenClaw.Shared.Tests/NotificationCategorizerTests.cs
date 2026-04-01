@@ -272,6 +272,52 @@ public class NotificationCategorizerTests
         Assert.Equal("health", _categorizer.Classify(notification).type);
     }
 
+    // --- PreferStructuredCategories = false ---
+
+    [Fact]
+    public void PreferStructuredCategories_False_SkipsIntent()
+    {
+        var notification = new OpenClawNotification { Message = "New email notification", Intent = "build" };
+        var (_, type) = _categorizer.Classify(notification, preferStructuredCategories: false);
+        Assert.Equal("email", type);
+    }
+
+    [Fact]
+    public void PreferStructuredCategories_False_SkipsChannel()
+    {
+        var notification = new OpenClawNotification { Message = "Check your email", Channel = "calendar" };
+        var (_, type) = _categorizer.Classify(notification, preferStructuredCategories: false);
+        Assert.Equal("email", type);
+    }
+
+    [Fact]
+    public void PreferStructuredCategories_False_UserRulesStillApply()
+    {
+        var rules = new List<UserNotificationRule>
+        {
+            new() { Pattern = "invoice", Category = "email", Enabled = true }
+        };
+        var notification = new OpenClawNotification { Message = "New invoice received", Intent = "urgent" };
+        var (_, type) = _categorizer.Classify(notification, rules, preferStructuredCategories: false);
+        Assert.Equal("email", type);
+    }
+
+    [Fact]
+    public void PreferStructuredCategories_False_FallsBackToKeywords()
+    {
+        var notification = new OpenClawNotification { Message = "Hello world", Intent = "build", Channel = "email" };
+        var (_, type) = _categorizer.Classify(notification, preferStructuredCategories: false);
+        Assert.Equal("info", type);
+    }
+
+    [Fact]
+    public void PreferStructuredCategories_True_Default_BehaviourUnchanged()
+    {
+        var notification = new OpenClawNotification { Message = "New email notification", Intent = "build" };
+        Assert.Equal("build", _categorizer.Classify(notification).type);
+        Assert.Equal("build", _categorizer.Classify(notification, preferStructuredCategories: true).type);
+    }
+
     // --- ClassifyByKeywords static method ---
 
     [Fact]
