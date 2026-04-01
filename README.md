@@ -20,12 +20,14 @@ This monorepo contains three projects:
 
 ## 🚀 Quick Start
 
+> **End-user installer?** See [docs/SETUP.md](docs/SETUP.md) for a step-by-step installation guide (no build required).
+
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11
 - .NET 10.0 SDK - https://dotnet.microsoft.com/download/dotnet/10.0
 - Windows 10 SDK (for WinUI build) - install via Visual Studio or standalone
 - WebView2 Runtime - pre-installed on modern Windows, or get from https://developer.microsoft.com/microsoft-edge/webview2
-- PowerToys (optional, for Command Palette extension)
+- PowerToys (optional, for Command Palette extension) — see [docs/POWERTOYS.md](docs/POWERTOYS.md)
 
 ### Build
 
@@ -251,18 +253,17 @@ Deep links work even when Molty is already running - they're forwarded via IPC.
 PowerToys Command Palette extension for quick OpenClaw access.
 
 ### Commands
-- **🦞 Open Dashboard** - Launch web dashboard
-- **💬 Quick Send** - Send a message
-- **📊 Full Status** - View gateway status
-- **⚡ Sessions** - View active sessions
-- **📡 Channels** - View channel health
-- **🔄 Health Check** - Trigger health refresh
+- **🦞 Open Dashboard** - Launch the OpenClaw web dashboard
+- **💬 Web Chat** - Open the embedded Web Chat window
+- **📝 Quick Send** - Open the Quick Send dialog to compose a message
+- **⚙️ Settings** - Open the OpenClaw Tray Settings dialog
 
 ### Installation
-1. Build the solution in Release mode
-2. Deploy the MSIX package via Visual Studio
-3. Open Command Palette (Win+Alt+Space)
-4. Type "OpenClaw" to see commands
+1. Run the OpenClaw Tray installer and tick **"Install PowerToys Command Palette extension"**, or
+2. Register manually: `Add-AppxPackage -Register "$env:LOCALAPPDATA\OpenClawTray\CommandPalette\AppxManifest.xml" -ForceApplicationShutdown`
+3. Open Command Palette (`Win+Alt+Space`) and type "OpenClaw" to see commands
+
+See [docs/POWERTOYS.md](docs/POWERTOYS.md) for detailed setup and troubleshooting.
 
 ## 📦 OpenClaw.Shared
 
