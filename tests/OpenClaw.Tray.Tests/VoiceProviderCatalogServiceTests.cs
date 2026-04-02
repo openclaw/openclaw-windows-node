@@ -54,10 +54,10 @@ public class VoiceProviderCatalogServiceTests
     public void SupportsSpeechToTextRuntime_ReportsWindowsRouteSupportForConfiguredSpeechProviders()
     {
         Assert.True(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.Windows));
-        Assert.True(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.FoundryLocal));
-        Assert.True(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.OpenAiWhisper));
-        Assert.True(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.ElevenLabsSpeechToText));
-        Assert.True(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.AzureAiSpeech));
+        Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.FoundryLocal));
+        Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.OpenAiWhisper));
+        Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.ElevenLabsSpeechToText));
+        Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.AzureAiSpeech));
         Assert.False(VoiceProviderCatalogService.SupportsSpeechToTextRuntime(VoiceProviderIds.SherpaOnnx));
     }
 

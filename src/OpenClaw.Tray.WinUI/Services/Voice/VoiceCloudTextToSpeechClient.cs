@@ -473,13 +473,13 @@ public sealed class VoiceCloudTextToSpeechClient
         return new VoiceCloudTextToSpeechResult(stream, string.IsNullOrWhiteSpace(contentType) ? "audio/mpeg" : contentType);
     }
 
-    private static async Task<VoiceCloudTextToSpeechResult> CreateResultAsync(Stream sourceStream, string contentType)
+    private static async Task<VoiceCloudTextToSpeechResult> CreateResultAsync(Stream sourceStream, string contentType, CancellationToken cancellationToken = default)
     {
         var stream = new InMemoryRandomAccessStream();
         await using (var output = stream.AsStreamForWrite())
         {
-            await sourceStream.CopyToAsync(output);
-            await output.FlushAsync();
+            await sourceStream.CopyToAsync(output, cancellationToken);
+            await output.FlushAsync(cancellationToken);
         }
 
         stream.Seek(0);
