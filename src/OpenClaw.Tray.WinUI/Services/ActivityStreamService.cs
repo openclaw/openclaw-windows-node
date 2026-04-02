@@ -9,7 +9,7 @@ namespace OpenClawTray.Services;
 /// </summary>
 public static class ActivityStreamService
 {
-    private static readonly List<ActivityStreamItem> _items = new();
+    private static readonly LinkedList<ActivityStreamItem> _items = new();
     private static readonly object _lock = new();
     private const int MaxItems = 200;
 
@@ -27,7 +27,7 @@ public static class ActivityStreamService
 
         lock (_lock)
         {
-            _items.Insert(0, new ActivityStreamItem
+            _items.AddFirst(new ActivityStreamItem
             {
                 Timestamp = DateTime.Now,
                 Category = string.IsNullOrWhiteSpace(category) ? "general" : category,
@@ -38,11 +38,10 @@ public static class ActivityStreamService
                 NodeId = nodeId
             });
 
-            if (_items.Count > MaxItems)
+            while (_items.Count > MaxItems)
             {
-                var trimmed = _items.Count - MaxItems;
-                _items.RemoveRange(MaxItems, trimmed);
-                Logger.Debug($"[ActivityStream] Trimmed {trimmed} items (exceeded max {MaxItems})");
+                _items.RemoveLast();
+                Logger.Debug($"[ActivityStream] Trimmed oldest item (exceeded max {MaxItems})");
             }
         }
 
