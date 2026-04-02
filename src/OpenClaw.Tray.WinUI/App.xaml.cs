@@ -270,6 +270,7 @@ public partial class App : Application
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
         _sshTunnelService = new SshTunnelService(new AppLogger());
+        _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
         // First-run check
         if (string.IsNullOrWhiteSpace(_settings.Token))
@@ -2264,7 +2265,25 @@ public partial class App : Application
 
     #endregion
 
-    private Microsoft.UI.Dispatching.DispatcherQueue? AppDispatcherQueue => 
+    private async void OnSshTunnelExited(object? sender, int exitCode)
+    {
+        Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
+        await Task.Delay(3000);
+        if (_sshTunnelService != null && _settings?.UseSshTunnel == true)
+        {
+            try
+            {
+                _sshTunnelService.EnsureStarted(_settings);
+                Logger.Info("SSH tunnel restarted successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"SSH tunnel restart failed: {ex.Message}");
+            }
+        }
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueue? AppDispatcherQueue =>
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 }
 

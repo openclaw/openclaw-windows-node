@@ -16,6 +16,9 @@ public sealed class SshTunnelService : IDisposable
     private string? _lastSpec;
     private bool _stopping;
 
+    /// <summary>Raised when the SSH tunnel exits unexpectedly (not during shutdown).</summary>
+    public event EventHandler<int>? TunnelExited;
+
     public SshTunnelService(IOpenClawLogger logger)
     {
         _logger = logger;
@@ -130,6 +133,10 @@ public sealed class SshTunnelService : IDisposable
             else
             {
                 _logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode})");
+                try { process.Dispose(); } catch { }
+                _process = null;
+                _lastSpec = null;
+                TunnelExited?.Invoke(this, exitCode);
             }
         };
 
