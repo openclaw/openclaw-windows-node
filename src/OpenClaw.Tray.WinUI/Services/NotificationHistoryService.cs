@@ -9,7 +9,7 @@ namespace OpenClawTray.Services;
 /// </summary>
 public static class NotificationHistoryService
 {
-    private static readonly List<NotificationHistoryItem> _history = new();
+    private static readonly LinkedList<NotificationHistoryItem> _history = new();
     private static readonly object _lock = new();
     private const int MaxHistory = 100;
 
@@ -17,7 +17,7 @@ public static class NotificationHistoryService
     {
         lock (_lock)
         {
-            _history.Insert(0, new NotificationHistoryItem
+            _history.AddFirst(new NotificationHistoryItem
             {
                 Timestamp = DateTime.Now,
                 Title = notification.Title ?? "OpenClaw",
@@ -29,7 +29,7 @@ public static class NotificationHistoryService
             // Trim to max
             while (_history.Count > MaxHistory)
             {
-                _history.RemoveAt(_history.Count - 1);
+                _history.RemoveLast();
             }
         }
     }
