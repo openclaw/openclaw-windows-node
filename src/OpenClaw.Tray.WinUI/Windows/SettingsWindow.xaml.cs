@@ -28,7 +28,7 @@ public sealed partial class SettingsWindow : WindowEx
 
         this.SetWindowSize(560, 860);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         LoadSettings();
         VoiceSettingsPanel.Initialize(_settings, voiceConfigurationApi);

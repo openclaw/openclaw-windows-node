@@ -360,7 +360,7 @@ public partial class App : Application
         // Pre-create tray menu window at startup to avoid creation crashes later
         InitializeTrayMenuWindow();
         
-        var iconPath = IconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
+        var iconPath = AppIconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
         _trayIcon = new TrayIcon(1, iconPath, "OpenClaw Tray — Disconnected");
         _lastTrayIconPath = iconPath;
         _trayIcon.IsVisible = true;
@@ -1686,12 +1686,12 @@ public partial class App : Application
         var voiceIconState = GetVoiceTrayIconState();
         if (voiceIconState != VoiceTrayIconState.Off)
         {
-            return IconHelper.GetVoiceTrayIconPath(voiceIconState);
+            return VoiceTrayIconHelper.GetVoiceTrayIconPath(voiceIconState);
         }
 
         if (_voiceService?.CurrentStatus.State == VoiceRuntimeState.Paused)
         {
-            return IconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
+            return VoiceTrayIconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
         }
 
         var status = _currentStatus;
@@ -1700,7 +1700,7 @@ public partial class App : Application
             status = ConnectionStatus.Connecting;
         }
 
-        return IconHelper.GetStatusIconPath(status);
+        return AppIconHelper.GetStatusIconPath(status);
     }
 
     private VoiceTrayIconState GetVoiceTrayIconState()

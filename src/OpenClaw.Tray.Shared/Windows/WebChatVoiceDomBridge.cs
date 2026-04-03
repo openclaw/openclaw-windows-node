@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace OpenClawTray.Windows;
 
-internal static class WebChatVoiceDomBridge
+public static class WebChatVoiceDomBridge
 {
     public const string DocumentCreatedScript = """
 (() => {

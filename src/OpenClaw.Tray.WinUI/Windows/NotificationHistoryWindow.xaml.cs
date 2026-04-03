@@ -23,7 +23,7 @@ public sealed partial class NotificationHistoryWindow : WindowEx
         // Window configuration
         this.SetWindowSize(450, 600);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
         
         Closed += (s, e) => IsClosed = true;
         

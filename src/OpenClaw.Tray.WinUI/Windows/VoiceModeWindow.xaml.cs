@@ -34,7 +34,7 @@ public sealed partial class VoiceModeWindow : WindowEx
         Title = "Voice Mode";
         this.SetWindowSize(520, 620);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         Closed += (s, e) => IsClosed = true;
 

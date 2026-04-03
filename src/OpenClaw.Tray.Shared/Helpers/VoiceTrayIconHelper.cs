@@ -1,4 +1,3 @@
-using OpenClaw.Shared;
 using System;
 using System.Drawing;
 using System.IO;
@@ -14,59 +13,20 @@ public enum VoiceTrayIconState
     Speaking
 }
 
-/// <summary>
-/// Provides icon resources for the tray application.
-/// Creates dynamic status icons with lobster pixel art.
-/// </summary>
-public static class IconHelper
+public static class VoiceTrayIconHelper
 {
-    private static readonly string AssetsPath = Path.Combine(AppContext.BaseDirectory, "Assets");
-    private static readonly string IconsPath = Path.Combine(AssetsPath, "Icons");
     private static readonly string GeneratedIconsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OpenClawTray",
         "GeneratedIcons");
 
-    // Icon cache
-    private static Icon? _connectedIcon;
-    private static Icon? _disconnectedIcon;
-    private static Icon? _activityIcon;
-    private static Icon? _errorIcon;
-    private static Icon? _appIcon;
     private static string? _voiceArmedIconPath;
     private static string? _voiceListeningIconPath;
     private static string? _voiceSpeakingIconPath;
 
-    public static string GetStatusIconPath(ConnectionStatus status)
+    public static string GetBaseAppIconPath()
     {
-        var iconName = status switch
-        {
-            ConnectionStatus.Connected => "StatusConnected.ico",
-            ConnectionStatus.Connecting => "StatusConnecting.ico",
-            ConnectionStatus.Error => "StatusError.ico",
-            _ => "StatusDisconnected.ico"
-        };
-
-        var path = Path.Combine(IconsPath, iconName);
-        
-        // If specific icon doesn't exist, fall back to main icon
-        if (!File.Exists(path))
-        {
-            path = Path.Combine(AssetsPath, "openclaw.ico");
-        }
-
-        return path;
-    }
-
-    public static string GetAppIconPath()
-    {
-        var path = Path.Combine(AssetsPath, "openclaw.ico");
-        if (File.Exists(path))
-        {
-            return path;
-        }
-
-        return GetStatusIconPath(ConnectionStatus.Disconnected);
+        return Path.Combine(ResolveAssetsPath(), "openclaw.ico");
     }
 
     public static string GetVoiceTrayIconPath(VoiceTrayIconState state)
@@ -76,105 +36,8 @@ public static class IconHelper
             VoiceTrayIconState.Armed => GetOrCreateVoiceIconPath(ref _voiceArmedIconPath, VoiceTrayIconState.Armed),
             VoiceTrayIconState.Listening => GetOrCreateVoiceIconPath(ref _voiceListeningIconPath, VoiceTrayIconState.Listening),
             VoiceTrayIconState.Speaking => GetOrCreateVoiceIconPath(ref _voiceSpeakingIconPath, VoiceTrayIconState.Speaking),
-            _ => GetAppIconPath()
+            _ => GetBaseAppIconPath()
         };
-    }
-
-    public static Icon GetStatusIcon(ConnectionStatus status)
-    {
-        return status switch
-        {
-            ConnectionStatus.Connected => GetOrCreateIcon(ref _connectedIcon, ConnectionStatus.Connected),
-            ConnectionStatus.Connecting => GetOrCreateIcon(ref _activityIcon, ConnectionStatus.Connecting),
-            ConnectionStatus.Error => GetOrCreateIcon(ref _errorIcon, ConnectionStatus.Error),
-            _ => GetOrCreateIcon(ref _disconnectedIcon, ConnectionStatus.Disconnected)
-        };
-    }
-
-    public static Icon GetAppIcon()
-    {
-        if (_appIcon != null) return _appIcon;
-
-        var iconPath = GetAppIconPath();
-        if (File.Exists(iconPath))
-        {
-            _appIcon = new Icon(iconPath);
-        }
-        else
-        {
-            _appIcon = CreateLobsterIcon(Color.FromArgb(255, 99, 71)); // Lobster red
-        }
-
-        return _appIcon;
-    }
-
-    private static Icon GetOrCreateIcon(ref Icon? cached, ConnectionStatus status)
-    {
-        if (cached != null) return cached;
-
-        var iconPath = GetStatusIconPath(status);
-        if (File.Exists(iconPath))
-        {
-            cached = new Icon(iconPath);
-        }
-        else
-        {
-            // Generate dynamic icon
-            var color = status switch
-            {
-                ConnectionStatus.Connected => Color.FromArgb(76, 175, 80),   // Green
-                ConnectionStatus.Connecting => Color.FromArgb(255, 193, 7),  // Amber
-                ConnectionStatus.Error => Color.FromArgb(244, 67, 54),       // Red
-                _ => Color.FromArgb(158, 158, 158)                           // Gray
-            };
-            cached = CreateLobsterIcon(color);
-        }
-
-        return cached;
-    }
-
-    /// <summary>
-    /// Creates a simple colored lobster icon programmatically.
-    /// Uses pixel art style matching the original WinForms version.
-    /// </summary>
-    public static Icon CreateLobsterIcon(Color color)
-    {
-        const int size = 16;
-        using var bitmap = new Bitmap(size, size);
-        using var g = Graphics.FromImage(bitmap);
-        
-        g.Clear(Color.Transparent);
-
-        // Simple lobster silhouette (pixel art style)
-        using var brush = new SolidBrush(color);
-        
-        // Body
-        g.FillRectangle(brush, 6, 6, 4, 6);
-        
-        // Claws
-        g.FillRectangle(brush, 3, 4, 2, 2);
-        g.FillRectangle(brush, 11, 4, 2, 2);
-        g.FillRectangle(brush, 4, 6, 2, 2);
-        g.FillRectangle(brush, 10, 6, 2, 2);
-        
-        // Tail
-        g.FillRectangle(brush, 7, 12, 2, 3);
-        g.FillRectangle(brush, 5, 14, 6, 1);
-        
-        // Eyes
-        using var eyeBrush = new SolidBrush(Color.White);
-        g.FillRectangle(eyeBrush, 6, 5, 1, 1);
-        g.FillRectangle(eyeBrush, 9, 5, 1, 1);
-
-        // Convert bitmap to icon
-        var hIcon = bitmap.GetHicon();
-        var icon = Icon.FromHandle(hIcon);
-        
-        // Clone to own the icon data
-        var result = (Icon)icon.Clone();
-        DestroyIcon(hIcon);
-        
-        return result;
     }
 
     private static string GetOrCreateVoiceIconPath(ref string? cachedPath, VoiceTrayIconState state)
@@ -206,7 +69,7 @@ public static class IconHelper
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
 
-        using (var baseIcon = new Icon(GetAppIconPath(), size, size))
+        using (var baseIcon = new Icon(GetBaseAppIconPath(), size, size))
         using (var baseBitmap = baseIcon.ToBitmap())
         {
             graphics.DrawImage(baseBitmap, 0, 0, size, size);
@@ -259,7 +122,6 @@ public static class IconHelper
 
         graphics.DrawArc(wavePen, 0, 12, 8, 8, 270, 180);
         graphics.DrawArc(accentPen, 2, 14, 4, 4, 270, 180);
-
         graphics.DrawArc(wavePen, 24, 12, 8, 8, 90, 180);
         graphics.DrawArc(accentPen, 26, 14, 4, 4, 90, 180);
     }
@@ -282,6 +144,29 @@ public static class IconHelper
         path.AddArc(x, y + height - radius, radius, radius, 90, 90);
         path.CloseFigure();
         return path;
+    }
+
+    private static string ResolveAssetsPath()
+    {
+        var bundledPath = Path.Combine(AppContext.BaseDirectory, "Assets");
+        if (Directory.Exists(bundledPath))
+        {
+            return bundledPath;
+        }
+
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current != null)
+        {
+            var sourcePath = Path.Combine(current.FullName, "src", "OpenClaw.Tray.WinUI", "Assets");
+            if (Directory.Exists(sourcePath))
+            {
+                return sourcePath;
+            }
+
+            current = current.Parent;
+        }
+
+        return bundledPath;
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]

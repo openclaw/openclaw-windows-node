@@ -1,4 +1,3 @@
-using OpenClaw.Shared;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -148,7 +147,8 @@ public sealed class VoiceChatCoordinator : IDisposable
         {
             Direction = args.Direction,
             Message = args.Message,
-            SessionKey = args.SessionKey
+            SessionKey = args.SessionKey,
+            Mode = args.Mode
         };
     }
 }

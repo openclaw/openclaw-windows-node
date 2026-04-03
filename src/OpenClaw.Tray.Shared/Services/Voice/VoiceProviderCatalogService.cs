@@ -76,18 +76,12 @@ public static class VoiceProviderCatalogService
         try
         {
             var provider = ResolveSpeechToTextProvider(providerId);
-            return VoiceSpeechToTextRouteFactory.ResolveRouteKind(provider) == VoiceSpeechToTextRouteKind.WindowsMedia;
+            return VoiceSpeechToTextRouteResolver.ResolveRouteKind(provider) == VoiceSpeechToTextRouteKind.WindowsMedia;
         }
         catch
         {
             return false;
         }
-    }
-
-    internal static VoiceSpeechToTextRouteKind ResolveSpeechToTextRouteKind(string? providerId, IOpenClawLogger? logger = null)
-    {
-        var provider = ResolveSpeechToTextProvider(providerId, logger);
-        return VoiceSpeechToTextRouteFactory.ResolveRouteKind(provider);
     }
 
     public static bool SupportsTextToSpeechRuntime(string? providerId)
@@ -104,7 +98,6 @@ public static class VoiceProviderCatalogService
         }
         catch
         {
-            // If the catalog or provider cannot be resolved, treat as unsupported
             return false;
         }
     }

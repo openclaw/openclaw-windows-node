@@ -56,7 +56,7 @@ public sealed partial class VoiceRepeaterWindow : WindowEx, IVoiceChatWindow
 
         Title = "Voice Mode";
         ApplyStoredWindowPlacement();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         ConversationItemsControl.ItemsSource = _conversationItems;
 
