@@ -28,7 +28,15 @@ public static class AppIconHelper
 
     public static string GetAppIconPath()
     {
-        return Path.Combine(AssetsPath, "openclaw.ico");
+        var path = Path.Combine(AssetsPath, "openclaw.ico");
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException(
+                $"Application icon was not found at '{path}'. Ensure the Assets folder is packaged correctly and contains 'openclaw.ico'.",
+                path);
+        }
+
+        return path;
     }
 
     private static string ResolveAssetsPath()
