@@ -1,6 +1,6 @@
 namespace OpenClawTray.Services.Voice;
 
-internal enum VoiceSpeechToTextRouteKind
+public enum VoiceSpeechToTextRouteKind
 {
     WindowsMedia,
     Streaming,

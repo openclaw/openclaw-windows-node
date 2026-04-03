@@ -40,7 +40,7 @@ public sealed partial class WebChatWindow : WindowEx
         this.MinWidth = 380;
         this.MinHeight = 450;
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         Closed += OnWindowClosed;
 

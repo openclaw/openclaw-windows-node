@@ -700,14 +700,10 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         TaskCompletionSource<bool>? existingReadySource,
         out bool shouldStartConnection)
     {
-        if (transportStatus == ConnectionStatus.Connecting && existingReadySource != null)
-        {
-            shouldStartConnection = false;
-            return existingReadySource;
-        }
-
-        shouldStartConnection = true;
-        return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        return VoiceServiceTransportLogic.GetOrCreateTransportReadySource(
+            transportStatus,
+            existingReadySource,
+            out shouldStartConnection);
     }
 
     private async Task StartRecognitionSessionAsync(bool updateListeningStatus = true)
@@ -1546,7 +1542,7 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
 
     private static bool UsesCloudTextToSpeechRuntime(VoiceProviderOption provider)
     {
-        return provider.TextToSpeechHttp != null || provider.TextToSpeechWebSocket != null;
+        return VoiceServiceTransportLogic.UsesCloudTextToSpeechRuntime(provider);
     }
 
     internal static bool ShouldAcceptAssistantReply(
@@ -1555,7 +1551,11 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         int queuedReplyCount,
         bool acceptedViaLateReplyGrace = false)
     {
-        return awaitingReply || isSpeaking || queuedReplyCount > 0 || acceptedViaLateReplyGrace;
+        return VoiceServiceTransportLogic.ShouldAcceptAssistantReply(
+            awaitingReply,
+            isSpeaking,
+            queuedReplyCount,
+            acceptedViaLateReplyGrace);
     }
 
     internal static bool ShouldAcceptLateAssistantReply(
@@ -1567,14 +1567,14 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         string? incomingSessionKey,
         DateTime utcNow)
     {
-        return !awaitingReply &&
-               !isSpeaking &&
-               queuedReplyCount == 0 &&
-               !string.IsNullOrWhiteSpace(lateReplySessionKey) &&
-               !string.IsNullOrWhiteSpace(incomingSessionKey) &&
-               IsMatchingSessionKey(incomingSessionKey, lateReplySessionKey) &&
-               lateReplyGraceUntilUtc.HasValue &&
-               utcNow <= lateReplyGraceUntilUtc.Value;
+        return VoiceServiceTransportLogic.ShouldAcceptLateAssistantReply(
+            awaitingReply,
+            isSpeaking,
+            queuedReplyCount,
+            lateReplySessionKey,
+            lateReplyGraceUntilUtc,
+            incomingSessionKey,
+            utcNow);
     }
 
     internal static bool ShouldRestartRecognitionAfterCompletion(
@@ -1584,11 +1584,12 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         bool awaitingReply,
         bool isSpeaking)
     {
-        return running &&
-               mode == VoiceActivationMode.TalkMode &&
-               !restartInProgress &&
-               !awaitingReply &&
-               !isSpeaking;
+        return VoiceServiceTransportLogic.ShouldRestartRecognitionAfterCompletion(
+            running,
+            mode,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
     }
 
     internal static string DescribeRecognitionCompletionRestartDecision(
@@ -1598,32 +1599,12 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         bool awaitingReply,
         bool isSpeaking)
     {
-        if (!running)
-        {
-            return "runtime-not-running";
-        }
-
-        if (mode != VoiceActivationMode.TalkMode)
-        {
-            return $"mode={mode}";
-        }
-
-        if (restartInProgress)
-        {
-            return "controlled-restart-in-progress";
-        }
-
-        if (awaitingReply)
-        {
-            return "awaiting-reply";
-        }
-
-        if (isSpeaking)
-        {
-            return "speaking";
-        }
-
-        return "eligible";
+        return VoiceServiceTransportLogic.DescribeRecognitionCompletionRestartDecision(
+            running,
+            mode,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
     }
 
     internal static bool ShouldRebuildRecognitionAfterCompletion(
@@ -1634,12 +1615,13 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         bool awaitingReply,
         bool isSpeaking)
     {
-        if (restartInProgress || awaitingReply || isSpeaking || sessionHadActivity)
-        {
-            return false;
-        }
-
-        return status == SpeechRecognitionResultStatus.UserCanceled;
+        return VoiceServiceTransportLogic.ShouldRebuildRecognitionAfterCompletion(
+            status,
+            sessionHadActivity,
+            sessionHadCaptureSignal,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
     }
 
     internal static string DescribeRecognitionCompletionRebuildDecision(
@@ -1650,37 +1632,13 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         bool awaitingReply,
         bool isSpeaking)
     {
-        if (restartInProgress)
-        {
-            return "controlled-restart-in-progress";
-        }
-
-        if (awaitingReply)
-        {
-            return "awaiting-reply";
-        }
-
-        if (isSpeaking)
-        {
-            return "speaking";
-        }
-
-        if (sessionHadActivity)
-        {
-            return "session-had-activity";
-        }
-
-        if (sessionHadCaptureSignal)
-        {
-            return "capture-signal-without-recognition";
-        }
-
-        return status switch
-        {
-            SpeechRecognitionResultStatus.UserCanceled => "user-canceled-without-activity",
-            SpeechRecognitionResultStatus.TimeoutExceeded => "disabled-official-session-restart-only (status=TimeoutExceeded)",
-            _ => $"disabled-official-session-restart-only (status={status})"
-        };
+        return VoiceServiceTransportLogic.DescribeRecognitionCompletionRebuildDecision(
+            status,
+            sessionHadActivity,
+            sessionHadCaptureSignal,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
     }
 
     internal static string SelectRecognizedText(
@@ -1690,30 +1648,12 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         DateTime utcNow,
         out bool promotedHypothesis)
     {
-        promotedHypothesis = false;
-
-        if (string.IsNullOrWhiteSpace(recognizedText) ||
-            string.IsNullOrWhiteSpace(latestHypothesisText) ||
-            utcNow - latestHypothesisUtc > HypothesisPromotionWindow)
-        {
-            return recognizedText;
-        }
-
-        var normalizedResult = recognizedText.Trim();
-        var normalizedHypothesis = latestHypothesisText.Trim();
-
-        if (normalizedHypothesis.Length <= normalizedResult.Length + 3)
-        {
-            return normalizedResult;
-        }
-
-        if (!normalizedHypothesis.EndsWith(normalizedResult, StringComparison.OrdinalIgnoreCase))
-        {
-            return normalizedResult;
-        }
-
-        promotedHypothesis = true;
-        return normalizedHypothesis;
+        return VoiceServiceTransportLogic.SelectRecognizedText(
+            recognizedText,
+            latestHypothesisText,
+            latestHypothesisUtc,
+            utcNow,
+            out promotedHypothesis);
     }
 
     internal static string? SelectCompletionFallbackText(
@@ -1722,14 +1662,11 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         DateTime latestHypothesisUtc,
         DateTime utcNow)
     {
-        if (!sessionHadActivity ||
-            string.IsNullOrWhiteSpace(latestHypothesisText) ||
-            utcNow - latestHypothesisUtc > HypothesisPromotionWindow)
-        {
-            return null;
-        }
-
-        return latestHypothesisText.Trim();
+        return VoiceServiceTransportLogic.SelectCompletionFallbackText(
+            sessionHadActivity,
+            latestHypothesisText,
+            latestHypothesisUtc,
+            utcNow);
     }
 
     internal static bool ShouldClearTranscriptDraftAfterCompletion(
@@ -1737,9 +1674,10 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         bool isSpeaking,
         bool usedFallbackTranscript)
     {
-        return !awaitingReply &&
-               !isSpeaking &&
-               !usedFallbackTranscript;
+        return VoiceServiceTransportLogic.ShouldClearTranscriptDraftAfterCompletion(
+            awaitingReply,
+            isSpeaking,
+            usedFallbackTranscript);
     }
 
     internal static bool ShouldRepromptAfterIncompleteRecognition(
@@ -1748,10 +1686,11 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         bool isSpeaking,
         bool usedFallbackTranscript)
     {
-        return sessionHadActivity &&
-               !awaitingReply &&
-               !isSpeaking &&
-               !usedFallbackTranscript;
+        return VoiceServiceTransportLogic.ShouldRepromptAfterIncompleteRecognition(
+            sessionHadActivity,
+            awaitingReply,
+            isSpeaking,
+            usedFallbackTranscript);
     }
 
     private static string CreateReplyPreview(string text)
@@ -2233,10 +2172,11 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         string? configuredInputDeviceId,
         AudioDeviceRole role)
     {
-        return running &&
-               mode == VoiceActivationMode.TalkMode &&
-               string.IsNullOrWhiteSpace(configuredInputDeviceId) &&
-               role == AudioDeviceRole.Default;
+        return VoiceServiceTransportLogic.ShouldRefreshRecognitionForDefaultCaptureDeviceChange(
+            running,
+            mode,
+            configuredInputDeviceId,
+            role);
     }
 
     private static string PrepareReplyForSpeech(string text)
@@ -2647,26 +2587,3 @@ public sealed class VoiceService : IVoiceRuntime, IVoiceConfigurationApi, IVoice
         });
     }
 }
-
-public enum VoiceConversationDirection
-{
-    Outgoing,
-    Incoming
-}
-
-public sealed class VoiceConversationTurnEventArgs : EventArgs
-{
-    public VoiceConversationDirection Direction { get; set; }
-    public string SessionKey { get; set; } = "main";
-    public string Message { get; set; } = "";
-    public VoiceActivationMode Mode { get; set; } = VoiceActivationMode.Off;
-}
-
-public sealed class VoiceTranscriptDraftEventArgs : EventArgs
-{
-    public string SessionKey { get; set; } = "main";
-    public string Text { get; set; } = "";
-    public bool Clear { get; set; }
-    public VoiceActivationMode Mode { get; set; } = VoiceActivationMode.Off;
-}
-

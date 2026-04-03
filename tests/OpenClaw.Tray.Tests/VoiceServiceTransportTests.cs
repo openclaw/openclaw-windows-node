@@ -1,8 +1,7 @@
-using System.Reflection;
 using OpenClaw.Shared;
-using OpenClawTray.Services.Voice;
 using Windows.Media.Devices;
 using Windows.Media.SpeechRecognition;
+using OpenClawTray.Services.Voice;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -11,49 +10,45 @@ public class VoiceServiceTransportTests
     [Fact]
     public void GetOrCreateTransportReadySource_ReusesExistingTaskWhileConnecting()
     {
-        var method = GetMethod();
         var existing = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var arguments = new object?[] { ConnectionStatus.Connecting, existing, null };
-
-        var result = (TaskCompletionSource<bool>)method.Invoke(null, arguments)!;
+        var result = VoiceServiceTransportLogic.GetOrCreateTransportReadySource(
+            ConnectionStatus.Connecting,
+            existing,
+            out var shouldStartConnection);
 
         Assert.Same(existing, result);
-        Assert.False((bool)arguments[2]!);
+        Assert.False(shouldStartConnection);
     }
 
     [Fact]
     public void GetOrCreateTransportReadySource_CreatesFreshTaskWhenDisconnected()
     {
-        var method = GetMethod();
         var existing = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var arguments = new object?[] { ConnectionStatus.Disconnected, existing, null };
-
-        var result = (TaskCompletionSource<bool>)method.Invoke(null, arguments)!;
+        var result = VoiceServiceTransportLogic.GetOrCreateTransportReadySource(
+            ConnectionStatus.Disconnected,
+            existing,
+            out var shouldStartConnection);
 
         Assert.NotSame(existing, result);
-        Assert.True((bool)arguments[2]!);
+        Assert.True(shouldStartConnection);
     }
 
     [Fact]
     public void GetOrCreateTransportReadySource_CreatesFreshTaskAfterError()
     {
-        var method = GetMethod();
         var existing = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var arguments = new object?[] { ConnectionStatus.Error, existing, null };
-
-        var result = (TaskCompletionSource<bool>)method.Invoke(null, arguments)!;
+        var result = VoiceServiceTransportLogic.GetOrCreateTransportReadySource(
+            ConnectionStatus.Error,
+            existing,
+            out var shouldStartConnection);
 
         Assert.NotSame(existing, result);
-        Assert.True((bool)arguments[2]!);
+        Assert.True(shouldStartConnection);
     }
 
     [Fact]
     public void UsesCloudTextToSpeechRuntime_ReturnsTrueForWebSocketProviders()
     {
-        var method = typeof(VoiceService).GetMethod(
-            "UsesCloudTextToSpeechRuntime",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
         var provider = new VoiceProviderOption
         {
             Id = VoiceProviderIds.MiniMax,
@@ -63,7 +58,7 @@ public class VoiceServiceTransportTests
             }
         };
 
-        var result = (bool)method.Invoke(null, [provider])!;
+        var result = VoiceServiceTransportLogic.UsesCloudTextToSpeechRuntime(provider);
 
         Assert.True(result);
     }
@@ -81,10 +76,11 @@ public class VoiceServiceTransportTests
         bool acceptedViaLateReplyGrace,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldAcceptAssistantReply",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-        var result = (bool)method.Invoke(null, [awaitingReply, isSpeaking, queuedReplyCount, acceptedViaLateReplyGrace])!;
+        var result = VoiceServiceTransportLogic.ShouldAcceptAssistantReply(
+            awaitingReply,
+            isSpeaking,
+            queuedReplyCount,
+            acceptedViaLateReplyGrace);
 
         Assert.Equal(expected, result);
     }
@@ -105,22 +101,16 @@ public class VoiceServiceTransportTests
         int secondsAfterTimeout,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldAcceptLateAssistantReply",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
         var timeoutUtc = new DateTime(2026, 3, 25, 0, 0, 0, DateTimeKind.Utc);
         var graceUntilUtc = timeoutUtc.AddMinutes(2);
-        var result = (bool)method.Invoke(
-            null,
-            [
-                awaitingReply,
-                isSpeaking,
-                queuedReplyCount,
-                lateReplySessionKey,
-                graceUntilUtc,
-                incomingSessionKey,
-                timeoutUtc.AddSeconds(secondsAfterTimeout)
-            ])!;
+        var result = VoiceServiceTransportLogic.ShouldAcceptLateAssistantReply(
+            awaitingReply,
+            isSpeaking,
+            queuedReplyCount,
+            lateReplySessionKey,
+            graceUntilUtc,
+            incomingSessionKey,
+            timeoutUtc.AddSeconds(secondsAfterTimeout));
 
         Assert.Equal(expected, result);
     }
@@ -134,19 +124,12 @@ public class VoiceServiceTransportTests
         bool awaitingReply,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldRestartRecognitionAfterCompletion",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (bool)method.Invoke(
-            null,
-            [
-                true,
-                VoiceActivationMode.TalkMode,
-                restartInProgress,
-                awaitingReply,
-                false
-            ])!;
+        var result = VoiceServiceTransportLogic.ShouldRestartRecognitionAfterCompletion(
+            true,
+            VoiceActivationMode.TalkMode,
+            restartInProgress,
+            awaitingReply,
+            false);
 
         Assert.Equal(expected, result);
     }
@@ -166,13 +149,12 @@ public class VoiceServiceTransportTests
         bool isSpeaking,
         string expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "DescribeRecognitionCompletionRestartDecision",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (string)method.Invoke(
-            null,
-            [running, mode, restartInProgress, awaitingReply, isSpeaking])!;
+        var result = VoiceServiceTransportLogic.DescribeRecognitionCompletionRestartDecision(
+            running,
+            mode,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
 
         Assert.Equal(expected, result);
     }
@@ -195,13 +177,13 @@ public class VoiceServiceTransportTests
         bool isSpeaking,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldRebuildRecognitionAfterCompletion",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (bool)method.Invoke(
-            null,
-            [status, sessionHadActivity, sessionHadCaptureSignal, restartInProgress, awaitingReply, isSpeaking])!;
+        var result = VoiceServiceTransportLogic.ShouldRebuildRecognitionAfterCompletion(
+            status,
+            sessionHadActivity,
+            sessionHadCaptureSignal,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
 
         Assert.Equal(expected, result);
     }
@@ -224,13 +206,13 @@ public class VoiceServiceTransportTests
         bool isSpeaking,
         string expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "DescribeRecognitionCompletionRebuildDecision",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (string)method.Invoke(
-            null,
-            [status, sessionHadActivity, sessionHadCaptureSignal, restartInProgress, awaitingReply, isSpeaking])!;
+        var result = VoiceServiceTransportLogic.DescribeRecognitionCompletionRebuildDecision(
+            status,
+            sessionHadActivity,
+            sessionHadCaptureSignal,
+            restartInProgress,
+            awaitingReply,
+            isSpeaking);
 
         Assert.Equal(expected, result);
     }
@@ -245,11 +227,7 @@ public class VoiceServiceTransportTests
         int chunkMs,
         uint expected)
     {
-        var method = typeof(VoiceCaptureService).GetMethod(
-            "ResolveDesiredSamplesPerQuantum",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (uint)method.Invoke(null, [sampleRateHz, chunkMs])!;
+        var result = VoiceCaptureMath.ResolveDesiredSamplesPerQuantum(sampleRateHz, chunkMs);
 
         Assert.Equal(expected, result);
     }
@@ -265,11 +243,7 @@ public class VoiceServiceTransportTests
     [MemberData(nameof(PeakLevelCases))]
     public void ComputePeakLevel_FindsLargestAbsoluteFloatSample(byte[] data, float expected)
     {
-        var method = typeof(VoiceCaptureService).GetMethod(
-            "ComputePeakLevel",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (float)method.Invoke(null, [data])!;
+        var result = VoiceCaptureMath.ComputePeakLevel(data);
 
         Assert.Equal(expected, result, 3);
     }
@@ -286,16 +260,16 @@ public class VoiceServiceTransportTests
         bool expectedPromoted,
         string expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "SelectRecognizedText",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
         var now = new DateTime(2026, 3, 25, 16, 45, 30, DateTimeKind.Utc);
-        var args = new object?[] { recognized, hypothesis, now.AddSeconds(-hypothesisAgeSeconds), now, null };
-
-        var result = (string)method.Invoke(null, args)!;
+        var result = VoiceServiceTransportLogic.SelectRecognizedText(
+            recognized,
+            hypothesis,
+            now.AddSeconds(-hypothesisAgeSeconds),
+            now,
+            out var promotedHypothesis);
 
         Assert.Equal(expected, result);
-        Assert.Equal(expectedPromoted, (bool)args[4]!);
+        Assert.Equal(expectedPromoted, promotedHypothesis);
     }
 
     [Theory]
@@ -309,14 +283,13 @@ public class VoiceServiceTransportTests
         int hypothesisAgeSeconds,
         string? expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "SelectCompletionFallbackText",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
         var now = new DateTime(2026, 3, 25, 21, 36, 35, DateTimeKind.Utc);
 
-        var result = (string?)method.Invoke(
-            null,
-            [sessionHadActivity, hypothesis, now.AddSeconds(-hypothesisAgeSeconds), now]);
+        var result = VoiceServiceTransportLogic.SelectCompletionFallbackText(
+            sessionHadActivity,
+            hypothesis,
+            now.AddSeconds(-hypothesisAgeSeconds),
+            now);
 
         Assert.Equal(expected, result);
     }
@@ -332,13 +305,10 @@ public class VoiceServiceTransportTests
         bool usedFallbackTranscript,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldClearTranscriptDraftAfterCompletion",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (bool)method.Invoke(
-            null,
-            [awaitingReply, isSpeaking, usedFallbackTranscript])!;
+        var result = VoiceServiceTransportLogic.ShouldClearTranscriptDraftAfterCompletion(
+            awaitingReply,
+            isSpeaking,
+            usedFallbackTranscript);
 
         Assert.Equal(expected, result);
     }
@@ -356,13 +326,11 @@ public class VoiceServiceTransportTests
         bool usedFallbackTranscript,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldRepromptAfterIncompleteRecognition",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (bool)method.Invoke(
-            null,
-            [sessionHadActivity, awaitingReply, isSpeaking, usedFallbackTranscript])!;
+        var result = VoiceServiceTransportLogic.ShouldRepromptAfterIncompleteRecognition(
+            sessionHadActivity,
+            awaitingReply,
+            isSpeaking,
+            usedFallbackTranscript);
 
         Assert.Equal(expected, result);
     }
@@ -381,19 +349,12 @@ public class VoiceServiceTransportTests
         AudioDeviceRole role,
         bool expected)
     {
-        var method = typeof(VoiceService).GetMethod(
-            "ShouldRefreshRecognitionForDefaultCaptureDeviceChange",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var result = (bool)method.Invoke(null, [running, mode, configuredInputDeviceId, role])!;
+        var result = VoiceServiceTransportLogic.ShouldRefreshRecognitionForDefaultCaptureDeviceChange(
+            running,
+            mode,
+            configuredInputDeviceId,
+            role);
 
         Assert.Equal(expected, result);
-    }
-
-    private static MethodInfo GetMethod()
-    {
-        return typeof(VoiceService).GetMethod(
-            "GetOrCreateTransportReadySource",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
     }
 }

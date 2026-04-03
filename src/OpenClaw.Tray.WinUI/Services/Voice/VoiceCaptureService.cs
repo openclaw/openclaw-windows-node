@@ -278,44 +278,17 @@ public sealed class VoiceCaptureService : IAsyncDisposable
 
     internal static uint ResolveDesiredSamplesPerQuantum(int sampleRateHz, int chunkMs)
     {
-        if (sampleRateHz <= 0)
-        {
-            sampleRateHz = 16000;
-        }
-
-        if (chunkMs <= 0)
-        {
-            chunkMs = 80;
-        }
-
-        var desired = (sampleRateHz * chunkMs) / 1000;
-        return (uint)Math.Max(desired, 128);
+        return VoiceCaptureMath.ResolveDesiredSamplesPerQuantum(sampleRateHz, chunkMs);
     }
 
     internal static bool HasAudibleSignal(float peakLevel, float threshold = DefaultSignalThreshold)
     {
-        return peakLevel >= threshold;
+        return VoiceCaptureMath.HasAudibleSignal(peakLevel, threshold);
     }
 
     internal static float ComputePeakLevel(byte[] data)
     {
-        if (data.Length < sizeof(float))
-        {
-            return 0f;
-        }
-
-        float peak = 0f;
-        var alignedLength = data.Length - (data.Length % sizeof(float));
-        for (var offset = 0; offset < alignedLength; offset += sizeof(float))
-        {
-            var sample = Math.Abs(BitConverter.ToSingle(data, offset));
-            if (sample > peak)
-            {
-                peak = sample;
-            }
-        }
-
-        return float.IsFinite(peak) ? peak : 0f;
+        return VoiceCaptureMath.ComputePeakLevel(data);
     }
 
     private async Task<DeviceInformation> ResolveCaptureDeviceAsync(string? preferredInputDeviceId)

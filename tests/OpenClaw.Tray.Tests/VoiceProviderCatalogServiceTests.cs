@@ -12,19 +12,19 @@ public class VoiceProviderCatalogServiceTests
     [Fact]
     public void GetVoiceTrayIconPath_ReturnsBundledAppIconForOff()
     {
-        var path = IconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
+        var path = VoiceTrayIconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
 
-        Assert.Equal(IconHelper.GetAppIconPath(), path, ignoreCase: true);
+        Assert.Equal(VoiceTrayIconHelper.GetBaseAppIconPath(), path, ignoreCase: true);
     }
 
     [Fact]
     public void GetVoiceTrayIconPath_GeneratesListeningVariant()
     {
-        var path = IconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Listening);
+        var path = VoiceTrayIconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Listening);
 
         Assert.True(File.Exists(path));
         Assert.EndsWith(".ico", path, StringComparison.OrdinalIgnoreCase);
-        Assert.NotEqual(IconHelper.GetAppIconPath(), path, StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual(VoiceTrayIconHelper.GetBaseAppIconPath(), path, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

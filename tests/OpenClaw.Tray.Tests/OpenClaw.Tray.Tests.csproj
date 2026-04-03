@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
-    <ProjectReference Include="..\..\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj" />
+    <ProjectReference Include="..\..\src\OpenClaw.Tray.Shared\OpenClaw.Tray.Shared.csproj" />
   </ItemGroup>
 
 </Project>

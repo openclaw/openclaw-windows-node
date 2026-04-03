@@ -31,7 +31,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         // Window configuration
         this.SetWindowSize(420, 550);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(status));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(status));
         
         Closed += (s, e) => IsClosed = true;
         
