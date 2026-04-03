@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading.Tasks;
 using OpenClaw.Shared;
 using Xunit;
 
@@ -98,11 +99,8 @@ public class WindowsNodeClientTests
         }
     }
 
-    /// <summary>
-    /// When hello-ok has no token and no stored token, fires exactly one Pending event.
-    /// </summary>
     [Fact]
-    public void HandleResponse_HelloOkNoToken_FiresPendingExactlyOnce()
+    public void HandleResponse_HelloOkWithoutDeviceToken_EmitsNeutralPairedMessage()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -132,7 +130,8 @@ public class WindowsNodeClientTests
             handleResponseMethod!.Invoke(client, [root]);
 
             Assert.Single(pairingEvents);
-            Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
+            Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
+            Assert.Equal("Node registration accepted", pairingEvents[0].Message);
         }
         finally
         {
@@ -141,5 +140,231 @@ public class WindowsNodeClientTests
                 Directory.Delete(dataPath, true);
             }
         }
+    }
+
+    [Fact]
+    public void HandleResponse_NotPairedError_EmitsPendingPairingRequest()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+
+            var json = """
+                {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                        "message": "Device approval required",
+                        "code": "NOT_PAIRED",
+                        "details": {
+                            "reason": "first-connect",
+                            "requestId": "req-123"
+                        }
+                    }
+                }
+                """;
+            var root = JsonDocument.Parse(json).RootElement;
+
+            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
+                "HandleResponse",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            handleResponseMethod!.Invoke(client, [root]);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
+            Assert.Contains("req-123", pairingEvents[0].Message);
+            Assert.True(client.IsPendingApproval);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+            {
+                Directory.Delete(dataPath, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandleEvent_NodePairRequestedForCurrentDevice_EmitsPending()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+
+            await InvokeHandleEventAsync(client, $$"""
+                {
+                    "type": "event",
+                    "event": "node.pair.requested",
+                    "payload": {
+                        "deviceId": "{{client.FullDeviceId}}"
+                    }
+                }
+                """);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
+            Assert.True(client.IsPendingApproval);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+            {
+                Directory.Delete(dataPath, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandleEvent_NodePairRequestedForDifferentDevice_IsIgnored()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+
+            await InvokeHandleEventAsync(client, """
+                {
+                    "type": "event",
+                    "event": "node.pair.requested",
+                    "payload": {
+                        "deviceId": "some-other-device"
+                    }
+                }
+                """);
+
+            Assert.Empty(pairingEvents);
+            Assert.False(client.IsPendingApproval);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+            {
+                Directory.Delete(dataPath, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandleEvent_NodePairResolvedApproved_ForCurrentDevice_EmitsPairedAndMarksReconnect()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var isPendingField = typeof(WindowsNodeClient).GetField(
+                "_isPendingApproval",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            isPendingField!.SetValue(client, true);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+
+            await InvokeHandleEventAsync(client, $$"""
+                {
+                    "type": "event",
+                    "event": "node.pair.resolved",
+                    "payload": {
+                        "deviceId": "{{client.FullDeviceId}}",
+                        "decision": "approved"
+                    }
+                }
+                """);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
+            Assert.Equal("Pairing approved; reconnecting to refresh node state.", pairingEvents[0].Message);
+
+            var awaitingReconnectField = typeof(WindowsNodeClient).GetField(
+                "_pairingApprovedAwaitingReconnect",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.True((bool)awaitingReconnectField!.GetValue(client)!);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+            {
+                Directory.Delete(dataPath, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void HandleResponse_HelloOkWithoutDeviceTokenAfterApproval_ClearsAwaitingReconnect()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var isPairedField = typeof(WindowsNodeClient).GetField(
+                "_isPaired",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            isPairedField!.SetValue(client, true);
+
+            var awaitingReconnectField = typeof(WindowsNodeClient).GetField(
+                "_pairingApprovedAwaitingReconnect",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            awaitingReconnectField!.SetValue(client, true);
+
+            var json = """
+                {
+                    "type": "res",
+                    "ok": true,
+                    "payload": {
+                        "type": "hello-ok",
+                        "nodeId": "node-123"
+                    }
+                }
+                """;
+            var root = JsonDocument.Parse(json).RootElement;
+
+            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
+                "HandleResponse",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            handleResponseMethod!.Invoke(client, [root]);
+
+            Assert.False((bool)awaitingReconnectField.GetValue(client)!);
+            Assert.True(client.IsPaired);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+            {
+                Directory.Delete(dataPath, true);
+            }
+        }
+    }
+
+    private static async Task InvokeHandleEventAsync(WindowsNodeClient client, string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var handleEventMethod = typeof(WindowsNodeClient).GetMethod(
+            "HandleEventAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
+        var task = (Task)handleEventMethod!.Invoke(client, [doc.RootElement.Clone()])!;
+        await task;
     }
 }
