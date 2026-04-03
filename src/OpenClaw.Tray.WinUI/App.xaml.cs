@@ -1691,7 +1691,7 @@ public partial class App : Application
 
         if (_voiceService?.CurrentStatus.State == VoiceRuntimeState.Paused)
         {
-        return VoiceTrayIconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
+            return VoiceTrayIconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
         }
 
         var status = _currentStatus;
