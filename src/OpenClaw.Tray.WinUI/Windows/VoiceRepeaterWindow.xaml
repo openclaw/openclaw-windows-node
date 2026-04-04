@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<winex:WindowEx
+    x:Class="OpenClawTray.Windows.VoiceRepeaterWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:winex="using:WinUIEx"
+    Title="Voice Mode"
+    MinWidth="320"
+    MinHeight="150">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop/>
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="WindowRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Margin="4,4,4,0"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="6">
+            <Grid>
+                <TextBlock x:Name="EmptyConversationTextBlock"
+                           Text="Transcript and replies appear here."
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"/>
+
+                <ScrollViewer x:Name="ConversationScrollViewer"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="6">
+                        <ItemsControl x:Name="ConversationItemsControl">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Spacing="1">
+                                        <TextBlock Text="{Binding Caption}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   FontSize="{Binding CaptionFontSize}"/>
+                                        <TextBlock Text="{Binding Message}"
+                                                   FontSize="{Binding MessageFontSize}"
+                                                   TextWrapping="Wrap"
+                                                   MaxLines="5"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel x:Name="DraftPanel"
+                                    Visibility="Collapsed"
+                                    Spacing="1">
+                            <TextBlock x:Name="DraftCaptionTextBlock"
+                                       Text="You (draft)"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="10"/>
+                            <TextBlock x:Name="DraftTextBlock"
+                                       FontSize="13"
+                                       TextWrapping="Wrap"
+                                       FontStyle="Italic"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       MaxLines="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Margin="4"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="6,4">
+            <Grid ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="TroubleshootingTextBlock"
+                           Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Visibility="Collapsed"
+                           MaxLines="2"
+                           TextWrapping="Wrap"
+                           FontSize="10"/>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="4">
+                    <Button x:Name="PauseResumeButton"
+                            Width="28"
+                            Height="26"
+                            Padding="0"
+                            Click="OnPauseResumeClick"
+                            ToolTipService.ToolTip="Pause or resume voice mode">
+                        <SymbolIcon x:Name="PauseResumeIcon" Symbol="Pause"/>
+                    </Button>
+
+                    <Button x:Name="SkipReplyButton"
+                            Width="28"
+                            Height="26"
+                            Padding="0"
+                            Click="OnSkipReplyClick"
+                            ToolTipService.ToolTip="Skip current reply">
+                        <SymbolIcon Symbol="Forward"/>
+                    </Button>
+
+                    <Button x:Name="ViewSettingsButton"
+                            Width="28"
+                            Height="26"
+                            Padding="0"
+                            ToolTipService.ToolTip="Voice repeater settings">
+                        <SymbolIcon Symbol="Setting"/>
+                        <Button.Flyout>
+                            <Flyout Placement="TopEdgeAlignedRight">
+                                <StackPanel Width="220" Spacing="8" Padding="8">
+                                    <CheckBox x:Name="AutoScrollCheckBox"
+                                              Content="Auto-scroll"
+                                              Checked="OnAutoScrollChanged"
+                                              Unchecked="OnAutoScrollChanged"/>
+
+                                    <CheckBox x:Name="FloatingEnabledCheckBox"
+                                              Content="Float above other windows"
+                                              Checked="OnFloatingEnabledChanged"
+                                              Unchecked="OnFloatingEnabledChanged"/>
+
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Text size"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <ComboBox x:Name="TextSizeComboBox"
+                                                  SelectionChanged="OnTextSizeSelectionChanged">
+                                            <ComboBoxItem Content="11 pt" Tag="11"/>
+                                            <ComboBoxItem Content="12 pt" Tag="12"/>
+                                            <ComboBoxItem Content="13 pt" Tag="13"/>
+                                            <ComboBoxItem Content="14 pt" Tag="14"/>
+                                            <ComboBoxItem Content="15 pt" Tag="15"/>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <Button Content="Open Voice Status"
+                                            Click="OnOpenVoiceStatusClick"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</winex:WindowEx>

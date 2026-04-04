@@ -86,6 +86,14 @@ public class OpenClawNotification
     public string[]? Tags { get; set; }    // free-form routing tags
 }
 
+public class ChatMessageEventArgs : EventArgs
+{
+    public string SessionKey { get; set; } = "main";
+    public string Role { get; set; } = "";
+    public string Message { get; set; } = "";
+    public bool IsFinal { get; set; }
+}
+
 /// <summary>
 /// A user-defined notification categorization rule.
 /// </summary>

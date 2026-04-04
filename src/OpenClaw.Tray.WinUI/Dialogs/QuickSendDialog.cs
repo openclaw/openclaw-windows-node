@@ -55,7 +55,7 @@ public sealed class QuickSendDialog : WindowEx
         Title = LocalizationHelper.GetString("WindowTitle_QuickSend");
         this.SetWindowSize(420, 260);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
         
         // Apply Acrylic via controller to keep IsInputActive=true.
         // This avoids focus/activation oddities on Windows 10 for hotkey-launched windows.

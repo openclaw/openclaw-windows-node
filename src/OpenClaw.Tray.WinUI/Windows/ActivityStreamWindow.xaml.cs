@@ -26,7 +26,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
 
         this.SetWindowSize(520, 640);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         Closed += OnClosed;
         ActivityStreamService.Updated += OnActivityUpdated;

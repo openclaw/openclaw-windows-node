@@ -965,3 +965,234 @@ public class CameraCapabilityTests
         Assert.Contains("Camera access blocked", res.Error);
     }
 }
+
+public class VoiceCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void CanHandle_VoiceCommands()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        Assert.True(cap.CanHandle(VoiceCommands.ListDevices));
+        Assert.True(cap.CanHandle(VoiceCommands.GetSettings));
+        Assert.True(cap.CanHandle(VoiceCommands.SetSettings));
+        Assert.True(cap.CanHandle(VoiceCommands.GetStatus));
+        Assert.True(cap.CanHandle(VoiceCommands.Start));
+        Assert.True(cap.CanHandle(VoiceCommands.Stop));
+        Assert.False(cap.CanHandle("voice.unknown"));
+        Assert.Equal("voice", cap.Category);
+    }
+
+    [Fact]
+    public async Task ListDevices_ReturnsArrayFromHandler()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        cap.ListDevicesRequested += () => Task.FromResult<VoiceAudioDeviceInfo[]>(
+        [
+            new VoiceAudioDeviceInfo
+            {
+                DeviceId = "default-input",
+                Name = "System default microphone",
+                IsDefault = true,
+                IsInput = true
+            }
+        ]);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice1",
+            Command = VoiceCommands.ListDevices,
+            Args = Parse("""{}""")
+        });
+
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
+        Assert.Equal("default-input", doc.RootElement[0].GetProperty("DeviceId").GetString());
+    }
+
+    [Fact]
+    public async Task GetSettings_ReturnsSettingsFromHandler()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        cap.SettingsRequested += () => Task.FromResult(new VoiceSettings
+        {
+            Enabled = true,
+            Mode = VoiceActivationMode.VoiceWake
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice2",
+            Command = VoiceCommands.GetSettings,
+            Args = Parse("""{}""")
+        });
+
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.GetProperty("Enabled").GetBoolean());
+        Assert.Equal("VoiceWake", doc.RootElement.GetProperty("Mode").GetString());
+    }
+
+    [Fact]
+    public async Task SetSettings_UsesUpdateEnvelope_WhenPresent()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        VoiceSettingsUpdateArgs? received = null;
+        cap.SettingsUpdateRequested += update =>
+        {
+            received = update;
+            return Task.FromResult(update.Settings);
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice3",
+            Command = VoiceCommands.SetSettings,
+            Args = Parse("""{"update":{"persist":false,"settings":{"enabled":true,"mode":"TalkMode"}}}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.False(received!.Persist);
+        Assert.Equal(VoiceActivationMode.TalkMode, received.Settings.Mode);
+    }
+
+    [Fact]
+    public async Task GetStatus_ReturnsStatusFromHandler()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        cap.StatusRequested += () => Task.FromResult(new VoiceStatusInfo
+        {
+            Available = true,
+            Running = true,
+            Mode = VoiceActivationMode.TalkMode,
+            State = VoiceRuntimeState.ListeningContinuously
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice4",
+            Command = VoiceCommands.GetStatus,
+            Args = Parse("""{}""")
+        });
+
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.GetProperty("Running").GetBoolean());
+        Assert.Equal("ListeningContinuously", doc.RootElement.GetProperty("State").GetString());
+    }
+
+    [Fact]
+    public async Task Start_PassesArgsToHandler()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        VoiceStartArgs? received = null;
+        cap.StartRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new VoiceStatusInfo
+            {
+                Available = true,
+                Running = true,
+                Mode = args.Mode ?? VoiceActivationMode.Off,
+                State = VoiceRuntimeState.ListeningForVoiceWake,
+                SessionKey = args.SessionKey
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice5",
+            Command = VoiceCommands.Start,
+            Args = Parse("""{"mode":"VoiceWake","sessionKey":"session-123"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(VoiceActivationMode.VoiceWake, received!.Mode);
+        Assert.Equal("session-123", received.SessionKey);
+    }
+
+    [Fact]
+    public async Task Stop_PassesReasonToHandler()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        VoiceStopArgs? received = null;
+        cap.StopRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new VoiceStatusInfo
+            {
+                Available = true,
+                Running = false,
+                Mode = VoiceActivationMode.Off,
+                State = VoiceRuntimeState.Stopped,
+                LastError = args.Reason
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice6",
+            Command = VoiceCommands.Stop,
+            Args = Parse("""{"reason":"user requested"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal("user requested", received!.Reason);
+    }
+
+    [Fact]
+    public async Task Start_ReturnsError_WhenHandlerMissing()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice7",
+            Command = VoiceCommands.Start,
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LegacyVoiceSkipCommand_RemainsAccepted()
+    {
+        var cap = new VoiceCapability(NullLogger.Instance);
+        VoiceSkipArgs? received = null;
+        cap.SkipRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new VoiceStatusInfo
+            {
+                Available = true,
+                Running = true,
+                Mode = VoiceActivationMode.TalkMode,
+                State = VoiceRuntimeState.PlayingResponse
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "voice8",
+            Command = "voice.skip",
+            Args = Parse("""{"reason":"legacy caller"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal("legacy caller", received!.Reason);
+    }
+}

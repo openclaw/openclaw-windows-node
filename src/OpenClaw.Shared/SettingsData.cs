@@ -1,3 +1,5 @@
+using System;
+using System.Text.Json.Serialization;
 using System.Text.Json;
 
 namespace OpenClaw.Shared;
@@ -32,6 +34,11 @@ public class SettingsData
     public bool NotifyChatResponses { get; set; } = true;
     public bool PreferStructuredCategories { get; set; } = true;
     public List<UserNotificationRule>? UserRules { get; set; }
+    public VoiceSettings Voice { get; set; } = new();
+    public VoiceRepeaterWindowSettings VoiceRepeaterWindow { get; set; } = new();
+    public VoiceProviderConfigurationStore VoiceProviderConfiguration { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VoiceProviderCredentials? VoiceProviderCredentials { get; set; }
 
     private static readonly JsonSerializerOptions s_options = new() { WriteIndented = true };
 
@@ -41,11 +48,39 @@ public class SettingsData
     {
         try
         {
-            return JsonSerializer.Deserialize<SettingsData>(json);
+            return JsonSerializer.Deserialize<SettingsData>(MigrateLegacyVoiceJson(json));
         }
         catch (JsonException)
         {
             return null;
         }
     }
+
+    private static string MigrateLegacyVoiceJson(string json)
+    {
+        return json
+            .Replace("\"WakeWord\":", "\"VoiceWake\":", StringComparison.Ordinal)
+            .Replace("\"AlwaysOn\":", "\"TalkMode\":", StringComparison.Ordinal)
+            .Replace("\"WakeWordModelId\":", "\"VoiceWakeModelId\":", StringComparison.Ordinal)
+            .Replace("\"WakeWordLoaded\":", "\"VoiceWakeLoaded\":", StringComparison.Ordinal)
+            .Replace("\"LastWakeWordUtc\":", "\"LastVoiceWakeUtc\":", StringComparison.Ordinal)
+            .Replace("\"Mode\":\"WakeWord\"", "\"Mode\":\"VoiceWake\"", StringComparison.Ordinal)
+            .Replace("\"Mode\": \"WakeWord\"", "\"Mode\": \"VoiceWake\"", StringComparison.Ordinal)
+            .Replace("\"Mode\":\"AlwaysOn\"", "\"Mode\":\"TalkMode\"", StringComparison.Ordinal)
+            .Replace("\"Mode\": \"AlwaysOn\"", "\"Mode\": \"TalkMode\"", StringComparison.Ordinal)
+            .Replace("\"State\":\"ListeningForWakeWord\"", "\"State\":\"ListeningForVoiceWake\"", StringComparison.Ordinal)
+            .Replace("\"State\": \"ListeningForWakeWord\"", "\"State\": \"ListeningForVoiceWake\"", StringComparison.Ordinal);
+    }
+}
+
+public sealed class VoiceRepeaterWindowSettings
+{
+    public bool AutoScroll { get; set; } = true;
+    public bool FloatingEnabled { get; set; } = true;
+    public bool HasSavedPlacement { get; set; }
+    public double TextSize { get; set; } = 13;
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public int? X { get; set; }
+    public int? Y { get; set; }
 }
