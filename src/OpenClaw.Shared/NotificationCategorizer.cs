@@ -123,6 +123,7 @@ public class NotificationCategorizer
             return ("⚠️ Error", "error");
         if (text.Contains("build", StringComparison.OrdinalIgnoreCase) ||
             text.Contains("ci ", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("ci/", StringComparison.OrdinalIgnoreCase) ||
             text.Contains("deploy", StringComparison.OrdinalIgnoreCase))
             return ("🔨 Build", "build");
         return ("🤖 OpenClaw", "info");
