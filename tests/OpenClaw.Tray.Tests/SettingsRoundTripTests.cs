@@ -170,6 +170,14 @@ public class SettingsRoundTripTests
         Assert.Null(SettingsData.FromJson("not json at all"));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void NullOrEmptyJson_ReturnsNull(string? json)
+    {
+        Assert.Null(SettingsData.FromJson(json));
+    }
+
     [Fact]
     public void EmptyUserRules_RoundTrips()
     {
