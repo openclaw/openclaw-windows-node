@@ -28,6 +28,8 @@ public class NotificationCategorizerTests
     [InlineData("Exception occurred", "error")]
     [InlineData("Build succeeded", "build")]
     [InlineData("CI pipeline completed", "build")]
+    [InlineData("CI/CD pipeline completed", "build")]
+    [InlineData("CI/CD workflow triggered", "build")]
     [InlineData("Deploy finished", "build")]
     [InlineData("Hello world", "info")]
     public void KeywordFallback_BackwardCompatible(string message, string expectedType)
