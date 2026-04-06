@@ -31,7 +31,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
-    private static readonly JsonSerializerOptions s_indentedOptions = new() { WriteIndented = true };
+
     private static readonly Regex s_commandValidator = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
 
     // Events
@@ -357,21 +357,7 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             try
             {
-                // Sign the payload - INCLUDE the auth token in the payload!
-                var debugPayload = _deviceIdentity.BuildDebugPayload(nonce, signedAt, ClientId, authToken);
                 signature = _deviceIdentity.SignPayload(nonce, signedAt, ClientId, authToken);
-                
-                // Full debug output for verification
-                _logger.Debug("=== Debug Info ===");
-                _logger.Debug($"Device ID: {_deviceIdentity.DeviceId}");
-                _logger.Debug($"Public Key: {_deviceIdentity.PublicKeyBase64Url}");
-                _logger.Debug($"Client ID: {ClientId}");
-                _logger.Debug($"Auth Token (in payload): {authToken?.Substring(0, Math.Min(16, authToken?.Length ?? 0))}...");
-                _logger.Debug($"Nonce: {nonce}");
-                _logger.Debug($"SignedAt: {signedAt}");
-                _logger.Debug($"Payload: {debugPayload.Substring(0, Math.Min(100, debugPayload.Length))}...");
-                _logger.Debug($"Signature: {signature}");
-                _logger.Debug("==================");
             }
             catch (Exception ex)
             {
@@ -418,25 +404,17 @@ public class WindowsNodeClient : WebSocketClientBase
             }
         };
         
-        var json = JsonSerializer.Serialize(msg, s_indentedOptions);
-        _logger.Debug($"[NODE TX FULL JSON]:\n{json}");
-        await SendRawAsync(JsonSerializer.Serialize(msg));  // Send compact version
+        await SendRawAsync(JsonSerializer.Serialize(msg));
         _logger.Info($"Sent node registration with device ID: {_deviceIdentity.DeviceId.Substring(0, 16)}..., paired: {isPaired}");
     }
     
     private void HandleResponse(JsonElement root)
     {
-        // DEBUG: Log entire response structure
-        _logger.Debug($"[NODE] HandleResponse - ok: {(root.TryGetProperty("ok", out var okVal) ? okVal.ToString() : "missing")}");
-        
         if (!root.TryGetProperty("payload", out var payload))
         {
             _logger.Warn("[NODE] Response has no payload");
             return;
         }
-        
-        var payloadText = payload.ToString();
-        _logger.Debug($"[NODE] Response payload: {payloadText.Substring(0, Math.Min(200, payloadText.Length))}...");
         
         // Handle hello-ok (successful registration)
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
