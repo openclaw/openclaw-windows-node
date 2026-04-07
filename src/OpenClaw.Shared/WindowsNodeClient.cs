@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -18,6 +17,8 @@ public class WindowsNodeClient : WebSocketClientBase
     
     // Node capabilities registry
     private readonly List<INodeCapability> _capabilities = new();
+    // O(1) dispatch index: command name → owning capability (populated in RegisterCapability)
+    private readonly Dictionary<string, INodeCapability> _commandIndex = new(StringComparer.OrdinalIgnoreCase);
     private readonly NodeRegistration _registration;
     
     // Connection state
@@ -95,6 +96,7 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _registration.Commands.Add(cmd);
             }
+            _commandIndex[cmd] = capability;
         }
         
         _logger.Info($"Registered capability: {capability.Category} ({capability.Commands.Count} commands)");
@@ -266,8 +268,8 @@ public class WindowsNodeClient : WebSocketClientBase
             Args = args
         };
         
-        // Find capability that can handle this command
-        var capability = _capabilities.FirstOrDefault(c => c.CanHandle(command));
+        // O(1) lookup via the command dispatch index built during RegisterCapability
+        _commandIndex.TryGetValue(command, out var capability);
         
         if (capability == null)
         {
@@ -594,8 +596,8 @@ public class WindowsNodeClient : WebSocketClientBase
             Args = args
         };
         
-        // Find capability that can handle this command
-        var capability = _capabilities.FirstOrDefault(c => c.CanHandle(command));
+        // O(1) lookup via the command dispatch index built during RegisterCapability
+        _commandIndex.TryGetValue(command, out var capability);
         
         if (capability == null)
         {

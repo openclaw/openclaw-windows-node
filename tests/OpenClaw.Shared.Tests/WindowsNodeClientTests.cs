@@ -142,4 +142,110 @@ public class WindowsNodeClientTests
             }
         }
     }
+
+    // Helper to access the private _commandIndex field via reflection
+    private static Dictionary<string, INodeCapability> GetCommandIndex(WindowsNodeClient client)
+    {
+        var field = typeof(WindowsNodeClient).GetField(
+            "_commandIndex",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        var index = field!.GetValue(client) as Dictionary<string, INodeCapability>;
+        Assert.NotNull(index);
+        return index!;
+    }
+
+    // Minimal test capability
+    private sealed class AlphaCapability : NodeCapabilityBase
+    {
+        public override string Category => "alpha";
+        private static readonly string[] _cmds = ["alpha.run", "alpha.stop"];
+        public override IReadOnlyList<string> Commands => _cmds;
+        public AlphaCapability() : base(NullLogger.Instance) { }
+        public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest req) =>
+            Task.FromResult(Success());
+    }
+
+    private sealed class BetaCapability : NodeCapabilityBase
+    {
+        public override string Category => "beta";
+        private static readonly string[] _cmds = ["beta.query"];
+        public override IReadOnlyList<string> Commands => _cmds;
+        public BetaCapability() : base(NullLogger.Instance) { }
+        public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest req) =>
+            Task.FromResult(Success());
+    }
+
+    [Fact]
+    public void RegisterCapability_PopulatesCommandIndex_WithAllCommands()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "token", dataPath);
+            var alpha = new AlphaCapability();
+            client.RegisterCapability(alpha);
+
+            var index = GetCommandIndex(client);
+
+            Assert.True(index.ContainsKey("alpha.run"));
+            Assert.True(index.ContainsKey("alpha.stop"));
+            Assert.Same(alpha, index["alpha.run"]);
+            Assert.Same(alpha, index["alpha.stop"]);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void RegisterCapability_MultipleCapabilities_IndexedToCorrectHandler()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "token", dataPath);
+            var alpha = new AlphaCapability();
+            var beta = new BetaCapability();
+            client.RegisterCapability(alpha);
+            client.RegisterCapability(beta);
+
+            var index = GetCommandIndex(client);
+
+            Assert.Same(alpha, index["alpha.run"]);
+            Assert.Same(alpha, index["alpha.stop"]);
+            Assert.Same(beta, index["beta.query"]);
+            Assert.False(index.ContainsKey("gamma.unknown"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void RegisterCapability_CommandIndexLookup_IsCaseInsensitive()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "token", dataPath);
+            client.RegisterCapability(new AlphaCapability());
+
+            var index = GetCommandIndex(client);
+
+            // Dictionary is OrdinalIgnoreCase — both casings should resolve
+            Assert.True(index.ContainsKey("ALPHA.RUN"));
+            Assert.True(index.ContainsKey("alpha.run"));
+            Assert.True(index.ContainsKey("Alpha.Run"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
 }
