@@ -1,3 +1,4 @@
+using System.Globalization;
 using Xunit;
 using OpenClaw.Shared;
 
@@ -540,6 +541,37 @@ public class GatewayUsageInfoTests
         Assert.Contains("$1.50", display);
         Assert.Contains("25 requests", display);
         Assert.Contains("gpt-4", display);
+    }
+
+    [Fact]
+    public void DisplayText_UsesInvariantCulture_ForTokenAndCostFormatting()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("fr-FR");
+            CultureInfo.CurrentUICulture = new CultureInfo("fr-FR");
+
+            var usage = new GatewayUsageInfo
+            {
+                TotalTokens = 2_500_000,
+                CostUsd = 0.25
+            };
+
+            var display = usage.DisplayText;
+
+            Assert.Contains("2.5M", display);
+            Assert.Contains("$0.25", display);
+            Assert.DoesNotContain("2,5M", display);
+            Assert.DoesNotContain("$0,25", display);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 }
 
