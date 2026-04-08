@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace OpenClaw.Shared;
 
 public enum ConnectionStatus
@@ -295,7 +297,7 @@ public class GatewayUsageInfo
             if (TotalTokens > 0)
                 parts.Add($"Tokens: {ModelFormatting.FormatLargeNumber(TotalTokens)}");
             if (CostUsd > 0)
-                parts.Add($"${CostUsd:F2}");
+                parts.Add("$" + CostUsd.ToString("F2", CultureInfo.InvariantCulture));
             if (RequestCount > 0)
                 parts.Add($"{RequestCount} requests");
             if (!string.IsNullOrEmpty(Model))
@@ -455,8 +457,8 @@ internal static class ModelFormatting
     /// </summary>
     internal static string FormatLargeNumber(long n)
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:F1}M";
-        if (n >= 1_000) return $"{n / 1_000.0:F1}K";
+        if (n >= 1_000_000) return (n / 1_000_000.0).ToString("F1", CultureInfo.InvariantCulture) + "M";
+        if (n >= 1_000) return (n / 1_000.0).ToString("F1", CultureInfo.InvariantCulture) + "K";
         return n.ToString();
     }
 }
