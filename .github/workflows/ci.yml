@@ -50,10 +50,33 @@ jobs:
         dotnet build tests/OpenClaw.Shared.Tests -c Debug
         dotnet build tests/OpenClaw.Tray.Tests -c Debug
 
-    - name: Run Tests
-      run: |
-        dotnet test tests/OpenClaw.Shared.Tests --no-build -c Debug --verbosity normal
-        dotnet test tests/OpenClaw.Tray.Tests --no-build -c Debug --verbosity normal
+    - name: Run Shared Tests
+      run: >
+        dotnet test tests/OpenClaw.Shared.Tests
+        --no-build
+        -c Debug
+        --verbosity normal
+        --collect:"XPlat Code Coverage"
+        --results-directory TestResults\Shared
+        --logger "trx;LogFileName=OpenClaw.Shared.Tests.trx"
+
+    - name: Run Tray Tests
+      run: >
+        dotnet test tests/OpenClaw.Tray.Tests
+        --no-build
+        -c Debug
+        --verbosity normal
+        --collect:"XPlat Code Coverage"
+        --results-directory TestResults\Tray
+        --logger "trx;LogFileName=OpenClaw.Tray.Tests.trx"
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: TestResults/
+        if-no-files-found: warn
 
     outputs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
