@@ -6,6 +6,8 @@ public static class GatewayUrlHelper
 {
     public const string ValidationMessage = "Gateway URL must be a valid URL (ws://, wss://, http://, or https://).";
 
+    private static readonly char[] s_authorityTerminators = { '/', '?', '#' };
+
     public static bool IsValidGatewayUrl(string? gatewayUrl) =>
         TryNormalizeWebSocketUrl(gatewayUrl, out _);
 
@@ -141,7 +143,7 @@ public static class GatewayUrlHelper
         }
 
         var authorityStart = schemeSeparator + 3;
-        var authorityEnd = url.IndexOfAny(new[] { '/', '?', '#' }, authorityStart);
+        var authorityEnd = url.IndexOfAny(s_authorityTerminators, authorityStart);
         if (authorityEnd < 0)
         {
             authorityEnd = url.Length;
