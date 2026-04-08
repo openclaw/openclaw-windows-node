@@ -1,8 +1,10 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 using System;
 using System.Threading.Tasks;
 using WinUIEx;
@@ -17,22 +19,22 @@ public sealed partial class SettingsWindow : WindowEx
 
     public event EventHandler? SettingsSaved;
 
-    public SettingsWindow(SettingsManager settings)
+    public SettingsWindow(SettingsManager settings, IVoiceConfigurationApi voiceConfigurationApi)
     {
         _settings = settings;
         InitializeComponent();
-        
+
         Title = LocalizationHelper.GetString("WindowTitle_Settings");
-        
-        // Window configuration
-        this.SetWindowSize(480, 700);
+
+        this.SetWindowSize(560, 860);
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
-        
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+
         LoadSettings();
-        
+        VoiceSettingsPanel.Initialize(_settings, voiceConfigurationApi);
+
         Closed += (s, e) => IsClosed = true;
-        
+
         Logger.Info("[Settings] Window opened");
     }
 
@@ -50,11 +52,10 @@ public sealed partial class SettingsWindow : WindowEx
         AutoStartToggle.IsOn = _settings.AutoStart;
         GlobalHotkeyToggle.IsOn = _settings.GlobalHotkeyEnabled;
         NotificationsToggle.IsOn = _settings.ShowNotifications;
-        
-        // Set sound combo — match by Tag (stable persistence key), not Content (display text)
+
         for (int i = 0; i < NotificationSoundComboBox.Items.Count; i++)
         {
-            if (NotificationSoundComboBox.Items[i] is Microsoft.UI.Xaml.Controls.ComboBoxItem item &&
+            if (NotificationSoundComboBox.Items[i] is ComboBoxItem item &&
                 item.Tag?.ToString() == _settings.NotificationSound)
             {
                 NotificationSoundComboBox.SelectedIndex = i;
@@ -62,9 +63,10 @@ public sealed partial class SettingsWindow : WindowEx
             }
         }
         if (NotificationSoundComboBox.SelectedIndex < 0)
+        {
             NotificationSoundComboBox.SelectedIndex = 0;
+        }
 
-        // Notification filters
         NotifyHealthCb.IsChecked = _settings.NotifyHealth;
         NotifyUrgentCb.IsChecked = _settings.NotifyUrgent;
         NotifyReminderCb.IsChecked = _settings.NotifyReminder;
@@ -73,12 +75,11 @@ public sealed partial class SettingsWindow : WindowEx
         NotifyBuildCb.IsChecked = _settings.NotifyBuild;
         NotifyStockCb.IsChecked = _settings.NotifyStock;
         NotifyInfoCb.IsChecked = _settings.NotifyInfo;
-        
-        // Advanced
+
         NodeModeToggle.IsOn = _settings.EnableNodeMode;
     }
 
-    private void SaveSettings()
+    private async Task<bool> SaveSettingsAsync()
     {
         _settings.UseSshTunnel = UseSshTunnelToggle.IsOn;
         _settings.SshTunnelUser = SshTunnelUserTextBox.Text.Trim();
@@ -94,8 +95,8 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.AutoStart = AutoStartToggle.IsOn;
         _settings.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn;
         _settings.ShowNotifications = NotificationsToggle.IsOn;
-        
-        if (NotificationSoundComboBox.SelectedItem is Microsoft.UI.Xaml.Controls.ComboBoxItem item)
+
+        if (NotificationSoundComboBox.SelectedItem is ComboBoxItem item)
         {
             _settings.NotificationSound = item.Tag?.ToString() ?? "Default";
         }
@@ -108,12 +109,22 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.NotifyBuild = NotifyBuildCb.IsChecked ?? true;
         _settings.NotifyStock = NotifyStockCb.IsChecked ?? true;
         _settings.NotifyInfo = NotifyInfoCb.IsChecked ?? true;
-        
-        // Advanced
         _settings.EnableNodeMode = NodeModeToggle.IsOn;
+
+        try
+        {
+            await VoiceSettingsPanel.ApplyAsync(_settings);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"[Settings] Failed to apply voice settings: {ex.Message}");
+            StatusLabel.Text = $"❌ Failed to apply voice settings: {ex.Message}";
+            return false;
+        }
 
         _settings.Save();
         AutoStartManager.SetAutoStart(_settings.AutoStart);
+        return true;
     }
 
     private async void OnTestConnection(object sender, RoutedEventArgs e)
@@ -159,7 +170,7 @@ public sealed partial class SettingsWindow : WindowEx
 
             var connected = false;
             var tcs = new TaskCompletionSource<bool>();
-            
+
             client.StatusChanged += (s, status) =>
             {
                 if (status == ConnectionStatus.Connected)
@@ -174,8 +185,7 @@ public sealed partial class SettingsWindow : WindowEx
             };
 
             _ = client.ConnectAsync();
-            
-            // Wait up to 5 seconds for connection
+
             var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(5000));
             if (completedTask != tcs.Task)
             {
@@ -224,13 +234,13 @@ public sealed partial class SettingsWindow : WindowEx
         }
     }
 
-    private void OnSave(object sender, RoutedEventArgs e)
+    private async void OnSave(object sender, RoutedEventArgs e)
     {
         var useSshTunnel = UseSshTunnelToggle.IsOn;
         var gatewayUrl = GatewayUrlTextBox.Text.Trim();
         if (!useSshTunnel && !GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
         {
-            Logger.Warn($"[Settings] Save blocked — invalid gateway URL");
+            Logger.Warn("[Settings] Save blocked — invalid gateway URL");
             StatusLabel.Text = $"❌ {GatewayUrlHelper.ValidationMessage}";
             return;
         }
@@ -246,14 +256,23 @@ public sealed partial class SettingsWindow : WindowEx
         var oldGateway = _settings.GatewayUrl;
         var oldAutoStart = _settings.AutoStart;
         var oldNodeMode = _settings.EnableNodeMode;
-        SaveSettings();
+        if (!await SaveSettingsAsync())
+        {
+            return;
+        }
 
         if (!string.Equals(oldGateway, _settings.GatewayUrl, StringComparison.Ordinal))
-            Logger.Info($"[Settings] GatewayUrl changed");
+        {
+            Logger.Info("[Settings] GatewayUrl changed");
+        }
         if (oldAutoStart != _settings.AutoStart)
+        {
             Logger.Info($"[Settings] AutoStart changed to {_settings.AutoStart}");
+        }
         if (oldNodeMode != _settings.EnableNodeMode)
+        {
             Logger.Info($"[Settings] NodeMode changed to {_settings.EnableNodeMode}");
+        }
 
         Logger.Info("[Settings] Settings saved");
         SettingsSaved?.Invoke(this, EventArgs.Empty);

@@ -1,0 +1,274 @@
+{
+  "speechToTextProviders": [
+    {
+      "id": "windows",
+      "name": "Windows Speech Recognition",
+      "runtime": "windows",
+      "enabled": true,
+      "description": "Built-in Windows.Media speech recognition, half-duplex, non-streamed."
+    },
+    {
+      "id": "http-ws",
+      "name": "http/ws",
+      "runtime": "streaming",
+      "enabled": false,
+      "visibleInSettings": true,
+      "selectable": false,
+      "description": "Will support most cloud and local stand-alone models full or half-duplex, streaming."
+    },
+    {
+      "id": "foundry-local",
+      "name": "Foundry Local",
+      "runtime": "streaming",
+      "enabled": false,
+      "visibleInSettings": false,
+      "selectable": false,
+      "description": "AudioGraph-fed streaming STT route for Foundry Local or compatible streaming adapters.",
+      "settings": [
+        {
+          "key": "endpoint",
+          "label": "Endpoint",
+          "required": false,
+          "defaultValue": "http://localhost:5273",
+          "placeholder": "http://localhost:5273",
+          "description": "Local Foundry-compatible transcription endpoint for the AudioGraph streaming STT route."
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "required": false,
+          "defaultValue": "whisper-tiny",
+          "placeholder": "whisper-tiny",
+          "description": "Transcription model identifier for the streaming STT adapter."
+        }
+      ]
+    },
+    {
+      "id": "openai-whisper",
+      "name": "OpenAI Whisper",
+      "runtime": "streaming",
+      "enabled": false,
+      "visibleInSettings": false,
+      "selectable": false,
+      "description": "AudioGraph-fed cloud STT route for the OpenAI Whisper transcription API.",
+      "settings": [
+        {
+          "key": "apiKey",
+          "label": "API key",
+          "secret": true
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "required": false,
+          "defaultValue": "whisper-1",
+          "placeholder": "whisper-1",
+          "description": "Transcription model identifier for the OpenAI speech-to-text adapter."
+        }
+      ]
+    },
+    {
+      "id": "elevenlabs-stt",
+      "name": "ElevenLabs Speech to Text",
+      "runtime": "streaming",
+      "enabled": false,
+      "visibleInSettings": false,
+      "selectable": false,
+      "description": "AudioGraph-fed cloud STT route for the ElevenLabs speech-to-text API.",
+      "settings": [
+        {
+          "key": "apiKey",
+          "label": "API key",
+          "secret": true
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "required": false,
+          "defaultValue": "scribe_v1",
+          "placeholder": "scribe_v1",
+          "description": "Transcription model identifier for the ElevenLabs speech-to-text adapter."
+        }
+      ]
+    },
+    {
+      "id": "azure-ai-speech",
+      "name": "Azure AI Speech",
+      "runtime": "streaming",
+      "enabled": false,
+      "visibleInSettings": false,
+      "selectable": false,
+      "description": "AudioGraph-fed cloud STT route for Azure AI Speech real-time transcription.",
+      "settings": [
+        {
+          "key": "apiKey",
+          "label": "API key",
+          "secret": true
+        },
+        {
+          "key": "endpoint",
+          "label": "Endpoint",
+          "required": false,
+          "defaultValue": "",
+          "placeholder": "https://your-speech-resource.cognitiveservices.azure.com",
+          "description": "Azure AI Speech endpoint for the streaming STT adapter."
+        }
+      ]
+    },
+    {
+      "id": "sherpa-onnx",
+      "name": "sherpa-onnx",
+      "runtime": "embedded",
+      "enabled": false,
+      "visibleInSettings": true,
+      "selectable": false,
+      "description": "Can load a variety of models including OpenAI/Whisper, full-duplex, streaming.",
+      "settings": [
+        {
+          "key": "modelPath",
+          "label": "Model path",
+          "required": false,
+          "defaultValue": "",
+          "placeholder": "C:\\models\\sherpa-onnx\\model.onnx",
+          "description": "Path to the downloaded sherpa-onnx model bundle the embedded STT route should use."
+        },
+        {
+          "key": "model",
+          "label": "Model preset",
+          "required": false,
+          "defaultValue": "",
+          "placeholder": "tiny / base / small / medium",
+          "description": "Optional human-readable model preset to help track which local bundle is selected."
+        }
+      ]
+    }
+  ],
+  "textToSpeechProviders": [
+    {
+      "id": "windows",
+      "name": "Windows Speech Synthesis",
+      "runtime": "windows",
+      "enabled": true,
+      "description": "Built-in Windows text-to-speech playback."
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "runtime": "cloud",
+      "enabled": true,
+      "description": "Cloud TTS using the MiniMax HTTP text-to-speech API.",
+      "settings": [
+        {
+          "key": "apiKey",
+          "label": "API key",
+          "secret": true
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "defaultValue": "speech-2.8-turbo",
+          "options": [
+            "speech-2.5-turbo-preview",
+            "speech-02-turbo",
+            "speech-02-hd",
+            "speech-2.6-turbo",
+            "speech-2.6-hd",
+            "speech-2.8-turbo",
+            "speech-2.8-hd"
+          ]
+        },
+        {
+          "key": "voiceId",
+          "label": "Voice ID",
+          "required": false,
+          "defaultValue": "English_MatureBoss"
+        },
+        {
+          "key": "voiceSettingsJson",
+          "label": "Voice settings JSON",
+          "required": false,
+          "jsonValue": true,
+          "defaultValue": "\"voice_setting\": { \"voice_id\": {{voiceId}}, \"speed\": 1, \"vol\": 1, \"pitch\": 0 }",
+          "placeholder": "\"voice_setting\": { \"voice_id\": \"English_MatureBoss\", \"speed\": 1, \"vol\": 1, \"pitch\": 0 }",
+          "description": "Optional full MiniMax request fragment. If present, it controls the full voice_setting payload."
+        }
+      ],
+      "textToSpeechWebSocket": {
+        "endpointTemplate": "wss://api.minimax.io/ws/v1/t2a_v2",
+        "authenticationHeaderName": "Authorization",
+        "authenticationScheme": "Bearer",
+        "apiKeySettingKey": "apiKey",
+        "connectSuccessEventName": "connected_success",
+        "startMessageTemplate": "{ \"event\": \"task_start\", \"model\": {{model}}, \"language_boost\": \"English\", {{voiceSettingsJson}}, \"audio_setting\": { \"sample_rate\": 32000, \"bitrate\": 128000, \"format\": \"mp3\", \"channel\": 1 } }",
+        "startSuccessEventName": "task_started",
+        "continueMessageTemplate": "{ \"event\": \"task_continue\", \"text\": {{text}} }",
+        "finishMessageTemplate": "{ \"event\": \"task_finish\" }",
+        "responseAudioMode": "hexJsonString",
+        "responseAudioJsonPath": "data.audio",
+        "responseStatusCodeJsonPath": "base_resp.status_code",
+        "responseStatusMessageJsonPath": "base_resp.status_msg",
+        "finalFlagJsonPath": "is_final",
+        "taskFailedEventName": "task_failed",
+        "successStatusValue": "0",
+        "outputContentType": "audio/mpeg"
+      }
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "runtime": "cloud",
+      "enabled": true,
+      "description": "Cloud TTS using the ElevenLabs WebSocket stream-input API.",
+      "settings": [
+        {
+          "key": "apiKey",
+          "label": "API key",
+          "secret": true
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "defaultValue": "eleven_multilingual_v2",
+          "options": [
+            "eleven_flash_v2_5",
+            "eleven_turbo_v2_5",
+            "eleven_multilingual_v2",
+            "eleven_monolingual_v1"
+          ]
+        },
+        {
+          "key": "voiceId",
+          "label": "Voice ID",
+          "required": false,
+          "defaultValue": "6aDn1KB0hjpdcocrUkmq",
+          "placeholder": "Enter an ElevenLabs voice ID"
+        },
+        {
+          "key": "voiceSettingsJson",
+          "label": "Voice settings JSON",
+          "required": false,
+          "jsonValue": true,
+          "defaultValue": "\"voice_settings\": { \"speed\": 0.9, \"stability\": 0.5, \"similarity_boost\": 0.75 }",
+          "placeholder": "\"voice_settings\": { \"speed\": 0.9, \"stability\": 0.5, \"similarity_boost\": 0.75 }",
+          "description": "Optional full ElevenLabs request fragment. If present, it controls the full voice_settings payload."
+        }
+      ],
+      "textToSpeechWebSocket": {
+        "endpointTemplate": "wss://api.elevenlabs.io/v1/text-to-speech/{{voiceId}}/stream-input?model_id={{model}}&output_format=mp3_44100_128&auto_mode=true",
+        "authenticationHeaderName": "xi-api-key",
+        "authenticationScheme": "",
+        "apiKeySettingKey": "apiKey",
+        "connectSuccessEventName": "",
+        "startMessageTemplate": "{ \"text\": \" \", {{voiceSettingsJson}}, \"xi_api_key\": {{apiKey}} }",
+        "startSuccessEventName": "",
+        "continueMessageTemplate": "{ \"text\": {{textWithTrailingSpace}}, \"try_trigger_generation\": true }",
+        "finishMessageTemplate": "{ \"text\": \"\" }",
+        "responseAudioMode": "base64JsonString",
+        "responseAudioJsonPath": "audio",
+        "finalFlagJsonPath": "isFinal",
+        "taskFailedEventName": "error",
+        "outputContentType": "audio/mpeg"
+      }
+    }
+  ]
+}

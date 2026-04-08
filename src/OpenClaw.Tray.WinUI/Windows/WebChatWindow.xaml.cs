@@ -3,6 +3,7 @@ using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -14,14 +15,16 @@ using Windows.Foundation;
 namespace OpenClawTray.Windows;
 
 public sealed partial class WebChatWindow : WindowEx
+    , IVoiceChatWindow
 {
     private readonly string _gatewayUrl;
     private readonly string _token;
-    
-    // Store event handlers for cleanup
+    private readonly WebChatVoiceDomState _voiceDomState;
+    private bool _voiceDomReady;
+
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navigationCompletedHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navigationStartingHandler;
-    
+
     public bool IsClosed { get; private set; }
 
     public WebChatWindow(string gatewayUrl, string token)
@@ -29,18 +32,18 @@ public sealed partial class WebChatWindow : WindowEx
         Logger.Info($"WebChatWindow: Constructor called, gateway={gatewayUrl}");
         _gatewayUrl = gatewayUrl;
         _token = token;
-        
+        _voiceDomState = new WebChatVoiceDomState();
+
         InitializeComponent();
-        
-        // Window configuration
+
         this.SetWindowSize(520, 750);
         this.MinWidth = 380;
         this.MinHeight = 450;
         this.CenterOnScreen();
-        this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
-        
+        this.SetIcon(AppIconHelper.GetStatusIconPath(ConnectionStatus.Connected));
+
         Closed += OnWindowClosed;
-        
+
         Logger.Info("WebChatWindow: Starting InitializeWebViewAsync");
         _ = InitializeWebViewAsync();
     }
@@ -48,8 +51,8 @@ public sealed partial class WebChatWindow : WindowEx
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
         IsClosed = true;
-        
-        // Cleanup WebView2 event handlers
+        _voiceDomReady = false;
+
         if (WebView.CoreWebView2 != null)
         {
             if (_navigationCompletedHandler != null)
@@ -64,35 +67,39 @@ public sealed partial class WebChatWindow : WindowEx
         try
         {
             Logger.Info("WebChatWindow: Initializing WebView2...");
-            
-            // Set up user data folder for WebView2
+
             var userDataFolder = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OpenClawTray", "WebView2");
-            
+
             Directory.CreateDirectory(userDataFolder);
             Logger.Info($"WebChatWindow: User data folder: {userDataFolder}");
 
-            // Set environment variable for user data folder
             Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
-            
+
             Logger.Info("WebChatWindow: Calling EnsureCoreWebView2Async...");
             await WebView.EnsureCoreWebView2Async();
             Logger.Info("WebChatWindow: CoreWebView2 initialized successfully");
-            
-            // Configure WebView2
+
             WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             WebView.CoreWebView2.Settings.IsZoomControlEnabled = true;
+            await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(WebChatVoiceDomBridge.DocumentCreatedScript);
 
-            // Handle navigation events (store for cleanup)
+            _voiceDomReady = false;
+
             _navigationCompletedHandler = (s, e) =>
             {
                 Logger.Info($"WebChatWindow: Navigation completed, success={e.IsSuccess}, status={e.WebErrorStatus}");
                 LoadingRing.IsActive = false;
                 LoadingRing.Visibility = Visibility.Collapsed;
-                
-                // Show friendly error if connection failed
+                _voiceDomReady = e.IsSuccess;
+
+                if (e.IsSuccess)
+                {
+                    _ = RefreshTrayVoiceDomStateAsync();
+                }
+
                 if (!e.IsSuccess && (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
                                       e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
                                       e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionReset ||
@@ -115,15 +122,14 @@ public sealed partial class WebChatWindow : WindowEx
 
             _navigationStartingHandler = (s, e) =>
             {
-                // Strip query params to avoid logging tokens
                 var safeUri = e.Uri?.Split('?')[0] ?? "unknown";
                 Logger.Info($"WebChatWindow: Navigation starting to {safeUri}");
+                _voiceDomReady = false;
                 LoadingRing.IsActive = true;
                 LoadingRing.Visibility = Visibility.Visible;
             };
             WebView.CoreWebView2.NavigationStarting += _navigationStartingHandler;
 
-            // Navigate to chat
             NavigateToChat();
         }
         catch (Exception ex)
@@ -135,13 +141,12 @@ public sealed partial class WebChatWindow : WindowEx
                 Logger.Error($"WebView2 inner exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}");
             }
             Logger.Error($"WebView2 stack trace: {ex.StackTrace}");
-            
-            // Show error in the dialog instead of falling back to browser
+
             LoadingRing.IsActive = false;
             LoadingRing.Visibility = Visibility.Collapsed;
             WebView.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
-            
+
             var errorDetails = $"Exception: {ex.GetType().FullName}\n" +
                               $"HResult: 0x{ex.HResult:X8}\n" +
                               $"Message: {ex.Message}\n\n" +
@@ -149,17 +154,16 @@ public sealed partial class WebChatWindow : WindowEx
                               $"Architecture: {RuntimeInformation.ProcessArchitecture}\n" +
                               $"OS: {RuntimeInformation.OSDescription}\n\n" +
                               $"Stack Trace:\n{ex.StackTrace}";
-            
+
             if (ex.InnerException != null)
             {
                 errorDetails += $"\n\nInner Exception: {ex.InnerException.GetType().FullName}\n{ex.InnerException.Message}";
             }
-            
+
             ErrorText.Text = errorDetails;
         }
     }
 
-    // Set to a test URL to bypass gateway (e.g., "https://www.bing.com"), or null for normal operation
     private const string? DEBUG_TEST_URL = null;
 
     private static bool IsLocalHost(Uri uri)
@@ -208,12 +212,11 @@ public sealed partial class WebChatWindow : WindowEx
         ErrorPanel.Visibility = Visibility.Visible;
         ErrorText.Text = message;
     }
-    
+
     private void NavigateToChat()
     {
         if (WebView.CoreWebView2 == null) return;
 
-        // If debug URL is set, use it instead of gateway
         if (!string.IsNullOrEmpty(DEBUG_TEST_URL))
         {
             Logger.Info($"WebChatWindow: DEBUG MODE - Navigating to test URL: {DEBUG_TEST_URL}");
@@ -251,7 +254,7 @@ public sealed partial class WebChatWindow : WindowEx
             ShowErrorMessage(errorMessage);
             return;
         }
-        
+
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
@@ -265,5 +268,35 @@ public sealed partial class WebChatWindow : WindowEx
     private void OnDevTools(object sender, RoutedEventArgs e)
     {
         WebView.CoreWebView2?.OpenDevToolsWindow();
+    }
+
+    public async Task UpdateVoiceTranscriptDraftAsync(string text, bool clear)
+    {
+        _voiceDomState.SetDraft(text, clear);
+        await RefreshTrayVoiceDomStateAsync();
+    }
+
+    public async Task AppendVoiceConversationTurnAsync(VoiceConversationTurnEventArgs args)
+    {
+        await Task.CompletedTask;
+    }
+
+    private async Task RefreshTrayVoiceDomStateAsync()
+    {
+        if (WebView.CoreWebView2 == null || !_voiceDomReady || IsClosed)
+        {
+            return;
+        }
+
+        try
+        {
+            await WebView.CoreWebView2.ExecuteScriptAsync(
+                WebChatVoiceDomBridge.BuildSetDraftScript(_voiceDomState.PendingDraft));
+            await WebView.CoreWebView2.ExecuteScriptAsync(WebChatVoiceDomBridge.ClearLegacyTurnsScript);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"WebChatWindow: Failed to apply voice DOM state: {ex.Message}");
+        }
     }
 }

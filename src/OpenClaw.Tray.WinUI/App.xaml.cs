@@ -6,6 +6,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Voice;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Frozen;
@@ -39,6 +40,7 @@ public partial class App : Application
     private GlobalHotkeyService? _globalHotkey;
     private System.Timers.Timer? _healthCheckTimer;
     private System.Timers.Timer? _sessionPollTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _voiceTrayIconTimer;
     private Mutex? _mutex;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private CancellationTokenSource? _deepLinkCts;
@@ -57,6 +59,7 @@ public partial class App : Application
     private GatewayCostUsageInfo? _lastUsageCost;
     private DateTime _lastCheckTime = DateTime.Now;
     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
+    private string? _lastTrayIconPath;
 
     // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
     private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
@@ -81,6 +84,8 @@ public partial class App : Application
 
     // Windows (created on demand)
     private SettingsWindow? _settingsWindow;
+    private VoiceRepeaterWindow? _voiceRepeaterWindow;
+    private VoiceModeWindow? _voiceModeWindow;
     private WebChatWindow? _webChatWindow;
     private StatusDetailWindow? _statusDetailWindow;
     private NotificationHistoryWindow? _notificationHistoryWindow;
@@ -90,6 +95,8 @@ public partial class App : Application
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
+    private VoiceService? _voiceService;
+    private VoiceChatCoordinator? _voiceChatCoordinator;
     
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
@@ -269,6 +276,11 @@ public partial class App : Application
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
+        _voiceService = new VoiceService(new AppLogger(), _settings);
+        _voiceChatCoordinator = new VoiceChatCoordinator(
+            _voiceService,
+            new DispatcherQueueAdapter(_dispatcherQueue!));
+        _voiceChatCoordinator.ConversationTurnAvailable += OnVoiceConversationTurnAvailable;
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
@@ -297,6 +309,7 @@ public partial class App : Application
 
         // Start health check timer
         StartHealthCheckTimer();
+        StartVoiceTrayIconTimer();
 
         // Start deep link server
         StartDeepLinkServer();
@@ -305,7 +318,8 @@ public partial class App : Application
         if (_settings.GlobalHotkeyEnabled)
         {
             _globalHotkey = new GlobalHotkeyService();
-            _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
+            _globalHotkey.QuickSendHotkeyPressed += OnGlobalQuickSendHotkeyPressed;
+            _globalHotkey.VoiceToggleHotkeyPressed += OnGlobalVoiceToggleHotkeyPressed;
             _globalHotkey.Register();
         }
 
@@ -316,6 +330,11 @@ public partial class App : Application
         if (startupDeepLink != null)
         {
             HandleDeepLink(startupDeepLink);
+        }
+
+        if (ShouldShowVoiceRepeaterAtStartup())
+        {
+            _dispatcherQueue?.TryEnqueue(ShowVoiceModeSettings);
         }
 
         Logger.Info("Application started (WinUI 3)");
@@ -341,11 +360,26 @@ public partial class App : Application
         // Pre-create tray menu window at startup to avoid creation crashes later
         InitializeTrayMenuWindow();
         
-        var iconPath = IconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
+        var iconPath = AppIconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
         _trayIcon = new TrayIcon(1, iconPath, "OpenClaw Tray — Disconnected");
+        _lastTrayIconPath = iconPath;
         _trayIcon.IsVisible = true;
         _trayIcon.Selected += OnTrayIconSelected;
         _trayIcon.ContextMenu += OnTrayContextMenu;
+    }
+
+    private void StartVoiceTrayIconTimer()
+    {
+        if (_dispatcherQueue == null || _voiceTrayIconTimer != null)
+        {
+            return;
+        }
+
+        _voiceTrayIconTimer = _dispatcherQueue.CreateTimer();
+        _voiceTrayIconTimer.Interval = TimeSpan.FromMilliseconds(250);
+        _voiceTrayIconTimer.IsRepeating = true;
+        _voiceTrayIconTimer.Tick += (s, e) => UpdateTrayIcon();
+        _voiceTrayIconTimer.Start();
     }
 
     private void InitializeTrayMenuWindow()
@@ -535,6 +569,8 @@ public partial class App : Application
         switch (action)
         {
             case "status": ShowStatusDetail(); break;
+            case "voice-settings": ShowVoiceModeSettings(); break;
+            case "voice-toggle-pause": _ = ToggleVoiceQuickPauseAsync(); break;
             case "dashboard": OpenDashboard(); break;
             case "webchat": ShowWebChat(); break;
             case "quicksend": ShowQuickSend(); break;
@@ -742,6 +778,60 @@ public partial class App : Application
             .ToList();
     }
 
+    private string GetRunningVoiceModeLabel()
+    {
+        var status = _voiceService?.CurrentStatus;
+        if (status == null)
+        {
+            return "Off";
+        }
+
+        return VoiceDisplayHelper.GetRuntimeLabel(status);
+    }
+
+    private bool CanQuickToggleVoiceMode()
+    {
+        if (_settings?.EnableNodeMode != true || _voiceService == null)
+        {
+            return false;
+        }
+
+        var status = _voiceService.CurrentStatus;
+        if (status.State == VoiceRuntimeState.Paused)
+        {
+            return true;
+        }
+
+        return _settings.Voice.Enabled && _settings.Voice.Mode != VoiceActivationMode.Off;
+    }
+
+    private bool ShouldShowVoiceRepeaterAtStartup()
+    {
+        return _settings?.EnableNodeMode == true &&
+               _settings.Voice.Enabled &&
+               _settings.Voice.Mode != VoiceActivationMode.Off &&
+               _settings.Voice.ShowRepeaterAtStartup;
+    }
+
+    private string GetVoiceQuickToggleLabel()
+    {
+        var status = _voiceService?.CurrentStatus;
+        return status?.State == VoiceRuntimeState.Paused
+            ? "Resume Voice"
+            : "Pause Voice";
+    }
+
+    private string GetVoiceDeviceSummary()
+    {
+        var voice = _settings?.Voice;
+        if (voice == null)
+            return "Talk: system default · Listen: system default";
+
+        var talk = string.IsNullOrWhiteSpace(voice.OutputDeviceId) ? "system default" : "selected speaker";
+        var listen = string.IsNullOrWhiteSpace(voice.InputDeviceId) ? "system default" : "selected microphone";
+        return $"Talk: {talk} · Listen: {listen}";
+    }
+
     private void BuildTrayMenuPopup(TrayMenuWindow menu)
     {
         // Brand header
@@ -756,6 +846,14 @@ public partial class App : Application
         if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
         {
             menu.AddMenuItem(_currentActivity.DisplayText, _currentActivity.Glyph, "", isEnabled: false);
+        }
+
+        menu.AddMenuItem($"Voice Mode: {GetRunningVoiceModeLabel()}", "🎙️", "voice-settings");
+        menu.AddMenuItem($"↳ {GetVoiceDeviceSummary()}", "", "", isEnabled: false, indent: true);
+        menu.AddMenuItem($"↳ {GetVoiceQuickToggleLabel()} (Ctrl+Alt+Shift+V)", "", "voice-toggle-pause", isEnabled: CanQuickToggleVoiceMode(), indent: true);
+        if (_settings?.EnableNodeMode != true)
+        {
+            menu.AddMenuItem("↳ Enable Node Mode to activate voice runtime", "", "", isEnabled: false, indent: true);
         }
 
         // Usage
@@ -1147,7 +1245,7 @@ public partial class App : Application
         {
             Logger.Info("Initializing Windows Node service...");
             
-            _nodeService = new NodeService(new AppLogger(), _dispatcherQueue, DataPath);
+            _nodeService = new NodeService(new AppLogger(), _dispatcherQueue, _voiceService!, DataPath);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
@@ -1558,13 +1656,7 @@ public partial class App : Application
     {
         if (_trayIcon == null) return;
 
-        var status = _currentStatus;
-        if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
-        {
-            status = ConnectionStatus.Connecting; // Use connecting icon for activity
-        }
-
-        var iconPath = IconHelper.GetStatusIconPath(status);
+        var iconPath = GetTrayIconPathForCurrentState();
         var tooltip = $"OpenClaw Tray — {_currentStatus}";
         
         if (_currentActivity != null && !string.IsNullOrEmpty(_currentActivity.DisplayText))
@@ -1576,7 +1668,11 @@ public partial class App : Application
 
         try
         {
-            _trayIcon.SetIcon(iconPath);
+            if (!string.Equals(_lastTrayIconPath, iconPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _trayIcon.SetIcon(iconPath);
+                _lastTrayIconPath = iconPath;
+            }
             _trayIcon.Tooltip = tooltip;
         }
         catch (Exception ex)
@@ -1585,15 +1681,60 @@ public partial class App : Application
         }
     }
 
+    private string GetTrayIconPathForCurrentState()
+    {
+        var voiceIconState = GetVoiceTrayIconState();
+        if (voiceIconState != VoiceTrayIconState.Off)
+        {
+            return VoiceTrayIconHelper.GetVoiceTrayIconPath(voiceIconState);
+        }
+
+        if (_voiceService?.CurrentStatus.State == VoiceRuntimeState.Paused)
+        {
+            return VoiceTrayIconHelper.GetVoiceTrayIconPath(VoiceTrayIconState.Off);
+        }
+
+        var status = _currentStatus;
+        if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
+        {
+            status = ConnectionStatus.Connecting;
+        }
+
+        return AppIconHelper.GetStatusIconPath(status);
+    }
+
+    private VoiceTrayIconState GetVoiceTrayIconState()
+    {
+        var voiceStatus = _voiceService?.CurrentStatus;
+        if (voiceStatus == null || !voiceStatus.Running)
+        {
+            return VoiceTrayIconState.Off;
+        }
+
+        return voiceStatus.State switch
+        {
+            VoiceRuntimeState.PlayingResponse => VoiceTrayIconState.Speaking,
+            VoiceRuntimeState.ListeningForVoiceWake => VoiceTrayIconState.Listening,
+            VoiceRuntimeState.ListeningContinuously => VoiceTrayIconState.Listening,
+            VoiceRuntimeState.RecordingUtterance => VoiceTrayIconState.Listening,
+            VoiceRuntimeState.Paused => VoiceTrayIconState.Off,
+            _ when voiceStatus.Mode == VoiceActivationMode.Off => VoiceTrayIconState.Off,
+            _ => VoiceTrayIconState.Off
+        };
+    }
+
     #endregion
 
     #region Window Management
 
     private void ShowSettings()
     {
+        if (_settings == null || _voiceService == null)
+            return;
+
         if (_settingsWindow == null || _settingsWindow.IsClosed)
         {
-            _settingsWindow = new SettingsWindow(_settings!);
+            _settingsWindow = new SettingsWindow(_settings, _voiceService);
             _settingsWindow.Closed += (s, e) => 
             {
                 _settingsWindow.SettingsSaved -= OnSettingsSaved;
@@ -1604,46 +1745,152 @@ public partial class App : Application
         _settingsWindow.Activate();
     }
 
-    private void OnSettingsSaved(object? sender, EventArgs e)
+    private void ShowVoiceModeSettings()
+    {
+        if (_settings == null || _voiceService == null)
+            return;
+
+        if (_voiceRepeaterWindow == null || _voiceRepeaterWindow.IsClosed)
+        {
+            _voiceRepeaterWindow = new VoiceRepeaterWindow(_settings, _voiceService);
+            _voiceRepeaterWindow.OpenVoiceStatusRequested += OnOpenVoiceStatusRequested;
+            _voiceRepeaterWindow.Closed += (s, e) =>
+            {
+                _voiceChatCoordinator?.DetachWindow(_voiceRepeaterWindow);
+                _voiceRepeaterWindow.OpenVoiceStatusRequested -= OnOpenVoiceStatusRequested;
+                _voiceRepeaterWindow = null;
+            };
+            _voiceChatCoordinator?.AttachWindow(_voiceRepeaterWindow);
+        }
+
+        _voiceRepeaterWindow.RefreshStatus();
+        _voiceRepeaterWindow.Activate();
+    }
+
+    private void ShowVoiceStatusWindow()
+    {
+        if (_settings == null || _voiceService == null)
+        {
+            return;
+        }
+
+        if (_voiceModeWindow == null || _voiceModeWindow.IsClosed)
+        {
+            _voiceModeWindow = new VoiceModeWindow(_settings, _voiceService, _voiceService);
+            _voiceModeWindow.OpenSettingsRequested += OnVoiceModeOpenSettingsRequested;
+            _voiceModeWindow.Closed += (s, e) =>
+            {
+                if (_voiceModeWindow != null)
+                {
+                    _voiceModeWindow.OpenSettingsRequested -= OnVoiceModeOpenSettingsRequested;
+                }
+
+                _voiceModeWindow = null;
+            };
+        }
+
+        _voiceModeWindow.RefreshStatus();
+        _voiceModeWindow.Activate();
+    }
+
+    private void OnOpenVoiceStatusRequested(object? sender, EventArgs e)
+    {
+        ShowVoiceStatusWindow();
+    }
+
+    private void OnVoiceModeOpenSettingsRequested(object? sender, EventArgs e)
+    {
+        ShowSettings();
+    }
+
+    private async void OnSettingsSaved(object? sender, EventArgs e)
     {
         // Reconnect with new settings — mirror the startup if/else pattern
         // to avoid dual connections that cause gateway conflicts.
-        UnsubscribeGatewayEvents();
-        _gatewayClient?.Dispose();
-        _gatewayClient = null;
-        var oldNodeService = _nodeService;
-        _nodeService = null;
-        try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
-        if (_settings?.UseSshTunnel != true)
+        try
         {
-            _sshTunnelService?.Stop();
-        }
+            if (_gatewayClient != null)
+            {
+                try
+                {
+                    await _gatewayClient.DisconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Gateway disconnect error: {ex.Message}");
+                }
 
-        // Reset status so the tray doesn't show a stale "Connected" from the previous mode
-        _currentStatus = ConnectionStatus.Disconnected;
-        UpdateTrayIcon();
-        
-        if (_settings?.EnableNodeMode == true)
-        {
-            InitializeNodeService();
+                _gatewayClient.Dispose();
+                _gatewayClient = null;
+            }
+
+            var oldNodeService = _nodeService;
+            _nodeService = null;
+            if (oldNodeService != null)
+            {
+                try
+                {
+                    await oldNodeService.DisconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Node disconnect error: {ex.Message}");
+                }
+
+                try
+                {
+                    oldNodeService.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Node dispose error: {ex.Message}");
+                }
+            }
+
+            if (_settings?.UseSshTunnel != true)
+            {
+                _sshTunnelService?.Stop();
+            }
+
+            // Reset status so the tray doesn't show a stale "Connected" from the previous mode
+            _currentStatus = ConnectionStatus.Disconnected;
+            UpdateTrayIcon();
+
+            if (_settings?.EnableNodeMode == true)
+            {
+                InitializeNodeService();
+            }
+            else
+            {
+                InitializeGatewayClient();
+                if (_voiceService != null)
+                {
+                    await _voiceService.StopAsync(new VoiceStopArgs { Reason = "Node mode disabled" });
+                }
+            }
         }
-        else
+        catch (Exception ex)
         {
-            InitializeGatewayClient();
+            Logger.Warn($"Settings reconnect failed: {ex.Message}");
         }
 
         // Update global hotkey
         if (_settings!.GlobalHotkeyEnabled)
         {
             _globalHotkey ??= new GlobalHotkeyService();
-            _globalHotkey.HotkeyPressed -= OnGlobalHotkeyPressed;
-            _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
+            _globalHotkey.QuickSendHotkeyPressed -= OnGlobalQuickSendHotkeyPressed;
+            _globalHotkey.QuickSendHotkeyPressed += OnGlobalQuickSendHotkeyPressed;
+            _globalHotkey.VoiceToggleHotkeyPressed -= OnGlobalVoiceToggleHotkeyPressed;
+            _globalHotkey.VoiceToggleHotkeyPressed += OnGlobalVoiceToggleHotkeyPressed;
             _globalHotkey.Register();
         }
         else
         {
             _globalHotkey?.Unregister();
         }
+
+        _voiceRepeaterWindow?.RefreshStatus();
+        _voiceModeWindow?.RefreshStatus();
 
         // Update auto-start
         AutoStartManager.SetAutoStart(_settings.AutoStart);
@@ -1656,8 +1903,15 @@ public partial class App : Application
 
         if (_webChatWindow == null || _webChatWindow.IsClosed)
         {
-            _webChatWindow = new WebChatWindow(_settings.GetEffectiveGatewayUrl(), _settings.Token);
-            _webChatWindow.Closed += (s, e) => _webChatWindow = null;
+            _webChatWindow = new WebChatWindow(
+                _settings.GetEffectiveGatewayUrl(),
+                _settings.Token);
+            _webChatWindow.Closed += (s, e) =>
+            {
+                _voiceChatCoordinator?.DetachWindow(_webChatWindow);
+                _webChatWindow = null;
+            };
+            _voiceChatCoordinator?.AttachWindow(_webChatWindow);
         }
         _webChatWindow.Activate();
     }
@@ -1874,7 +2128,7 @@ public partial class App : Application
         }
     }
 
-    private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
+    private void OnGlobalQuickSendHotkeyPressed(object? sender, EventArgs e)
     {
         // Hotkey events are raised from a dedicated Win32 message-loop thread.
         // Creating/activating WinUI windows must happen on the app's UI thread.
@@ -1888,6 +2142,137 @@ public partial class App : Application
         if (!enqueued)
         {
             Logger.Warn("Hotkey pressed but failed to enqueue QuickSend on UI thread");
+        }
+    }
+
+    private void OnGlobalVoiceToggleHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("Voice hotkey pressed but DispatcherQueue is null");
+            return;
+        }
+
+        var enqueued = _dispatcherQueue.TryEnqueue(async () => await ToggleVoiceQuickPauseAsync());
+        if (!enqueued)
+        {
+            Logger.Warn("Voice hotkey pressed but failed to enqueue Voice quick pause on UI thread");
+        }
+    }
+
+    private async Task ToggleVoiceQuickPauseAsync()
+    {
+        if (_voiceService == null)
+        {
+            return;
+        }
+
+        if (_settings?.EnableNodeMode != true)
+        {
+            Logger.Warn("Voice quick pause blocked: Node Mode is disabled");
+            return;
+        }
+
+        if (!CanQuickToggleVoiceMode())
+        {
+            Logger.Warn("Voice quick pause blocked: Voice Mode is off");
+            return;
+        }
+
+        try
+        {
+            var status = await _voiceService.ToggleQuickPauseAsync();
+            _voiceRepeaterWindow?.RefreshStatus();
+            _voiceModeWindow?.RefreshStatus();
+            ShowVoiceQuickToggleToast(status);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Voice quick pause failed: {ex.Message}");
+        }
+    }
+
+    private static void ShowVoiceQuickToggleToast(VoiceStatusInfo status)
+    {
+        try
+        {
+            var title = status.State == VoiceRuntimeState.Paused
+                ? "Voice paused"
+                : "Voice resumed";
+            var detail = status.State == VoiceRuntimeState.Paused
+                ? $"{status.Mode} is paused. Press Ctrl+Alt+Shift+V to resume."
+                : $"{status.Mode} is active again.";
+
+            new ToastContentBuilder()
+                .AddText(title)
+                .AddText(detail)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to show voice pause toast: {ex.Message}");
+        }
+    }
+
+    private void OnVoiceConversationTurnAvailable(object? sender, VoiceConversationTurnEventArgs args)
+    {
+        if (_dispatcherQueue == null)
+        {
+            return;
+        }
+
+        _dispatcherQueue.TryEnqueue(() => ShowVoiceConversationToast(args));
+    }
+
+    private void ShowVoiceConversationToast(VoiceConversationTurnEventArgs args)
+    {
+        if (_settings?.Voice.ShowConversationToasts != true)
+        {
+            return;
+        }
+
+        var title = args.Direction == VoiceConversationDirection.Outgoing
+            ? "Voice heard"
+            : "Voice reply";
+
+        AddRecentActivity(
+            $"voice: {title}",
+            category: "voice",
+            details: args.Message,
+            dashboardPath: "chat",
+            sessionKey: args.SessionKey);
+
+        NotificationHistoryService.AddNotification(new Services.GatewayNotification
+        {
+            Title = title,
+            Message = args.Message,
+            Category = "voice"
+        });
+
+        if (_settings.ShowNotifications != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var builder = new ToastContentBuilder()
+                .AddText(title)
+                .AddText(args.Message);
+
+            if (args.Direction == VoiceConversationDirection.Incoming)
+            {
+                builder.AddArgument("action", "open_chat")
+                    .AddButton(new ToastButton()
+                        .SetContent("Open Chat")
+                        .AddArgument("action", "open_chat"));
+            }
+
+            builder.Show();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to show voice conversation toast: {ex.Message}");
         }
     }
 
@@ -2125,7 +2510,11 @@ public partial class App : Application
             _sessionPollTimer?.Dispose();
             _sessionPollTimer = null;
         });
-
+        SafeShutdownStep("voice tray icon timer", () =>
+        {
+            _voiceTrayIconTimer?.Stop();
+            _voiceTrayIconTimer = null;
+        });
         // Cleanup hotkey
         SafeShutdownStep("global hotkey", () =>
         {
@@ -2189,6 +2578,22 @@ public partial class App : Application
         {
             _deepLinkCts?.Dispose();
             _deepLinkCts = null;
+        });
+
+        SafeShutdownStep("voice chat coordinator", () =>
+        {
+            if (_voiceChatCoordinator != null)
+            {
+                _voiceChatCoordinator.ConversationTurnAvailable -= OnVoiceConversationTurnAvailable;
+                _voiceChatCoordinator.Dispose();
+                _voiceChatCoordinator = null;
+            }
+        });
+
+        SafeShutdownStep("voice service", () =>
+        {
+            _voiceService?.Dispose();
+            _voiceService = null;
         });
 
         Logger.Info("Shutdown complete; calling Exit() now");
@@ -2262,7 +2667,6 @@ public partial class App : Application
 
         return true;
     }
-
     #endregion
 
     private async void OnSshTunnelExited(object? sender, int exitCode)

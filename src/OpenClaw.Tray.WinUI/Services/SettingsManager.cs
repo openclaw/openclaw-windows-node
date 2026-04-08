@@ -47,6 +47,9 @@ public class SettingsManager
     public bool NotifyChatResponses { get; set; } = true;
     public bool PreferStructuredCategories { get; set; } = true;
     public List<OpenClaw.Shared.UserNotificationRule> UserRules { get; set; } = new();
+    public VoiceSettings Voice { get; set; } = new();
+    public VoiceRepeaterWindowSettings VoiceRepeaterWindow { get; set; } = new();
+    public VoiceProviderConfigurationStore VoiceProviderConfiguration { get; set; } = new();
     
     // Node mode (enables Windows as a node, not just operator)
     public bool EnableNodeMode { get; set; } = false;
@@ -94,6 +97,10 @@ public class SettingsManager
                     PreferStructuredCategories = loaded.PreferStructuredCategories;
                     if (loaded.UserRules != null)
                         UserRules = loaded.UserRules;
+                    Voice = loaded.Voice ?? new VoiceSettings();
+                    VoiceRepeaterWindow = loaded.VoiceRepeaterWindow ?? new VoiceRepeaterWindowSettings();
+                    VoiceProviderConfiguration = loaded.VoiceProviderConfiguration?.Clone() ?? new VoiceProviderConfigurationStore();
+                    VoiceProviderConfiguration.MigrateLegacyCredentials(loaded.VoiceProviderCredentials);
                 }
             }
         }
@@ -103,7 +110,7 @@ public class SettingsManager
         }
     }
 
-    public void Save()
+    public void Save(bool logSuccess = true)
     {
         try
         {
@@ -135,13 +142,19 @@ public class SettingsManager
                 SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
                 NotifyChatResponses = NotifyChatResponses,
                 PreferStructuredCategories = PreferStructuredCategories,
-                UserRules = UserRules
+                UserRules = UserRules,
+                Voice = Voice,
+                VoiceRepeaterWindow = VoiceRepeaterWindow,
+                VoiceProviderConfiguration = VoiceProviderConfiguration.Clone()
             };
 
             var json = data.ToJson();
             File.WriteAllText(SettingsFilePath, json);
             
-            Logger.Info("Settings saved");
+            if (logSuccess)
+            {
+                Logger.Info("Settings saved");
+            }
         }
         catch (Exception ex)
         {

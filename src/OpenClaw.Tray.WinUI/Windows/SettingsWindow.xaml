@@ -3,6 +3,7 @@
     x:Class="OpenClawTray.Windows.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:OpenClawTray.Controls"
     xmlns:winex="using:WinUIEx"
     Title="Settings — OpenClaw Tray"
     MinWidth="400" MinHeight="500">
@@ -112,7 +113,7 @@
                 <!-- Test Notification -->
                 <Button x:Name="TestNotificationButton" x:Uid="SettingsTestNotificationButton" Content="Send Test Notification" 
                         Click="OnTestNotification"/>
-                
+
                 <!-- Advanced Section -->
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="SettingsAdvancedHeader" Text="ADVANCED (EXPERIMENTAL)" Style="{StaticResource CaptionTextBlockStyle}"
@@ -124,6 +125,8 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"
                                Margin="0,-4,0,0"/>
+
+                    <controls:VoiceSettingsPanel x:Name="VoiceSettingsPanel"/>
                 </StackPanel>
                 
             </StackPanel>

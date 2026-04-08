@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using OpenClaw.Shared;
 
@@ -34,6 +35,62 @@ public class SettingsRoundTripTests
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
             PreferStructuredCategories = true,
+            Voice = new VoiceSettings
+            {
+                Enabled = true,
+                Mode = VoiceActivationMode.VoiceWake,
+                ShowRepeaterAtStartup = false,
+                ShowConversationToasts = true,
+                SpeechToTextProviderId = "windows",
+                TextToSpeechProviderId = "elevenlabs",
+                InputDeviceId = "mic-1",
+                OutputDeviceId = "spk-2",
+                SampleRateHz = 16000,
+                CaptureChunkMs = 80,
+                BargeInEnabled = false,
+                VoiceWake = new VoiceWakeSettings
+                {
+                    Engine = "NanoWakeWord",
+                    ModelId = "hey_openclaw",
+                    TriggerThreshold = 0.72f,
+                    TriggerCooldownMs = 2500,
+                    PreRollMs = 1400,
+                    EndSilenceMs = 1000
+                },
+                TalkMode = new TalkModeSettings
+                {
+                    MinSpeechMs = 300,
+                    EndSilenceMs = 1100,
+                    MaxUtteranceMs = 18000
+                }
+            },
+            VoiceProviderConfiguration = new VoiceProviderConfigurationStore
+            {
+                Providers =
+                [
+                    new VoiceProviderConfiguration
+                    {
+                        ProviderId = VoiceProviderIds.MiniMax,
+                        Values = new Dictionary<string, string>
+                        {
+                            [VoiceProviderSettingKeys.ApiKey] = "minimax-key",
+                            [VoiceProviderSettingKeys.Model] = "speech-2.8-turbo",
+                            [VoiceProviderSettingKeys.VoiceId] = "English_MatureBoss",
+                            [VoiceProviderSettingKeys.VoiceSettingsJson] = "{\"voice_id\":\"English_MatureBoss\",\"speed\":1.1}"
+                        }
+                    },
+                    new VoiceProviderConfiguration
+                    {
+                        ProviderId = VoiceProviderIds.ElevenLabs,
+                        Values = new Dictionary<string, string>
+                        {
+                            [VoiceProviderSettingKeys.ApiKey] = "eleven-key",
+                            [VoiceProviderSettingKeys.Model] = "eleven_multilingual_v2",
+                            [VoiceProviderSettingKeys.VoiceId] = "voice-42"
+                        }
+                    }
+                ]
+            },
             UserRules = new List<UserNotificationRule>
             {
                 new() { Pattern = "build.*fail", IsRegex = true, Category = "urgent", Enabled = true }
@@ -68,6 +125,27 @@ public class SettingsRoundTripTests
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
+        Assert.NotNull(restored.Voice);
+        Assert.True(restored.Voice.Enabled);
+        Assert.Equal(VoiceActivationMode.VoiceWake, restored.Voice.Mode);
+        Assert.False(restored.Voice.ShowRepeaterAtStartup);
+        Assert.True(restored.Voice.ShowConversationToasts);
+        Assert.Equal("windows", restored.Voice.SpeechToTextProviderId);
+        Assert.Equal("elevenlabs", restored.Voice.TextToSpeechProviderId);
+        Assert.Equal("mic-1", restored.Voice.InputDeviceId);
+        Assert.Equal("spk-2", restored.Voice.OutputDeviceId);
+        Assert.Equal("NanoWakeWord", restored.Voice.VoiceWake.Engine);
+        Assert.Equal("hey_openclaw", restored.Voice.VoiceWake.ModelId);
+        Assert.Equal(0.72f, restored.Voice.VoiceWake.TriggerThreshold);
+        Assert.Equal(300, restored.Voice.TalkMode.MinSpeechMs);
+        Assert.NotNull(restored.VoiceProviderConfiguration);
+        Assert.Equal("minimax-key", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.ApiKey));
+        Assert.Equal("speech-2.8-turbo", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.Model));
+        Assert.Equal("English_MatureBoss", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.VoiceId));
+        Assert.Equal("{\"voice_id\":\"English_MatureBoss\",\"speed\":1.1}", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.MiniMax, VoiceProviderSettingKeys.VoiceSettingsJson));
+        Assert.Equal("eleven-key", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.ElevenLabs, VoiceProviderSettingKeys.ApiKey));
+        Assert.Equal("eleven_multilingual_v2", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.ElevenLabs, VoiceProviderSettingKeys.Model));
+        Assert.Equal("voice-42", restored.VoiceProviderConfiguration.GetValue(VoiceProviderIds.ElevenLabs, VoiceProviderSettingKeys.VoiceId));
         Assert.NotNull(restored.UserRules);
         Assert.Single(restored.UserRules);
         Assert.Equal("build.*fail", restored.UserRules[0].Pattern);
@@ -119,7 +197,40 @@ public class SettingsRoundTripTests
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
+        Assert.NotNull(settings.Voice);
+        Assert.False(settings.Voice.Enabled);
+        Assert.Equal(VoiceActivationMode.Off, settings.Voice.Mode);
+        Assert.True(settings.Voice.ShowRepeaterAtStartup);
+        Assert.False(settings.Voice.ShowConversationToasts);
+        Assert.Equal(VoiceProviderIds.Windows, settings.Voice.SpeechToTextProviderId);
+        Assert.Equal(VoiceProviderIds.Windows, settings.Voice.TextToSpeechProviderId);
+        Assert.NotNull(settings.VoiceProviderConfiguration);
+        Assert.Empty(settings.VoiceProviderConfiguration.Providers);
+        Assert.Equal(16000, settings.Voice.SampleRateHz);
+        Assert.Equal("NanoWakeWord", settings.Voice.VoiceWake.Engine);
         Assert.Null(settings.UserRules);
+    }
+
+    [Fact]
+    public void LegacyVoiceProviderCredentials_Deserialize_ForMigration()
+    {
+        var json = """
+        {
+          "VoiceProviderCredentials": {
+            "MiniMaxApiKey": "minimax-key",
+            "MiniMaxModel": "speech-2.8-turbo",
+            "MiniMaxVoiceId": "English_MatureBoss"
+          }
+        }
+        """;
+
+        var settings = SettingsData.FromJson(json);
+
+        Assert.NotNull(settings);
+        Assert.NotNull(settings.VoiceProviderCredentials);
+        Assert.Equal("minimax-key", settings.VoiceProviderCredentials.MiniMaxApiKey);
+        Assert.Equal("speech-2.8-turbo", settings.VoiceProviderCredentials.MiniMaxModel);
+        Assert.Equal("English_MatureBoss", settings.VoiceProviderCredentials.MiniMaxVoiceId);
     }
 
     [Fact]
@@ -161,6 +272,13 @@ public class SettingsRoundTripTests
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);
+        Assert.NotNull(settings.Voice);
+        Assert.False(settings.Voice.Enabled);
+        Assert.Equal(VoiceActivationMode.Off, settings.Voice.Mode);
+        Assert.True(settings.Voice.ShowRepeaterAtStartup);
+        Assert.False(settings.Voice.ShowConversationToasts);
+        Assert.Equal(VoiceProviderIds.Windows, settings.Voice.SpeechToTextProviderId);
+        Assert.Equal(VoiceProviderIds.Windows, settings.Voice.TextToSpeechProviderId);
         Assert.Null(settings.UserRules);
     }
 

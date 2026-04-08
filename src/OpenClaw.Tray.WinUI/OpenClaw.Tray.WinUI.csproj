@@ -33,6 +33,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenClaw.Tray.Shared\OpenClaw.Tray.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
@@ -61,4 +62,3 @@
   </Target>
 
 </Project>
-
