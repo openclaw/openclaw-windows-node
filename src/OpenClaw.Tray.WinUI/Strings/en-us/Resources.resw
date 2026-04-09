@@ -575,6 +575,12 @@ Use one of these options:
   <data name="Toast_NodePairedDetail" xml:space="preserve">
     <value>This PC can now receive commands from the agent</value>
   </data>
+  <data name="Toast_PairingRejected" xml:space="preserve">
+    <value>❌ Pairing Rejected</value>
+  </data>
+  <data name="Toast_PairingRejectedDetail" xml:space="preserve">
+    <value>The gateway rejected this device pairing request.</value>
+  </data>
 
   <!-- ==================== Toast: Health Check ==================== -->
 

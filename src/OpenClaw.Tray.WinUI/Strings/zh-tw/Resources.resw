@@ -575,6 +575,12 @@
   <data name="Toast_NodePairedDetail" xml:space="preserve">
     <value>此電腦現在可以接收來自代理的命令</value>
   </data>
+  <data name="Toast_PairingRejected" xml:space="preserve">
+    <value>❌ 節點配對遭拒</value>
+  </data>
+  <data name="Toast_PairingRejectedDetail" xml:space="preserve">
+    <value>閘道器拒絕了此裝置的配對請求。</value>
+  </data>
 
   <!-- ==================== Toast: Health Check ==================== -->
 

@@ -575,6 +575,12 @@ Gebruik een van deze opties:
   <data name="Toast_NodePairedDetail" xml:space="preserve">
     <value>Deze pc kan nu opdrachten ontvangen van de agent</value>
   </data>
+  <data name="Toast_PairingRejected" xml:space="preserve">
+    <value>&#x274C; Koppeling geweigerd</value>
+  </data>
+  <data name="Toast_PairingRejectedDetail" xml:space="preserve">
+    <value>De gateway heeft het koppelingsverzoek voor dit apparaat geweigerd.</value>
+  </data>
 
   <!-- ==================== Toast: Health Check ==================== -->
 
