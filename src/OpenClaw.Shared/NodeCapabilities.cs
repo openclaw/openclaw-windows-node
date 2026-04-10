@@ -138,6 +138,31 @@ public abstract class NodeCapabilityBase : INodeCapability
         }
         return defaultValue;
     }
+
+    /// <summary>
+    /// Get a string array from a JSON array property. Non-string and whitespace-only elements
+    /// are ignored. Strings are trimmed to preserve the historical system.which behavior.
+    /// </summary>
+    protected string[] GetStringArrayArg(JsonElement args, string name)
+    {
+        if (args.ValueKind == JsonValueKind.Undefined || args.ValueKind == JsonValueKind.Null)
+            return Array.Empty<string>();
+        if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+
+        var list = new List<string>();
+        foreach (var item in prop.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+                continue;
+
+            var value = item.GetString()?.Trim();
+            if (!string.IsNullOrEmpty(value))
+                list.Add(value);
+        }
+
+        return list.Count > 0 ? list.ToArray() : Array.Empty<string>();
+    }
 }
 
 /// <summary>
