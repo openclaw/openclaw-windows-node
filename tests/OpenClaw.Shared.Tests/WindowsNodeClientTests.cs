@@ -814,6 +814,201 @@ public class WindowsNodeClientTests
         }
     }
 
+    [Fact]
+    public void SetPermission_UpdatesRegistrationPermissions()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            client.SetPermission("camera.capture", true);
+            client.SetPermission("screen.record", false);
+
+            var registrationField = typeof(WindowsNodeClient).GetField(
+                "_registration",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var reg = (NodeRegistration)registrationField!.GetValue(client)!;
+
+            Assert.True(reg.Permissions.ContainsKey("camera.capture"));
+            Assert.True(reg.Permissions["camera.capture"]);
+            Assert.True(reg.Permissions.ContainsKey("screen.record"));
+            Assert.False(reg.Permissions["screen.record"]);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void SetPermission_OverwritesPreviousValue()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            client.SetPermission("camera.capture", true);
+            client.SetPermission("camera.capture", false);
+
+            var registrationField = typeof(WindowsNodeClient).GetField(
+                "_registration",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var reg = (NodeRegistration)registrationField!.GetValue(client)!;
+
+            Assert.False(reg.Permissions["camera.capture"]);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task DisconnectAsync_RaisesDisconnectedStatus()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var statusChanges = new List<ConnectionStatus>();
+            client.StatusChanged += (_, s) => statusChanges.Add(s);
+
+            await client.DisconnectAsync();
+
+            Assert.Contains(ConnectionStatus.Disconnected, statusChanges);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_InvalidJson_DoesNotThrow()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var processMethod = typeof(WindowsNodeClient).GetMethod(
+                "ProcessMessageAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(processMethod);
+
+            var task = (Task)processMethod!.Invoke(client, ["not-valid-json!!"])!;
+            var ex = await Record.ExceptionAsync(() => task);
+            Assert.Null(ex);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_NoTypeField_DoesNotThrow()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var processMethod = typeof(WindowsNodeClient).GetMethod(
+                "ProcessMessageAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(processMethod);
+
+            var task = (Task)processMethod!.Invoke(client, ["""{"ok":true}"""])!;
+            var ex = await Record.ExceptionAsync(() => task);
+            Assert.Null(ex);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_UnknownMessageType_DoesNotThrow()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var processMethod = typeof(WindowsNodeClient).GetMethod(
+                "ProcessMessageAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(processMethod);
+
+            var task = (Task)processMethod!.Invoke(client, ["""{"type":"unknown_msg_type"}"""])!;
+            var ex = await Record.ExceptionAsync(() => task);
+            Assert.Null(ex);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void GatewayUrl_ReturnsDisplayUrl()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            Assert.Equal("ws://localhost:18789", client.GatewayUrl);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void NodeId_IsNullBeforeConnection()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            Assert.Null(client.NodeId);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
     private static async Task InvokeHandleEventAsync(WindowsNodeClient client, string json)
     {
         using var doc = JsonDocument.Parse(json);

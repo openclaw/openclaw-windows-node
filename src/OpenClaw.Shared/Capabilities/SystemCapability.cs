@@ -91,25 +91,11 @@ public class SystemCapability : NodeCapabilityBase
     
     private NodeInvokeResponse HandleWhich(NodeInvokeRequest request)
     {
-        var bins = new List<string>();
-        if (request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
-            request.Args.TryGetProperty("bins", out var binsEl) &&
-            binsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            foreach (var item in binsEl.EnumerateArray())
-            {
-                if (item.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    var bin = item.GetString()?.Trim();
-                    if (!string.IsNullOrEmpty(bin))
-                        bins.Add(bin);
-                }
-            }
-        }
-        
-        if (bins.Count == 0)
+        var bins = GetStringArrayArg(request.Args, "bins");
+
+        if (bins.Length == 0)
             return Error("Missing bins parameter");
-        
+
         var found = new Dictionary<string, string>();
         foreach (var bin in bins)
         {
@@ -117,8 +103,8 @@ public class SystemCapability : NodeCapabilityBase
             if (resolved != null)
                 found[bin] = resolved;
         }
-        
-        Logger.Info($"system.which: queried {bins.Count} bins, found {found.Count}");
+
+        Logger.Info($"system.which: queried {bins.Length} bins, found {found.Count}");
         return Success(new { bins = found });
     }
     
