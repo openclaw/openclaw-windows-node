@@ -14,15 +14,20 @@ public class ScreenCapability : NodeCapabilityBase
     private static readonly string[] _commands = new[]
     {
         "screen.capture",
-        "screen.list"
-        // Future: "screen.record"
+        "screen.list",
+        "screen.record",
+        "screen.record.start",
+        "screen.record.stop",
     };
-    
+
     public override IReadOnlyList<string> Commands => _commands;
-    
+
     // Events for UI/platform-specific implementation
     public event Func<ScreenCaptureArgs, Task<ScreenCaptureResult>>? CaptureRequested;
     public event Func<Task<ScreenInfo[]>>? ListRequested;
+    public event Func<ScreenRecordArgs, Task<ScreenRecordResult>>? RecordRequested;
+    public event Func<ScreenRecordStartArgs, Task<string>>? StartRequested;
+    public event Func<string, Task<ScreenRecordResult>>? StopRequested;
     
     public ScreenCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -32,8 +37,11 @@ public class ScreenCapability : NodeCapabilityBase
     {
         return request.Command switch
         {
-            "screen.capture" => await HandleCaptureAsync(request),
-            "screen.list" => await HandleListAsync(request),
+            "screen.capture"      => await HandleCaptureAsync(request),
+            "screen.list"         => await HandleListAsync(request),
+            "screen.record"       => await HandleRecordAsync(request),
+            "screen.record.start" => await HandleStartAsync(request),
+            "screen.record.stop"  => await HandleStopAsync(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
@@ -114,6 +122,143 @@ public class ScreenCapability : NodeCapabilityBase
             return Error($"List failed: {ex.Message}");
         }
     }
+
+    private async Task<NodeInvokeResponse> HandleRecordAsync(NodeInvokeRequest request)
+    {
+        var durationMs  = GetIntArg(request.Args, "durationMs", 5000);
+        var fps         = GetIntArg(request.Args, "fps", 10);
+        var screenIndex = GetIntArg(request.Args, "screenIndex", GetIntArg(request.Args, "monitor", 0));
+
+        Logger.Info($"screen.record: durationMs={durationMs} fps={fps} screenIndex={screenIndex}");
+
+        if (RecordRequested == null)
+            return Error("Screen recording not available");
+
+        try
+        {
+            var result = await RecordRequested(new ScreenRecordArgs
+            {
+                DurationMs  = durationMs,
+                Fps         = fps,
+                ScreenIndex = screenIndex,
+            });
+
+            return Success(new
+            {
+                format      = result.Format,
+                base64      = result.Base64,
+                filePath    = result.FilePath,
+                durationMs  = result.DurationMs,
+                fps         = result.Fps,
+                screenIndex = result.ScreenIndex,
+                width       = result.Width,
+                height      = result.Height,
+                hasAudio    = result.HasAudio,
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("screen.record failed", ex);
+            return Error($"Record failed: {ex.GetType().Name}: {ex.Message} | {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+        }
+    }
+
+    private async Task<NodeInvokeResponse> HandleStartAsync(NodeInvokeRequest request)
+    {
+        var fps         = GetIntArg(request.Args, "fps", 10);
+        var screenIndex = GetIntArg(request.Args, "screenIndex", GetIntArg(request.Args, "monitor", 0));
+
+        Logger.Info($"screen.record.start: fps={fps} screenIndex={screenIndex}");
+
+        if (StartRequested == null)
+            return Error("Screen recording not available");
+
+        try
+        {
+            var recordingId = await StartRequested(new ScreenRecordStartArgs
+            {
+                Fps         = fps,
+                ScreenIndex = screenIndex,
+            });
+            return Success(new { recordingId });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("screen.record.start failed", ex);
+            return Error($"Start failed: {ex.Message}");
+        }
+    }
+
+    private async Task<NodeInvokeResponse> HandleStopAsync(NodeInvokeRequest request)
+    {
+        var recordingId = GetStringArg(request.Args, "recordingId", "");
+
+        Logger.Info($"screen.record.stop: recordingId={recordingId}");
+
+        if (string.IsNullOrEmpty(recordingId))
+            return Error("recordingId is required");
+
+        if (StopRequested == null)
+            return Error("Screen recording not available");
+
+        try
+        {
+            var result = await StopRequested(recordingId);
+            return Success(new
+            {
+                format      = result.Format,
+                base64      = result.Base64,
+                filePath    = result.FilePath,
+                durationMs  = result.DurationMs,
+                fps         = result.Fps,
+                screenIndex = result.ScreenIndex,
+                width       = result.Width,
+                height      = result.Height,
+                hasAudio    = result.HasAudio,
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("screen.record.stop failed", ex);
+            return Error($"Stop failed: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Parameters for a fixed-duration screen recording.
+/// Memory usage: width × height × 4 bytes × (durationMs/1000 × fps) frames.
+/// Recommended limits: durationMs ≤ 10 000, fps ≤ 10 for 1080p to stay under 500 MB.
+/// The service enforces a hard 500 MB frame-buffer cap and stops capture early if exceeded.
+/// </summary>
+public class ScreenRecordArgs
+{
+    public int DurationMs { get; set; } = 5000;
+    public int Fps { get; set; } = 10;
+    public int ScreenIndex { get; set; }
+}
+
+/// <summary>
+/// Parameters for an open-ended screen recording session (screen.record.start / screen.record.stop).
+/// The same 500 MB frame-buffer cap applies; capture stops automatically if the limit is hit.
+/// </summary>
+public class ScreenRecordStartArgs
+{
+    public int Fps { get; set; } = 10;
+    public int ScreenIndex { get; set; }
+}
+
+public class ScreenRecordResult
+{
+    public string Base64 { get; set; } = "";
+    public string Format { get; set; } = "mp4";
+    public string? FilePath { get; set; }
+    public int DurationMs { get; set; }
+    public int Fps { get; set; }
+    public int ScreenIndex { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public bool HasAudio { get; set; }
 }
 
 public class ScreenCaptureArgs
