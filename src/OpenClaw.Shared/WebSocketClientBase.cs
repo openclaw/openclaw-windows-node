@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -277,9 +278,19 @@ public abstract class WebSocketClientBase : IDisposable
 
         try
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
-            await ws.SendAsync(new ArraySegment<byte>(bytes),
-                WebSocketMessageType.Text, true, _cts.Token);
+            // Rent a pooled buffer to avoid per-send heap allocations on the hot send path.
+            var byteCount = Encoding.UTF8.GetByteCount(message);
+            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                var written = Encoding.UTF8.GetBytes(message, buffer);
+                await ws.SendAsync(buffer.AsMemory(0, written),
+                    WebSocketMessageType.Text, true, _cts.Token);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         catch (ObjectDisposedException)
         {
