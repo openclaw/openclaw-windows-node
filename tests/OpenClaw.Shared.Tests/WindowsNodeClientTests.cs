@@ -1021,4 +1021,73 @@ public class WindowsNodeClientTests
         Assert.NotNull(task);
         await task!;
     }
+
+    [Fact]
+    public void RegisterCapability_PopulatesCommandIndex()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var cap = new SystemCapability(NullLogger.Instance);
+            client.RegisterCapability(cap);
+
+            var indexField = typeof(WindowsNodeClient).GetField(
+                "_commandIndex",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(indexField);
+
+            var index = (Dictionary<string, INodeCapability>)indexField!.GetValue(client)!;
+
+            // Every command the capability declares must be in the index
+            foreach (var cmd in cap.Commands)
+            {
+                Assert.True(index.ContainsKey(cmd), $"Command '{cmd}' missing from _commandIndex");
+                Assert.Same(cap, index[cmd]);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void RegisterCapability_LaterRegistrationOverwritesIndex()
+    {
+        // If two capabilities claim the same command, the last one registered wins.
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var cap1 = new SystemCapability(NullLogger.Instance);
+            var cap2 = new SystemCapability(NullLogger.Instance); // same commands
+
+            client.RegisterCapability(cap1);
+            client.RegisterCapability(cap2);
+
+            var indexField = typeof(WindowsNodeClient).GetField(
+                "_commandIndex",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var index = (Dictionary<string, INodeCapability>)indexField!.GetValue(client)!;
+
+            // cap2 should win for all shared commands
+            foreach (var cmd in cap2.Commands)
+            {
+                Assert.Same(cap2, index[cmd]);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
 }
