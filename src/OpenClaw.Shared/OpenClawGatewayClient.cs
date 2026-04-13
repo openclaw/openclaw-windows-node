@@ -36,7 +36,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     // Tracked state
     private readonly Dictionary<string, SessionInfo> _sessions = new();
-    private readonly Dictionary<string, GatewayNodeInfo> _nodes = new();
     private GatewayUsageInfo? _usage;
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
@@ -45,7 +44,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private readonly object _pendingRequestLock = new();
     private readonly object _pendingChatSendLock = new();
     private readonly object _sessionsLock = new();
-    private readonly object _nodesLock = new();
     private readonly DeviceIdentity _deviceIdentity;
     private string _mainSessionKey = "main";
     private string? _operatorDeviceId;
@@ -1663,13 +1661,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 .ThenByDescending(n => n.LastSeen ?? DateTime.MinValue)
                 .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-
-            lock (_nodesLock)
-            {
-                _nodes.Clear();
-                foreach (var node in ordered)
-                    _nodes[node.NodeId] = node;
-            }
 
             NodesUpdated?.Invoke(this, ordered);
         }
