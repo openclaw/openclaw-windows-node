@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -17,6 +18,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public int OnErrorCallCount { get; private set; }
     public Exception? LastError { get; private set; }
     public int OnDisposingCallCount { get; private set; }
+    public bool AutoReconnectEnabled { get; set; } = true;
 
     protected override int ReceiveBufferSize => 8192;
     protected override string ClientRole => "test";
@@ -51,6 +53,8 @@ public class TestWebSocketClient : WebSocketClientBase
     {
         OnDisposingCallCount++;
     }
+
+    protected override bool ShouldAutoReconnect() => AutoReconnectEnabled;
 
     // Expose protected members for testing
     public void TestRaiseStatusChanged(ConnectionStatus status)
@@ -230,6 +234,43 @@ public class WebSocketClientBaseTests
         await client.ConnectAsync();
 
         Assert.Contains(ConnectionStatus.Connecting, statuses);
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenConnectionFails_StartsReconnectLoop()
+    {
+        var client = new TestWebSocketClient("ws://127.0.0.1:1", "token", _logger);
+        var statuses = new List<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Add(s);
+
+        await client.ConnectAsync();
+        await Task.Delay(150);
+
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.True(statuses.Count(s => s == ConnectionStatus.Connecting) >= 2);
+        Assert.Contains(_logger.Logs, line => line.Contains("reconnecting in 1000ms", StringComparison.OrdinalIgnoreCase));
+
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenAutoReconnectDisabled_DoesNotStartReconnectLoop()
+    {
+        var client = new TestWebSocketClient("ws://127.0.0.1:1", "token", _logger)
+        {
+            AutoReconnectEnabled = false
+        };
+        var statuses = new List<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Add(s);
+
+        await client.ConnectAsync();
+        await Task.Delay(150);
+
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.Single(statuses, s => s == ConnectionStatus.Connecting);
+        Assert.DoesNotContain(_logger.Logs, line => line.Contains("reconnecting in", StringComparison.OrdinalIgnoreCase));
+
         client.Dispose();
     }
 }
