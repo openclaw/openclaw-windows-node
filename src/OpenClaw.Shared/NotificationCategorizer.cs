@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
@@ -11,43 +12,48 @@ namespace OpenClaw.Shared;
 /// </summary>
 public class NotificationCategorizer
 {
-    private static readonly Dictionary<string, (string title, string type)> ChannelMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["calendar"] = ("📅 Calendar", "calendar"),
-        ["email"] = ("📧 Email", "email"),
-        ["ci"] = ("🔨 Build", "build"),
-        ["build"] = ("🔨 Build", "build"),
-        ["inventory"] = ("📦 Stock Alert", "stock"),
-        ["stock"] = ("📦 Stock Alert", "stock"),
-        ["health"] = ("🩸 Blood Sugar Alert", "health"),
-        ["alerts"] = ("🚨 Urgent Alert", "urgent"),
-    };
+    // FrozenDictionary gives O(1) case-insensitive lookup with no per-call allocation;
+    // these maps are never mutated after startup so FrozenDictionary is the correct choice.
+    private static readonly FrozenDictionary<string, (string title, string type)> ChannelMap =
+        new Dictionary<string, (string title, string type)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["calendar"] = ("📅 Calendar", "calendar"),
+            ["email"] = ("📧 Email", "email"),
+            ["ci"] = ("🔨 Build", "build"),
+            ["build"] = ("🔨 Build", "build"),
+            ["inventory"] = ("📦 Stock Alert", "stock"),
+            ["stock"] = ("📦 Stock Alert", "stock"),
+            ["health"] = ("🩸 Blood Sugar Alert", "health"),
+            ["alerts"] = ("🚨 Urgent Alert", "urgent"),
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly Dictionary<string, (string title, string type)> IntentMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["health"] = ("🩸 Blood Sugar Alert", "health"),
-        ["urgent"] = ("🚨 Urgent Alert", "urgent"),
-        ["alert"] = ("🚨 Urgent Alert", "urgent"),
-        ["reminder"] = ("⏰ Reminder", "reminder"),
-        ["email"] = ("📧 Email", "email"),
-        ["calendar"] = ("📅 Calendar", "calendar"),
-        ["build"] = ("🔨 Build", "build"),
-        ["stock"] = ("📦 Stock Alert", "stock"),
-        ["error"] = ("⚠️ Error", "error"),
-    };
+    private static readonly FrozenDictionary<string, (string title, string type)> IntentMap =
+        new Dictionary<string, (string title, string type)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["health"] = ("🩸 Blood Sugar Alert", "health"),
+            ["urgent"] = ("🚨 Urgent Alert", "urgent"),
+            ["alert"] = ("🚨 Urgent Alert", "urgent"),
+            ["reminder"] = ("⏰ Reminder", "reminder"),
+            ["email"] = ("📧 Email", "email"),
+            ["calendar"] = ("📅 Calendar", "calendar"),
+            ["build"] = ("🔨 Build", "build"),
+            ["stock"] = ("📦 Stock Alert", "stock"),
+            ["error"] = ("⚠️ Error", "error"),
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly Dictionary<string, string> CategoryTitles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["health"] = "🩸 Blood Sugar Alert",
-        ["urgent"] = "🚨 Urgent Alert",
-        ["reminder"] = "⏰ Reminder",
-        ["stock"] = "📦 Stock Alert",
-        ["email"] = "📧 Email",
-        ["calendar"] = "📅 Calendar",
-        ["error"] = "⚠️ Error",
-        ["build"] = "🔨 Build",
-        ["info"] = "🤖 OpenClaw",
-    };
+    private static readonly FrozenDictionary<string, string> CategoryTitles =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["health"] = "🩸 Blood Sugar Alert",
+            ["urgent"] = "🚨 Urgent Alert",
+            ["reminder"] = "⏰ Reminder",
+            ["stock"] = "📦 Stock Alert",
+            ["email"] = "📧 Email",
+            ["calendar"] = "📅 Calendar",
+            ["error"] = "⚠️ Error",
+            ["build"] = "🔨 Build",
+            ["info"] = "🤖 OpenClaw",
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Classify a notification using the layered pipeline.
