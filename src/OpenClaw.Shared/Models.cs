@@ -183,18 +183,18 @@ public class SessionInfo
     {
         get
         {
+            // Build directly with string interpolation to avoid List<string> + Join allocations.
+            // Max 3 segments: prefix [· Channel] [· Activity|Status]
             var prefix = IsMain ? "Main" : "Sub";
-            var parts = new List<string> { prefix };
+            var hasChannel = !string.IsNullOrEmpty(Channel);
+            var tail = !string.IsNullOrEmpty(CurrentActivity)
+                ? CurrentActivity
+                : (!string.IsNullOrEmpty(Status) && Status != "unknown" && Status != "active" ? Status : null);
 
-            if (!string.IsNullOrEmpty(Channel))
-                parts.Add(Channel);
-
-            if (!string.IsNullOrEmpty(CurrentActivity))
-                parts.Add(CurrentActivity);
-            else if (!string.IsNullOrEmpty(Status) && Status != "unknown" && Status != "active")
-                parts.Add(Status);
-
-            return string.Join(" · ", parts);
+            if (hasChannel && tail != null) return $"{prefix} · {Channel} · {tail}";
+            if (hasChannel)                return $"{prefix} · {Channel}";
+            if (tail != null)              return $"{prefix} · {tail}";
+            return prefix;
         }
     }
 
