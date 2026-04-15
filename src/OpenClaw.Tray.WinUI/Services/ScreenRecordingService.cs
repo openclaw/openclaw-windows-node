@@ -214,7 +214,7 @@ internal sealed class ScreenRecordingService : IDisposable
         };
     }
 
-    public void Dispose()
+    public void StopAllSessions()
     {
         foreach (var kv in _sessions)
         {
@@ -222,6 +222,8 @@ internal sealed class ScreenRecordingService : IDisposable
                 try { s.Dispose(); } catch { }
         }
     }
+
+    public void Dispose() => StopAllSessions();
 
     // ── Temp file ─────────────────────────────────────────────────────────────
 

@@ -94,7 +94,9 @@ public class NodeService : IDisposable
             _nodeClient.Dispose();
             _nodeClient = null;
         }
-        
+
+        _screenRecordingService?.StopAllSessions();
+
         // Close canvas window
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
