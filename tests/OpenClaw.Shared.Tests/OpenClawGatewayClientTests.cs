@@ -110,6 +110,14 @@ public class OpenClawGatewayClientTests
             return GetUsageState();
         }
 
+        public string CallBuildProviderSummary(GatewayUsageStatusInfo status)
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "BuildProviderSummary",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (string)method!.Invoke(null, new object[] { status })!;
+        }
+
         public GatewayUsageInfo ParseUsageCostPayload(string payloadJson)
         {
             InvokePrivatePayloadParser("ParseUsageCost", payloadJson);
@@ -642,6 +650,177 @@ public class OpenClawGatewayClientTests
         Assert.NotNull(usage.ProviderSummary);
         Assert.Contains("OpenAI", usage.ProviderSummary!);
         Assert.Contains("left", usage.ProviderSummary!);
+    }
+
+    // ── BuildProviderSummary tests ──────────────────────────────────────────────
+
+    [Fact]
+    public void BuildProviderSummary_NoProviders_ReturnsEmpty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo { Providers = [] };
+
+        Assert.Equal("", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_SingleProviderWithUsage_ShowsRemainingPercent()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "OpenAI",
+                    Windows = [new GatewayUsageWindowInfo { Label = "daily", UsedPercent = 25.0 }]
+                }
+            ]
+        };
+
+        var result = helper.CallBuildProviderSummary(status);
+
+        Assert.Equal("OpenAI: 75% left", result);
+    }
+
+    [Fact]
+    public void BuildProviderSummary_SingleProviderWithError_ShowsErrorLabel()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo { DisplayName = "Anthropic", Error = "rate limited" }
+            ]
+        };
+
+        Assert.Equal("Anthropic: error", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_ProviderWithNoWindows_IsSkipped()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers = [new GatewayUsageProviderInfo { DisplayName = "OpenAI" }]
+        };
+
+        Assert.Equal("", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_TwoProviders_JoinedWithSeparator()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "OpenAI",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 20.0 }]
+                },
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "Anthropic",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 50.0 }]
+                }
+            ]
+        };
+
+        Assert.Equal("OpenAI: 80% left · Anthropic: 50% left", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_ThreeProviders_ShowsOverflowCount()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P1",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 10.0 }]
+                },
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P2",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 20.0 }]
+                },
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P3",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 30.0 }]
+                }
+            ]
+        };
+
+        var result = helper.CallBuildProviderSummary(status);
+
+        Assert.Equal("P1: 90% left · P2: 80% left · +1", result);
+    }
+
+    [Fact]
+    public void BuildProviderSummary_MissingDisplayName_FallsBackToProviderField()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    Provider = "openai",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 0.0 }]
+                }
+            ]
+        };
+
+        Assert.StartsWith("openai:", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_AllProvidersEmpty_ReturnsEmpty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo { DisplayName = "P1" },
+                new GatewayUsageProviderInfo { DisplayName = "P2" }
+            ]
+        };
+
+        Assert.Equal("", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_OverflowWithOneValidProvider_ShowsOverflow()
+    {
+        var helper = new GatewayClientTestHelper();
+        // 3 providers but only the first has windows — included=1, but Providers.Count=3 > 2 → overflow shown
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P1",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 10.0 }]
+                },
+                new GatewayUsageProviderInfo { DisplayName = "P2" },
+                new GatewayUsageProviderInfo { DisplayName = "P3" }
+            ]
+        };
+
+        Assert.Equal("P1: 90% left · +1", helper.CallBuildProviderSummary(status));
     }
 
     [Fact]
