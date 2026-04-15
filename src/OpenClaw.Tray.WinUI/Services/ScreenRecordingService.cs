@@ -111,7 +111,7 @@ internal sealed class ScreenRecordingService : IDisposable
 
                     try
                     {
-                        var bmp = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
+                        using var bmp = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
                         frames.Add(ExtractBitmapBytes(bmp));
                     }
                     catch (Exception ex)
@@ -264,7 +264,7 @@ internal sealed class ScreenRecordingService : IDisposable
                 var nv12 = BgraToNv12(frames[fi[0]], width, height, (int)encWidth, (int)encHeight);
                 var ts   = TimeSpan.FromTicks((long)(fi[0] * 10_000_000.0 / fps));
                 var dur  = TimeSpan.FromTicks((long)(10_000_000.0 / fps));
-                var dw   = new DataWriter();
+                using var dw = new DataWriter();
                 dw.WriteBytes(nv12);
                 var sample = MediaStreamSample.CreateFromBuffer(dw.DetachBuffer(), ts);
                 sample.Duration = dur;
@@ -531,7 +531,7 @@ internal sealed class ScreenRecordingService : IDisposable
 
                     try
                     {
-                        var bmp   = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
+                        using var bmp = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
                         var bytes = ExtractBitmapBytes(bmp);
                         lock (_framesLock) _frames.Add(bytes);
                     }
