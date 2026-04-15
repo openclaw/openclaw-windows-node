@@ -1,7 +1,11 @@
 {
-  "lr": "2026-04-14T12:48Z",
-  "rid": "24399395500",
-  "prs": ["perf-reduce-allocs-display-session-2026-04-14"],
+  "lr": "2026-04-15T01:05Z",
+  "rid": "24430916031",
+  "prs": [
+    "perf-reduce-allocs-display-session-2026-04-14",
+    "perf-buildsummary-no-list-2026-04-15",
+    "test-channel-health-derivation-2026-04-15"
+  ],
   "comments_made": {
     "99": "2026-03-26",
     "149": "2026-04-06",
@@ -9,5 +13,5 @@
     "159": "2026-04-13",
     "164": "2026-04-12"
   },
-  "notes": "Tasks 8+2 selected. Task 8: eliminated List<T> allocations in SessionInfo.DisplayText (replaced with direct string interpolation, max 3 segments) and GetSessionListInternal (CopyTo+Array.Sort instead of new List+ToArray); 586 Shared + 122 Tray pass; PR submitted on branch repo-assist/perf-reduce-allocs-display-session-2026-04-14. Task 2: no new issues to comment on - issue #99 has no new human comments after 2026-03-26 Repo Assist comment; PR #120 just got detailed shanselman/Copilot architectural feedback (2026-04-14) - no need to pile in. PR #170 still open (shanselman-created NuGet cache fix). PR #159 (AlexAlves87 screen recording) awaiting further iteration per shanselman feedback."
+  "notes": "Tasks 8+10 selected. Task 8: eliminated List<string> allocation in BuildProviderSummary (two nullable string vars + switch expression); +9 unit tests; PR #173 (perf-buildsummary-no-list-2026-04-15). Task 10: added 13 ParseChannelHealth status-derivation and property-parsing tests; PR #174 (test-channel-health-derivation-2026-04-15). 595 Shared + 122 Tray pass for Task 8; 599 Shared + 122 Tray pass for Task 10. PR #172 (perf-reduce-allocs-display-session-2026-04-14) still open. PR #159 screen recording awaiting AlexAlves87 iteration. PR #120 Voice Mode awaiting NichUK iteration after shanselman architectural feedback."
 }
