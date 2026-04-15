@@ -127,6 +127,7 @@ internal sealed class ScreenRecordingService : IDisposable
         {
             session?.Dispose();
             pool?.Dispose();
+            (d3d as IDisposable)?.Dispose();
             Interlocked.Exchange(ref latestFrame, null)?.Dispose();
         }
 
@@ -170,7 +171,7 @@ internal sealed class ScreenRecordingService : IDisposable
         var captureSession = pool.CreateCaptureSession(item);
         captureSession.IsCursorCaptureEnabled = false;
 
-        var session = new ActiveSession(screenIndex, fps, width, height, pool, captureSession, _logger);
+        var session = new ActiveSession(screenIndex, fps, width, height, d3d, pool, captureSession, _logger);
         _sessions[session.Id] = session;
 
         _logger.Info($"[ScreenRecording] started session {session.Id}");
@@ -464,6 +465,7 @@ internal sealed class ScreenRecordingService : IDisposable
         public readonly int    Height;
 
         private readonly IOpenClawLogger              _logger;
+        private readonly IDirect3DDevice              _device;
         private readonly List<byte[]>                 _frames     = new();
         private readonly object                       _framesLock = new();
         private readonly CancellationTokenSource      _cts        = new();
@@ -475,11 +477,11 @@ internal sealed class ScreenRecordingService : IDisposable
         private readonly Task                         _captureTask;
 
         public ActiveSession(int screenIndex, int fps, int width, int height,
-            Direct3D11CaptureFramePool pool, GraphicsCaptureSession session,
+            IDirect3DDevice device, Direct3D11CaptureFramePool pool, GraphicsCaptureSession session,
             IOpenClawLogger logger)
         {
             ScreenIndex = screenIndex; Fps = fps; Width = width; Height = height;
-            _pool = pool; _session = session; _logger = logger;
+            _device = device; _pool = pool; _session = session; _logger = logger;
 
             pool.FrameArrived += OnFrameArrived;
             session.StartCapture();
@@ -555,8 +557,10 @@ internal sealed class ScreenRecordingService : IDisposable
         public void Dispose()
         {
             _cts.Cancel();
+            try { _captureTask.GetAwaiter().GetResult(); } catch { }
             try { _session.Dispose(); } catch { }
             try { _pool.Dispose(); } catch { }
+            try { (_device as IDisposable)?.Dispose(); } catch { }
             Interlocked.Exchange(ref _latestFrame, null)?.Dispose();
             _cts.Dispose();
             _ready.Dispose();
