@@ -236,6 +236,19 @@ public class ChannelHealthTests
     }
 
     [Theory]
+    [InlineData("RUNNING", "[ON]")]
+    [InlineData("Connected", "[ON]")]
+    [InlineData("READY", "[READY]")]
+    [InlineData("NOT CONFIGURED", "[N/A]")]
+    [InlineData("Connecting", "[...]")]
+    [InlineData("STOPPED", "[OFF]")]
+    public void DisplayText_CaseInsensitiveLabelLookup(string status, string expectedLabel)
+    {
+        var health = new ChannelHealth { Name = "ch", Status = status };
+        Assert.StartsWith(expectedLabel, health.DisplayText);
+    }
+
+    [Theory]
     [InlineData("ok", true)]
     [InlineData("connected", true)]
     [InlineData("running", true)]
@@ -572,6 +585,28 @@ public class GatewayUsageInfoTests
             CultureInfo.CurrentCulture = originalCulture;
             CultureInfo.CurrentUICulture = originalUiCulture;
         }
+    }
+
+    [Fact]
+    public void DisplayText_PreservesPartOrder_TokensBeforeCostBeforeRequests()
+    {
+        var usage = new GatewayUsageInfo { TotalTokens = 1000, CostUsd = 0.50, RequestCount = 10 };
+        var display = usage.DisplayText;
+        var tokensIdx = display.IndexOf("Tokens:", StringComparison.Ordinal);
+        var costIdx = display.IndexOf("$", StringComparison.Ordinal);
+        var reqIdx = display.IndexOf("requests", StringComparison.Ordinal);
+        Assert.True(tokensIdx < costIdx && costIdx < reqIdx,
+            $"Parts should appear in order tokens·cost·requests but got: {display}");
+    }
+
+    [Fact]
+    public void DisplayText_ModelOnlyWithTokens_SeparatedBySeparator()
+    {
+        var usage = new GatewayUsageInfo { TotalTokens = 5000, Model = "gpt-4" };
+        var display = usage.DisplayText;
+        Assert.Contains(" · ", display);
+        Assert.Contains("Tokens:", display);
+        Assert.Contains("gpt-4", display);
     }
 }
 
