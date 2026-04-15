@@ -231,10 +231,32 @@ internal sealed class ScreenRecordingService : IDisposable
     {
         var dir = Path.Combine(Path.GetTempPath(), "openclaw");
         Directory.CreateDirectory(dir);
+        CleanupOldTempRecordings(dir);
         var path = Path.Combine(dir, $"openclaw-screen-record-{Guid.NewGuid()}.mp4");
         File.WriteAllBytes(path, Convert.FromBase64String(base64));
         _logger.Info($"[ScreenRecording] Saved to {path}");
         return path;
+    }
+
+    private void CleanupOldTempRecordings(string dir)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(dir, "openclaw-screen-record-*.mp4"))
+            {
+                try
+                {
+                    if (new FileInfo(file).CreationTimeUtc < DateTime.UtcNow.AddHours(-24))
+                        File.Delete(file);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ScreenRecording] Temp cleanup failed: {ex.Message}");
+        }
     }
 
     // ── Encoding ──────────────────────────────────────────────────────────────
