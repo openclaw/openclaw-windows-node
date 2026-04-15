@@ -941,6 +941,23 @@ public class ScreenCapabilityTests
         Assert.Contains("GPU capture failed", res.Error);
     }
 
+    [Fact]
+    public async Task Record_PropagatesOutOfRangeAsError()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        cap.RecordRequested += _ =>
+            throw new ArgumentOutOfRangeException("screenIndex", "Screen index 5 is out of range (0\u20131)");
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "sr6", Command = "screen.record",
+            Args = Parse("""{"screenIndex":5}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("screenIndex", res.Error ?? "");
+    }
+
     // ── screen.record.start ────────────────────────────────────────────────────
 
     [Fact]

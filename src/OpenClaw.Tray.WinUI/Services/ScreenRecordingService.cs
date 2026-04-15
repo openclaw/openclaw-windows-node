@@ -362,8 +362,11 @@ internal sealed class ScreenRecordingService : IDisposable
     private static GraphicsCaptureItem CreateCaptureItem(int screenIndex)
     {
         var monitors = GetMonitorHandles();
+        if (monitors.Count == 0)
+            throw new InvalidOperationException("No screens available for capture");
         if (screenIndex < 0 || screenIndex >= monitors.Count)
-            screenIndex = 0;
+            throw new ArgumentOutOfRangeException(nameof(screenIndex),
+                $"Screen index {screenIndex} is out of range (0\u2013{monitors.Count - 1})");
 
         const string classId = "Windows.Graphics.Capture.GraphicsCaptureItem";
         var iid = typeof(IGraphicsCaptureItemInterop).GUID;
