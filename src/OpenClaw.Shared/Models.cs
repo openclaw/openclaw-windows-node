@@ -206,27 +206,30 @@ public class SessionInfo
                 ? DisplayName!
                 : (IsMain ? "Main session" : "Session");
 
-            var details = new List<string>();
+            // Fixed-size array avoids List<string> allocation; at most 9 detail slots.
+            var details = new string?[9];
+            int n = 0;
             if (!string.IsNullOrWhiteSpace(Channel))
-                details.Add(Channel!);
+                details[n++] = Channel!;
             if (!string.IsNullOrWhiteSpace(Model))
-                details.Add(Model!);
-            if (!string.IsNullOrWhiteSpace(ContextSummaryShort))
-                details.Add($"{ContextSummaryShort} ctx");
+                details[n++] = Model!;
+            var ctx = ContextSummaryShort;
+            if (!string.IsNullOrWhiteSpace(ctx))
+                details[n++] = $"{ctx} ctx";
             if (!string.IsNullOrWhiteSpace(ThinkingLevel))
-                details.Add($"think {ThinkingLevel}");
+                details[n++] = $"think {ThinkingLevel}";
             if (!string.IsNullOrWhiteSpace(VerboseLevel))
-                details.Add($"verbose {VerboseLevel}");
+                details[n++] = $"verbose {VerboseLevel}";
             if (SystemSent)
-                details.Add("system");
+                details[n++] = "system";
             if (AbortedLastRun)
-                details.Add("aborted");
+                details[n++] = "aborted";
             if (!string.IsNullOrWhiteSpace(CurrentActivity))
-                details.Add(CurrentActivity!);
+                details[n++] = CurrentActivity!;
             else if (!string.IsNullOrWhiteSpace(Status) && Status != "unknown" && Status != "active")
-                details.Add(Status);
+                details[n++] = Status;
 
-            return details.Count == 0 ? title : $"{title} · {string.Join(" · ", details)}";
+            return n == 0 ? title : $"{title} · {string.Join(" · ", details, 0, n)}";
         }
     }
 

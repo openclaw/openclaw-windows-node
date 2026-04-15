@@ -835,6 +835,84 @@ public class SessionInfoRichDisplayTextTests
         var session = new SessionInfo { DisplayName = "agent", Status = "active" };
         Assert.DoesNotContain("active", session.RichDisplayText);
     }
+
+    [Fact]
+    public void RichDisplayText_PreservesPartOrder_ChannelModelCtxThinkVerboseSystemAbortedActivity()
+    {
+        var session = new SessionInfo
+        {
+            DisplayName = "agent",
+            Channel = "slack",
+            Model = "gpt-4",
+            TotalTokens = 5000,
+            ContextTokens = 100_000,
+            ThinkingLevel = "high",
+            VerboseLevel = "low",
+            SystemSent = true,
+            AbortedLastRun = true,
+            CurrentActivity = "searching"
+        };
+        var text = session.RichDisplayText;
+        // All parts present
+        Assert.Contains("slack", text);
+        Assert.Contains("gpt-4", text);
+        Assert.Contains("ctx", text);
+        Assert.Contains("think high", text);
+        Assert.Contains("verbose low", text);
+        Assert.Contains("system", text);
+        Assert.Contains("aborted", text);
+        Assert.Contains("searching", text);
+        // Order: channel < model < ctx < think < verbose < system < aborted < activity
+        var channelIdx  = text.IndexOf("slack",     StringComparison.Ordinal);
+        var modelIdx    = text.IndexOf("gpt-4",     StringComparison.Ordinal);
+        var ctxIdx      = text.IndexOf("ctx",       StringComparison.Ordinal);
+        var thinkIdx    = text.IndexOf("think",     StringComparison.Ordinal);
+        var verboseIdx  = text.IndexOf("verbose",   StringComparison.Ordinal);
+        var systemIdx   = text.IndexOf("system",    StringComparison.Ordinal);
+        var abortedIdx  = text.IndexOf("aborted",   StringComparison.Ordinal);
+        var activityIdx = text.IndexOf("searching", StringComparison.Ordinal);
+        Assert.True(channelIdx < modelIdx, $"channel before model: {text}");
+        Assert.True(modelIdx < ctxIdx,     $"model before ctx: {text}");
+        Assert.True(ctxIdx < thinkIdx,     $"ctx before think: {text}");
+        Assert.True(thinkIdx < verboseIdx, $"think before verbose: {text}");
+        Assert.True(verboseIdx < systemIdx,$"verbose before system: {text}");
+        Assert.True(systemIdx < abortedIdx,$"system before aborted: {text}");
+        Assert.True(abortedIdx < activityIdx, $"aborted before activity: {text}");
+    }
+
+    [Fact]
+    public void RichDisplayText_ActivityTakesPrecedenceOverStatus()
+    {
+        var session = new SessionInfo
+        {
+            DisplayName = "agent",
+            Status = "waiting",
+            CurrentActivity = "browsing"
+        };
+        var text = session.RichDisplayText;
+        Assert.Contains("browsing", text);
+        Assert.DoesNotContain("waiting", text);
+    }
+
+    [Fact]
+    public void RichDisplayText_IncludesContextSummary_WhenBothTokensSet()
+    {
+        var session = new SessionInfo
+        {
+            DisplayName = "agent",
+            TotalTokens = 15_000,
+            ContextTokens = 200_000
+        };
+        Assert.Contains("ctx", session.RichDisplayText);
+        Assert.Contains("15.0K", session.RichDisplayText);
+    }
+
+    [Fact]
+    public void RichDisplayText_OmitsContextSummary_WhenContextTokensZero()
+    {
+        var session = new SessionInfo { DisplayName = "agent", TotalTokens = 5000, ContextTokens = 0 };
+        Assert.DoesNotContain("ctx", session.RichDisplayText);
+    }
 }
 
 public class SessionInfoContextSummaryTests
