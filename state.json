@@ -1,20 +1,21 @@
 {
-  "lr": "2026-04-16T01:06Z",
-  "rid": "24486431001",
+  "lr": "2026-04-16T12:42Z",
+  "rid": "24510763098",
   "prs": [
     "perf-reduce-allocs-display-session-2026-04-14",
     "perf-buildsummary-no-list-2026-04-15",
     "test-channel-health-derivation-2026-04-15",
     "perf-models-frozen-alloc-2026-04-15",
     "perf-rich-display-text-2026-04-15",
-    "eng-fix-test-warnings-2026-04-16"
+    "eng-fix-test-warnings-2026-04-16",
+    "improve-gateway-node-detail-text-2026-04-16"
   ],
   "comments_made": {
     "99": "2026-03-26",
     "149": "2026-04-06",
     "151": "2026-04-06",
-    "159": "2026-04-13",
+    "159": "2026-04-16",
     "164": "2026-04-12"
   },
-  "notes": "Tasks 4+1 selected. Task 1: 0 unlabelled, no action. Task 4: fixed 3 compiler/analyser warnings in test suite — CS8767 (ExecTestLogger.Error nullable mismatch), CS8604 (SetPrivateField object? param), xUnit2013 (Assert.Empty instead of Assert.Equal(0,...)); PR #177 (eng-fix-test-warnings-2026-04-16); 0 warnings, 586 Shared+122 Tray pass. PRs #172 #173 #174 #175 #176 still open. PR #159 screen recording awaiting AlexAlves87. PR #120 Voice Mode awaiting NichUK. GatewayNodeInfo.DetailText (5-slot List) remains as next perf candidate."
+  "notes": "Tasks 5+2 selected. Task 5: eliminate List<string> in GatewayNodeInfo.DetailText — string?[5] accumulator + string.Join(sep,arr,0,n) overload; +2 tests (whitespace-only, zero-count); 588 Shared+122 Tray pass; PR #178 (improve-gateway-node-detail-text-2026-04-16). Task 2: PR #159 AlexAlves87 addressed all 5 shanselman points on 2026-04-15; commented to confirm PR is ready for merge. PRs #172 #173 #174 #175 #176 #177 still open. PR #159 screen recording ready for merge. PR #120 Voice Mode awaiting NichUK. All List<string> accumulator patterns in Models.cs now eliminated."
 }
