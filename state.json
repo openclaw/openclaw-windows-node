@@ -1,12 +1,13 @@
 {
-  "lr": "2026-04-15T12:40Z",
-  "rid": "24454971486",
+  "lr": "2026-04-16T01:06Z",
+  "rid": "24486431001",
   "prs": [
     "perf-reduce-allocs-display-session-2026-04-14",
     "perf-buildsummary-no-list-2026-04-15",
     "test-channel-health-derivation-2026-04-15",
     "perf-models-frozen-alloc-2026-04-15",
-    "perf-rich-display-text-2026-04-15"
+    "perf-rich-display-text-2026-04-15",
+    "eng-fix-test-warnings-2026-04-16"
   ],
   "comments_made": {
     "99": "2026-03-26",
@@ -15,5 +16,5 @@
     "159": "2026-04-13",
     "164": "2026-04-12"
   },
-  "notes": "Tasks 8+10 selected. Task 8: replaced HashSet with FrozenSet for ChannelHealth status sets, Status.ToLowerInvariant() with FrozenDictionary s_statusLabels, and List<string> with string?[4] accumulator in GatewayUsageInfo.DisplayText; +8 tests; PR #175 (perf-models-frozen-alloc-2026-04-15). Task 10: eliminated List<string> in SessionInfo.RichDisplayText with string?[9] accumulator; +4 tests; PR #176 (perf-rich-display-text-2026-04-15). 594 Shared+122 Tray pass for Task 8; 590 Shared+122 Tray pass for Task 10. PRs #172 #173 #174 still open. PR #159 screen recording awaiting AlexAlves87. PR #120 Voice Mode awaiting NichUK."
+  "notes": "Tasks 4+1 selected. Task 1: 0 unlabelled, no action. Task 4: fixed 3 compiler/analyser warnings in test suite — CS8767 (ExecTestLogger.Error nullable mismatch), CS8604 (SetPrivateField object? param), xUnit2013 (Assert.Empty instead of Assert.Equal(0,...)); PR #177 (eng-fix-test-warnings-2026-04-16); 0 warnings, 586 Shared+122 Tray pass. PRs #172 #173 #174 #175 #176 still open. PR #159 screen recording awaiting AlexAlves87. PR #120 Voice Mode awaiting NichUK. GatewayNodeInfo.DetailText (5-slot List) remains as next perf candidate."
 }
