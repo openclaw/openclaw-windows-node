@@ -709,6 +709,20 @@ public class GatewayNodeInfoTests
         Assert.Contains("1 cap", text);
         Assert.Contains("just now", text);
     }
+
+    [Fact]
+    public void DetailText_IgnoresWhitespaceOnlyModeAndPlatform()
+    {
+        var node = new GatewayNodeInfo { NodeId = "n1", Mode = "   ", Platform = "\t" };
+        Assert.Equal("no details", node.DetailText);
+    }
+
+    [Fact]
+    public void DetailText_IgnoresZeroCommandAndCapabilityCounts()
+    {
+        var node = new GatewayNodeInfo { NodeId = "n1", CommandCount = 0, CapabilityCount = 0 };
+        Assert.Equal("no details", node.DetailText);
+    }
 }
 
 public class SessionInfoAgeTextTests
