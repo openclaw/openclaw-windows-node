@@ -212,7 +212,7 @@ public class OpenClawGatewayClientTests
             return (GatewayUsageInfo)(field?.GetValue(_client) ?? new GatewayUsageInfo());
         }
 
-        private void SetPrivateField(string fieldName, object value)
+        private void SetPrivateField(string fieldName, object? value)
         {
             var field = typeof(OpenClawGatewayClient).GetField(
                 fieldName,
