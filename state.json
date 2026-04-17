@@ -1,6 +1,6 @@
 {
-  "lr": "2026-04-16T12:42Z",
-  "rid": "24510763098",
+  "lr": "2026-04-17T12:39Z",
+  "rid": "24565453611",
   "prs": [
     "perf-reduce-allocs-display-session-2026-04-14",
     "perf-buildsummary-no-list-2026-04-15",
@@ -17,5 +17,5 @@
     "159": "2026-04-16",
     "164": "2026-04-12"
   },
-  "notes": "Tasks 5+2 selected. Task 5: eliminate List<string> in GatewayNodeInfo.DetailText — string?[5] accumulator + string.Join(sep,arr,0,n) overload; +2 tests (whitespace-only, zero-count); 588 Shared+122 Tray pass; PR #178 (improve-gateway-node-detail-text-2026-04-16). Task 2: PR #159 AlexAlves87 addressed all 5 shanselman points on 2026-04-15; commented to confirm PR is ready for merge. PRs #172 #173 #174 #175 #176 #177 still open. PR #159 screen recording ready for merge. PR #120 Voice Mode awaiting NichUK. All List<string> accumulator patterns in Models.cs now eliminated."
+  "notes": "Task 6+3 selected. Task 6: all 7 Repo Assist PRs clean (0 behind master, no CI failures, no conflicts). Task 3: no open bug/help-wanted issues. Issues #149 and #151 confirmed closed by shanselman 2026-04-14. Monthly activity updated: removed stale Check comment rows for #149 and #151. 7 Repo Assist PRs still open (#172-#178). PR #159 screen recording and #120 Voice Mode awaiting maintainer review. Consider TreatWarningsAsErrors for test project."
 }
