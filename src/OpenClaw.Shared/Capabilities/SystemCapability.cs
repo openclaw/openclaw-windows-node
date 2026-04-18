@@ -223,7 +223,7 @@ public class SystemCapability : NodeCapabilityBase
         // Also accept a plain string for backward compatibility.
         var argv = TryParseArgv(request.Args);
         string? command = argv?[0];
-        string[]? args = argv?.Length > 1 ? argv.Skip(1).ToArray() : null;
+        string[]? args = argv?.Length > 1 ? argv[1..] : null;
         
         // When command is a string, also check for separate "args" array
         if (argv?.Length == 1 && request.Args.TryGetProperty("args", out var argsEl) &&
@@ -267,8 +267,8 @@ public class SystemCapability : NodeCapabilityBase
         // When command arrives as an argv array, we must evaluate the entire
         // command line — not just argv[0] — so policy rules like "rm *" correctly
         // match "rm -rf /".
-        var fullCommand = args != null 
-            ? FormatExecCommand(new[] { command }.Concat(args).ToArray()) 
+        var fullCommand = args != null
+            ? FormatExecCommand([command!, ..args])
             : command;
         
         Logger.Info($"system.run: {fullCommand} (shell={shell ?? "auto"}, timeout={timeoutMs}ms)");

@@ -685,6 +685,98 @@ public class SystemCapabilityExecApprovalsTests
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task SystemRun_SeparateArgsProperty_PolicyEvaluatesFullCommandLine()
+    {
+        // Regression guard: when "command" is a string and args come from the separate
+        // "args" JSON property (e.g. {"command":"rm","args":["-rf","/"]}), the policy
+        // must evaluate the full combined command "rm -rf /" — not just "rm".
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(new[]
+            {
+                new ExecApprovalRule { Pattern = "rm -rf *", Action = ExecApprovalAction.Deny },
+                new ExecApprovalRule { Pattern = "rm *", Action = ExecApprovalAction.Allow },
+            }, ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+
+            // {"command":"rm","args":["-rf","/"]} — full command "rm -rf /" must be denied
+            var dangerousReq = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"rm\",\"args\":[\"-rf\",\"/\"]}").RootElement
+            };
+            var denied = await cap.ExecuteAsync(dangerousReq);
+            Assert.False(denied.Ok);
+            Assert.Contains("denied", denied.Error!, StringComparison.OrdinalIgnoreCase);
+
+            // {"command":"rm","args":["safe.txt"]} — "rm safe.txt" matches "rm *" → allowed
+            var safeReq = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"rm\",\"args\":[\"safe.txt\"]}").RootElement
+            };
+            var allowed = await cap.ExecuteAsync(safeReq);
+            Assert.True(allowed.Ok);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_ShellFilter_PolicySkipsRuleForWrongShell()
+    {
+        // A rule with Shells=["pwsh"] must not fire when shell="cmd",
+        // ensuring shell-filtered rules are not applied across shell contexts.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(new[]
+            {
+                // This allow rule only applies to pwsh
+                new ExecApprovalRule
+                {
+                    Pattern = "Get-Process *",
+                    Action = ExecApprovalAction.Allow,
+                    Shells = new[] { "pwsh" }
+                },
+            }, ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+
+            // shell=pwsh → rule fires → allowed
+            var pwshReq = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"Get-Process explorer\",\"shell\":\"pwsh\"}").RootElement
+            };
+            var pwshResult = await cap.ExecuteAsync(pwshReq);
+            Assert.True(pwshResult.Ok);
+
+            // shell=cmd → rule is skipped → denied by default
+            var cmdReq = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"Get-Process explorer\",\"shell\":\"cmd\"}").RootElement
+            };
+            var cmdResult = await cap.ExecuteAsync(cmdReq);
+            Assert.False(cmdResult.Ok);
+            Assert.Contains("denied", cmdResult.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
 
 /// <summary>Mock command runner that always succeeds</summary>
