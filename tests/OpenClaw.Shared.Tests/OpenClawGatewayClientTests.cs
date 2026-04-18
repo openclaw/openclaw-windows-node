@@ -49,10 +49,8 @@ public class OpenClawGatewayClientTests
 
         public string TruncateLabel(string text, int maxLen = 60)
         {
-            var method = typeof(OpenClawGatewayClient).GetMethod("TruncateLabel",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var result = method!.Invoke(null, new object[] { text, maxLen });
-            return (string)result!;
+            // TruncateLabel was removed; its behaviour is now provided by the public API.
+            return MenuDisplayHelper.TruncateText(text, maxLen);
         }
 
         public Task<bool> RegisterPendingChatSend(string requestId)
