@@ -1,6 +1,6 @@
 {
-  "lr": "2026-04-19T01:06Z",
-  "rid": "24617806575",
+  "lr": "2026-04-19T12:29Z",
+  "rid": "24629090209",
   "prs": [
     "perf-reduce-allocs-display-session-2026-04-14",
     "perf-buildsummary-no-list-2026-04-15",
@@ -11,14 +11,16 @@
     "improve-gateway-node-detail-text-2026-04-16",
     "improve-string-slice-dedup-trunc-2026-04-18",
     "improve-sysrun-syntax-and-policy-tests-2026-04-18",
-    "improve-shellquoting-search-values-2026-04-19"
+    "improve-shellquoting-search-values-2026-04-19",
+    "fix-formatage-rounding-boundary"
   ],
   "comments_made": {
     "99": "2026-03-26",
+    "120": "2026-04-19",
     "149": "2026-04-06",
     "151": "2026-04-06",
     "159": "2026-04-16",
     "164": "2026-04-12"
   },
-  "notes": "Task 6+5 selected. Task 6: all 9 Repo Assist PRs (#172-#181) clean - 0 merge conflicts with master, no CI failures. Task 5: created PR #182 - SearchValues<char> in ShellQuoting.NeedsQuoting; SIMD-vectorized metachar detection replaces foreach+switch (25-char set preserved); 586 Shared + 122 Tray pass. 10 Repo Assist PRs now open (#172-#182). Consider TreatWarningsAsErrors for test project after #177 merges."
+  "notes": "Tasks 2+3. Task 2: NichUK responded 2026-04-18 on PR #120 (planning new PR in ~1 week); commented with recap of shanselman's 4-point architectural guidance. Task 3: Fixed FormatAge bug - Math.Round (banker's rounding) caused '60m ago'/'48h ago' at tier boundaries; changed to (int) truncation; +3 regression tests; 589 Shared + 122 Tray pass; created draft PR #183. 11 open Repo Assist PRs (#172-#183). Monitor PR #120 for new PR from NichUK; Monitor PR #159 awaiting merge."
 }
