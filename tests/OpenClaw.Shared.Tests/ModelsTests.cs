@@ -762,6 +762,31 @@ public class SessionInfoAgeTextTests
         };
         Assert.Equal("10m ago", session.AgeText);
     }
+
+    [Fact]
+    public void AgeText_NearMinuteBoundary_DoesNotRoundUpTo60m()
+    {
+        // 59.5 minutes: Math.Round would produce 60 with banker's rounding;
+        // truncation correctly yields 59m ago.
+        var session = new SessionInfo { UpdatedAt = DateTime.UtcNow.AddSeconds(-3570) }; // 59.5 min
+        Assert.Equal("59m ago", session.AgeText);
+    }
+
+    [Fact]
+    public void AgeText_NearHourBoundary_DoesNotRoundUpTo48h()
+    {
+        // 47.5 hours: Math.Round would produce 48 with banker's rounding;
+        // truncation correctly yields 47h ago.
+        var session = new SessionInfo { UpdatedAt = DateTime.UtcNow.AddSeconds(-(int)(47.5 * 3600)) };
+        Assert.Equal("47h ago", session.AgeText);
+    }
+
+    [Fact]
+    public void AgeText_ExactlyOneMinute_ShowsMinutesAgo()
+    {
+        var session = new SessionInfo { UpdatedAt = DateTime.UtcNow.AddSeconds(-60) };
+        Assert.Equal("1m ago", session.AgeText);
+    }
 }
 
 public class SessionInfoRichDisplayTextTests

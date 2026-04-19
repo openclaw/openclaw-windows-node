@@ -441,9 +441,9 @@ internal static class ModelFormatting
     {
         var delta = DateTime.UtcNow - timestampUtc;
         if (delta.TotalSeconds < 60) return "just now";
-        if (delta.TotalMinutes < 60) return $"{(int)Math.Round(delta.TotalMinutes)}m ago";
-        if (delta.TotalHours < 48) return $"{(int)Math.Round(delta.TotalHours)}h ago";
-        return $"{(int)Math.Round(delta.TotalDays)}d ago";
+        if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes}m ago";
+        if (delta.TotalHours < 48) return $"{(int)delta.TotalHours}h ago";
+        return $"{(int)delta.TotalDays}d ago";
     }
 
     /// <summary>
