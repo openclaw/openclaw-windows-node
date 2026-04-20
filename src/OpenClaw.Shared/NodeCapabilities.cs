@@ -150,7 +150,8 @@ public abstract class NodeCapabilityBase : INodeCapability
         if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
             return Array.Empty<string>();
 
-        var list = new List<string>();
+        var buffer = new string[prop.GetArrayLength()];
+        var count = 0;
         foreach (var item in prop.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.String)
@@ -158,10 +159,10 @@ public abstract class NodeCapabilityBase : INodeCapability
 
             var value = item.GetString()?.Trim();
             if (!string.IsNullOrEmpty(value))
-                list.Add(value);
+                buffer[count++] = value;
         }
 
-        return list.Count > 0 ? list.ToArray() : Array.Empty<string>();
+        return count > 0 ? buffer[..count] : [];
     }
 }
 

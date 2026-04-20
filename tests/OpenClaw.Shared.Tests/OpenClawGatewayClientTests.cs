@@ -912,6 +912,51 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseNodeListPayload_EmptyArray_ReturnsEmpty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""{ "nodes": [] }""");
+        Assert.Empty(nodes);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_SameOnlineStatus_SortsByLastSeenDescending()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                { "nodeId": "older", "status": "connected", "lastSeenAt": 1000000000000 },
+                { "nodeId": "newer", "status": "connected", "lastSeenAt": 2000000000000 },
+                { "nodeId": "middle", "status": "connected", "lastSeenAt": 1500000000000 }
+              ]
+            }
+            """);
+
+        Assert.Equal(3, nodes.Length);
+        Assert.Equal("newer", nodes[0].NodeId);
+        Assert.Equal("middle", nodes[1].NodeId);
+        Assert.Equal("older", nodes[2].NodeId);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_SkipsItemsWithNoNodeId()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                { "nodeId": "valid-node", "status": "connected" },
+                { "status": "connected" }
+              ]
+            }
+            """);
+
+        Assert.Single(nodes);
+        Assert.Equal("valid-node", nodes[0].NodeId);
+    }
+
+    [Fact]
     public void Constructor_InitializesWithProvidedValues()
     {
         var logger = new TestLogger();

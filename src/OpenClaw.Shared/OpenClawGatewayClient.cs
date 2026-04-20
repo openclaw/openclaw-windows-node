@@ -948,23 +948,22 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (payload.TryGetProperty("scopes", out var scopesProp) &&
             scopesProp.ValueKind == JsonValueKind.Array)
         {
-            var scopes = new List<string>();
+            var buffer = new string[scopesProp.GetArrayLength()];
+            var count = 0;
             foreach (var scope in scopesProp.EnumerateArray())
             {
                 if (scope.ValueKind == JsonValueKind.String)
                 {
                     var value = scope.GetString();
                     if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        scopes.Add(value);
-                    }
+                        buffer[count++] = value;
                 }
             }
 
-            return scopes.ToArray();
+            return buffer[..count];
         }
 
-        return Array.Empty<string>();
+        return [];
     }
 
     private static string? TryGetHandshakeMainSessionKey(JsonElement payload)
@@ -1607,7 +1606,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
             if (nodes.ValueKind != JsonValueKind.Array)
                 return;
 
-            var parsed = new List<GatewayNodeInfo>();
+            var buffer = new GatewayNodeInfo[nodes.GetArrayLength()];
+            var count = 0;
             foreach (var nodeElement in nodes.EnumerateArray())
             {
                 if (nodeElement.ValueKind != JsonValueKind.Object)
@@ -1628,7 +1628,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 var connected = GetOptionalBool(nodeElement, "connected");
                 var online = GetOptionalBool(nodeElement, "online");
 
-                parsed.Add(new GatewayNodeInfo
+                buffer[count++] = new GatewayNodeInfo
                 {
                     NodeId = nodeId!,
                     DisplayName = FirstNonEmpty(
@@ -1656,14 +1656,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
                         GetArrayLength(nodeElement, "declaredCommands"),
                         GetArrayLength(nodeElement, "commands")),
                     IsOnline = online ?? connected ?? status is "ok" or "online" or "connected" or "ready" or "active"
-                });
+                };
             }
 
-            var ordered = parsed
-                .OrderByDescending(n => n.IsOnline)
-                .ThenByDescending(n => n.LastSeen ?? DateTime.MinValue)
-                .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var ordered = buffer[..count];
+            Array.Sort(ordered, static (a, b) =>
+            {
+                int c = b.IsOnline.CompareTo(a.IsOnline);
+                if (c != 0) return c;
+                c = (b.LastSeen ?? DateTime.MinValue).CompareTo(a.LastSeen ?? DateTime.MinValue);
+                if (c != 0) return c;
+                return StringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
+            });
 
             NodesUpdated?.Invoke(this, ordered);
         }
