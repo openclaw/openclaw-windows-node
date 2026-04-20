@@ -588,7 +588,72 @@ public class SystemCapabilityExecApprovalsTests
         var result = await cap.ExecuteAsync(request);
         Assert.True(result.Ok);
     }
-    
+
+    [Fact]
+    public async Task SystemRun_WithDefaultAllow_DeniesDangerousPowerShellWrapperPayload()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "Remove-Item *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Allow);
+
+            var cap = CreateCapability(policy);
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":[\"powershell\",\"-Command\",\"Remove-Item -Recurse -Force C:\\\\important\"]}").RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("denied", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithCommandChain_DeniesBlockedSegment()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+                    new ExecApprovalRule { Pattern = "del *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"echo ok & del /s /q C:\\\\important\\\\*\",\"shell\":\"cmd\"}").RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("denied", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
     [Fact]
     public async Task ExecApprovalsGet_ReturnsPolicy()
     {
