@@ -269,13 +269,22 @@ public class SystemCapability : NodeCapabilityBase
             request.Args.TryGetProperty("env", out var envEl) &&
             envEl.ValueKind == System.Text.Json.JsonValueKind.Object)
         {
-            env = new Dictionary<string, string>();
+            env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var prop in envEl.EnumerateObject())
             {
                 if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
                     env[prop.Name] = prop.Value.GetString() ?? "";
             }
         }
+
+        var envResult = ExecEnvSanitizer.Sanitize(env);
+        if (envResult.Blocked.Length > 0)
+        {
+            var blockedList = string.Join(", ", envResult.Blocked.OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+            Logger.Warn($"system.run DENIED: blocked environment overrides [{blockedList}]");
+            return Error($"Unsafe environment variable override blocked: {blockedList}");
+        }
+        env = envResult.Allowed;
         
         // Build the full command string for policy evaluation and logging.
         // When command arrives as an argv array, we must evaluate the entire
@@ -295,6 +304,23 @@ public class SystemCapability : NodeCapabilityBase
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
                 return Error($"Command denied by exec policy: {approval.Reason}");
+            }
+
+            var parseResult = ExecShellWrapperParser.Expand(fullCommand, shell);
+            if (!string.IsNullOrWhiteSpace(parseResult.Error))
+            {
+                Logger.Warn($"system.run DENIED: {fullCommand} ({parseResult.Error})");
+                return Error($"Command denied by exec policy: {parseResult.Error}");
+            }
+
+            foreach (var target in parseResult.Targets)
+            {
+                var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
+                if (!innerApproval.Allowed)
+                {
+                    Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
+                    return Error($"Command denied by exec policy: {innerApproval.Reason}");
+                }
             }
         }
         

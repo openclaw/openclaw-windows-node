@@ -253,7 +253,7 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
     
     > 🔒 **Exec Policy**: `system.run` is gated by an approval policy on the Windows node at `%LOCALAPPDATA%\OpenClawTray\exec-policy.json` (schema: `{ "defaultAction": "...", "rules": [...] }`). This is separate from gateway-side `~/.openclaw/exec-approvals.json`.
     >
-    > Rules are matched against the `command` token (`argv[0]`). If your call runs `powershell.exe -File script.ps1`, allow `powershell.exe`/`pwsh.exe` (not just the script path), or you'll get `No matching rule; default policy applied`.
+    > Rules are matched against the full command line. Known wrapper payloads such as `cmd /c ...`, `powershell -Command ...`, `pwsh -EncodedCommand ...`, and `bash -c ...` are also evaluated before execution. Dangerous environment overrides like `PATH`, `PATHEXT`, `NODE_OPTIONS`, `GIT_SSH_COMMAND`, `LD_*`, and `DYLD_*` are rejected.
     >
     > ```bash
     > openclaw nodes invoke --node <id> --command system.execApprovals.set --params '{"rules":[{"pattern":"powershell.exe","action":"allow"},{"pattern":"pwsh.exe","action":"allow"},{"pattern":"echo *","action":"allow"},{"pattern":"*","action":"deny"}],"defaultAction":"deny"}'
