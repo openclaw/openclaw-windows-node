@@ -1,6 +1,6 @@
 {
-  "lr": "2026-04-19T12:29Z",
-  "rid": "24629090209",
+  "lr": "2026-04-20T01:05Z",
+  "rid": "24643683482",
   "prs": [
     "perf-reduce-allocs-display-session-2026-04-14",
     "perf-buildsummary-no-list-2026-04-15",
@@ -12,7 +12,9 @@
     "improve-string-slice-dedup-trunc-2026-04-18",
     "improve-sysrun-syntax-and-policy-tests-2026-04-18",
     "improve-shellquoting-search-values-2026-04-19",
-    "fix-formatage-rounding-boundary"
+    "fix-formatage-rounding-boundary",
+    "perf-exec-no-linq-2026-04-20",
+    "fix-exec-env-sanitizer-2026-04-20"
   ],
   "comments_made": {
     "99": "2026-03-26",
@@ -22,5 +24,5 @@
     "159": "2026-04-16",
     "164": "2026-04-12"
   },
-  "notes": "Tasks 2+3. Task 2: NichUK responded 2026-04-18 on PR #120 (planning new PR in ~1 week); commented with recap of shanselman's 4-point architectural guidance. Task 3: Fixed FormatAge bug - Math.Round (banker's rounding) caused '60m ago'/'48h ago' at tier boundaries; changed to (int) truncation; +3 regression tests; 589 Shared + 122 Tray pass; created draft PR #183. 11 open Repo Assist PRs (#172-#183). Monitor PR #120 for new PR from NichUK; Monitor PR #159 awaiting merge."
+  "notes": "Tasks 8+10. Task 8: PR #185 - eliminated LINQ allocations in exec path (ShellQuoting.FormatExecCommand, LocalCommandRunner.BuildProcessArgs, ExecApprovalPolicy.Evaluate); 586 Shared+122 Tray. Task 10: PR #186 - ExecEnvSanitizer blocks env-var injection (PATH, NODE_OPTIONS, GIT_SSH_COMMAND, LD_PRELOAD, etc.); +53 tests; 639 Shared+122 Tray; partially addresses issue #184 (env-var injection vector). Shell wrapper bypass (item 2 of #184) still needs a separate PR. 13 open Repo Assist PRs (#172-#183, #185, #186). Issue #184 labelled bug+security. Monitor PR #120 for new PR from NichUK; Monitor PR #159 awaiting merge."
 }
