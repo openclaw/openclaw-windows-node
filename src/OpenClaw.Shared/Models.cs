@@ -413,18 +413,15 @@ public class GatewayNodeInfo
     {
         get
         {
-            var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(Mode))
-                parts.Add(Mode!);
-            if (!string.IsNullOrWhiteSpace(Platform))
-                parts.Add(Platform!);
-            if (CommandCount > 0)
-                parts.Add($"{CommandCount} cmd");
-            if (CapabilityCount > 0)
-                parts.Add($"{CapabilityCount} cap");
-            if (LastSeen.HasValue)
-                parts.Add($"seen {FormatAge(LastSeen.Value)}");
-            return parts.Count == 0 ? "no details" : string.Join(" · ", parts);
+            // Fixed-size accumulator (up to 5 slots) avoids a heap List on every render.
+            var slots = new string?[5];
+            int count = 0;
+            if (!string.IsNullOrWhiteSpace(Mode))    slots[count++] = Mode!;
+            if (!string.IsNullOrWhiteSpace(Platform)) slots[count++] = Platform!;
+            if (CommandCount > 0)    slots[count++] = $"{CommandCount} cmd";
+            if (CapabilityCount > 0) slots[count++] = $"{CapabilityCount} cap";
+            if (LastSeen.HasValue)   slots[count++] = $"seen {FormatAge(LastSeen.Value)}";
+            return count == 0 ? "no details" : string.Join(" · ", slots, 0, count);
         }
     }
 
