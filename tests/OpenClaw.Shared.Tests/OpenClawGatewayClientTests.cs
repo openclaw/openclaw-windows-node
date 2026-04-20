@@ -834,6 +834,170 @@ public class OpenClawGatewayClientTests
         Assert.Equal("degraded", channels[0].Status);
     }
 
+    // ── ParseChannelHealth — derived-status paths ───────────────────────────────
+
+    [Fact]
+    public void ParseChannelHealth_RunningTrue_NoStatusField_DerivedAsRunning()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"running":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("running", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_HasError_NoStatusField_DerivedAsError()
+    {
+        var helper = new GatewayClientTestHelper();
+        // lastError present and non-null → hasError = true
+        var json = """{"whatsapp":{"lastError":"connection refused"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("error", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_HasError_NullLastError_NotDerivedAsError()
+    {
+        // lastError=null should NOT set hasError (ValueKind == Null is excluded)
+        var helper = new GatewayClientTestHelper();
+        var json = """{"slack":{"lastError":null,"configured":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        // hasError is false → falls through to configured && !hasError → "ready"
+        Assert.Equal("ready", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ConfiguredAndProbeOk_DerivedAsReady()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"configured":true,"probe":{"ok":true}}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("ready", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ConfiguredAndLinked_DerivedAsReady()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"whatsapp":{"configured":true,"linked":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("ready", channels[0].Status);
+        Assert.True(channels[0].IsLinked);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ConfiguredNoErrors_DerivedAsReady()
+    {
+        // configured=true with no lastError and no explicit status → ready (catch-all)
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"configured":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("ready", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_NotConfigured_DerivedAsNotConfigured()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"discord":{}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("not configured", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_HasError_TakesPriorityOverRunning()
+    {
+        // Error takes priority over running in the derivation chain
+        var helper = new GatewayClientTestHelper();
+        var json = """{"slack":{"running":true,"lastError":"timeout"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("error", channels[0].Status);
+    }
+
+    // ── ParseChannelHealth — property parsing ───────────────────────────────────
+
+    [Fact]
+    public void ParseChannelHealth_ParsesErrorProperty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"discord":{"status":"error","error":"Bot token invalid"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Equal("Bot token invalid", channels[0].Error);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ParsesAuthAgeProperty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"whatsapp":{"status":"ready","authAge":"3 days ago"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Equal("3 days ago", channels[0].AuthAge);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ParsesTypeProperty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"status":"ready","type":"webhook"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Equal("webhook", channels[0].Type);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_LinkedFalse_IsLinkedIsFalse()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"whatsapp":{"linked":false,"status":"not configured"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.False(channels[0].IsLinked);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ProbeNotOk_DoesNotSetReady()
+    {
+        // probe.ok=false + configured=true + no isLinked → falls to configured&&!hasError → ready
+        // (the two "ready" clauses effectively mean configured=true always means ready if no error)
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"configured":true,"probe":{"ok":false}}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        // configured && !hasError → ready (second ready clause fires)
+        Assert.Equal("ready", channels[0].Status);
+    }
+
     // ── BuildMissingScopeFixCommands tests ─────────────────────────────────────
 
     [Fact]
