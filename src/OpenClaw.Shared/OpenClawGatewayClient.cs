@@ -1356,14 +1356,17 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private SessionInfo[] GetSessionListInternal()
     {
-        var list = new List<SessionInfo>(_sessions.Values);
-        list.Sort((a, b) =>
+        // Allocate the result array directly and copy in, then sort in-place.
+        // Avoids the intermediate List<T> that new List(collection).ToArray() would produce.
+        var arr = new SessionInfo[_sessions.Count];
+        _sessions.Values.CopyTo(arr, 0);
+        Array.Sort(arr, static (a, b) =>
         {
             // Main session first, then by last seen
             if (a.IsMain != b.IsMain) return a.IsMain ? -1 : 1;
             return b.LastSeen.CompareTo(a.LastSeen);
         });
-        return list.ToArray();
+        return arr;
     }
 
     // --- Parsing helpers ---
