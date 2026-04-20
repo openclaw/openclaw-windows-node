@@ -56,7 +56,11 @@ internal static class ShellQuoting
     /// </summary>
     internal static string FormatExecCommand(string[] argv)
     {
-        return string.Join(" ", argv.Select(FormatSingleArg));
+        if (argv.Length == 0) return string.Empty;
+        var parts = new string[argv.Length];
+        for (var i = 0; i < argv.Length; i++)
+            parts[i] = FormatSingleArg(argv[i]);
+        return string.Join(" ", parts);
 
         static string FormatSingleArg(string arg)
         {
