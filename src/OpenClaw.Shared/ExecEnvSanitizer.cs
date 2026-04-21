@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 
 namespace OpenClaw.Shared;
@@ -11,38 +12,39 @@ internal sealed class ExecEnvSanitizeResult
 
 internal static class ExecEnvSanitizer
 {
-    private static readonly HashSet<string> _blockedNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "PATH",
-        "PATHEXT",
-        "ComSpec",
-        "PSModulePath",
-        "NODE_OPTIONS",
-        "NODE_PATH",
-        "PYTHONPATH",
-        "PYTHONSTARTUP",
-        "PYTHONUSERBASE",
-        "RUBYOPT",
-        "RUBYLIB",
-        "PERL5OPT",
-        "PERL5LIB",
-        "PERLIO",
-        "GIT_SSH",
-        "GIT_SSH_COMMAND",
-        "GIT_EXEC_PATH",
-        "GIT_PROXY_COMMAND",
-        "GIT_ASKPASS",
-        "BASH_ENV",
-        "ENV",
-        "CDPATH",
-        "PROMPT_COMMAND",
-        "ZDOTDIR",
-        "LD_PRELOAD",
-        "LD_LIBRARY_PATH",
-        "LD_AUDIT",
-        "DYLD_INSERT_LIBRARIES",
-        "DYLD_LIBRARY_PATH"
-    };
+    private static readonly FrozenSet<string> _blockedNames =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PATH",
+            "PATHEXT",
+            "ComSpec",
+            "PSModulePath",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+            "PYTHONPATH",
+            "PYTHONSTARTUP",
+            "PYTHONUSERBASE",
+            "RUBYOPT",
+            "RUBYLIB",
+            "PERL5OPT",
+            "PERL5LIB",
+            "PERLIO",
+            "GIT_SSH",
+            "GIT_SSH_COMMAND",
+            "GIT_EXEC_PATH",
+            "GIT_PROXY_COMMAND",
+            "GIT_ASKPASS",
+            "BASH_ENV",
+            "ENV",
+            "CDPATH",
+            "PROMPT_COMMAND",
+            "ZDOTDIR",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH"
+        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     internal static ExecEnvSanitizeResult Sanitize(Dictionary<string, string>? env)
     {
