@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 
 namespace OpenClaw.Shared;
@@ -76,7 +75,7 @@ internal static class ExecShellWrapperParser
     private static (string? Payload, string? Shell, string? Error) TryExtractWrappedPayload(string command)
     {
         var tokens = Tokenize(command);
-        if (tokens.Count < 2)
+        if (tokens.Length < 2)
             return default;
 
         var executable = Path.GetFileName(tokens[0]);
@@ -86,12 +85,12 @@ internal static class ExecShellWrapperParser
         if (executable.Equals("cmd", StringComparison.OrdinalIgnoreCase) ||
             executable.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase))
         {
-            for (var i = 1; i < tokens.Count; i++)
+            for (var i = 1; i < tokens.Length; i++)
             {
                 if (tokens[i].Equals("/c", StringComparison.OrdinalIgnoreCase) ||
                     tokens[i].Equals("/k", StringComparison.OrdinalIgnoreCase))
                 {
-                    var payload = string.Join(" ", tokens.Skip(i + 1)).Trim();
+                    var payload = string.Join(" ", tokens, i + 1, tokens.Length - i - 1).Trim();
                     return string.IsNullOrWhiteSpace(payload)
                         ? ("", "cmd", "Shell wrapper payload was empty")
                         : (payload, "cmd", null);
@@ -116,11 +115,11 @@ internal static class ExecShellWrapperParser
             executable.Equals("sh", StringComparison.OrdinalIgnoreCase) ||
             executable.Equals("sh.exe", StringComparison.OrdinalIgnoreCase))
         {
-            for (var i = 1; i < tokens.Count; i++)
+            for (var i = 1; i < tokens.Length; i++)
             {
                 if (tokens[i].Equals("-c", StringComparison.OrdinalIgnoreCase))
                 {
-                    var payload = string.Join(" ", tokens.Skip(i + 1)).Trim();
+                    var payload = string.Join(" ", tokens, i + 1, tokens.Length - i - 1).Trim();
                     return string.IsNullOrWhiteSpace(payload)
                         ? ("", "sh", "Shell wrapper payload was empty")
                         : (payload, "sh", null);
@@ -131,15 +130,15 @@ internal static class ExecShellWrapperParser
         return default;
     }
 
-    private static (string? Payload, string? Shell, string? Error) ParsePowerShellPayload(IReadOnlyList<string> tokens, string shell)
+    private static (string? Payload, string? Shell, string? Error) ParsePowerShellPayload(string[] tokens, string shell)
     {
-        for (var i = 1; i < tokens.Count; i++)
+        for (var i = 1; i < tokens.Length; i++)
         {
             var option = tokens[i];
             if (option.Equals("-Command", StringComparison.OrdinalIgnoreCase) ||
                 option.Equals("-c", StringComparison.OrdinalIgnoreCase))
             {
-                var payload = string.Join(" ", tokens.Skip(i + 1)).Trim();
+                var payload = string.Join(" ", tokens, i + 1, tokens.Length - i - 1).Trim();
                 return string.IsNullOrWhiteSpace(payload)
                     ? ("", shell, "Shell wrapper payload was empty")
                     : (payload, shell, null);
@@ -149,7 +148,7 @@ internal static class ExecShellWrapperParser
                 option.Equals("-enc", StringComparison.OrdinalIgnoreCase) ||
                 option.Equals("-ec", StringComparison.OrdinalIgnoreCase))
             {
-                var encoded = i + 1 < tokens.Count ? tokens[i + 1] : null;
+                var encoded = i + 1 < tokens.Length ? tokens[i + 1] : null;
                 if (string.IsNullOrWhiteSpace(encoded))
                     return ("", shell, "Shell wrapper payload was empty");
 
@@ -221,7 +220,7 @@ internal static class ExecShellWrapperParser
         return parts;
     }
 
-    private static List<string> Tokenize(string command)
+    private static string[] Tokenize(string command)
     {
         var tokens = new List<string>();
         var current = new StringBuilder();
@@ -266,7 +265,7 @@ internal static class ExecShellWrapperParser
         }
 
         FlushCurrent(tokens, current);
-        return tokens;
+        return tokens.ToArray();
     }
 
     private static string TrimMatchingQuotes(string value)
