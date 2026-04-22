@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
@@ -128,6 +129,46 @@ public class SystemRunTests
     }
 
     [Fact]
+    public async Task SystemRun_BlocksDangerousEnvOverride()
+    {
+        var runner = new FakeCommandRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "r5b",
+            Command = "system.run",
+            Args = Parse("""{"command":"test","env":{"PATH":"C:\\evil","FOO":"bar"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("environment variable", res.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Fact]
+    public async Task SystemRun_BlocksInvalidEnvName()
+    {
+        var runner = new FakeCommandRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "r5c",
+            Command = "system.run",
+            Args = Parse("""{"command":"test","env":{"BAD NAME":"value"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("environment variable", res.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Fact]
     public async Task SystemRun_DefaultsTimeout_To30s()
     {
         var runner = new FakeCommandRunner();
@@ -207,6 +248,16 @@ public class SystemRunTests
 
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok, res.Error);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("git status --short", root.GetProperty("cmdText").GetString());
+        var plan = root.GetProperty("plan");
+        var argv = plan.GetProperty("argv");
+        Assert.Equal("git", argv[0].GetString());
+        Assert.Equal("status", argv[1].GetString());
+        Assert.Equal("--short", argv[2].GetString());
     }
 
     [Fact]
@@ -222,6 +273,14 @@ public class SystemRunTests
 
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok, res.Error);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("\"echo hello\"", root.GetProperty("cmdText").GetString());
+        var argv = root.GetProperty("plan").GetProperty("argv");
+        Assert.Single(argv.EnumerateArray());
+        Assert.Equal("echo hello", argv[0].GetString());
     }
 
     [Fact]
@@ -276,6 +335,45 @@ public class SystemRunTests
         Assert.NotNull(runner.LastRequest.Args);
         Assert.Equal(3, runner.LastRequest.Args!.Length);
         Assert.Equal("push", runner.LastRequest.Args[0]);
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPolicy_DeniesEncodedPowerShellPayload()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "Remove-Item *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Allow);
+
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(new FakeCommandRunner());
+            cap.SetApprovalPolicy(policy);
+
+            var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes("Remove-Item -Recurse -Force C:\\important"));
+            var req = new NodeInvokeRequest
+            {
+                Id = "r10",
+                Command = "system.run",
+                Args = Parse($$"""{"command":["powershell","-EncodedCommand","{{encoded}}"]}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+            Assert.False(res.Ok);
+            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
     }
 
     /// <summary>

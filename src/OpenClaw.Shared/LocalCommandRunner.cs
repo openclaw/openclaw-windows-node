@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -171,7 +170,10 @@ public class LocalCommandRunner : ICommandRunner
         
         if (request.Args is { Length: > 0 })
         {
-            command = command + " " + string.Join(" ", request.Args.Select(a => ShellQuoting.QuoteForShell(a, isCmd)));
+            var quoted = new string[request.Args.Length];
+            for (var i = 0; i < request.Args.Length; i++)
+                quoted[i] = ShellQuoting.QuoteForShell(request.Args[i], isCmd);
+            command = command + " " + string.Join(" ", quoted);
         }
         
         return shell switch

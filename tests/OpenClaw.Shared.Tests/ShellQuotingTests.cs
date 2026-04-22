@@ -176,4 +176,36 @@ public class ShellQuotingTests
     {
         Assert.Equal("''", ShellQuoting.QuoteForShell(null!, isCmd: false));
     }
+
+    // ── Additional NeedsQuoting metachar coverage ───────────────────
+
+    [Theory]
+    [InlineData("a]b", ']')]
+    [InlineData("a}b", '}')]
+    [InlineData("a)b", ')')]
+    public void NeedsQuoting_ClosingBracketsAndParen_ReturnsTrue(string arg, char _)
+    {
+        Assert.True(ShellQuoting.NeedsQuoting(arg));
+    }
+
+    [Fact]
+    public void NeedsQuoting_NewlineChars_ReturnTrue()
+    {
+        Assert.True(ShellQuoting.NeedsQuoting("line1\nline2"));
+        Assert.True(ShellQuoting.NeedsQuoting("line1\rline2"));
+    }
+
+    // ── FormatExecCommand edge cases ────────────────────────────────
+
+    [Fact]
+    public void FormatExecCommand_SingleArg_ReturnsArgUnchanged()
+    {
+        Assert.Equal("echo", ShellQuoting.FormatExecCommand(new[] { "echo" }));
+    }
+
+    [Fact]
+    public void FormatExecCommand_EmptyArray_ReturnsEmptyString()
+    {
+        Assert.Equal("", ShellQuoting.FormatExecCommand(Array.Empty<string>()));
+    }
 }

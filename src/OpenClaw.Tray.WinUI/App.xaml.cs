@@ -1207,6 +1207,13 @@ public partial class App : Application
                     .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
                     .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
             }
+            else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
+            {
+                AddRecentActivity("Node pairing rejected", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId, details: args.Message ?? LocalizationHelper.GetString("Toast_PairingRejectedDetail"));
+                ShowToast(new ToastContentBuilder()
+                    .AddText(LocalizationHelper.GetString("Toast_PairingRejected"))
+                    .AddText(LocalizationHelper.GetString("Toast_PairingRejectedDetail")));
+            }
         }
         catch { /* ignore */ }
     }

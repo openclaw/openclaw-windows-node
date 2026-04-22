@@ -271,7 +271,7 @@ public class SystemCapabilityTests
             JsonSerializer.Serialize(res.Payload));
         Assert.True(payload.TryGetProperty("bins", out var binsEl));
         // Both should be rejected (contain path separators)
-        Assert.Equal(0, binsEl.EnumerateObject().Count());
+        Assert.Empty(binsEl.EnumerateObject());
     }
 
     [Fact]

@@ -108,8 +108,16 @@ public class ExecApprovalPolicy
             // Check shell filter
             if (rule.Shells is { Length: > 0 })
             {
-                if (!rule.Shells.Any(s => s.Equals(normalizedShell, StringComparison.OrdinalIgnoreCase)))
-                    continue;
+                var shellMatched = false;
+                foreach (var s in rule.Shells)
+                {
+                    if (s.Equals(normalizedShell, StringComparison.OrdinalIgnoreCase))
+                    {
+                        shellMatched = true;
+                        break;
+                    }
+                }
+                if (!shellMatched) continue;
             }
             
             // Check pattern match

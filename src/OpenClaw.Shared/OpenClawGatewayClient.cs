@@ -36,7 +36,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     // Tracked state
     private readonly Dictionary<string, SessionInfo> _sessions = new();
-    private readonly Dictionary<string, GatewayNodeInfo> _nodes = new();
     private GatewayUsageInfo? _usage;
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
@@ -45,7 +44,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private readonly object _pendingRequestLock = new();
     private readonly object _pendingChatSendLock = new();
     private readonly object _sessionsLock = new();
-    private readonly object _nodesLock = new();
     private readonly DeviceIdentity _deviceIdentity;
     private string _mainSessionKey = "main";
     private string? _operatorDeviceId;
@@ -1358,14 +1356,17 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private SessionInfo[] GetSessionListInternal()
     {
-        var list = new List<SessionInfo>(_sessions.Values);
-        list.Sort((a, b) =>
+        // Allocate the result array directly and copy in, then sort in-place.
+        // Avoids the intermediate List<T> that new List(collection).ToArray() would produce.
+        var arr = new SessionInfo[_sessions.Count];
+        _sessions.Values.CopyTo(arr, 0);
+        Array.Sort(arr, static (a, b) =>
         {
             // Main session first, then by last seen
             if (a.IsMain != b.IsMain) return a.IsMain ? -1 : 1;
             return b.LastSeen.CompareTo(a.LastSeen);
         });
-        return list.ToArray();
+        return arr;
     }
 
     // --- Parsing helpers ---
@@ -1664,13 +1665,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            lock (_nodesLock)
-            {
-                _nodes.Clear();
-                foreach (var node in ordered)
-                    _nodes[node.NodeId] = node;
-            }
-
             NodesUpdated?.Invoke(this, ordered);
         }
         catch (Exception ex)
@@ -1894,34 +1888,47 @@ public class OpenClawGatewayClient : WebSocketClientBase
     {
         if (status.Providers.Count == 0) return "";
 
-        var parts = new List<string>();
+        // At most 2 providers are shown; track them with two nullable strings to avoid
+        // allocating a List<string> on every usage-status update.
+        string? p0 = null, p1 = null;
+        int included = 0;
+
         foreach (var provider in status.Providers)
         {
-            if (parts.Count == 2) break;
+            if (included == 2) break;
             var displayName = string.IsNullOrWhiteSpace(provider.DisplayName) ? provider.Provider : provider.DisplayName;
             if (string.IsNullOrWhiteSpace(displayName))
                 displayName = "provider";
 
+            string part;
             if (!string.IsNullOrWhiteSpace(provider.Error))
             {
-                parts.Add($"{displayName}: error");
-                continue;
+                part = $"{displayName}: error";
+            }
+            else
+            {
+                if (provider.Windows.Count == 0) continue;
+                var window = provider.Windows.MaxBy(w => w.UsedPercent);
+                if (window is null) continue;
+                var remaining = Math.Clamp((int)Math.Round(100 - window.UsedPercent), 0, 100);
+                part = $"{displayName}: {remaining}% left";
             }
 
-            if (provider.Windows.Count == 0) continue;
-            var window = provider.Windows.MaxBy(w => w.UsedPercent);
-            if (window is null) continue;
-            var remaining = Math.Clamp((int)Math.Round(100 - window.UsedPercent), 0, 100);
-            parts.Add($"{displayName}: {remaining}% left");
+            if (included == 0) p0 = part;
+            else p1 = part;
+            included++;
         }
 
-        if (parts.Count == 0)
-            return "";
+        if (included == 0) return "";
 
-        if (status.Providers.Count > 2)
-            parts.Add($"+{status.Providers.Count - 2}");
-
-        return string.Join(" · ", parts);
+        string? overflow = status.Providers.Count > 2 ? $"+{status.Providers.Count - 2}" : null;
+        return (p1, overflow) switch
+        {
+            (null, null) => p0!,
+            (null, _)    => $"{p0} · {overflow}",
+            (_, null)    => $"{p0} · {p1}",
+            _            => $"{p0} · {p1} · {overflow}",
+        };
     }
 
     private static string? FirstNonEmpty(params string?[] values)

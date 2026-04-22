@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -17,6 +18,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public int OnErrorCallCount { get; private set; }
     public Exception? LastError { get; private set; }
     public int OnDisposingCallCount { get; private set; }
+    public bool AutoReconnectEnabled { get; set; } = true;
 
     protected override int ReceiveBufferSize => 8192;
     protected override string ClientRole => "test";
@@ -52,6 +54,8 @@ public class TestWebSocketClient : WebSocketClientBase
         OnDisposingCallCount++;
     }
 
+    protected override bool ShouldAutoReconnect() => AutoReconnectEnabled;
+
     // Expose protected members for testing
     public void TestRaiseStatusChanged(ConnectionStatus status)
         => RaiseStatusChanged(status);
@@ -71,12 +75,11 @@ public class WebSocketClientBaseTests
     [InlineData("https://gateway.example.com", "wss://gateway.example.com")]
     [InlineData("ws://localhost:18789", "ws://localhost:18789")]
     [InlineData("wss://gateway.example.com", "wss://gateway.example.com")]
-    public void Constructor_NormalizesUrl(string input, string _)
+    public void Constructor_NormalizesUrl(string input, string expected)
     {
         var client = new TestWebSocketClient(input, "test-token", _logger);
-        // GatewayUrlForDisplay is the sanitized version — just verify it's set
-        Assert.NotNull(client.TestGatewayUrlForDisplay);
-        Assert.DoesNotContain("@", client.TestGatewayUrlForDisplay); // credentials stripped
+        Assert.Equal(expected, client.TestGatewayUrlForDisplay);
+        Assert.DoesNotContain("@", client.TestGatewayUrlForDisplay);
         client.Dispose();
     }
 
@@ -128,6 +131,7 @@ public class WebSocketClientBaseTests
     public void Constructor_WithCredentialUrl_StripsFromDisplay()
     {
         var client = new TestWebSocketClient("ws://user:pass@localhost:18789", "token", _logger);
+        Assert.Equal("ws://localhost:18789", client.TestGatewayUrlForDisplay);
         Assert.DoesNotContain("pass", client.TestGatewayUrlForDisplay);
         client.Dispose();
     }
@@ -231,6 +235,57 @@ public class WebSocketClientBaseTests
 
         Assert.Contains(ConnectionStatus.Connecting, statuses);
         client.Dispose();
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenConnectionFails_StartsReconnectLoop()
+    {
+        var client = new TestWebSocketClient("ws://127.0.0.1:1", "token", _logger);
+        var statuses = new List<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Add(s);
+
+        await client.ConnectAsync();
+        await WaitForConditionAsync(
+            () => statuses.Count(s => s == ConnectionStatus.Connecting) >= 2,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.True(statuses.Count(s => s == ConnectionStatus.Connecting) >= 2);
+        Assert.Contains(_logger.Logs, line => line.Contains("reconnecting in 1000ms", StringComparison.OrdinalIgnoreCase));
+
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenAutoReconnectDisabled_DoesNotStartReconnectLoop()
+    {
+        var client = new TestWebSocketClient("ws://127.0.0.1:1", "token", _logger)
+        {
+            AutoReconnectEnabled = false
+        };
+        var statuses = new List<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Add(s);
+
+        await client.ConnectAsync();
+        await Task.Delay(250);
+
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.Single(statuses, s => s == ConnectionStatus.Connecting);
+        Assert.DoesNotContain(_logger.Logs, line => line.Contains("reconnecting in", StringComparison.OrdinalIgnoreCase));
+
+        client.Dispose();
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var start = DateTime.UtcNow;
+        while (!predicate())
+        {
+            if (DateTime.UtcNow - start > timeout)
+                throw new TimeoutException("Condition was not met before the timeout.");
+
+            await Task.Delay(25);
+        }
     }
 }
 

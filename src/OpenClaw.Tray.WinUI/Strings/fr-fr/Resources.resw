@@ -575,6 +575,12 @@ Utilisez l'une de ces options :
   <data name="Toast_NodePairedDetail" xml:space="preserve">
     <value>Ce PC peut désormais recevoir des commandes de l'agent</value>
   </data>
+  <data name="Toast_PairingRejected" xml:space="preserve">
+    <value>❌ Appairage refusé</value>
+  </data>
+  <data name="Toast_PairingRejectedDetail" xml:space="preserve">
+    <value>La passerelle a rejeté la demande d'appairage de cet appareil.</value>
+  </data>
 
   <!-- ==================== Toast: Health Check ==================== -->
 
