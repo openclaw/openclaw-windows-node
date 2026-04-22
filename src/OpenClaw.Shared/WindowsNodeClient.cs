@@ -1,6 +1,6 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -18,6 +18,7 @@ public class WindowsNodeClient : WebSocketClientBase
     
     // Node capabilities registry
     private readonly List<INodeCapability> _capabilities = new();
+    private FrozenDictionary<string, INodeCapability> _commandMap = FrozenDictionary<string, INodeCapability>.Empty;
     private readonly NodeRegistration _registration;
     
     // Connection state
@@ -100,7 +101,24 @@ public class WindowsNodeClient : WebSocketClientBase
             }
         }
         
+        // Rebuild the O(1) command dispatch map so node.invoke lookups stay fast
+        // regardless of how many capabilities or commands are registered.
+        _commandMap = BuildCommandMap();
+        
         _logger.Info($"Registered capability: {capability.Category} ({capability.Commands.Count} commands)");
+    }
+    
+    /// <summary>
+    /// Builds a FrozenDictionary mapping each command name to the capability that owns it.
+    /// First-registered capability wins on collision (matching the former FirstOrDefault semantics).
+    /// </summary>
+    private FrozenDictionary<string, INodeCapability> BuildCommandMap()
+    {
+        var map = new Dictionary<string, INodeCapability>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cap in _capabilities)
+            foreach (var cmd in cap.Commands)
+                map.TryAdd(cmd, cap);
+        return map.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
     
     /// <summary>
@@ -351,7 +369,7 @@ public class WindowsNodeClient : WebSocketClientBase
         };
         
         // Find capability that can handle this command
-        var capability = _capabilities.FirstOrDefault(c => c.CanHandle(command));
+        var capability = _commandMap.GetValueOrDefault(command);
         
         if (capability == null)
         {
@@ -762,7 +780,7 @@ public class WindowsNodeClient : WebSocketClientBase
         };
         
         // Find capability that can handle this command
-        var capability = _capabilities.FirstOrDefault(c => c.CanHandle(command));
+        var capability = _commandMap.GetValueOrDefault(command);
         
         if (capability == null)
         {
