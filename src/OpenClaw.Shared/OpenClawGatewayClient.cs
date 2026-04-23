@@ -1210,15 +1210,15 @@ public class OpenClawGatewayClient : WebSocketClientBase
             if (data.TryGetProperty("args", out var args))
             {
                 if (args.TryGetProperty("command", out var cmd))
-                    label = TruncateLabel(cmd.GetString()?.Split('\n')[0] ?? "");
+                    label = MenuDisplayHelper.TruncateText(cmd.GetString()?.Split('\n')[0], 60);
                 else if (args.TryGetProperty("path", out var path))
                     label = ShortenPath(path.GetString() ?? "");
                 else if (args.TryGetProperty("file_path", out var filePath))
                     label = ShortenPath(filePath.GetString() ?? "");
                 else if (args.TryGetProperty("query", out var query))
-                    label = TruncateLabel(query.GetString() ?? "");
+                    label = MenuDisplayHelper.TruncateText(query.GetString(), 60);
                 else if (args.TryGetProperty("url", out var url))
-                    label = TruncateLabel(url.GetString() ?? "");
+                    label = MenuDisplayHelper.TruncateText(url.GetString(), 60);
             }
         }
 
@@ -1254,7 +1254,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private void HandleChatEvent(JsonElement root)
     {
         var rawText = root.GetRawText();
-        _logger.Debug($"Chat event received: {rawText.Substring(0, Math.Min(200, rawText.Length))}");
+        _logger.Debug($"Chat event received: {rawText[..Math.Min(200, rawText.Length)]}");
         
         if (!root.TryGetProperty("payload", out var payload)) return;
 
@@ -1276,7 +1276,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                                 payload.TryGetProperty("state", out var state) && 
                                 state.GetString() == "final")
                             {
-                                _logger.Info($"Assistant response: {text.Substring(0, Math.Min(100, text.Length))}...");
+                                _logger.Info($"Assistant response: {text[..Math.Min(100, text.Length)]}...");
                                 EmitChatNotification(text);
                             }
                         }
@@ -1293,7 +1293,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 role.GetString() == "assistant" &&
                 !string.IsNullOrEmpty(text))
             {
-                _logger.Info($"Assistant response (legacy): {text.Substring(0, Math.Min(100, text.Length))}");
+                _logger.Info($"Assistant response (legacy): {text[..Math.Min(100, text.Length)]}");
                 EmitChatNotification(text);
             }
         }
@@ -2057,11 +2057,5 @@ public class OpenClawGatewayClient : WebSocketClientBase
         return parts.Length > 2
             ? $"…/{parts[^2]}/{parts[^1]}"
             : parts[^1];
-    }
-
-    private static string TruncateLabel(string text, int maxLen = 60)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLen) return text;
-        return text[..(maxLen - 1)] + "…";
     }
 }

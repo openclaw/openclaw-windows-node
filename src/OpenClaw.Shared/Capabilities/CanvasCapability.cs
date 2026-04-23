@@ -112,7 +112,7 @@ public class CanvasCapability : NodeCapabilityBase
             return Error("Missing script parameter");
         }
         
-        Logger.Info($"canvas.eval: {script.Substring(0, Math.Min(50, script.Length))}...");
+        Logger.Info($"canvas.eval: {script[..Math.Min(50, script.Length)]}...");
         
         if (EvalRequested == null)
         {
