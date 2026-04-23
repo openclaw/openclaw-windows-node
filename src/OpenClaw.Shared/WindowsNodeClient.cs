@@ -530,6 +530,7 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             var reconnectingAfterApproval = _pairingApprovedAwaitingReconnect;
             _isConnected = true;
+            ResetReconnectAttempts();
             
             // Extract node ID if returned
             if (payload.TryGetProperty("nodeId", out var nodeIdProp))
