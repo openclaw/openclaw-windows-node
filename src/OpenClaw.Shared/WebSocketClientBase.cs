@@ -152,7 +152,9 @@ public abstract class WebSocketClientBase : IDisposable
 
     private async Task ListenForMessagesAsync()
     {
-        var buffer = new byte[ReceiveBufferSize];
+        // Rent a pooled buffer — consistent with the SendRawAsync hot path; avoids a large
+        // (16–64 KB) heap allocation per connection that would otherwise land on the LOH.
+        var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var sb = new StringBuilder();
 
         try
@@ -160,7 +162,7 @@ public abstract class WebSocketClientBase : IDisposable
             while (_webSocket?.State == WebSocketState.Open && !_cts.Token.IsCancellationRequested)
             {
                 var result = await _webSocket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer), _cts.Token);
+                    new ArraySegment<byte>(buffer, 0, ReceiveBufferSize), _cts.Token);
 
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
@@ -204,6 +206,10 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Error($"{ClientRole} listen error", ex);
             OnError(ex);
             RaiseStatusChanged(ConnectionStatus.Error);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         // Auto-reconnect if not intentionally disposed
