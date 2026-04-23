@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Text;
@@ -60,7 +61,7 @@ public sealed class SetupWizardWindow : WindowEx
         _draftToken = settings.Token;
         _draftEnableNodeMode = settings.EnableNodeMode;
 
-        Title = "OpenClaw Setup";
+        Title = LocalizationHelper.GetString("Setup_Title");
         this.SetWindowSize(720, 700);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -77,7 +78,7 @@ public sealed class SetupWizardWindow : WindowEx
         header.Children.Add(new TextBlock { Text = "🦞", FontSize = 36 });
         header.Children.Add(new TextBlock
         {
-            Text = "OpenClaw Setup",
+            Text = LocalizationHelper.GetString("Setup_Title"),
             Style = (Style)Application.Current.Resources["TitleTextBlockStyle"],
             VerticalAlignment = VerticalAlignment.Center
         });
@@ -87,8 +88,8 @@ public sealed class SetupWizardWindow : WindowEx
         // Step indicator
         _stepIndicator = new TextBlock
         {
-            Text = "Step 1 of 3 — Connect",
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray),
+            Text = LocalizationHelper.GetString("Setup_StepConnect"),
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             Margin = new Thickness(0, 0, 0, 16)
         };
         Grid.SetRow(_stepIndicator, 1);
@@ -101,15 +102,15 @@ public sealed class SetupWizardWindow : WindowEx
         _stepPanels[0] = new StackPanel { Spacing = 12 };
         _stepPanels[0].Children.Add(new TextBlock
         {
-            Text = "Connect to your gateway",
+            Text = LocalizationHelper.GetString("Setup_ConnectTitle"),
             FontWeight = FontWeights.SemiBold,
-            FontSize = 16
+            Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
         });
         _stepPanels[0].Children.Add(new TextBlock
         {
-            Text = "On your gateway host (Mac/Linux), run this to get a setup code:",
+            Text = LocalizationHelper.GetString("Setup_ConnectDescription"),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
         var cmdHint = new TextBox
         {
@@ -117,58 +118,64 @@ public sealed class SetupWizardWindow : WindowEx
             IsReadOnly = true,
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             BorderThickness = new Thickness(1),
-            Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 40, 40, 40)),
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.LightGreen),
+            Background = (SolidColorBrush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+            Foreground = (SolidColorBrush)Application.Current.Resources["SystemFillColorSuccessBrush"],
             Padding = new Thickness(12, 8, 12, 8)
         };
         _stepPanels[0].Children.Add(cmdHint);
         _setupCodeBox = new TextBox
         {
-            Header = "Setup Code",
-            PlaceholderText = "Paste the setup code from your gateway dashboard",
+            Header = LocalizationHelper.GetString("Setup_SetupCodeHeader"),
+            PlaceholderText = LocalizationHelper.GetString("Setup_SetupCodePlaceholder"),
             TextWrapping = TextWrapping.Wrap,
             AcceptsReturn = false
         };
+        AutomationProperties.SetAutomationId(_setupCodeBox, "SetupCodeBox");
         _setupCodeBox.TextChanged += OnSetupCodeChanged;
         _stepPanels[0].Children.Add(_setupCodeBox);
 
         // Manual entry toggle
-        var manualToggle = new HyperlinkButton { Content = "Or enter URL and token manually ▾" };
+        var manualToggle = new HyperlinkButton { Content = LocalizationHelper.GetString("Setup_ManualEntryToggle") };
+        AutomationProperties.SetAutomationId(manualToggle, "ManualEntryToggle");
         _manualEntryPanel = new StackPanel { Spacing = 8, Visibility = Visibility.Collapsed };
         manualToggle.Click += (s, e) =>
         {
             _manualEntryPanel.Visibility = _manualEntryPanel.Visibility == Visibility.Visible
                 ? Visibility.Collapsed : Visibility.Visible;
             manualToggle.Content = _manualEntryPanel.Visibility == Visibility.Visible
-                ? "Hide manual entry ▴" : "Or enter URL and token manually ▾";
+                ? LocalizationHelper.GetString("Setup_ManualEntryToggleHide") : LocalizationHelper.GetString("Setup_ManualEntryToggle");
         };
         _stepPanels[0].Children.Add(manualToggle);
 
         _gatewayUrlBox = new TextBox
         {
-            Header = "Gateway URL",
-            PlaceholderText = "ws://192.168.1.x:18789",
+            Header = LocalizationHelper.GetString("Setup_GatewayUrlHeader"),
+            PlaceholderText = LocalizationHelper.GetString("Setup_GatewayUrlPlaceholder"),
             Text = _draftGatewayUrl
         };
+        AutomationProperties.SetAutomationId(_gatewayUrlBox, "GatewayUrlBox");
         _gatewayUrlBox.TextChanged += (s, e) => _connectionTested = false;
         _manualEntryPanel.Children.Add(_gatewayUrlBox);
         _manualEntryPanel.Children.Add(new TextBlock
         {
-            Text = "💡 Accepts ws://, wss://, http://, or https://",
-            FontSize = 12, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Text = LocalizationHelper.GetString("Setup_GatewayUrlHint"),
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
         _tokenBox = new PasswordBox
         {
-            Header = "Gateway Token",
-            PlaceholderText = "Paste your token here",
+            Header = LocalizationHelper.GetString("Setup_TokenHeader"),
+            PlaceholderText = LocalizationHelper.GetString("Setup_TokenPlaceholder"),
             Password = _draftToken
         };
+        AutomationProperties.SetAutomationId(_tokenBox, "TokenBox");
         _tokenBox.PasswordChanged += (s, e) => _connectionTested = false;
         _manualEntryPanel.Children.Add(_tokenBox);
         _stepPanels[0].Children.Add(_manualEntryPanel);
 
         // Test connection
-        _testButton = new Button { Content = "Test Connection" };
+        _testButton = new Button { Content = LocalizationHelper.GetString("Setup_TestButton") };
+        AutomationProperties.SetAutomationId(_testButton, "TestConnectionButton");
         _testButton.Click += OnTestConnection;
         _stepPanels[0].Children.Add(_testButton);
         _testStatusLabel = new TextBlock
@@ -183,21 +190,22 @@ public sealed class SetupWizardWindow : WindowEx
         _stepPanels[1] = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed };
         _stepPanels[1].Children.Add(new TextBlock
         {
-            Text = "Enable Node Mode (optional)",
+            Text = LocalizationHelper.GetString("Setup_NodeModeTitle"),
             FontWeight = FontWeights.SemiBold,
-            FontSize = 16
+            Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
         });
         _stepPanels[1].Children.Add(new TextBlock
         {
-            Text = "Node Mode lets your Windows machine run tasks for OpenClaw — like screen capture, camera access, and canvas drawing.",
+            Text = LocalizationHelper.GetString("Setup_NodeModeDescription"),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
         _nodeModeToggle = new ToggleSwitch
         {
-            Header = "Enable Node Mode",
+            Header = LocalizationHelper.GetString("Setup_NodeModeToggle"),
             IsOn = _draftEnableNodeMode
         };
+        AutomationProperties.SetAutomationId(_nodeModeToggle, "NodeModeToggle");
         _nodeModeToggle.Toggled += (s, e) =>
         {
             var showPairing = _nodeModeToggle.IsOn;
@@ -209,7 +217,7 @@ public sealed class SetupWizardWindow : WindowEx
 
         _deviceIdText = new TextBlock
         {
-            Text = "Device ID: loading...",
+            Text = LocalizationHelper.GetString("Setup_DeviceIdLoading"),
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.Wrap,
@@ -219,9 +227,10 @@ public sealed class SetupWizardWindow : WindowEx
 
         _copyDeviceIdButton = new Button
         {
-            Content = "📋 Copy Device ID",
+            Content = LocalizationHelper.GetString("Setup_CopyDeviceId"),
             Visibility = _draftEnableNodeMode ? Visibility.Visible : Visibility.Collapsed
         };
+        AutomationProperties.SetAutomationId(_copyDeviceIdButton, "CopyDeviceIdButton");
         _copyDeviceIdButton.Click += OnCopyDeviceId;
         _stepPanels[1].Children.Add(_copyDeviceIdButton);
 
@@ -239,9 +248,9 @@ public sealed class SetupWizardWindow : WindowEx
         };
         pairingInstructions.Children.Add(new TextBlock
         {
-            Text = "To approve this node, run on your gateway host:",
+            Text = LocalizationHelper.GetString("Setup_ApproveInstructions"),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
         var approveCmd = new TextBox
         {
@@ -249,8 +258,8 @@ public sealed class SetupWizardWindow : WindowEx
             IsReadOnly = true,
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             BorderThickness = new Thickness(1),
-            Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 40, 40, 40)),
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.LightGreen),
+            Background = (SolidColorBrush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+            Foreground = (SolidColorBrush)Application.Current.Resources["SystemFillColorSuccessBrush"],
             Padding = new Thickness(12, 8, 12, 8),
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap
@@ -258,10 +267,10 @@ public sealed class SetupWizardWindow : WindowEx
         pairingInstructions.Children.Add(approveCmd);
         pairingInstructions.Children.Add(new TextBlock
         {
-            Text = "💡 You can finish setup now — pairing will continue in the background. You'll get a notification when approved.",
+            Text = LocalizationHelper.GetString("Setup_ApproveHint"),
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 12,
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
         _stepPanels[1].Children.Add(pairingInstructions);
         contentArea.Children.Add(_stepPanels[1]);
@@ -270,15 +279,15 @@ public sealed class SetupWizardWindow : WindowEx
         _stepPanels[2] = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed };
         _stepPanels[2].Children.Add(new TextBlock
         {
-            Text = "🎉 You're all set!",
+            Text = LocalizationHelper.GetString("Setup_DoneTitle"),
             FontWeight = FontWeights.SemiBold,
-            FontSize = 16
+            Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
         });
         _stepPanels[2].Children.Add(new TextBlock
         {
-            Text = "OpenClaw Tray will connect to your gateway and start monitoring.",
+            Text = LocalizationHelper.GetString("Setup_DoneDescription"),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
         contentArea.Children.Add(_stepPanels[2]);
 
@@ -298,15 +307,17 @@ public sealed class SetupWizardWindow : WindowEx
             Spacing = 8,
             Margin = new Thickness(0, 16, 0, 0)
         };
-        _backButton = new Button { Content = "Back", Visibility = Visibility.Collapsed };
+        _backButton = new Button { Content = LocalizationHelper.GetString("Setup_BackButton"), Visibility = Visibility.Collapsed };
+        AutomationProperties.SetAutomationId(_backButton, "BackButton");
         _backButton.Click += (s, e) => GoToStep(_currentStep - 1);
         navPanel.Children.Add(_backButton);
 
         _nextButton = new Button
         {
-            Content = "Next",
+            Content = LocalizationHelper.GetString("Setup_NextButton"),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"]
         };
+        AutomationProperties.SetAutomationId(_nextButton, "NextButton");
         _nextButton.Click += OnNextClicked;
         navPanel.Children.Add(_nextButton);
 
@@ -330,16 +341,16 @@ public sealed class SetupWizardWindow : WindowEx
 
         _backButton.Visibility = _currentStep > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        var stepNames = new[] { "Connect", "Node Mode", "Done" };
-        _stepIndicator.Text = $"Step {_currentStep + 1} of {TotalSteps} — {stepNames[_currentStep]}";
+        var stepKeys = new[] { "Setup_StepConnect", "Setup_StepNodeMode", "Setup_StepDone" };
+        _stepIndicator.Text = LocalizationHelper.GetString(stepKeys[_currentStep]);
 
         if (_currentStep == TotalSteps - 1)
         {
-            _nextButton.Content = "Finish";
+            _nextButton.Content = LocalizationHelper.GetString("Setup_FinishButton");
         }
         else
         {
-            _nextButton.Content = "Next";
+            _nextButton.Content = LocalizationHelper.GetString("Setup_NextButton");
         }
     }
 
@@ -350,7 +361,7 @@ public sealed class SetupWizardWindow : WindowEx
             case 0: // Connection — must have tested successfully
                 if (!_connectionTested)
                 {
-                    _testStatusLabel.Text = "⚠️ Please test the connection first";
+                    _testStatusLabel.Text = LocalizationHelper.GetString("Setup_TestFirst");
                     return;
                 }
                 GoToStep(1);
@@ -396,7 +407,7 @@ public sealed class SetupWizardWindow : WindowEx
 
             // Show manual fields so user can see what was decoded
             _manualEntryPanel.Visibility = Visibility.Visible;
-            _testStatusLabel.Text = "✅ Setup code decoded — press Test Connection";
+            _testStatusLabel.Text = LocalizationHelper.GetString("Setup_CodeDecoded");
             Logger.Info($"[Setup] Setup code decoded: gateway={GatewayUrlHelper.SanitizeForDisplay(_draftGatewayUrl)}");
         }
         catch
@@ -418,11 +429,11 @@ public sealed class SetupWizardWindow : WindowEx
 
         if (string.IsNullOrWhiteSpace(_draftToken))
         {
-            _testStatusLabel.Text = "❌ Please enter a token";
+            _testStatusLabel.Text = LocalizationHelper.GetString("Setup_TokenRequired");
             return;
         }
 
-        _testStatusLabel.Text = "⏳ Testing...";
+        _testStatusLabel.Text = LocalizationHelper.GetString("Setup_Testing");
         _testButton.IsEnabled = false;
         _connectionTested = false;
 
@@ -465,7 +476,7 @@ public sealed class SetupWizardWindow : WindowEx
             if (connected)
             {
                 Logger.Info("[Setup] Test succeeded - fully connected");
-                _testStatusLabel.Text = "✅ Connected!";
+                _testStatusLabel.Text = LocalizationHelper.GetString("Setup_Connected");
                 _connectionTested = true;
             }
             else if (lastError.Contains("pairing required", StringComparison.OrdinalIgnoreCase) ||
@@ -473,20 +484,20 @@ public sealed class SetupWizardWindow : WindowEx
             {
                 Logger.Info("[Setup] Test succeeded - pairing approval needed");
                 var deviceId = _copyDeviceIdButton.Tag?.ToString() ?? "your-device-id";
-                _testStatusLabel.Text = $"✅ Gateway reached! Device needs pairing approval.\n\nOn your gateway host (Mac/Linux), run:\n\n  openclaw devices approve {deviceId}";
+                _testStatusLabel.Text = string.Format(LocalizationHelper.GetString("Setup_PairingRequired"), deviceId);
                 _connectionTested = true;
             }
             else if (lastError.Contains("token mismatch", StringComparison.OrdinalIgnoreCase))
             {
-                _testStatusLabel.Text = "❌ Token doesn't match.\n\n💡 Check gateway auth token:\n  cat ~/.openclaw/openclaw.json | grep token";
+                _testStatusLabel.Text = LocalizationHelper.GetString("Setup_TokenMismatch");
             }
             else if (lastError.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase))
             {
-                _testStatusLabel.Text = "❌ Origin not allowed.\n\n💡 Add this machine to gateway.controlUi.allowedOrigins.";
+                _testStatusLabel.Text = LocalizationHelper.GetString("Setup_OriginNotAllowed");
             }
             else if (lastError.Contains("too many failed", StringComparison.OrdinalIgnoreCase))
             {
-                _testStatusLabel.Text = "❌ Rate-limited. Wait a minute and try again.";
+                _testStatusLabel.Text = LocalizationHelper.GetString("Setup_RateLimited");
             }
             else if (!string.IsNullOrEmpty(lastError))
             {
@@ -494,7 +505,7 @@ public sealed class SetupWizardWindow : WindowEx
             }
             else
             {
-                _testStatusLabel.Text = "❌ Timed out. Check the URL and gateway is running.";
+                _testStatusLabel.Text = LocalizationHelper.GetString("Setup_TimedOut");
             }
         }
         catch (Exception ex)
@@ -540,7 +551,7 @@ public sealed class SetupWizardWindow : WindowEx
         catch (Exception ex)
         {
             Logger.Warn($"[Setup] Could not load device identity: {ex.Message}");
-            _deviceIdText.Text = "Device ID: (will be generated on first connect)";
+            _deviceIdText.Text = LocalizationHelper.GetString("Setup_DeviceIdFallback");
         }
     }
 
@@ -554,13 +565,13 @@ public sealed class SetupWizardWindow : WindowEx
             var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
             dataPackage.SetText(fullId);
             global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
-            _copyDeviceIdButton.Content = "✅ Copied!";
+            _copyDeviceIdButton.Content = LocalizationHelper.GetString("Setup_DeviceIdCopied");
             Logger.Info("[Setup] Device ID copied to clipboard");
 
             // Reset button text after 2 seconds
             _ = Task.Delay(2000).ContinueWith(_ =>
             {
-                DispatcherQueue.TryEnqueue(() => _copyDeviceIdButton.Content = "📋 Copy Device ID");
+                DispatcherQueue.TryEnqueue(() => _copyDeviceIdButton.Content = LocalizationHelper.GetString("Setup_CopyDeviceId"));
             });
         }
         catch (Exception ex)

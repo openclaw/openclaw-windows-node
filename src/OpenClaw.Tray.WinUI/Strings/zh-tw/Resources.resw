@@ -624,6 +624,138 @@
     <value>打開串流活動</value>
   </data>
 
+  <!-- ==================== SetupWizardWindow (C# code) ==================== -->
+
+  <data name="Setup_Title" xml:space="preserve">
+    <value>OpenClaw 設定</value>
+  </data>
+  <data name="Setup_StepConnect" xml:space="preserve">
+    <value>第 1 步（共 3 步）— 連線</value>
+  </data>
+  <data name="Setup_ConnectTitle" xml:space="preserve">
+    <value>連線到您的閘道器</value>
+  </data>
+  <data name="Setup_ConnectDescription" xml:space="preserve">
+    <value>在您的閘道器主機（Mac/Linux）上執行以下命令取得設定碼：</value>
+  </data>
+  <data name="Setup_SetupCodeHeader" xml:space="preserve">
+    <value>設定碼</value>
+  </data>
+  <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
+    <value>貼上來自閘道器儀表板的設定碼</value>
+  </data>
+  <data name="Setup_ManualEntryToggle" xml:space="preserve">
+    <value>或手動輸入 URL 和權杖 ▾</value>
+  </data>
+  <data name="Setup_ManualEntryToggleHide" xml:space="preserve">
+    <value>隱藏手動輸入 ▴</value>
+  </data>
+  <data name="Setup_GatewayUrlHeader" xml:space="preserve">
+    <value>閘道器網址</value>
+  </data>
+  <data name="Setup_GatewayUrlPlaceholder" xml:space="preserve">
+    <value>ws://192.168.1.x:18789</value>
+  </data>
+  <data name="Setup_GatewayUrlHint" xml:space="preserve">
+    <value>💡 支援 ws://、wss://、http:// 或 https://</value>
+  </data>
+  <data name="Setup_TokenHeader" xml:space="preserve">
+    <value>閘道器權杖</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>在此貼上您的權杖</value>
+  </data>
+  <data name="Setup_TestButton" xml:space="preserve">
+    <value>測試連線</value>
+  </data>
+  <data name="Setup_Testing" xml:space="preserve">
+    <value>⏳ 正在連線到閘道器...</value>
+  </data>
+  <data name="Setup_Connected" xml:space="preserve">
+    <value>✅ 已連線！</value>
+  </data>
+  <data name="Setup_PairingRequired" xml:space="preserve">
+    <value>✅ 已連線到閘道器！裝置需要配對核准。
+
+在您的閘道器主機（Mac/Linux）上執行：
+
+  openclaw devices approve {0}</value>
+  </data>
+  <data name="Setup_TokenMismatch" xml:space="preserve">
+    <value>❌ 權杖不符。
+
+💡 檢查閘道器認證權杖：
+  cat ~/.openclaw/openclaw.json | grep token</value>
+  </data>
+  <data name="Setup_OriginNotAllowed" xml:space="preserve">
+    <value>❌ 來源不被允許。
+
+💡 將此機器加入 gateway.controlUi.allowedOrigins。</value>
+  </data>
+  <data name="Setup_RateLimited" xml:space="preserve">
+    <value>❌ 請求過於頻繁。請等待一分鐘後重試。</value>
+  </data>
+  <data name="Setup_TimedOut" xml:space="preserve">
+    <value>❌ 連線逾時。請檢查網址和閘道器是否正在執行。</value>
+  </data>
+  <data name="Setup_TokenRequired" xml:space="preserve">
+    <value>❌ 請輸入權杖</value>
+  </data>
+  <data name="Setup_TestFirst" xml:space="preserve">
+    <value>⚠️ 請先測試連線</value>
+  </data>
+  <data name="Setup_CodeDecoded" xml:space="preserve">
+    <value>✅ 設定碼已解碼 — 請點擊「測試連線」</value>
+  </data>
+  <data name="Setup_NodeModeTitle" xml:space="preserve">
+    <value>啟用節點模式（選用）</value>
+  </data>
+  <data name="Setup_NodeModeDescription" xml:space="preserve">
+    <value>節點模式允許您的 Windows 電腦為 OpenClaw 執行任務 — 如螢幕擷取、攝影機存取和畫布繪製。</value>
+  </data>
+  <data name="Setup_NodeModeToggle" xml:space="preserve">
+    <value>啟用節點模式</value>
+  </data>
+  <data name="Setup_DeviceIdLoading" xml:space="preserve">
+    <value>裝置 ID：載入中...</value>
+  </data>
+  <data name="Setup_DeviceIdFallback" xml:space="preserve">
+    <value>裝置 ID：（將在首次連線時產生）</value>
+  </data>
+  <data name="Setup_CopyDeviceId" xml:space="preserve">
+    <value>📋 複製裝置 ID</value>
+  </data>
+  <data name="Setup_DeviceIdCopied" xml:space="preserve">
+    <value>✅ 已複製！</value>
+  </data>
+  <data name="Setup_ApproveInstructions" xml:space="preserve">
+    <value>要核准此節點，請在閘道器主機上執行：</value>
+  </data>
+  <data name="Setup_ApproveHint" xml:space="preserve">
+    <value>💡 您可以現在完成設定 — 配對將在背景繼續。獲得核准後會收到通知。</value>
+  </data>
+  <data name="Setup_DoneTitle" xml:space="preserve">
+    <value>🎉 一切就緒！</value>
+  </data>
+  <data name="Setup_DoneDescription" xml:space="preserve">
+    <value>OpenClaw 系統匣將連線到您的閘道器並開始監控。</value>
+  </data>
+  <data name="Setup_BackButton" xml:space="preserve">
+    <value>上一步</value>
+  </data>
+  <data name="Setup_NextButton" xml:space="preserve">
+    <value>下一步</value>
+  </data>
+  <data name="Setup_FinishButton" xml:space="preserve">
+    <value>完成</value>
+  </data>
+  <data name="Setup_StepNodeMode" xml:space="preserve">
+    <value>第 2 步（共 3 步）— 節點模式</value>
+  </data>
+  <data name="Setup_StepDone" xml:space="preserve">
+    <value>第 3 步（共 3 步）— 完成</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">

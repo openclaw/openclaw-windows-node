@@ -24,9 +24,9 @@
                 <!-- Connection Section -->
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="SettingsConnectionHeader" Text="CONNECTION" Style="{StaticResource CaptionTextBlockStyle}" 
-                               Foreground="#E74C3C" FontWeight="Bold"/>
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
 
-                    <ToggleSwitch x:Name="UseSshTunnelToggle" Header="Connect through SSH tunnel" Toggled="OnUseSshTunnelToggled"/>
+                    <ToggleSwitch x:Name="UseSshTunnelToggle" AutomationProperties.AutomationId="UseSshTunnelToggle" Header="Connect through SSH tunnel" Toggled="OnUseSshTunnelToggled"/>
 
                     <StackPanel x:Name="SshTunnelDetailsPanel" Spacing="8" Visibility="Collapsed">
                         <TextBlock Text="When enabled, the app will connect through ws://127.0.0.1:&lt;local-port&gt; and create an SSH forward to the remote gateway host."
@@ -40,8 +40,8 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBox x:Name="SshTunnelUserTextBox" Grid.Column="0" Header="SSH User" PlaceholderText="user"/>
-                            <TextBox x:Name="SshTunnelHostTextBox" Grid.Column="1" Header="SSH Host" PlaceholderText="machine-name or IP"/>
+                            <TextBox x:Name="SshTunnelUserTextBox" AutomationProperties.AutomationId="SshTunnelUserTextBox" Grid.Column="0" Header="SSH User" PlaceholderText="user"/>
+                            <TextBox x:Name="SshTunnelHostTextBox" AutomationProperties.AutomationId="SshTunnelHostTextBox" Grid.Column="1" Header="SSH Host" PlaceholderText="machine-name or IP"/>
                         </Grid>
 
                         <Grid ColumnSpacing="8">
@@ -50,18 +50,18 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBox x:Name="SshTunnelRemotePortTextBox" Grid.Column="0" Header="Remote Gateway Port" PlaceholderText="18789"/>
-                            <TextBox x:Name="SshTunnelLocalPortTextBox" Grid.Column="1" Header="Local Forward Port" PlaceholderText="18789" TextChanged="OnSshTunnelLocalPortTextChanged"/>
+                            <TextBox x:Name="SshTunnelRemotePortTextBox" AutomationProperties.AutomationId="SshTunnelRemotePortTextBox" Grid.Column="0" Header="Remote Gateway Port" PlaceholderText="18789"/>
+                            <TextBox x:Name="SshTunnelLocalPortTextBox" AutomationProperties.AutomationId="SshTunnelLocalPortTextBox" Grid.Column="1" Header="Local Forward Port" PlaceholderText="18789" TextChanged="OnSshTunnelLocalPortTextChanged"/>
                         </Grid>
                     </StackPanel>
                     
-                    <TextBox x:Name="GatewayUrlTextBox" x:Uid="SettingsGatewayUrlTextBox" Header="Gateway URL" 
+                    <TextBox x:Name="GatewayUrlTextBox" x:Uid="SettingsGatewayUrlTextBox" AutomationProperties.AutomationId="GatewayUrlTextBox" Header="Gateway URL" 
                              PlaceholderText="ws://localhost:18789 or https://host.tailnet.ts.net"/>
                     
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBox x:Name="TokenTextBox" x:Uid="SettingsTokenTextBox" Header="Token" 
+                        <TextBox x:Name="TokenTextBox" x:Uid="SettingsTokenTextBox" AutomationProperties.AutomationId="TokenTextBox" Header="Token" 
                                  PlaceholderText="Your API token" Width="300"/>
-                        <Button x:Name="TestConnectionButton" x:Uid="SettingsTestConnectionButton" Content="Test" 
+                        <Button x:Name="TestConnectionButton" x:Uid="SettingsTestConnectionButton" AutomationProperties.AutomationId="TestConnectionButton" Content="Test" 
                                 VerticalAlignment="Bottom" Click="OnTestConnection"/>
                     </StackPanel>
                     
@@ -72,20 +72,20 @@
                 <!-- Startup Section -->
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="SettingsStartupHeader" Text="STARTUP" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="#E74C3C" FontWeight="Bold"/>
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                     
-                    <ToggleSwitch x:Name="AutoStartToggle" x:Uid="SettingsAutoStartToggle" Header="Start automatically with Windows"/>
-                    <ToggleSwitch x:Name="GlobalHotkeyToggle" x:Uid="SettingsGlobalHotkeyToggle" Header="Global hotkey (Ctrl+Alt+Shift+C → Quick Send)"/>
+                    <ToggleSwitch x:Name="AutoStartToggle" x:Uid="SettingsAutoStartToggle" AutomationProperties.AutomationId="AutoStartToggle" Header="Start automatically with Windows"/>
+                    <ToggleSwitch x:Name="GlobalHotkeyToggle" x:Uid="SettingsGlobalHotkeyToggle" AutomationProperties.AutomationId="GlobalHotkeyToggle" Header="Global hotkey (Ctrl+Alt+Shift+C → Quick Send)"/>
                 </StackPanel>
 
                 <!-- Notifications Section -->
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="SettingsNotificationsHeader" Text="NOTIFICATIONS" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="#E74C3C" FontWeight="Bold"/>
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                     
-                    <ToggleSwitch x:Name="NotificationsToggle" x:Uid="SettingsNotificationsToggle" Header="Show notifications"/>
+                    <ToggleSwitch x:Name="NotificationsToggle" x:Uid="SettingsNotificationsToggle" AutomationProperties.AutomationId="NotificationsToggle" Header="Show notifications"/>
                     
-                    <ComboBox x:Name="NotificationSoundComboBox" x:Uid="SettingsSoundComboBox" Header="Sound" Width="200">
+                    <ComboBox x:Name="NotificationSoundComboBox" x:Uid="SettingsSoundComboBox" AutomationProperties.AutomationId="NotificationSoundComboBox" Header="Sound" Width="200">
                         <ComboBoxItem x:Uid="SettingsSoundDefault" Content="Default" Tag="Default"/>
                         <ComboBoxItem x:Uid="SettingsSoundNone" Content="None" Tag="None"/>
                         <ComboBoxItem x:Uid="SettingsSoundSubtle" Content="Subtle" Tag="Subtle"/>
@@ -98,27 +98,27 @@
                                Margin="0,0,0,4"/>
                     
                     <StackPanel Spacing="4">
-                        <CheckBox x:Name="NotifyHealthCb" x:Uid="SettingsNotifyHealthCb" Content="Health alerts"/>
-                        <CheckBox x:Name="NotifyUrgentCb" x:Uid="SettingsNotifyUrgentCb" Content="Urgent messages"/>
-                        <CheckBox x:Name="NotifyReminderCb" x:Uid="SettingsNotifyReminderCb" Content="Reminders"/>
-                        <CheckBox x:Name="NotifyEmailCb" x:Uid="SettingsNotifyEmailCb" Content="Email summaries"/>
-                        <CheckBox x:Name="NotifyCalendarCb" x:Uid="SettingsNotifyCalendarCb" Content="Calendar events"/>
-                        <CheckBox x:Name="NotifyBuildCb" x:Uid="SettingsNotifyBuildCb" Content="Build notifications"/>
-                        <CheckBox x:Name="NotifyStockCb" x:Uid="SettingsNotifyStockCb" Content="Stock alerts"/>
-                        <CheckBox x:Name="NotifyInfoCb" x:Uid="SettingsNotifyInfoCb" Content="Info messages"/>
+                        <CheckBox x:Name="NotifyHealthCb" x:Uid="SettingsNotifyHealthCb" AutomationProperties.AutomationId="NotifyHealthCb" Content="Health alerts"/>
+                        <CheckBox x:Name="NotifyUrgentCb" x:Uid="SettingsNotifyUrgentCb" AutomationProperties.AutomationId="NotifyUrgentCb" Content="Urgent messages"/>
+                        <CheckBox x:Name="NotifyReminderCb" x:Uid="SettingsNotifyReminderCb" AutomationProperties.AutomationId="NotifyReminderCb" Content="Reminders"/>
+                        <CheckBox x:Name="NotifyEmailCb" x:Uid="SettingsNotifyEmailCb" AutomationProperties.AutomationId="NotifyEmailCb" Content="Email summaries"/>
+                        <CheckBox x:Name="NotifyCalendarCb" x:Uid="SettingsNotifyCalendarCb" AutomationProperties.AutomationId="NotifyCalendarCb" Content="Calendar events"/>
+                        <CheckBox x:Name="NotifyBuildCb" x:Uid="SettingsNotifyBuildCb" AutomationProperties.AutomationId="NotifyBuildCb" Content="Build notifications"/>
+                        <CheckBox x:Name="NotifyStockCb" x:Uid="SettingsNotifyStockCb" AutomationProperties.AutomationId="NotifyStockCb" Content="Stock alerts"/>
+                        <CheckBox x:Name="NotifyInfoCb" x:Uid="SettingsNotifyInfoCb" AutomationProperties.AutomationId="NotifyInfoCb" Content="Info messages"/>
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Test Notification -->
-                <Button x:Name="TestNotificationButton" x:Uid="SettingsTestNotificationButton" Content="Send Test Notification" 
+                <Button x:Name="TestNotificationButton" x:Uid="SettingsTestNotificationButton" AutomationProperties.AutomationId="TestNotificationButton" Content="Send Test Notification" 
                         Click="OnTestNotification"/>
                 
                 <!-- Advanced Section -->
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="SettingsAdvancedHeader" Text="ADVANCED (EXPERIMENTAL)" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="#E74C3C" FontWeight="Bold"/>
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                     
-                    <ToggleSwitch x:Name="NodeModeToggle" x:Uid="SettingsNodeModeToggle" Header="Enable Node Mode"/>
+                    <ToggleSwitch x:Name="NodeModeToggle" x:Uid="SettingsNodeModeToggle" AutomationProperties.AutomationId="NodeModeToggle" Header="Enable Node Mode"/>
                     <TextBlock x:Uid="SettingsNodeModeDescription" Text="When enabled, this PC can receive commands from the agent (canvas, screenshots, etc.)" 
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -137,7 +137,7 @@
                 Padding="24,16">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button x:Uid="SettingsCancelButton" Content="Cancel" Click="OnCancel" Width="80"/>
-                <Button x:Name="SaveButton" x:Uid="SettingsSaveButton" Content="Save" 
+                <Button x:Name="SaveButton" x:Uid="SettingsSaveButton" AutomationProperties.AutomationId="SaveButton" Content="Save" 
                         Click="OnSave" Width="80" Style="{ThemeResource AccentButtonStyle}"/>
             </StackPanel>
         </Border>

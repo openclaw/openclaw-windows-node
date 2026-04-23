@@ -624,6 +624,138 @@ Gebruik een van deze opties:
     <value>Activiteitenstroom openen</value>
   </data>
 
+  <!-- ==================== SetupWizardWindow (C# code) ==================== -->
+
+  <data name="Setup_Title" xml:space="preserve">
+    <value>OpenClaw Instellen</value>
+  </data>
+  <data name="Setup_StepConnect" xml:space="preserve">
+    <value>Stap 1 van 3 — Verbinden</value>
+  </data>
+  <data name="Setup_ConnectTitle" xml:space="preserve">
+    <value>Verbind met uw gateway</value>
+  </data>
+  <data name="Setup_ConnectDescription" xml:space="preserve">
+    <value>Voer op uw gateway-host (Mac/Linux) deze opdracht uit om een installatiecode te krijgen:</value>
+  </data>
+  <data name="Setup_SetupCodeHeader" xml:space="preserve">
+    <value>Installatiecode</value>
+  </data>
+  <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
+    <value>Plak de installatiecode van uw gateway-dashboard</value>
+  </data>
+  <data name="Setup_ManualEntryToggle" xml:space="preserve">
+    <value>Of voer URL en token handmatig in ▾</value>
+  </data>
+  <data name="Setup_ManualEntryToggleHide" xml:space="preserve">
+    <value>Handmatige invoer verbergen ▴</value>
+  </data>
+  <data name="Setup_GatewayUrlHeader" xml:space="preserve">
+    <value>Gateway-URL</value>
+  </data>
+  <data name="Setup_GatewayUrlPlaceholder" xml:space="preserve">
+    <value>ws://192.168.1.x:18789</value>
+  </data>
+  <data name="Setup_GatewayUrlHint" xml:space="preserve">
+    <value>💡 Accepteert ws://, wss://, http:// of https://</value>
+  </data>
+  <data name="Setup_TokenHeader" xml:space="preserve">
+    <value>Gateway-token</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>Plak hier uw token</value>
+  </data>
+  <data name="Setup_TestButton" xml:space="preserve">
+    <value>Verbinding testen</value>
+  </data>
+  <data name="Setup_Testing" xml:space="preserve">
+    <value>⏳ Verbinden met gateway...</value>
+  </data>
+  <data name="Setup_Connected" xml:space="preserve">
+    <value>✅ Verbonden!</value>
+  </data>
+  <data name="Setup_PairingRequired" xml:space="preserve">
+    <value>✅ Gateway bereikt! Apparaat moet worden goedgekeurd voor koppeling.
+
+Voer op uw gateway-host (Mac/Linux) uit:
+
+  openclaw devices approve {0}</value>
+  </data>
+  <data name="Setup_TokenMismatch" xml:space="preserve">
+    <value>❌ Token komt niet overeen.
+
+💡 Controleer het gateway-verificatietoken:
+  cat ~/.openclaw/openclaw.json | grep token</value>
+  </data>
+  <data name="Setup_OriginNotAllowed" xml:space="preserve">
+    <value>❌ Oorsprong niet toegestaan.
+
+💡 Voeg deze machine toe aan gateway.controlUi.allowedOrigins.</value>
+  </data>
+  <data name="Setup_RateLimited" xml:space="preserve">
+    <value>❌ Te veel verzoeken. Wacht een minuut en probeer opnieuw.</value>
+  </data>
+  <data name="Setup_TimedOut" xml:space="preserve">
+    <value>❌ Time-out. Controleer de URL en of de gateway draait.</value>
+  </data>
+  <data name="Setup_TokenRequired" xml:space="preserve">
+    <value>❌ Voer een token in</value>
+  </data>
+  <data name="Setup_TestFirst" xml:space="preserve">
+    <value>⚠️ Test eerst de verbinding</value>
+  </data>
+  <data name="Setup_CodeDecoded" xml:space="preserve">
+    <value>✅ Installatiecode gedecodeerd — druk op Verbinding testen</value>
+  </data>
+  <data name="Setup_NodeModeTitle" xml:space="preserve">
+    <value>Knooppuntmodus inschakelen (optioneel)</value>
+  </data>
+  <data name="Setup_NodeModeDescription" xml:space="preserve">
+    <value>Knooppuntmodus laat uw Windows-machine taken uitvoeren voor OpenClaw — zoals schermopname, cameratoegang en canvas-tekenen.</value>
+  </data>
+  <data name="Setup_NodeModeToggle" xml:space="preserve">
+    <value>Knooppuntmodus inschakelen</value>
+  </data>
+  <data name="Setup_DeviceIdLoading" xml:space="preserve">
+    <value>Apparaat-ID: laden...</value>
+  </data>
+  <data name="Setup_DeviceIdFallback" xml:space="preserve">
+    <value>Apparaat-ID: (wordt gegenereerd bij eerste verbinding)</value>
+  </data>
+  <data name="Setup_CopyDeviceId" xml:space="preserve">
+    <value>📋 Apparaat-ID kopiëren</value>
+  </data>
+  <data name="Setup_DeviceIdCopied" xml:space="preserve">
+    <value>✅ Gekopieerd!</value>
+  </data>
+  <data name="Setup_ApproveInstructions" xml:space="preserve">
+    <value>Om dit knooppunt goed te keuren, voer uit op uw gateway-host:</value>
+  </data>
+  <data name="Setup_ApproveHint" xml:space="preserve">
+    <value>💡 U kunt de installatie nu voltooien — koppeling gaat op de achtergrond door. U ontvangt een melding wanneer goedgekeurd.</value>
+  </data>
+  <data name="Setup_DoneTitle" xml:space="preserve">
+    <value>🎉 Alles is klaar!</value>
+  </data>
+  <data name="Setup_DoneDescription" xml:space="preserve">
+    <value>OpenClaw Tray zal verbinding maken met uw gateway en beginnen met monitoren.</value>
+  </data>
+  <data name="Setup_BackButton" xml:space="preserve">
+    <value>Vorige</value>
+  </data>
+  <data name="Setup_NextButton" xml:space="preserve">
+    <value>Volgende</value>
+  </data>
+  <data name="Setup_FinishButton" xml:space="preserve">
+    <value>Voltooien</value>
+  </data>
+  <data name="Setup_StepNodeMode" xml:space="preserve">
+    <value>Stap 2 van 3 — Knooppuntmodus</value>
+  </data>
+  <data name="Setup_StepDone" xml:space="preserve">
+    <value>Stap 3 van 3 — Gereed</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">

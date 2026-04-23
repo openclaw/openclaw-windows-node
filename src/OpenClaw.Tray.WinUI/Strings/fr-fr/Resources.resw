@@ -624,6 +624,138 @@ Utilisez l'une de ces options :
     <value>Créer un nouveau flux d'activités</value>
   </data>
 
+  <!-- ==================== SetupWizardWindow (C# code) ==================== -->
+
+  <data name="Setup_Title" xml:space="preserve">
+    <value>Configuration d'OpenClaw</value>
+  </data>
+  <data name="Setup_StepConnect" xml:space="preserve">
+    <value>Étape 1 sur 3 — Connexion</value>
+  </data>
+  <data name="Setup_ConnectTitle" xml:space="preserve">
+    <value>Connectez-vous à votre passerelle</value>
+  </data>
+  <data name="Setup_ConnectDescription" xml:space="preserve">
+    <value>Sur votre hôte passerelle (Mac/Linux), exécutez cette commande pour obtenir un code de configuration :</value>
+  </data>
+  <data name="Setup_SetupCodeHeader" xml:space="preserve">
+    <value>Code de configuration</value>
+  </data>
+  <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
+    <value>Collez le code de configuration depuis le tableau de bord de votre passerelle</value>
+  </data>
+  <data name="Setup_ManualEntryToggle" xml:space="preserve">
+    <value>Ou entrez l'URL et le jeton manuellement ▾</value>
+  </data>
+  <data name="Setup_ManualEntryToggleHide" xml:space="preserve">
+    <value>Masquer la saisie manuelle ▴</value>
+  </data>
+  <data name="Setup_GatewayUrlHeader" xml:space="preserve">
+    <value>URL de la passerelle</value>
+  </data>
+  <data name="Setup_GatewayUrlPlaceholder" xml:space="preserve">
+    <value>ws://192.168.1.x:18789</value>
+  </data>
+  <data name="Setup_GatewayUrlHint" xml:space="preserve">
+    <value>💡 Accepte ws://, wss://, http:// ou https://</value>
+  </data>
+  <data name="Setup_TokenHeader" xml:space="preserve">
+    <value>Jeton de la passerelle</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>Collez votre jeton ici</value>
+  </data>
+  <data name="Setup_TestButton" xml:space="preserve">
+    <value>Tester la connexion</value>
+  </data>
+  <data name="Setup_Testing" xml:space="preserve">
+    <value>⏳ Connexion à la passerelle...</value>
+  </data>
+  <data name="Setup_Connected" xml:space="preserve">
+    <value>✅ Connecté !</value>
+  </data>
+  <data name="Setup_PairingRequired" xml:space="preserve">
+    <value>✅ Passerelle atteinte ! L'appareil nécessite une approbation d'appariement.
+
+Sur votre hôte passerelle (Mac/Linux), exécutez :
+
+  openclaw devices approve {0}</value>
+  </data>
+  <data name="Setup_TokenMismatch" xml:space="preserve">
+    <value>❌ Le jeton ne correspond pas.
+
+💡 Vérifiez le jeton d'authentification de la passerelle :
+  cat ~/.openclaw/openclaw.json | grep token</value>
+  </data>
+  <data name="Setup_OriginNotAllowed" xml:space="preserve">
+    <value>❌ Origine non autorisée.
+
+💡 Ajoutez cette machine à gateway.controlUi.allowedOrigins.</value>
+  </data>
+  <data name="Setup_RateLimited" xml:space="preserve">
+    <value>❌ Trop de tentatives. Attendez une minute et réessayez.</value>
+  </data>
+  <data name="Setup_TimedOut" xml:space="preserve">
+    <value>❌ Délai expiré. Vérifiez l'URL et que la passerelle fonctionne.</value>
+  </data>
+  <data name="Setup_TokenRequired" xml:space="preserve">
+    <value>❌ Veuillez entrer un jeton</value>
+  </data>
+  <data name="Setup_TestFirst" xml:space="preserve">
+    <value>⚠️ Veuillez d'abord tester la connexion</value>
+  </data>
+  <data name="Setup_CodeDecoded" xml:space="preserve">
+    <value>✅ Code de configuration décodé — appuyez sur Tester la connexion</value>
+  </data>
+  <data name="Setup_NodeModeTitle" xml:space="preserve">
+    <value>Activer le mode nœud (optionnel)</value>
+  </data>
+  <data name="Setup_NodeModeDescription" xml:space="preserve">
+    <value>Le mode nœud permet à votre machine Windows d'exécuter des tâches pour OpenClaw — comme la capture d'écran, l'accès caméra et le dessin sur canevas.</value>
+  </data>
+  <data name="Setup_NodeModeToggle" xml:space="preserve">
+    <value>Activer le mode nœud</value>
+  </data>
+  <data name="Setup_DeviceIdLoading" xml:space="preserve">
+    <value>ID de l'appareil : chargement...</value>
+  </data>
+  <data name="Setup_DeviceIdFallback" xml:space="preserve">
+    <value>ID de l'appareil : (sera généré lors de la première connexion)</value>
+  </data>
+  <data name="Setup_CopyDeviceId" xml:space="preserve">
+    <value>📋 Copier l'ID de l'appareil</value>
+  </data>
+  <data name="Setup_DeviceIdCopied" xml:space="preserve">
+    <value>✅ Copié !</value>
+  </data>
+  <data name="Setup_ApproveInstructions" xml:space="preserve">
+    <value>Pour approuver ce nœud, exécutez sur votre hôte passerelle :</value>
+  </data>
+  <data name="Setup_ApproveHint" xml:space="preserve">
+    <value>💡 Vous pouvez terminer la configuration maintenant — l'appariement continuera en arrière-plan. Vous recevrez une notification une fois approuvé.</value>
+  </data>
+  <data name="Setup_DoneTitle" xml:space="preserve">
+    <value>🎉 Tout est prêt !</value>
+  </data>
+  <data name="Setup_DoneDescription" xml:space="preserve">
+    <value>OpenClaw Tray se connectera à votre passerelle et commencera la surveillance.</value>
+  </data>
+  <data name="Setup_BackButton" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="Setup_NextButton" xml:space="preserve">
+    <value>Suivant</value>
+  </data>
+  <data name="Setup_FinishButton" xml:space="preserve">
+    <value>Terminer</value>
+  </data>
+  <data name="Setup_StepNodeMode" xml:space="preserve">
+    <value>Étape 2 sur 3 — Mode nœud</value>
+  </data>
+  <data name="Setup_StepDone" xml:space="preserve">
+    <value>Étape 3 sur 3 — Terminé</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">
