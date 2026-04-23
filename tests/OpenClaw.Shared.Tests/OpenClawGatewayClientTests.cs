@@ -19,6 +19,11 @@ public class OpenClawGatewayClientTests
             _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", new TestLogger());
         }
 
+        public GatewayClientTestHelper(IOpenClawLogger logger)
+        {
+            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
+        }
+
         public string ClassifyNotification(string text)
         {
             var (_, type) = NotificationCategorizer.ClassifyByKeywords(text);
@@ -254,6 +259,36 @@ public class OpenClawGatewayClientTests
             var identity = identityField!.GetValue(_client)!;
             var deviceIdProp = identity.GetType().GetProperty("DeviceId");
             return (string)deviceIdProp!.GetValue(identity)!;
+        }
+
+        /// <summary>Pre-register a pending request so ProcessRawMessage can resolve the method.</summary>
+        public void TrackPendingRequest(string requestId, string method)
+        {
+            var methodInfo = typeof(OpenClawGatewayClient).GetMethod(
+                "TrackPendingRequest",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            methodInfo!.Invoke(_client, new object[] { requestId, method });
+        }
+
+        public bool GetPairingRequiredFlag() =>
+            GetPrivateField<bool>("_pairingRequiredAwaitingApproval");
+
+        public string GetSignatureTokenMode()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                "_signatureTokenMode",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return field!.GetValue(_client)!.ToString()!;
+        }
+
+        public bool GetOperatorReadScopeUnavailable() =>
+            GetPrivateField<bool>("_operatorReadScopeUnavailable");
+
+        public List<ConnectionStatus> CaptureStatusChanges()
+        {
+            var changes = new List<ConnectionStatus>();
+            _client.StatusChanged += (_, s) => changes.Add(s);
+            return changes;
         }
     }
 
@@ -1343,5 +1378,209 @@ public class OpenClawGatewayClientTests
 
         Assert.Contains("pairing required", output);
         Assert.Contains("Approve this Windows tray device ID", output);
+    }
+
+    // --- HandleRequestError: pairing required ---
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_SetsPairingBlockFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-1", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-1",
+            "ok": false,
+            "error": "pairing required for this device"
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_LogsWarning()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-2", "connect");
+        var logger = new TestLogger();
+        var helperWithLogger = new GatewayClientTestHelper(logger);
+        helperWithLogger.TrackPendingRequest("req-pairing-2", "connect");
+
+        helperWithLogger.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-2",
+            "ok": false,
+            "error": "pairing required for this device"
+        }
+        """);
+
+        Assert.Contains(logger.Logs, l => l.Contains("auto-reconnect paused", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_RaisesErrorStatus()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-3", "connect");
+        var statusChanges = helper.CaptureStatusChanges();
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-3",
+            "ok": false,
+            "error": "pairing required for this device"
+        }
+        """);
+
+        Assert.Contains(ConnectionStatus.Error, statusChanges);
+    }
+
+    // --- HandleRequestError: device signature invalid ---
+
+    [Fact]
+    public void HandleRequestError_DeviceSignatureInvalid_CyclesSignatureMode()
+    {
+        var helper = new GatewayClientTestHelper();
+        // Starting mode is V3AuthToken; first rejection should move it to V3EmptyToken
+        Assert.Equal("V3AuthToken", helper.GetSignatureTokenMode());
+
+        helper.TrackPendingRequest("req-sig-1", "connect");
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-sig-1",
+            "ok": false,
+            "error": "device signature invalid"
+        }
+        """);
+
+        Assert.Equal("V3EmptyToken", helper.GetSignatureTokenMode());
+    }
+
+    [Fact]
+    public void HandleRequestError_DeviceSignatureInvalid_LogsWarningWithMode()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        helper.TrackPendingRequest("req-sig-log", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-sig-log",
+            "ok": false,
+            "error": "device signature invalid"
+        }
+        """);
+
+        Assert.Contains(logger.Logs, l => l.Contains("device signature", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // --- HandleRequestError: missing scope ---
+
+    [Theory]
+    [InlineData("sessions.list")]
+    [InlineData("usage.status")]
+    [InlineData("usage.cost")]
+    [InlineData("node.list")]
+    public void HandleRequestError_MissingOperatorReadScope_SetsUnavailableFlag(string method)
+    {
+        var helper = new GatewayClientTestHelper();
+        var reqId = $"req-scope-{method}";
+        helper.TrackPendingRequest(reqId, method);
+
+        helper.ProcessRawMessage($$"""
+        {
+            "type": "res",
+            "id": "{{reqId}}",
+            "ok": false,
+            "error": "missing scope: operator.read"
+        }
+        """);
+
+        Assert.True(helper.GetOperatorReadScopeUnavailable());
+    }
+
+    // --- HandleRequestError: unknown method fallbacks ---
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_UsageStatus_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-us", "usage.status");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-us",
+            "ok": false,
+            "error": "unknown method: usage.status"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.UsageStatus);
+    }
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_UsageCost_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-uc", "usage.cost");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-uc",
+            "ok": false,
+            "error": "unknown method: usage.cost"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.UsageCost);
+    }
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_SessionsPreview_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-sp", "sessions.preview");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-sp",
+            "ok": false,
+            "error": "unknown method: sessions.preview"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.SessionPreview);
+    }
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_NodeList_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-nl", "node.list");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-nl",
+            "ok": false,
+            "error": "unknown method: node.list"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.NodeList);
     }
 }
