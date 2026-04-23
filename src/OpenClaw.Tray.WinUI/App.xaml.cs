@@ -275,7 +275,7 @@ public partial class App : Application
         // First-run check
         if (string.IsNullOrWhiteSpace(_settings.Token))
         {
-            await ShowFirstRunWelcomeAsync();
+            await ShowSetupWizardAsync();
         }
 
         // Initialize tray icon (window-less pattern from WinUIEx)
@@ -542,6 +542,7 @@ public partial class App : Application
             case "activity": ShowActivityStream(); break;
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
             case "settings": ShowSettings(); break;
+            case "setup": _ = ShowSetupWizardAsync(); break;
             case "autostart": ToggleAutoStart(); break;
             case "log": OpenLogFile(); break;
             case "copydeviceid": CopyDeviceIdToClipboard(); break;
@@ -942,8 +943,9 @@ public partial class App : Application
 
         menu.AddSeparator();
 
-        // Settings
+        // Settings & Setup
         menu.AddMenuItem(LocalizationHelper.GetString("Menu_Settings"), "⚙️", "settings");
+        menu.AddMenuItem("Setup Guide...", "🧭", "setup");
         var autoStartText = (_settings?.AutoStart ?? false)
             ? LocalizationHelper.GetString("Menu_AutoStartEnabled")
             : LocalizationHelper.GetString("Menu_AutoStart");
@@ -1141,6 +1143,11 @@ public partial class App : Application
     {
         if (_settings == null || !_settings.EnableNodeMode) return;
         if (_dispatcherQueue == null) return;
+        if (string.IsNullOrWhiteSpace(_settings.Token))
+        {
+            Logger.Warn("Node mode enabled but no token configured — skipping node service. Run Setup Guide to configure.");
+            return;
+        }
         if (!EnsureSshTunnelConfigured()) return;
         
         try
@@ -1753,14 +1760,41 @@ public partial class App : Application
         _activityStreamWindow.Activate();
     }
 
-    private async Task ShowFirstRunWelcomeAsync()
+    private SetupWizardWindow? _setupWizard;
+
+    private async Task ShowSetupWizardAsync()
     {
-        var dialog = new WelcomeDialog();
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
+        if (_settings == null) return;
+
+        if (_setupWizard != null)
         {
-            ShowSettings();
+            try { _setupWizard.Activate(); return; } catch { _setupWizard = null; }
         }
+
+        _setupWizard = new SetupWizardWindow(_settings);
+        _setupWizard.SetupCompleted += (s, e) =>
+        {
+            Logger.Info("Setup wizard completed, reinitializing connections");
+            _setupWizard = null;
+
+            // Mirror OnSettingsSaved — clean up both, then start only one
+            UnsubscribeGatewayEvents();
+            _gatewayClient?.Dispose();
+            _gatewayClient = null;
+            var oldNodeService = _nodeService;
+            _nodeService = null;
+            try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
+
+            _currentStatus = ConnectionStatus.Disconnected;
+            UpdateTrayIcon();
+
+            if (_settings.EnableNodeMode)
+                InitializeNodeService();
+            else
+                InitializeGatewayClient();
+        };
+        _setupWizard.Closed += (s, e) => _setupWizard = null;
+        _setupWizard.Activate();
     }
 
     private void ShowSurfaceImprovementsTipIfNeeded()
@@ -2032,6 +2066,7 @@ public partial class App : Application
         DeepLinkHandler.Handle(uri, new DeepLinkActions
         {
             OpenSettings = ShowSettings,
+            OpenSetup = () => _ = ShowSetupWizardAsync(),
             OpenChat = ShowWebChat,
             OpenDashboard = OpenDashboard,
             OpenQuickSend = ShowQuickSend,

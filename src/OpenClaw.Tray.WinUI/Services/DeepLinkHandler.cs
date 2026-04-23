@@ -59,6 +59,10 @@ public static class DeepLinkHandler
                 actions.OpenSettings?.Invoke();
                 break;
 
+            case "setup":
+                actions.OpenSetup?.Invoke();
+                break;
+
             case "chat":
                 actions.OpenChat?.Invoke();
                 break;
@@ -110,6 +114,7 @@ public static class DeepLinkHandler
 public class DeepLinkActions
 {
     public Action? OpenSettings { get; set; }
+    public Action? OpenSetup { get; set; }
     public Action? OpenChat { get; set; }
     public Action<string?>? OpenDashboard { get; set; }
     public Action<string?>? OpenQuickSend { get; set; }
