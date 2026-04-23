@@ -1021,4 +1021,194 @@ public class WindowsNodeClientTests
         Assert.NotNull(task);
         await task!;
     }
+
+    // ─── Command dispatch map tests ────────────────────────────────────────────
+
+    private sealed class MockCapability : INodeCapability
+    {
+        private readonly string _category;
+        private readonly string[] _commands;
+        public int ExecuteCount { get; private set; }
+        public string? LastCommand { get; private set; }
+
+        public MockCapability(string category, params string[] commands)
+        {
+            _category = category;
+            _commands = commands;
+        }
+
+        public string Category => _category;
+        public IReadOnlyList<string> Commands => _commands;
+        public bool CanHandle(string command) => Array.IndexOf(_commands, command) >= 0;
+
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+        {
+            ExecuteCount++;
+            LastCommand = request.Command;
+            return Task.FromResult(new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { dispatched = true } });
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_RoutesToRegisteredCapability()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var cap = new MockCapability("mock", "mock.ping", "mock.echo");
+            client.RegisterCapability(cap);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-1",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-1",
+                    "command": "mock.ping",
+                    "args": {}
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+
+            Assert.Equal(1, cap.ExecuteCount);
+            Assert.Equal("mock.ping", cap.LastCommand);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_UnknownCommand_DoesNotInvokeAnyCapability()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-2",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-2",
+                    "command": "unknown.command",
+                    "args": {}
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+
+            Assert.Equal(0, cap.ExecuteCount);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_FirstRegisteredCapabilityWins_ForDuplicateCommand()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var first = new MockCapability("cat-a", "shared.command");
+            var second = new MockCapability("cat-b", "shared.command");
+            client.RegisterCapability(first);
+            client.RegisterCapability(second);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-3",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-3",
+                    "command": "shared.command",
+                    "args": {}
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+
+            Assert.Equal(1, first.ExecuteCount);
+            Assert.Equal(0, second.ExecuteCount);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventPath_RoutesToRegisteredCapability()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            // Use "type": "event" wire format (HandleNodeInvokeEventAsync path)
+            var json = """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "inv-evt-1",
+                    "command": "mock.ping",
+                    "args": {}
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+
+            Assert.Equal(1, cap.ExecuteCount);
+            Assert.Equal("mock.ping", cap.LastCommand);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    private static async Task InvokeProcessMessageAsync(WindowsNodeClient client, string json)
+    {
+        var processMethod = typeof(WindowsNodeClient).GetMethod(
+            "ProcessMessageAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(processMethod);
+        var task = (Task)processMethod!.Invoke(client, [json])!;
+        await task;
+    }
 }
