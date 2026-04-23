@@ -40,6 +40,17 @@ public abstract class WebSocketClientBase : IDisposable
 
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
+    public event EventHandler<string>? AuthenticationFailed;
+
+    /// <summary>Reset reconnect backoff counter. Call after successful application-level handshake.</summary>
+    protected void ResetReconnectAttempts() => _reconnectAttempts = 0;
+
+    /// <summary>Fire AuthenticationFailed event and stop auto-reconnect.</summary>
+    protected void RaiseAuthenticationFailed(string message)
+    {
+        _logger.Warn($"{ClientRole} authentication failed: {message}");
+        AuthenticationFailed?.Invoke(this, message);
+    }
 
     // --- Abstract members (subclass MUST implement) ---
 
@@ -123,7 +134,9 @@ public abstract class WebSocketClientBase : IDisposable
 
             await _webSocket.ConnectAsync(uri, _cts.Token);
 
-            _reconnectAttempts = 0;
+            // Don't reset _reconnectAttempts here — TCP connect succeeding doesn't mean
+            // auth will succeed. Reset only after the full application-level handshake
+            // completes (subclass calls ResetReconnectAttempts after hello-ok).
             _logger.Info($"{ClientRole} connected, waiting for challenge...");
 
             await OnConnectedAsync();

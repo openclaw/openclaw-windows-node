@@ -58,6 +58,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _nodeListUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
+    private bool _authFailed;
     private IReadOnlyList<UserNotificationRule>? _userRules;
     private bool _preferStructuredCategories = true;
 
@@ -103,7 +104,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     protected override bool ShouldAutoReconnect()
     {
-        return !_pairingRequiredAwaitingApproval;
+        return !_pairingRequiredAwaitingApproval && !_authFailed;
     }
 
     protected override void OnDisconnected()
@@ -665,6 +666,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
             _pairingRequiredAwaitingApproval = false;
+            _authFailed = false;
+            ResetReconnectAttempts();
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
             _mainSessionKey = TryGetHandshakeMainSessionKey(payload) ?? "main";
@@ -792,6 +795,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
             }
 
             _logger.Warn("Gateway rejected device signature in all supported payload modes");
+            _authFailed = true;
+            RaiseAuthenticationFailed("device signature rejected in all modes — the gateway may require a different auth protocol version");
+            RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
 
@@ -800,6 +806,15 @@ public class OpenClawGatewayClient : WebSocketClientBase
         {
             _pairingRequiredAwaitingApproval = true;
             _logger.Warn("Pairing approval required for this device; auto-reconnect paused until manual reconnect or app restart");
+            RaiseStatusChanged(ConnectionStatus.Error);
+            return;
+        }
+
+        // Permanent auth failures — stop retrying and notify the app
+        if (method == "connect" && IsTerminalAuthError(message))
+        {
+            _authFailed = true;
+            RaiseAuthenticationFailed(message);
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
@@ -902,6 +917,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private static bool IsUnknownMethodError(string errorMessage)
     {
         return errorMessage.Contains("unknown method", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTerminalAuthError(string errorMessage)
+    {
+        return errorMessage.Contains("token mismatch", StringComparison.OrdinalIgnoreCase) ||
+               errorMessage.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
+               errorMessage.Contains("too many failed", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsMissingScopeError(string errorMessage, string scope)

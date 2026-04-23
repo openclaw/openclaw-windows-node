@@ -87,6 +87,7 @@ public partial class App : Application
     private ActivityStreamWindow? _activityStreamWindow;
     private TrayMenuWindow? _trayMenuWindow;
     private QuickSendDialog? _quickSendDialog;
+    private string? _authFailureMessage;
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -753,6 +754,12 @@ public partial class App : Application
         var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
         menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_StatusFormat"), LocalizationHelper.GetConnectionStatusText(_currentStatus)), statusIcon, "status");
 
+        // Auth failure nudge
+        if (!string.IsNullOrEmpty(_authFailureMessage))
+        {
+            menu.AddMenuItem("⚠️ Auth failed — Run Setup", "🔧", "setup");
+        }
+
         // Activity (if any)
         if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
         {
@@ -1108,6 +1115,7 @@ public partial class App : Application
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
+        _gatewayClient.AuthenticationFailed += OnAuthenticationFailed;
         _gatewayClient.ActivityChanged += OnActivityChanged;
         _gatewayClient.NotificationReceived += OnNotificationReceived;
         _gatewayClient.ChannelHealthUpdated += OnChannelHealthUpdated;
@@ -1126,6 +1134,7 @@ public partial class App : Application
         if (_gatewayClient != null)
         {
             _gatewayClient.StatusChanged -= OnConnectionStatusChanged;
+            _gatewayClient.AuthenticationFailed -= OnAuthenticationFailed;
             _gatewayClient.ActivityChanged -= OnActivityChanged;
             _gatewayClient.NotificationReceived -= OnNotificationReceived;
             _gatewayClient.ChannelHealthUpdated -= OnChannelHealthUpdated;
@@ -1245,12 +1254,22 @@ public partial class App : Application
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         _currentStatus = status;
+        if (status == ConnectionStatus.Connected)
+            _authFailureMessage = null;
         UpdateTrayIcon();
         
         if (status == ConnectionStatus.Connected)
         {
             _ = RunHealthCheckAsync();
         }
+    }
+
+    private void OnAuthenticationFailed(object? sender, string message)
+    {
+        _authFailureMessage = message;
+        Logger.Error($"Authentication failed: {message}");
+        AddRecentActivity($"Auth failed: {message}", category: "error");
+        UpdateTrayIcon();
     }
 
     private void OnActivityChanged(object? sender, AgentActivity? activity)
