@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <ProjectReference Include="..\OpenClawTray.Infrastructure\OpenClawTray.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

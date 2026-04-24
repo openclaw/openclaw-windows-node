@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "C:\\Users\\mharsh\\go\\bin\\gt.exe prime --hook",
+        "timeoutSec": 30
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "C:\\Users\\mharsh\\go\\bin\\gt.exe mail check --inject",
+        "timeoutSec": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "C:\\Users\\mharsh\\go\\bin\\gt.exe costs record &",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
