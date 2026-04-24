@@ -4,4 +4,15 @@
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
+  <!--
+    Include only the non-UI onboarding source files so we can test their logic
+    without pulling in the full WinUI / WindowsAppSDK dependency graph.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\OnboardingState.cs" Link="Imported\OnboardingState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Widgets\WizardStepModels.cs" Link="Imported\WizardStepModels.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Imported\SettingsManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Imported\Logger.cs" />
+  </ItemGroup>
+
 </Project>
