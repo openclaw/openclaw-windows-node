@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using WinUIEx;
@@ -57,11 +58,21 @@ public sealed partial class CanvasWindow : WindowEx
     /// <summary>
     /// Validates a URL for security - returns true if URL is safe
     /// </summary>
-    private static bool IsUrlSafe(string url)
+    private bool IsUrlSafe(string url)
     {
         if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
         {
             return IsSafeDataUrl(url);
+        }
+        // Allow URLs from the trusted gateway origin with strict boundary check
+        if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
+            url.StartsWith(_trustedGatewayOrigin, StringComparison.OrdinalIgnoreCase) &&
+            (url.Length == _trustedGatewayOrigin.Length ||
+             url[_trustedGatewayOrigin.Length] == '/' ||
+             url[_trustedGatewayOrigin.Length] == '?' ||
+             url[_trustedGatewayOrigin.Length] == '#'))
+        {
+            return true;
         }
         return !DangerousUrlPattern.IsMatch(url);
     }
@@ -90,10 +101,87 @@ public sealed partial class CanvasWindow : WindowEx
     }
     
     public bool IsClosed { get; private set; }
+    private string? _trustedGatewayOrigin;
+    private string? _gatewayOriginForRewrite;
+    private string? _gatewayToken;
+
+    /// <summary>
+    /// Allow URLs from the connected gateway origin. Call after creating the window
+    /// so that canvas.present URLs served by the gateway are not blocked.
+    /// Also rewrites gateway URLs to use the node's effective connection
+    /// (e.g., localhost when connected via SSH tunnel).
+    /// </summary>
+    public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null)
+    {
+        if (string.IsNullOrEmpty(gatewayUrl)) return;
+        _gatewayToken = token;
+        try
+        {
+            var uri = new Uri(GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl));
+            var httpScheme = uri.Scheme == "wss" ? "https" : "http";
+            _trustedGatewayOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
+            _gatewayOriginForRewrite = _trustedGatewayOrigin;
+            Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Canvas] Failed to parse gateway origin: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Rewrite a gateway URL to use the node's effective connection.
+    /// If connected via SSH tunnel to localhost, rewrites 192.168.x.x → localhost.
+    /// </summary>
+    private string RewriteGatewayUrl(string url)
+    {
+        if (string.IsNullOrEmpty(_gatewayOriginForRewrite)) return url;
+
+        try
+        {
+            // Handle relative paths — prepend the gateway origin
+            if (url.StartsWith("/"))
+            {
+                var rewritten = _gatewayOriginForRewrite + url;
+                rewritten = AppendGatewayToken(rewritten);
+                Logger.Info($"[Canvas] Resolved relative URL to gateway origin");
+                return rewritten;
+            }
+
+            var uri = new Uri(url);
+            var httpScheme = uri.Scheme;
+            var urlOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
+
+            // If the URL's origin differs from our effective gateway origin, rewrite it
+            if (!urlOrigin.Equals(_gatewayOriginForRewrite, StringComparison.OrdinalIgnoreCase))
+            {
+                var rewritten = _gatewayOriginForRewrite + uri.PathAndQuery;
+                rewritten = AppendGatewayToken(rewritten);
+                Logger.Info($"[Canvas] Rewrote URL to effective gateway origin");
+                return rewritten;
+            }
+
+            // Same origin — just add token if needed
+            return AppendGatewayToken(url);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Canvas] URL rewrite failed: {ex.Message}");
+        }
+        return url;
+    }
+
+    private string AppendGatewayToken(string url)
+    {
+        // Auth is handled via WebResourceRequested Bearer header injection,
+        // not query params. This method is kept as a no-op for safety.
+        return url;
+    }
     
     public CanvasWindow()
     {
         this.InitializeComponent();
+        this.SetIcon("Assets\\openclaw.ico");
         this.Closed += OnWindowClosed;
         
         // Initialize WebView2
@@ -116,6 +204,24 @@ public sealed partial class CanvasWindow : WindowEx
             CanvasWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             CanvasWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             
+            // Inject auth token for gateway requests
+            if (!string.IsNullOrEmpty(_trustedGatewayOrigin) && !string.IsNullOrEmpty(_gatewayToken))
+            {
+                var gatewayFilter = $"{_trustedGatewayOrigin}/*";
+                CanvasWebView.CoreWebView2.AddWebResourceRequestedFilter(gatewayFilter, CoreWebView2WebResourceContext.All);
+                var trustedOrigin = _trustedGatewayOrigin;
+                var token = _gatewayToken;
+                CanvasWebView.CoreWebView2.WebResourceRequested += (s, args) =>
+                {
+                    // Only inject auth for requests to the trusted gateway origin
+                    if (args.Request.Uri.StartsWith(trustedOrigin, StringComparison.OrdinalIgnoreCase))
+                    {
+                        args.Request.Headers.SetHeader("Authorization", $"Bearer {token}");
+                    }
+                };
+                Logger.Info("[Canvas] WebView2 auth header injection configured for gateway requests");
+            }
+
             // Handle navigation events
             CanvasWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             
@@ -229,6 +335,10 @@ public sealed partial class CanvasWindow : WindowEx
     /// </summary>
     public void Navigate(string url)
     {
+        // Rewrite gateway URLs to use the node's effective connection
+        // (e.g., gateway sends 192.168.1.254 but we're tunneled to localhost)
+        url = RewriteGatewayUrl(url);
+
         // Validate URL - block dangerous schemes and private networks
         if (!IsUrlSafe(url))
         {

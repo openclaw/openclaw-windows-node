@@ -30,6 +30,7 @@ public class NodeService : IDisposable
     private ScreenCapability? _screenCapability;
     private CameraCapability? _cameraCapability;
     private readonly string _dataPath;
+    private string? _token;
     
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -64,6 +65,7 @@ public class NodeService : IDisposable
         }
         
         _logger.Info($"Starting Windows Node connection to {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
+        _token = token;
         
         _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger);
         _nodeClient.StatusChanged += OnNodeStatusChanged;
@@ -174,6 +176,7 @@ public class NodeService : IDisposable
                 if (_canvasWindow == null || _canvasWindow.IsClosed)
                 {
                     _canvasWindow = new CanvasWindow();
+                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
                 }
                 
                 // Configure window
@@ -310,6 +313,7 @@ public class NodeService : IDisposable
         if (_canvasWindow == null || _canvasWindow.IsClosed)
         {
             _canvasWindow = new CanvasWindow();
+            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
             _canvasWindow.Activate();
         }
     }
@@ -493,3 +497,4 @@ public class NodeService : IDisposable
         }
     }
 }
+
