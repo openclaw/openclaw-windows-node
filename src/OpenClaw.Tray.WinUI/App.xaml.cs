@@ -1780,7 +1780,6 @@ public partial class App : Application
         _activityStreamWindow.Activate();
     }
 
-    private SetupWizardWindow? _setupWizard;
     private OnboardingWindow? _onboardingWindow;
 
     private async Task ShowOnboardingAsync()
@@ -1815,41 +1814,6 @@ public partial class App : Application
         };
         _onboardingWindow.Closed += (s, e) => _onboardingWindow = null;
         _onboardingWindow.Activate();
-    }
-
-    private async Task ShowSetupWizardAsync()
-    {
-        if (_settings == null) return;
-
-        if (_setupWizard != null)
-        {
-            try { _setupWizard.Activate(); return; } catch { _setupWizard = null; }
-        }
-
-        _setupWizard = new SetupWizardWindow(_settings);
-        _setupWizard.SetupCompleted += (s, e) =>
-        {
-            Logger.Info("Setup wizard completed, reinitializing connections");
-            _setupWizard = null;
-
-            // Mirror OnSettingsSaved — clean up both, then start only one
-            UnsubscribeGatewayEvents();
-            _gatewayClient?.Dispose();
-            _gatewayClient = null;
-            var oldNodeService = _nodeService;
-            _nodeService = null;
-            try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
-
-            _currentStatus = ConnectionStatus.Disconnected;
-            UpdateTrayIcon();
-
-            if (_settings.EnableNodeMode)
-                InitializeNodeService();
-            else
-                InitializeGatewayClient();
-        };
-        _setupWizard.Closed += (s, e) => _setupWizard = null;
-        _setupWizard.Activate();
     }
 
     private void ShowSurfaceImprovementsTipIfNeeded()
@@ -2121,7 +2085,7 @@ public partial class App : Application
         DeepLinkHandler.Handle(uri, new DeepLinkActions
         {
             OpenSettings = ShowSettings,
-            OpenSetup = () => _ = ShowSetupWizardAsync(),
+            OpenSetup = () => _ = ShowOnboardingAsync(),
             OpenChat = ShowWebChat,
             OpenDashboard = OpenDashboard,
             OpenQuickSend = ShowQuickSend,
