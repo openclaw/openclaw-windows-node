@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -39,6 +40,12 @@ public sealed partial class CanvasWindow : WindowEx
     private string? _pendingHtml;
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<bool>? _navigationTcs;
+
+    private readonly string _canvasDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpenClawTray", "canvas");
+    private FileSystemWatcher? _canvasWatcher;
+    private long _lastReloadTicks = 0;
     
     // HTML sanitization — block embedded iframes/objects/embeds/applets
     private static readonly Regex s_sanitizeBlock = new(
@@ -63,6 +70,12 @@ public sealed partial class CanvasWindow : WindowEx
         if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
         {
             return IsSafeDataUrl(url);
+        }
+        // Allow URLs from the canvas virtual host
+        if (url.StartsWith("https://openclaw-canvas.local/", StringComparison.OrdinalIgnoreCase) ||
+            url.Equals("https://openclaw-canvas.local", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
         }
         // Allow URLs from the trusted gateway origin with strict boundary check
         if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
@@ -162,7 +175,25 @@ public sealed partial class CanvasWindow : WindowEx
             }
 
             // Same origin — just add token if needed
-            return AppendGatewayToken(url);
+            url = AppendGatewayToken(url);
+
+            // If this is a canvas document path and we have it locally, use the virtual host
+            if (url.Contains("/__openclaw__/canvas/documents/") && !string.IsNullOrEmpty(_canvasDir))
+            {
+                var pathPart = new Uri(url).AbsolutePath;
+                var localRelative = pathPart.Replace("/__openclaw__/canvas/documents/", "");
+                var localPath = Path.GetFullPath(Path.Combine(_canvasDir, localRelative.Replace('/', Path.DirectorySeparatorChar)));
+                // Containment check — block directory traversal
+                if (localPath.StartsWith(_canvasDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                    File.Exists(localPath))
+                {
+                    var localUrl = $"https://openclaw-canvas.local/{localRelative}";
+                    Logger.Info($"[Canvas] Using local file: {localUrl}");
+                    return localUrl;
+                }
+            }
+
+            return url;
         }
         catch (Exception ex)
         {
@@ -197,7 +228,29 @@ public sealed partial class CanvasWindow : WindowEx
             ErrorPanel.Visibility = Visibility.Collapsed;
             
             await CanvasWebView.EnsureCoreWebView2Async();
-            
+
+            // Map local canvas files to a virtual hostname so canvas content
+            // can be served without hitting the gateway HTTP server.
+            // Files in %LOCALAPPDATA%/OpenClawTray/canvas/ are served at
+            // https://openclaw-canvas.local/
+            Directory.CreateDirectory(_canvasDir);
+            CanvasWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "openclaw-canvas.local",
+                _canvasDir,
+                CoreWebView2HostResourceAccessKind.Allow);
+            Logger.Info($"[Canvas] Virtual host mapped: openclaw-canvas.local → {_canvasDir}");
+
+            // Watch for local canvas file changes and auto-reload
+            _canvasWatcher = new FileSystemWatcher(_canvasDir)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                EnableRaisingEvents = true
+            };
+            _canvasWatcher.Changed += OnCanvasFileChanged;
+            _canvasWatcher.Created += OnCanvasFileChanged;
+            _canvasWatcher.Renamed += (s, e) => OnCanvasFileChanged(s, e);
+
             // Configure WebView2
             CanvasWebView.CoreWebView2.Settings.IsScriptEnabled = true;
             CanvasWebView.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = false;
@@ -320,9 +373,28 @@ public sealed partial class CanvasWindow : WindowEx
         }
     }
     
+    private void OnCanvasFileChanged(object sender, FileSystemEventArgs e)
+    {
+        // Debounce — ignore rapid file changes within 500ms (thread-safe)
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var prevTicks = Interlocked.Exchange(ref _lastReloadTicks, nowTicks);
+        if ((nowTicks - prevTicks) < TimeSpan.FromMilliseconds(500).Ticks) return;
+
+        Logger.Info($"[Canvas] File changed: {e.Name}, reloading");
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_isWebViewInitialized && !IsClosed)
+            {
+                CanvasWebView.CoreWebView2.Reload();
+            }
+        });
+    }
+
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        _canvasWatcher?.Dispose();
+        _canvasWatcher = null;
     }
     
     private void OnRetryClick(object sender, RoutedEventArgs e)
