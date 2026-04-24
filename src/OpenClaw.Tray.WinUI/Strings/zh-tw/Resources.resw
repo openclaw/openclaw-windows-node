@@ -764,5 +764,85 @@
   <data name="Download_ProgressText" xml:space="preserve">
     <value>正在下載更新...</value>
   </data>
-
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>OpenClaw 設定</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>上一步</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>下一步</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>完成</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>歡迎使用 OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>您的 AI 助手，就在系統匣中</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>安全性通知</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw 執行的 AI 代理程式可以執行命令、讀寫檔案，並代表您與系統進行互動。</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>您的代理程式可以：</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>在您的電腦上執行命令</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>讀取和寫入檔案</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>擷取螢幕截圖</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>選擇閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>選擇您要如何連線到 OpenClaw 閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>本機（本地）</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>遠端閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>稍後設定</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>一切就緒！</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw 已準備就緒。以下是一些您可以嘗試的功能：</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>開啟功能表列面板</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>連接訊息頻道</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>試用語音喚醒</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>使用畫布</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>啟用技能</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>開機時啟動 OpenClaw</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>您可以隨時從系統匣選單設定閘道連線。</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>請確認您的遠端閘道正在執行且可以存取。</value>
+  </data>
 </root>
