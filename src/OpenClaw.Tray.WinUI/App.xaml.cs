@@ -7,6 +7,7 @@ using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
+using OpenClawTray.Onboarding;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -276,7 +277,7 @@ public partial class App : Application
         // First-run check
         if (string.IsNullOrWhiteSpace(_settings.Token))
         {
-            await ShowSetupWizardAsync();
+            await ShowOnboardingAsync();
         }
 
         // Initialize tray icon (window-less pattern from WinUIEx)
@@ -543,7 +544,7 @@ public partial class App : Application
             case "activity": ShowActivityStream(); break;
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
             case "settings": ShowSettings(); break;
-            case "setup": _ = ShowSetupWizardAsync(); break;
+            case "setup": _ = ShowOnboardingAsync(); break;
             case "autostart": ToggleAutoStart(); break;
             case "log": OpenLogFile(); break;
             case "copydeviceid": CopyDeviceIdToClipboard(); break;
@@ -1780,6 +1781,41 @@ public partial class App : Application
     }
 
     private SetupWizardWindow? _setupWizard;
+    private OnboardingWindow? _onboardingWindow;
+
+    private async Task ShowOnboardingAsync()
+    {
+        if (_settings == null) return;
+
+        if (_onboardingWindow != null)
+        {
+            try { _onboardingWindow.Activate(); return; } catch { _onboardingWindow = null; }
+        }
+
+        _onboardingWindow = new OnboardingWindow(_settings);
+        _onboardingWindow.OnboardingCompleted += (s, e) =>
+        {
+            Logger.Info("Onboarding completed, reinitializing connections");
+            _onboardingWindow = null;
+
+            UnsubscribeGatewayEvents();
+            _gatewayClient?.Dispose();
+            _gatewayClient = null;
+            var oldNodeService = _nodeService;
+            _nodeService = null;
+            try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
+
+            _currentStatus = ConnectionStatus.Disconnected;
+            UpdateTrayIcon();
+
+            if (_settings.EnableNodeMode)
+                InitializeNodeService();
+            else
+                InitializeGatewayClient();
+        };
+        _onboardingWindow.Closed += (s, e) => _onboardingWindow = null;
+        _onboardingWindow.Activate();
+    }
 
     private async Task ShowSetupWizardAsync()
     {
