@@ -1077,4 +1077,85 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Nee — blokkeer hem.</value>
   </data>
 
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>OpenClaw instellen</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>Terug</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>Volgende</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>Voltooien</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>Welkom bij OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>Uw AI-assistent, direct vanuit het systeemvak</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>Beveiligingsmelding</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw draait een AI-agent die opdrachten kan uitvoeren, bestanden kan lezen en schrijven, en namens u met uw systeem kan communiceren.</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>Uw agent kan:</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>Opdrachten uitvoeren op uw computer</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>Bestanden lezen en schrijven</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>Schermafbeeldingen maken</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>Kies uw gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>Selecteer hoe u verbinding wilt maken met de OpenClaw-gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>Deze pc (lokaal)</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>Externe gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>Later configureren</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>Alles klaar!</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw is klaar voor gebruik. Hier zijn enkele dingen om te proberen:</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>Menubalkpaneel openen</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>Berichtkanalen verbinden</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>Spraakactivering proberen</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>Canvas gebruiken</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>Vaardigheden inschakelen</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>OpenClaw starten bij het opstarten</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>U kunt uw gatewayverbinding op elk moment configureren via het systeemvakmenu.</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>Zorg ervoor dat uw externe gateway actief en bereikbaar is.</value>
+  </data>
 </root>

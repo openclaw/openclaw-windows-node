@@ -3,6 +3,7 @@ using OpenClawTray.Infrastructure.Core;
 using OpenClawTray.Infrastructure.Navigation;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Onboarding.Pages;
+using OpenClawTray.Onboarding.Widgets;
 using static OpenClawTray.Infrastructure.Factories;
 using Microsoft.UI.Xaml;
 
@@ -10,7 +11,9 @@ namespace OpenClawTray.Onboarding;
 
 /// <summary>
 /// Root Reactor component for the onboarding wizard.
-/// Manages navigation between pages with a step indicator and back/next buttons.
+/// Manages navigation between pages with GlowingIcon header,
+/// NavigationHost for page content, and a step indicator + back/next nav bar.
+/// Matches macOS OnboardingView layout: icon → page content → navigation bar.
 /// </summary>
 public sealed class OnboardingApp : Component<OnboardingState>
 {
@@ -38,35 +41,40 @@ public sealed class OnboardingApp : Component<OnboardingState>
             }
         }
 
+        var isLastPage = pageIndex >= pages.Length - 1;
+
         return VStack(
-            // Navigation host — renders the current page
+            // GlowingIcon header (matches macOS 130px breathing lobster)
+            Component<GlowingIcon>()
+                .Margin(0, 16, 0, 8),
+
+            // NavigationHost — renders the current page
             NavigationHost<OnboardingRoute>(nav, route => route switch
             {
                 OnboardingRoute.Welcome => Component<WelcomePage>(),
                 OnboardingRoute.Connection => Component<ConnectionPage, OnboardingState>(Props),
                 OnboardingRoute.Ready => Component<ReadyPage, OnboardingState>(Props),
-                OnboardingRoute.Wizard => TextBlock("Wizard page — coming soon"),
-                OnboardingRoute.Permissions => TextBlock("Permissions page — coming soon"),
-                OnboardingRoute.Chat => TextBlock("Chat page — coming soon"),
+                OnboardingRoute.Wizard => TextBlock("Wizard — coming in Phase 3").Opacity(0.5)
+                    .HAlign(HorizontalAlignment.Center).Margin(0, 40, 0, 0),
+                OnboardingRoute.Permissions => TextBlock("Permissions — coming in Phase 3").Opacity(0.5)
+                    .HAlign(HorizontalAlignment.Center).Margin(0, 40, 0, 0),
+                OnboardingRoute.Chat => TextBlock("Chat — coming in Phase 3").Opacity(0.5)
+                    .HAlign(HorizontalAlignment.Center).Margin(0, 40, 0, 0),
                 _ => TextBlock("Unknown page"),
             }),
 
-            // Navigation bar: Back | dots | Next/Finish
-            HStack(12,
+            // Navigation bar: Back | StepIndicator | Next/Finish
+            HStack(16,
                 Button(Helpers.LocalizationHelper.GetString("Onboarding_Back"), GoBack)
                     .Disabled(pageIndex <= 0)
                     .Width(100),
-                HStack(4, pages.Select((_, i) =>
-                    Border(null!)
-                        .Width(8).Height(8)
-                        .CornerRadius(4)
-                        .Background(i == pageIndex ? "#0078D4" : "#C0C0C0")
-                ).ToArray()),
+                Component<StepIndicator, StepIndicatorProps>(
+                    new StepIndicatorProps(pages.Length, pageIndex)),
                 Button(
-                    pageIndex < pages.Length - 1
-                        ? Helpers.LocalizationHelper.GetString("Onboarding_Next")
-                        : Helpers.LocalizationHelper.GetString("Onboarding_Finish"),
-                    pageIndex < pages.Length - 1 ? GoNext : Props.Complete)
+                    isLastPage
+                        ? Helpers.LocalizationHelper.GetString("Onboarding_Finish")
+                        : Helpers.LocalizationHelper.GetString("Onboarding_Next"),
+                    isLastPage ? Props.Complete : GoNext)
                     .Width(100)
             ).HAlign(HorizontalAlignment.Center)
              .Padding(0, 16, 0, 16)

@@ -1075,5 +1075,85 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
     <value>Non — la bloquer.</value>
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>Configuration d'OpenClaw</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>Suivant</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>Terminer</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>Bienvenue dans OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>Votre assistant IA, directement depuis la barre des tâches</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>Avis de sécurité</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw exécute un agent IA capable d'exécuter des commandes, de lire et écrire des fichiers, et d'interagir avec votre système en votre nom.</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>Votre agent peut :</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>Exécuter des commandes sur votre ordinateur</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>Lire et écrire des fichiers</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>Capturer des captures d'écran</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>Choisissez votre passerelle</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>Sélectionnez comment vous souhaitez vous connecter à la passerelle OpenClaw</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>Cet ordinateur (local)</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>Passerelle distante</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>Configurer plus tard</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>Tout est prêt !</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw est prêt. Voici quelques fonctionnalités à essayer :</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>Ouvrir le panneau de la barre de menus</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>Connecter des canaux de messagerie</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>Essayer l'activation vocale</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>Utiliser le canevas</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>Activer les compétences</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>Lancer OpenClaw au démarrage</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>Vous pouvez configurer votre connexion à la passerelle à tout moment depuis le menu de la barre des tâches.</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>Assurez-vous que votre passerelle distante est en cours d'exécution et accessible.</value>
   </data>
 </root>
