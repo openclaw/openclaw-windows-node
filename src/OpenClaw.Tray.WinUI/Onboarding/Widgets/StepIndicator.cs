@@ -1,0 +1,32 @@
+using OpenClawTray.Infrastructure;
+using OpenClawTray.Infrastructure.Core;
+using static OpenClawTray.Infrastructure.Factories;
+using Microsoft.UI.Xaml;
+
+namespace OpenClawTray.Onboarding.Widgets;
+
+public record StepIndicatorProps(int TotalSteps, int CurrentStep);
+
+/// <summary>
+/// Dot-based step indicator for the onboarding navigation bar.
+/// Current step is highlighted in accent blue; others are grey.
+/// </summary>
+public sealed class StepIndicator : Component<StepIndicatorProps>
+{
+    public override Element Render()
+    {
+        var dots = new Element[Props.TotalSteps];
+        for (var i = 0; i < Props.TotalSteps; i++)
+        {
+            var color = i == Props.CurrentStep ? "#0078D4" : "#C0C0C0";
+            dots[i] = Border(null!)
+                .Width(8)
+                .Height(8)
+                .CornerRadius(4)
+                .Background(color);
+        }
+
+        return HStack(6, dots)
+            .HAlign(HorizontalAlignment.Center);
+    }
+}
