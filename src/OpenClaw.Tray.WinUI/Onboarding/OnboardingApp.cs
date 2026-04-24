@@ -48,20 +48,17 @@ public sealed class OnboardingApp : Component<OnboardingState>
             Component<GlowingIcon>()
                 .Margin(0, 16, 0, 8),
 
-            // NavigationHost — renders the current page
+            // NavigationHost — renders the current page with spring slide transition
             NavigationHost<OnboardingRoute>(nav, route => route switch
             {
                 OnboardingRoute.Welcome => Component<WelcomePage>(),
                 OnboardingRoute.Connection => Component<ConnectionPage, OnboardingState>(Props),
                 OnboardingRoute.Ready => Component<ReadyPage, OnboardingState>(Props),
-                OnboardingRoute.Wizard => TextBlock("Wizard — coming in Phase 3").Opacity(0.5)
-                    .HAlign(HorizontalAlignment.Center).Margin(0, 40, 0, 0),
-                OnboardingRoute.Permissions => TextBlock("Permissions — coming in Phase 3").Opacity(0.5)
-                    .HAlign(HorizontalAlignment.Center).Margin(0, 40, 0, 0),
-                OnboardingRoute.Chat => TextBlock("Chat — coming in Phase 3").Opacity(0.5)
-                    .HAlign(HorizontalAlignment.Center).Margin(0, 40, 0, 0),
+                OnboardingRoute.Wizard => Component<WizardPage, OnboardingState>(Props),
+                OnboardingRoute.Permissions => Component<PermissionsPage, OnboardingState>(Props),
+                OnboardingRoute.Chat => Component<ChatPage, OnboardingState>(Props),
                 _ => TextBlock("Unknown page"),
-            }),
+            }) with { Transition = NavigationTransition.Spring(dampingRatio: 0.86f) },
 
             // Navigation bar: Back | StepIndicator | Next/Finish
             HStack(16,

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Windowing;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Onboarding.Services;
@@ -10,7 +11,7 @@ namespace OpenClawTray.Onboarding;
 
 /// <summary>
 /// Host window for the Reactor-based onboarding wizard.
-/// Replaces the legacy SetupWizardWindow with a full Mac-parity onboarding flow.
+/// Non-resizable, Mica backdrop, centered — matches macOS 630×752 spec (scaled to 720×752 for Windows).
 /// </summary>
 public sealed class OnboardingWindow : WindowEx
 {
@@ -29,6 +30,13 @@ public sealed class OnboardingWindow : WindowEx
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
         SystemBackdrop = new MicaBackdrop();
+
+        // Non-resizable window (matches macOS spec)
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.IsResizable = false;
+            presenter.IsMaximizable = false;
+        }
 
         // Mount the Reactor-based onboarding root component
         var state = new OnboardingState(settings);
