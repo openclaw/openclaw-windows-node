@@ -306,6 +306,222 @@ public class SystemCapabilityTests
         Assert.Null(SystemCapability.ResolveExecutable("C:\\Windows\\cmd"));
     }
 
+    // --- system.run.prepare ---
+
+    [Fact]
+    public async Task RunPrepare_ReturnsCommandText_ForArray()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p1",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":["echo","hello world"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("cmdText", out var cmdText));
+        Assert.Contains("echo", cmdText.GetString());
+    }
+
+    [Fact]
+    public async Task RunPrepare_ReturnsCommandText_ForString()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p2",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":"hostname","rawCommand":"hostname"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("cmdText", out var cmdText));
+        Assert.Equal("hostname", cmdText.GetString());
+    }
+
+    [Fact]
+    public async Task RunPrepare_ReturnsPlan_WithArgvAndCwd()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p3",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"sk1"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("plan", out var plan));
+        Assert.True(plan.TryGetProperty("argv", out var argv));
+        Assert.Equal(2, argv.GetArrayLength());
+        Assert.True(plan.TryGetProperty("cwd", out var cwd));
+        Assert.Equal("/tmp", cwd.GetString());
+        Assert.True(plan.TryGetProperty("agentId", out var agentId));
+        Assert.Equal("agent1", agentId.GetString());
+    }
+
+    [Fact]
+    public async Task RunPrepare_ReturnsError_WhenMissingCommand()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p4",
+            Command = "system.run.prepare",
+            Args = Parse("""{}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Missing command", res.Error);
+    }
+
+    // --- system.execApprovals.get / set ---
+
+    [Fact]
+    public async Task ExecApprovalsGet_WhenNoPolicyConfigured_ReturnsDisabled()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "ea1",
+            Command = "system.execApprovals.get",
+            Args = Parse("""{}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("enabled", out var enabled));
+        Assert.False(enabled.GetBoolean());
+    }
+
+    [Fact]
+    public async Task ExecApprovalsGet_WhenPolicySet_ReturnsRules()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea2",
+                Command = "system.execApprovals.get",
+                Args = Parse("""{}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+            Assert.True(res.Ok);
+            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+            Assert.True(payload.TryGetProperty("enabled", out var enabled));
+            Assert.True(enabled.GetBoolean());
+            Assert.True(payload.TryGetProperty("rules", out _));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_WhenNoPolicyConfigured_ReturnsError()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "ea3",
+            Command = "system.execApprovals.set",
+            Args = Parse("""{"rules":[]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("No exec policy configured", res.Error);
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_UpdatesRules()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea4",
+                Command = "system.execApprovals.set",
+                Args = Parse("""{"rules":[{"pattern":"git *","action":"allow","description":"Allow git","enabled":true}],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+            Assert.True(res.Ok);
+            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+            Assert.True(payload.TryGetProperty("updated", out var updated));
+            Assert.True(updated.GetBoolean());
+            Assert.True(payload.TryGetProperty("ruleCount", out var ruleCount));
+            Assert.Equal(1, ruleCount.GetInt32());
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    // --- system.run with blocked env vars ---
+
+    [Fact]
+    public async Task Run_BlockedEnvVar_ReturnsError()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(new FakeCommandRunner());
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "e1",
+            Command = "system.run",
+            Args = Parse("""{"command":["echo","test"],"env":{"PATH":"C:\\evil"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("PATH", res.Error);
+    }
+
+    [Fact]
+    public async Task Run_AllowedEnvVar_Passes()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var runner = new FakeCommandRunner();
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "e2",
+            Command = "system.run",
+            Args = Parse("""{"command":["echo","test"],"env":{"MY_CUSTOM_VAR":"hello"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(runner.LastRequest!.Env);
+        Assert.True(runner.LastRequest.Env!.ContainsKey("MY_CUSTOM_VAR"));
+    }
+
     private class FakeCommandRunner : ICommandRunner
     {
         public string Name => "fake";
