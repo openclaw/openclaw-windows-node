@@ -43,13 +43,15 @@ public sealed class OnboardingApp : Component<OnboardingState>
 
         var isLastPage = pageIndex >= pages.Length - 1;
 
+        // VStack for Reactor content (icon + pages only).
+        // The nav bar is rendered natively in OnboardingWindow for reliable bottom pinning.
         return VStack(
-            // GlowingIcon header (matches macOS 130px breathing lobster)
+            // GlowingIcon header
             Component<GlowingIcon>()
-                .Margin(0, 16, 0, 8),
+                .Margin(0, 8, 0, 4),
 
-            // NavigationHost — renders the current page with spring slide transition
-            NavigationHost<OnboardingRoute>(nav, route => route switch
+            // Page content — fixed height prevents nav bar from jumping between pages
+            (NavigationHost<OnboardingRoute>(nav, route => route switch
             {
                 OnboardingRoute.Welcome => Component<WelcomePage>(),
                 OnboardingRoute.Connection => Component<ConnectionPage, OnboardingState>(Props),
@@ -58,9 +60,10 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 OnboardingRoute.Permissions => Component<PermissionsPage, OnboardingState>(Props),
                 OnboardingRoute.Chat => Component<ChatPage, OnboardingState>(Props),
                 _ => TextBlock("Unknown page"),
-            }) with { Transition = NavigationTransition.Spring(dampingRatio: 0.86f) },
+            }) with { Transition = NavigationTransition.Slide(duration: TimeSpan.FromMilliseconds(200)) })
+            .Height(520),
 
-            // Navigation bar: Back | StepIndicator | Next/Finish
+            // Navigation bar
             HStack(16,
                 Button(Helpers.LocalizationHelper.GetString("Onboarding_Back"), GoBack)
                     .Disabled(pageIndex <= 0)
@@ -74,7 +77,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                     isLastPage ? Props.Complete : GoNext)
                     .Width(100)
             ).HAlign(HorizontalAlignment.Center)
-             .Padding(0, 16, 0, 16)
-        ).Padding(24);
+             .Padding(0, 12, 0, 12)
+        ).Padding(20);
     }
 }

@@ -14,55 +14,48 @@ public sealed class WelcomePage : Component
 {
     public override Element Render()
     {
-        return VStack(16,
+        return VStack(10,
             TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_Title"))
-                .FontSize(28)
+                .FontSize(24)
                 .FontWeight(new global::Windows.UI.Text.FontWeight(700))
-                .HAlign(HorizontalAlignment.Center),
+                .HAlign(HorizontalAlignment.Center)
+                .TextWrapping(),
 
             TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_Subtitle"))
-                .FontSize(14)
+                .FontSize(13)
                 .Opacity(0.7)
                 .HAlign(HorizontalAlignment.Center)
                 .TextWrapping(),
 
-            // Security notice card (orange warning, matches Mac)
+            // Combined security notice + trust card
             Border(
                 VStack(8,
-                    HStack(8,
-                        TextBlock("⚠️").FontSize(16),
+                    HStack(6,
+                        TextBlock("⚠️").FontSize(14),
                         TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_SecurityTitle"))
-                            .FontSize(14)
+                            .FontSize(13)
                             .FontWeight(new global::Windows.UI.Text.FontWeight(600))
                     ),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_SecurityBody"))
-                        .FontSize(12)
+                        .FontSize(11)
                         .Opacity(0.85)
-                        .TextWrapping()
-                ).Padding(16)
-            )
-            .CornerRadius(8)
-            .Background("#FFF4E0")
-            .Margin(0, 24, 0, 0),
-
-            // Trust explanation
-            Border(
-                VStack(6,
+                        .TextWrapping(),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_TrustTitle"))
-                        .FontSize(13)
-                        .FontWeight(new global::Windows.UI.Text.FontWeight(600)),
+                        .FontSize(12)
+                        .FontWeight(new global::Windows.UI.Text.FontWeight(600))
+                        .Margin(0, 4, 0, 0),
                     BulletItem("Onboarding_Welcome_Trust_Commands", "Run commands on your computer"),
                     BulletItem("Onboarding_Welcome_Trust_Files", "Read and write files"),
                     BulletItem("Onboarding_Welcome_Trust_Screen", "Capture screenshots")
-                ).Padding(16)
+                ).Padding(14)
             )
             .CornerRadius(8)
-            .Background("#F5F5F5")
-            .Margin(0, 8, 0, 0)
+            .Background("#FFF4E0")
+            .Margin(0, 12, 0, 0)
         )
         .HAlign(HorizontalAlignment.Center)
         .MaxWidth(460)
-        .Padding(0, 16, 0, 0);
+        .Padding(0, 8, 0, 0);
     }
 
     private static Element BulletItem(string key, string fallback)

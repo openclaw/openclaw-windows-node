@@ -14,7 +14,7 @@ public sealed class GlowingIcon : Component
     public override Element Render()
     {
         return TextBlock("🦞")
-            .FontSize(64)
+            .FontSize(48)
             .HAlign(HorizontalAlignment.Center);
     }
 }
