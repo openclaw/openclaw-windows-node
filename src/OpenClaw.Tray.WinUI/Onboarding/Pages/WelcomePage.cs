@@ -15,11 +15,6 @@ public sealed class WelcomePage : Component
     public override Element Render()
     {
         return VStack(16,
-            // Lobster icon
-            TextBlock("🦞").FontSize(64)
-                .HAlign(HorizontalAlignment.Center)
-                .Margin(0, 16, 0, 8),
-
             TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_Title"))
                 .FontSize(28)
                 .FontWeight(new global::Windows.UI.Text.FontWeight(700))
