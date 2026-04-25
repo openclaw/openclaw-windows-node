@@ -64,6 +64,9 @@ internal static class TransitionEngine
                 global::System.Diagnostics.Debug.WriteLine("[Reactor] ConnectedTransition not yet implemented; falling back to SlideTransition.");
                 RunSlide(compositor, outVisual, inVisual, new SlideTransition(), mode);
                 break;
+            case SlideInOnlyTransition slideInOnly:
+                RunSlideInOnly(compositor, outVisual, inVisual, slideInOnly, mode);
+                break;
             default:
                 // Unknown transition — instant swap
                 inVisual.Opacity = 1;
@@ -282,6 +285,47 @@ internal static class TransitionEngine
         inFade.InsertKeyFrame(0f, 0f);
         inFade.InsertKeyFrame(1f, 1f);
         inFade.Duration = TimeSpan.FromMilliseconds(200);
+        inVisual.StartAnimation("Opacity", inFade);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Slide-in-only transition (hides old instantly, slides new in)
+    // ════════════════════════════════════════════════════════════════
+
+    private static void RunSlideInOnly(
+        Compositor compositor, Visual outVisual, Visual inVisual,
+        SlideInOnlyTransition slideIn, NavigationMode mode)
+    {
+        // Instantly hide old content — zero flicker
+        outVisual.Opacity = 0;
+
+        var duration = slideIn.Duration ?? TimeSpan.FromMilliseconds(200);
+        var distance = (float)slideIn.Distance;
+        var direction = slideIn.Direction;
+
+        // Auto-flip direction on back navigation
+        if (mode == NavigationMode.Pop)
+            direction = ReverseDirection(direction);
+
+        // Only need the incoming start offset (outgoing is hidden)
+        var (_, inStart) = GetSlideOffsets(direction, distance);
+        var easing = compositor.CreateCubicBezierEasingFunction(
+            new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1.0f));
+
+        // Slide in
+        inVisual.Offset = inStart;
+        var inOffset = compositor.CreateVector3KeyFrameAnimation();
+        inOffset.InsertKeyFrame(0f, inStart);
+        inOffset.InsertKeyFrame(1f, Vector3.Zero, easing);
+        inOffset.Duration = duration;
+
+        // Fade in
+        var inFade = compositor.CreateScalarKeyFrameAnimation();
+        inFade.InsertKeyFrame(0f, 0f);
+        inFade.InsertKeyFrame(1f, 1f, easing);
+        inFade.Duration = duration;
+
+        inVisual.StartAnimation("Offset", inOffset);
         inVisual.StartAnimation("Opacity", inFade);
     }
 }
