@@ -42,10 +42,13 @@ public sealed class OnboardingWindow : WindowEx
         var state = new OnboardingState(settings);
         state.Finished += OnOnboardingFinished;
 
+        // Mount the Reactor-based onboarding root component
         _host = new ReactorHostControl();
         _host.Mount(ctx =>
         {
-            return Factories.Component<OnboardingApp, OnboardingState>(state);
+            // UseState to hold the OnboardingState so it persists across re-renders
+            var (s, _) = ctx.UseState(state);
+            return Factories.Component<OnboardingApp, OnboardingState>(s);
         });
         Content = _host;
     }
