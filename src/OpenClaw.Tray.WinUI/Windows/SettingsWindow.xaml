@@ -180,7 +180,7 @@
                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                     
                     <ToggleSwitch x:Name="NodeModeToggle" x:Uid="SettingsNodeModeToggle" AutomationProperties.AutomationId="NodeModeToggle" Header="Enable Node Mode"/>
-                    <TextBlock x:Uid="SettingsNodeModeDescription" Text="When enabled, this PC can receive commands from the agent (canvas, screenshots, etc.)" 
+                    <TextBlock x:Uid="SettingsNodeModeDescription" Text="When enabled, this PC can receive commands from the agent (canvas, screenshots, etc.)"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"
@@ -202,6 +202,35 @@
                             <ToggleSwitch x:Name="NodeBrowserProxyToggle" AutomationProperties.AutomationId="NodeBrowserProxyToggle" Header="Browser proxy bridge" Toggled="OnNodeBrowserProxyToggled"/>
                         </StackPanel>
                     </Border>
+
+                    <ToggleSwitch x:Name="McpServerToggle" AutomationProperties.AutomationId="McpServerToggle" Header="Enable Local MCP Server" Margin="0,8,0,0"/>
+                    <TextBlock Text="Exposes the same node capabilities (system, screen, camera, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code)."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,-4,0,0"/>
+                    <Grid Margin="0,4,0,0" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Endpoint:" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBox Grid.Column="1" x:Name="McpUrlTextBox" IsReadOnly="True"
+                                 BorderThickness="0" Background="Transparent" Padding="0"
+                                 FontFamily="Consolas" FontSize="12"/>
+                    </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Status:" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" x:Name="McpStatusText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Grid>
                 </StackPanel>
                 
             </StackPanel>

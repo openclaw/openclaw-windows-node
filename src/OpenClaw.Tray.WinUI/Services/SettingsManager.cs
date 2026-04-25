@@ -52,13 +52,15 @@ public class SettingsManager
     public bool PreferStructuredCategories { get; set; } = true;
     public List<OpenClaw.Shared.UserNotificationRule> UserRules { get; set; } = new();
     
-    // Node mode (enables Windows as a node, not just operator)
+    // Node mode (gateway WebSocket connection — separate from MCP)
     public bool EnableNodeMode { get; set; } = false;
     public bool NodeCanvasEnabled { get; set; } = true;
     public bool NodeScreenEnabled { get; set; } = true;
     public bool NodeCameraEnabled { get; set; } = true;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    // Local MCP HTTP server (independent of EnableNodeMode)
+    public bool EnableMcpServer { get; set; } = false;
     public bool HasSeenActivityStreamTip { get; set; } = false;
     public string SkippedUpdateTag { get; set; } = "";
 
@@ -103,6 +105,22 @@ public class SettingsManager
                     NodeCameraEnabled = loaded.NodeCameraEnabled;
                     NodeLocationEnabled = loaded.NodeLocationEnabled;
                     NodeBrowserProxyEnabled = loaded.NodeBrowserProxyEnabled;
+                    EnableMcpServer = loaded.EnableMcpServer;
+                    // Legacy McpOnlyMode migration:
+                    //   true  → node off (no gateway), MCP on
+                    //   false → MCP follows EnableNodeMode (old behavior: MCP started with node)
+                    if (loaded.McpOnlyMode is bool legacyMcpOnly)
+                    {
+                        if (legacyMcpOnly)
+                        {
+                            EnableMcpServer = true;
+                            EnableNodeMode = false;
+                        }
+                        else if (!loaded.EnableMcpServer)
+                        {
+                            EnableMcpServer = loaded.EnableNodeMode;
+                        }
+                    }
                     HasSeenActivityStreamTip = loaded.HasSeenActivityStreamTip;
                     SkippedUpdateTag = loaded.SkippedUpdateTag ?? SkippedUpdateTag;
                     NotifyChatResponses = loaded.NotifyChatResponses;
@@ -152,6 +170,8 @@ public class SettingsManager
                 NodeCameraEnabled = NodeCameraEnabled,
                 NodeLocationEnabled = NodeLocationEnabled,
                 NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
+                EnableMcpServer = EnableMcpServer,
+                // McpOnlyMode is legacy — never written; remains null in serialized output.
                 HasSeenActivityStreamTip = HasSeenActivityStreamTip,
                 SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
                 NotifyChatResponses = NotifyChatResponses,

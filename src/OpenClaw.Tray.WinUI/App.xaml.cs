@@ -293,11 +293,11 @@ public partial class App : Application
         InitializeTrayIcon();
         ShowSurfaceImprovementsTipIfNeeded();
 
-        // Initialize connections - only use operator if node mode is disabled
-        // (dual connections cause gateway conflicts)
-        if (_settings?.EnableNodeMode == true)
+        // Initialize connections - only use operator if neither node mode nor
+        // MCP server is enabled (dual connections cause gateway conflicts).
+        if (_settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true)
         {
-            // Node mode: only use node connection (provides health events too)
+            // Node and/or MCP-only path
             InitializeNodeService();
         }
         else
@@ -1204,35 +1204,49 @@ public partial class App : Application
     
     private void InitializeNodeService()
     {
-        if (_settings == null || !_settings.EnableNodeMode) return;
+        if (_settings == null) return;
         if (_dispatcherQueue == null) return;
-        if (string.IsNullOrWhiteSpace(_settings.Token) &&
-            string.IsNullOrWhiteSpace(_settings.BootstrapToken))
+
+        var enableNode = _settings.EnableNodeMode;
+        var enableMcp = _settings.EnableMcpServer;
+        if (!enableNode && !enableMcp) return;
+
+        // Gateway connection requires auth (token or bootstrap token); MCP doesn't.
+        var canRunGateway = enableNode
+            && (!string.IsNullOrWhiteSpace(_settings.Token) || !string.IsNullOrWhiteSpace(_settings.BootstrapToken));
+
+        if (enableNode && !canRunGateway && !enableMcp)
         {
             Logger.Warn("Node mode enabled but no token or bootstrap token configured — skipping node service. Run Setup Guide to configure.");
             return;
         }
-        if (!EnsureSshTunnelConfigured()) return;
-        
+
         try
         {
-            Logger.Info("Initializing Windows Node service...");
-            
             _nodeService = new NodeService(
                 new AppLogger(),
                 _dispatcherQueue,
                 DataPath,
                 () => _keepAliveWindow?.Content as FrameworkElement,
-                _settings);
+                _settings,
+                enableMcpServer: enableMcp);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             _nodeService.ChannelHealthUpdated += OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
             _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
-            
-            // Connect to gateway as a node (separate connection from operator)
-            _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
+
+            if (canRunGateway)
+            {
+                Logger.Info($"Initializing Windows Node service (gateway{(enableMcp ? " + MCP" : "")})...");
+                _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
+            }
+            else
+            {
+                Logger.Info("Initializing Windows Node service (MCP-only, no gateway)...");
+                _ = _nodeService.StartLocalOnlyAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -1837,7 +1851,7 @@ public partial class App : Application
     {
         if (_settingsWindow == null || _settingsWindow.IsClosed)
         {
-            _settingsWindow = new SettingsWindow(_settings!);
+            _settingsWindow = new SettingsWindow(_settings!, _nodeService);
             _settingsWindow.Closed += (s, e) => 
             {
                 _settingsWindow.SettingsSaved -= OnSettingsSaved;
@@ -1875,7 +1889,7 @@ public partial class App : Application
         _currentStatus = ConnectionStatus.Disconnected;
         UpdateTrayIcon();
         
-        if (_settings?.EnableNodeMode == true)
+        if (_settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true)
         {
             InitializeNodeService();
         }
@@ -2516,7 +2530,7 @@ public partial class App : Application
             _currentStatus = ConnectionStatus.Disconnected;
             UpdateTrayIcon();
 
-            if (_settings.EnableNodeMode)
+            if (_settings.EnableNodeMode || _settings.EnableMcpServer)
                 InitializeNodeService();
             else
                 InitializeGatewayClient();

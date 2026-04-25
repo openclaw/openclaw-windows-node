@@ -7,6 +7,7 @@ using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mcp;
 using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
 using Microsoft.UI.Xaml;
@@ -40,6 +41,22 @@ public class NodeService : IDisposable
     private BrowserProxyCapability? _browserProxyCapability;
     private readonly string _dataPath;
     private string? _token;
+
+    // Authoritative capability list — populated by RegisterCapabilities and
+    // shared with both the gateway client (when present) and the MCP bridge.
+    // Holding it here lets MCP-only mode skip the gateway client entirely.
+    private readonly List<INodeCapability> _capabilities = new();
+
+    // Local MCP server — exposes the same capabilities to local MCP clients.
+    public const int McpDefaultPort = 8765;
+    public static string McpServerUrl => $"http://127.0.0.1:{McpDefaultPort}/";
+    private readonly bool _enableMcpServer;
+    private McpHttpServer? _mcpServer;
+    private string? _mcpStartupError;
+    public bool IsMcpRunning => _mcpServer != null;
+    public string McpEndpoint => McpServerUrl;
+    /// <summary>Last MCP server startup error, or null if it started cleanly. Surfaced by Settings UI.</summary>
+    public string? McpStartupError => _mcpStartupError;
     
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -62,13 +79,15 @@ public class NodeService : IDisposable
         DispatcherQueue dispatcherQueue,
         string dataPath,
         Func<FrameworkElement?>? rootProvider = null,
-        SettingsManager? settings = null)
+        SettingsManager? settings = null,
+        bool enableMcpServer = false)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
         _dataPath = dataPath;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
+        _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
         _screenRecordingService = new ScreenRecordingService(logger);
         _cameraCaptureService = new CameraCaptureService(logger);
@@ -83,27 +102,41 @@ public class NodeService : IDisposable
         {
             await DisconnectAsync();
         }
-        
+
         _logger.Info($"Starting Windows Node connection to {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
         _token = token;
-        
+
         _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger, bootstrapToken);
         _nodeClient.StatusChanged += OnNodeStatusChanged;
         _nodeClient.PairingStatusChanged += OnPairingStatusChanged;
         _nodeClient.HealthReceived += OnNodeHealthReceived;
         _nodeClient.GatewaySelfUpdated += OnGatewaySelfUpdated;
         _nodeClient.InvokeCompleted += OnNodeInvokeCompleted;
-        
-        // Register capabilities
+
+        // Register capabilities (also pushes them to _nodeClient and sets permissions)
         RegisterCapabilities();
-        
-        // Set permissions
-        _nodeClient.SetPermission("camera.capture", true);
-        _nodeClient.SetPermission("screen.record", true);
-        
+
         await _nodeClient.ConnectAsync();
-        
+
         _a2uiHostUrl = BuildA2UIHostUrl(_nodeClient.GatewayUrl);
+    }
+
+    /// <summary>
+    /// Bring up node capabilities and the local MCP server without opening a
+    /// WebSocket to the gateway. Used for MCP-only mode where the tray app
+    /// hosts capabilities for local MCP clients only.
+    /// </summary>
+    public Task StartLocalOnlyAsync()
+    {
+        // No gateway client at all — WebSocketClientBase requires non-empty
+        // url/token, and we don't need it. Capabilities live on NodeService
+        // and are consumed by the MCP bridge directly.
+        _logger.Info("Starting Windows Node in MCP-only mode (no gateway)");
+        _token = null;
+
+        RegisterCapabilities();
+
+        return Task.CompletedTask;
     }
     
     /// <summary>
@@ -111,13 +144,17 @@ public class NodeService : IDisposable
     /// </summary>
     public async Task DisconnectAsync()
     {
+        StopMcpServer();
+
         if (_nodeClient != null)
         {
             await _nodeClient.DisconnectAsync();
             _nodeClient.Dispose();
             _nodeClient = null;
         }
-        
+
+        _capabilities.Clear();
+
         // Close canvas window
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
@@ -128,16 +165,16 @@ public class NodeService : IDisposable
     
     private void RegisterCapabilities()
     {
-        if (_nodeClient == null) return;
-        
+        _capabilities.Clear();
+
         // System capability (notifications + command execution)
         _systemCapability = new SystemCapability(_logger);
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(new LocalCommandRunner(_logger));
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
         _systemCapability.SetPromptHandler(new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger));
-        _nodeClient.RegisterCapability(_systemCapability);
-        
+        Register(_systemCapability);
+
         if (_settings?.NodeCanvasEnabled != false)
         {
             _canvasCapability = new CanvasCapability(_logger);
@@ -148,15 +185,15 @@ public class NodeService : IDisposable
             _canvasCapability.SnapshotRequested += OnCanvasSnapshot;
             _canvasCapability.A2UIPushRequested += OnCanvasA2UIPush;
             _canvasCapability.A2UIResetRequested += OnCanvasA2UIReset;
-            _nodeClient.RegisterCapability(_canvasCapability);
+            Register(_canvasCapability);
         }
-        
+
         if (_settings?.NodeScreenEnabled != false)
         {
             _screenCapability = new ScreenCapability(_logger);
             _screenCapability.CaptureRequested += OnScreenCapture;
             _screenCapability.RecordRequested += OnScreenRecord;
-            _nodeClient.RegisterCapability(_screenCapability);
+            Register(_screenCapability);
         }
 
         if (_settings?.NodeCameraEnabled != false)
@@ -165,21 +202,22 @@ public class NodeService : IDisposable
             _cameraCapability.ListRequested += OnCameraList;
             _cameraCapability.SnapRequested += OnCameraSnap;
             _cameraCapability.ClipRequested += OnCameraClip;
-            _nodeClient.RegisterCapability(_cameraCapability);
+            Register(_cameraCapability);
         }
-        
+
         if (_settings?.NodeLocationEnabled != false)
         {
             _locationCapability = new LocationCapability(_logger);
             _locationCapability.GetRequested += async (args) => await GetLocationAsync(args);
-            _nodeClient.RegisterCapability(_locationCapability);
+            Register(_locationCapability);
         }
 
         // Device metadata/status capability
         _deviceCapability = new DeviceCapability(_logger);
-        _nodeClient.RegisterCapability(_deviceCapability);
+        Register(_deviceCapability);
 
-        if (_settings?.NodeBrowserProxyEnabled != false)
+        // BrowserProxy needs a live gateway connection — only register when gateway is up.
+        if (_nodeClient != null && _settings?.NodeBrowserProxyEnabled != false)
         {
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,
@@ -188,10 +226,68 @@ public class NodeService : IDisposable
                 sshRemoteGatewayPort: _settings?.UseSshTunnel == true
                     ? _settings.SshTunnelRemotePort
                     : null);
-            _nodeClient.RegisterCapability(_browserProxyCapability);
+            Register(_browserProxyCapability);
         }
 
-        _logger.Info($"Capabilities registered: {string.Join(", ", _nodeClient.Capabilities.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase))}");
+        if (_nodeClient != null)
+        {
+            if (_settings?.NodeCameraEnabled != false)
+                _nodeClient.SetPermission("camera.capture", true);
+            if (_settings?.NodeScreenEnabled != false)
+                _nodeClient.SetPermission("screen.record", true);
+        }
+
+        _logger.Info($"Capabilities registered: {string.Join(", ", _capabilities.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase))} ({_capabilities.Count} caps)");
+
+        StartMcpServer();
+    }
+
+    /// <summary>
+    /// Register one capability with both NodeService and (when present) the
+    /// gateway client. Single seam so adding a new capability touches one
+    /// site and is exposed by every transport (gateway + MCP) automatically.
+    /// </summary>
+    private void Register(INodeCapability capability)
+    {
+        _capabilities.Add(capability);
+        _nodeClient?.RegisterCapability(capability);
+    }
+
+    private void StartMcpServer()
+    {
+        if (!_enableMcpServer) return;
+        if (_mcpServer != null) return;
+        McpHttpServer? attempt = null;
+        try
+        {
+            // Bridge reads the live _capabilities list every tools/list, so any
+            // future Register(...) call is exposed via MCP automatically.
+            // Snapshot via ToArray() so an MCP request enumerating the list
+            // doesn't race with a re-register on the UI thread.
+            var bridge = new McpToolBridge(
+                () => _capabilities.ToArray(),
+                _logger,
+                serverName: "openclaw-tray-mcp",
+                serverVersion: typeof(NodeService).Assembly.GetName().Version?.ToString() ?? "0.0.0");
+            attempt = new McpHttpServer(bridge, McpDefaultPort, _logger);
+            attempt.Start();
+            _mcpServer = attempt;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"[MCP] Failed to start HTTP server on port {McpDefaultPort}", ex);
+            _mcpStartupError = ex.Message;
+            // Avoid leaking the half-constructed listener / CTS.
+            try { attempt?.Dispose(); } catch { /* ignore */ }
+            _mcpServer = null;
+        }
+    }
+
+    private void StopMcpServer()
+    {
+        try { _mcpServer?.Dispose(); } catch (Exception ex) { _logger.Warn($"[MCP] Dispose error: {ex.Message}"); }
+        _mcpServer = null;
+        _mcpStartupError = null;
     }
 
     public GatewayNodeInfo? GetLocalNodeInfo()
@@ -664,10 +760,12 @@ public class NodeService : IDisposable
     
     public void Dispose()
     {
+        StopMcpServer();
+
         var client = _nodeClient;
         _nodeClient = null;
         try { client?.Dispose(); } catch { /* ignore */ }
-        
+
         try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
         try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
         

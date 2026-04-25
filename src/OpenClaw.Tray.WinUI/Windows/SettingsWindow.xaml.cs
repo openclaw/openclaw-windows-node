@@ -12,15 +12,17 @@ namespace OpenClawTray.Windows;
 public sealed partial class SettingsWindow : WindowEx
 {
     private readonly SettingsManager _settings;
+    private readonly NodeService? _nodeService;
     private string _manualGatewayUrl = "";
     public bool IsClosed { get; private set; }
 
     public event EventHandler? SettingsSaved;
     public event EventHandler? CommandCenterRequested;
 
-    public SettingsWindow(SettingsManager settings)
+    public SettingsWindow(SettingsManager settings, NodeService? nodeService = null)
     {
         _settings = settings;
+        _nodeService = nodeService;
         InitializeComponent();
         
         Title = LocalizationHelper.GetString("WindowTitle_Settings");
@@ -84,6 +86,22 @@ public sealed partial class SettingsWindow : WindowEx
         NodeLocationToggle.IsOn = _settings.NodeLocationEnabled;
         NodeBrowserProxyToggle.IsOn = _settings.NodeBrowserProxyEnabled;
         UpdateSshTunnelPreviewText();
+        McpServerToggle.IsOn = _settings.EnableMcpServer;
+        McpUrlTextBox.Text = NodeService.McpServerUrl;
+        McpServerToggle.Toggled += (_, _) => UpdateMcpStatus();
+        UpdateMcpStatus();
+    }
+
+    private void UpdateMcpStatus()
+    {
+        var enabled = McpServerToggle.IsOn;
+        var running = _nodeService?.IsMcpRunning == true;
+        if (enabled && running)
+            McpStatusText.Text = "Listening";
+        else if (enabled)
+            McpStatusText.Text = "Stopped — save and restart to start";
+        else
+            McpStatusText.Text = "Disabled";
     }
 
     private void SaveSettings()
@@ -128,6 +146,7 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.NodeCameraEnabled = NodeCameraToggle.IsOn;
         _settings.NodeLocationEnabled = NodeLocationToggle.IsOn;
         _settings.NodeBrowserProxyEnabled = NodeBrowserProxyToggle.IsOn;
+        _settings.EnableMcpServer = McpServerToggle.IsOn;
 
         _settings.Save();
         AutoStartManager.SetAutoStart(_settings.AutoStart);
