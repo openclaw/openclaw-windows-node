@@ -29,6 +29,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
             {
                 setPageIndex(pageIndex + 1);
                 nav.Navigate(pages[pageIndex + 1]);
+                Props.NotifyPageChanged();
             }
         }
 
@@ -38,6 +39,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
             {
                 setPageIndex(pageIndex - 1);
                 nav.GoBack();
+                Props.NotifyPageChanged();
             }
         }
 
@@ -60,7 +62,10 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 OnboardingRoute.Permissions => Component<PermissionsPage, OnboardingState>(Props),
                 OnboardingRoute.Chat => Component<ChatPage, OnboardingState>(Props),
                 _ => TextBlock("Unknown page"),
-            }) with { Transition = NavigationTransition.Slide(duration: TimeSpan.FromMilliseconds(200)) })
+            }) with { Transition = NavigationTransition.SlideInOnly(
+                direction: SlideDirection.FromRight,
+                duration: TimeSpan.FromMilliseconds(200),
+                distance: 80) })
             .Height(520),
 
             // Navigation bar

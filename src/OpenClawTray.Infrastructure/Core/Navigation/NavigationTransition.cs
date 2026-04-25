@@ -76,6 +76,21 @@ public abstract record NavigationTransition
             Period = period,
             Direction = direction,
         };
+
+    /// <summary>
+    /// Slide-in-only transition: instantly hides old content, then slides new content
+    /// in from the specified direction. Direction auto-reverses on back navigation.
+    /// </summary>
+    public static NavigationTransition SlideInOnly(
+        SlideDirection direction = SlideDirection.FromRight,
+        TimeSpan? duration = null,
+        double distance = 80)
+        => new SlideInOnlyTransition
+        {
+            Direction = direction,
+            Duration = duration,
+            Distance = distance,
+        };
 }
 
 /// <summary>Slide transition — animate offset and opacity.</summary>
@@ -116,3 +131,14 @@ public sealed record SpringSlideTransition : NavigationTransition
 
 /// <summary>No animation — instant swap.</summary>
 public sealed record SuppressTransition : NavigationTransition;
+
+/// <summary>
+/// Slide-in-only: instantly hides old content, then slides + fades new content in.
+/// Direction auto-reverses on back navigation (Pop mode).
+/// </summary>
+public sealed record SlideInOnlyTransition : NavigationTransition
+{
+    public SlideDirection Direction { get; init; } = SlideDirection.FromRight;
+    public TimeSpan? Duration { get; init; }
+    public double Distance { get; init; } = 80;
+}

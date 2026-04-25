@@ -9,6 +9,7 @@ namespace OpenClawTray.Onboarding.Services;
 public sealed class OnboardingState
 {
     public event EventHandler? Finished;
+    public event EventHandler? PageChanged;
 
     public SettingsManager Settings { get; }
 
@@ -41,6 +42,8 @@ public sealed class OnboardingState
         (ConnectionMode.Later, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
         _ => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
     };
+
+    public void NotifyPageChanged() => PageChanged?.Invoke(this, EventArgs.Empty);
 
     public void Complete()
     {
