@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared.Capabilities;
@@ -122,8 +121,8 @@ public class SystemCapability : NodeCapabilityBase
         if (OperatingSystem.IsWindows())
         {
             var pathext = Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM";
-            extensions.AddRange(pathext.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                .Select(e => e.ToLowerInvariant()));
+            foreach (var e in pathext.Split(';', StringSplitOptions.RemoveEmptyEntries))
+                extensions.Add(e.ToLowerInvariant());
         }
         else
         {
@@ -346,18 +345,25 @@ public class SystemCapability : NodeCapabilityBase
         }
         
         var data = _approvalPolicy.GetPolicyData();
-        return Success(new
+        var rules = data.Rules;
+        var rulesSummary = new object[rules.Count];
+        for (var i = 0; i < rules.Count; i++)
         {
-            enabled = true,
-            defaultAction = data.DefaultAction.ToString().ToLowerInvariant(),
-            rules = data.Rules.Select(r => new
+            var r = rules[i];
+            rulesSummary[i] = new
             {
                 pattern = r.Pattern,
                 action = r.Action.ToString().ToLowerInvariant(),
                 shells = r.Shells,
                 description = r.Description,
                 enabled = r.Enabled
-            }).ToArray()
+            };
+        }
+        return Success(new
+        {
+            enabled = true,
+            defaultAction = data.DefaultAction.ToString().ToLowerInvariant(),
+            rules = rulesSummary
         });
     }
     
@@ -403,10 +409,13 @@ public class SystemCapability : NodeCapabilityBase
                     
                     if (ruleEl.TryGetProperty("shells", out var shellsEl) && shellsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
-                        rule.Shells = shellsEl.EnumerateArray()
-                            .Where(s => s.ValueKind == System.Text.Json.JsonValueKind.String)
-                            .Select(s => s.GetString() ?? "")
-                            .ToArray();
+                        var shellsList = new List<string>(shellsEl.GetArrayLength());
+                        foreach (var s in shellsEl.EnumerateArray())
+                        {
+                            if (s.ValueKind == System.Text.Json.JsonValueKind.String)
+                                shellsList.Add(s.GetString() ?? "");
+                        }
+                        rule.Shells = shellsList.Count > 0 ? shellsList.ToArray() : null;
                     }
                     
                     rules.Add(rule);
