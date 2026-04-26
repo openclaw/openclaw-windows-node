@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClaw.Shared.Capabilities;
 
@@ -30,9 +31,12 @@ public class SystemCapability : NodeCapabilityBase
     
     // Command runner for system.run (swappable: local, docker, wsl)
     private ICommandRunner? _commandRunner;
-    
+
     // Exec approval policy (optional - if null, all commands are allowed)
     private ExecApprovalPolicy? _approvalPolicy;
+
+    // V2 exec approval handler (null = legacy path; inert until explicitly set)
+    private IExecApprovalV2Handler? _v2Handler;
     
     public SystemCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -52,6 +56,15 @@ public class SystemCapability : NodeCapabilityBase
     public void SetApprovalPolicy(ExecApprovalPolicy policy)
     {
         _approvalPolicy = policy;
+    }
+
+    /// <summary>
+    /// Install a V2 exec approval handler. When set, system.run routes to the V2 path
+    /// instead of the legacy path. The V2 path is inert until this is called.
+    /// </summary>
+    public void SetV2Handler(IExecApprovalV2Handler handler)
+    {
+        _v2Handler = handler;
     }
     
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
@@ -214,6 +227,34 @@ public class SystemCapability : NodeCapabilityBase
     
     private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)
     {
+        var correlationId = Guid.NewGuid().ToString("N")[..8];
+
+        // Routing seam (rail 2): select path, delegate — no approval logic here.
+        if (_v2Handler != null)
+        {
+            Logger.Info($"[system.run] corr={correlationId} path=v2");
+            ExecApprovalV2Result v2Result;
+            try
+            {
+                v2Result = await _v2Handler.HandleAsync(request, correlationId);
+            }
+            catch (Exception ex)
+            {
+                // Rail 1: no silent fallback — handler exceptions become typed denies.
+                Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
+                v2Result = ExecApprovalV2Result.ValidationFailed($"Handler exception: {ex.Message}");
+            }
+
+            Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
+            // Rail 1: no silent fallback to legacy regardless of result code.
+            // In PR1 only ExecApprovalV2NullHandler exists (always unavailable); the real
+            // coordinator that can produce an allow decision is wired in PR7/PR8.
+            return Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
+        }
+
+        // Legacy path — untouched (rail 3).
+        Logger.Info($"[system.run] corr={correlationId} path=legacy decision=legacy reason=legacy");
+
         if (_commandRunner == null)
         {
             return Error("Command execution not available");
