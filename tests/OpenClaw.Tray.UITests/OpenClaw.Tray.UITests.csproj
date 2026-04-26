@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A2UI rendering tests that drive the real WinUI3 / WindowsAppSDK runtime.
+    A class-fixture spins a dedicated STA dispatcher thread and starts a single
+    hidden Application + Window once per test process; tests marshal onto the
+    UI thread to construct surfaces and walk the resulting visual tree.
+
+    Runs only on Windows. Slower than pure-data tests (~seconds to bootstrap,
+    tens of ms per assertion) but exercises the actual XAML produced by the
+    A2UI renderers.
+  -->
+
+  <PropertyGroup>
+    <!-- Override the net10.0 default from tests/Directory.Build.props -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+
+    <!-- Deliberately NOT setting <UseWinUI>true</UseWinUI>: that flag turns the
+         project into a WinUI app (forces WinExe output, swaps the test SDK's
+         entry point for the XAML-generated one) and breaks the testhost wiring
+         that copies Microsoft.TestPlatform.* DLLs. We don't author any XAML
+         here — we just reference WinUI3 types programmatically — so we keep the
+         standard test-SDK pipeline and pull WinUI in via the package reference
+         + ProjectReference to OpenClaw.Tray.WinUI. -->
+
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RootNamespace>OpenClaw.Tray.UITests</RootNamespace>
+
+    <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the
+         Tray.WinUI ProjectReference. The main project warns; we don't want it
+         to escalate to an error here just because tests/Directory.Build.props
+         sets TreatWarningsAsErrors=true. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260101001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj" />
+    <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

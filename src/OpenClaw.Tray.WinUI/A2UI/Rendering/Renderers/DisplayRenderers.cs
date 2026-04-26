@@ -135,61 +135,66 @@ public sealed class IconRenderer : IComponentRenderer
         return fontIcon;
     }
 
-    /// <summary>Map A2UI v0.8 icon-name enum to Segoe Fluent glyphs.</summary>
+    /// <summary>
+    /// Map A2UI v0.8 icon-name enum to Segoe Fluent Icons glyph codepoints.
+    /// The icon-name enum is the v0.8 Material-derived set; each name maps to
+    /// the closest-meaning Segoe MDL2 / Fluent glyph. Unknown names fall back
+    /// to the Help glyph rather than rendering an empty box.
+    /// </summary>
     private static string MapName(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name)) return ""; // outlined help (?)
+        if (string.IsNullOrWhiteSpace(name)) return ""; // Help (?)
         return name switch
         {
-            "accountCircle" => "",
-            "add" => "",
-            "arrowBack" => "",
-            "arrowForward" => "",
-            "attachFile" => "",
-            "calendarToday" => "",
-            "call" => "",
-            "camera" => "",
-            "check" => "",
-            "close" => "",
-            "delete" => "",
-            "download" => "",
-            "edit" => "",
-            "event" => "",
-            "error" => "",
-            "favorite" => "",
-            "favoriteOff" => "",
-            "folder" => "",
-            "help" => "",
-            "home" => "",
-            "info" => "",
-            "locationOn" => "",
-            "lock" => "",
-            "lockOpen" => "",
-            "mail" => "",
-            "menu" => "",
-            "moreVert" => "",
-            "moreHoriz" => "",
-            "notificationsOff" => "",
-            "notifications" => "",
-            "payment" => "",
-            "person" => "",
-            "phone" => "",
-            "photo" => "",
-            "print" => "",
-            "refresh" => "",
-            "search" => "",
-            "send" => "",
-            "settings" => "",
-            "share" => "",
-            "shoppingCart" => "",
-            "star" => "",
-            "starHalf" => "",
-            "starOff" => "",
-            "upload" => "",
-            "visibility" => "",
-            "visibilityOff" => "",
-            "warning" => "",
-            _ => "",
+            "accountCircle"    => "", // Contact
+            "add"              => "", // Add
+            "arrowBack"        => "", // Back
+            "arrowForward"     => "", // Forward
+            "attachFile"       => "", // Attach
+            "calendarToday"    => "", // CalendarDay
+            "call"             => "", // Phone
+            "camera"           => "", // Camera
+            "check"            => "", // CheckMark
+            "close"            => "", // Cancel
+            "delete"           => "", // Delete
+            "download"         => "", // Download
+            "edit"             => "", // Edit
+            "event"            => "", // Calendar
+            "error"            => "", // Error
+            "favorite"         => "", // HeartFill
+            "favoriteOff"      => "", // Heart (outline)
+            "folder"           => "", // Folder
+            "help"             => "", // Help / Unknown
+            "home"             => "", // Home
+            "info"             => "", // Info
+            "locationOn"       => "", // MapPin
+            "lock"             => "", // Lock
+            "lockOpen"         => "", // Unlock
+            "mail"             => "", // Mail
+            "menu"             => "", // GlobalNavButton (hamburger)
+            "moreVert"         => "", // More (vertical dots)
+            "moreHoriz"        => "", // More — no canonical horizontal in MDL2; reuse vertical
+            "notificationsOff" => "", // RingerOff
+            "notifications"    => "", // Ringer
+            "payment"          => "", // Payment
+            "person"           => "", // Contact
+            "phone"            => "", // Phone
+            "photo"            => "", // Picture
+            "print"            => "", // Print
+            "refresh"          => "", // Refresh
+            "search"           => "", // Search
+            "send"             => "", // Send
+            "settings"         => "", // Settings (gear)
+            "share"            => "", // Share
+            "shoppingCart"     => "", // ShoppingCart
+            "star"             => "", // FavoriteStarFill
+            "starHalf"         => "", // HalfStarLeft
+            "starOff"          => "", // FavoriteStar (outline)
+            "upload"           => "", // Upload
+            "visibility"       => "", // RedEye / View
+            "visibilityOff"    => "", // Hide
+            "warning"          => "", // Warning
+            _                  => "", // Help (unknown name)
         };
     }
 }
