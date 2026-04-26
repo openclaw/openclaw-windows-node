@@ -139,7 +139,7 @@ public class CameraCaptureService : IDisposable
             var settings = new MediaCaptureInitializationSettings
             {
                 VideoDeviceId = args.DeviceId,
-                MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+                MemoryPreference = MediaCaptureMemoryPreference.Auto,
                 StreamingCaptureMode = args.IncludeAudio
                     ? StreamingCaptureMode.AudioAndVideo
                     : StreamingCaptureMode.Video
@@ -148,9 +148,10 @@ public class CameraCaptureService : IDisposable
             var initStart = DateTime.UtcNow;
             await capture.InitializeAsync(settings);
             _logger.Info($"camera.clip: MediaCapture initialized in {(DateTime.UtcNow - initStart).TotalMilliseconds:0}ms");
-            
+
+            var recordProperties = await TryConfigureVideoRecordStreamAsync(capture);
             using var stream = new InMemoryRandomAccessStream();
-            var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.HD720p);
+            var profile = CreateClipProfile(args.IncludeAudio, recordProperties);
             
             var recordStart = DateTime.UtcNow;
             await capture.StartRecordToStreamAsync(profile, stream);
@@ -163,7 +164,7 @@ public class CameraCaptureService : IDisposable
             _logger.Info($"camera.clip: recording stopped after {elapsed:0}ms");
             
             stream.Seek(0);
-            var reader = new DataReader(stream);
+            using var reader = new DataReader(stream);
             await reader.LoadAsync((uint)stream.Size);
             var buffer = new byte[stream.Size];
             reader.ReadBytes(buffer);
@@ -220,6 +221,74 @@ public class CameraCaptureService : IDisposable
     {
         const int MfEInvalidMediaType = unchecked((int)0xC00D36B4);
         return ex.HResult == MfEInvalidMediaType;
+    }
+
+    private async Task<VideoEncodingProperties?> TryConfigureVideoRecordStreamAsync(MediaCapture capture)
+    {
+        var props = capture.VideoDeviceController
+            .GetAvailableMediaStreamProperties(MediaStreamType.VideoRecord)
+            .OfType<VideoEncodingProperties>()
+            .Where(p => p.Width > 0 && p.Height > 0)
+            .ToList();
+
+        if (props.Count == 0)
+        {
+            _logger.Warn("camera.clip: no video record stream properties available; using automatic MP4 profile");
+            return null;
+        }
+
+        var bounded = props.Where(p => p.Width <= 1280 && p.Height <= 720).ToList();
+        var candidates = (bounded.Count > 0 ? bounded : props)
+            .OrderByDescending(p => p.Width)
+            .ThenByDescending(p => p.Height)
+            .ThenByDescending(p => p.Bitrate)
+            .ToList();
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                await capture.VideoDeviceController.SetMediaStreamPropertiesAsync(MediaStreamType.VideoRecord, candidate);
+                _logger.Info($"camera.clip: using record stream {candidate.Subtype} {candidate.Width}x{candidate.Height}");
+                return candidate;
+            }
+            catch (Exception ex) when (IsInvalidMediaType(ex))
+            {
+                _logger.Warn($"camera.clip: record stream {candidate.Subtype} {candidate.Width}x{candidate.Height} not supported");
+            }
+        }
+
+        _logger.Warn("camera.clip: no compatible record stream properties accepted; using automatic MP4 profile");
+        return null;
+    }
+
+    private static MediaEncodingProfile CreateClipProfile(bool includeAudio, VideoEncodingProperties? recordProperties)
+    {
+        var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Auto);
+
+        if (!includeAudio)
+        {
+            profile.Audio = null;
+        }
+
+        if (recordProperties != null)
+        {
+            profile.Video.Width = recordProperties.Width;
+            profile.Video.Height = recordProperties.Height;
+
+            if (recordProperties.Bitrate > 0)
+            {
+                profile.Video.Bitrate = recordProperties.Bitrate;
+            }
+
+            if (recordProperties.FrameRate.Numerator > 0 && recordProperties.FrameRate.Denominator > 0)
+            {
+                profile.Video.FrameRate.Numerator = recordProperties.FrameRate.Numerator;
+                profile.Video.FrameRate.Denominator = recordProperties.FrameRate.Denominator;
+            }
+        }
+
+        return profile;
     }
 
     private static List<ImageEncodingProperties> SelectPhotoEncodings(MediaCapture capture, string format, int maxWidth)

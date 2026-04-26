@@ -62,11 +62,11 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - ✅ A2UI reset raises event
 
 #### ScreenCapabilityTests (5 tests)
-- ✅ CanHandle screen.capture and screen.list
+- ✅ CanHandle screen.snapshot and rejects non-gateway screen.capture/screen.list
 - ✅ Capture returns error when no handler
 - ✅ Capture calls handler with parsed args (format, maxWidth, quality, screenIndex)
-- ✅ List returns error when no handler
-- ✅ List returns screens when handler set
+- ✅ Capture returns error when handler throws
+- ✅ Capture includes data URI response
 
 #### CameraCapabilityTests (7 tests)
 - ✅ CanHandle camera.list and camera.snap

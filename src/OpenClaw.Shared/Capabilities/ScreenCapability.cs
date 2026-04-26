@@ -13,8 +13,7 @@ public class ScreenCapability : NodeCapabilityBase
     
     private static readonly string[] _commands = new[]
     {
-        "screen.capture",
-        "screen.list"
+        "screen.snapshot"
         // Future: "screen.record"
     };
     
@@ -22,7 +21,6 @@ public class ScreenCapability : NodeCapabilityBase
     
     // Events for UI/platform-specific implementation
     public event Func<ScreenCaptureArgs, Task<ScreenCaptureResult>>? CaptureRequested;
-    public event Func<Task<ScreenInfo[]>>? ListRequested;
     
     public ScreenCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -32,8 +30,7 @@ public class ScreenCapability : NodeCapabilityBase
     {
         return request.Command switch
         {
-            "screen.capture" => await HandleCaptureAsync(request),
-            "screen.list" => await HandleListAsync(request),
+            "screen.snapshot" => await HandleCaptureAsync(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
@@ -47,7 +44,7 @@ public class ScreenCapability : NodeCapabilityBase
         var screenIndex = GetIntArg(request.Args, "screenIndex", monitor);
         var includePointer = GetBoolArg(request.Args, "includePointer", true);
         
-        Logger.Info($"screen.capture: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
+        Logger.Info($"screen.snapshot: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
         
         if (CaptureRequested == null)
         {
@@ -81,39 +78,6 @@ public class ScreenCapability : NodeCapabilityBase
             return Error($"Capture failed: {ex.Message}");
         }
     }
-    
-    private async Task<NodeInvokeResponse> HandleListAsync(NodeInvokeRequest request)
-    {
-        Logger.Info("screen.list");
-        
-        if (ListRequested == null)
-        {
-            return Error("Screen list not available");
-        }
-        
-        try
-        {
-            var screens = await ListRequested();
-            var formatted = new List<object>();
-            foreach (var screen in screens)
-            {
-                formatted.Add(new
-                {
-                    index = screen.Index,
-                    name = screen.Name,
-                    primary = screen.IsPrimary,
-                    bounds = new { x = screen.X, y = screen.Y, width = screen.Width, height = screen.Height },
-                    workingArea = new { x = screen.WorkingX, y = screen.WorkingY, width = screen.WorkingWidth, height = screen.WorkingHeight }
-                });
-            }
-            return Success(new { screens = formatted });
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("Screen list failed", ex);
-            return Error($"List failed: {ex.Message}");
-        }
-    }
 }
 
 public class ScreenCaptureArgs
@@ -133,17 +97,3 @@ public class ScreenCaptureResult
     public string Base64 { get; set; } = "";
 }
 
-public class ScreenInfo
-{
-    public int Index { get; set; }
-    public string Name { get; set; } = "";
-    public int Width { get; set; }
-    public int Height { get; set; }
-    public int X { get; set; }
-    public int Y { get; set; }
-    public int WorkingX { get; set; }
-    public int WorkingY { get; set; }
-    public int WorkingWidth { get; set; }
-    public int WorkingHeight { get; set; }
-    public bool IsPrimary { get; set; }
-}

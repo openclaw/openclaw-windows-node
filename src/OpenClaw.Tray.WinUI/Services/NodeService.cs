@@ -129,7 +129,6 @@ public class NodeService : IDisposable
         
         // Screen capability
         _screenCapability = new ScreenCapability(_logger);
-        _screenCapability.ListRequested += OnScreenList;
         _screenCapability.CaptureRequested += OnScreenCapture;
         _nodeClient.RegisterCapability(_screenCapability);
 
@@ -413,12 +412,6 @@ public class NodeService : IDisposable
     #endregion
     
     #region Screen Capability Handlers
-    
-    private Task<ScreenInfo[]> OnScreenList()
-    {
-        return _screenCaptureService?.ListScreensAsync() 
-            ?? Task.FromResult(Array.Empty<ScreenInfo>());
-    }
     
     private async Task<ScreenCaptureResult> OnScreenCapture(ScreenCaptureArgs args)
     {

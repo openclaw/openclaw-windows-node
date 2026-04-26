@@ -681,8 +681,9 @@ public class ScreenCapabilityTests
     public void CanHandle_ScreenCommands()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        Assert.True(cap.CanHandle("screen.capture"));
-        Assert.True(cap.CanHandle("screen.list"));
+        Assert.True(cap.CanHandle("screen.snapshot"));
+        Assert.False(cap.CanHandle("screen.capture"));
+        Assert.False(cap.CanHandle("screen.list"));
         Assert.False(cap.CanHandle("screen.record"));
         Assert.Equal("screen", cap.Category);
     }
@@ -691,7 +692,7 @@ public class ScreenCapabilityTests
     public async Task Capture_ReturnsError_WhenNoHandler()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "s1", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s1", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
@@ -711,7 +712,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest
         {
             Id = "s2",
-            Command = "screen.capture",
+            Command = "screen.snapshot",
             Args = Parse("""{"format":"jpeg","maxWidth":800,"quality":50,"screenIndex":1}""")
         };
 
@@ -725,67 +726,15 @@ public class ScreenCapabilityTests
     }
 
     [Fact]
-    public async Task List_ReturnsError_WhenNoHandler()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "s3", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.NotNull(res.Error);
-        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task List_ReturnsScreens_WhenHandler()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        cap.ListRequested += () => Task.FromResult(new[] 
-        { 
-            new ScreenInfo { Index = 0, Name = "Main", IsPrimary = true, Width = 2560, Height = 1440 } 
-        });
-
-        var req = new NodeInvokeRequest { Id = "s4", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.NotNull(res.Payload);
-        
-        // Verify payload contains expected screen data
-        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("screens", out var screensEl));
-        Assert.Equal(System.Text.Json.JsonValueKind.Array, screensEl.ValueKind);
-        Assert.Equal(1, screensEl.GetArrayLength());
-        var screen = screensEl[0];
-        Assert.Equal("Main", screen.GetProperty("name").GetString());
-        Assert.True(screen.GetProperty("primary").GetBoolean());
-        var bounds = screen.GetProperty("bounds");
-        Assert.Equal(2560, bounds.GetProperty("width").GetInt32());
-        Assert.Equal(1440, bounds.GetProperty("height").GetInt32());
-    }
-
-    [Fact]
     public async Task Capture_ReturnsError_WhenHandlerThrows()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         cap.CaptureRequested += (args) => throw new InvalidOperationException("Display access denied");
 
-        var req = new NodeInvokeRequest { Id = "s5", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s5", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Display access denied", res.Error);
-    }
-
-    [Fact]
-    public async Task List_ReturnsError_WhenHandlerThrows()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        cap.ListRequested += () => throw new InvalidOperationException("Screen enumeration failed");
-
-        var req = new NodeInvokeRequest { Id = "s6", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("Screen enumeration failed", res.Error);
     }
 
     [Fact]
@@ -800,7 +749,7 @@ public class ScreenCapabilityTests
             Base64 = "abc123"
         });
 
-        var req = new NodeInvokeRequest { Id = "s7", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s7", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
 
@@ -827,7 +776,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest
         {
             Id = "s8",
-            Command = "screen.capture",
+            Command = "screen.snapshot",
             Args = Parse("""{"monitor":2}""")
         };
         var res = await cap.ExecuteAsync(req);

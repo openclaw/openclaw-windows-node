@@ -1959,6 +1959,10 @@ public partial class App : Application
     {
         try
         {
+#if DEBUG
+            Logger.Info("Skipping update check in debug build");
+            return true;
+#else
             Logger.Info("Checking for updates...");
             var updateFound = await AppUpdater.CheckForUpdatesAsync();
 
@@ -2000,6 +2004,7 @@ public partial class App : Application
             }
 
             return true; // RemindLater or Skip - continue
+#endif
         }
         catch (Exception ex)
         {

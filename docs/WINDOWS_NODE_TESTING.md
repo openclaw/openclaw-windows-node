@@ -44,8 +44,7 @@ These features need the gateway to send `node.invoke` commands:
 | `canvas.hide` | Hide canvas window | Closes the canvas window |
 | `canvas.eval` | Execute JavaScript | Runs JS in canvas, returns result |
 | `canvas.snapshot` | Capture canvas | Returns base64 PNG of canvas content |
-| `screen.capture` | Take screenshot | Captures screen, shows notification, returns base64 |
-| `screen.list` | List monitors | Returns array of monitor info |
+| `screen.snapshot` | Take screenshot | Captures screen, shows notification, returns base64 |
 | `system.notify` | Show notification | Displays toast notification |
 | `camera.list` | Enumerate cameras | Returns device IDs and names |
 | `camera.snap` | Capture photo | Returns base64 image (NV12 fallback) |

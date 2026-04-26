@@ -172,8 +172,8 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
 |------------|----------|-------------|
 | **System** | `system.notify`, `system.run`, `system.run.prepare`, `system.which`, `system.execApprovals.get`, `system.execApprovals.set` | Show Windows toast notifications, execute commands with policy controls |
 | **Canvas** | `canvas.present`, `canvas.hide`, `canvas.navigate`, `canvas.eval`, `canvas.snapshot`, `canvas.a2ui.push`, `canvas.a2ui.reset` | Display and control a WebView2 window |
-| **Screen** | `screen.capture`, `screen.list` | Capture screenshots |
-| **Camera** | `camera.list`, `camera.snap` | Enumerate cameras and capture a still photo |
+| **Screen** | `screen.snapshot` | Capture screenshots |
+| **Camera** | `camera.list`, `camera.snap`, `camera.clip` | Enumerate cameras and capture still photos or short video clips |
 
 #### Node Setup
 
@@ -203,10 +203,11 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
            "canvas.snapshot",
            "canvas.a2ui.push",
            "canvas.a2ui.reset",
-           "screen.capture",
-           "screen.list",
-           "camera.list",
-           "camera.snap"
+            "screen.snapshot",
+            "camera.list",
+            "camera.snap",
+            "camera.clip",
+            "location.get"
          ]
        }
      }
@@ -229,7 +230,7 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
     openclaw nodes canvas a2ui push --node <id> --jsonl "$(Get-Content -Raw .\\ui.jsonl)"
     
     # Take a screenshot
-    openclaw nodes invoke --node <id> --command screen.capture --params '{"screenIndex":0,"format":"png"}'
+    openclaw nodes invoke --node <id> --command screen.snapshot --params '{"screenIndex":0,"format":"png"}'
 
     # List cameras
     openclaw nodes invoke --node <id> --command camera.list
