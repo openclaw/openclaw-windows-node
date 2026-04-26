@@ -1,14 +1,21 @@
 {
-  "last_run": "2026-04-26T01:15:00Z",
-  "run_id": "24944892332",
+  "last_run": "2026-04-26T12:33:12Z",
+  "run_id": "24956694964",
   "comments_made": {
+    "159": "2026-04-26T12:33:12Z",
     "198": "2026-04-23T01:06:43Z",
     "191": "2026-04-21T01:14:08Z",
     "120": "2026-04-19T12:29:00Z",
-    "159": "2026-04-16T12:42:00Z",
     "99": "prior run"
   },
   "fix_attempts": {
+    "eng-nuget-source-mapping": {
+      "pr_branch": "repo-assist/eng-nuget-source-mapping-2026-04-26",
+      "pr_number": 214,
+      "status": "open",
+      "created": "2026-04-26T12:33:12Z",
+      "description": "Task4: add root NuGet.Config with packageSourceMapping; supply-chain security"
+    },
     "test-shell-parser-env-sanitizer": {
       "pr_branch": "repo-assist/test-shell-parser-env-sanitizer-2026-04-25",
       "pr_number": 212,
@@ -45,10 +52,10 @@
       "description": "Task5: remove System.Linq from SystemCapability; 3 LINQ chains replaced with loops; 652 Shared pass"
     }
   },
-  "notes": "PR #213 created (this run): remove System.Linq from SystemCapability (3 LINQ chains). PR #212 open: ExecShellWrapperParser+ExecEnvSanitizer unit tests (98 new). PR #211 open: src/Directory.Build.props. PR #209 open: SearchValues+SystemCapability tests. PR #207 open: terminal auth-failure tests. PR #192 open: WebView2 bridge. PR #210 open: shanselman camera.clip/location.get/canvas. Issue #208: dependabot config (protected file). Task6 this run: #212,#211,#209 clean; #207,#192 unstable (no CI).",
+  "notes": "PR #214 created (this run): root NuGet.Config with packageSourceMapping (supply-chain security). PR #159 re-synced with master by AlexAlves87 (2026-04-26); all review points addressed; ready for merge. PR #213 open: remove System.Linq. PR #212 open: parser+sanitizer tests. PR #211 open: src/Directory.Build.props. PR #209 open: SearchValues+SystemCapability tests. PR #207 open: terminal auth-failure tests. PR #192 open: WebView2 bridge.",
   "monthly_activity_issue": 127,
   "backlog_cursor": {
     "issues": 213,
-    "prs": 213
+    "prs": 214
   }
 }
