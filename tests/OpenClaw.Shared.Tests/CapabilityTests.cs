@@ -960,6 +960,8 @@ public class CanvasCapabilityTests
         Assert.True(cap.CanHandle("canvas.a2ui.push"));
         Assert.True(cap.CanHandle("canvas.a2ui.pushJSONL"));
         Assert.True(cap.CanHandle("canvas.a2ui.reset"));
+        Assert.True(cap.CanHandle("canvas.a2ui.dump"));
+        Assert.True(cap.CanHandle("canvas.caps"));
         Assert.False(cap.CanHandle("canvas.unknown"));
         Assert.Equal("canvas", cap.Category);
     }
@@ -1296,11 +1298,76 @@ public class CanvasCapabilityTests
         {
             Id = "c19",
             Command = "canvas.a2ui.push",
-            Args = Parse($"{{\"jsonlPath\":\"{traversalPath.Replace("\\", "\\\\")}\"}}") 
+            Args = Parse($"{{\"jsonlPath\":\"{traversalPath.Replace("\\", "\\\\")}\"}}")
         };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("temp directory", res.Error);
+    }
+
+    [Fact]
+    public async Task A2UIDump_ReturnsError_WhenNoCanvasOpen()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "c20", Command = "canvas.a2ui.dump", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("CANVAS_NOT_OPEN", res.Error);
+    }
+
+    [Fact]
+    public async Task A2UIDump_CallsHandler_AndReturnsParsedPayload()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.A2UIDumpRequested += () => Task.FromResult("""{"surfaceId":"main","root":"r1","components":[],"dataModel":{}}""");
+
+        var req = new NodeInvokeRequest { Id = "c21", Command = "canvas.a2ui.dump", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        // Payload is a parsed object (JsonElement), not a quoted string — verify by re-serializing.
+        var json = JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"surfaceId\":\"main\"", json);
+        Assert.Contains("\"root\":\"r1\"", json);
+    }
+
+    [Fact]
+    public async Task A2UIDump_ReturnsError_WhenHandlerThrows()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.A2UIDumpRequested += () => throw new InvalidOperationException("dispatcher gone");
+
+        var req = new NodeInvokeRequest { Id = "c22", Command = "canvas.a2ui.dump", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("CANVAS_DUMP_FAILED", res.Error);
+        Assert.Contains("dispatcher gone", res.Error);
+    }
+
+    [Fact]
+    public async Task Caps_ReturnsDefault_WhenNoHandler()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "c23", Command = "canvas.caps", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"renderer\":\"none\"", json);
+        Assert.Contains("\"eval\":false", json);
+        Assert.Contains("\"snapshot\":false", json);
+    }
+
+    [Fact]
+    public async Task Caps_CallsHandler_AndReturnsParsedPayload()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.CapsRequested += () => Task.FromResult("""{"renderer":"native","eval":false,"snapshot":true,"a2ui":{"version":"0.8","introspect":true}}""");
+
+        var req = new NodeInvokeRequest { Id = "c24", Command = "canvas.caps", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"renderer\":\"native\"", json);
+        Assert.Contains("\"introspect\":true", json);
     }
 }
 
