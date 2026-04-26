@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
@@ -30,7 +31,9 @@ public class NodeService : IDisposable
     private CanvasCapability? _canvasCapability;
     private ScreenCapability? _screenCapability;
     private CameraCapability? _cameraCapability;
+    private LocationCapability? _locationCapability;
     private readonly string _dataPath;
+    private string? _token;
     
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -66,6 +69,7 @@ public class NodeService : IDisposable
         }
         
         _logger.Info($"Starting Windows Node connection to {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
+        _token = token;
         
         _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger);
         _nodeClient.StatusChanged += OnNodeStatusChanged;
@@ -140,7 +144,13 @@ public class NodeService : IDisposable
         _cameraCapability = new CameraCapability(_logger);
         _cameraCapability.ListRequested += OnCameraList;
         _cameraCapability.SnapRequested += OnCameraSnap;
+        _cameraCapability.ClipRequested += OnCameraClip;
         _nodeClient.RegisterCapability(_cameraCapability);
+        
+        // Location capability
+        _locationCapability = new LocationCapability(_logger);
+        _locationCapability.GetRequested += async (args) => await GetLocationAsync(args);
+        _nodeClient.RegisterCapability(_locationCapability);
         
         _logger.Info("All capabilities registered");
     }
@@ -181,6 +191,7 @@ public class NodeService : IDisposable
                 if (_canvasWindow == null || _canvasWindow.IsClosed)
                 {
                     _canvasWindow = new CanvasWindow();
+                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
                 }
                 
                 // Configure window
@@ -317,6 +328,7 @@ public class NodeService : IDisposable
         if (_canvasWindow == null || _canvasWindow.IsClosed)
         {
             _canvasWindow = new CanvasWindow();
+            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
             _canvasWindow.Activate();
         }
     }
@@ -408,13 +420,13 @@ public class NodeService : IDisposable
     #endregion
     
     #region Screen Capability Handlers
-    
+
     private Task<ScreenInfo[]> OnScreenList()
     {
-        return _screenCaptureService?.ListScreensAsync() 
+        return _screenCaptureService?.ListScreensAsync()
             ?? Task.FromResult(Array.Empty<ScreenInfo>());
     }
-    
+
     private async Task<ScreenCaptureResult> OnScreenCapture(ScreenCaptureArgs args)
     {
         if (_screenCaptureService == null)
@@ -506,6 +518,55 @@ public class NodeService : IDisposable
         }
     }
     
+    private async Task<CameraClipResult> OnCameraClip(CameraClipArgs args)
+    {
+        if (_cameraCaptureService == null)
+        {
+            throw new InvalidOperationException("Camera capture service not available");
+        }
+        
+        try
+        {
+            return await _cameraCaptureService.ClipAsync(args);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            try
+            {
+                new ToastContentBuilder()
+                    .AddText(LocalizationHelper.GetString("Toast_CameraBlocked"))
+                    .AddText(LocalizationHelper.GetString("Toast_CameraBlockedDetail"))
+                    .Show();
+            }
+            catch { }
+            
+            throw new InvalidOperationException(
+                "Camera access blocked. Enable camera access for desktop apps in Windows Privacy settings.",
+                ex);
+        }
+    }
+    
+    private async Task<LocationResult> GetLocationAsync(LocationGetArgs args)
+    {
+        var geolocator = new global::Windows.Devices.Geolocation.Geolocator
+        {
+            DesiredAccuracy = args.Accuracy == "precise"
+                ? global::Windows.Devices.Geolocation.PositionAccuracy.High
+                : global::Windows.Devices.Geolocation.PositionAccuracy.Default
+        };
+        
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(args.TimeoutMs));
+        var position = await geolocator.GetGeopositionAsync().AsTask(cts.Token);
+        
+        return new LocationResult
+        {
+            Latitude = position.Coordinate.Point.Position.Latitude,
+            Longitude = position.Coordinate.Point.Position.Longitude,
+            AccuracyMeters = position.Coordinate.Accuracy,
+            TimestampMs = position.Coordinate.Timestamp.ToUnixTimeMilliseconds()
+        };
+    }
+    
     #endregion
     
     public void Dispose()
@@ -525,3 +586,4 @@ public class NodeService : IDisposable
         }
     }
 }
+

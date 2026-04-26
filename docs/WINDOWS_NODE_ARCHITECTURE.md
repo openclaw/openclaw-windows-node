@@ -579,8 +579,7 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [x] `camera.snap` — capture photo from webcam (MediaCapture + frame reader fallback)
 - [ ] `camera.clip` — record short video clip (MediaCapture + MediaEncoding)
 - [ ] `screen.record` — capture Windows desktop via Graphics Capture API
-- [x] `screen.capture` — screenshot via Windows.Graphics.Capture
-- [x] `screen.list` — enumerate monitors with bounds/working area
+- [x] `screen.snapshot` — screenshot via Windows.Graphics.Capture
 - [x] Permission prompts (camera: UnauthorizedAccessException → toast; future MSIX consent)
 - [x] Multi-monitor support for screen capture (`screenIndex` param)
 

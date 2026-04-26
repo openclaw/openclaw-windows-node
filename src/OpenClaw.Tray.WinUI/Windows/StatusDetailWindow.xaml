@@ -16,7 +16,7 @@
             <!-- Status Header -->
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <FontIcon x:Name="StatusIcon" Glyph="&#xE8FB;" FontSize="32"
-                          Foreground="#E74C3C"/>
+                          Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                 <StackPanel>
                     <TextBlock x:Name="StatusText" x:Uid="StatusConnectedText" Text="Connected" 
                                Style="{StaticResource SubtitleTextBlockStyle}"/>
@@ -29,7 +29,7 @@
             <!-- Usage Section -->
             <StackPanel x:Name="UsageSection" Spacing="8">
                 <TextBlock x:Uid="StatusUsageHeader" Text="USAGE" Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="#E74C3C" FontWeight="Bold"/>
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                 
                 <Grid ColumnSpacing="16" RowSpacing="4">
                     <Grid.ColumnDefinitions>
@@ -59,7 +59,7 @@
             <!-- Sessions Section -->
             <StackPanel x:Name="SessionsSection" Spacing="8">
                 <TextBlock x:Uid="StatusSessionsHeader" Text="ACTIVE SESSIONS" Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="#E74C3C" FontWeight="Bold"/>
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                 
                 <ItemsControl x:Name="SessionsList">
                     <ItemsControl.ItemTemplate>
@@ -92,7 +92,7 @@
             <!-- Channels Section -->
             <StackPanel x:Name="ChannelsSection" Spacing="8">
                 <TextBlock x:Uid="StatusChannelsHeader" Text="CHANNELS" Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="#E74C3C" FontWeight="Bold"/>
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
                 
                 <ItemsControl x:Name="ChannelsList">
                     <ItemsControl.ItemTemplate>
@@ -114,7 +114,7 @@
             </StackPanel>
 
             <!-- Refresh Button -->
-            <Button x:Uid="StatusRefreshButton" Content="Refresh" Click="OnRefresh" HorizontalAlignment="Center"/>
+            <Button x:Name="RefreshButton" x:Uid="StatusRefreshButton" AutomationProperties.AutomationId="RefreshButton" Content="Refresh" Click="OnRefresh" HorizontalAlignment="Center"/>
             
         </StackPanel>
     </ScrollViewer>

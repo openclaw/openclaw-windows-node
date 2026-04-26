@@ -26,7 +26,7 @@
         </StackPanel>
 
         <!-- List -->
-        <ListView x:Name="NotificationList" Grid.Row="1" 
+        <ListView x:Name="NotificationList" AutomationProperties.AutomationId="NotificationList" Grid.Row="1" 
                   SelectionMode="Single"
                   ItemClick="OnItemClick"
                   IsItemClickEnabled="True">
@@ -80,8 +80,8 @@
         <!-- Footer -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" 
                     HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Uid="NotificationClearAllButton" Content="Clear All" Click="OnClearAll"/>
-            <Button x:Uid="NotificationCloseButton" Content="Close" Click="OnClose"/>
+            <Button x:Name="ClearButton" x:Uid="NotificationClearAllButton" AutomationProperties.AutomationId="ClearButton" Content="Clear All" Click="OnClearAll"/>
+            <Button x:Name="CloseButton" x:Uid="NotificationCloseButton" AutomationProperties.AutomationId="CloseButton" Content="Close" Click="OnClose"/>
         </StackPanel>
     </Grid>
 </winex:WindowEx>

@@ -19,6 +19,11 @@ public class OpenClawGatewayClientTests
             _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", new TestLogger());
         }
 
+        public GatewayClientTestHelper(IOpenClawLogger logger)
+        {
+            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
+        }
+
         public string ClassifyNotification(string text)
         {
             var (_, type) = NotificationCategorizer.ClassifyByKeywords(text);
@@ -49,10 +54,8 @@ public class OpenClawGatewayClientTests
 
         public string TruncateLabel(string text, int maxLen = 60)
         {
-            var method = typeof(OpenClawGatewayClient).GetMethod("TruncateLabel",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var result = method!.Invoke(null, new object[] { text, maxLen });
-            return (string)result!;
+            // TruncateLabel was removed; its behaviour is now provided by the public API.
+            return MenuDisplayHelper.TruncateText(text, maxLen);
         }
 
         public Task<bool> RegisterPendingChatSend(string requestId)
@@ -108,6 +111,14 @@ public class OpenClawGatewayClientTests
         {
             InvokePrivatePayloadParser("ParseUsageStatus", payloadJson);
             return GetUsageState();
+        }
+
+        public string CallBuildProviderSummary(GatewayUsageStatusInfo status)
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "BuildProviderSummary",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (string)method!.Invoke(null, new object[] { status })!;
         }
 
         public GatewayUsageInfo ParseUsageCostPayload(string payloadJson)
@@ -212,7 +223,7 @@ public class OpenClawGatewayClientTests
             return (GatewayUsageInfo)(field?.GetValue(_client) ?? new GatewayUsageInfo());
         }
 
-        private void SetPrivateField(string fieldName, object value)
+        private void SetPrivateField(string fieldName, object? value)
         {
             var field = typeof(OpenClawGatewayClient).GetField(
                 fieldName,
@@ -246,6 +257,36 @@ public class OpenClawGatewayClientTests
             var identity = identityField!.GetValue(_client)!;
             var deviceIdProp = identity.GetType().GetProperty("DeviceId");
             return (string)deviceIdProp!.GetValue(identity)!;
+        }
+
+        /// <summary>Pre-register a pending request so ProcessRawMessage can resolve the method.</summary>
+        public void TrackPendingRequest(string requestId, string method)
+        {
+            var methodInfo = typeof(OpenClawGatewayClient).GetMethod(
+                "TrackPendingRequest",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            methodInfo!.Invoke(_client, new object[] { requestId, method });
+        }
+
+        public bool GetPairingRequiredFlag() =>
+            GetPrivateField<bool>("_pairingRequiredAwaitingApproval");
+
+        public string GetSignatureTokenMode()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                "_signatureTokenMode",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return field!.GetValue(_client)!.ToString()!;
+        }
+
+        public bool GetOperatorReadScopeUnavailable() =>
+            GetPrivateField<bool>("_operatorReadScopeUnavailable");
+
+        public List<ConnectionStatus> CaptureStatusChanges()
+        {
+            var changes = new List<ConnectionStatus>();
+            _client.StatusChanged += (_, s) => changes.Add(s);
+            return changes;
         }
     }
 
@@ -644,6 +685,177 @@ public class OpenClawGatewayClientTests
         Assert.Contains("left", usage.ProviderSummary!);
     }
 
+    // ── BuildProviderSummary tests ──────────────────────────────────────────────
+
+    [Fact]
+    public void BuildProviderSummary_NoProviders_ReturnsEmpty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo { Providers = [] };
+
+        Assert.Equal("", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_SingleProviderWithUsage_ShowsRemainingPercent()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "OpenAI",
+                    Windows = [new GatewayUsageWindowInfo { Label = "daily", UsedPercent = 25.0 }]
+                }
+            ]
+        };
+
+        var result = helper.CallBuildProviderSummary(status);
+
+        Assert.Equal("OpenAI: 75% left", result);
+    }
+
+    [Fact]
+    public void BuildProviderSummary_SingleProviderWithError_ShowsErrorLabel()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo { DisplayName = "Anthropic", Error = "rate limited" }
+            ]
+        };
+
+        Assert.Equal("Anthropic: error", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_ProviderWithNoWindows_IsSkipped()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers = [new GatewayUsageProviderInfo { DisplayName = "OpenAI" }]
+        };
+
+        Assert.Equal("", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_TwoProviders_JoinedWithSeparator()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "OpenAI",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 20.0 }]
+                },
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "Anthropic",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 50.0 }]
+                }
+            ]
+        };
+
+        Assert.Equal("OpenAI: 80% left · Anthropic: 50% left", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_ThreeProviders_ShowsOverflowCount()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P1",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 10.0 }]
+                },
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P2",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 20.0 }]
+                },
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P3",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 30.0 }]
+                }
+            ]
+        };
+
+        var result = helper.CallBuildProviderSummary(status);
+
+        Assert.Equal("P1: 90% left · P2: 80% left · +1", result);
+    }
+
+    [Fact]
+    public void BuildProviderSummary_MissingDisplayName_FallsBackToProviderField()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    Provider = "openai",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 0.0 }]
+                }
+            ]
+        };
+
+        Assert.StartsWith("openai:", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_AllProvidersEmpty_ReturnsEmpty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo { DisplayName = "P1" },
+                new GatewayUsageProviderInfo { DisplayName = "P2" }
+            ]
+        };
+
+        Assert.Equal("", helper.CallBuildProviderSummary(status));
+    }
+
+    [Fact]
+    public void BuildProviderSummary_OverflowWithOneValidProvider_ShowsOverflow()
+    {
+        var helper = new GatewayClientTestHelper();
+        // 3 providers but only the first has windows — included=1, but Providers.Count=3 > 2 → overflow shown
+        var status = new GatewayUsageStatusInfo
+        {
+            Providers =
+            [
+                new GatewayUsageProviderInfo
+                {
+                    DisplayName = "P1",
+                    Windows = [new GatewayUsageWindowInfo { UsedPercent = 10.0 }]
+                },
+                new GatewayUsageProviderInfo { DisplayName = "P2" },
+                new GatewayUsageProviderInfo { DisplayName = "P3" }
+            ]
+        };
+
+        Assert.Equal("P1: 90% left · +1", helper.CallBuildProviderSummary(status));
+    }
+
     [Fact]
     public void ParseUsageCostPayload_UpdatesLegacyUsageTotals()
     {
@@ -730,6 +942,51 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("node-offline", nodes[1].NodeId);
         Assert.False(nodes[1].IsOnline);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_EmptyArray_ReturnsEmpty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""{ "nodes": [] }""");
+        Assert.Empty(nodes);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_SameOnlineStatus_SortsByLastSeenDescending()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                { "nodeId": "older", "status": "connected", "lastSeenAt": 1000000000000 },
+                { "nodeId": "newer", "status": "connected", "lastSeenAt": 2000000000000 },
+                { "nodeId": "middle", "status": "connected", "lastSeenAt": 1500000000000 }
+              ]
+            }
+            """);
+
+        Assert.Equal(3, nodes.Length);
+        Assert.Equal("newer", nodes[0].NodeId);
+        Assert.Equal("middle", nodes[1].NodeId);
+        Assert.Equal("older", nodes[2].NodeId);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_SkipsItemsWithNoNodeId()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                { "nodeId": "valid-node", "status": "connected" },
+                { "status": "connected" }
+              ]
+            }
+            """);
+
+        Assert.Single(nodes);
+        Assert.Equal("valid-node", nodes[0].NodeId);
     }
 
     [Fact]
@@ -832,6 +1089,170 @@ public class OpenClawGatewayClientTests
 
         Assert.Single(channels);
         Assert.Equal("degraded", channels[0].Status);
+    }
+
+    // ── ParseChannelHealth — derived-status paths ───────────────────────────────
+
+    [Fact]
+    public void ParseChannelHealth_RunningTrue_NoStatusField_DerivedAsRunning()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"running":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("running", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_HasError_NoStatusField_DerivedAsError()
+    {
+        var helper = new GatewayClientTestHelper();
+        // lastError present and non-null → hasError = true
+        var json = """{"whatsapp":{"lastError":"connection refused"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("error", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_HasError_NullLastError_NotDerivedAsError()
+    {
+        // lastError=null should NOT set hasError (ValueKind == Null is excluded)
+        var helper = new GatewayClientTestHelper();
+        var json = """{"slack":{"lastError":null,"configured":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        // hasError is false → falls through to configured && !hasError → "ready"
+        Assert.Equal("ready", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ConfiguredAndProbeOk_DerivedAsReady()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"configured":true,"probe":{"ok":true}}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("ready", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ConfiguredAndLinked_DerivedAsReady()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"whatsapp":{"configured":true,"linked":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("ready", channels[0].Status);
+        Assert.True(channels[0].IsLinked);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ConfiguredNoErrors_DerivedAsReady()
+    {
+        // configured=true with no lastError and no explicit status → ready (catch-all)
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"configured":true}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("ready", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_NotConfigured_DerivedAsNotConfigured()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"discord":{}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("not configured", channels[0].Status);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_HasError_TakesPriorityOverRunning()
+    {
+        // Error takes priority over running in the derivation chain
+        var helper = new GatewayClientTestHelper();
+        var json = """{"slack":{"running":true,"lastError":"timeout"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Single(channels);
+        Assert.Equal("error", channels[0].Status);
+    }
+
+    // ── ParseChannelHealth — property parsing ───────────────────────────────────
+
+    [Fact]
+    public void ParseChannelHealth_ParsesErrorProperty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"discord":{"status":"error","error":"Bot token invalid"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Equal("Bot token invalid", channels[0].Error);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ParsesAuthAgeProperty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"whatsapp":{"status":"ready","authAge":"3 days ago"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Equal("3 days ago", channels[0].AuthAge);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ParsesTypeProperty()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"status":"ready","type":"webhook"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.Equal("webhook", channels[0].Type);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_LinkedFalse_IsLinkedIsFalse()
+    {
+        var helper = new GatewayClientTestHelper();
+        var json = """{"whatsapp":{"linked":false,"status":"not configured"}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        Assert.False(channels[0].IsLinked);
+    }
+
+    [Fact]
+    public void ParseChannelHealth_ProbeNotOk_DoesNotSetReady()
+    {
+        // probe.ok=false + configured=true + no isLinked → falls to configured&&!hasError → ready
+        // (the two "ready" clauses effectively mean configured=true always means ready if no error)
+        var helper = new GatewayClientTestHelper();
+        var json = """{"telegram":{"configured":true,"probe":{"ok":false}}}""";
+
+        var (channels, _) = helper.ParseChannelHealthPayload(json);
+
+        // configured && !hasError → ready (second ready clause fires)
+        Assert.Equal("ready", channels[0].Status);
     }
 
     // ── BuildMissingScopeFixCommands tests ─────────────────────────────────────
@@ -1000,5 +1421,209 @@ public class OpenClawGatewayClientTests
 
         Assert.Contains("pairing required", output);
         Assert.Contains("Approve this Windows tray device ID", output);
+    }
+
+    // --- HandleRequestError: pairing required ---
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_SetsPairingBlockFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-1", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-1",
+            "ok": false,
+            "error": "pairing required for this device"
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_LogsWarning()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-2", "connect");
+        var logger = new TestLogger();
+        var helperWithLogger = new GatewayClientTestHelper(logger);
+        helperWithLogger.TrackPendingRequest("req-pairing-2", "connect");
+
+        helperWithLogger.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-2",
+            "ok": false,
+            "error": "pairing required for this device"
+        }
+        """);
+
+        Assert.Contains(logger.Logs, l => l.Contains("auto-reconnect paused", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_RaisesErrorStatus()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-3", "connect");
+        var statusChanges = helper.CaptureStatusChanges();
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-3",
+            "ok": false,
+            "error": "pairing required for this device"
+        }
+        """);
+
+        Assert.Contains(ConnectionStatus.Error, statusChanges);
+    }
+
+    // --- HandleRequestError: device signature invalid ---
+
+    [Fact]
+    public void HandleRequestError_DeviceSignatureInvalid_CyclesSignatureMode()
+    {
+        var helper = new GatewayClientTestHelper();
+        // Starting mode is V3AuthToken; first rejection should move it to V3EmptyToken
+        Assert.Equal("V3AuthToken", helper.GetSignatureTokenMode());
+
+        helper.TrackPendingRequest("req-sig-1", "connect");
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-sig-1",
+            "ok": false,
+            "error": "device signature invalid"
+        }
+        """);
+
+        Assert.Equal("V3EmptyToken", helper.GetSignatureTokenMode());
+    }
+
+    [Fact]
+    public void HandleRequestError_DeviceSignatureInvalid_LogsWarningWithMode()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        helper.TrackPendingRequest("req-sig-log", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-sig-log",
+            "ok": false,
+            "error": "device signature invalid"
+        }
+        """);
+
+        Assert.Contains(logger.Logs, l => l.Contains("device signature", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // --- HandleRequestError: missing scope ---
+
+    [Theory]
+    [InlineData("sessions.list")]
+    [InlineData("usage.status")]
+    [InlineData("usage.cost")]
+    [InlineData("node.list")]
+    public void HandleRequestError_MissingOperatorReadScope_SetsUnavailableFlag(string method)
+    {
+        var helper = new GatewayClientTestHelper();
+        var reqId = $"req-scope-{method}";
+        helper.TrackPendingRequest(reqId, method);
+
+        helper.ProcessRawMessage($$"""
+        {
+            "type": "res",
+            "id": "{{reqId}}",
+            "ok": false,
+            "error": "missing scope: operator.read"
+        }
+        """);
+
+        Assert.True(helper.GetOperatorReadScopeUnavailable());
+    }
+
+    // --- HandleRequestError: unknown method fallbacks ---
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_UsageStatus_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-us", "usage.status");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-us",
+            "ok": false,
+            "error": "unknown method: usage.status"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.UsageStatus);
+    }
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_UsageCost_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-uc", "usage.cost");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-uc",
+            "ok": false,
+            "error": "unknown method: usage.cost"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.UsageCost);
+    }
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_SessionsPreview_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-sp", "sessions.preview");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-sp",
+            "ok": false,
+            "error": "unknown method: sessions.preview"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.SessionPreview);
+    }
+
+    [Fact]
+    public void HandleRequestError_UnknownMethod_NodeList_SetsUnsupportedFlag()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-um-nl", "node.list");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-um-nl",
+            "ok": false,
+            "error": "unknown method: node.list"
+        }
+        """);
+
+        var flags = helper.GetUnsupportedMethodFlags();
+        Assert.True(flags.NodeList);
     }
 }

@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace OpenClaw.Shared;
@@ -108,11 +110,37 @@ public class ChannelHealth
     public string? AuthAge { get; set; }
     public string? Type { get; set; }
 
-    private static readonly HashSet<string> s_healthyStatuses =
-        new(StringComparer.OrdinalIgnoreCase) { "ok", "connected", "running", "active", "ready" };
+    // FrozenSet gives O(1) case-insensitive lookup with no per-call allocation;
+    // these sets are never mutated after startup so FrozenSet is the correct choice.
+    private static readonly FrozenSet<string> s_healthyStatuses =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "ok", "connected", "running", "active", "ready" }
+            .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly HashSet<string> s_intermediateStatuses =
-        new(StringComparer.OrdinalIgnoreCase) { "stopped", "idle", "paused", "configured", "pending", "connecting", "reconnecting" };
+    private static readonly FrozenSet<string> s_intermediateStatuses =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "stopped", "idle", "paused", "configured", "pending", "connecting", "reconnecting" }
+            .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    // Maps each status string (case-insensitive) to its tray label; never mutated after startup.
+    private static readonly FrozenDictionary<string, string> s_statusLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ok"]            = "[ON]",
+            ["connected"]     = "[ON]",
+            ["running"]       = "[ON]",
+            ["active"]        = "[ON]",
+            ["linked"]        = "[LINKED]",
+            ["ready"]         = "[READY]",
+            ["connecting"]    = "[...]",
+            ["reconnecting"]  = "[...]",
+            ["error"]         = "[ERR]",
+            ["disconnected"]  = "[ERR]",
+            ["stale"]         = "[STALE]",
+            ["configured"]    = "[OFF]",
+            ["stopped"]       = "[OFF]",
+            ["not configured"] = "[N/A]",
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns true if the given status string represents a healthy/running channel.
@@ -131,18 +159,8 @@ public class ChannelHealth
     {
         get
         {
-            var label = Status.ToLowerInvariant() switch
-            {
-                "ok" or "connected" or "running" or "active" => "[ON]",
-                "linked" => "[LINKED]",
-                "ready" => "[READY]",
-                "connecting" or "reconnecting" => "[...]",
-                "error" or "disconnected" => "[ERR]",
-                "stale" => "[STALE]",
-                "configured" or "stopped" => "[OFF]",
-                "not configured" => "[N/A]",
-                _ => "[OFF]"
-            };
+            // FrozenDictionary lookup avoids allocating a lowercased copy of Status.
+            var label = s_statusLabels.GetValueOrDefault(Status, "[OFF]");
             var detail = IsLinked && AuthAge != null ? $"linked · {AuthAge}" : Status;
             if (Error != null) detail += $" ({Error})";
             return $"{label} {Capitalize(Name)}: {detail}";
@@ -183,18 +201,18 @@ public class SessionInfo
     {
         get
         {
+            // Build directly with string interpolation to avoid List<string> + Join allocations.
+            // Max 3 segments: prefix [· Channel] [· Activity|Status]
             var prefix = IsMain ? "Main" : "Sub";
-            var parts = new List<string> { prefix };
+            var hasChannel = !string.IsNullOrEmpty(Channel);
+            var tail = !string.IsNullOrEmpty(CurrentActivity)
+                ? CurrentActivity
+                : (!string.IsNullOrEmpty(Status) && Status != "unknown" && Status != "active" ? Status : null);
 
-            if (!string.IsNullOrEmpty(Channel))
-                parts.Add(Channel);
-
-            if (!string.IsNullOrEmpty(CurrentActivity))
-                parts.Add(CurrentActivity);
-            else if (!string.IsNullOrEmpty(Status) && Status != "unknown" && Status != "active")
-                parts.Add(Status);
-
-            return string.Join(" · ", parts);
+            if (hasChannel && tail != null) return $"{prefix} · {Channel} · {tail}";
+            if (hasChannel)                return $"{prefix} · {Channel}";
+            if (tail != null)              return $"{prefix} · {tail}";
+            return prefix;
         }
     }
 
@@ -206,27 +224,30 @@ public class SessionInfo
                 ? DisplayName!
                 : (IsMain ? "Main session" : "Session");
 
-            var details = new List<string>();
+            // Fixed-size array avoids List<string> allocation; at most 9 detail slots.
+            var details = new string?[9];
+            int n = 0;
             if (!string.IsNullOrWhiteSpace(Channel))
-                details.Add(Channel!);
+                details[n++] = Channel!;
             if (!string.IsNullOrWhiteSpace(Model))
-                details.Add(Model!);
-            if (!string.IsNullOrWhiteSpace(ContextSummaryShort))
-                details.Add($"{ContextSummaryShort} ctx");
+                details[n++] = Model!;
+            var ctx = ContextSummaryShort;
+            if (!string.IsNullOrWhiteSpace(ctx))
+                details[n++] = $"{ctx} ctx";
             if (!string.IsNullOrWhiteSpace(ThinkingLevel))
-                details.Add($"think {ThinkingLevel}");
+                details[n++] = $"think {ThinkingLevel}";
             if (!string.IsNullOrWhiteSpace(VerboseLevel))
-                details.Add($"verbose {VerboseLevel}");
+                details[n++] = $"verbose {VerboseLevel}";
             if (SystemSent)
-                details.Add("system");
+                details[n++] = "system";
             if (AbortedLastRun)
-                details.Add("aborted");
+                details[n++] = "aborted";
             if (!string.IsNullOrWhiteSpace(CurrentActivity))
-                details.Add(CurrentActivity!);
+                details[n++] = CurrentActivity!;
             else if (!string.IsNullOrWhiteSpace(Status) && Status != "unknown" && Status != "active")
-                details.Add(Status);
+                details[n++] = Status;
 
-            return details.Count == 0 ? title : $"{title} · {string.Join(" · ", details)}";
+            return n == 0 ? title : $"{title} · {string.Join(" · ", details, 0, n)}";
         }
     }
 
@@ -282,20 +303,31 @@ public class GatewayUsageInfo
     {
         get
         {
-            var parts = new List<string>();
-            if (TotalTokens > 0)
-                parts.Add($"Tokens: {ModelFormatting.FormatLargeNumber(TotalTokens)}");
-            if (CostUsd > 0)
-                parts.Add("$" + CostUsd.ToString("F2", CultureInfo.InvariantCulture));
-            if (RequestCount > 0)
-                parts.Add($"{RequestCount} requests");
-            if (!string.IsNullOrEmpty(Model))
-                parts.Add(Model);
-            if (parts.Count == 0 && !string.IsNullOrEmpty(ProviderSummary))
-                parts.Add(ProviderSummary);
-            return parts.Count > 0
-                ? string.Join(" · ", parts)
-                : "No usage data";
+            // Avoid allocating a List<string> + string.Join: accumulate up to 4 nullable
+            // string slots and build the result with a single switch expression.
+            string? p0 = TotalTokens > 0
+                ? $"Tokens: {ModelFormatting.FormatLargeNumber(TotalTokens)}"
+                : null;
+            string? p1 = CostUsd > 0
+                ? "$" + CostUsd.ToString("F2", CultureInfo.InvariantCulture)
+                : null;
+            string? p2 = RequestCount > 0
+                ? $"{RequestCount} requests"
+                : null;
+            string? p3 = !string.IsNullOrEmpty(Model) ? Model : null;
+
+            // If all four are null, fall back to ProviderSummary or "No usage data".
+            if (p0 is null && p1 is null && p2 is null && p3 is null)
+                return string.IsNullOrEmpty(ProviderSummary) ? "No usage data" : ProviderSummary!;
+
+            // Pack non-null slots into a fixed-size array and join — one allocation.
+            var parts = new string?[4];
+            int n = 0;
+            if (p0 is not null) parts[n++] = p0;
+            if (p1 is not null) parts[n++] = p1;
+            if (p2 is not null) parts[n++] = p2;
+            if (p3 is not null) parts[n++] = p3;
+            return string.Join(" · ", parts, 0, n);
         }
     }
 
@@ -413,18 +445,15 @@ public class GatewayNodeInfo
     {
         get
         {
-            var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(Mode))
-                parts.Add(Mode!);
-            if (!string.IsNullOrWhiteSpace(Platform))
-                parts.Add(Platform!);
-            if (CommandCount > 0)
-                parts.Add($"{CommandCount} cmd");
-            if (CapabilityCount > 0)
-                parts.Add($"{CapabilityCount} cap");
-            if (LastSeen.HasValue)
-                parts.Add($"seen {FormatAge(LastSeen.Value)}");
-            return parts.Count == 0 ? "no details" : string.Join(" · ", parts);
+            // Fixed-size accumulator (up to 5 slots) avoids a heap List on every render.
+            var slots = new string?[5];
+            int count = 0;
+            if (!string.IsNullOrWhiteSpace(Mode))    slots[count++] = Mode!;
+            if (!string.IsNullOrWhiteSpace(Platform)) slots[count++] = Platform!;
+            if (CommandCount > 0)    slots[count++] = $"{CommandCount} cmd";
+            if (CapabilityCount > 0) slots[count++] = $"{CapabilityCount} cap";
+            if (LastSeen.HasValue)   slots[count++] = $"seen {FormatAge(LastSeen.Value)}";
+            return count == 0 ? "no details" : string.Join(" · ", slots, 0, count);
         }
     }
 
@@ -441,9 +470,9 @@ internal static class ModelFormatting
     {
         var delta = DateTime.UtcNow - timestampUtc;
         if (delta.TotalSeconds < 60) return "just now";
-        if (delta.TotalMinutes < 60) return $"{(int)Math.Round(delta.TotalMinutes)}m ago";
-        if (delta.TotalHours < 48) return $"{(int)Math.Round(delta.TotalHours)}h ago";
-        return $"{(int)Math.Round(delta.TotalDays)}d ago";
+        if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes}m ago";
+        if (delta.TotalHours < 48) return $"{(int)delta.TotalHours}h ago";
+        return $"{(int)delta.TotalDays}d ago";
     }
 
     /// <summary>

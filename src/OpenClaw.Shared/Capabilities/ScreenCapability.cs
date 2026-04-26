@@ -10,10 +10,10 @@ namespace OpenClaw.Shared.Capabilities;
 public class ScreenCapability : NodeCapabilityBase
 {
     public override string Category => "screen";
-    
+
     private static readonly string[] _commands = new[]
     {
-        "screen.capture",
+        "screen.snapshot",
         "screen.list",
         "screen.record",
         "screen.record.start",
@@ -28,16 +28,16 @@ public class ScreenCapability : NodeCapabilityBase
     public event Func<ScreenRecordArgs, Task<ScreenRecordResult>>? RecordRequested;
     public event Func<ScreenRecordStartArgs, Task<string>>? StartRequested;
     public event Func<string, Task<ScreenRecordResult>>? StopRequested;
-    
+
     public ScreenCapability(IOpenClawLogger logger) : base(logger)
     {
     }
-    
+
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
     {
         return request.Command switch
         {
-            "screen.capture"      => await HandleCaptureAsync(request),
+            "screen.snapshot"     => await HandleCaptureAsync(request),
             "screen.list"         => await HandleListAsync(request),
             "screen.record"       => await HandleRecordAsync(request),
             "screen.record.start" => await HandleStartAsync(request),
@@ -45,7 +45,7 @@ public class ScreenCapability : NodeCapabilityBase
             _ => Error($"Unknown command: {request.Command}")
         };
     }
-    
+
     private async Task<NodeInvokeResponse> HandleCaptureAsync(NodeInvokeRequest request)
     {
         var format = GetStringArg(request.Args, "format", "png");
@@ -54,14 +54,14 @@ public class ScreenCapability : NodeCapabilityBase
         var monitor = GetIntArg(request.Args, "monitor", 0);
         var screenIndex = GetIntArg(request.Args, "screenIndex", monitor);
         var includePointer = GetBoolArg(request.Args, "includePointer", true);
-        
-        Logger.Info($"screen.capture: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
-        
+
+        Logger.Info($"screen.snapshot: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
+
         if (CaptureRequested == null)
         {
             return Error("Screen capture not available");
         }
-        
+
         try
         {
             var result = await CaptureRequested(new ScreenCaptureArgs
@@ -72,10 +72,10 @@ public class ScreenCapability : NodeCapabilityBase
                 MonitorIndex = screenIndex,
                 IncludePointer = includePointer
             });
-            
+
             var image = $"data:image/{result.Format.ToLowerInvariant()};base64,{result.Base64}";
-            return Success(new 
-            { 
+            return Success(new
+            {
                 format = result.Format,
                 width = result.Width,
                 height = result.Height,
@@ -89,16 +89,16 @@ public class ScreenCapability : NodeCapabilityBase
             return Error($"Capture failed: {ex.Message}");
         }
     }
-    
+
     private async Task<NodeInvokeResponse> HandleListAsync(NodeInvokeRequest request)
     {
         Logger.Info("screen.list");
-        
+
         if (ListRequested == null)
         {
             return Error("Screen list not available");
         }
-        
+
         try
         {
             var screens = await ListRequested();

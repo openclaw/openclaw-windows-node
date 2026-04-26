@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace OpenClaw.Shared;
 
 /// <summary>
@@ -7,18 +9,19 @@ namespace OpenClaw.Shared;
 /// </summary>
 internal static class ShellQuoting
 {
+    // SearchValues<char> builds an optimized SIMD lookup structure once at startup,
+    // allowing IndexOfAny to scan multiple characters simultaneously (SSE2/AVX2 on x64).
+    // Equivalent set to the former IsShellMetachar switch — 25 shell metacharacters.
+    private static readonly SearchValues<char> s_shellMetachars =
+        SearchValues.Create(" \t\"'&|;<>()^%!$`*?[]{}~\n\r");
+
     /// <summary>
     /// Returns true when the argument contains characters that require quoting
     /// to prevent shell splitting or metacharacter interpretation.
     /// </summary>
     internal static bool NeedsQuoting(string arg)
     {
-        foreach (var c in arg)
-        {
-            if (IsShellMetachar(c))
-                return true;
-        }
-        return false;
+        return arg.AsSpan().IndexOfAny(s_shellMetachars) >= 0;
     }
 
     /// <summary>
@@ -56,7 +59,11 @@ internal static class ShellQuoting
     /// </summary>
     internal static string FormatExecCommand(string[] argv)
     {
-        return string.Join(" ", argv.Select(FormatSingleArg));
+        if (argv.Length == 0) return string.Empty;
+        var parts = new string[argv.Length];
+        for (var i = 0; i < argv.Length; i++)
+            parts[i] = FormatSingleArg(argv[i]);
+        return string.Join(" ", parts);
 
         static string FormatSingleArg(string arg)
         {
@@ -66,14 +73,4 @@ internal static class ShellQuoting
         }
     }
 
-    private static bool IsShellMetachar(char c) => c switch
-    {
-        ' ' or '\t' or '"' or '\'' or
-        '&' or '|' or ';' or '<' or '>' or
-        '(' or ')' or '^' or '%' or '!' or
-        '$' or '`' or '*' or '?' or '[' or
-        ']' or '{' or '}' or '~' or
-        '\n' or '\r' => true,
-        _ => false
-    };
 }

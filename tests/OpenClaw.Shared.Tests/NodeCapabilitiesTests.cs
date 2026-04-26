@@ -26,6 +26,7 @@ public class NodeCapabilityBaseTests
         public string? PubGetStringArg(JsonElement args, string name, string? def = null) => GetStringArg(args, name, def);
         public int PubGetIntArg(JsonElement args, string name, int def = 0) => GetIntArg(args, name, def);
         public bool PubGetBoolArg(JsonElement args, string name, bool def = false) => GetBoolArg(args, name, def);
+        public string[] PubGetStringArrayArg(JsonElement args, string name) => GetStringArrayArg(args, name);
     }
 
     private static JsonElement Parse(string json)
@@ -160,6 +161,73 @@ public class NodeCapabilityBaseTests
         JsonElement args = default;
         Assert.Null(cap.PubGetStringArg(args, "url"));
         Assert.Equal("def", cap.PubGetStringArg(args, "url", "def"));
+    }
+
+    [Fact]
+    public void GetStringArrayArg_ReturnsValues_WhenPresent()
+    {
+        var cap = new TestCapability();
+        var args = Parse("""{"bins":["echo","hostname","curl"]}""");
+        var result = cap.PubGetStringArrayArg(args, "bins");
+
+        Assert.Equal(new[] { "echo", "hostname", "curl" }, result);
+    }
+
+    [Fact]
+    public void GetStringArrayArg_ReturnsEmpty_WhenPropertyMissing()
+    {
+        var cap = new TestCapability();
+        var args = Parse("""{}""");
+
+        Assert.Empty(cap.PubGetStringArrayArg(args, "bins"));
+    }
+
+    [Fact]
+    public void GetStringArrayArg_ReturnsEmpty_WhenNotAnArray()
+    {
+        var cap = new TestCapability();
+        var args = Parse("""{"bins":"echo"}""");
+
+        Assert.Empty(cap.PubGetStringArrayArg(args, "bins"));
+    }
+
+    [Fact]
+    public void GetStringArrayArg_TrimsSurroundingWhitespace()
+    {
+        var cap = new TestCapability();
+        var args = Parse("""{"bins":[" echo ","hostname "]}""");
+        var result = cap.PubGetStringArrayArg(args, "bins");
+
+        Assert.Equal(new[] { "echo", "hostname" }, result);
+    }
+
+    [Fact]
+    public void GetStringArrayArg_ExcludesWhitespaceOnlyElements()
+    {
+        var cap = new TestCapability();
+        var args = Parse("""{"bins":["echo","  ","hostname",""]}""");
+        var result = cap.PubGetStringArrayArg(args, "bins");
+
+        Assert.Equal(new[] { "echo", "hostname" }, result);
+    }
+
+    [Fact]
+    public void GetStringArrayArg_ReturnsEmpty_WhenArgsIsDefaultElement()
+    {
+        var cap = new TestCapability();
+        JsonElement args = default;
+
+        Assert.Empty(cap.PubGetStringArrayArg(args, "bins"));
+    }
+
+    [Fact]
+    public void GetStringArrayArg_IgnoresNonStringArrayElements()
+    {
+        var cap = new TestCapability();
+        var args = Parse("""{"bins":["echo",42,true,"hostname",null]}""");
+        var result = cap.PubGetStringArrayArg(args, "bins");
+
+        Assert.Equal(new[] { "echo", "hostname" }, result);
     }
 }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -39,6 +40,17 @@ public abstract class WebSocketClientBase : IDisposable
 
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
+    public event EventHandler<string>? AuthenticationFailed;
+
+    /// <summary>Reset reconnect backoff counter. Call after successful application-level handshake.</summary>
+    protected void ResetReconnectAttempts() => _reconnectAttempts = 0;
+
+    /// <summary>Fire AuthenticationFailed event and stop auto-reconnect.</summary>
+    protected void RaiseAuthenticationFailed(string message)
+    {
+        _logger.Warn($"{ClientRole} authentication failed: {message}");
+        AuthenticationFailed?.Invoke(this, message);
+    }
 
     // --- Abstract members (subclass MUST implement) ---
 
@@ -122,7 +134,9 @@ public abstract class WebSocketClientBase : IDisposable
 
             await _webSocket.ConnectAsync(uri, _cts.Token);
 
-            _reconnectAttempts = 0;
+            // Don't reset _reconnectAttempts here — TCP connect succeeding doesn't mean
+            // auth will succeed. Reset only after the full application-level handshake
+            // completes (subclass calls ResetReconnectAttempts after hello-ok).
             _logger.Info($"{ClientRole} connected, waiting for challenge...");
 
             await OnConnectedAsync();
@@ -151,7 +165,9 @@ public abstract class WebSocketClientBase : IDisposable
 
     private async Task ListenForMessagesAsync()
     {
-        var buffer = new byte[ReceiveBufferSize];
+        // Rent a pooled buffer — consistent with the SendRawAsync hot path; avoids a large
+        // (16–64 KB) heap allocation per connection that would otherwise land on the LOH.
+        var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var sb = new StringBuilder();
 
         try
@@ -159,7 +175,7 @@ public abstract class WebSocketClientBase : IDisposable
             while (_webSocket?.State == WebSocketState.Open && !_cts.Token.IsCancellationRequested)
             {
                 var result = await _webSocket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer), _cts.Token);
+                    new ArraySegment<byte>(buffer, 0, ReceiveBufferSize), _cts.Token);
 
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
@@ -203,6 +219,10 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Error($"{ClientRole} listen error", ex);
             OnError(ex);
             RaiseStatusChanged(ConnectionStatus.Error);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         // Auto-reconnect if not intentionally disposed
@@ -277,9 +297,19 @@ public abstract class WebSocketClientBase : IDisposable
 
         try
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
-            await ws.SendAsync(new ArraySegment<byte>(bytes),
-                WebSocketMessageType.Text, true, _cts.Token);
+            // Rent a pooled buffer to avoid per-send heap allocations on the hot send path.
+            var byteCount = Encoding.UTF8.GetByteCount(message);
+            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                var written = Encoding.UTF8.GetBytes(message, buffer);
+                await ws.SendAsync(buffer.AsMemory(0, written),
+                    WebSocketMessageType.Text, true, _cts.Token);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         catch (ObjectDisposedException)
         {

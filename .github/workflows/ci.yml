@@ -40,17 +40,19 @@ jobs:
       run: dotnet restore
 
     - name: Build Shared Library
-      run: dotnet build src/OpenClaw.Shared -c Debug
+      run: dotnet build src/OpenClaw.Shared -c Debug --no-restore
 
     - name: Build Tray App (WinUI)
       run: dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64
 
     - name: Build Tests
       run: |
-        dotnet build tests/OpenClaw.Shared.Tests -c Debug
-        dotnet build tests/OpenClaw.Tray.Tests -c Debug
+        dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.Tray.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
+      env:
+        OPENCLAW_RUN_INTEGRATION: 1
       run: >
         dotnet test tests/OpenClaw.Shared.Tests
         --no-build
@@ -111,7 +113,7 @@ jobs:
       run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }} -p:Version=${{ needs.test.outputs.semVer }}
 
     - name: Publish WinUI Tray App
-      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained -p:Version=${{ needs.test.outputs.semVer }} -o publish
+      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -p:Version=${{ needs.test.outputs.semVer }} -o publish
 
     - name: Azure Login for Signing
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
@@ -257,11 +259,18 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+        restore-keys: nuget-${{ runner.os }}-
+
     - name: Restore Command Palette Extension
       run: dotnet restore src/OpenClaw.CommandPalette
 
     - name: Build Command Palette Extension
-      run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }}
+      run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }} --no-restore
 
     - name: Upload Extension Artifact
       uses: actions/upload-artifact@v4

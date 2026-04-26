@@ -25,7 +25,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
 
-            <ComboBox x:Name="FilterCombo" Width="180" SelectionChanged="OnFilterChanged">
+            <ComboBox x:Name="FilterCombo" AutomationProperties.AutomationId="FilterCombo" Width="180" SelectionChanged="OnFilterChanged">
                 <ComboBoxItem x:Uid="ActivityFilterAll" Content="All activity" Tag="all" />
                 <ComboBoxItem x:Uid="ActivityFilterSessions" Content="Sessions" Tag="session" />
                 <ComboBoxItem x:Uid="ActivityFilterUsage" Content="Usage" Tag="usage" />
@@ -34,7 +34,7 @@
             </ComboBox>
         </StackPanel>
 
-        <ListView x:Name="ActivityList" Grid.Row="1"
+        <ListView x:Name="ActivityList" AutomationProperties.AutomationId="ActivityList" Grid.Row="1"
                   SelectionMode="Single"
                   IsItemClickEnabled="True"
                   ItemClick="OnItemClick">
@@ -90,9 +90,9 @@
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8"
                     HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Uid="ActivityOpenDashboardButton" Content="Open Dashboard" Click="OnOpenDashboard"/>
-            <Button x:Uid="ActivityClearAllButton" Content="Clear All" Click="OnClearAll"/>
-            <Button x:Uid="ActivityCloseButton" Content="Close" Click="OnClose"/>
+            <Button x:Name="OpenDashboardButton" x:Uid="ActivityOpenDashboardButton" AutomationProperties.AutomationId="OpenDashboardButton" Content="Open Dashboard" Click="OnOpenDashboard"/>
+            <Button x:Name="ClearButton" x:Uid="ActivityClearAllButton" AutomationProperties.AutomationId="ClearButton" Content="Clear All" Click="OnClearAll"/>
+            <Button x:Name="CloseButton" x:Uid="ActivityCloseButton" AutomationProperties.AutomationId="CloseButton" Content="Close" Click="OnClose"/>
         </StackPanel>
     </Grid>
 </winex:WindowEx>

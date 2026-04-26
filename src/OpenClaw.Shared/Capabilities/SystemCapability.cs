@@ -91,25 +91,11 @@ public class SystemCapability : NodeCapabilityBase
     
     private NodeInvokeResponse HandleWhich(NodeInvokeRequest request)
     {
-        var bins = new List<string>();
-        if (request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
-            request.Args.TryGetProperty("bins", out var binsEl) &&
-            binsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            foreach (var item in binsEl.EnumerateArray())
-            {
-                if (item.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    var bin = item.GetString()?.Trim();
-                    if (!string.IsNullOrEmpty(bin))
-                        bins.Add(bin);
-                }
-            }
-        }
-        
-        if (bins.Count == 0)
+        var bins = GetStringArrayArg(request.Args, "bins");
+
+        if (bins.Length == 0)
             return Error("Missing bins parameter");
-        
+
         var found = new Dictionary<string, string>();
         foreach (var bin in bins)
         {
@@ -117,8 +103,8 @@ public class SystemCapability : NodeCapabilityBase
             if (resolved != null)
                 found[bin] = resolved;
         }
-        
-        Logger.Info($"system.which: queried {bins.Count} bins, found {found.Count}");
+
+        Logger.Info($"system.which: queried {bins.Length} bins, found {found.Count}");
         return Success(new { bins = found });
     }
     
@@ -237,7 +223,7 @@ public class SystemCapability : NodeCapabilityBase
         // Also accept a plain string for backward compatibility.
         var argv = TryParseArgv(request.Args);
         string? command = argv?[0];
-        string[]? args = argv?.Length > 1 ? argv.Skip(1).ToArray() : null;
+        string[]? args = argv?.Length > 1 ? argv[1..] : null;
         
         // When command is a string, also check for separate "args" array
         if (argv?.Length == 1 && request.Args.TryGetProperty("args", out var argsEl) &&
@@ -269,20 +255,29 @@ public class SystemCapability : NodeCapabilityBase
             request.Args.TryGetProperty("env", out var envEl) &&
             envEl.ValueKind == System.Text.Json.JsonValueKind.Object)
         {
-            env = new Dictionary<string, string>();
+            env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var prop in envEl.EnumerateObject())
             {
                 if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
                     env[prop.Name] = prop.Value.GetString() ?? "";
             }
         }
+
+        var envResult = ExecEnvSanitizer.Sanitize(env);
+        if (envResult.Blocked.Length > 0)
+        {
+            var blockedList = string.Join(", ", envResult.Blocked.OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+            Logger.Warn($"system.run DENIED: blocked environment overrides [{blockedList}]");
+            return Error($"Unsafe environment variable override blocked: {blockedList}");
+        }
+        env = envResult.Allowed;
         
         // Build the full command string for policy evaluation and logging.
         // When command arrives as an argv array, we must evaluate the entire
         // command line — not just argv[0] — so policy rules like "rm *" correctly
         // match "rm -rf /".
-        var fullCommand = args != null 
-            ? FormatExecCommand(new[] { command }.Concat(args).ToArray()) 
+        var fullCommand = args != null
+            ? FormatExecCommand([command!, ..args])
             : command;
         
         Logger.Info($"system.run: {fullCommand} (shell={shell ?? "auto"}, timeout={timeoutMs}ms)");
@@ -295,6 +290,23 @@ public class SystemCapability : NodeCapabilityBase
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
                 return Error($"Command denied by exec policy: {approval.Reason}");
+            }
+
+            var parseResult = ExecShellWrapperParser.Expand(fullCommand, shell);
+            if (!string.IsNullOrWhiteSpace(parseResult.Error))
+            {
+                Logger.Warn($"system.run DENIED: {fullCommand} ({parseResult.Error})");
+                return Error($"Command denied by exec policy: {parseResult.Error}");
+            }
+
+            foreach (var target in parseResult.Targets)
+            {
+                var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
+                if (!innerApproval.Allowed)
+                {
+                    Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
+                    return Error($"Command denied by exec policy: {innerApproval.Reason}");
+                }
             }
         }
         

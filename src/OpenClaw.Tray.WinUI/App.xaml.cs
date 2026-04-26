@@ -87,6 +87,7 @@ public partial class App : Application
     private ActivityStreamWindow? _activityStreamWindow;
     private TrayMenuWindow? _trayMenuWindow;
     private QuickSendDialog? _quickSendDialog;
+    private string? _authFailureMessage;
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -275,7 +276,7 @@ public partial class App : Application
         // First-run check
         if (string.IsNullOrWhiteSpace(_settings.Token))
         {
-            await ShowFirstRunWelcomeAsync();
+            await ShowSetupWizardAsync();
         }
 
         // Initialize tray icon (window-less pattern from WinUIEx)
@@ -542,6 +543,7 @@ public partial class App : Application
             case "activity": ShowActivityStream(); break;
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
             case "settings": ShowSettings(); break;
+            case "setup": _ = ShowSetupWizardAsync(); break;
             case "autostart": ToggleAutoStart(); break;
             case "log": OpenLogFile(); break;
             case "copydeviceid": CopyDeviceIdToClipboard(); break;
@@ -752,6 +754,12 @@ public partial class App : Application
         var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
         menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_StatusFormat"), LocalizationHelper.GetConnectionStatusText(_currentStatus)), statusIcon, "status");
 
+        // Auth failure nudge
+        if (!string.IsNullOrEmpty(_authFailureMessage))
+        {
+            menu.AddMenuItem("⚠️ Auth failed — Run Setup", "🔧", "setup");
+        }
+
         // Activity (if any)
         if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
         {
@@ -942,8 +950,9 @@ public partial class App : Application
 
         menu.AddSeparator();
 
-        // Settings
+        // Settings & Setup
         menu.AddMenuItem(LocalizationHelper.GetString("Menu_Settings"), "⚙️", "settings");
+        menu.AddMenuItem("Setup Guide...", "🧭", "setup");
         var autoStartText = (_settings?.AutoStart ?? false)
             ? LocalizationHelper.GetString("Menu_AutoStartEnabled")
             : LocalizationHelper.GetString("Menu_AutoStart");
@@ -1106,6 +1115,7 @@ public partial class App : Application
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
+        _gatewayClient.AuthenticationFailed += OnAuthenticationFailed;
         _gatewayClient.ActivityChanged += OnActivityChanged;
         _gatewayClient.NotificationReceived += OnNotificationReceived;
         _gatewayClient.ChannelHealthUpdated += OnChannelHealthUpdated;
@@ -1124,6 +1134,7 @@ public partial class App : Application
         if (_gatewayClient != null)
         {
             _gatewayClient.StatusChanged -= OnConnectionStatusChanged;
+            _gatewayClient.AuthenticationFailed -= OnAuthenticationFailed;
             _gatewayClient.ActivityChanged -= OnActivityChanged;
             _gatewayClient.NotificationReceived -= OnNotificationReceived;
             _gatewayClient.ChannelHealthUpdated -= OnChannelHealthUpdated;
@@ -1141,6 +1152,11 @@ public partial class App : Application
     {
         if (_settings == null || !_settings.EnableNodeMode) return;
         if (_dispatcherQueue == null) return;
+        if (string.IsNullOrWhiteSpace(_settings.Token))
+        {
+            Logger.Warn("Node mode enabled but no token configured — skipping node service. Run Setup Guide to configure.");
+            return;
+        }
         if (!EnsureSshTunnelConfigured()) return;
         
         try
@@ -1207,6 +1223,13 @@ public partial class App : Application
                     .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
                     .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
             }
+            else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
+            {
+                AddRecentActivity("Node pairing rejected", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId, details: args.Message ?? LocalizationHelper.GetString("Toast_PairingRejectedDetail"));
+                ShowToast(new ToastContentBuilder()
+                    .AddText(LocalizationHelper.GetString("Toast_PairingRejected"))
+                    .AddText(LocalizationHelper.GetString("Toast_PairingRejectedDetail")));
+            }
         }
         catch { /* ignore */ }
     }
@@ -1231,12 +1254,22 @@ public partial class App : Application
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         _currentStatus = status;
+        if (status == ConnectionStatus.Connected)
+            _authFailureMessage = null;
         UpdateTrayIcon();
         
         if (status == ConnectionStatus.Connected)
         {
             _ = RunHealthCheckAsync();
         }
+    }
+
+    private void OnAuthenticationFailed(object? sender, string message)
+    {
+        _authFailureMessage = message;
+        Logger.Error($"Authentication failed: {message}");
+        AddRecentActivity($"Auth failed: {message}", category: "error");
+        UpdateTrayIcon();
     }
 
     private void OnActivityChanged(object? sender, AgentActivity? activity)
@@ -1746,14 +1779,41 @@ public partial class App : Application
         _activityStreamWindow.Activate();
     }
 
-    private async Task ShowFirstRunWelcomeAsync()
+    private SetupWizardWindow? _setupWizard;
+
+    private async Task ShowSetupWizardAsync()
     {
-        var dialog = new WelcomeDialog();
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
+        if (_settings == null) return;
+
+        if (_setupWizard != null)
         {
-            ShowSettings();
+            try { _setupWizard.Activate(); return; } catch { _setupWizard = null; }
         }
+
+        _setupWizard = new SetupWizardWindow(_settings);
+        _setupWizard.SetupCompleted += (s, e) =>
+        {
+            Logger.Info("Setup wizard completed, reinitializing connections");
+            _setupWizard = null;
+
+            // Mirror OnSettingsSaved — clean up both, then start only one
+            UnsubscribeGatewayEvents();
+            _gatewayClient?.Dispose();
+            _gatewayClient = null;
+            var oldNodeService = _nodeService;
+            _nodeService = null;
+            try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
+
+            _currentStatus = ConnectionStatus.Disconnected;
+            UpdateTrayIcon();
+
+            if (_settings.EnableNodeMode)
+                InitializeNodeService();
+            else
+                InitializeGatewayClient();
+        };
+        _setupWizard.Closed += (s, e) => _setupWizard = null;
+        _setupWizard.Activate();
     }
 
     private void ShowSurfaceImprovementsTipIfNeeded()
@@ -1899,6 +1959,10 @@ public partial class App : Application
     {
         try
         {
+#if DEBUG
+            Logger.Info("Skipping update check in debug build");
+            return true;
+#else
             Logger.Info("Checking for updates...");
             var updateFound = await AppUpdater.CheckForUpdatesAsync();
 
@@ -1940,6 +2004,7 @@ public partial class App : Application
             }
 
             return true; // RemindLater or Skip - continue
+#endif
         }
         catch (Exception ex)
         {
@@ -2025,6 +2090,7 @@ public partial class App : Application
         DeepLinkHandler.Handle(uri, new DeepLinkActions
         {
             OpenSettings = ShowSettings,
+            OpenSetup = () => _ = ShowSetupWizardAsync(),
             OpenChat = ShowWebChat,
             OpenDashboard = OpenDashboard,
             OpenQuickSend = ShowQuickSend,

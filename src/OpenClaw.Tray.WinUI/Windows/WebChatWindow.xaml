@@ -17,27 +17,31 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Padding="8"
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Padding="8,8,16,8"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
             
-            <Button x:Name="HomeButton" ToolTipService.ToolTip="Home" Click="OnHome"
-                    Width="36" Height="36">
-                <FontIcon Glyph="&#xE80F;" FontSize="14"/>
+            <Button x:Name="HomeButton" AutomationProperties.AutomationId="HomeButton" AutomationProperties.Name="Home"
+                    ToolTipService.ToolTip="Home" Click="OnHome"
+                    Width="40" Height="36" Padding="4">
+                <FontIcon Glyph="&#xE80F;" FontSize="16"/>
             </Button>
             
-            <Button x:Name="RefreshButton" ToolTipService.ToolTip="Refresh" Click="OnRefresh"
-                    Width="36" Height="36">
-                <FontIcon Glyph="&#xE72C;" FontSize="14"/>
+            <Button x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshButton" AutomationProperties.Name="Refresh"
+                    ToolTipService.ToolTip="Refresh" Click="OnRefresh"
+                    Width="40" Height="36" Padding="4">
+                <FontIcon Glyph="&#xE72C;" FontSize="16"/>
             </Button>
             
-            <Button x:Name="PopoutButton" ToolTipService.ToolTip="Open in Browser" Click="OnPopout"
-                    Width="36" Height="36">
-                <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+            <Button x:Name="PopoutButton" AutomationProperties.AutomationId="PopoutButton" AutomationProperties.Name="Open in Browser"
+                    ToolTipService.ToolTip="Open in Browser" Click="OnPopout"
+                    Width="40" Height="36" Padding="4">
+                <FontIcon Glyph="&#xE8A7;" FontSize="16"/>
             </Button>
             
-            <Button x:Name="DevToolsButton" ToolTipService.ToolTip="Developer Tools" Click="OnDevTools"
-                    Width="36" Height="36">
-                <FontIcon Glyph="&#xE90F;" FontSize="14"/>
+            <Button x:Name="DevToolsButton" AutomationProperties.AutomationId="DevToolsButton" AutomationProperties.Name="Developer Tools"
+                    ToolTipService.ToolTip="Developer Tools" Click="OnDevTools"
+                    Width="40" Height="36" Padding="4">
+                <FontIcon Glyph="&#xE90F;" FontSize="16"/>
             </Button>
             
         </StackPanel>
@@ -52,10 +56,10 @@
         <!-- Error display (hidden by default) -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
-                <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" FontSize="18" FontWeight="SemiBold" 
+                <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold" 
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                 <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                           FontFamily="Consolas" FontSize="12"/>
+                           FontFamily="Consolas" Style="{StaticResource CaptionTextBlockStyle}"/>
                 <Button x:Uid="WebChatOpenBrowserButton" Content="Open in Browser Instead" Click="OnPopout" HorizontalAlignment="Left"/>
             </StackPanel>
         </ScrollViewer>

@@ -271,7 +271,7 @@ public class SystemCapabilityTests
             JsonSerializer.Serialize(res.Payload));
         Assert.True(payload.TryGetProperty("bins", out var binsEl));
         // Both should be rejected (contain path separators)
-        Assert.Equal(0, binsEl.EnumerateObject().Count());
+        Assert.Empty(binsEl.EnumerateObject());
     }
 
     [Fact]
@@ -681,9 +681,12 @@ public class ScreenCapabilityTests
     public void CanHandle_ScreenCommands()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        Assert.True(cap.CanHandle("screen.capture"));
+        Assert.True(cap.CanHandle("screen.snapshot"));
         Assert.True(cap.CanHandle("screen.list"));
         Assert.True(cap.CanHandle("screen.record"));
+        Assert.True(cap.CanHandle("screen.record.start"));
+        Assert.True(cap.CanHandle("screen.record.stop"));
+        Assert.False(cap.CanHandle("screen.capture"));
         Assert.False(cap.CanHandle("screen.unknown"));
         Assert.Equal("screen", cap.Category);
     }
@@ -692,7 +695,7 @@ public class ScreenCapabilityTests
     public async Task Capture_ReturnsError_WhenNoHandler()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "s1", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s1", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
@@ -712,7 +715,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest
         {
             Id = "s2",
-            Command = "screen.capture",
+            Command = "screen.snapshot",
             Args = Parse("""{"format":"jpeg","maxWidth":800,"quality":50,"screenIndex":1}""")
         };
 
@@ -726,67 +729,15 @@ public class ScreenCapabilityTests
     }
 
     [Fact]
-    public async Task List_ReturnsError_WhenNoHandler()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "s3", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.NotNull(res.Error);
-        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task List_ReturnsScreens_WhenHandler()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        cap.ListRequested += () => Task.FromResult(new[] 
-        { 
-            new ScreenInfo { Index = 0, Name = "Main", IsPrimary = true, Width = 2560, Height = 1440 } 
-        });
-
-        var req = new NodeInvokeRequest { Id = "s4", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.NotNull(res.Payload);
-        
-        // Verify payload contains expected screen data
-        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("screens", out var screensEl));
-        Assert.Equal(System.Text.Json.JsonValueKind.Array, screensEl.ValueKind);
-        Assert.Equal(1, screensEl.GetArrayLength());
-        var screen = screensEl[0];
-        Assert.Equal("Main", screen.GetProperty("name").GetString());
-        Assert.True(screen.GetProperty("primary").GetBoolean());
-        var bounds = screen.GetProperty("bounds");
-        Assert.Equal(2560, bounds.GetProperty("width").GetInt32());
-        Assert.Equal(1440, bounds.GetProperty("height").GetInt32());
-    }
-
-    [Fact]
     public async Task Capture_ReturnsError_WhenHandlerThrows()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         cap.CaptureRequested += (args) => throw new InvalidOperationException("Display access denied");
 
-        var req = new NodeInvokeRequest { Id = "s5", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s5", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Display access denied", res.Error);
-    }
-
-    [Fact]
-    public async Task List_ReturnsError_WhenHandlerThrows()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        cap.ListRequested += () => throw new InvalidOperationException("Screen enumeration failed");
-
-        var req = new NodeInvokeRequest { Id = "s6", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("Screen enumeration failed", res.Error);
     }
 
     [Fact]
@@ -801,7 +752,7 @@ public class ScreenCapabilityTests
             Base64 = "abc123"
         });
 
-        var req = new NodeInvokeRequest { Id = "s7", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s7", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
 
@@ -828,7 +779,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest
         {
             Id = "s8",
-            Command = "screen.capture",
+            Command = "screen.snapshot",
             Args = Parse("""{"monitor":2}""")
         };
         var res = await cap.ExecuteAsync(req);
@@ -1144,7 +1095,8 @@ public class CameraCapabilityTests
         var cap = new CameraCapability(NullLogger.Instance);
         Assert.True(cap.CanHandle("camera.list"));
         Assert.True(cap.CanHandle("camera.snap"));
-        Assert.False(cap.CanHandle("camera.clip"));
+        Assert.True(cap.CanHandle("camera.clip"));
+        Assert.False(cap.CanHandle("camera.unknown"));
         Assert.Equal("camera", cap.Category);
     }
 
@@ -1256,5 +1208,247 @@ public class CameraCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Camera access blocked", res.Error);
+    }
+
+    [Fact]
+    public void CameraClipArgs_DefaultValues()
+    {
+        var args = new CameraClipArgs();
+        Assert.Equal(3000, args.DurationMs);
+        Assert.True(args.IncludeAudio);
+        Assert.Equal("mp4", args.Format);
+        Assert.Null(args.DeviceId);
+    }
+
+    [Fact]
+    public async Task Clip_ClampsDuration_ToMax60000()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? receivedArgs = null;
+        cap.ClipRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "vid", DurationMs = args.DurationMs, HasAudio = true });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip1",
+            Command = "camera.clip",
+            Args = Parse("""{"durationMs":120000}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal(60000, receivedArgs!.DurationMs);
+    }
+
+    [Fact]
+    public async Task Clip_RoutesToHandler_WithArgs()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? receivedArgs = null;
+        cap.ClipRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "vid", DurationMs = args.DurationMs, HasAudio = args.IncludeAudio });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip2",
+            Command = "camera.clip",
+            Args = Parse("""{"deviceId":"cam-1","durationMs":5000,"includeAudio":false,"format":"mp4"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal("cam-1", receivedArgs!.DeviceId);
+        Assert.Equal(5000, receivedArgs.DurationMs);
+        Assert.False(receivedArgs.IncludeAudio);
+        Assert.Equal("mp4", receivedArgs.Format);
+    }
+
+    [Fact]
+    public async Task Clip_ReturnsError_WhenNoHandler()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "clip3", Command = "camera.clip", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+public class LocationCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void LocationGetArgs_HasCorrectDefaults()
+    {
+        var args = new LocationGetArgs();
+        Assert.Equal("default", args.Accuracy);
+        Assert.Equal(30000, args.MaxAgeMs);
+        Assert.Equal(10000, args.TimeoutMs);
+    }
+
+    [Fact]
+    public void CanHandle_LocationCommands()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        Assert.True(cap.CanHandle("location.get"));
+        Assert.False(cap.CanHandle("location.watch"));
+        Assert.Equal("location", cap.Category);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsError_WhenNoHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "loc1", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsLocation_WhenHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        cap.GetRequested += (args) => Task.FromResult(new LocationResult
+        {
+            Latitude = 47.6062,
+            Longitude = -122.3321,
+            AccuracyMeters = 15.5,
+            TimestampMs = 1700000000000
+        });
+
+        var req = new NodeInvokeRequest { Id = "loc2", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(res.Payload);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal(47.6062, root.GetProperty("latitude").GetDouble(), 4);
+        Assert.Equal(-122.3321, root.GetProperty("longitude").GetDouble(), 4);
+        Assert.Equal(15.5, root.GetProperty("accuracy").GetDouble(), 1);
+        Assert.Equal(1700000000000, root.GetProperty("timestamp").GetInt64());
+    }
+
+    [Fact]
+    public async Task Get_PassesArgs_ToHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        LocationGetArgs? receivedArgs = null;
+        cap.GetRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new LocationResult
+            {
+                Latitude = 0, Longitude = 0, AccuracyMeters = 0, TimestampMs = 0
+            });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "loc3",
+            Command = "location.get",
+            Args = Parse("""{"accuracy":"precise","maxAge":5000,"locationTimeout":3000}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal("precise", receivedArgs!.Accuracy);
+        Assert.Equal(5000, receivedArgs.MaxAgeMs);
+        Assert.Equal(3000, receivedArgs.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task Get_UsesDefaults_WhenArgsMissing()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        LocationGetArgs? receivedArgs = null;
+        cap.GetRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new LocationResult
+            {
+                Latitude = 0, Longitude = 0, AccuracyMeters = 0, TimestampMs = 0
+            });
+        };
+
+        var req = new NodeInvokeRequest { Id = "loc4", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.Equal("default", receivedArgs!.Accuracy);
+        Assert.Equal(30000, receivedArgs.MaxAgeMs);
+        Assert.Equal(10000, receivedArgs.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsPermissionError_WhenUnauthorized()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        cap.GetRequested += (args) => throw new UnauthorizedAccessException("No permission");
+
+        var req = new NodeInvokeRequest { Id = "loc5", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Equal("LOCATION_PERMISSION_REQUIRED", res.Error);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsError_WhenHandlerThrows()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        cap.GetRequested += (args) => throw new InvalidOperationException("GPS unavailable");
+
+        var req = new NodeInvokeRequest { Id = "loc6", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("GPS unavailable", res.Error);
+    }
+
+    [Fact]
+    public void LocationResult_Serialization()
+    {
+        var result = new LocationResult
+        {
+            Latitude = 48.8566,
+            Longitude = 2.3522,
+            AccuracyMeters = 10.0,
+            TimestampMs = 1700000000000
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        var deserialized = System.Text.Json.JsonSerializer.Deserialize<LocationResult>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(result.Latitude, deserialized!.Latitude);
+        Assert.Equal(result.Longitude, deserialized.Longitude);
+        Assert.Equal(result.AccuracyMeters, deserialized.AccuracyMeters);
+        Assert.Equal(result.TimestampMs, deserialized.TimestampMs);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReturnsError_ForUnknownCommand()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "loc7", Command = "location.watch", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
     }
 }

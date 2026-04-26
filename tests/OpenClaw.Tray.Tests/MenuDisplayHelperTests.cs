@@ -48,16 +48,15 @@ public class MenuDisplayHelperTests
     }
 
     [Theory]
-    [InlineData("OK")]
-    [InlineData("Connected")]
-    [InlineData("RUNNING")]
-    [InlineData("Error")]
-    [InlineData("Connecting")]
-    [InlineData("RECONNECTING")]
-    public void GetChannelStatusIcon_CaseInsensitive(string status)
+    [InlineData("OK", "🟢")]
+    [InlineData("Connected", "🟢")]
+    [InlineData("RUNNING", "🟢")]
+    [InlineData("Error", "🔴")]
+    [InlineData("Connecting", "🟡")]
+    [InlineData("RECONNECTING", "🟡")]
+    public void GetChannelStatusIcon_CaseInsensitive(string status, string expected)
     {
-        // Should not return the neutral fallback
-        Assert.NotEqual("⚪", MenuDisplayHelper.GetChannelStatusIcon(status));
+        Assert.Equal(expected, MenuDisplayHelper.GetChannelStatusIcon(status));
     }
 
     [Theory]
