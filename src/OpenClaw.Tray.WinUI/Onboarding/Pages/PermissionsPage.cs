@@ -133,7 +133,12 @@ public sealed class PermissionsPage : Component<OnboardingState>
             _ => "⚪"
         };
 
-        var leftContent = HStack(8,
+        var statusCol = TextBlock(statusIcon).FontSize(16)
+            .VAlign(VerticalAlignment.Center)
+            .HAlign(HorizontalAlignment.Left)
+            .Grid(row: 0, column: 0);
+
+        var nameCol = HStack(8,
             TextBlock(perm.Icon).FontSize(18).Width(28),
             VStack(2,
                 TextBlock(perm.Name).FontSize(14).TextWrapping(),
@@ -141,21 +146,20 @@ public sealed class PermissionsPage : Component<OnboardingState>
                     .FontSize(11)
                     .Opacity(0.6)
                     .TextWrapping()
-            ).MinWidth(120).MaxWidth(180),
-            TextBlock(statusIcon).FontSize(16)
-                .VAlign(VerticalAlignment.Center)
-        ).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 0);
+            ).MinWidth(120).MaxWidth(180)
+        ).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 1);
 
         // Always show "Open Settings" for permissions that have a settings URI
-        Element? rightContent = !string.IsNullOrEmpty(perm.SettingsUri)
+        Element? settingsCol = !string.IsNullOrEmpty(perm.SettingsUri)
             ? Button(LocalizationHelper.GetString("Onboarding_Permissions_OpenSettings"), onOpenSettings)
                 .VAlign(VerticalAlignment.Center)
-                .Grid(row: 0, column: 1)
+                .Grid(row: 0, column: 2)
             : null;
 
-        return Grid(["1*", "Auto"], ["Auto"],
-            leftContent,
-            rightContent
+        return Grid(["Auto", "1*", "Auto"], ["Auto"],
+            statusCol,
+            nameCol,
+            settingsCol
         ).Padding(6, 8, 6, 8);
     }
 }
