@@ -124,6 +124,28 @@ public class AgentActivityTests
     }
 }
 
+public class SshTunnelCommandLineTests
+{
+    [Fact]
+    public void BuildArguments_UsesMacParitySshOptions()
+    {
+        var args = SshTunnelCommandLine.BuildArguments("scott", "mac-mini.local", 18789, 28789);
+
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 scott@mac-mini.local", args);
+    }
+
+    [Theory]
+    [InlineData("bad user", "mac-mini", 18789, 28789)]
+    [InlineData("scott", "mac mini", 18789, 28789)]
+    [InlineData("scott", "mac-mini", 0, 28789)]
+    [InlineData("scott", "mac-mini", 18789, 70000)]
+    public void BuildArguments_RejectsUnsafeInputs(string user, string host, int remotePort, int localPort)
+    {
+        Assert.ThrowsAny<ArgumentException>(() =>
+            SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort));
+    }
+}
+
 public class ChannelHealthTests
 {
     [Theory]

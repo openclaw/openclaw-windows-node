@@ -2013,8 +2013,8 @@ public partial class App : Application
         var user = string.IsNullOrWhiteSpace(_sshTunnelService?.CurrentUser)
             ? _settings.SshTunnelUser
             : _sshTunnelService!.CurrentUser!;
-        var status = _sshTunnelService?.IsRunning == true
-            ? TunnelStatus.Up
+        var status = _sshTunnelService?.Status is TunnelStatus.Up or TunnelStatus.Starting or TunnelStatus.Restarting or TunnelStatus.Failed
+            ? _sshTunnelService.Status
             : string.IsNullOrWhiteSpace(_sshTunnelService?.LastError)
                 ? TunnelStatus.Stopped
                 : TunnelStatus.Failed;
@@ -2624,6 +2624,7 @@ public partial class App : Application
     private async void OnSshTunnelExited(object? sender, int exitCode)
     {
         Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
+        _sshTunnelService?.MarkRestarting(exitCode);
         await Task.Delay(3000);
         if (_sshTunnelService != null && _settings?.UseSshTunnel == true)
         {

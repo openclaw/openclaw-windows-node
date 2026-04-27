@@ -1,8 +1,6 @@
 using OpenClaw.Shared;
 using System;
 using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
 
@@ -31,6 +29,13 @@ public sealed class SshTunnelService : IDisposable
     public int CurrentLocalPort { get; private set; }
     public DateTime? StartedAtUtc { get; private set; }
     public string? LastError { get; private set; }
+    public TunnelStatus Status { get; private set; } = TunnelStatus.NotConfigured;
+
+    public void MarkRestarting(int exitCode)
+    {
+        Status = TunnelStatus.Restarting;
+        LastError = $"SSH tunnel exited unexpectedly with code {exitCode}; restart is scheduled.";
+    }
 
     public void EnsureStarted(SettingsManager settings)
     {
@@ -38,6 +43,7 @@ public sealed class SshTunnelService : IDisposable
         {
             Stop();
             LastError = null;
+            Status = TunnelStatus.NotConfigured;
             return;
         }
 
@@ -57,10 +63,12 @@ public sealed class SshTunnelService : IDisposable
 
         if (IsRunning && string.Equals(_lastSpec, spec, StringComparison.Ordinal))
         {
+            Status = TunnelStatus.Up;
             return;
         }
 
         Stop();
+        Status = TunnelStatus.Starting;
         StartProcess(user, host, remotePort, localPort);
         _lastSpec = spec;
     }
@@ -69,6 +77,8 @@ public sealed class SshTunnelService : IDisposable
     {
         if (_process == null)
         {
+            if (Status != TunnelStatus.NotConfigured)
+                Status = TunnelStatus.Stopped;
             return;
         }
 
@@ -93,6 +103,8 @@ public sealed class SshTunnelService : IDisposable
             _process = null;
             _lastSpec = null;
             StartedAtUtc = null;
+            if (Status != TunnelStatus.NotConfigured)
+                Status = TunnelStatus.Stopped;
             _stopping = false;
         }
     }
@@ -102,7 +114,7 @@ public sealed class SshTunnelService : IDisposable
         var psi = new ProcessStartInfo
         {
             FileName = "ssh",
-            Arguments = BuildArguments(user, host, remotePort, localPort),
+            Arguments = SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -143,6 +155,7 @@ public sealed class SshTunnelService : IDisposable
                 _logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode})");
                 LastError = $"SSH tunnel exited unexpectedly with code {exitCode}.";
                 StartedAtUtc = null;
+                Status = TunnelStatus.Failed;
                 try { process.Dispose(); } catch { }
                 _process = null;
                 _lastSpec = null;
@@ -160,6 +173,7 @@ public sealed class SshTunnelService : IDisposable
         catch (Exception ex)
         {
             LastError = ex.Message;
+            Status = TunnelStatus.Failed;
             process.Dispose();
             throw new InvalidOperationException("Unable to start SSH tunnel process. Ensure OpenSSH client is installed and available in PATH.", ex);
         }
@@ -173,36 +187,13 @@ public sealed class SshTunnelService : IDisposable
         CurrentLocalPort = localPort;
         StartedAtUtc = DateTime.UtcNow;
         LastError = null;
+        Status = TunnelStatus.Up;
 
         _logger.Info($"SSH tunnel started: 127.0.0.1:{localPort} -> 127.0.0.1:{remotePort} via {user}@{host}");
     }
 
     private static string BuildSpec(string user, string host, int remotePort, int localPort)
         => $"{user}@{host}:{localPort}:{remotePort}";
-
-    // Strict validation for SSH user/host to prevent command injection
-    private static readonly Regex s_validSshUser = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
-    private static readonly Regex s_validSshHost = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
-
-    private static string BuildArguments(string user, string host, int remotePort, int localPort)
-    {
-        if (!s_validSshUser.IsMatch(user))
-            throw new ArgumentException($"SSH user contains invalid characters: '{user}'");
-        if (!s_validSshHost.IsMatch(host))
-            throw new ArgumentException($"SSH host contains invalid characters: '{host}'");
-
-        var sb = new StringBuilder();
-        sb.Append("-N ");
-        sb.Append("-L ");
-        sb.Append(localPort);
-        sb.Append(":127.0.0.1:");
-        sb.Append(remotePort);
-        sb.Append(' ');
-        sb.Append(user);
-        sb.Append('@');
-        sb.Append(host);
-        return sb.ToString();
-    }
 
     public void Dispose()
     {

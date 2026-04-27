@@ -357,12 +357,13 @@ Risk: low. No protocol changes.
 
 Deliverables:
 
-- Mac-equivalent SSH options:
+- Mac-equivalent SSH options: **implemented for tunnel startup**
   - `BatchMode=yes`
   - `ExitOnForwardFailure=yes`
   - `ServerAliveInterval=15`
   - `ServerAliveCountMax=3`
   - `TCPKeepAlive=yes`
+- Explicit tunnel states (`NotConfigured`, `Stopped`, `Starting`, `Up`, `Restarting`, `Failed`): **implemented**
 - Fast-fail detection.
 - Optional random local port fallback.
 - WSL detection helper with timeout/cache.
