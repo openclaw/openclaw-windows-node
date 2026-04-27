@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    Shared build configuration for OpenClaw.Shared, OpenClaw.Tray.WinUI, and OpenClaw.Cli.
+
+    OpenClaw.CommandPalette has its own Directory.Build.props one level deeper, so MSBuild
+    stops walking up at that file and this one does NOT apply to CommandPalette.
+
+    Properties here set a consistent quality baseline that matches the CommandPalette project's
+    existing settings and are safe defaults for all src projects:
+      - NET analyzers + Recommended rule set: catch common bugs and anti-patterns
+      - NuGetAudit covers transitive packages so CVEs in indirect deps surface during restore
+  -->
+
+  <PropertyGroup>
+    <!-- Enable the built-in .NET source analyzers (already the SDK default for net5+,
+         but made explicit here so the intent is clear and auditable). -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <!-- Recommended rule set: a superset of Default that enables additional quality rules
+         aligned with the CommandPalette project's AnalysisMode=Recommended setting.
+         Rules produce warnings only; src projects do not set TreatWarningsAsErrors. -->
+    <AnalysisMode>Recommended</AnalysisMode>
+
+    <!-- Audit all package dependencies (direct + transitive) for known CVEs during restore.
+         Defaults to "direct" in the SDK; "all" provides broader security coverage. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+  </PropertyGroup>
+
+</Project>
