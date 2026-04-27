@@ -124,6 +124,16 @@ internal sealed partial class OpenClawPage : ListPage
                 Title = "🔌 Copy Port Diagnostics",
                 Subtitle = "Copy gateway, browser proxy, tunnel ports, owners, and stop hints"
             },
+            new ListItem(new OpenUrlCommand("openclaw://capability-diagnostics"))
+            {
+                Title = "🛡️ Copy Capability Diagnostics",
+                Subtitle = "Copy permissions, allowlist health, and parity diagnostics"
+            },
+            new ListItem(new OpenUrlCommand("openclaw://node-inventory"))
+            {
+                Title = "🖥️ Copy Node Inventory",
+                Subtitle = "Copy connected node capabilities, commands, and policy status"
+            },
             new ListItem(new OpenUrlCommand("openclaw://restart-ssh-tunnel"))
             {
                 Title = "🔁 Restart SSH Tunnel",

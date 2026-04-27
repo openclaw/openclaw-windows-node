@@ -129,6 +129,18 @@ public static class DeepLinkHandler
                 actions.CopyPortDiagnostics?.Invoke();
                 break;
 
+            case "capabilities":
+            case "capability-diagnostics":
+            case "copy-capability-diagnostics":
+                actions.CopyCapabilityDiagnostics?.Invoke();
+                break;
+
+            case "nodes":
+            case "node-inventory":
+            case "copy-node-inventory":
+                actions.CopyNodeInventory?.Invoke();
+                break;
+
             case "ssh-restart":
             case "restart-ssh":
             case "restart-ssh-tunnel":
@@ -213,6 +225,8 @@ public class DeepLinkActions
     public Action? CopySupportContext { get; set; }
     public Action? CopyBrowserSetupGuidance { get; set; }
     public Action? CopyPortDiagnostics { get; set; }
+    public Action? CopyCapabilityDiagnostics { get; set; }
+    public Action? CopyNodeInventory { get; set; }
     public Action? RestartSshTunnel { get; set; }
     public Action? OpenChat { get; set; }
     public Action? OpenCommandCenter { get; set; }

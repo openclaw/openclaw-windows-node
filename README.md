@@ -313,6 +313,8 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 | `openclaw://support-context` | Copy redacted support context |
 | `openclaw://browser-setup` | Copy browser.proxy/browser-control setup guidance |
 | `openclaw://port-diagnostics` | Copy gateway/browser/tunnel port diagnostics with owner PID stop hints |
+| `openclaw://capability-diagnostics` | Copy permissions, allowlist, and parity diagnostics |
+| `openclaw://node-inventory` | Copy node capabilities, commands, and policy status |
 | `openclaw://restart-ssh-tunnel` | Restart the tray-managed SSH tunnel when enabled |
 | `openclaw://send?message=Hello` | Open Quick Send with pre-filled text |
 | `openclaw://agent?message=Hello` | Send message directly to the connected gateway |
@@ -342,6 +344,8 @@ PowerToys Command Palette extension for quick OpenClaw access.
 - **📋 Copy Support Context** - Copy redacted Command Center metadata
 - **🌐 Copy Browser Setup** - Copy browser.proxy and node-host setup guidance
 - **🔌 Copy Port Diagnostics** - Copy gateway/browser/tunnel port owners and stop hints
+- **🛡️ Copy Capability Diagnostics** - Copy permission, allowlist, and parity diagnostics
+- **🖥️ Copy Node Inventory** - Copy node capabilities, commands, and policy status
 - **🔁 Restart SSH Tunnel** - Restart the tray-managed SSH tunnel when enabled
 
 ### Installation

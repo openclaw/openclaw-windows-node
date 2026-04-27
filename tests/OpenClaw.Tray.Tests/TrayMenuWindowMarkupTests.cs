@@ -159,6 +159,10 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("Copy Browser Setup", source);
         Assert.Contains(@"openclaw://port-diagnostics", source);
         Assert.Contains("Copy Port Diagnostics", source);
+        Assert.Contains(@"openclaw://capability-diagnostics", source);
+        Assert.Contains("Copy Capability Diagnostics", source);
+        Assert.Contains(@"openclaw://node-inventory", source);
+        Assert.Contains("Copy Node Inventory", source);
         Assert.Contains(@"openclaw://restart-ssh-tunnel", source);
         Assert.Contains("Restart SSH Tunnel", source);
     }
@@ -241,6 +245,10 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("CopyBrowserSetupGuidance?.Invoke", source);
         Assert.Contains(@"case ""port-diagnostics"":", source);
         Assert.Contains("CopyPortDiagnostics?.Invoke", source);
+        Assert.Contains(@"case ""capability-diagnostics"":", source);
+        Assert.Contains("CopyCapabilityDiagnostics?.Invoke", source);
+        Assert.Contains(@"case ""node-inventory"":", source);
+        Assert.Contains("CopyNodeInventory?.Invoke", source);
         Assert.Contains(@"case ""restart-ssh-tunnel"":", source);
         Assert.Contains("RestartSshTunnel?.Invoke", source);
     }

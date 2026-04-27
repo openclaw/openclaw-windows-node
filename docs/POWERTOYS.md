@@ -55,6 +55,8 @@ Open Command Palette (`Win+Alt+Space`), type **"OpenClaw"** — you should see t
 | **📋 Copy Support Context** | Copies redacted Command Center support metadata |
 | **🌐 Copy Browser Setup** | Copies browser.proxy and node-host setup guidance |
 | **🔌 Copy Port Diagnostics** | Copies gateway/browser/tunnel port owners and stop hints |
+| **🛡️ Copy Capability Diagnostics** | Copies permission, allowlist, and parity diagnostics |
+| **🖥️ Copy Node Inventory** | Copies node capabilities, commands, and policy status |
 | **🔁 Restart SSH Tunnel** | Restarts the tray-managed SSH tunnel when enabled |
 
 ## Usage
@@ -125,4 +127,6 @@ Get-AppxPackage -Name '*OpenClaw*' | Remove-AppxPackage
   | Copy Support Context | `openclaw://support-context` |
   | Copy Browser Setup | `openclaw://browser-setup` |
   | Copy Port Diagnostics | `openclaw://port-diagnostics` |
+  | Copy Capability Diagnostics | `openclaw://capability-diagnostics` |
+  | Copy Node Inventory | `openclaw://node-inventory` |
   | Restart SSH Tunnel | `openclaw://restart-ssh-tunnel` |

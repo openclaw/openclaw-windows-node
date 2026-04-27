@@ -93,6 +93,8 @@ OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a 
 | `openclaw://support-context` | Copy redacted support context |
 | `openclaw://browser-setup` | Copy browser.proxy/browser-control setup guidance |
 | `openclaw://port-diagnostics` | Copy gateway/browser/tunnel port diagnostics with owner PID stop hints |
+| `openclaw://capability-diagnostics` | Copy permissions, allowlist, and parity diagnostics |
+| `openclaw://node-inventory` | Copy node capabilities, commands, and policy status |
 | `openclaw://restart-ssh-tunnel` | Restart the tray-managed SSH tunnel when enabled |
 | `openclaw://agent?message=Hello` | Send a message directly to the connected gateway |
 

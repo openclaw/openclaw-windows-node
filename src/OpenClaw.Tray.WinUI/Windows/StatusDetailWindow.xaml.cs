@@ -840,7 +840,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         return builder.ToString();
     }
 
-    private static string BuildCapabilityDiagnosticsSummary(GatewayCommandCenterState state)
+    internal static string BuildCapabilityDiagnosticsSummary(GatewayCommandCenterState state)
     {
         var builder = new StringBuilder();
         builder.AppendLine("OpenClaw capability diagnostics");
@@ -1035,7 +1035,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         return parts.Count == 0 ? "no command details" : string.Join(" · ", parts);
     }
 
-    private static string BuildNodeInventorySummary(IReadOnlyCollection<NodeCapabilityHealthInfo> nodes)
+    internal static string BuildNodeInventorySummary(IReadOnlyCollection<NodeCapabilityHealthInfo> nodes)
     {
         if (nodes.Count == 0)
             return "No nodes reported by gateway.";

@@ -2687,6 +2687,36 @@ public partial class App : Application
         }
     }
 
+    private void CopyCapabilityDiagnostics()
+    {
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(StatusDetailWindow.BuildCapabilityDiagnosticsSummary(BuildCommandCenterState()));
+            Clipboard.SetContent(package);
+            Logger.Info("Copied capability diagnostics from deep link");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to copy capability diagnostics from deep link: {ex.Message}");
+        }
+    }
+
+    private void CopyNodeInventory()
+    {
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(StatusDetailWindow.BuildNodeInventorySummary(BuildCommandCenterState().Nodes));
+            Clipboard.SetContent(package);
+            Logger.Info("Copied node inventory from deep link");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to copy node inventory from deep link: {ex.Message}");
+        }
+    }
+
     private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
     {
         // Hotkey events are raised from a dedicated Win32 message-loop thread.
@@ -2908,6 +2938,8 @@ public partial class App : Application
             CopySupportContext = CopySupportContext,
             CopyBrowserSetupGuidance = CopyBrowserSetupGuidance,
             CopyPortDiagnostics = CopyPortDiagnostics,
+            CopyCapabilityDiagnostics = CopyCapabilityDiagnostics,
+            CopyNodeInventory = CopyNodeInventory,
             RestartSshTunnel = RestartSshTunnel,
             OpenChat = ShowWebChat,
             OpenCommandCenter = ShowStatusDetail,

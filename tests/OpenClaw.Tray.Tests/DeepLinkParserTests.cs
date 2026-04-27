@@ -99,6 +99,8 @@ public class DeepLinkParserTests
     [InlineData("openclaw://support-context", "support-context")]
     [InlineData("openclaw://browser-setup", "browser-setup")]
     [InlineData("openclaw://port-diagnostics", "port-diagnostics")]
+    [InlineData("openclaw://capability-diagnostics", "capability-diagnostics")]
+    [InlineData("openclaw://node-inventory", "node-inventory")]
     [InlineData("openclaw://restart-ssh-tunnel", "restart-ssh-tunnel")]
     public void ParseDeepLink_TrayUtilityEntrypoints(string uri, string expectedPath)
     {
@@ -233,6 +235,8 @@ public class DeepLinkParserTests
     [InlineData("openclaw://support-context", nameof(DeepLinkActions.CopySupportContext))]
     [InlineData("openclaw://browser-setup", nameof(DeepLinkActions.CopyBrowserSetupGuidance))]
     [InlineData("openclaw://port-diagnostics", nameof(DeepLinkActions.CopyPortDiagnostics))]
+    [InlineData("openclaw://capability-diagnostics", nameof(DeepLinkActions.CopyCapabilityDiagnostics))]
+    [InlineData("openclaw://node-inventory", nameof(DeepLinkActions.CopyNodeInventory))]
     [InlineData("openclaw://check-updates", nameof(DeepLinkActions.CheckForUpdates))]
     [InlineData("openclaw://restart-ssh-tunnel", nameof(DeepLinkActions.RestartSshTunnel))]
     public void Handle_InvokesExpectedAction(string uri, string expectedAction)
@@ -252,6 +256,8 @@ public class DeepLinkParserTests
             CopySupportContext = () => invoked = nameof(DeepLinkActions.CopySupportContext),
             CopyBrowserSetupGuidance = () => invoked = nameof(DeepLinkActions.CopyBrowserSetupGuidance),
             CopyPortDiagnostics = () => invoked = nameof(DeepLinkActions.CopyPortDiagnostics),
+            CopyCapabilityDiagnostics = () => invoked = nameof(DeepLinkActions.CopyCapabilityDiagnostics),
+            CopyNodeInventory = () => invoked = nameof(DeepLinkActions.CopyNodeInventory),
             CheckForUpdates = () =>
             {
                 invoked = nameof(DeepLinkActions.CheckForUpdates);
