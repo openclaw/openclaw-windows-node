@@ -123,6 +123,12 @@ public static class DeepLinkHandler
                 actions.CopyBrowserSetupGuidance?.Invoke();
                 break;
 
+            case "ports":
+            case "port-diagnostics":
+            case "copy-port-diagnostics":
+                actions.CopyPortDiagnostics?.Invoke();
+                break;
+
             case "ssh-restart":
             case "restart-ssh":
             case "restart-ssh-tunnel":
@@ -206,6 +212,7 @@ public class DeepLinkActions
     public Action? OpenDiagnosticsFolder { get; set; }
     public Action? CopySupportContext { get; set; }
     public Action? CopyBrowserSetupGuidance { get; set; }
+    public Action? CopyPortDiagnostics { get; set; }
     public Action? RestartSshTunnel { get; set; }
     public Action? OpenChat { get; set; }
     public Action? OpenCommandCenter { get; set; }

@@ -157,6 +157,8 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("Copy Support Context", source);
         Assert.Contains(@"openclaw://browser-setup", source);
         Assert.Contains("Copy Browser Setup", source);
+        Assert.Contains(@"openclaw://port-diagnostics", source);
+        Assert.Contains("Copy Port Diagnostics", source);
         Assert.Contains(@"openclaw://restart-ssh-tunnel", source);
         Assert.Contains("Restart SSH Tunnel", source);
     }
@@ -237,6 +239,8 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("CopySupportContext?.Invoke", source);
         Assert.Contains(@"case ""browser-setup"":", source);
         Assert.Contains("CopyBrowserSetupGuidance?.Invoke", source);
+        Assert.Contains(@"case ""port-diagnostics"":", source);
+        Assert.Contains("CopyPortDiagnostics?.Invoke", source);
         Assert.Contains(@"case ""restart-ssh-tunnel"":", source);
         Assert.Contains("RestartSshTunnel?.Invoke", source);
     }
@@ -399,6 +403,7 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("OpenClaw port diagnostics", source);
         Assert.Contains("OwningProcessId", source);
         Assert.Contains("OwningProcessName", source);
+        Assert.Contains("Stop-Process -Id", source);
         var appSourcePath = Path.Combine(
             GetRepositoryRoot(),
             "src",

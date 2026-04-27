@@ -2672,6 +2672,21 @@ public partial class App : Application
         }
     }
 
+    private void CopyPortDiagnostics()
+    {
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(StatusDetailWindow.BuildPortDiagnosticsSummary(BuildCommandCenterState().PortDiagnostics));
+            Clipboard.SetContent(package);
+            Logger.Info("Copied port diagnostics from deep link");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to copy port diagnostics from deep link: {ex.Message}");
+        }
+    }
+
     private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
     {
         // Hotkey events are raised from a dedicated Win32 message-loop thread.
@@ -2892,6 +2907,7 @@ public partial class App : Application
             OpenDiagnosticsFolder = OpenDiagnosticsFolder,
             CopySupportContext = CopySupportContext,
             CopyBrowserSetupGuidance = CopyBrowserSetupGuidance,
+            CopyPortDiagnostics = CopyPortDiagnostics,
             RestartSshTunnel = RestartSshTunnel,
             OpenChat = ShowWebChat,
             OpenCommandCenter = ShowStatusDetail,

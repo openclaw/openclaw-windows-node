@@ -881,7 +881,7 @@ public sealed partial class StatusDetailWindow : WindowEx
         return builder.ToString();
     }
 
-    private static string BuildPortDiagnosticsSummary(IReadOnlyCollection<PortDiagnosticInfo> ports)
+    internal static string BuildPortDiagnosticsSummary(IReadOnlyCollection<PortDiagnosticInfo> ports)
     {
         if (ports.Count == 0)
             return "No local port diagnostics available for the current topology.";
@@ -895,6 +895,10 @@ public sealed partial class StatusDetailWindow : WindowEx
                 ? $" · owner {port.OwningProcessName ?? "unknown"} (PID {port.OwningProcessId})"
                 : "";
             builder.AppendLine($"- {port.Purpose}: {port.Port} {port.StatusText}{owner} - {RedactSupportValue(port.Detail)}");
+            if (port.OwningProcessId is > 0)
+            {
+                builder.AppendLine($"  stop hint: Stop-Process -Id {port.OwningProcessId.Value}");
+            }
         }
 
         return builder.ToString();

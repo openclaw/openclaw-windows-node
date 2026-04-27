@@ -119,6 +119,11 @@ internal sealed partial class OpenClawPage : ListPage
                 Title = "🌐 Copy Browser Setup",
                 Subtitle = "Copy browser.proxy and node-host setup guidance"
             },
+            new ListItem(new OpenUrlCommand("openclaw://port-diagnostics"))
+            {
+                Title = "🔌 Copy Port Diagnostics",
+                Subtitle = "Copy gateway, browser proxy, tunnel ports, owners, and stop hints"
+            },
             new ListItem(new OpenUrlCommand("openclaw://restart-ssh-tunnel"))
             {
                 Title = "🔁 Restart SSH Tunnel",
