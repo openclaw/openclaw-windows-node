@@ -90,7 +90,7 @@ When the node connects, it advertises these capabilities:
    - `system.run.prepare` pre-flight command
    - `system.which` command lookup
    - `system.execApprovals` allowlist flow
-2. **screen.record**
+2. ~~**screen.record**~~ ✅ Implemented
    - Graphics Capture video recording (MP4/base64)
 3. **camera.clip**
    - Short webcam video capture (MediaCapture + encoding)

@@ -158,12 +158,12 @@ Our node previously registered `screen.list`. This command does not exist in the
 | `canvas.snapshot` | `canvas.snapshot` | ✅ Match |
 | `canvas.a2ui.push` | `canvas.a2ui.push` | ✅ Match |
 | `canvas.a2ui.reset` | `canvas.a2ui.reset` | ✅ Match |
+| `screen.record` | `screen.record` | ✅ Match (dangerous) |
 
 ### 2.4 Commands We're Missing vs macOS
 
 | Command | macOS | Windows | Notes |
 |---------|-------|---------|-------|
-| `screen.record` | ✅ | ❌ | Video recording (PR #159 pending) |
 | `canvas.a2ui.pushJSONL` | ✅ (in gateway allowlist) | ❌ | Not widely used |
 | `device.info` | ✅ | ❌ | Hardware/OS info |
 | `device.status` | ✅ | ❌ | Battery/charging status |

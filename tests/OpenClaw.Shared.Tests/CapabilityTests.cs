@@ -892,9 +892,11 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         Assert.True(cap.CanHandle("screen.snapshot"));
+        Assert.True(cap.CanHandle("screen.record"));
         Assert.False(cap.CanHandle("screen.capture"));
         Assert.False(cap.CanHandle("screen.list"));
-        Assert.False(cap.CanHandle("screen.record"));
+        Assert.False(cap.CanHandle("screen.record.start"));
+        Assert.False(cap.CanHandle("screen.record.stop"));
         Assert.Equal("screen", cap.Category);
     }
 
@@ -993,6 +995,116 @@ public class ScreenCapabilityTests
         Assert.True(res.Ok);
         Assert.NotNull(receivedArgs);
         Assert.Equal(2, receivedArgs!.MonitorIndex);
+    }
+
+    [Fact]
+    public async Task Record_ReturnsError_WhenNoHandler()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "s9", Command = "screen.record", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Record_CallsHandler_WithMacCompatibleArgs()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenRecordArgs? receivedArgs = null;
+        cap.RecordRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new ScreenRecordResult
+            {
+                Format = "mp4",
+                Base64 = "video",
+                DurationMs = args.DurationMs,
+                Fps = args.Fps,
+                ScreenIndex = args.ScreenIndex,
+                HasAudio = false
+            });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s10",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":1500,"fps":7.5,"screenIndex":1,"format":"mp4","includeAudio":true}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal(1500, receivedArgs!.DurationMs);
+        Assert.Equal(7.5, receivedArgs.Fps);
+        Assert.Equal(1, receivedArgs.ScreenIndex);
+        Assert.Equal("mp4", receivedArgs.Format);
+        Assert.True(receivedArgs.IncludeAudio);
+    }
+
+    [Fact]
+    public async Task Record_RejectsUnsupportedFormat()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        var handlerCalled = false;
+        cap.RecordRequested += (args) =>
+        {
+            handlerCalled = true;
+            return Task.FromResult(new ScreenRecordResult());
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s11",
+            Command = "screen.record",
+            Args = Parse("""{"format":"webm"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.False(handlerCalled);
+        Assert.Contains("Only mp4", res.Error);
+    }
+
+    [Fact]
+    public async Task Record_ReturnsMacCompatiblePayload()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        cap.RecordRequested += (args) => Task.FromResult(new ScreenRecordResult
+        {
+            Format = "mp4",
+            Base64 = "abc123",
+            DurationMs = 2000,
+            Fps = 10,
+            ScreenIndex = 2,
+            Width = 1920,
+            Height = 1080,
+            HasAudio = false
+        });
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s12",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":2000,"fps":10,"screenIndex":2}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("mp4", root.GetProperty("format").GetString());
+        Assert.Equal("abc123", root.GetProperty("base64").GetString());
+        Assert.Equal(2000, root.GetProperty("durationMs").GetInt32());
+        Assert.Equal(10, root.GetProperty("fps").GetDouble());
+        Assert.Equal(2, root.GetProperty("screenIndex").GetInt32());
+        Assert.False(root.GetProperty("hasAudio").GetBoolean());
+        Assert.False(root.TryGetProperty("filePath", out _));
+        Assert.False(root.TryGetProperty("width", out _));
+        Assert.False(root.TryGetProperty("height", out _));
     }
 }
 

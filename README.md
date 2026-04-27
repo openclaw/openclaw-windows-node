@@ -172,7 +172,7 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
 |------------|----------|-------------|
 | **System** | `system.notify`, `system.run`, `system.run.prepare`, `system.which`, `system.execApprovals.get`, `system.execApprovals.set` | Show Windows toast notifications, execute commands with policy controls |
 | **Canvas** | `canvas.present`, `canvas.hide`, `canvas.navigate`, `canvas.eval`, `canvas.snapshot`, `canvas.a2ui.push`, `canvas.a2ui.reset` | Display and control a WebView2 window |
-| **Screen** | `screen.snapshot` | Capture screenshots |
+| **Screen** | `screen.snapshot`, `screen.record` | Capture screenshots and fixed-duration MP4 screen recordings |
 | **Camera** | `camera.list`, `camera.snap`, `camera.clip` | Enumerate cameras and capture still photos or short video clips |
 
 #### Node Setup
@@ -213,7 +213,7 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
      }
    }
    ```
-   > ⚠️ **Important**: The gateway has a server-side allowlist. Commands must be listed explicitly - wildcards like `canvas.*` don't work!
+    > ⚠️ **Important**: The gateway has a server-side allowlist. Commands must be listed explicitly - wildcards like `canvas.*` don't work! Privacy-sensitive commands such as `screen.record` should only be added when you explicitly want to allow them.
 
 5. **Test it** from your Mac/gateway:
    ```bash
