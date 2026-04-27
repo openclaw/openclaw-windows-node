@@ -101,9 +101,14 @@ public partial class App : Application
 
     private string[]? _startupArgs;
     private string? _pendingProtocolUri;
-    private static readonly string DataPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenClawTray");
+    // OPENCLAW_TRAY_DATA_DIR isolates a test instance: settings, logs, run marker,
+    // crash log, exec approvals, and the single-instance mutex name all derive from it.
+    private static readonly string? DataDirOverride =
+        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } v ? v : null;
+    private static readonly string DataPath = DataDirOverride
+        ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray");
     private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
     private static readonly string RunMarkerPath = Path.Combine(DataPath, "run.marker");
 
@@ -238,8 +243,13 @@ public partial class App : Application
         // Check for protocol activation (MSIX packaged apps receive deep links this way)
         string? protocolUri = GetProtocolActivationUri();
 
-        // Single instance check - keep mutex alive for app lifetime
-        _mutex = new Mutex(true, "OpenClawTray", out bool createdNew);
+        // Single instance check - keep mutex alive for app lifetime.
+        // When running with an isolated data dir (tests), suffix the mutex name so
+        // the test instance does not collide with the user's regular tray app.
+        var mutexName = DataDirOverride is null
+            ? "OpenClawTray"
+            : $"OpenClawTray-{Math.Abs(DataDirOverride.GetHashCode()):X8}";
+        _mutex = new Mutex(true, mutexName, out bool createdNew);
         if (!createdNew)
         {
             // Forward deep link args to running instance (command-line or protocol activation)
@@ -269,12 +279,16 @@ public partial class App : Application
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
-        // Check for updates before launching
-        var shouldLaunch = await CheckForUpdatesAsync();
-        if (!shouldLaunch)
+        // Check for updates before launching. Skip in test instances — no UI dialogs,
+        // no network calls, no startup delay.
+        if (DataDirOverride is null)
         {
-            Exit();
-            return;
+            var shouldLaunch = await CheckForUpdatesAsync();
+            if (!shouldLaunch)
+            {
+                Exit();
+                return;
+            }
         }
 
         // Register toast activation handler

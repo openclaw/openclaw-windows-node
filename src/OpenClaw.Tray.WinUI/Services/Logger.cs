@@ -14,9 +14,12 @@ public static class Logger
 
     static Logger()
     {
-        _logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
+        // OPENCLAW_TRAY_DATA_DIR keeps test instances out of the user's log file.
+        _logDirectory = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
+            ? overrideDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenClawTray");
         
         Directory.CreateDirectory(_logDirectory);
         _logFilePath = Path.Combine(_logDirectory, "openclaw-tray.log");

@@ -10,9 +10,14 @@ namespace OpenClawTray.Services;
 /// </summary>
 public class SettingsManager
 {
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "OpenClawTray");
+    // OPENCLAW_TRAY_DATA_DIR overrides both this and App.DataPath so an isolated test
+    // instance can run alongside the user's real tray without clobbering settings.
+    private static readonly string SettingsDirectory =
+        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
+            ? overrideDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpenClawTray");
 
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
 

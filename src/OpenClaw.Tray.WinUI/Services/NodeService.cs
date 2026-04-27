@@ -58,7 +58,13 @@ public class NodeService : IDisposable
     // "Deferred"), McpServerUrl needs to read the live port off the running
     // server, not the constant. Settings UI is the only consumer today.
     public const int McpDefaultPort = 8765;
-    public static string McpServerUrl => $"http://127.0.0.1:{McpDefaultPort}/";
+    // OPENCLAW_MCP_PORT lets test instances bind a free port instead of fighting
+    // over the default. Falls back to McpDefaultPort when unset or unparseable.
+    private static readonly int McpPort =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_MCP_PORT"), out var p) && p > 0
+            ? p
+            : McpDefaultPort;
+    public static string McpServerUrl => $"http://127.0.0.1:{McpPort}/";
     private readonly bool _enableMcpServer;
     private McpHttpServer? _mcpServer;
     private string? _mcpStartupError;
@@ -286,7 +292,7 @@ public class NodeService : IDisposable
                 _logger,
                 serverName: "openclaw-tray-mcp",
                 serverVersion: typeof(NodeService).Assembly.GetName().Version?.ToString() ?? "0.0.0");
-            attempt = new McpHttpServer(bridge, McpDefaultPort, _logger);
+            attempt = new McpHttpServer(bridge, McpPort, _logger);
             attempt.Start();
             _mcpServer = attempt;
             _mcpStartupError = null;
@@ -296,8 +302,8 @@ public class NodeService : IDisposable
             // Categorize so Settings can show something actionable instead of
             // raw HRESULT text. HttpListener errors on Windows fall into a
             // small set of recurring causes on developer machines.
-            _mcpStartupError = DescribeMcpStartupFailure(ex, McpDefaultPort);
-            _logger.Error($"[MCP] Failed to start HTTP server on port {McpDefaultPort}: {_mcpStartupError}", ex);
+            _mcpStartupError = DescribeMcpStartupFailure(ex, McpPort);
+            _logger.Error($"[MCP] Failed to start HTTP server on port {McpPort}: {_mcpStartupError}", ex);
             // Avoid leaking the half-constructed listener / CTS.
             try { attempt?.Dispose(); } catch { /* ignore */ }
             _mcpServer = null;

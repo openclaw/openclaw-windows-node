@@ -153,7 +153,9 @@ public class McpToolBridge
                 tools.Add(new
                 {
                     name = cmd,
-                    description = $"{cap.Category} capability: {cmd}",
+                    description = CommandDescriptions.TryGetValue(cmd, out var desc)
+                        ? desc
+                        : $"{cap.Category} capability: {cmd}",
                     inputSchema = new
                     {
                         type = "object",
@@ -165,6 +167,58 @@ public class McpToolBridge
         }
         return new { tools };
     }
+
+    /// <summary>
+    /// Per-command descriptions advertised via <c>tools/list</c>. Sourced from
+    /// the OpenClaw docs (docs/nodes/index.md, docs/platforms/mac/canvas.md) and
+    /// the capability implementations under <c>OpenClaw.Shared.Capabilities</c>.
+    /// Unknown commands fall back to a generic <c>{category} capability: {cmd}</c>
+    /// label so newly-added capabilities still render before this table is updated.
+    /// </summary>
+    private static readonly Dictionary<string, string> CommandDescriptions = new(StringComparer.Ordinal)
+    {
+        // system.*
+        ["system.notify"] =
+            "Show a Windows toast notification on the node. Args: title (string, default 'OpenClaw'), body (string), subtitle (string), sound (bool, default true). Returns { sent: true }.",
+        ["system.run"] =
+            "Execute a shell command on the Windows node host. Args: command (string or string[] argv, required), args (string[]), shell (string), cwd (string), timeoutMs (int, default 30000), env (object). Subject to the local exec approval policy. Returns { stdout, stderr, exitCode, timedOut, durationMs }.",
+        ["system.run.prepare"] =
+            "Pre-flight a system.run invocation: returns the parsed execution plan (argv, cwd, rawCommand, agentId, sessionKey) without running anything. The gateway uses this to build its approval context before the actual run.",
+        ["system.which"] =
+            "Resolve executable names to absolute paths by searching PATH (PATHEXT-aware on Windows). Args: bins (string[], required). Returns { bins: { name: resolvedPath, ... } } including only names that were found.",
+        ["system.execApprovals.get"] =
+            "Return the current exec approval policy: { enabled, defaultAction ('allow'|'deny'|'prompt'), rules: [{ pattern, action, shells, description, enabled }, ...] }.",
+        ["system.execApprovals.set"] =
+            "Replace the exec approval policy. Args: rules (array of { pattern, action, shells?, description?, enabled? }), defaultAction (string, optional). Persisted to disk; used by future system.run calls.",
+
+        // canvas.* — agent-controlled WebView2 panel for HTML/CSS/JS, A2UI, and small interactive UI surfaces.
+        ["canvas.present"] =
+            "Show the agent-controlled Canvas window (WebView2). Args: url (string) or html (string), width (int, default 800), height (int, default 600), x/y (int, -1 = center), title (string, default 'Canvas'), alwaysOnTop (bool, default false). The Canvas is a lightweight visual workspace for HTML/CSS/JS, A2UI, and small interactive UI surfaces.",
+        ["canvas.hide"] =
+            "Hide the Canvas window without destroying its state.",
+        ["canvas.navigate"] =
+            "Navigate the existing Canvas to a new location. Args: url (string, required) — accepts http(s), file://, or local canvas paths.",
+        ["canvas.eval"] =
+            "Evaluate a JavaScript expression inside the Canvas WebView and return its result. Args: script | javaScript | javascript (string, required).",
+        ["canvas.snapshot"] =
+            "Capture the Canvas viewport as a base64-encoded image. Args: format ('png'|'jpeg', default 'png'), maxWidth (int, default 1200), quality (int 1-100, default 80). Returns { format, base64 }.",
+        ["canvas.a2ui.push"] =
+            "Push A2UI v0.8 server→client messages to the Canvas as JSONL. Supported message kinds: beginRendering, surfaceUpdate, dataModelUpdate, deleteSurface (createSurface / v0.9 is rejected). Args: jsonl (string) or jsonlPath (string, must live under the system temp directory), props (object, optional).",
+        ["canvas.a2ui.reset"] =
+            "Reset the Canvas A2UI state, clearing any rendered surfaces.",
+
+        // screen.*
+        ["screen.capture"] =
+            "Capture a screenshot of the specified display. Args: format ('png'|'jpeg', default 'png'), maxWidth (int, default 1920), quality (int 1-100, default 80), monitor / screenIndex (int, default 0 = primary), includePointer (bool, default true). Returns { format, width, height, base64, image } where image is a data: URL.",
+        ["screen.list"] =
+            "List attached displays. Returns { screens: [{ index, name, primary, bounds: {x,y,width,height}, workingArea: {x,y,width,height} }, ...] }.",
+
+        // camera.*
+        ["camera.list"] =
+            "List cameras attached to the Windows node. Returns { cameras: [{ deviceId, name, isDefault }, ...] }.",
+        ["camera.snap"] =
+            "Capture a still photo from a camera. Args: deviceId (string, optional — defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
+    };
 
     private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)
     {

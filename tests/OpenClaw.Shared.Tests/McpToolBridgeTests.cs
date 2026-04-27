@@ -70,6 +70,37 @@ public class McpToolBridgeTests
     }
 
     [Fact]
+    public async Task ToolsList_KnownCommands_GetCuratedDescriptions()
+    {
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("system", "system.notify"),
+            new FakeCapability("canvas", "canvas.a2ui.push"),
+            new FakeCapability("screen", "screen.capture"),
+            new FakeCapability("camera", "camera.snap"),
+            new FakeCapability("custom", "custom.unknown"),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var byName = new Dictionary<string, string>();
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+        {
+            byName[t.GetProperty("name").GetString()!] = t.GetProperty("description").GetString()!;
+        }
+
+        // Curated descriptions should be specific, not the generic "{category} capability: {cmd}" stub.
+        Assert.Contains("toast notification", byName["system.notify"]);
+        Assert.Contains("A2UI v0.8", byName["canvas.a2ui.push"]);
+        Assert.Contains("screenshot", byName["screen.capture"]);
+        Assert.Contains("camera", byName["camera.snap"], System.StringComparison.OrdinalIgnoreCase);
+
+        // Unknown commands keep the generic fallback so newly-added capabilities still render.
+        Assert.Equal("custom capability: custom.unknown", byName["custom.unknown"]);
+    }
+
+    [Fact]
     public async Task ToolsList_PicksUpNewCapabilityRegisteredAfterStart()
     {
         var caps = new List<INodeCapability>
