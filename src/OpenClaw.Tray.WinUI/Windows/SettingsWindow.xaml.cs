@@ -101,7 +101,7 @@ public sealed partial class SettingsWindow : WindowEx
 
         if (!toggleOn)
         {
-            McpStatusText.Text = "Disabled";
+            McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_Disabled");
             return;
         }
 
@@ -110,27 +110,30 @@ public sealed partial class SettingsWindow : WindowEx
         // reinitializes services in OnSettingsSaved without an app restart).
         if (toggleOn != savedOn)
         {
-            McpStatusText.Text = savedOn
-                ? "Will stop on Save"
-                : "Will start on Save";
+            McpStatusText.Text = LocalizationHelper.GetString(savedOn
+                ? "Mcp_Status_WillStopOnSave"
+                : "Mcp_Status_WillStartOnSave");
             return;
         }
 
         if (running)
         {
-            McpStatusText.Text = "Listening";
+            McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_Listening");
             return;
         }
 
         if (!string.IsNullOrEmpty(startupError))
         {
-            McpStatusText.Text = $"Failed to start: {startupError}";
+            // The diagnostic detail (URL ACL command, port number) stays in
+            // English on purpose — it's a literal CLI invocation. Only the
+            // localized "Failed to start:" prefix wraps it.
+            McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_FailedToStart") + startupError;
             return;
         }
 
         // Toggle on, saved on, but no service yet — node service is still
         // initializing or hasn't been created (gateway-only setup path).
-        McpStatusText.Text = "Stopped";
+        McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_Stopped");
     }
 
     private void SaveSettings()

@@ -203,8 +203,11 @@
                         </StackPanel>
                     </Border>
 
-                    <ToggleSwitch x:Name="McpServerToggle" AutomationProperties.AutomationId="McpServerToggle" Header="Enable Local MCP Server" Margin="0,8,0,0"/>
-                    <TextBlock Text="Exposes the same node capabilities (system, screen, camera, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code)."
+                    <TextBlock x:Uid="SettingsDeveloperModeHeader" Text="DEVELOPER MODE" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold" Margin="0,16,0,0"/>
+                    <ToggleSwitch x:Name="McpServerToggle" x:Uid="SettingsMcpServerToggle" AutomationProperties.AutomationId="McpServerToggle" Header="Enable Local MCP Server" Margin="0,8,0,0"/>
+                    <TextBlock x:Uid="SettingsMcpDescription"
+                               Text="Exposes the same node capabilities (system, screen, camera, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code)."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"
@@ -214,7 +217,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Endpoint:" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock Grid.Column="0" x:Uid="SettingsMcpEndpointLabel" Text="Endpoint:" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBox Grid.Column="1" x:Name="McpUrlTextBox" IsReadOnly="True"
                                  BorderThickness="0" Background="Transparent" Padding="0"
@@ -225,7 +228,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Status:" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock Grid.Column="0" x:Uid="SettingsMcpStatusLabel" Text="Status:" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock Grid.Column="1" x:Name="McpStatusText"
                                    Style="{StaticResource CaptionTextBlockStyle}"

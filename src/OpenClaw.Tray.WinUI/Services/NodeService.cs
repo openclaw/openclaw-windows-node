@@ -45,7 +45,13 @@ public class NodeService : IDisposable
     // Authoritative capability list — populated by RegisterCapabilities and
     // shared with both the gateway client (when present) and the MCP bridge.
     // Holding it here lets MCP-only mode skip the gateway client entirely.
+    //
+    // Mutated on the UI thread (Connect / StartLocalOnly / Disconnect rebuild
+    // it); read by the MCP bridge on threadpool threads (every tools/list and
+    // tools/call). Every read/write goes through _capabilitiesLock so a
+    // bridge snapshot can't race a re-register.
     private readonly List<INodeCapability> _capabilities = new();
+    private readonly object _capabilitiesLock = new();
 
     // Local MCP server — exposes the same capabilities to local MCP clients.
     // TODO: when the port becomes user-configurable (see docs/MCP_MODE.md
@@ -156,7 +162,7 @@ public class NodeService : IDisposable
             _nodeClient = null;
         }
 
-        _capabilities.Clear();
+        lock (_capabilitiesLock) { _capabilities.Clear(); }
 
         // Close canvas window
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
@@ -168,6 +174,12 @@ public class NodeService : IDisposable
     
     private void RegisterCapabilities()
     {
+        // Hold the lock across the entire rebuild. The body is sync construction
+        // (no awaits), so the lock is held briefly and an MCP tools/list arriving
+        // mid-rebuild waits for a consistent snapshot rather than seeing a half-
+        // populated list.
+        lock (_capabilitiesLock)
+        {
         _capabilities.Clear();
 
         // System capability (notifications + command execution)
@@ -241,6 +253,7 @@ public class NodeService : IDisposable
         }
 
         _logger.Info($"Capabilities registered: {string.Join(", ", _capabilities.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase))} ({_capabilities.Count} caps)");
+        } // end lock
 
         StartMcpServer();
     }
@@ -265,10 +278,11 @@ public class NodeService : IDisposable
         {
             // Bridge reads the live _capabilities list every tools/list, so any
             // future Register(...) call is exposed via MCP automatically.
-            // Snapshot via ToArray() so an MCP request enumerating the list
-            // doesn't race with a re-register on the UI thread.
+            // The snapshot takes the same lock RegisterCapabilities holds,
+            // so a tools/list arriving mid-rebuild observes either the old
+            // or the new set — never a partially-cleared list.
             var bridge = new McpToolBridge(
-                () => _capabilities.ToArray(),
+                () => { lock (_capabilitiesLock) return _capabilities.ToArray(); },
                 _logger,
                 serverName: "openclaw-tray-mcp",
                 serverVersion: typeof(NodeService).Assembly.GetName().Version?.ToString() ?? "0.0.0");

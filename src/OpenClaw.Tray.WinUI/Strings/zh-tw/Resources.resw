@@ -933,6 +933,42 @@
     <value>第 3 步（共 3 步）— 完成</value>
   </data>
 
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>開發人員模式</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>啟用本機 MCP 伺服器</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>向本機 MCP 用戶端（Claude Desktop、Cursor、Claude Code）公開相同的節點功能（系統、螢幕、攝影機、畫布）。</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>端點：</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>狀態：</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>已停用</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>監聽中</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>儲存後將啟動</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>儲存後將停止</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>啟動失敗：</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">

@@ -933,6 +933,42 @@ On your gateway host (Mac/Linux), run:
     <value>Step 3 of 3 — Done</value>
   </data>
 
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>DEVELOPER MODE</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>Enable Local MCP Server</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>Exposes the same node capabilities (system, screen, camera, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code).</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>Endpoint:</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>Status:</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>Listening</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>Will start on Save</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>Will stop on Save</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>Failed to start: </value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">

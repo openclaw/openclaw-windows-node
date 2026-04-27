@@ -933,6 +933,42 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Stap 3 van 3 — Gereed</value>
   </data>
 
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>ONTWIKKELAARSMODUS</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>Lokale MCP-server inschakelen</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>Stelt dezelfde knooppuntmogelijkheden (systeem, scherm, camera, canvas) beschikbaar voor lokale MCP-clients (Claude Desktop, Cursor, Claude Code).</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>Eindpunt:</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>Status:</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>Uitgeschakeld</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>Luistert</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>Gestopt</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>Start bij Opslaan</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>Stopt bij Opslaan</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>Starten mislukt: </value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">
