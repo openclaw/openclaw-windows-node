@@ -375,9 +375,9 @@ Risk: medium. Process lifecycle and port behavior need careful tests.
 
 Deliverables:
 
-- Parse `hello-ok` snapshot/version/policy fields.
+- Parse `hello-ok` snapshot/version/policy fields: **implemented**
 - Parse/preserve presence events.
-- Show gateway version, uptime/stateVersion, auth source, presence peers.
+- Show gateway version, uptime/stateVersion, auth source, presence count: **implemented in Command Center gateway card**
 - Add node/presence freshness warnings.
 
 Risk: low-medium; mostly parsing and UI.

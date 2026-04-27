@@ -55,6 +55,7 @@ public partial class App : Application
     private GatewayUsageInfo? _lastUsage;
     private GatewayUsageStatusInfo? _lastUsageStatus;
     private GatewayCostUsageInfo? _lastUsageCost;
+    private GatewaySelfInfo? _lastGatewaySelf;
     private DateTime _lastCheckTime = DateTime.Now;
     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
     private string? _lastChannelStatusSignature;
@@ -1111,6 +1112,7 @@ public partial class App : Application
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
+        _lastGatewaySelf = null;
 
         _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
@@ -1127,6 +1129,7 @@ public partial class App : Application
         _gatewayClient.NodesUpdated += OnNodesUpdated;
         _gatewayClient.SessionPreviewUpdated += OnSessionPreviewUpdated;
         _gatewayClient.SessionCommandCompleted += OnSessionCommandCompleted;
+        _gatewayClient.GatewaySelfUpdated += OnGatewaySelfUpdated;
         _ = _gatewayClient.ConnectAsync();
     }
 
@@ -1146,6 +1149,7 @@ public partial class App : Application
             _gatewayClient.NodesUpdated -= OnNodesUpdated;
             _gatewayClient.SessionPreviewUpdated -= OnSessionPreviewUpdated;
             _gatewayClient.SessionCommandCompleted -= OnSessionCommandCompleted;
+            _gatewayClient.GatewaySelfUpdated -= OnGatewaySelfUpdated;
         }
     }
     
@@ -1171,6 +1175,7 @@ public partial class App : Application
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             _nodeService.ChannelHealthUpdated += OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
+            _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
             
             // Connect to gateway as a node (separate connection from operator)
             _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
@@ -1440,6 +1445,12 @@ public partial class App : Application
                 dashboardPath: "usage",
                 details: $"{usageCost.Totals.TotalTokens:N0} tokens");
         }
+    }
+
+    private void OnGatewaySelfUpdated(object? sender, GatewaySelfInfo gatewaySelf)
+    {
+        _lastGatewaySelf = _lastGatewaySelf?.Merge(gatewaySelf) ?? gatewaySelf;
+        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
     }
 
     private void OnNodesUpdated(object? sender, GatewayNodeInfo[] nodes)
@@ -1730,6 +1741,7 @@ public partial class App : Application
         UnsubscribeGatewayEvents();
         _gatewayClient?.Dispose();
         _gatewayClient = null;
+        _lastGatewaySelf = null;
         var oldNodeService = _nodeService;
         _nodeService = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
@@ -1984,6 +1996,7 @@ public partial class App : Application
             LastRefresh = _lastCheckTime.ToUniversalTime(),
             Topology = topology,
             Tunnel = tunnel,
+            GatewaySelf = _lastGatewaySelf,
             Channels = _lastChannels.Select(ChannelCommandCenterInfo.FromHealth).ToList(),
             Sessions = _lastSessions.ToList(),
             Usage = _lastUsage,

@@ -42,6 +42,9 @@
                         <RowDefinition/>
                         <RowDefinition/>
                         <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Kind:"/>
                     <TextBlock x:Name="GatewayKindText" Grid.Row="0" Grid.Column="1"
@@ -54,6 +57,15 @@
                                Text="unknown" TextWrapping="Wrap"/>
                     <TextBlock x:Name="TunnelLabelText" Grid.Row="3" Grid.Column="0" Text="Tunnel:" Visibility="Collapsed"/>
                     <TextBlock x:Name="TunnelDetailText" Grid.Row="3" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayVersionLabelText" Grid.Row="4" Grid.Column="0" Text="Version:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayVersionText" Grid.Row="4" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayUptimeLabelText" Grid.Row="5" Grid.Column="0" Text="Uptime:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayUptimeText" Grid.Row="5" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayStateLabelText" Grid.Row="6" Grid.Column="0" Text="State:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayStateText" Grid.Row="6" Grid.Column="1"
                                Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
                 </Grid>
                 <TextBlock x:Name="GatewayDetailText"

@@ -72,6 +72,30 @@ public sealed partial class StatusDetailWindow : WindowEx
             TunnelDetailText.Visibility = Visibility.Collapsed;
         }
 
+        if (state.GatewaySelf?.HasAnyDetails == true)
+        {
+            GatewayVersionLabelText.Visibility = Visibility.Visible;
+            GatewayVersionText.Visibility = Visibility.Visible;
+            GatewayVersionText.Text = BuildGatewayVersionText(state.GatewaySelf);
+
+            GatewayUptimeLabelText.Visibility = Visibility.Visible;
+            GatewayUptimeText.Visibility = Visibility.Visible;
+            GatewayUptimeText.Text = BuildGatewayUptimeText(state.GatewaySelf);
+
+            GatewayStateLabelText.Visibility = Visibility.Visible;
+            GatewayStateText.Visibility = Visibility.Visible;
+            GatewayStateText.Text = BuildGatewayStateText(state.GatewaySelf);
+        }
+        else
+        {
+            GatewayVersionLabelText.Visibility = Visibility.Collapsed;
+            GatewayVersionText.Visibility = Visibility.Collapsed;
+            GatewayUptimeLabelText.Visibility = Visibility.Collapsed;
+            GatewayUptimeText.Visibility = Visibility.Collapsed;
+            GatewayStateLabelText.Visibility = Visibility.Collapsed;
+            GatewayStateText.Visibility = Visibility.Collapsed;
+        }
+
         OverviewChannelsText.Text = $"Channels: {state.Channels.Count(c => c.CanStop)}/{state.Channels.Count} ready";
         OverviewSessionsText.Text = $"Sessions: {state.Sessions.Count}";
         OverviewNodesText.Text = $"Nodes: {state.Nodes.Count(n => n.IsOnline)}/{state.Nodes.Count} online";
@@ -269,5 +293,37 @@ public sealed partial class StatusDetailWindow : WindowEx
             parts.Add(tunnel.LastError!);
         }
         return string.Join(" · ", parts);
+    }
+
+    private static string BuildGatewayVersionText(GatewaySelfInfo gateway)
+    {
+        var parts = new List<string> { gateway.VersionText };
+        if (gateway.Protocol.HasValue)
+            parts.Add($"protocol {gateway.Protocol.Value}");
+        if (!string.IsNullOrWhiteSpace(gateway.ConnectionId))
+            parts.Add($"conn {gateway.ConnectionId}");
+        return string.Join(" · ", parts);
+    }
+
+    private static string BuildGatewayUptimeText(GatewaySelfInfo gateway)
+    {
+        var parts = new List<string> { gateway.UptimeText };
+        if (!string.IsNullOrWhiteSpace(gateway.AuthMode))
+            parts.Add($"auth {gateway.AuthMode}");
+        if (gateway.TickIntervalMs.HasValue)
+            parts.Add($"tick {gateway.TickIntervalMs.Value}ms");
+        return string.Join(" · ", parts);
+    }
+
+    private static string BuildGatewayStateText(GatewaySelfInfo gateway)
+    {
+        var parts = new List<string>();
+        if (gateway.StateVersionPresence.HasValue || gateway.StateVersionHealth.HasValue)
+            parts.Add($"presence {gateway.StateVersionPresence?.ToString() ?? "?"} / health {gateway.StateVersionHealth?.ToString() ?? "?"}");
+        if (gateway.PresenceCount.HasValue)
+            parts.Add($"{gateway.PresenceCount.Value} presence");
+        if (gateway.MaxPayload.HasValue)
+            parts.Add($"max payload {gateway.MaxPayload.Value:N0}");
+        return parts.Count == 0 ? "waiting for gateway snapshot" : string.Join(" · ", parts);
     }
 }

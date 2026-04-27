@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
 
@@ -143,6 +144,74 @@ public class SshTunnelCommandLineTests
     {
         Assert.ThrowsAny<ArgumentException>(() =>
             SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort));
+    }
+}
+
+public class GatewaySelfInfoTests
+{
+    [Fact]
+    public void FromHelloOk_ParsesGatewaySnapshotAndPolicy()
+    {
+        using var doc = JsonDocument.Parse("""
+        {
+          "type": "hello-ok",
+          "protocol": 1,
+          "server": { "version": "0.7.0", "connId": "abc123" },
+          "snapshot": {
+            "presence": [{ "host": "mac", "ts": 123 }],
+            "health": {},
+            "stateVersion": { "presence": 4, "health": 9 },
+            "uptimeMs": 125000,
+            "authMode": "token"
+          },
+          "policy": {
+            "maxPayload": 1048576,
+            "maxBufferedBytes": 4194304,
+            "tickIntervalMs": 30000
+          }
+        }
+        """);
+
+        var info = GatewaySelfInfo.FromHelloOk(doc.RootElement);
+
+        Assert.True(info.HasAnyDetails);
+        Assert.Equal("0.7.0", info.ServerVersion);
+        Assert.Equal("abc123", info.ConnectionId);
+        Assert.Equal(1, info.Protocol);
+        Assert.Equal(125000, info.UptimeMs);
+        Assert.Equal("token", info.AuthMode);
+        Assert.Equal(4, info.StateVersionPresence);
+        Assert.Equal(9, info.StateVersionHealth);
+        Assert.Equal(1, info.PresenceCount);
+        Assert.Equal(1048576, info.MaxPayload);
+        Assert.Equal(4194304, info.MaxBufferedBytes);
+        Assert.Equal(30000, info.TickIntervalMs);
+        Assert.Equal("2m 5s", info.UptimeText);
+    }
+
+    [Fact]
+    public void Merge_PreservesExistingFieldsWhenUpdateIsPartial()
+    {
+        var existing = new GatewaySelfInfo
+        {
+            ServerVersion = "0.7.0",
+            Protocol = 1,
+            UptimeMs = 1000,
+            StateVersionPresence = 1
+        };
+        var update = new GatewaySelfInfo
+        {
+            UptimeMs = 2000,
+            StateVersionHealth = 3
+        };
+
+        var merged = existing.Merge(update);
+
+        Assert.Equal("0.7.0", merged.ServerVersion);
+        Assert.Equal(1, merged.Protocol);
+        Assert.Equal(2000, merged.UptimeMs);
+        Assert.Equal(1, merged.StateVersionPresence);
+        Assert.Equal(3, merged.StateVersionHealth);
     }
 }
 

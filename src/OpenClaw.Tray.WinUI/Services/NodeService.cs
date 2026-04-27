@@ -44,6 +44,7 @@ public class NodeService : IDisposable
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
+    public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     
     public bool IsConnected => _nodeClient?.IsConnected ?? false;
     public string? NodeId => _nodeClient?.NodeId;
@@ -80,6 +81,7 @@ public class NodeService : IDisposable
         _nodeClient.StatusChanged += OnNodeStatusChanged;
         _nodeClient.PairingStatusChanged += OnPairingStatusChanged;
         _nodeClient.HealthReceived += OnNodeHealthReceived;
+        _nodeClient.GatewaySelfUpdated += OnGatewaySelfUpdated;
         _nodeClient.InvokeCompleted += OnNodeInvokeCompleted;
         
         // Register capabilities
@@ -212,6 +214,11 @@ public class NodeService : IDisposable
                 : "Node health channels: none");
             ChannelHealthUpdated?.Invoke(this, parsed);
         }
+    }
+
+    private void OnGatewaySelfUpdated(object? sender, GatewaySelfInfo info)
+    {
+        GatewaySelfUpdated?.Invoke(this, info);
     }
 
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)

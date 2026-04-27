@@ -571,6 +571,156 @@ public class TunnelCommandCenterInfo
     public DateTime? StartedAt { get; set; }
 }
 
+public class GatewaySelfInfo
+{
+    public string? ServerVersion { get; set; }
+    public string? ConnectionId { get; set; }
+    public int? Protocol { get; set; }
+    public long? UptimeMs { get; set; }
+    public string? AuthMode { get; set; }
+    public long? StateVersionPresence { get; set; }
+    public long? StateVersionHealth { get; set; }
+    public int? PresenceCount { get; set; }
+    public int? MaxPayload { get; set; }
+    public int? MaxBufferedBytes { get; set; }
+    public int? TickIntervalMs { get; set; }
+    public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
+
+    public bool HasAnyDetails =>
+        !string.IsNullOrWhiteSpace(ServerVersion) ||
+        !string.IsNullOrWhiteSpace(ConnectionId) ||
+        Protocol.HasValue ||
+        UptimeMs.HasValue ||
+        !string.IsNullOrWhiteSpace(AuthMode) ||
+        StateVersionPresence.HasValue ||
+        StateVersionHealth.HasValue ||
+        PresenceCount.HasValue ||
+        MaxPayload.HasValue ||
+        MaxBufferedBytes.HasValue ||
+        TickIntervalMs.HasValue;
+
+    public string VersionText => string.IsNullOrWhiteSpace(ServerVersion)
+        ? "unknown"
+        : ServerVersion!;
+
+    public string UptimeText => UptimeMs.HasValue
+        ? FormatDuration(TimeSpan.FromMilliseconds(Math.Max(0, UptimeMs.Value)))
+        : "unknown";
+
+    public static GatewaySelfInfo FromHelloOk(JsonElement payload)
+    {
+        var info = new GatewaySelfInfo
+        {
+            Protocol = GetInt(payload, "protocol"),
+            LastUpdatedUtc = DateTime.UtcNow
+        };
+
+        if (payload.TryGetProperty("server", out var server))
+        {
+            info.ServerVersion = GetString(server, "version");
+            info.ConnectionId = GetString(server, "connId");
+        }
+
+        if (payload.TryGetProperty("policy", out var policy))
+        {
+            info.MaxPayload = GetInt(policy, "maxPayload");
+            info.MaxBufferedBytes = GetInt(policy, "maxBufferedBytes");
+            info.TickIntervalMs = GetInt(policy, "tickIntervalMs");
+        }
+
+        if (payload.TryGetProperty("snapshot", out var snapshot))
+        {
+            ApplySnapshot(info, snapshot);
+        }
+
+        return info;
+    }
+
+    public static GatewaySelfInfo FromHealthPayload(JsonElement payload)
+    {
+        var info = new GatewaySelfInfo
+        {
+            LastUpdatedUtc = DateTime.UtcNow
+        };
+
+        if (payload.TryGetProperty("snapshot", out var snapshot))
+            ApplySnapshot(info, snapshot);
+        else
+            ApplySnapshot(info, payload);
+
+        return info;
+    }
+
+    public GatewaySelfInfo Merge(GatewaySelfInfo update)
+    {
+        return new GatewaySelfInfo
+        {
+            ServerVersion = update.ServerVersion ?? ServerVersion,
+            ConnectionId = update.ConnectionId ?? ConnectionId,
+            Protocol = update.Protocol ?? Protocol,
+            UptimeMs = update.UptimeMs ?? UptimeMs,
+            AuthMode = update.AuthMode ?? AuthMode,
+            StateVersionPresence = update.StateVersionPresence ?? StateVersionPresence,
+            StateVersionHealth = update.StateVersionHealth ?? StateVersionHealth,
+            PresenceCount = update.PresenceCount ?? PresenceCount,
+            MaxPayload = update.MaxPayload ?? MaxPayload,
+            MaxBufferedBytes = update.MaxBufferedBytes ?? MaxBufferedBytes,
+            TickIntervalMs = update.TickIntervalMs ?? TickIntervalMs,
+            LastUpdatedUtc = update.LastUpdatedUtc
+        };
+    }
+
+    private static void ApplySnapshot(GatewaySelfInfo info, JsonElement snapshot)
+    {
+        info.UptimeMs = GetLong(snapshot, "uptimeMs") ?? info.UptimeMs;
+        info.AuthMode = GetString(snapshot, "authMode") ?? info.AuthMode;
+
+        if (snapshot.TryGetProperty("presence", out var presence) &&
+            presence.ValueKind == JsonValueKind.Array)
+        {
+            info.PresenceCount = presence.GetArrayLength();
+        }
+
+        if (snapshot.TryGetProperty("stateVersion", out var stateVersion))
+        {
+            info.StateVersionPresence = GetLong(stateVersion, "presence") ?? info.StateVersionPresence;
+            info.StateVersionHealth = GetLong(stateVersion, "health") ?? info.StateVersionHealth;
+        }
+    }
+
+    private static string? GetString(JsonElement parent, string property)
+    {
+        return parent.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
+
+    private static int? GetInt(JsonElement parent, string property)
+    {
+        return parent.TryGetProperty(property, out var value) && value.TryGetInt32(out var result)
+            ? result
+            : null;
+    }
+
+    private static long? GetLong(JsonElement parent, string property)
+    {
+        return parent.TryGetProperty(property, out var value) && value.TryGetInt64(out var result)
+            ? result
+            : null;
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalDays >= 1)
+            return $"{(int)duration.TotalDays}d {duration.Hours}h";
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        if (duration.TotalMinutes >= 1)
+            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
+        return $"{Math.Max(0, (int)duration.TotalSeconds)}s";
+    }
+}
+
 public class GatewayDiagnosticWarning
 {
     public GatewayDiagnosticSeverity Severity { get; set; } = GatewayDiagnosticSeverity.Info;
@@ -685,6 +835,7 @@ public class GatewayCommandCenterState
     public DateTime LastRefresh { get; set; } = DateTime.UtcNow;
     public GatewayTopologyInfo Topology { get; set; } = new();
     public TunnelCommandCenterInfo? Tunnel { get; set; }
+    public GatewaySelfInfo? GatewaySelf { get; set; }
     public List<ChannelCommandCenterInfo> Channels { get; set; } = new();
     public List<SessionInfo> Sessions { get; set; } = new();
     public GatewayUsageInfo? Usage { get; set; }
