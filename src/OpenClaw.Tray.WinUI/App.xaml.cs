@@ -2074,6 +2074,18 @@ public partial class App : Application
                     Detail = port.Detail
                 };
             }
+
+            if (port.Purpose.Equals("Browser proxy host", StringComparison.OrdinalIgnoreCase) &&
+                !port.IsListening)
+            {
+                yield return new GatewayDiagnosticWarning
+                {
+                    Severity = GatewayDiagnosticSeverity.Info,
+                    Category = "browser",
+                    Title = "Browser proxy host not detected",
+                    Detail = "browser.proxy is Mac-local today. Windows can only add a compatible local browser proxy when a browser host is listening on the gateway port + 2."
+                };
+            }
         }
     }
 

@@ -318,6 +318,8 @@ Keep StatusDetailWindow as the first Command Center, but plan for tabs/sections:
 
 Recommended: investigate option 1 first, with `browser.proxy` gated to local/tunnel topologies and disabled for remote public gateways unless the upstream browser host contract says otherwise.
 
+Current Windows implementation status: Command Center now performs a read-only feasibility probe for direct local/WSL gateways by checking the expected browser-host port (`gateway port + 2`) and warning when no compatible local browser host is listening. It intentionally does not advertise `browser.proxy` yet, because doing so without a reachable browser host would create a broken command surface.
+
 ## 7. Security and privacy requirements
 
 1. Diagnostics must never take screenshots, record screen, capture camera, start microphone, or run arbitrary commands.

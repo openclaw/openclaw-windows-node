@@ -20,6 +20,11 @@ public static class PortDiagnosticsService
             diagnostics.Add(Create("Gateway endpoint", gatewayPort, localTcpPorts));
         }
 
+        if (TryGetBrowserProxyPort(topology, out var browserProxyPort))
+        {
+            diagnostics.Add(Create("Browser proxy host", browserProxyPort, localTcpPorts));
+        }
+
         if (tunnel != null && TryGetEndpointPort(tunnel.LocalEndpoint, out var tunnelPort))
         {
             diagnostics.Add(Create("SSH tunnel local forward", tunnelPort, localTcpPorts));
@@ -72,6 +77,20 @@ public static class PortDiagnosticsService
         }
 
         port = uri.Port;
+        return true;
+    }
+
+    private static bool TryGetBrowserProxyPort(GatewayTopologyInfo topology, out int port)
+    {
+        port = 0;
+        if (topology.DetectedKind is not (GatewayKind.WindowsNative or GatewayKind.Wsl) ||
+            !TryGetPort(topology.GatewayUrl, out var gatewayPort) ||
+            gatewayPort > 65533)
+        {
+            return false;
+        }
+
+        port = gatewayPort + 2;
         return true;
     }
 
