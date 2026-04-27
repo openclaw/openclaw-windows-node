@@ -21,6 +21,23 @@ public class TrayMenuWindowMarkupTests
             xaml);
     }
 
+    [Fact]
+    public void SettingsWindow_HasCommandCenterEntryPoint()
+    {
+        var xamlPath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "SettingsWindow.xaml");
+
+        var xaml = File.ReadAllText(xamlPath);
+
+        Assert.Contains(@"AutomationProperties.AutomationId=""SettingsOpenCommandCenterButton""", xaml);
+        Assert.Contains(@"Content=""Open Command Center""", xaml);
+        Assert.Contains(@"Click=""OnOpenCommandCenter""", xaml);
+    }
+
     private static string GetRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

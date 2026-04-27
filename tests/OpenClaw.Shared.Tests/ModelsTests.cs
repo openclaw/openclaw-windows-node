@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
 
@@ -121,6 +122,96 @@ public class AgentActivityTests
             Label = "" 
         };
         Assert.Equal("Main · 🛠️ ", activity.DisplayText);
+    }
+}
+
+public class SshTunnelCommandLineTests
+{
+    [Fact]
+    public void BuildArguments_UsesMacParitySshOptions()
+    {
+        var args = SshTunnelCommandLine.BuildArguments("scott", "mac-mini.local", 18789, 28789);
+
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 scott@mac-mini.local", args);
+    }
+
+    [Theory]
+    [InlineData("bad user", "mac-mini", 18789, 28789)]
+    [InlineData("scott", "mac mini", 18789, 28789)]
+    [InlineData("scott", "mac-mini", 0, 28789)]
+    [InlineData("scott", "mac-mini", 18789, 70000)]
+    public void BuildArguments_RejectsUnsafeInputs(string user, string host, int remotePort, int localPort)
+    {
+        Assert.ThrowsAny<ArgumentException>(() =>
+            SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort));
+    }
+}
+
+public class GatewaySelfInfoTests
+{
+    [Fact]
+    public void FromHelloOk_ParsesGatewaySnapshotAndPolicy()
+    {
+        using var doc = JsonDocument.Parse("""
+        {
+          "type": "hello-ok",
+          "protocol": 1,
+          "server": { "version": "0.7.0", "connId": "abc123" },
+          "snapshot": {
+            "presence": [{ "host": "mac", "ts": 123 }],
+            "health": {},
+            "stateVersion": { "presence": 4, "health": 9 },
+            "uptimeMs": 125000,
+            "authMode": "token"
+          },
+          "policy": {
+            "maxPayload": 1048576,
+            "maxBufferedBytes": 4194304,
+            "tickIntervalMs": 30000
+          }
+        }
+        """);
+
+        var info = GatewaySelfInfo.FromHelloOk(doc.RootElement);
+
+        Assert.True(info.HasAnyDetails);
+        Assert.Equal("0.7.0", info.ServerVersion);
+        Assert.Equal("abc123", info.ConnectionId);
+        Assert.Equal(1, info.Protocol);
+        Assert.Equal(125000, info.UptimeMs);
+        Assert.Equal("token", info.AuthMode);
+        Assert.Equal(4, info.StateVersionPresence);
+        Assert.Equal(9, info.StateVersionHealth);
+        Assert.Equal(1, info.PresenceCount);
+        Assert.Equal(1048576, info.MaxPayload);
+        Assert.Equal(4194304, info.MaxBufferedBytes);
+        Assert.Equal(30000, info.TickIntervalMs);
+        Assert.Equal("2m 5s", info.UptimeText);
+    }
+
+    [Fact]
+    public void Merge_PreservesExistingFieldsWhenUpdateIsPartial()
+    {
+        var existing = new GatewaySelfInfo
+        {
+            ServerVersion = "0.7.0",
+            Protocol = 1,
+            UptimeMs = 1000,
+            StateVersionPresence = 1
+        };
+        var update = new GatewaySelfInfo
+        {
+            UptimeMs = 2000,
+            StateVersionHealth = 3
+        };
+
+        var merged = existing.Merge(update);
+
+        Assert.Equal("0.7.0", merged.ServerVersion);
+        Assert.Equal(1, merged.Protocol);
+        Assert.Equal(2000, merged.UptimeMs);
+        Assert.Equal(1, merged.StateVersionPresence);
+        Assert.Equal(3, merged.StateVersionHealth);
     }
 }
 
@@ -806,6 +897,21 @@ public class CommandCenterModelTests
     }
 
     [Fact]
+    public void PermissionDiagnostics_BuildsSafeWindowsReviewMatrix()
+    {
+        var permissions = PermissionDiagnostics.BuildDefaultWindowsMatrix();
+
+        Assert.Contains(permissions, p =>
+            p.Name == "Camera" &&
+            p.Status == "review" &&
+            p.SettingsUri == "ms-settings:privacy-webcam");
+        Assert.Contains(permissions, p =>
+            p.Name == "Screen capture" &&
+            p.Detail.Contains("gateway-policy gated", StringComparison.OrdinalIgnoreCase));
+        Assert.All(permissions, p => Assert.StartsWith("ms-settings:", p.SettingsUri, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ChannelCommandCenterInfo_EnablesStopForHealthyChannel()
     {
         var info = ChannelCommandCenterInfo.FromHealth(new ChannelHealth
@@ -961,6 +1067,68 @@ public class CommandCenterModelTests
         Assert.Equal(GatewayDiagnosticSeverity.Critical, warnings[0].Severity);
         Assert.Equal(GatewayDiagnosticSeverity.Warning, warnings[1].Severity);
         Assert.Equal(GatewayDiagnosticSeverity.Info, warnings[2].Severity);
+    }
+
+    [Theory]
+    [InlineData("ws://localhost:18789", false, "", GatewayKind.WindowsNative)]
+    [InlineData("ws://127.0.0.1:18789", false, "", GatewayKind.WindowsNative)]
+    [InlineData("ws://wsl.localhost:18789", false, "", GatewayKind.Wsl)]
+    [InlineData("ws://Ubuntu.wsl.localhost:18789", false, "", GatewayKind.Wsl)]
+    [InlineData("ws://openclaw.wsl:18789", false, "", GatewayKind.Wsl)]
+    [InlineData("ws://192.168.1.20:18789", false, "", GatewayKind.RemoteLan)]
+    [InlineData("wss://openclaw.local:18789", false, "", GatewayKind.RemoteLan)]
+    [InlineData("wss://box.ts.net:18789", false, "", GatewayKind.Tailscale)]
+    [InlineData("ws://100.100.100.100:18789", false, "", GatewayKind.Tailscale)]
+    [InlineData("wss://example.com:18789", false, "", GatewayKind.Remote)]
+    [InlineData("ws://127.0.0.1:18789", true, "mac-mini", GatewayKind.MacOverSsh)]
+    public void GatewayTopologyClassifier_ClassifiesCommonTopologies(
+        string url,
+        bool useSshTunnel,
+        string sshHost,
+        GatewayKind expectedKind)
+    {
+        var topology = GatewayTopologyClassifier.Classify(url, useSshTunnel, sshHost, 18789, 18789);
+
+        Assert.Equal(expectedKind, topology.DetectedKind);
+    }
+
+    [Fact]
+    public void GatewayTopologyClassifier_InvalidUrl_IsUnknown()
+    {
+        var topology = GatewayTopologyClassifier.Classify("not a url", useSshTunnel: false);
+
+        Assert.Equal(GatewayKind.Unknown, topology.DetectedKind);
+        Assert.Equal("Gateway URL is missing or invalid.", topology.Detail);
+    }
+
+    [Fact]
+    public void BuildTopologyWarnings_WarnsForRemotePlaintextWebSocket()
+    {
+        var topology = GatewayTopologyClassifier.Classify("ws://example.com:18789", useSshTunnel: false);
+
+        var warnings = CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel: null);
+
+        Assert.Contains(warnings, w =>
+            w.Category == "topology" &&
+            w.Title == "Remote gateway uses plaintext WebSocket");
+    }
+
+    [Fact]
+    public void BuildTopologyWarnings_WarnsWhenConfiguredTunnelIsDown()
+    {
+        var topology = GatewayTopologyClassifier.Classify("ws://127.0.0.1:18789", useSshTunnel: true, "mac-mini", 18789, 18789);
+        var tunnel = new TunnelCommandCenterInfo
+        {
+            Status = TunnelStatus.Failed,
+            LastError = "ssh exited"
+        };
+
+        var warnings = CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel);
+
+        Assert.Contains(warnings, w =>
+            w.Category == "tunnel" &&
+            w.Title == "SSH tunnel failed" &&
+            w.Detail == "ssh exited");
     }
 }
 

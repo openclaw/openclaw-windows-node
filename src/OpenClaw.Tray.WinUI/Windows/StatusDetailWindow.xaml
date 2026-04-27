@@ -26,6 +26,54 @@
                 </StackPanel>
             </StackPanel>
 
+            <!-- Gateway Topology Section -->
+            <StackPanel x:Name="GatewayTopologySection" AutomationProperties.AutomationId="CommandCenterGatewayTopologySection" Spacing="8">
+                <TextBlock Text="GATEWAY TOPOLOGY" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
+                <Grid Padding="12" CornerRadius="8"
+                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                      ColumnSpacing="16" RowSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Kind:"/>
+                    <TextBlock x:Name="GatewayKindText" Grid.Row="0" Grid.Column="1"
+                               Text="Unknown" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="URL:"/>
+                    <TextBlock x:Name="GatewayUrlText" Grid.Row="1" Grid.Column="1"
+                               Text="n/a" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Transport:"/>
+                    <TextBlock x:Name="GatewayTransportText" Grid.Row="2" Grid.Column="1"
+                               Text="unknown" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="TunnelLabelText" Grid.Row="3" Grid.Column="0" Text="Tunnel:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="TunnelDetailText" Grid.Row="3" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayVersionLabelText" Grid.Row="4" Grid.Column="0" Text="Version:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayVersionText" Grid.Row="4" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayUptimeLabelText" Grid.Row="5" Grid.Column="0" Text="Uptime:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayUptimeText" Grid.Row="5" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayStateLabelText" Grid.Row="6" Grid.Column="0" Text="State:" Visibility="Collapsed"/>
+                    <TextBlock x:Name="GatewayStateText" Grid.Row="6" Grid.Column="1"
+                               Text="" TextWrapping="Wrap" Visibility="Collapsed"/>
+                </Grid>
+                <TextBlock x:Name="GatewayDetailText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+
             <!-- Overview Section -->
             <StackPanel x:Name="OverviewSection" AutomationProperties.AutomationId="CommandCenterOverviewSection" Spacing="8">
                 <TextBlock Text="COMMAND CENTER" Style="{StaticResource CaptionTextBlockStyle}"
@@ -78,6 +126,68 @@
                                  </StackPanel>
                              </Grid>
                          </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- Port Diagnostics Section -->
+            <StackPanel x:Name="PortDiagnosticsSection" AutomationProperties.AutomationId="CommandCenterPortDiagnosticsSection" Spacing="8" Visibility="Collapsed">
+                <TextBlock Text="PORT DIAGNOSTICS" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
+                <ItemsControl x:Name="PortDiagnosticsList" AutomationProperties.AutomationId="CommandCenterPortDiagnosticsList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="8" Margin="0,2" CornerRadius="4"
+                                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding StatusIcon}" Grid.Column="0" Margin="0,0,8,0"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Purpose}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Detail}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding StatusText}" Grid.Column="2"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- Permissions Section -->
+            <StackPanel x:Name="PermissionsSection" AutomationProperties.AutomationId="CommandCenterPermissionsSection" Spacing="8">
+                <TextBlock Text="PERMISSIONS" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold"/>
+                <ItemsControl x:Name="PermissionsList" AutomationProperties.AutomationId="CommandCenterPermissionsList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="8" Margin="0,2" CornerRadius="4"
+                                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding StatusIcon}" Grid.Column="0" Margin="0,0,8,0"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Detail}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <Button Grid.Column="2"
+                                        Content="Settings"
+                                        Tag="{Binding SettingsUri}"
+                                        Click="OnOpenPermissionSettings"
+                                        AutomationProperties.AutomationId="CommandCenterOpenPermissionSettingsButton"/>
+                            </Grid>
+                        </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>

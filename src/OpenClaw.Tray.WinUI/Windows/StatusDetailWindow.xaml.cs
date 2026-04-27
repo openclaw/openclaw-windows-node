@@ -5,7 +5,9 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.ComponentModel;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Windows.ApplicationModel.DataTransfer;
 using WinUIEx;
@@ -53,6 +55,49 @@ public sealed partial class StatusDetailWindow : WindowEx
         StatusIcon.Glyph = glyph;
         StatusIcon.Foreground = new SolidColorBrush(color);
 
+        GatewayKindText.Text = state.Topology.DisplayName;
+        GatewayUrlText.Text = string.IsNullOrWhiteSpace(state.Topology.GatewayUrl)
+            ? "n/a"
+            : state.Topology.GatewayUrl;
+        GatewayTransportText.Text = state.Topology.Transport;
+        GatewayDetailText.Text = state.Topology.Detail;
+
+        if (state.Tunnel != null && state.Tunnel.Status != TunnelStatus.NotConfigured)
+        {
+            TunnelLabelText.Visibility = Visibility.Visible;
+            TunnelDetailText.Visibility = Visibility.Visible;
+            TunnelDetailText.Text = BuildTunnelDetail(state.Tunnel);
+        }
+        else
+        {
+            TunnelLabelText.Visibility = Visibility.Collapsed;
+            TunnelDetailText.Visibility = Visibility.Collapsed;
+        }
+
+        if (state.GatewaySelf?.HasAnyDetails == true)
+        {
+            GatewayVersionLabelText.Visibility = Visibility.Visible;
+            GatewayVersionText.Visibility = Visibility.Visible;
+            GatewayVersionText.Text = BuildGatewayVersionText(state.GatewaySelf);
+
+            GatewayUptimeLabelText.Visibility = Visibility.Visible;
+            GatewayUptimeText.Visibility = Visibility.Visible;
+            GatewayUptimeText.Text = BuildGatewayUptimeText(state.GatewaySelf);
+
+            GatewayStateLabelText.Visibility = Visibility.Visible;
+            GatewayStateText.Visibility = Visibility.Visible;
+            GatewayStateText.Text = BuildGatewayStateText(state.GatewaySelf);
+        }
+        else
+        {
+            GatewayVersionLabelText.Visibility = Visibility.Collapsed;
+            GatewayVersionText.Visibility = Visibility.Collapsed;
+            GatewayUptimeLabelText.Visibility = Visibility.Collapsed;
+            GatewayUptimeText.Visibility = Visibility.Collapsed;
+            GatewayStateLabelText.Visibility = Visibility.Collapsed;
+            GatewayStateText.Visibility = Visibility.Collapsed;
+        }
+
         OverviewChannelsText.Text = $"Channels: {state.Channels.Count(c => c.CanStop)}/{state.Channels.Count} ready";
         OverviewSessionsText.Text = $"Sessions: {state.Sessions.Count}";
         OverviewNodesText.Text = $"Nodes: {state.Nodes.Count(n => n.IsOnline)}/{state.Nodes.Count} online";
@@ -79,6 +124,30 @@ public sealed partial class StatusDetailWindow : WindowEx
         {
             WarningsSection.Visibility = Visibility.Collapsed;
         }
+
+        if (state.PortDiagnostics.Count > 0)
+        {
+            PortDiagnosticsSection.Visibility = Visibility.Visible;
+            PortDiagnosticsList.ItemsSource = state.PortDiagnostics.Select(p => new PortDiagnosticViewModel
+            {
+                StatusIcon = p.IsListening ? "🟢" : "⚪",
+                Purpose = $"{p.Purpose} :{p.Port}",
+                Detail = p.Detail,
+                StatusText = p.StatusText
+            }).ToList();
+        }
+        else
+        {
+            PortDiagnosticsSection.Visibility = Visibility.Collapsed;
+        }
+
+        PermissionsList.ItemsSource = state.Permissions.Select(p => new PermissionDiagnosticViewModel
+        {
+            StatusIcon = p.Status.Equals("optional", StringComparison.OrdinalIgnoreCase) ? "⚪" : "🔒",
+            Name = $"{p.Name} ({p.Status})",
+            Detail = p.Detail,
+            SettingsUri = p.SettingsUri
+        }).ToList();
 
         // Usage
         if (state.Usage != null)
@@ -174,6 +243,29 @@ public sealed partial class StatusDetailWindow : WindowEx
         Logger.Info("[CommandCenter] Copied diagnostic repair text");
     }
 
+    private void OnOpenPermissionSettings(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Microsoft.UI.Xaml.Controls.Button { Tag: string settingsUri } ||
+            string.IsNullOrWhiteSpace(settingsUri))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(settingsUri) { UseShellExecute = true });
+            Logger.Info($"[CommandCenter] Opened permission settings: {settingsUri}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[CommandCenter] Failed to open permission settings {settingsUri}: {ex.Message}");
+        }
+        catch (Win32Exception ex)
+        {
+            Logger.Warn($"[CommandCenter] Failed to open permission settings {settingsUri}: {ex.Message}");
+        }
+    }
+
     private class ChannelViewModel
     {
         public string Name { get; set; } = "";
@@ -201,6 +293,22 @@ public sealed partial class StatusDetailWindow : WindowEx
         public string Name { get; set; } = "";
         public string DetailText { get; set; } = "";
         public string CommandText { get; set; } = "";
+    }
+
+    private class PortDiagnosticViewModel
+    {
+        public string StatusIcon { get; set; } = "";
+        public string Purpose { get; set; } = "";
+        public string Detail { get; set; } = "";
+        public string StatusText { get; set; } = "";
+    }
+
+    private class PermissionDiagnosticViewModel
+    {
+        public string StatusIcon { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Detail { get; set; } = "";
+        public string SettingsUri { get; set; } = "";
     }
 
     private static string BuildChannelDetail(ChannelCommandCenterInfo channel)
@@ -231,5 +339,56 @@ public sealed partial class StatusDetailWindow : WindowEx
         if (node.MissingMacParityCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase))
             parts.Add("missing browser.proxy");
         return parts.Count == 0 ? "no command details" : string.Join(" · ", parts);
+    }
+
+    private static string BuildTunnelDetail(TunnelCommandCenterInfo tunnel)
+    {
+        var parts = new List<string> { tunnel.Status.ToString() };
+        if (!string.IsNullOrWhiteSpace(tunnel.LocalEndpoint) &&
+            !string.IsNullOrWhiteSpace(tunnel.RemoteEndpoint))
+        {
+            parts.Add($"{tunnel.LocalEndpoint} -> {tunnel.RemoteEndpoint}");
+        }
+        if (tunnel.StartedAt.HasValue && tunnel.Status == TunnelStatus.Up)
+        {
+            parts.Add($"started {tunnel.StartedAt.Value.ToLocalTime():HH:mm:ss}");
+        }
+        if (!string.IsNullOrWhiteSpace(tunnel.LastError))
+        {
+            parts.Add(tunnel.LastError!);
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private static string BuildGatewayVersionText(GatewaySelfInfo gateway)
+    {
+        var parts = new List<string> { gateway.VersionText };
+        if (gateway.Protocol.HasValue)
+            parts.Add($"protocol {gateway.Protocol.Value}");
+        if (!string.IsNullOrWhiteSpace(gateway.ConnectionId))
+            parts.Add($"conn {gateway.ConnectionId}");
+        return string.Join(" · ", parts);
+    }
+
+    private static string BuildGatewayUptimeText(GatewaySelfInfo gateway)
+    {
+        var parts = new List<string> { gateway.UptimeText };
+        if (!string.IsNullOrWhiteSpace(gateway.AuthMode))
+            parts.Add($"auth {gateway.AuthMode}");
+        if (gateway.TickIntervalMs.HasValue)
+            parts.Add($"tick {gateway.TickIntervalMs.Value}ms");
+        return string.Join(" · ", parts);
+    }
+
+    private static string BuildGatewayStateText(GatewaySelfInfo gateway)
+    {
+        var parts = new List<string>();
+        if (gateway.StateVersionPresence.HasValue || gateway.StateVersionHealth.HasValue)
+            parts.Add($"presence {gateway.StateVersionPresence?.ToString() ?? "?"} / health {gateway.StateVersionHealth?.ToString() ?? "?"}");
+        if (gateway.PresenceCount.HasValue)
+            parts.Add($"{gateway.PresenceCount.Value} presence");
+        if (gateway.MaxPayload.HasValue)
+            parts.Add($"max payload {gateway.MaxPayload.Value:N0}");
+        return parts.Count == 0 ? "waiting for gateway snapshot" : string.Join(" · ", parts);
     }
 }

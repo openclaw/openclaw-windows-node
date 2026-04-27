@@ -55,6 +55,7 @@ public partial class App : Application
     private GatewayUsageInfo? _lastUsage;
     private GatewayUsageStatusInfo? _lastUsageStatus;
     private GatewayCostUsageInfo? _lastUsageCost;
+    private GatewaySelfInfo? _lastGatewaySelf;
     private DateTime _lastCheckTime = DateTime.Now;
     private DateTime _lastUsageActivityLogUtc = DateTime.MinValue;
     private string? _lastChannelStatusSignature;
@@ -256,6 +257,12 @@ public partial class App : Application
 
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
+        DiagnosticsJsonlService.Configure(DataPath);
+        DiagnosticsJsonlService.Write("app.start", new
+        {
+            nodeMode = _settings.EnableNodeMode,
+            useSshTunnel = _settings.UseSshTunnel
+        });
 
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
@@ -1111,6 +1118,7 @@ public partial class App : Application
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
+        _lastGatewaySelf = null;
 
         _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
@@ -1127,6 +1135,7 @@ public partial class App : Application
         _gatewayClient.NodesUpdated += OnNodesUpdated;
         _gatewayClient.SessionPreviewUpdated += OnSessionPreviewUpdated;
         _gatewayClient.SessionCommandCompleted += OnSessionCommandCompleted;
+        _gatewayClient.GatewaySelfUpdated += OnGatewaySelfUpdated;
         _ = _gatewayClient.ConnectAsync();
     }
 
@@ -1146,6 +1155,7 @@ public partial class App : Application
             _gatewayClient.NodesUpdated -= OnNodesUpdated;
             _gatewayClient.SessionPreviewUpdated -= OnSessionPreviewUpdated;
             _gatewayClient.SessionCommandCompleted -= OnSessionCommandCompleted;
+            _gatewayClient.GatewaySelfUpdated -= OnGatewaySelfUpdated;
         }
     }
     
@@ -1171,6 +1181,7 @@ public partial class App : Application
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             _nodeService.ChannelHealthUpdated += OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
+            _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
             
             // Connect to gateway as a node (separate connection from operator)
             _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
@@ -1310,6 +1321,11 @@ public partial class App : Application
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         _currentStatus = status;
+        DiagnosticsJsonlService.Write("connection.status", new
+        {
+            status = status.ToString(),
+            nodeMode = _settings?.EnableNodeMode == true
+        });
         if (status == ConnectionStatus.Connected)
             _authFailureMessage = null;
         UpdateTrayIcon();
@@ -1325,6 +1341,11 @@ public partial class App : Application
     {
         _authFailureMessage = message;
         Logger.Error($"Authentication failed: {message}");
+        DiagnosticsJsonlService.Write("connection.auth_failed", new
+        {
+            message,
+            nodeMode = _settings?.EnableNodeMode == true
+        });
         AddRecentActivity($"Auth failed: {message}", category: "error");
         UpdateTrayIcon();
     }
@@ -1382,6 +1403,12 @@ public partial class App : Application
             var summary = channels.Length == 0
                 ? "No channels reported"
                 : string.Join(", ", channels.Select(c => $"{c.Name}={c.Status}"));
+            DiagnosticsJsonlService.Write("gateway.health.channels", new
+            {
+                channelCount = channels.Length,
+                healthyCount = channels.Count(c => ChannelHealth.IsHealthyStatus(c.Status)),
+                errorCount = channels.Count(c => !string.IsNullOrWhiteSpace(c.Error))
+            });
             AddRecentActivity("Channel health updated", category: "channel", dashboardPath: "channels", details: summary);
         }
 
@@ -1440,6 +1467,22 @@ public partial class App : Application
                 dashboardPath: "usage",
                 details: $"{usageCost.Totals.TotalTokens:N0} tokens");
         }
+    }
+
+    private void OnGatewaySelfUpdated(object? sender, GatewaySelfInfo gatewaySelf)
+    {
+        _lastGatewaySelf = _lastGatewaySelf?.Merge(gatewaySelf) ?? gatewaySelf;
+        DiagnosticsJsonlService.Write("gateway.self", new
+        {
+            version = _lastGatewaySelf.ServerVersion,
+            protocol = _lastGatewaySelf.Protocol,
+            uptimeMs = _lastGatewaySelf.UptimeMs,
+            authMode = _lastGatewaySelf.AuthMode,
+            stateVersionPresence = _lastGatewaySelf.StateVersionPresence,
+            stateVersionHealth = _lastGatewaySelf.StateVersionHealth,
+            presenceCount = _lastGatewaySelf.PresenceCount
+        });
+        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
     }
 
     private void OnNodesUpdated(object? sender, GatewayNodeInfo[] nodes)
@@ -1716,11 +1759,18 @@ public partial class App : Application
             _settingsWindow.Closed += (s, e) => 
             {
                 _settingsWindow.SettingsSaved -= OnSettingsSaved;
+                _settingsWindow.CommandCenterRequested -= OnSettingsCommandCenterRequested;
                 _settingsWindow = null;
             };
             _settingsWindow.SettingsSaved += OnSettingsSaved;
+            _settingsWindow.CommandCenterRequested += OnSettingsCommandCenterRequested;
         }
         _settingsWindow.Activate();
+    }
+
+    private void OnSettingsCommandCenterRequested(object? sender, EventArgs e)
+    {
+        ShowStatusDetail();
     }
 
     private void OnSettingsSaved(object? sender, EventArgs e)
@@ -1730,6 +1780,7 @@ public partial class App : Application
         UnsubscribeGatewayEvents();
         _gatewayClient?.Dispose();
         _gatewayClient = null;
+        _lastGatewaySelf = null;
         var oldNodeService = _nodeService;
         _nodeService = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
@@ -1857,7 +1908,17 @@ public partial class App : Application
             nodes.Add(NodeCapabilityHealthInfo.FromNode(localNode));
         }
 
+        var topology = GatewayTopologyClassifier.Classify(
+            _settings?.GatewayUrl,
+            _settings?.UseSshTunnel == true,
+            _settings?.SshTunnelHost,
+            _settings?.SshTunnelLocalPort ?? 0,
+            _settings?.SshTunnelRemotePort ?? 0);
+        var tunnel = BuildTunnelInfo();
+        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel);
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();
+        warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
+        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
 
         if (!string.IsNullOrWhiteSpace(_authFailureMessage))
         {
@@ -1974,6 +2035,11 @@ public partial class App : Application
         {
             ConnectionStatus = _currentStatus,
             LastRefresh = _lastCheckTime.ToUniversalTime(),
+            Topology = topology,
+            Tunnel = tunnel,
+            GatewaySelf = _lastGatewaySelf,
+            PortDiagnostics = portDiagnostics,
+            Permissions = PermissionDiagnostics.BuildDefaultWindowsMatrix(),
             Channels = _lastChannels.Select(ChannelCommandCenterInfo.FromHealth).ToList(),
             Sessions = _lastSessions.ToList(),
             Usage = _lastUsage,
@@ -1981,6 +2047,92 @@ public partial class App : Application
             UsageCost = _lastUsageCost,
             Nodes = nodes,
             Warnings = CommandCenterDiagnostics.SortAndDedupeWarnings(warnings)
+        };
+    }
+
+    private static IEnumerable<GatewayDiagnosticWarning> BuildPortDiagnosticWarnings(
+        IReadOnlyList<PortDiagnosticInfo> ports,
+        GatewayTopologyInfo topology,
+        TunnelCommandCenterInfo? tunnel)
+    {
+        foreach (var port in ports)
+        {
+            if (tunnel?.Status == TunnelStatus.Up &&
+                port.Purpose.Equals("SSH tunnel local forward", StringComparison.OrdinalIgnoreCase) &&
+                !port.IsListening)
+            {
+                yield return new GatewayDiagnosticWarning
+                {
+                    Severity = GatewayDiagnosticSeverity.Warning,
+                    Category = "port",
+                    Title = "SSH tunnel port is not listening",
+                    Detail = port.Detail
+                };
+            }
+
+            if (topology.DetectedKind == GatewayKind.WindowsNative &&
+                port.Purpose.Equals("Gateway endpoint", StringComparison.OrdinalIgnoreCase) &&
+                !port.IsListening)
+            {
+                yield return new GatewayDiagnosticWarning
+                {
+                    Severity = GatewayDiagnosticSeverity.Info,
+                    Category = "port",
+                    Title = "No local gateway listener detected",
+                    Detail = port.Detail
+                };
+            }
+
+            if (port.Purpose.Equals("Browser proxy host", StringComparison.OrdinalIgnoreCase) &&
+                !port.IsListening)
+            {
+                yield return new GatewayDiagnosticWarning
+                {
+                    Severity = GatewayDiagnosticSeverity.Info,
+                    Category = "browser",
+                    Title = "Browser proxy host not detected",
+                    Detail = "browser.proxy is Mac-local today. Windows can only add a compatible local browser proxy when a browser host is listening on the gateway port + 2."
+                };
+            }
+        }
+    }
+
+    private TunnelCommandCenterInfo? BuildTunnelInfo()
+    {
+        if (_settings?.UseSshTunnel != true)
+        {
+            return null;
+        }
+
+        var localPort = _sshTunnelService is { CurrentLocalPort: > 0 }
+            ? _sshTunnelService.CurrentLocalPort
+            : _settings.SshTunnelLocalPort;
+        var remotePort = _sshTunnelService is { CurrentRemotePort: > 0 }
+            ? _sshTunnelService.CurrentRemotePort
+            : _settings.SshTunnelRemotePort;
+        var host = string.IsNullOrWhiteSpace(_sshTunnelService?.CurrentHost)
+            ? _settings.SshTunnelHost
+            : _sshTunnelService!.CurrentHost!;
+        var user = string.IsNullOrWhiteSpace(_sshTunnelService?.CurrentUser)
+            ? _settings.SshTunnelUser
+            : _sshTunnelService!.CurrentUser!;
+        var status = _sshTunnelService?.Status is TunnelStatus.Up or TunnelStatus.Starting or TunnelStatus.Restarting or TunnelStatus.Failed
+            ? _sshTunnelService.Status
+            : string.IsNullOrWhiteSpace(_sshTunnelService?.LastError)
+                ? TunnelStatus.Stopped
+                : TunnelStatus.Failed;
+
+        return new TunnelCommandCenterInfo
+        {
+            Status = status,
+            LocalEndpoint = $"127.0.0.1:{localPort}",
+            RemoteEndpoint = string.IsNullOrWhiteSpace(host)
+                ? $"127.0.0.1:{remotePort}"
+                : $"{host}:127.0.0.1:{remotePort}",
+            Host = host,
+            User = user,
+            LastError = _sshTunnelService?.LastError,
+            StartedAt = _sshTunnelService?.StartedAtUtc
         };
     }
 
@@ -2553,6 +2705,13 @@ public partial class App : Application
             {
                 _sshTunnelService ??= new SshTunnelService(new AppLogger());
                 _sshTunnelService.EnsureStarted(_settings);
+                DiagnosticsJsonlService.Write("tunnel.ensure_started", new
+                {
+                    status = _sshTunnelService.Status.ToString(),
+                    localEndpoint = $"127.0.0.1:{_settings.SshTunnelLocalPort}",
+                    remoteHost = string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ? null : _settings.SshTunnelHost,
+                    remotePort = _settings.SshTunnelRemotePort
+                });
             }
             catch (Exception ex)
             {
@@ -2575,6 +2734,14 @@ public partial class App : Application
     private async void OnSshTunnelExited(object? sender, int exitCode)
     {
         Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
+        _sshTunnelService?.MarkRestarting(exitCode);
+        DiagnosticsJsonlService.Write("tunnel.restart_scheduled", new
+        {
+            exitCode,
+            localEndpoint = _sshTunnelService?.CurrentLocalPort > 0
+                ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
+                : null
+        });
         await Task.Delay(3000);
         if (_sshTunnelService != null && _settings?.UseSshTunnel == true)
         {
@@ -2582,10 +2749,17 @@ public partial class App : Application
             {
                 _sshTunnelService.EnsureStarted(_settings);
                 Logger.Info("SSH tunnel restarted successfully");
+                DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
+                {
+                    localEndpoint = _sshTunnelService.CurrentLocalPort > 0
+                        ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
+                        : null
+                });
             }
             catch (Exception ex)
             {
                 Logger.Error($"SSH tunnel restart failed: {ex.Message}");
+                DiagnosticsJsonlService.Write("tunnel.restart_failed", new { ex.Message });
             }
         }
     }

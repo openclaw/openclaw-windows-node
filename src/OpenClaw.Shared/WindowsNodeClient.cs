@@ -46,6 +46,7 @@ public class WindowsNodeClient : WebSocketClientBase
     public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
     public event EventHandler<JsonElement>? HealthReceived;
+    public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     
     public new bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
@@ -244,7 +245,10 @@ public class WindowsNodeClient : WebSocketClientBase
                 break;
             case "health":
                 if (root.TryGetProperty("payload", out var payload))
+                {
+                    PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
                     HealthReceived?.Invoke(this, payload.Clone());
+                }
                 break;
         }
     }
@@ -587,6 +591,7 @@ public class WindowsNodeClient : WebSocketClientBase
         // Handle hello-ok (successful registration)
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
+            PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             var reconnectingAfterApproval = _pairingApprovedAwaitingReconnect;
             _isConnected = true;
             ResetReconnectAttempts();
@@ -928,6 +933,14 @@ public class WindowsNodeClient : WebSocketClientBase
         };
         
         await SendRawAsync(JsonSerializer.Serialize(msg));
+    }
+
+    private void PublishGatewaySelf(GatewaySelfInfo info)
+    {
+        if (!info.HasAnyDetails)
+            return;
+
+        GatewaySelfUpdated?.Invoke(this, info);
     }
     
     protected override void OnDisconnected()
