@@ -117,7 +117,7 @@ jobs:
 
     - name: Azure Login for Signing
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -217,7 +217,7 @@ jobs:
 
     - name: Sign MSIX
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -339,7 +339,7 @@ jobs:
 
     # Sign ARM64 artifacts on x64 runner (ARM64 runner can't run the signing dlib)
     - name: Azure Login for ARM64 Signing
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -412,7 +412,7 @@ jobs:
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
 
     - name: Azure Login for Signing
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
