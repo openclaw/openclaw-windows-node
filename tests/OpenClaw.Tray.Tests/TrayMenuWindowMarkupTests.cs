@@ -381,9 +381,11 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"case ""extensibilitysummary"": CopyExtensibilitySummary(); break;", source);
         Assert.Contains(@"case ""restartsshtunnel"": RestartSshTunnel(); break;", source);
         Assert.Contains(@"menu.AddHeader(""🧰 Support & Debug"")", source);
-        Assert.Contains(@"menu.AddMenuItem(""Open Logs Folder"", ""📁"", ""logfolder"", indent: true)", source);
-        Assert.Contains(@"menu.AddMenuItem(""Open Config Folder"", ""🗂️"", ""configfolder"", indent: true)", source);
-        Assert.Contains(@"menu.AddMenuItem(""Open Diagnostics Folder"", ""🧪"", ""diagnosticsfolder"", indent: true)", source);
+        Assert.Contains(@"menu.AddFlyoutMenuItem(""Open Support Files"", ""📁"", new[]", source);
+        Assert.Contains(@"new TrayMenuFlyoutItem(LocalizationHelper.GetString(""Menu_OpenLogFile""), ""📄"", ""log"")", source);
+        Assert.Contains(@"new TrayMenuFlyoutItem(""Logs Folder"", ""📁"", ""logfolder"")", source);
+        Assert.Contains(@"new TrayMenuFlyoutItem(""Config Folder"", ""🗂️"", ""configfolder"")", source);
+        Assert.Contains(@"new TrayMenuFlyoutItem(""Diagnostics Folder"", ""🧪"", ""diagnosticsfolder"")", source);
         Assert.Contains(@"menu.AddFlyoutMenuItem(""Copy Diagnostics"", ""📋"", new[]", source);
         Assert.Contains(@"new TrayMenuFlyoutItem(""Support Context"", ""📋"", ""supportcontext"")", source);
         Assert.Contains(@"new TrayMenuFlyoutItem(""Debug Bundle"", ""🧰"", ""debugbundle"")", source);
@@ -395,6 +397,24 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"new TrayMenuFlyoutItem(""Activity Summary"", ""⚡"", ""activitysummary"")", source);
         Assert.Contains(@"new TrayMenuFlyoutItem(""Extensibility Summary"", ""🧩"", ""extensibilitysummary"")", source);
         Assert.Contains(@"menu.AddMenuItem(""Restart SSH Tunnel"", ""🔁"", ""restartsshtunnel"", indent: true)", source);
+    }
+
+    [Fact]
+    public void TrayMenu_UsesFlyoutForRecentActivityPreview()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("recentActivityFlyoutItems", source);
+        Assert.Contains("recentActivity", source);
+        Assert.Contains("new TrayMenuFlyoutItem(TruncateMenuText(line, 94), \"\", \"activity\")", source);
+        Assert.Contains(@"new TrayMenuFlyoutItem(LocalizationHelper.GetString(""Menu_ActivityStream""), ""⚡"", ""activity"")", source);
+        Assert.Contains("Menu_RecentActivityFormat", source);
     }
 
     [Fact]

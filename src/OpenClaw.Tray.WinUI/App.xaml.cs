@@ -955,11 +955,14 @@ public partial class App : Application
         {
             menu.AddSeparator();
             var totalActivity = ActivityStreamService.GetItems().Count;
-            menu.AddMenuItem(string.Format(LocalizationHelper.GetString("Menu_RecentActivityFormat"), totalActivity), "⚡", "activity");
-            foreach (var line in recentActivity)
-            {
-                menu.AddMenuItem(TruncateMenuText(line, 94), "", "", isEnabled: false, indent: true);
-            }
+            var recentActivityFlyoutItems = recentActivity
+                .Select(line => new TrayMenuFlyoutItem(TruncateMenuText(line, 94), "", "activity"))
+                .Append(new TrayMenuFlyoutItem(LocalizationHelper.GetString("Menu_ActivityStream"), "⚡", "activity"))
+                .ToArray();
+            menu.AddFlyoutMenuItem(
+                string.Format(LocalizationHelper.GetString("Menu_RecentActivityFormat"), totalActivity),
+                "⚡",
+                recentActivityFlyoutItems);
         }
 
         menu.AddSeparator();
@@ -986,10 +989,13 @@ public partial class App : Application
         menu.AddSeparator();
 
         menu.AddHeader("🧰 Support & Debug");
-        menu.AddMenuItem(LocalizationHelper.GetString("Menu_OpenLogFile"), "📄", "log", indent: true);
-        menu.AddMenuItem("Open Logs Folder", "📁", "logfolder", indent: true);
-        menu.AddMenuItem("Open Config Folder", "🗂️", "configfolder", indent: true);
-        menu.AddMenuItem("Open Diagnostics Folder", "🧪", "diagnosticsfolder", indent: true);
+        menu.AddFlyoutMenuItem("Open Support Files", "📁", new[]
+        {
+            new TrayMenuFlyoutItem(LocalizationHelper.GetString("Menu_OpenLogFile"), "📄", "log"),
+            new TrayMenuFlyoutItem("Logs Folder", "📁", "logfolder"),
+            new TrayMenuFlyoutItem("Config Folder", "🗂️", "configfolder"),
+            new TrayMenuFlyoutItem("Diagnostics Folder", "🧪", "diagnosticsfolder")
+        }, indent: true);
         menu.AddFlyoutMenuItem("Copy Diagnostics", "📋", new[]
         {
             new TrayMenuFlyoutItem("Support Context", "📋", "supportcontext"),
