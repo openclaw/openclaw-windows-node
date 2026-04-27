@@ -176,6 +176,8 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("OpenClaw node inventory", source);
         Assert.Contains("Safe companion commands", source);
         Assert.Contains("Privacy-sensitive commands", source);
+        Assert.Contains("Browser proxy commands", source);
+        Assert.Contains("Missing browser proxy allowlist", source);
         Assert.Contains("Disabled in Settings", source);
         Assert.Contains("Missing Mac parity", source);
     }

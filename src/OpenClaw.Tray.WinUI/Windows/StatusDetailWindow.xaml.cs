@@ -693,11 +693,13 @@ public sealed partial class StatusDetailWindow : WindowEx
             builder.AppendLine($"  declared commands: {FormatCommandList(node.Commands)}");
             builder.AppendLine($"  safe companion commands: {FormatCommandList(node.SafeDeclaredCommands)}");
             builder.AppendLine($"  privacy-sensitive opt-ins: {FormatCommandList(node.DangerousDeclaredCommands)}");
+            builder.AppendLine($"  browser proxy commands: {FormatCommandList(node.BrowserDeclaredCommands)}");
             builder.AppendLine($"  Windows-specific commands: {FormatCommandList(node.WindowsSpecificDeclaredCommands)}");
             builder.AppendLine($"  filtered by gateway policy: {FormatCommandList(node.BlockedDeclaredCommands)}");
             builder.AppendLine($"  disabled in Settings: {FormatCommandList(node.DisabledBySettingsCommands)}");
             builder.AppendLine($"  missing safe allowlist: {FormatCommandList(node.MissingSafeAllowlistCommands)}");
             builder.AppendLine($"  missing privacy-sensitive allowlist: {FormatCommandList(node.MissingDangerousAllowlistCommands)}");
+            builder.AppendLine($"  missing browser proxy allowlist: {FormatCommandList(node.MissingBrowserAllowlistCommands)}");
             builder.AppendLine($"  missing Mac parity: {FormatCommandList(node.MissingMacParityCommands)}");
         }
 
@@ -842,6 +844,8 @@ public sealed partial class StatusDetailWindow : WindowEx
             parts.Add($"{node.SafeDeclaredCommands.Count} safe");
         if (node.DangerousDeclaredCommands.Count > 0)
             parts.Add($"{node.DangerousDeclaredCommands.Count} opt-in");
+        if (node.BrowserDeclaredCommands.Count > 0)
+            parts.Add("browser.proxy");
         if (node.WindowsSpecificDeclaredCommands.Count > 0)
             parts.Add($"{node.WindowsSpecificDeclaredCommands.Count} Windows");
         if (node.DisabledBySettingsCommands.Count > 0)
@@ -865,8 +869,10 @@ public sealed partial class StatusDetailWindow : WindowEx
             builder.AppendLine(BuildNodeSummary(node).TrimEnd());
             builder.AppendLine($"Safe companion commands: {FormatCommandList(node.SafeDeclaredCommands)}");
             builder.AppendLine($"Privacy-sensitive commands: {FormatCommandList(node.DangerousDeclaredCommands)}");
+            builder.AppendLine($"Browser proxy commands: {FormatCommandList(node.BrowserDeclaredCommands)}");
             builder.AppendLine($"Windows-specific commands: {FormatCommandList(node.WindowsSpecificDeclaredCommands)}");
             builder.AppendLine($"Filtered by gateway policy: {FormatCommandList(node.BlockedDeclaredCommands)}");
+            builder.AppendLine($"Missing browser proxy allowlist: {FormatCommandList(node.MissingBrowserAllowlistCommands)}");
             builder.AppendLine($"Disabled in Settings: {FormatCommandList(node.DisabledBySettingsCommands)}");
             builder.AppendLine($"Missing Mac parity: {FormatCommandList(node.MissingMacParityCommands)}");
             builder.AppendLine();

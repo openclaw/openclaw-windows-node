@@ -918,6 +918,7 @@ public class CommandCenterModelTests
         Assert.Contains("device.info", CommandCenterCommandGroups.SafeCompanionCommands);
         Assert.Contains("device.status", CommandCenterCommandGroups.SafeCompanionCommands);
         Assert.Contains("screen.record", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("browser.proxy", CommandCenterCommandGroups.BrowserCommands);
         Assert.Contains("browser.proxy", CommandCenterCommandGroups.MacNodeParityCommands);
     }
 
@@ -1073,6 +1074,40 @@ public class CommandCenterModelTests
             w.Title == "Privacy-sensitive commands require explicit opt-in" &&
             w.RepairAction == "Copy opt-in guidance" &&
             !string.IsNullOrWhiteSpace(w.CopyText));
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_WarnsSpecificallyForBlockedBrowserProxy()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands =
+            [
+                "system.notify",
+                "system.run",
+                "system.which",
+                "browser.proxy"
+            ],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["browser.proxy"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("browser.proxy", info.BrowserDeclaredCommands);
+        Assert.Contains("browser.proxy", info.MissingBrowserAllowlistCommands);
+        Assert.DoesNotContain("browser.proxy", info.MissingMacParityCommands);
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Browser proxy command is filtered by gateway policy" &&
+            w.RepairAction == "Copy browser proxy allowlist repair command" &&
+            w.CopyText == "openclaw config set gateway.nodes.allowCommands '[\"browser.proxy\"]'");
+        Assert.DoesNotContain(info.Warnings, w => w.Title == "Some node commands are filtered");
     }
 
     [Fact]

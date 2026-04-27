@@ -845,10 +845,12 @@ public class NodeCapabilityHealthInfo
     public Dictionary<string, bool> Permissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<string> SafeDeclaredCommands { get; set; } = new();
     public List<string> DangerousDeclaredCommands { get; set; } = new();
+    public List<string> BrowserDeclaredCommands { get; set; } = new();
     public List<string> WindowsSpecificDeclaredCommands { get; set; } = new();
     public List<string> BlockedDeclaredCommands { get; set; } = new();
     public List<string> MissingSafeAllowlistCommands { get; set; } = new();
     public List<string> MissingDangerousAllowlistCommands { get; set; } = new();
+    public List<string> MissingBrowserAllowlistCommands { get; set; } = new();
     public List<string> MissingMacParityCommands { get; set; } = new();
     public List<string> DisabledBySettingsCommands { get; set; } = new();
     public List<GatewayDiagnosticWarning> Warnings { get; set; } = new();
@@ -879,6 +881,9 @@ public class NodeCapabilityHealthInfo
             DangerousDeclaredCommands = CommandCenterCommandGroups.DangerousCommands
                 .Where(commandSet.Contains)
                 .ToList(),
+            BrowserDeclaredCommands = CommandCenterCommandGroups.BrowserCommands
+                .Where(commandSet.Contains)
+                .ToList(),
             WindowsSpecificDeclaredCommands = CommandCenterCommandGroups.WindowsSpecificCommands
                 .Where(commandSet.Contains)
                 .ToList()
@@ -894,6 +899,8 @@ public class NodeCapabilityHealthInfo
                 info.MissingSafeAllowlistCommands.Add(command);
             else if (CommandCenterCommandGroups.DangerousCommandSet.Contains(command))
                 info.MissingDangerousAllowlistCommands.Add(command);
+            else if (CommandCenterCommandGroups.BrowserCommandSet.Contains(command))
+                info.MissingBrowserAllowlistCommands.Add(command);
         }
 
         if (isWindows)
@@ -990,6 +997,14 @@ public static class CommandCenterCommandGroups
 
     public static readonly FrozenSet<string> DangerousCommandSet =
         DangerousCommands.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    public static readonly string[] BrowserCommands =
+    [
+        "browser.proxy"
+    ];
+
+    public static readonly FrozenSet<string> BrowserCommandSet =
+        BrowserCommands.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static readonly string[] WindowsSpecificCommands =
     [
@@ -1192,6 +1207,20 @@ public static class CommandCenterDiagnostics
             });
         }
 
+        if (node.MissingBrowserAllowlistCommands.Count > 0)
+        {
+            var blocked = string.Join(", ", node.MissingBrowserAllowlistCommands);
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Warning,
+                Category = "allowlist",
+                Title = "Browser proxy command is filtered by gateway policy",
+                Detail = $"{blocked} {(node.MissingBrowserAllowlistCommands.Count == 1 ? "is" : "are")} declared by the node but not allowed by gateway policy. Add the exact browser command and re-approve or re-pair the node if the gateway keeps an older command snapshot.",
+                RepairAction = "Copy browser proxy allowlist repair command",
+                CopyText = BuildAllowCommandsRepairCommand(node.MissingBrowserAllowlistCommands)
+            });
+        }
+
         if (node.DisabledBySettingsCommands.Count > 0)
         {
             warnings.Add(new GatewayDiagnosticWarning
@@ -1205,7 +1234,8 @@ public static class CommandCenterDiagnostics
 
         if (node.BlockedDeclaredCommands.Count > 0 &&
             node.MissingSafeAllowlistCommands.Count == 0 &&
-            node.MissingDangerousAllowlistCommands.Count == 0)
+            node.MissingDangerousAllowlistCommands.Count == 0 &&
+            node.MissingBrowserAllowlistCommands.Count == 0)
         {
             warnings.Add(new GatewayDiagnosticWarning
             {

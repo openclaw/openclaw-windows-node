@@ -435,6 +435,7 @@ Deliverables:
 - Dangerous command opt-in guidance: **implemented copyable safety guidance for camera/screen privacy-sensitive commands without emitting one-click dangerous repair commands**
 - Node capability settings: **implemented Settings toggles for canvas, screen, camera, location, and browser proxy command groups so privacy-sensitive surfaces can be disabled before reconnecting/re-pairing**
 - Disabled capability diagnostics: **implemented Command Center distinction between intentionally disabled Settings groups and true gateway allowlist/parity gaps**
+- Browser proxy policy diagnostics: **implemented a specific Command Center warning/copy action for declared `browser.proxy` commands filtered by gateway policy, instead of burying them under generic blocked-command output**
 
 Risk: high for exec/security. Do not rush.
 
