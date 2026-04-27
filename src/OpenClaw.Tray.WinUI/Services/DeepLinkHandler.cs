@@ -45,19 +45,11 @@ public static class DeepLinkHandler
         }
     }
 
-    private static bool IsPackagedApp()
-    {
-        try
-        {
-            var packageType = Type.GetType("Windows.ApplicationModel.Package, Windows, ContentType=WindowsRuntime");
-            var current = packageType?.GetProperty("Current")?.GetValue(null);
-            return current != null;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+#if OPENCLAW_TRAY_TESTS
+    private static bool IsPackagedApp() => false;
+#else
+    private static bool IsPackagedApp() => OpenClawTray.Helpers.PackageHelper.IsPackaged;
+#endif
 
     public static void Handle(string uri, DeepLinkActions actions)
     {
