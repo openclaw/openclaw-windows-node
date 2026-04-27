@@ -130,7 +130,7 @@ If Quick Send fails with `pairing required` / `NOT_PAIRED`, that is a **device a
 - **Nodes** - Online/offline node inventory and copyable summary
 - **Recent Activity** - Timestamped event stream for sessions, usage, nodes, and notifications
 - **Actions** - Dashboard, Web Chat, Quick Send, Activity Stream, History
-- **Support & Debug** - Logs, config, diagnostics folder, redacted support context, browser setup, and port diagnostics
+- **Support & Debug** - Logs, config, diagnostics folder, redacted support context, browser setup, port diagnostics, and managed SSH tunnel restart
 - **Settings** - Configuration and auto-start
 
 ### Mac Parity Status

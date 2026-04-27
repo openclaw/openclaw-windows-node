@@ -374,6 +374,7 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"case ""debugbundle"": CopyDebugBundle(); break;", source);
         Assert.Contains(@"case ""browsersetup"": CopyBrowserSetupGuidance(); break;", source);
         Assert.Contains(@"case ""portdiagnostics"": CopyPortDiagnostics(); break;", source);
+        Assert.Contains(@"case ""restartsshtunnel"": RestartSshTunnel(); break;", source);
         Assert.Contains(@"menu.AddHeader(""🧰 Support & Debug"")", source);
         Assert.Contains(@"menu.AddMenuItem(""Open Logs Folder"", ""📁"", ""logfolder"", indent: true)", source);
         Assert.Contains(@"menu.AddMenuItem(""Open Config Folder"", ""🗂️"", ""configfolder"", indent: true)", source);
@@ -382,6 +383,7 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"menu.AddMenuItem(""Copy Debug Bundle"", ""🧰"", ""debugbundle"", indent: true)", source);
         Assert.Contains(@"menu.AddMenuItem(""Copy Browser Setup"", ""🌐"", ""browsersetup"", indent: true)", source);
         Assert.Contains(@"menu.AddMenuItem(""Copy Port Diagnostics"", ""🔌"", ""portdiagnostics"", indent: true)", source);
+        Assert.Contains(@"menu.AddMenuItem(""Restart SSH Tunnel"", ""🔁"", ""restartsshtunnel"", indent: true)", source);
     }
 
     [Fact]

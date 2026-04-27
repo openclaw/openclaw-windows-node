@@ -564,6 +564,7 @@ public partial class App : Application
             case "debugbundle": CopyDebugBundle(); break;
             case "browsersetup": CopyBrowserSetupGuidance(); break;
             case "portdiagnostics": CopyPortDiagnostics(); break;
+            case "restartsshtunnel": RestartSshTunnel(); break;
             case "copydeviceid": CopyDeviceIdToClipboard(); break;
             case "copynodesummary": CopyNodeSummaryToClipboard(); break;
             case "exit": ExitApplication(); break;
@@ -988,6 +989,7 @@ public partial class App : Application
         menu.AddMenuItem("Copy Debug Bundle", "🧰", "debugbundle", indent: true);
         menu.AddMenuItem("Copy Browser Setup", "🌐", "browsersetup", indent: true);
         menu.AddMenuItem("Copy Port Diagnostics", "🔌", "portdiagnostics", indent: true);
+        menu.AddMenuItem("Restart SSH Tunnel", "🔁", "restartsshtunnel", indent: true);
 
         menu.AddSeparator();
 
