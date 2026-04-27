@@ -152,6 +152,8 @@ public class TrayMenuWindowMarkupTests
 
         Assert.Contains("ApplyDetectedSshForwardTopology", appSource);
         Assert.Contains("SSH tunnel (detected)", appSource);
+        Assert.Contains("Browser proxy SSH forward is not listening", appSource);
+        Assert.Contains("BuildBrowserProxySshForwardHint", appSource);
     }
 
     [Fact]

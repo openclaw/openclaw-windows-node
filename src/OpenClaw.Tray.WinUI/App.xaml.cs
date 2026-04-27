@@ -2153,6 +2153,20 @@ public partial class App : Application
             if (port.Purpose.Equals("Browser proxy host", StringComparison.OrdinalIgnoreCase) &&
                 !port.IsListening)
             {
+                if (topology.UsesSshTunnel)
+                {
+                    yield return new GatewayDiagnosticWarning
+                    {
+                        Severity = GatewayDiagnosticSeverity.Info,
+                        Category = "browser",
+                        Title = "Browser proxy SSH forward is not listening",
+                        Detail = $"browser.proxy over SSH needs a companion local forward for port {port.Port}. Add the browser-control forward to the same tunnel, or enable the managed SSH tunnel so Windows starts both forwards.",
+                        RepairAction = "Copy browser proxy SSH forward",
+                        CopyText = BuildBrowserProxySshForwardHint(port.Port)
+                    };
+                    continue;
+                }
+
                 yield return new GatewayDiagnosticWarning
                 {
                     Severity = GatewayDiagnosticSeverity.Info,
@@ -2162,6 +2176,14 @@ public partial class App : Application
                 };
             }
         }
+    }
+
+    private static string BuildBrowserProxySshForwardHint(int browserProxyPort)
+    {
+        if (browserProxyPort is < 1 or > 65535)
+            return "ssh -N -L <browser-port>:127.0.0.1:<browser-port> <user>@<host>";
+
+        return $"ssh -N -L {browserProxyPort}:127.0.0.1:{browserProxyPort} <user>@<host>";
     }
 
     private static void ApplyDetectedSshForwardTopology(
