@@ -39,6 +39,23 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
+    public void CommandPalette_HasCommandCenterEntryPoint()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.CommandPalette",
+            "Pages",
+            "OpenClawPage.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains(@"openclaw://commandcenter", source);
+        Assert.Contains("Command Center", source);
+        Assert.Contains("gateway, tunnel, node, and browser diagnostics", source);
+    }
+
+    [Fact]
     public void SettingsWindow_HasTopologyChoiceGuide()
     {
         var xamlPath = Path.Combine(

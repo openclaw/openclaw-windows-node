@@ -34,6 +34,11 @@ internal sealed partial class OpenClawPage : ListPage
                 Title = "📝 Quick Send", 
                 Subtitle = "Send a message to OpenClaw"
             },
+            new ListItem(new OpenUrlCommand("openclaw://commandcenter"))
+            {
+                Title = "🧭 Command Center",
+                Subtitle = "Open gateway, tunnel, node, and browser diagnostics"
+            },
             new ListItem(new OpenUrlCommand("openclaw://settings"))
             {
                 Title = "⚙️ Settings",

@@ -615,7 +615,7 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [ ] Bundled/browser-control host installer/launcher
 - [ ] UI Automation (Windows equivalent of macOS Accessibility API)
 - [ ] Auto-update improvements (current auto-update from GitHub Releases → MSI/MSIX?)
-- [ ] PowerToys Command Palette integration for node commands
+- [x] PowerToys Command Palette integration for Command Center diagnostics entrypoint
 
 ---
 
