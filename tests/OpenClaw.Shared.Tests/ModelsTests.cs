@@ -1246,6 +1246,21 @@ public class CommandCenterModelTests
     }
 
     [Fact]
+    public void GatewayTopologyClassifier_UsesTunnelLocalPortWhenSshGatewayUrlIsStale()
+    {
+        var topology = GatewayTopologyClassifier.Classify(
+            "ws://127.0.0.1:18789",
+            useSshTunnel: true,
+            sshHost: "mac-mini",
+            sshLocalPort: 28789,
+            sshRemotePort: 18789);
+
+        Assert.Equal(GatewayKind.MacOverSsh, topology.DetectedKind);
+        Assert.Equal("ws://127.0.0.1:28789", topology.GatewayUrl);
+        Assert.Contains("Local port 28789 forwards to mac-mini:18789", topology.Detail);
+    }
+
+    [Fact]
     public void GatewayTopologyClassifier_InvalidUrl_IsUnknown()
     {
         var topology = GatewayTopologyClassifier.Classify("not a url", useSshTunnel: false);

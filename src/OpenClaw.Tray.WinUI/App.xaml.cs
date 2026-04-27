@@ -2183,11 +2183,12 @@ public partial class App : Application
         if (browserProxyPort is < 1 or > 65535)
             return "ssh -N -L <local-browser-port>:127.0.0.1:<remote-browser-port> <user>@<host>";
 
+        var localBrowserPort = ResolveLocalBrowserProxyPort(browserProxyPort, tunnel);
         var target = BuildSshTarget(tunnel);
-        var remoteBrowserPort = ResolveRemoteBrowserProxyPort(browserProxyPort, tunnel);
+        var remoteBrowserPort = ResolveRemoteBrowserProxyPort(localBrowserPort, tunnel);
         return remoteBrowserPort is >= 1 and <= 65535
-            ? $"ssh -N -L {browserProxyPort}:127.0.0.1:{remoteBrowserPort} {target}"
-            : $"ssh -N -L {browserProxyPort}:127.0.0.1:<remote-gateway-port+2> {target}";
+            ? $"ssh -N -L {localBrowserPort}:127.0.0.1:{remoteBrowserPort} {target}"
+            : $"ssh -N -L {localBrowserPort}:127.0.0.1:<remote-gateway-port+2> {target}";
     }
 
     private static string BuildSshTarget(TunnelCommandCenterInfo? tunnel)
@@ -2199,6 +2200,20 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(host))
             return $"<user>@{host}";
         return "<user>@<host>";
+    }
+
+    private static int ResolveLocalBrowserProxyPort(int fallbackBrowserProxyPort, TunnelCommandCenterInfo? tunnel)
+    {
+        if (TryGetEndpointPort(tunnel?.BrowserProxyLocalEndpoint, out var browserLocalPort))
+            return browserLocalPort;
+
+        if (TryGetEndpointPort(tunnel?.LocalEndpoint, out var localGatewayPort) &&
+            localGatewayPort <= 65533)
+        {
+            return localGatewayPort + 2;
+        }
+
+        return fallbackBrowserProxyPort;
     }
 
     private static int? ResolveRemoteBrowserProxyPort(int localBrowserProxyPort, TunnelCommandCenterInfo? tunnel)

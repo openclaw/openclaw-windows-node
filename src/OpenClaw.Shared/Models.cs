@@ -1331,7 +1331,7 @@ public static class GatewayTopologyClassifier
             {
                 DetectedKind = string.IsNullOrWhiteSpace(tunnelHost) ? GatewayKind.Unknown : GatewayKind.MacOverSsh,
                 DisplayName = string.IsNullOrWhiteSpace(tunnelHost) ? "SSH tunnel incomplete" : "Mac over SSH",
-                GatewayUrl = string.IsNullOrWhiteSpace(normalized) ? BuildLocalTunnelUrl(sshLocalPort) : GatewayUrlHelper.SanitizeForDisplay(normalized),
+                GatewayUrl = BuildLocalTunnelUrl(sshLocalPort),
                 Host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host,
                 Transport = "ssh tunnel",
                 Detail = detail,

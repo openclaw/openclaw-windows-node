@@ -409,6 +409,7 @@ Deliverables:
 - Settings SSH tunnel preview: **implemented selectable Settings preview of the exact managed `ssh -N -L ...` command, including the optional browser-control companion forward**
 - Browser proxy disabled guidance: **implemented a specific Command Center warning/copy hint when `browser.proxy` is intentionally disabled in Settings**
 - Asymmetric SSH browser guidance: **fixed Command Center and `browser.proxy` invoke guidance so local `gateway+2` and remote `gateway+2` can differ**
+- SSH local browser-port source: **fixed Command Center browser diagnostics to derive the local browser-control port from the active tunnel local endpoint instead of stale saved gateway URLs**
 
 Risk: medium-high for kill/restart actions; start as read-only/copy actions.
 

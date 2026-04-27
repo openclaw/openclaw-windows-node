@@ -22,7 +22,7 @@ public static class PortDiagnosticsService
             diagnostics.Add(Create("Gateway endpoint", gatewayPort, localTcpPorts));
         }
 
-        if (TryGetBrowserProxyPort(topology, out var browserProxyPort))
+        if (TryGetBrowserProxyPort(topology, tunnel, out var browserProxyPort))
         {
             diagnostics.Add(Create("Browser proxy host", browserProxyPort, localTcpPorts));
         }
@@ -96,9 +96,17 @@ public static class PortDiagnosticsService
         return true;
     }
 
-    private static bool TryGetBrowserProxyPort(GatewayTopologyInfo topology, out int port)
+    private static bool TryGetBrowserProxyPort(GatewayTopologyInfo topology, TunnelCommandCenterInfo? tunnel, out int port)
     {
         port = 0;
+        if (topology.UsesSshTunnel &&
+            TryGetEndpointPort(tunnel?.LocalEndpoint, out var tunnelLocalPort) &&
+            tunnelLocalPort <= 65533)
+        {
+            port = tunnelLocalPort + 2;
+            return true;
+        }
+
         if (topology.DetectedKind is not (GatewayKind.WindowsNative or GatewayKind.Wsl or GatewayKind.MacOverSsh) ||
             !TryGetPort(topology.GatewayUrl, out var gatewayPort) ||
             gatewayPort > 65533)

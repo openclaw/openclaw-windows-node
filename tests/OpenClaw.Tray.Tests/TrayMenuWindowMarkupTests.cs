@@ -172,8 +172,18 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("SSH tunnel (detected)", appSource);
         Assert.Contains("Browser proxy SSH forward is not listening", appSource);
         Assert.Contains("BuildBrowserProxySshForwardHint(port.Port, tunnel)", appSource);
+        Assert.Contains("ResolveLocalBrowserProxyPort", appSource);
         Assert.Contains("ResolveRemoteBrowserProxyPort", appSource);
         Assert.Contains("<remote-gateway-port+2>", appSource);
+        var portDiagnosticsSourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "PortDiagnosticsService.cs");
+        var portDiagnosticsSource = File.ReadAllText(portDiagnosticsSourcePath);
+        Assert.Contains("TryGetBrowserProxyPort(topology, tunnel", portDiagnosticsSource);
+        Assert.Contains("tunnel?.LocalEndpoint", portDiagnosticsSource);
     }
 
     [Fact]
