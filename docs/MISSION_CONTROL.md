@@ -366,7 +366,7 @@ Deliverables:
 - Explicit tunnel states (`NotConfigured`, `Stopped`, `Starting`, `Up`, `Restarting`, `Failed`): **implemented**
 - Fast-fail detection.
 - Optional random local port fallback.
-- WSL detection helper with timeout/cache.
+- WSL detection helper with timeout/cache. Explicit `wsl.localhost` / `.wsl` host classification is implemented.
 - Tunnel reset action.
 
 Risk: medium. Process lifecycle and port behavior need careful tests.

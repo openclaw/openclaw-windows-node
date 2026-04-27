@@ -1168,6 +1168,9 @@ public static class GatewayTopologyClassifier
         if (isLoopback)
             return GatewayKind.WindowsNative;
 
+        if (IsWslHost(host))
+            return GatewayKind.Wsl;
+
         if (IsTailscaleHost(host))
             return GatewayKind.Tailscale;
 
@@ -1187,6 +1190,12 @@ public static class GatewayTopologyClassifier
 
         return IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address);
     }
+
+    private static bool IsWslHost(string host) =>
+        host.Equals("wsl", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".wsl", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("wsl.localhost", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".wsl.localhost", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsTailscaleHost(string host)
     {
@@ -1235,6 +1244,7 @@ public static class GatewayTopologyClassifier
 
     private static string GetTransport(GatewayKind kind, string scheme) => kind switch
     {
+        GatewayKind.Wsl => $"{scheme} via WSL",
         GatewayKind.Tailscale => $"{scheme} over tailnet",
         GatewayKind.RemoteLan => $"{scheme} over LAN",
         GatewayKind.Remote => $"{scheme} remote",
@@ -1244,6 +1254,7 @@ public static class GatewayTopologyClassifier
     private static string BuildDetail(GatewayKind kind, string host, string scheme) => kind switch
     {
         GatewayKind.WindowsNative => $"Loopback gateway at {host} using {scheme}. WSL detection will refine this later if needed.",
+        GatewayKind.Wsl => $"WSL gateway at {host} using {scheme}.",
         GatewayKind.Tailscale => $"Tailnet gateway at {host}.",
         GatewayKind.RemoteLan => $"LAN/private gateway at {host}.",
         GatewayKind.Remote => $"Remote gateway at {host}.",
