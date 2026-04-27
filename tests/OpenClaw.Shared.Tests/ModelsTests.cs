@@ -1148,6 +1148,12 @@ public class CommandCenterModelTests
             w.Category == "settings" &&
             w.Title == "Some node capabilities are disabled" &&
             w.Detail.Contains("screen.record", StringComparison.Ordinal));
+        Assert.Contains(info.Warnings, w =>
+            w.Category == "settings" &&
+            w.Title == "Browser proxy bridge is disabled" &&
+            w.Detail.Contains("Mac browser-control parity", StringComparison.Ordinal) &&
+            w.CopyText != null &&
+            w.CopyText.Contains("local gateway port + 2 forwards to remote port + 2", StringComparison.Ordinal));
         Assert.DoesNotContain(info.Warnings, w => w.Title == "Browser proxy host not available");
     }
 

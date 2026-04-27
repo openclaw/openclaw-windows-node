@@ -1263,6 +1263,19 @@ public static class CommandCenterDiagnostics
             });
         }
 
+        if (node.DisabledBySettingsCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase))
+        {
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Info,
+                Category = "settings",
+                Title = "Browser proxy bridge is disabled",
+                Detail = "Windows is intentionally not advertising browser.proxy. Enable the Browser proxy bridge in Settings when you want Mac browser-control parity; SSH tunnel mode will also forward the gateway+2 browser-control port.",
+                RepairAction = "Copy browser proxy enable guidance",
+                CopyText = "Open Settings > Advanced (Experimental) > Browser proxy bridge, turn it On, save, and reconnect or re-pair if the gateway keeps an older command snapshot. If using SSH tunnel mode, keep the managed tunnel enabled so local gateway port + 2 forwards to remote port + 2."
+            });
+        }
+
         if (node.BlockedDeclaredCommands.Count > 0 &&
             node.MissingSafeAllowlistCommands.Count == 0 &&
             node.MissingDangerousAllowlistCommands.Count == 0 &&

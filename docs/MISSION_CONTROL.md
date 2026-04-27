@@ -407,6 +407,7 @@ Deliverables:
 - Settings SSH browser-forward guidance: **implemented Settings copy explaining that the managed SSH tunnel forwards `local-port+2` to `remote-port+2` for `browser.proxy` when the browser proxy bridge is enabled**
 - Settings SSH test tunnel parity: **implemented temporary Settings test tunnels with the same optional browser-control `local+2` forward runtime uses when Browser proxy bridge is enabled**
 - Settings SSH tunnel preview: **implemented selectable Settings preview of the exact managed `ssh -N -L ...` command, including the optional browser-control companion forward**
+- Browser proxy disabled guidance: **implemented a specific Command Center warning/copy hint when `browser.proxy` is intentionally disabled in Settings**
 
 Risk: medium-high for kill/restart actions; start as read-only/copy actions.
 
