@@ -41,18 +41,20 @@ public class NotificationCategorizer
             ["error"] = ("⚠️ Error", "error"),
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly FrozenDictionary<string, string> CategoryTitles =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    // CategoryTypeMap: maps a user-rule category name (case-insensitive) to the canonical
+    // (title, lowercase-type) pair, avoiding ToLowerInvariant() allocation on the hot path.
+    private static readonly FrozenDictionary<string, (string title, string type)> CategoryTypeMap =
+        new Dictionary<string, (string title, string type)>(StringComparer.OrdinalIgnoreCase)
         {
-            ["health"] = "🩸 Blood Sugar Alert",
-            ["urgent"] = "🚨 Urgent Alert",
-            ["reminder"] = "⏰ Reminder",
-            ["stock"] = "📦 Stock Alert",
-            ["email"] = "📧 Email",
-            ["calendar"] = "📅 Calendar",
-            ["error"] = "⚠️ Error",
-            ["build"] = "🔨 Build",
-            ["info"] = "🤖 OpenClaw",
+            ["health"] = ("🩸 Blood Sugar Alert", "health"),
+            ["urgent"] = ("🚨 Urgent Alert", "urgent"),
+            ["reminder"] = ("⏰ Reminder", "reminder"),
+            ["stock"] = ("📦 Stock Alert", "stock"),
+            ["email"] = ("📧 Email", "email"),
+            ["calendar"] = ("📅 Calendar", "calendar"),
+            ["error"] = ("⚠️ Error", "error"),
+            ["build"] = ("🔨 Build", "build"),
+            ["info"] = ("🤖 OpenClaw", "info"),
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -83,9 +85,11 @@ public class NotificationCategorizer
                 if (!rule.Enabled) continue;
                 if (MatchesRule(searchText, rule))
                 {
+                    // CategoryTypeMap lookup avoids ToLowerInvariant() allocation for known categories.
+                    if (CategoryTypeMap.TryGetValue(rule.Category, out var catResult))
+                        return catResult;
                     var cat = rule.Category.ToLowerInvariant();
-                    var title = CategoryTitles.GetValueOrDefault(cat, "🤖 OpenClaw");
-                    return (title, cat);
+                    return ("🤖 OpenClaw", cat);
                 }
             }
         }

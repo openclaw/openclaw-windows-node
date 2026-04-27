@@ -97,9 +97,9 @@ public class ExecApprovalPolicy
                 Reason = "Empty command"
             };
         }
-        
-        // Compute once; only used if any rule has shell filters.
-        var normalizedShell = (shell ?? "powershell").ToLowerInvariant();
+
+        // Avoid ToLowerInvariant() allocation: use OrdinalIgnoreCase span comparison per rule.
+        var shellSpan = (shell ?? "powershell").AsSpan();
 
         foreach (var rule in _rules)
         {
@@ -111,7 +111,7 @@ public class ExecApprovalPolicy
                 var shellMatched = false;
                 foreach (var s in rule.Shells)
                 {
-                    if (s.Equals(normalizedShell, StringComparison.OrdinalIgnoreCase))
+                    if (s.AsSpan().Equals(shellSpan, StringComparison.OrdinalIgnoreCase))
                     {
                         shellMatched = true;
                         break;

@@ -164,10 +164,11 @@ public class LocalCommandRunner : ICommandRunner
     
     private static (string fileName, string arguments) BuildProcessArgs(CommandRequest request)
     {
-        var shell = (request.Shell ?? "powershell").ToLowerInvariant();
+        var shellValue = request.Shell ?? "powershell";
+        // Use OrdinalIgnoreCase comparisons to avoid a ToLowerInvariant() heap allocation per call.
+        var isCmd = shellValue.Equals("cmd", StringComparison.OrdinalIgnoreCase);
         var command = request.Command;
-        var isCmd = shell == "cmd";
-        
+
         if (request.Args is { Length: > 0 })
         {
             var quoted = new string[request.Args.Length];
@@ -175,13 +176,12 @@ public class LocalCommandRunner : ICommandRunner
                 quoted[i] = ShellQuoting.QuoteForShell(request.Args[i], isCmd);
             command = command + " " + string.Join(" ", quoted);
         }
-        
-        return shell switch
-        {
-            "cmd" => ("cmd.exe", $"/C {command}"),
-            "pwsh" => ("pwsh.exe", $"-NoProfile -NonInteractive -Command {command}"),
-            _ => ("powershell.exe", $"-NoProfile -NonInteractive -Command {command}")
-        };
+
+        if (isCmd)
+            return ("cmd.exe", $"/C {command}");
+        if (shellValue.Equals("pwsh", StringComparison.OrdinalIgnoreCase))
+            return ("pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
+        return ("powershell.exe", $"-NoProfile -NonInteractive -Command {command}");
     }
     
     private void KillProcess(Process process)
