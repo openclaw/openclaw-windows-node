@@ -65,6 +65,7 @@ Add ALL needed commands to `gateway.nodes.allowCommands` in `~/.openclaw/opencla
         "canvas.eval",
         "canvas.snapshot",
         "canvas.a2ui.push",
+        "canvas.a2ui.pushJSONL",
         "canvas.a2ui.reset",
         // Camera (all are dangerous or not in Windows defaults)
         "camera.list",
@@ -75,6 +76,9 @@ Add ALL needed commands to `gateway.nodes.allowCommands` in `~/.openclaw/opencla
         "screen.record",
         // Location
         "location.get",
+        // Device metadata/status
+        "device.info",
+        "device.status",
         // System (already in Windows defaults, but listed for completeness)
         // "system.run",
         // "system.run.prepare",
@@ -163,19 +167,21 @@ PR #159 originally explored session-based start/stop recording commands, but the
 | `canvas.eval` | `canvas.eval` | ✅ Match |
 | `canvas.snapshot` | `canvas.snapshot` | ✅ Match |
 | `canvas.a2ui.push` | `canvas.a2ui.push` | ✅ Match |
+| `canvas.a2ui.pushJSONL` | `canvas.a2ui.pushJSONL` | ✅ Match (legacy alias) |
 | `canvas.a2ui.reset` | `canvas.a2ui.reset` | ✅ Match |
+| `device.info` | `device.info` | ✅ Match |
+| `device.status` | `device.status` | ✅ Match |
 | `screen.record` | `screen.record` | ✅ Match (dangerous) |
 
 ### 2.5 Remaining Command Gaps vs Current Mac Node
 
 | Command | macOS | Windows | Notes |
 |---------|-------|---------|-------|
-| `canvas.a2ui.pushJSONL` | ✅ | ❌ | Legacy alias for `canvas.a2ui.push`; easy parity follow-up |
 | `browser.proxy` | ✅ | ❌ | Chrome DevTools proxy |
 
 ### 2.6 Safe Gateway-Policy Gaps to Consider
 
-The gateway's macOS/iOS default allowlists include safe device-info commands (`device.info`, `device.status`) and other mobile-oriented commands. Windows does not currently implement those. They are good future parity candidates, but they are separate from the current Mac runtime's core canvas/camera/location/screen/system/browser command set.
+The gateway's macOS/iOS default allowlists include other mobile-oriented commands such as contacts, calendar, reminders, photos, and motion. Those remain outside the Windows tray's current companion-node scope.
 
 ---
 
@@ -356,7 +362,7 @@ Until the gateway expands Windows safe defaults, the practical local solution is
 
 - [ ] **Request Windows/macOS parity for safe declared commands** — Windows should allow the same safe companion commands macOS does, while dangerous commands stay explicit opt-in.
 - [ ] **Document `gateway.nodes.allowCommands`** — it's not in the config reference page
-- [ ] **Consider `canvas.a2ui.pushJSONL`** — current Mac supports it as a legacy JSONL alias; Windows implements `canvas.a2ui.push` and `canvas.a2ui.reset`
+- [x] **Add `canvas.a2ui.pushJSONL`** — current Mac supports it as a legacy JSONL alias; Windows routes it through the same A2UI push handler
 
 #### Upstream issue draft
 
@@ -386,7 +392,8 @@ Proposal:
   - `camera.list`
   - `location.get`
   - `screen.snapshot`
-  - optionally `device.info` / `device.status`
+  - `device.info`
+  - `device.status`
 - Keep dangerous/privacy-heavy commands explicit opt-in via `gateway.nodes.allowCommands`:
   - `camera.snap`
   - `camera.clip`

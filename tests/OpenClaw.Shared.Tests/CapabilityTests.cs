@@ -554,6 +554,7 @@ public class CanvasCapabilityTests
         Assert.True(cap.CanHandle("canvas.eval"));
         Assert.True(cap.CanHandle("canvas.snapshot"));
         Assert.True(cap.CanHandle("canvas.a2ui.push"));
+        Assert.True(cap.CanHandle("canvas.a2ui.pushJSONL"));
         Assert.True(cap.CanHandle("canvas.a2ui.reset"));
         Assert.False(cap.CanHandle("canvas.unknown"));
         Assert.Equal("canvas", cap.Category);
@@ -717,6 +718,26 @@ public class CanvasCapabilityTests
     }
 
     [Fact]
+    public async Task A2UIPushJSONL_RaisesSameEventAsPush()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        CanvasA2UIArgs? received = null;
+        cap.A2UIPushRequested += (s, a) => received = a;
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c10b",
+            Command = "canvas.a2ui.pushJSONL",
+            Args = Parse("""{"jsonl":"{\"type\":\"text\",\"value\":\"legacy\"}"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Contains("legacy", received!.Jsonl);
+    }
+
+    [Fact]
     public async Task A2UIReset_RaisesEvent()
     {
         var cap = new CanvasCapability(NullLogger.Instance);
@@ -876,6 +897,88 @@ public class CanvasCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("temp directory", res.Error);
+    }
+}
+
+public class DeviceCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void CanHandle_DeviceCommands()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+
+        Assert.True(cap.CanHandle("device.info"));
+        Assert.True(cap.CanHandle("device.status"));
+        Assert.False(cap.CanHandle("device.unknown"));
+        Assert.Equal("device", cap.Category);
+    }
+
+    [Fact]
+    public async Task DeviceInfo_ReturnsMacCompatiblePayloadShape()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "d1", Command = "device.info", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("deviceName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("modelIdentifier").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemVersion").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appVersion").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appBuild").GetString()));
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("locale").ValueKind);
+    }
+
+    [Fact]
+    public async Task DeviceStatus_ReturnsMacCompatiblePayloadShape()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "d2", Command = "device.status", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var battery = payload.GetProperty("battery");
+        Assert.Equal("unknown", battery.GetProperty("state").GetString());
+        Assert.False(battery.GetProperty("lowPowerModeEnabled").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, battery.GetProperty("level").ValueKind);
+
+        Assert.Equal("nominal", payload.GetProperty("thermal").GetProperty("state").GetString());
+
+        var storage = payload.GetProperty("storage");
+        Assert.True(storage.GetProperty("totalBytes").GetInt64() >= 0);
+        Assert.True(storage.GetProperty("freeBytes").GetInt64() >= 0);
+        Assert.True(storage.GetProperty("usedBytes").GetInt64() >= 0);
+
+        var network = payload.GetProperty("network");
+        Assert.Contains(network.GetProperty("status").GetString(), new[] { "satisfied", "unsatisfied" });
+        Assert.False(network.GetProperty("isExpensive").GetBoolean());
+        Assert.False(network.GetProperty("isConstrained").GetBoolean());
+        Assert.Equal(JsonValueKind.Array, network.GetProperty("interfaces").ValueKind);
+
+        Assert.True(payload.GetProperty("uptimeSeconds").GetDouble() >= 0);
+    }
+
+    [Fact]
+    public async Task DeviceUnknownCommand_ReturnsError()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "d3", Command = "device.unknown", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
     }
 }
 

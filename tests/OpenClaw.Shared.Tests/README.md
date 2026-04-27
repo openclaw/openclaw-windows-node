@@ -47,8 +47,8 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - ✅ Notify defaults title to "OpenClaw"
 - ✅ Unknown command returns error
 
-#### CanvasCapabilityTests (12 tests)
-- ✅ CanHandle all 7 canvas commands
+#### CanvasCapabilityTests (13 tests)
+- ✅ CanHandle all 8 canvas commands
 - ✅ Present raises event with url/width/height/title/alwaysOnTop
 - ✅ Present uses defaults when args missing
 - ✅ Hide raises event
@@ -59,7 +59,14 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - ✅ Snapshot returns error when no handler
 - ✅ A2UI push returns error when no jsonl
 - ✅ A2UI push raises event with jsonl content
+- ✅ A2UI pushJSONL legacy alias raises the same event
 - ✅ A2UI reset raises event
+
+#### DeviceCapabilityTests (4 tests)
+- ✅ CanHandle device.info/device.status
+- ✅ device.info returns Mac-compatible metadata payload
+- ✅ device.status returns Mac-compatible status payload
+- ✅ Unknown command returns error
 
 #### ScreenCapabilityTests (9 tests)
 - ✅ CanHandle screen.snapshot/screen.record and rejects non-gateway screen.capture/screen.list/start/stop commands

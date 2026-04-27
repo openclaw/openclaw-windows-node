@@ -248,7 +248,7 @@ Niche scenario. If the "server" must be Windows for some reason, this works but 
 | `canvas.snapshot` | ✅ | ✅ | ✅ | ❌ | **✅** | WebView2 CapturePreviewAsync |
 | `canvas.eval` | ✅ | ✅ | ✅ | ❌ | **✅** | WebView2 ExecuteScriptAsync |
 | `canvas.a2ui.push/reset` | ✅ | ✅ | ✅ | ❌ | **✅** | WebView2 |
-| `canvas.a2ui.pushJSONL` | ✅ | ✅ | ✅ | ❌ | ❌ | Legacy alias not yet implemented |
+| `canvas.a2ui.pushJSONL` | ✅ | ✅ | ✅ | ❌ | **✅** | Legacy alias over A2UI push |
 | `camera.snap` | ✅ AVFoundation | ✅ AVFoundation | ✅ CameraX | ❌ | **✅** | MediaCapture + frame reader fallback |
 | `camera.clip` | ✅ | ✅ | ✅ | ❌ | **✅** | MediaCapture + MediaEncoding |
 | `camera.list` | ✅ | ✅ | ✅ | ❌ | **✅** | DeviceInformation.FindAllAsync |
@@ -257,6 +257,7 @@ Niche scenario. If the "server" must be Windows for some reason, this works but 
 | `system.execApprovals` | ❌ | ❌ | ❌ | ❌ | **✅** | JSON policy file (exec-policy.json) |
 | `system.notify` | ✅ NSUserNotification | ✅ UNUserNotification | ✅ NotificationManager | ❌ | **✅** | ToastNotificationManager |
 | `location.get` | ✅ CLLocationManager | ✅ CLLocationManager | ✅ FusedLocation | ❌ | **✅** | Windows.Devices.Geolocation |
+| `device.info/status` | ✅ shared schema | ✅ shared schema | ✅ shared schema | ❌ | **✅** | .NET runtime, storage, network |
 | `sms.send` | ❌ | ❌ | ✅ | ❌ | ❌ | N/A |
 | Browser proxy | ✅ | ❌ | ❌ | ✅ Playwright | **⚠️ Future** | Playwright on Windows |
 | Accessibility | ✅ AX API | ❌ | ❌ | ❌ | **⚠️ Future** | UI Automation |
@@ -289,14 +290,15 @@ The tray app uses a dedicated node connection (`WindowsNodeClient`) with `role: 
     },
     "role": "node",
     "scopes": [],
-    "caps": ["canvas", "camera", "screen", "notifications", "system"],
+    "caps": ["canvas", "camera", "screen", "notifications", "system", "device"],
     "commands": [
       "canvas.present", "canvas.hide", "canvas.navigate",
       "canvas.eval", "canvas.snapshot", "canvas.a2ui.push",
-      "canvas.a2ui.reset",
+      "canvas.a2ui.pushJSONL", "canvas.a2ui.reset",
       "camera.list", "camera.snap", "camera.clip",
       "screen.snapshot", "screen.record",
       "location.get",
+      "device.info", "device.status",
       "system.run", "system.run.prepare", "system.which", "system.notify",
       "system.execApprovals.get", "system.execApprovals.set"
     ],
@@ -566,7 +568,8 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [x] `system.notify` — agent can request Windows toast notifications
 - [x] `canvas.present` / `canvas.hide` — floating WebView2 canvas window
 - [x] `canvas.navigate` / `canvas.eval` / `canvas.snapshot` — full canvas support
-- [x] `canvas.a2ui.push` / `canvas.a2ui.reset` — A2UI rendering
+- [x] `canvas.a2ui.push` / `canvas.a2ui.pushJSONL` / `canvas.a2ui.reset` — A2UI rendering
+- [x] `device.info` / `device.status` — metadata and lightweight status payloads
 - [x] `system.run` — exec commands on Windows (PowerShell/cmd) with ICommandRunner abstraction
 - [x] `system.execApprovals.get/set` — remote-manageable exec approval policy
 - [ ] Settings UI for node capabilities (enable/disable camera, screen, etc.)
@@ -675,9 +678,9 @@ This is a big effort and **contributions are very welcome!** Here's how to get s
 
 ### Good First Issues
 
-1. **`canvas.a2ui.pushJSONL` alias** — Route the legacy Mac-compatible alias through the existing A2UI push path.
-2. **Device status command** — Add `device.info` / `device.status` with OS, version, host, and basic availability details.
-3. **Capability diagnostics copy** — Add a copyable summary that explains declared commands, gateway allowlist status, and dangerous-command opt-ins.
+1. **Capability diagnostics copy** — Add a copyable summary that explains declared commands, gateway allowlist status, and dangerous-command opt-ins.
+2. **Gateway health summary** — Show version, update state, auth state, and active connection health in one panel.
+3. **Channel status cards** — Surface configured/running/error/probe state for channels.
 
 ### Medium Issues
 
@@ -706,7 +709,6 @@ Requires .NET 10.0 SDK, Windows 10/11. For testing node protocol, you'll need a 
 
 ## Open Questions
 
-- [ ] Should Windows implement `device.info` / `device.status` before or after browser proxy parity?
 - [ ] Should dangerous command opt-ins be shown in the tray as a guided repair flow, a docs link, or both?
 - [ ] How much channel management should live in the native tray versus opening the web dashboard?
 - [ ] Should Voice Mode land as a separate parity track after the open PR is reviewed against current Mac architecture?

@@ -200,14 +200,17 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
            "canvas.hide",
            "canvas.navigate",
            "canvas.eval",
-           "canvas.snapshot",
-           "canvas.a2ui.push",
-           "canvas.a2ui.reset",
-           "screen.snapshot",
-           "camera.list",
-           "camera.snap",
-           "camera.clip",
-           "location.get"
+            "canvas.snapshot",
+            "canvas.a2ui.push",
+            "canvas.a2ui.pushJSONL",
+            "canvas.a2ui.reset",
+            "screen.snapshot",
+            "camera.list",
+            "camera.snap",
+            "camera.clip",
+            "location.get",
+            "device.info",
+            "device.status"
          ]
         }
       }

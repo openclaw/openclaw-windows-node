@@ -32,6 +32,7 @@ public class NodeService : IDisposable
     private ScreenCapability? _screenCapability;
     private CameraCapability? _cameraCapability;
     private LocationCapability? _locationCapability;
+    private DeviceCapability? _deviceCapability;
     private readonly string _dataPath;
     private string? _token;
     
@@ -146,6 +147,10 @@ public class NodeService : IDisposable
         _locationCapability = new LocationCapability(_logger);
         _locationCapability.GetRequested += async (args) => await GetLocationAsync(args);
         _nodeClient.RegisterCapability(_locationCapability);
+
+        // Device metadata/status capability
+        _deviceCapability = new DeviceCapability(_logger);
+        _nodeClient.RegisterCapability(_deviceCapability);
         
         _logger.Info("All capabilities registered");
     }

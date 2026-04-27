@@ -20,6 +20,7 @@ public class CanvasCapability : NodeCapabilityBase
         "canvas.eval",
         "canvas.snapshot",
         "canvas.a2ui.push",
+        "canvas.a2ui.pushJSONL",
         "canvas.a2ui.reset"
     };
     
@@ -48,6 +49,7 @@ public class CanvasCapability : NodeCapabilityBase
             "canvas.eval" => await HandleEvalAsync(request),
             "canvas.snapshot" => await HandleSnapshotAsync(request),
             "canvas.a2ui.push" => HandleA2UIPush(request),
+            "canvas.a2ui.pushJSONL" => HandleA2UIPush(request),
             "canvas.a2ui.reset" => HandleA2UIReset(request),
             _ => Error($"Unknown command: {request.Command}")
         };
@@ -176,7 +178,7 @@ public class CanvasCapability : NodeCapabilityBase
                 var tempRoot = Path.GetFullPath(Path.GetTempPath());
                 if (!fullPath.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
                 {
-                    Logger.Warn($"canvas.a2ui.push: jsonlPath outside temp directory: {fullPath}");
+                    Logger.Warn($"{request.Command}: jsonlPath outside temp directory: {fullPath}");
                     return Error("jsonlPath must be within the system temp directory");
                 }
             }
@@ -191,7 +193,7 @@ public class CanvasCapability : NodeCapabilityBase
             }
             catch (Exception ex)
             {
-                Logger.Error($"canvas.a2ui.push: failed to read jsonlPath ({jsonlPath})", ex);
+                Logger.Error($"{request.Command}: failed to read jsonlPath ({jsonlPath})", ex);
                 return Error($"Failed to read jsonlPath: {ex.Message}");
             }
         }
@@ -201,7 +203,7 @@ public class CanvasCapability : NodeCapabilityBase
             return Error("Missing jsonl or jsonlPath parameter");
         }
         
-        Logger.Info($"canvas.a2ui.push: {jsonl.Length} chars");
+        Logger.Info($"{request.Command}: {jsonl.Length} chars");
         
         A2UIPushRequested?.Invoke(this, new CanvasA2UIArgs
         {

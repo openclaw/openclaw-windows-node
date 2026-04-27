@@ -44,6 +44,7 @@ These features need the gateway to send `node.invoke` commands:
 | `canvas.hide` | Hide canvas window | Closes the canvas window |
 | `canvas.eval` | Execute JavaScript | Runs JS in canvas, returns result |
 | `canvas.snapshot` | Capture canvas | Returns base64 PNG of canvas content |
+| `canvas.a2ui.pushJSONL` | Legacy A2UI JSONL push | Routes through same renderer path as `canvas.a2ui.push` |
 | `screen.snapshot` | Take screenshot | Captures screen, shows notification, returns base64 |
 | `screen.record` | Record short screen clip | Returns MP4/base64 metadata; requires explicit gateway allowlist |
 | `system.notify` | Show notification | Displays toast notification |
@@ -52,6 +53,7 @@ These features need the gateway to send `node.invoke` commands:
 | `camera.snap` | Capture photo | Returns base64 image (NV12 fallback) |
 | `camera.clip` | Capture video clip | Returns MP4/base64 metadata |
 | `location.get` | Get Windows location | Uses Windows location permission/settings |
+| `device.info` / `device.status` | Device metadata/status | Returns host/app/locale plus battery/storage/network/uptime payloads |
 
 ## Capabilities Advertised
 
@@ -61,6 +63,7 @@ When the node connects, it advertises these capabilities:
 - `system` - Notifications, command execution (`system.run`, `system.run.prepare`, `system.which`), exec approval policy
 - `camera` - MediaCapture photo/video capture (frame reader fallback)
 - `location` - Windows.Devices.Geolocation
+- `device` - Host/app metadata and lightweight status
 
 ## Security Features
 
@@ -100,8 +103,9 @@ When the node connects, it advertises these capabilities:
    - Graphics Capture video recording (MP4/base64)
 3. ~~**camera.clip**~~ ✅ Implemented
    - Short webcam video capture (MediaCapture + encoding)
-4. **A2UI pushJSONL alias**
-   - Windows supports `canvas.a2ui.push` and `canvas.a2ui.reset`; Mac also supports legacy `canvas.a2ui.pushJSONL`
+4. ~~**A2UI pushJSONL alias + device status**~~ ✅ Implemented
+   - Legacy `canvas.a2ui.pushJSONL`
+   - Safe `device.info` / `device.status`
 5. **Packaging & consent prompts**
    - MSIX packaging with camera/screen capabilities for system prompts
 6. **Test matrix & polish**
