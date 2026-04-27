@@ -478,6 +478,8 @@ var stream = await synth.SynthesizeTextToStreamAsync(text);
 
 This is a candidate implementation path, not an implemented node command yet. Voice/Talk mode parity should stay on its own track so Windows does not advertise a speech capability before there is a shared command contract and permission model.
 
+Current PR review status: open PR #120 (`feature/voice-mode`) is a useful prototype but should not merge as-is. It currently conflicts with the active capability-settings branch, advertises `voice.*` commands without the default-off Settings gate used for other privacy-sensitive capability groups, widens operator scopes in the same PR, persists cloud TTS provider keys in plain settings JSON, and introduces a Windows-specific wire schema before the Mac runtime/controller/session contract is agreed. Safe next step: split schema, gateway scope, chat transport, Windows runtime, WebChat integration, and cloud-provider credentials into separate reviews; keep the first merge behind a default-off Voice Settings group and gateway dangerous-command allowlist.
+
 ---
 
 ## Architectural Questions
@@ -696,7 +698,7 @@ This is a big effort and **contributions are very welcome!** Here's how to get s
 
 ### Harder Issues
 
-6. **Voice mode parity** — Review the open Windows Voice Mode PR against the current Mac voice runtime/controller/session split.
+6. **Voice mode parity** — PR #120 has been reviewed and should stay blocked until it is rebased/split, gated default-off through Settings, aligned with a shared Mac/gateway voice command contract, and hardened for credential storage and permission prompts.
 7. **Native Windows gateway audit** — Run `openclaw gateway` on Windows, identify and fix platform-specific failures.
 8. **Richer channel operations** — Add tray surfaces for channel configuration, probe status, token source, last error, and recovery actions.
 
@@ -718,7 +720,7 @@ Requires .NET 10.0 SDK, Windows 10/11. For testing node protocol, you'll need a 
 
 - [x] Should dangerous command opt-ins be shown in the tray as a guided repair flow, a docs link, or both? Command Center now shows copyable safety guidance but intentionally avoids one-click dangerous repair commands.
 - [ ] How much channel management should live in the native tray versus opening the web dashboard?
-- [ ] Should Voice Mode land as a separate parity track after the open PR is reviewed against current Mac architecture?
+- [x] Should Voice Mode land as a separate parity track after the open PR is reviewed against current Mac architecture? Yes. PR #120 should not advertise voice commands from Windows until the shared contract, Settings gate, gateway allowlist, and credential-storage concerns are resolved.
 
 ---
 
