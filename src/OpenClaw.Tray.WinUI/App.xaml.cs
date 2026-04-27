@@ -1972,6 +1972,7 @@ public partial class App : Application
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
         warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
+        warnings.AddRange(BuildBrowserProxyAuthWarnings(nodes));
 
         if (!string.IsNullOrWhiteSpace(_authFailureMessage))
         {
@@ -2114,6 +2115,26 @@ public partial class App : Application
                     NodeId = item.NodeId
                 })
                 .ToList()
+        };
+    }
+
+    private IEnumerable<GatewayDiagnosticWarning> BuildBrowserProxyAuthWarnings(IReadOnlyList<NodeCapabilityHealthInfo> nodes)
+    {
+        if (_settings?.NodeBrowserProxyEnabled == false ||
+            !string.IsNullOrWhiteSpace(_settings?.Token) ||
+            !nodes.Any(node => node.BrowserDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
+        {
+            yield break;
+        }
+
+        yield return new GatewayDiagnosticWarning
+        {
+            Severity = GatewayDiagnosticSeverity.Info,
+            Category = "browser",
+            Title = "Browser proxy auth may need a gateway token",
+            Detail = "This Windows node is advertising browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
+            RepairAction = "Copy browser proxy auth guidance",
+            CopyText = "If browser.proxy returns an auth error, enter the gateway shared token in Settings > Gateway Token, or configure the browser-control host to use auth compatible with the Windows node. Do not paste QR bootstrap tokens into the normal gateway token field."
         };
     }
 

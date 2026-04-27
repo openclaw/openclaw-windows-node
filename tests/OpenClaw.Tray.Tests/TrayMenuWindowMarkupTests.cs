@@ -175,6 +175,8 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("ResolveLocalBrowserProxyPort", appSource);
         Assert.Contains("ResolveRemoteBrowserProxyPort", appSource);
         Assert.Contains("<remote-gateway-port+2>", appSource);
+        Assert.Contains("BuildBrowserProxyAuthWarnings(nodes)", appSource);
+        Assert.Contains("Do not paste QR bootstrap tokens into the normal gateway token field.", appSource);
         var portDiagnosticsSourcePath = Path.Combine(
             GetRepositoryRoot(),
             "src",

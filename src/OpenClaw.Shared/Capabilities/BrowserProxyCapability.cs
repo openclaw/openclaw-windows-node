@@ -127,7 +127,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
     private NodeInvokeResponse BuildProxyResponse(HttpResponseMessage response, string responseText)
     {
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            return Error("Browser control host rejected authentication.");
+            return Error(BuildAuthenticationFailureGuidance());
         if (!response.IsSuccessStatusCode)
             return Error(string.IsNullOrWhiteSpace(responseText) ? $"Browser control host returned HTTP {(int)response.StatusCode}" : responseText);
 
@@ -140,6 +140,13 @@ public class BrowserProxyCapability : NodeCapabilityBase
         return files.Count == 0
             ? Success(new { result })
             : Success(new { result, files });
+    }
+
+    private string BuildAuthenticationFailureGuidance()
+    {
+        return string.IsNullOrWhiteSpace(_bearerToken)
+            ? "Browser control host rejected the unauthenticated request. Windows has no gateway shared token saved for browser-control auth; enter the matching gateway token in Settings or run the browser-control host with compatible auth."
+            : "Browser control host rejected authentication. Verify the gateway token saved in Settings matches the browser-control host auth token or password.";
     }
 
     private static bool TryResolveControlEndpoint(string gatewayUrl, out int controlPort, out string error)

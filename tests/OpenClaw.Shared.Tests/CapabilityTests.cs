@@ -786,6 +786,29 @@ public class BrowserProxyCapabilityTests
 
         Assert.False(res.Ok);
         Assert.Contains("authentication", res.Error);
+        Assert.Contains("Verify the gateway token saved in Settings", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnauthorizedWithoutTokenExplainsMissingSharedToken()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "",
+            new CapturingHandler("Unauthorized", HttpStatusCode.Unauthorized));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-unauthenticated",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("unauthenticated request", res.Error);
+        Assert.Contains("no gateway shared token saved", res.Error);
+        Assert.Contains("Settings", res.Error);
     }
 
     [Fact]
