@@ -394,7 +394,7 @@ Deliverables:
   - send test heartbeat
   - reset tunnel
   - restart local gateway if topology is WindowsNative and managed
-- Rolling diagnostics JSONL with rotation.
+- Rolling diagnostics JSONL with rotation: **implemented for privacy-safe app/connection/gateway/tunnel metadata**
 - Port diagnostics table: **read-only local listener visibility implemented**
 
 Risk: medium-high for kill/restart actions; start as read-only/copy actions.

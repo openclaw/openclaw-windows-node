@@ -257,6 +257,12 @@ public partial class App : Application
 
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
+        DiagnosticsJsonlService.Configure(DataPath);
+        DiagnosticsJsonlService.Write("app.start", new
+        {
+            nodeMode = _settings.EnableNodeMode,
+            useSshTunnel = _settings.UseSshTunnel
+        });
 
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
@@ -1315,6 +1321,11 @@ public partial class App : Application
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         _currentStatus = status;
+        DiagnosticsJsonlService.Write("connection.status", new
+        {
+            status = status.ToString(),
+            nodeMode = _settings?.EnableNodeMode == true
+        });
         if (status == ConnectionStatus.Connected)
             _authFailureMessage = null;
         UpdateTrayIcon();
@@ -1330,6 +1341,11 @@ public partial class App : Application
     {
         _authFailureMessage = message;
         Logger.Error($"Authentication failed: {message}");
+        DiagnosticsJsonlService.Write("connection.auth_failed", new
+        {
+            message,
+            nodeMode = _settings?.EnableNodeMode == true
+        });
         AddRecentActivity($"Auth failed: {message}", category: "error");
         UpdateTrayIcon();
     }
@@ -1387,6 +1403,12 @@ public partial class App : Application
             var summary = channels.Length == 0
                 ? "No channels reported"
                 : string.Join(", ", channels.Select(c => $"{c.Name}={c.Status}"));
+            DiagnosticsJsonlService.Write("gateway.health.channels", new
+            {
+                channelCount = channels.Length,
+                healthyCount = channels.Count(c => ChannelHealth.IsHealthyStatus(c.Status)),
+                errorCount = channels.Count(c => !string.IsNullOrWhiteSpace(c.Error))
+            });
             AddRecentActivity("Channel health updated", category: "channel", dashboardPath: "channels", details: summary);
         }
 
@@ -1450,6 +1472,16 @@ public partial class App : Application
     private void OnGatewaySelfUpdated(object? sender, GatewaySelfInfo gatewaySelf)
     {
         _lastGatewaySelf = _lastGatewaySelf?.Merge(gatewaySelf) ?? gatewaySelf;
+        DiagnosticsJsonlService.Write("gateway.self", new
+        {
+            version = _lastGatewaySelf.ServerVersion,
+            protocol = _lastGatewaySelf.Protocol,
+            uptimeMs = _lastGatewaySelf.UptimeMs,
+            authMode = _lastGatewaySelf.AuthMode,
+            stateVersionPresence = _lastGatewaySelf.StateVersionPresence,
+            stateVersionHealth = _lastGatewaySelf.StateVersionHealth,
+            presenceCount = _lastGatewaySelf.PresenceCount
+        });
         _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
     }
 
@@ -2653,6 +2685,13 @@ public partial class App : Application
             {
                 _sshTunnelService ??= new SshTunnelService(new AppLogger());
                 _sshTunnelService.EnsureStarted(_settings);
+                DiagnosticsJsonlService.Write("tunnel.ensure_started", new
+                {
+                    status = _sshTunnelService.Status.ToString(),
+                    localEndpoint = $"127.0.0.1:{_settings.SshTunnelLocalPort}",
+                    remoteHost = string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ? null : _settings.SshTunnelHost,
+                    remotePort = _settings.SshTunnelRemotePort
+                });
             }
             catch (Exception ex)
             {
@@ -2676,6 +2715,13 @@ public partial class App : Application
     {
         Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
         _sshTunnelService?.MarkRestarting(exitCode);
+        DiagnosticsJsonlService.Write("tunnel.restart_scheduled", new
+        {
+            exitCode,
+            localEndpoint = _sshTunnelService?.CurrentLocalPort > 0
+                ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
+                : null
+        });
         await Task.Delay(3000);
         if (_sshTunnelService != null && _settings?.UseSshTunnel == true)
         {
@@ -2683,10 +2729,17 @@ public partial class App : Application
             {
                 _sshTunnelService.EnsureStarted(_settings);
                 Logger.Info("SSH tunnel restarted successfully");
+                DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
+                {
+                    localEndpoint = _sshTunnelService.CurrentLocalPort > 0
+                        ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
+                        : null
+                });
             }
             catch (Exception ex)
             {
                 Logger.Error($"SSH tunnel restart failed: {ex.Message}");
+                DiagnosticsJsonlService.Write("tunnel.restart_failed", new { ex.Message });
             }
         }
     }
