@@ -177,6 +177,8 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("<remote-gateway-port+2>", appSource);
         Assert.Contains("BuildBrowserProxyAuthWarnings(nodes)", appSource);
         Assert.Contains("Do not paste QR bootstrap tokens into the normal gateway token field.", appSource);
+        Assert.Contains("BuildBrowserProxyHostGuidance(port.Port)", appSource);
+        Assert.Contains("Start a compatible OpenClaw browser-control host", appSource);
         var portDiagnosticsSourcePath = Path.Combine(
             GetRepositoryRoot(),
             "src",

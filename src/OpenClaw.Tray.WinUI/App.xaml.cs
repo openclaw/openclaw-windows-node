@@ -2193,10 +2193,23 @@ public partial class App : Application
                     Severity = GatewayDiagnosticSeverity.Info,
                     Category = "browser",
                     Title = "Browser proxy host not detected",
-                    Detail = "browser.proxy is Mac-local today. Windows can only add a compatible local browser proxy when a browser host is listening on the gateway port + 2."
+                    Detail = "browser.proxy needs a compatible browser-control host listening on the gateway port + 2.",
+                    RepairAction = "Copy browser-control host guidance",
+                    CopyText = BuildBrowserProxyHostGuidance(port.Port)
                 };
             }
         }
+    }
+
+    private static string BuildBrowserProxyHostGuidance(int browserProxyPort)
+    {
+        var portText = browserProxyPort is >= 1 and <= 65535 ? browserProxyPort.ToString() : "<gateway-port+2>";
+        return string.Join(Environment.NewLine, [
+            $"Start a compatible OpenClaw browser-control host on 127.0.0.1:{portText}.",
+            "It must run on the same machine as the gateway, or be forwarded to Windows with SSH tunnel mode.",
+            "Use auth compatible with the Windows node: the saved Settings gateway token, browser-control token, or browser-control password.",
+            "After it is listening, retry browser.proxy from the gateway."
+        ]);
     }
 
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
