@@ -59,6 +59,17 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"AutomationProperties.AutomationId=""SettingsSshBrowserForwardHint""", xaml);
         Assert.Contains("local-port+2 to remote-port+2", xaml);
         Assert.Contains(@"TextChanged=""OnTopologyInputChanged""", xaml);
+
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "SettingsWindow.xaml.cs");
+        var source = File.ReadAllText(sourcePath);
+        Assert.Contains("browserProxyForward", source);
+        Assert.Contains("NodeBrowserProxyToggle.IsOn", source);
+        Assert.Contains("CanForwardBrowserProxyPort", source);
     }
 
     [Fact]

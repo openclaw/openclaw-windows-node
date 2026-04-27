@@ -164,8 +164,11 @@ public sealed partial class SettingsWindow : WindowEx
             if (useSshTunnel)
             {
                 testTunnel = new SshTunnelService(testLogger);
-                Logger.Info($"[Settings] Starting temporary SSH tunnel for test: {sshUser}@{sshHost} local:{localPort} remote:{remotePort}");
-                testTunnel.EnsureStarted(sshUser, sshHost, remotePort, localPort);
+                var includeBrowserProxyForward =
+                    NodeBrowserProxyToggle.IsOn &&
+                    SshTunnelCommandLine.CanForwardBrowserProxyPort(remotePort, localPort);
+                Logger.Info($"[Settings] Starting temporary SSH tunnel for test: {sshUser}@{sshHost} local:{localPort} remote:{remotePort} browserProxyForward:{includeBrowserProxyForward}");
+                testTunnel.EnsureStarted(sshUser, sshHost, remotePort, localPort, includeBrowserProxyForward);
             }
 
             var client = new OpenClawGatewayClient(
