@@ -89,9 +89,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'!='Debug'">
-    <!-- In Release builds, trimming is enabled by default. 
-         feel free to disable this if needed -->
-    <PublishTrimmed>true</PublishTrimmed>
+    <!-- Trimming requires self-contained publish. Only enable when a RID is set
+         (i.e. during `dotnet publish -r <rid>`), otherwise plain `dotnet build -c Release`
+         fails with NETSDK1102. -->
+    <PublishTrimmed Condition="'$(RuntimeIdentifier)' != ''">true</PublishTrimmed>
 
     <!-- In release, also ignore the aforementioned ILLink warning -->
     <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>

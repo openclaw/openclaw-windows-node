@@ -933,6 +933,42 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Étape 3 sur 3 — Terminé</value>
   </data>
 
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>MODE DÉVELOPPEUR</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>Activer le serveur MCP local</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>Expose les mêmes capacités du nœud (système, écran, caméra, canvas) aux clients MCP locaux (Claude Desktop, Cursor, Claude Code).</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>Point de terminaison :</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>État :</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>À l'écoute</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>Arrêté</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>Démarrera lors de l'enregistrement</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>S'arrêtera lors de l'enregistrement</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>Échec du démarrage : </value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">

@@ -1481,6 +1481,33 @@ public class ScreenCapabilityTests
     }
 
     [Fact]
+    public async Task Capture_ClampsExtremeValues_ToSafeBounds()
+    {
+        // CR-007: oversized/negative caller values must be clamped before any
+        // downstream allocation (back-buffer sizes, image encoder buffers).
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenCaptureArgs? received = null;
+        cap.CaptureRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenCaptureResult { Format = "png", Width = 0, Height = 0, Base64 = "" });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clamp",
+            Command = "screen.snapshot",
+            Args = Parse("""{"maxWidth":99999,"quality":500,"screenIndex":-3}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.True(received!.MaxWidth <= 7680, $"maxWidth not clamped: {received.MaxWidth}");
+        Assert.InRange(received.Quality, 1, 100);
+        Assert.True(received.MonitorIndex >= 0, $"screenIndex not clamped: {received.MonitorIndex}");
+    }
+
+    [Fact]
     public async Task Capture_UsesMonitorAlias_ForScreenIndex()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
@@ -1814,6 +1841,33 @@ public class CameraCapabilityTests
         Assert.False(res.Ok);
         Assert.NotNull(res.Error);
         Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Clip_ClampsZeroAndNegativeDuration_ToMinimum()
+    {
+        // CR-007: durationMs <= 0 used to slip through the original
+        // `Math.Min(value, 60000)` cap and ask the recorder to capture for
+        // zero / negative seconds, which produced a degenerate file.
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? received = null;
+        cap.ClipRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "", DurationMs = args.DurationMs, HasAudio = false });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip-clamp",
+            Command = "camera.clip",
+            Args = Parse("""{"durationMs":-500}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.True(received!.DurationMs >= 100, $"duration not floor-clamped: {received.DurationMs}");
+        Assert.True(received.DurationMs <= 60000);
     }
 }
 

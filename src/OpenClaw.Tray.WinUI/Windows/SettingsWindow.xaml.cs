@@ -12,15 +12,17 @@ namespace OpenClawTray.Windows;
 public sealed partial class SettingsWindow : WindowEx
 {
     private readonly SettingsManager _settings;
+    private readonly NodeService? _nodeService;
     private string _manualGatewayUrl = "";
     public bool IsClosed { get; private set; }
 
     public event EventHandler? SettingsSaved;
     public event EventHandler? CommandCenterRequested;
 
-    public SettingsWindow(SettingsManager settings)
+    public SettingsWindow(SettingsManager settings, NodeService? nodeService = null)
     {
         _settings = settings;
+        _nodeService = nodeService;
         InitializeComponent();
         
         Title = LocalizationHelper.GetString("WindowTitle_Settings");
@@ -84,6 +86,54 @@ public sealed partial class SettingsWindow : WindowEx
         NodeLocationToggle.IsOn = _settings.NodeLocationEnabled;
         NodeBrowserProxyToggle.IsOn = _settings.NodeBrowserProxyEnabled;
         UpdateSshTunnelPreviewText();
+        McpServerToggle.IsOn = _settings.EnableMcpServer;
+        McpUrlTextBox.Text = NodeService.McpServerUrl;
+        McpServerToggle.Toggled += (_, _) => UpdateMcpStatus();
+        UpdateMcpStatus();
+    }
+
+    private void UpdateMcpStatus()
+    {
+        var toggleOn = McpServerToggle.IsOn;
+        var savedOn = _settings.EnableMcpServer;
+        var running = _nodeService?.IsMcpRunning == true;
+        var startupError = _nodeService?.McpStartupError;
+
+        if (!toggleOn)
+        {
+            McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_Disabled");
+            return;
+        }
+
+        // Toggle changed but not saved yet — Save applies immediately, so be
+        // explicit instead of the old "save and restart" wording (the tray
+        // reinitializes services in OnSettingsSaved without an app restart).
+        if (toggleOn != savedOn)
+        {
+            McpStatusText.Text = LocalizationHelper.GetString(savedOn
+                ? "Mcp_Status_WillStopOnSave"
+                : "Mcp_Status_WillStartOnSave");
+            return;
+        }
+
+        if (running)
+        {
+            McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_Listening");
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(startupError))
+        {
+            // The diagnostic detail (URL ACL command, port number) stays in
+            // English on purpose — it's a literal CLI invocation. Only the
+            // localized "Failed to start:" prefix wraps it.
+            McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_FailedToStart") + startupError;
+            return;
+        }
+
+        // Toggle on, saved on, but no service yet — node service is still
+        // initializing or hasn't been created (gateway-only setup path).
+        McpStatusText.Text = LocalizationHelper.GetString("Mcp_Status_Stopped");
     }
 
     private void SaveSettings()
@@ -128,6 +178,7 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.NodeCameraEnabled = NodeCameraToggle.IsOn;
         _settings.NodeLocationEnabled = NodeLocationToggle.IsOn;
         _settings.NodeBrowserProxyEnabled = NodeBrowserProxyToggle.IsOn;
+        _settings.EnableMcpServer = McpServerToggle.IsOn;
 
         _settings.Save();
         AutoStartManager.SetAutoStart(_settings.AutoStart);

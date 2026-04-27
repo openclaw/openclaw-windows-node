@@ -13,7 +13,10 @@ namespace OpenClaw.Shared.Capabilities;
 public class SystemCapability : NodeCapabilityBase
 {
     public override string Category => "system";
-    
+
+    private const int DefaultRunTimeoutMs = 30_000;
+    private const int MaxRunTimeoutMs = 600_000; // 10 minutes
+
     private static readonly string[] _commands = new[]
     {
         "system.notify",
@@ -313,8 +316,15 @@ public class SystemCapability : NodeCapabilityBase
         
         var shell = GetStringArg(request.Args, "shell");
         var cwd = GetStringArg(request.Args, "cwd");
-        var timeoutMs = GetIntArg(request.Args, "timeoutMs", 
-            GetIntArg(request.Args, "timeout", 30000));
+        var timeoutMs = GetIntArg(request.Args, "timeoutMs",
+            GetIntArg(request.Args, "timeout", DefaultRunTimeoutMs));
+        // Clamp caller-supplied timeouts. timeoutMs <= 0 historically meant
+        // "wait forever" inside LocalCommandRunner; that lets a wedged process
+        // pin a handler slot indefinitely, so we coerce to the default. The
+        // upper bound is generous but prevents a multi-day timeout request
+        // from accidentally outliving the tray.
+        if (timeoutMs <= 0) timeoutMs = DefaultRunTimeoutMs;
+        if (timeoutMs > MaxRunTimeoutMs) timeoutMs = MaxRunTimeoutMs;
         
         // Parse env dict if present
         Dictionary<string, string>? env = null;
