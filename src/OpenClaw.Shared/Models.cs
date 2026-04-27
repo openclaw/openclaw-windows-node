@@ -721,6 +721,17 @@ public class GatewaySelfInfo
     }
 }
 
+public class PortDiagnosticInfo
+{
+    public string Purpose { get; set; } = "";
+    public int Port { get; set; }
+    public bool IsLocal { get; set; } = true;
+    public bool IsListening { get; set; }
+    public string Detail { get; set; } = "";
+
+    public string StatusText => IsListening ? "listening" : "not listening";
+}
+
 public class GatewayDiagnosticWarning
 {
     public GatewayDiagnosticSeverity Severity { get; set; } = GatewayDiagnosticSeverity.Info;
@@ -836,6 +847,7 @@ public class GatewayCommandCenterState
     public GatewayTopologyInfo Topology { get; set; } = new();
     public TunnelCommandCenterInfo? Tunnel { get; set; }
     public GatewaySelfInfo? GatewaySelf { get; set; }
+    public List<PortDiagnosticInfo> PortDiagnostics { get; set; } = new();
     public List<ChannelCommandCenterInfo> Channels { get; set; } = new();
     public List<SessionInfo> Sessions { get; set; } = new();
     public GatewayUsageInfo? Usage { get; set; }

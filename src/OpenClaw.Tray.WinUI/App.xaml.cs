@@ -1876,8 +1876,10 @@ public partial class App : Application
             _settings?.SshTunnelLocalPort ?? 0,
             _settings?.SshTunnelRemotePort ?? 0);
         var tunnel = BuildTunnelInfo();
+        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel);
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
+        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
 
         if (!string.IsNullOrWhiteSpace(_authFailureMessage))
         {
@@ -1997,6 +1999,7 @@ public partial class App : Application
             Topology = topology,
             Tunnel = tunnel,
             GatewaySelf = _lastGatewaySelf,
+            PortDiagnostics = portDiagnostics,
             Channels = _lastChannels.Select(ChannelCommandCenterInfo.FromHealth).ToList(),
             Sessions = _lastSessions.ToList(),
             Usage = _lastUsage,
@@ -2005,6 +2008,41 @@ public partial class App : Application
             Nodes = nodes,
             Warnings = CommandCenterDiagnostics.SortAndDedupeWarnings(warnings)
         };
+    }
+
+    private static IEnumerable<GatewayDiagnosticWarning> BuildPortDiagnosticWarnings(
+        IReadOnlyList<PortDiagnosticInfo> ports,
+        GatewayTopologyInfo topology,
+        TunnelCommandCenterInfo? tunnel)
+    {
+        foreach (var port in ports)
+        {
+            if (tunnel?.Status == TunnelStatus.Up &&
+                port.Purpose.Equals("SSH tunnel local forward", StringComparison.OrdinalIgnoreCase) &&
+                !port.IsListening)
+            {
+                yield return new GatewayDiagnosticWarning
+                {
+                    Severity = GatewayDiagnosticSeverity.Warning,
+                    Category = "port",
+                    Title = "SSH tunnel port is not listening",
+                    Detail = port.Detail
+                };
+            }
+
+            if (topology.DetectedKind == GatewayKind.WindowsNative &&
+                port.Purpose.Equals("Gateway endpoint", StringComparison.OrdinalIgnoreCase) &&
+                !port.IsListening)
+            {
+                yield return new GatewayDiagnosticWarning
+                {
+                    Severity = GatewayDiagnosticSeverity.Info,
+                    Category = "port",
+                    Title = "No local gateway listener detected",
+                    Detail = port.Detail
+                };
+            }
+        }
     }
 
     private TunnelCommandCenterInfo? BuildTunnelInfo()

@@ -123,6 +123,22 @@ public sealed partial class StatusDetailWindow : WindowEx
             WarningsSection.Visibility = Visibility.Collapsed;
         }
 
+        if (state.PortDiagnostics.Count > 0)
+        {
+            PortDiagnosticsSection.Visibility = Visibility.Visible;
+            PortDiagnosticsList.ItemsSource = state.PortDiagnostics.Select(p => new PortDiagnosticViewModel
+            {
+                StatusIcon = p.IsListening ? "🟢" : "⚪",
+                Purpose = $"{p.Purpose} :{p.Port}",
+                Detail = p.Detail,
+                StatusText = p.StatusText
+            }).ToList();
+        }
+        else
+        {
+            PortDiagnosticsSection.Visibility = Visibility.Collapsed;
+        }
+
         // Usage
         if (state.Usage != null)
         {
@@ -244,6 +260,14 @@ public sealed partial class StatusDetailWindow : WindowEx
         public string Name { get; set; } = "";
         public string DetailText { get; set; } = "";
         public string CommandText { get; set; } = "";
+    }
+
+    private class PortDiagnosticViewModel
+    {
+        public string StatusIcon { get; set; } = "";
+        public string Purpose { get; set; } = "";
+        public string Detail { get; set; } = "";
+        public string StatusText { get; set; } = "";
     }
 
     private static string BuildChannelDetail(ChannelCommandCenterInfo channel)
