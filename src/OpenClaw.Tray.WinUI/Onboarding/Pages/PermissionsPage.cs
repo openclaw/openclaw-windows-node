@@ -2,88 +2,160 @@ using OpenClawTray.Infrastructure;
 using OpenClawTray.Infrastructure.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
+using OpenClawTray.Services;
 using static OpenClawTray.Infrastructure.Factories;
 using Microsoft.UI.Xaml;
+using Windows.System;
 
 namespace OpenClawTray.Onboarding.Pages;
 
 /// <summary>
 /// Page 5: Grant Permissions.
-/// Shows Windows permission status for 5 capabilities and lets users
-/// open system settings to grant each one.
+/// Shows real Windows permission status for 5 capabilities and lets users
+/// open system settings to grant each one. Auto-refreshes when permissions change.
 /// </summary>
 public sealed class PermissionsPage : Component<OnboardingState>
 {
     public override Element Render()
     {
-        var (notifications, setNotifications) = UseState(false);
-        var (camera, setCamera) = UseState(false);
-        var (microphone, setMicrophone) = UseState(false);
-        var (screenCapture, setScreenCapture) = UseState(false);
-        var (location, setLocation) = UseState(false);
-        var (statusMsg, setStatusMsg) = UseState("");
+        var (permissions, setPermissions) = UseState<List<PermissionChecker.PermissionResult>?>(null);
+        var (refreshKey, setRefreshKey) = UseState(0);
+
+        // Check permissions on mount and whenever refreshKey changes
+        UseEffect(() =>
+        {
+            async void LoadPermissions()
+            {
+                var results = await PermissionChecker.CheckAllAsync();
+                setPermissions(results);
+            }
+            LoadPermissions();
+        }, refreshKey);
+
+        // Subscribe to camera/mic access changes for auto-refresh
+        UseEffect(() =>
+        {
+            var unsubscribe = PermissionChecker.SubscribeToAccessChanges(() =>
+            {
+                setRefreshKey(refreshKey + 1);
+            });
+            return unsubscribe;
+        });
+
+        async void OpenSettings(string settingsUri)
+        {
+            if (string.IsNullOrEmpty(settingsUri)) return;
+
+            // SECURITY: Only allow ms-settings: URIs to prevent launching arbitrary protocols
+            if (!Uri.TryCreate(settingsUri, UriKind.Absolute, out var uri)
+                || !uri.Scheme.Equals("ms-settings", StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Warn($"[Permissions] Blocked non-settings URI: {settingsUri}");
+                return;
+            }
+
+            try
+            {
+                var launched = await Launcher.LaunchUriAsync(uri);
+                if (!launched)
+                {
+                    // Fallback: refresh status anyway in case it changed
+                    setRefreshKey(refreshKey + 1);
+                }
+            }
+            catch
+            {
+                setRefreshKey(refreshKey + 1);
+            }
+        }
+
+        // Build permission rows from real data
+        var rows = new List<Element>();
+        if (permissions != null)
+        {
+            foreach (var perm in permissions)
+            {
+                var p = perm; // capture for closure
+                rows.Add(PermissionRow(p, () =>
+                {
+                    OpenSettings(p.SettingsUri);
+                    // Refresh after a brief delay to let user return from Settings
+                    _ = Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(_ =>
+                        setRefreshKey(refreshKey + 1));
+                }));
+            }
+        }
+        else
+        {
+            rows.Add(TextBlock(LocalizationHelper.GetString("Onboarding_Permissions_Checking"))
+                .FontSize(13)
+                .Opacity(0.6)
+                .HAlign(HorizontalAlignment.Center));
+        }
 
         return VStack(16,
-            TextBlock("Grant Permissions")
-                .FontSize(24)
+            TextBlock(LocalizationHelper.GetString("Onboarding_Permissions_Title"))
+                .FontSize(22)
                 .FontWeight(new global::Windows.UI.Text.FontWeight(700))
                 .HAlign(HorizontalAlignment.Center),
 
-            TextBlock("OpenClaw works best when it can send notifications, access your camera and microphone, capture your screen, and know your location. Grant permissions below.")
+            TextBlock(LocalizationHelper.GetString("Onboarding_Permissions_Description"))
                 .FontSize(14)
-                .Opacity(0.7)
+                .Opacity(0.6)
                 .HAlign(HorizontalAlignment.Center)
                 .TextWrapping(),
 
             Border(
                 VStack(4,
-                    PermissionRow("🔔", "Notifications", notifications, () =>
-                    {
-                        setNotifications(true);
-                        setStatusMsg("Opened Notifications settings");
-                    }),
-                    PermissionRow("📷", "Camera", camera, () =>
-                    {
-                        setCamera(true);
-                        setStatusMsg("Opened Camera settings");
-                    }),
-                    PermissionRow("🎤", "Microphone", microphone, () =>
-                    {
-                        setMicrophone(true);
-                        setStatusMsg("Opened Microphone settings");
-                    }),
-                    PermissionRow("🖥️", "Screen Capture", screenCapture, () =>
-                    {
-                        setScreenCapture(true);
-                        setStatusMsg("Opened Screen Capture settings");
-                    }),
-                    PermissionRow("📍", "Location (optional)", location, () =>
-                    {
-                        setLocation(true);
-                        setStatusMsg("Opened Location settings");
-                    })
+                    VStack(4, rows.ToArray()),
+                    Button($"↻ {LocalizationHelper.GetString("Onboarding_Permissions_Refresh")}", () => setRefreshKey(refreshKey + 1))
+                        .HAlign(HorizontalAlignment.Center)
+                        .Margin(0, 8, 0, 0)
                 ).Padding(12)
             )
             .CornerRadius(8)
             .Background("#F5F5F5")
-            .Margin(0, 8, 0, 0),
-
-            TextBlock(statusMsg)
-                .FontSize(12)
-                .Opacity(0.7)
-                .HAlign(HorizontalAlignment.Center)
+            .Margin(0, 8, 0, 0)
         )
         .MaxWidth(460)
         .Padding(0, 32, 0, 0);
     }
 
-    private static Element PermissionRow(string icon, string name, bool granted, Action onRequest)
+    private static Element PermissionRow(PermissionChecker.PermissionResult perm, Action onOpenSettings)
     {
-        return HStack(12,
-            TextBlock(icon).FontSize(18).Width(24),
-            TextBlock(name).FontSize(14).Width(160),
-            TextBlock(granted ? "✅" : "⚪").FontSize(16).Width(24),
-            Button("Open Settings", onRequest)
-        ).Padding(6, 6, 6, 6);
+        var statusIcon = perm.Status switch
+        {
+            PermissionChecker.PermissionStatus.Granted => "✅",
+            PermissionChecker.PermissionStatus.Supported => "✅",
+            PermissionChecker.PermissionStatus.Denied => "❌",
+            PermissionChecker.PermissionStatus.NoDevice => "➖",
+            PermissionChecker.PermissionStatus.NotSupported => "➖",
+            _ => "⚪"
+        };
+
+        var leftContent = HStack(8,
+            TextBlock(perm.Icon).FontSize(18).Width(28),
+            VStack(2,
+                TextBlock(perm.Name).FontSize(14).TextWrapping(),
+                TextBlock(perm.StatusLabel)
+                    .FontSize(11)
+                    .Opacity(0.6)
+                    .TextWrapping()
+            ).MinWidth(120).MaxWidth(180),
+            TextBlock(statusIcon).FontSize(16)
+                .VAlign(VerticalAlignment.Center)
+        ).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 0);
+
+        // Always show "Open Settings" for permissions that have a settings URI
+        Element? rightContent = !string.IsNullOrEmpty(perm.SettingsUri)
+            ? Button(LocalizationHelper.GetString("Onboarding_Permissions_OpenSettings"), onOpenSettings)
+                .VAlign(VerticalAlignment.Center)
+                .Grid(row: 0, column: 1)
+            : null;
+
+        return Grid(["1*", "Auto"], ["Auto"],
+            leftContent,
+            rightContent
+        ).Padding(6, 8, 6, 8);
     }
 }
