@@ -734,6 +734,12 @@
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>节点模式允许您的 Windows 电脑为 OpenClaw 执行任务 — 如屏幕截图、摄像头访问和画布绘制。</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>仅为您信任的网关和代理启用节点模式</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>已批准的代理可以运行本地命令，并可能访问已启用的设备表面，例如屏幕、摄像头、位置、浏览器和画布。您稍后可以在设置中禁用能力组。</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>启用节点模式</value>
   </data>

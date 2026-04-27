@@ -734,6 +734,12 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>Knooppuntmodus laat uw Windows-machine taken uitvoeren voor OpenClaw — zoals schermopname, cameratoegang en canvas-tekenen.</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>Schakel knooppuntmodus alleen in voor gateways en agents die u vertrouwt</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>Goedgekeurde agents kunnen lokale opdrachten uitvoeren en toegang krijgen tot ingeschakelde oppervlakken zoals scherm, camera, locatie, browser en canvas. U kunt capaciteitsgroepen later uitschakelen in Instellingen.</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>Knooppuntmodus inschakelen</value>
   </data>

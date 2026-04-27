@@ -734,6 +734,12 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>Le mode nœud permet à votre machine Windows d'exécuter des tâches pour OpenClaw — comme la capture d'écran, l'accès caméra et le dessin sur canevas.</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>Activez le mode nœud uniquement pour les passerelles et agents de confiance</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>Les agents approuvés peuvent exécuter des commandes locales et accéder aux surfaces activées comme l'écran, la caméra, la localisation, le navigateur et le canevas. Vous pouvez désactiver des groupes de capacités plus tard dans Paramètres.</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>Activer le mode nœud</value>
   </data>

@@ -734,6 +734,12 @@ On your gateway host (Mac/Linux), run:
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>Node Mode lets your Windows machine run tasks for OpenClaw — like screen capture, camera access, and canvas drawing.</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>Only enable Node Mode for gateways and agents you trust</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>Approved agents can run local commands and may access enabled device surfaces such as screen, camera, location, browser, and canvas. You can disable capability groups later in Settings.</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>Enable Node Mode</value>
   </data>

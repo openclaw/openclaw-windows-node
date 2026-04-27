@@ -238,6 +238,16 @@ public sealed class SetupWizardWindow : WindowEx
             TextWrapping = TextWrapping.Wrap,
             Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
+        var securityWarning = new InfoBar
+        {
+            Title = LocalizationHelper.GetString("Setup_NodeModeSecurityTitle"),
+            Message = LocalizationHelper.GetString("Setup_NodeModeSecurityMessage"),
+            Severity = InfoBarSeverity.Warning,
+            IsOpen = true,
+            IsClosable = false
+        };
+        AutomationProperties.SetAutomationId(securityWarning, "SetupNodeModeSecurityWarning");
+        _stepPanels[1].Children.Add(securityWarning);
         _nodeModeToggle = new ToggleSwitch
         {
             Header = LocalizationHelper.GetString("Setup_NodeModeToggle"),

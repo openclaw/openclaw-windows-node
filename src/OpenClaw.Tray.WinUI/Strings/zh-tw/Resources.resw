@@ -734,6 +734,12 @@
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>節點模式允許您的 Windows 電腦為 OpenClaw 執行任務 — 如螢幕擷取、攝影機存取和畫布繪製。</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>只為您信任的閘道和代理程式啟用節點模式</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>已核准的代理程式可以執行本機命令，並可能存取已啟用的裝置介面，例如螢幕、攝影機、位置、瀏覽器和畫布。您稍後可以在設定中停用能力群組。</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>啟用節點模式</value>
   </data>

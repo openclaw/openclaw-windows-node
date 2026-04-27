@@ -426,7 +426,7 @@ Deliverables:
   - screen capture/graphics capture guidance
   - First read-only Command Center slice is implemented. It surfaces these settings pages and explanatory rows, but intentionally does not query, request, or exercise device permissions.
   - Capability diagnostics copy is implemented for declared commands, gateway allowlist status, and privacy-sensitive opt-ins.
-- Mac-style onboarding security warning.
+- Mac-style onboarding security warning: **implemented in Setup Wizard Node Mode step, warning users that approved agents can run local commands and access enabled screen/camera/location/browser/canvas surfaces**
 - Topology choice onboarding: **first Settings guide implemented with local, WSL, SSH tunnel, and remote/Tailscale presets**
 - Exec approval dialog with sanitizer and three-button flow: **implemented for local `Prompt` policy decisions with Allow once / Always allow / Deny**
 - Exec approval remote-policy hardening: **implemented guardrails so `system.execApprovals.set` cannot remotely switch to default allow, install broad/dangerous allow rules, or overwrite a newer local policy without a matching `baseHash`**

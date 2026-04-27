@@ -237,6 +237,23 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("exp", source);
     }
 
+    [Fact]
+    public void SetupWizard_HasNodeModeSecurityWarning()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "SetupWizardWindow.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains(@"""SetupNodeModeSecurityWarning""", source);
+        Assert.Contains("Setup_NodeModeSecurityTitle", source);
+        Assert.Contains("Setup_NodeModeSecurityMessage", source);
+    }
+
     private static string GetRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
