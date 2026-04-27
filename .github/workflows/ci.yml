@@ -289,31 +289,31 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Download win-x64 tray artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-tray-win-x64
         path: artifacts/tray-win-x64
 
     - name: Download win-arm64 tray artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-tray-win-arm64
         path: artifacts/tray-win-arm64
 
     - name: Download win-x64 cmdpal artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-commandpalette-x64
         path: artifacts/cmdpal-x64
 
     - name: Download win-arm64 cmdpal artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-commandpalette-arm64
         path: artifacts/cmdpal-arm64
 
     - name: Download win-x64 MSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       continue-on-error: true
       id: msix-x64
       with:
@@ -321,7 +321,7 @@ jobs:
         path: artifacts/msix-x64
 
     - name: Download win-arm64 MSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       continue-on-error: true
       id: msix-arm64
       with:
