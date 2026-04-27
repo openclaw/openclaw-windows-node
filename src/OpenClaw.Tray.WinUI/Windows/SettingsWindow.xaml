@@ -67,6 +67,10 @@
                     
                     <TextBlock x:Name="StatusLabel" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <Button x:Name="OpenCommandCenterButton"
+                            AutomationProperties.AutomationId="SettingsOpenCommandCenterButton"
+                            Content="Open Command Center"
+                            Click="OnOpenCommandCenter"/>
                 </StackPanel>
 
                 <!-- Startup Section -->

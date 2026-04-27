@@ -16,6 +16,7 @@ public sealed partial class SettingsWindow : WindowEx
     public bool IsClosed { get; private set; }
 
     public event EventHandler? SettingsSaved;
+    public event EventHandler? CommandCenterRequested;
 
     public SettingsWindow(SettingsManager settings)
     {
@@ -226,6 +227,12 @@ public sealed partial class SettingsWindow : WindowEx
         {
             StatusLabel.Text = $"❌ {ex.Message}";
         }
+    }
+
+    private void OnOpenCommandCenter(object sender, RoutedEventArgs e)
+    {
+        Logger.Info("[Settings] Open Command Center requested");
+        CommandCenterRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnSave(object sender, RoutedEventArgs e)

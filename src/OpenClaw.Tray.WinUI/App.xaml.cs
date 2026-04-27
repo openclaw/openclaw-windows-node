@@ -1759,11 +1759,18 @@ public partial class App : Application
             _settingsWindow.Closed += (s, e) => 
             {
                 _settingsWindow.SettingsSaved -= OnSettingsSaved;
+                _settingsWindow.CommandCenterRequested -= OnSettingsCommandCenterRequested;
                 _settingsWindow = null;
             };
             _settingsWindow.SettingsSaved += OnSettingsSaved;
+            _settingsWindow.CommandCenterRequested += OnSettingsCommandCenterRequested;
         }
         _settingsWindow.Activate();
+    }
+
+    private void OnSettingsCommandCenterRequested(object? sender, EventArgs e)
+    {
+        ShowStatusDetail();
     }
 
     private void OnSettingsSaved(object? sender, EventArgs e)
