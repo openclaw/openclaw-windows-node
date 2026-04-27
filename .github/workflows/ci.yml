@@ -74,7 +74,7 @@ jobs:
 
     - name: Upload Test Results
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: test-results
         path: TestResults/
@@ -138,7 +138,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Upload Tray Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-tray-${{ matrix.rid }}
         path: publish/
@@ -239,7 +239,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Upload MSIX Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-msix-${{ matrix.rid }}
         path: ${{ steps.find-msix.outputs.msix_path }}
@@ -273,7 +273,7 @@ jobs:
       run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }} --no-restore
 
     - name: Upload Extension Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-commandpalette-${{ matrix.platform }}
         path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
