@@ -21,7 +21,14 @@ public sealed partial class WebChatWindow : WindowEx
     // Store event handlers for cleanup
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navigationCompletedHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navigationStartingHandler;
-    
+    private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
+
+    /// <summary>
+    /// Fired when the SPA sends a message to the native side via
+    /// <c>window.chrome.webview.postMessage(...)</c>.
+    /// </summary>
+    public event EventHandler<WebBridgeMessage>? BridgeMessageReceived;
+
     public bool IsClosed { get; private set; }
 
     public WebChatWindow(string gatewayUrl, string token)
@@ -56,6 +63,8 @@ public sealed partial class WebChatWindow : WindowEx
                 WebView.CoreWebView2.NavigationCompleted -= _navigationCompletedHandler;
             if (_navigationStartingHandler != null)
                 WebView.CoreWebView2.NavigationStarting -= _navigationStartingHandler;
+            if (_webMessageReceivedHandler != null)
+                WebView.CoreWebView2.WebMessageReceived -= _webMessageReceivedHandler;
         }
     }
 
@@ -84,6 +93,23 @@ public sealed partial class WebChatWindow : WindowEx
             WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             WebView.CoreWebView2.Settings.IsZoomControlEnabled = true;
+
+            // Wire the bidirectional native↔SPA bridge
+            // SPA → native: window.chrome.webview.postMessage({ type, payload })
+            _webMessageReceivedHandler = (s, e) =>
+            {
+                var msg = WebBridgeMessage.TryParse(e.WebMessageAsJson);
+                if (msg != null)
+                {
+                    Logger.Debug($"WebChatWindow: bridge message from SPA, type={msg.Type}");
+                    BridgeMessageReceived?.Invoke(this, msg);
+                }
+                else
+                {
+                    Logger.Warn($"WebChatWindow: received unrecognised bridge message");
+                }
+            };
+            WebView.CoreWebView2.WebMessageReceived += _webMessageReceivedHandler;
 
             // Handle navigation events (store for cleanup)
             _navigationCompletedHandler = (s, e) =>
@@ -161,6 +187,20 @@ public sealed partial class WebChatWindow : WindowEx
 
     // Set to a test URL to bypass gateway (e.g., "https://www.bing.com"), or null for normal operation
     private const string? DEBUG_TEST_URL = null;
+
+    /// <summary>
+    /// Sends a bridge message to the SPA via the WebView2 native→web channel.
+    /// The SPA receives this via <c>window.chrome.webview.addEventListener('message', e => { const msg = e.data; ... })</c>.
+    /// This method is a no-op if the WebView2 core is not yet initialised.
+    /// </summary>
+    public void PostBridgeMessage(string type, object? payload = null)
+    {
+        if (WebView.CoreWebView2 == null) return;
+        var msg = new WebBridgeMessage(type);
+        var json = msg.ToJson(payload);
+        Logger.Debug($"WebChatWindow: posting bridge message, type={type}");
+        WebView.CoreWebView2.PostWebMessageAsJson(json);
+    }
 
     private static bool IsLocalHost(Uri uri)
     {
