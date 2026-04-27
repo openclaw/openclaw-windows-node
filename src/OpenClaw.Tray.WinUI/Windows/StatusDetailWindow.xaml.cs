@@ -26,6 +26,7 @@ public sealed partial class StatusDetailWindow : WindowEx
 
     public event EventHandler? RefreshRequested;
     public event EventHandler? ActivityStreamRequested;
+    public event EventHandler<string>? ChannelToggleRequested;
     private GatewayCommandCenterState _state;
 
     public StatusDetailWindow(GatewayCommandCenterState state)
@@ -224,7 +225,9 @@ public sealed partial class StatusDetailWindow : WindowEx
                 StatusIcon = icon,
                 StatusText = c.Status ?? LocalizationHelper.GetString("StatusDisplay_Unknown"),
                 DetailText = BuildChannelDetail(c),
-                StatusBrush = brush
+                StatusBrush = brush,
+                ActionText = c.CanStop ? "Stop" : c.CanStart ? "Start" : "N/A",
+                ActionEnabled = c.CanStart || c.CanStop
             };
         }).ToList();
 
@@ -289,6 +292,17 @@ public sealed partial class StatusDetailWindow : WindowEx
     private void OnCopyChannelSummary(object sender, RoutedEventArgs e)
     {
         CopyText(BuildChannelSummaryText(_state.Channels), "[CommandCenter] Copied channel summary");
+    }
+
+    private void OnToggleChannel(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Microsoft.UI.Xaml.Controls.Button { Tag: string channelName } ||
+            string.IsNullOrWhiteSpace(channelName))
+        {
+            return;
+        }
+
+        ChannelToggleRequested?.Invoke(this, channelName);
     }
 
     private void OnCopyNodeSummary(object sender, RoutedEventArgs e)
@@ -432,6 +446,8 @@ public sealed partial class StatusDetailWindow : WindowEx
         public string StatusText { get; set; } = "";
         public string DetailText { get; set; } = "";
         public SolidColorBrush StatusBrush { get; set; } = new(Colors.Gray);
+        public string ActionText { get; set; } = "";
+        public bool ActionEnabled { get; set; }
     }
 
     private class WarningViewModel

@@ -440,7 +440,7 @@ Deliverables:
 - Session previews with thinking/verbose controls.
 - Cost 30-day bars: **implemented in Command Center from `usage.cost` daily totals**
 - Node copy submenus / summaries: **implemented first Command Center copy action**
-- Channel health summary and copyable context: **implemented first read-only summary**
+- Channel health summary and copyable context: **implemented first summary plus Command Center start/stop actions**
 - Channel schema forms and QR login flows.
 - Skills/Cron settings.
 - Agent events ring expansion: **implemented first Command Center recent-activity panel with copy/open-stream actions**

@@ -368,7 +368,14 @@
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                TextWrapping="Wrap"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding StatusText}" Grid.Column="2"/>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="4">
+                                    <TextBlock Text="{Binding StatusText}" HorizontalAlignment="Right"/>
+                                    <Button Content="{Binding ActionText}"
+                                            Tag="{Binding Name}"
+                                            IsEnabled="{Binding ActionEnabled}"
+                                            Click="OnToggleChannel"
+                                            AutomationProperties.AutomationId="CommandCenterToggleChannelButton"/>
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

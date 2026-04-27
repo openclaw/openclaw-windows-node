@@ -128,6 +128,22 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"AutomationProperties.AutomationId=""CommandCenterCopyActivitySummaryButton""", xaml);
     }
 
+    [Fact]
+    public void StatusDetailWindow_HasChannelToggleActions()
+    {
+        var xamlPath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "StatusDetailWindow.xaml");
+
+        var xaml = File.ReadAllText(xamlPath);
+
+        Assert.Contains(@"AutomationProperties.AutomationId=""CommandCenterToggleChannelButton""", xaml);
+        Assert.Contains(@"Click=""OnToggleChannel""", xaml);
+    }
+
     private static string GetRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

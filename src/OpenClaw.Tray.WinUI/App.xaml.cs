@@ -1919,6 +1919,7 @@ public partial class App : Application
             _statusDetailWindow = new StatusDetailWindow(BuildCommandCenterState());
             _statusDetailWindow.RefreshRequested += async (s, e) => await RefreshCommandCenterAsync();
             _statusDetailWindow.ActivityStreamRequested += (s, e) => ShowActivityStream();
+            _statusDetailWindow.ChannelToggleRequested += (s, channelName) => ToggleChannel(channelName);
             _statusDetailWindow.Closed += (s, e) => _statusDetailWindow = null;
         }
         else
@@ -2333,17 +2334,20 @@ public partial class App : Application
             if (isRunning)
             {
                 await _gatewayClient.StopChannelAsync(channelName);
+                AddRecentActivity($"Stopped channel: {channelName}", category: "channel", dashboardPath: "settings");
             }
             else
             {
                 await _gatewayClient.StartChannelAsync(channelName);
+                AddRecentActivity($"Started channel: {channelName}", category: "channel", dashboardPath: "settings");
             }
-            
+             
             // Refresh health
             await RunHealthCheckAsync();
         }
         catch (Exception ex)
         {
+            AddRecentActivity($"Channel toggle failed: {channelName}", category: "channel", details: ex.Message);
             Logger.Error($"Failed to toggle channel: {ex.Message}");
         }
     }
