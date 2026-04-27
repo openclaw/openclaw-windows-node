@@ -569,6 +569,12 @@
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>在网关上运行: openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>复制批准命令</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>配对命令已复制</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ 节点已配对！</value>
   </data>
@@ -643,6 +649,21 @@
   </data>
   <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
     <value>粘贴来自网关仪表板的设置码</value>
+  </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>粘贴设置码 / QR</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>导入 QR 图片...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ QR 图片已解码 — 请点击"测试连接"</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ 无法在该图片中找到有效的设置 QR 码。</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ 剪贴板不包含设置码文本或 QR 图片。</value>
   </data>
   <data name="Setup_ManualEntryToggle" xml:space="preserve">
     <value>或手动输入 URL 和令牌 ▾</value>

@@ -569,6 +569,12 @@ Use one of these options:
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>Run on gateway: openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>Copy approval command</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>Pairing command copied</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node Paired!</value>
   </data>
@@ -643,6 +649,21 @@ Use one of these options:
   </data>
   <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
     <value>Paste the setup code from your gateway dashboard</value>
+  </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>Paste setup code / QR</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>Import QR image...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ QR image decoded — press Test Connection</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ Could not find a valid setup QR code in that image.</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ Clipboard does not contain setup code text or a QR image.</value>
   </data>
   <data name="Setup_ManualEntryToggle" xml:space="preserve">
     <value>Or enter URL and token manually ▾</value>

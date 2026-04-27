@@ -7,8 +7,20 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage.Pickers;
 using WinUIEx;
+using ZXing;
+using ZXing.Common;
+using DrawingBitmap = System.Drawing.Bitmap;
+using DrawingGraphics = System.Drawing.Graphics;
+using DrawingImageLockMode = System.Drawing.Imaging.ImageLockMode;
+using DrawingPixelFormat = System.Drawing.Imaging.PixelFormat;
 
 namespace OpenClawTray.Windows;
 
@@ -25,6 +37,7 @@ public sealed class SetupWizardWindow : WindowEx
     // Draft settings (not saved until Finish)
     private string _draftGatewayUrl = "ws://";
     private string _draftToken = "";
+    private string _draftBootstrapToken = "";
     private bool _draftEnableNodeMode = false;
 
     // UI elements
@@ -59,10 +72,11 @@ public sealed class SetupWizardWindow : WindowEx
         _existingSettings = settings;
         _draftGatewayUrl = settings.GatewayUrl;
         _draftToken = settings.Token;
+        _draftBootstrapToken = settings.BootstrapToken;
         _draftEnableNodeMode = settings.EnableNodeMode;
 
         Title = LocalizationHelper.GetString("Setup_Title");
-        this.SetWindowSize(720, 700);
+        this.SetWindowSize(720, 900);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
         SystemBackdrop = new MicaBackdrop();
@@ -133,6 +147,22 @@ public sealed class SetupWizardWindow : WindowEx
         AutomationProperties.SetAutomationId(_setupCodeBox, "SetupCodeBox");
         _setupCodeBox.TextChanged += OnSetupCodeChanged;
         _stepPanels[0].Children.Add(_setupCodeBox);
+
+        var setupCodeActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8
+        };
+        var pasteSetupButton = new Button { Content = LocalizationHelper.GetString("Setup_PasteSetupButton") };
+        AutomationProperties.SetAutomationId(pasteSetupButton, "PasteSetupButton");
+        pasteSetupButton.Click += OnPasteSetupFromClipboard;
+        setupCodeActions.Children.Add(pasteSetupButton);
+
+        var importQrButton = new Button { Content = LocalizationHelper.GetString("Setup_ImportQrButton") };
+        AutomationProperties.SetAutomationId(importQrButton, "ImportQrButton");
+        importQrButton.Click += OnImportQrImage;
+        setupCodeActions.Children.Add(importQrButton);
+        _stepPanels[0].Children.Add(setupCodeActions);
 
         // Manual entry toggle
         var manualToggle = new HyperlinkButton { Content = LocalizationHelper.GetString("Setup_ManualEntryToggle") };
@@ -208,10 +238,7 @@ public sealed class SetupWizardWindow : WindowEx
         AutomationProperties.SetAutomationId(_nodeModeToggle, "NodeModeToggle");
         _nodeModeToggle.Toggled += (s, e) =>
         {
-            var showPairing = _nodeModeToggle.IsOn;
-            _deviceIdText.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
-            _copyDeviceIdButton.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
-            _pairingStatusText.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
+            UpdateNodeModePairingVisibility(_nodeModeToggle.IsOn);
         };
         _stepPanels[1].Children.Add(_nodeModeToggle);
 
@@ -382,17 +409,30 @@ public sealed class SetupWizardWindow : WindowEx
     {
         _connectionTested = false;
         var code = _setupCodeBox.Text.Trim();
-        if (string.IsNullOrEmpty(code)) return;
+        if (string.IsNullOrEmpty(code))
+        {
+            _draftBootstrapToken = "";
+            return;
+        }
 
+        if (!TryApplySetupCode(code, LocalizationHelper.GetString("Setup_CodeDecoded")))
+        {
+            // Not a valid setup code; that's fine, user might be typing manually.
+            _draftBootstrapToken = "";
+        }
+    }
+
+    private bool TryApplySetupCode(string code, string successMessage)
+    {
         try
         {
             // Try base64url decode
-            var b64 = code.Replace('-', '+').Replace('_', '/');
+            var b64 = code.Trim().Replace('-', '+').Replace('_', '/');
             var pad = b64.Length % 4;
             if (pad > 0) b64 += new string('=', 4 - pad);
 
             var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b64));
-            var doc = System.Text.Json.JsonDocument.Parse(json);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
 
             if (doc.RootElement.TryGetProperty("url", out var urlProp))
             {
@@ -401,19 +441,165 @@ public sealed class SetupWizardWindow : WindowEx
             }
             if (doc.RootElement.TryGetProperty("bootstrapToken", out var tokenProp))
             {
-                _draftToken = tokenProp.GetString() ?? "";
-                _tokenBox.Password = _draftToken;
+                _draftBootstrapToken = tokenProp.GetString() ?? "";
+                _draftEnableNodeMode = !string.IsNullOrWhiteSpace(_draftBootstrapToken);
+                _nodeModeToggle.IsOn = _draftEnableNodeMode;
+                UpdateNodeModePairingVisibility(_draftEnableNodeMode);
+            }
+
+            if (string.IsNullOrWhiteSpace(_draftGatewayUrl) ||
+                string.IsNullOrWhiteSpace(_draftBootstrapToken))
+            {
+                return false;
             }
 
             // Show manual fields so user can see what was decoded
             _manualEntryPanel.Visibility = Visibility.Visible;
-            _testStatusLabel.Text = LocalizationHelper.GetString("Setup_CodeDecoded");
+            _testStatusLabel.Text = successMessage;
+            _connectionTested = GatewayUrlHelper.IsValidGatewayUrl(_draftGatewayUrl);
             Logger.Info($"[Setup] Setup code decoded: gateway={GatewayUrlHelper.SanitizeForDisplay(_draftGatewayUrl)}");
+            return true;
         }
-        catch
+        catch (System.FormatException)
         {
-            // Not a valid setup code — that's fine, user might be typing manually
+            return false;
         }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private async void OnPasteSetupFromClipboard(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var content = Clipboard.GetContent();
+            if (content.Contains(StandardDataFormats.Text))
+            {
+                var text = await content.GetTextAsync();
+                ApplyDecodedSetupCode(text, LocalizationHelper.GetString("Setup_CodeDecoded"));
+                return;
+            }
+
+            if (content.Contains(StandardDataFormats.Bitmap))
+            {
+                var bitmapReference = await content.GetBitmapAsync();
+                using var randomAccessStream = await bitmapReference.OpenReadAsync();
+                using var stream = randomAccessStream.AsStreamForRead();
+                var setupCode = DecodeQrSetupCode(stream);
+                ApplyDecodedSetupCode(setupCode, LocalizationHelper.GetString("Setup_QrDecoded"));
+                return;
+            }
+
+            _testStatusLabel.Text = LocalizationHelper.GetString("Setup_ClipboardUnsupported");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or IOException or UnauthorizedAccessException)
+        {
+            Logger.Warn($"[Setup] Clipboard setup import failed: {ex.Message}");
+            _testStatusLabel.Text = ex is InvalidOperationException
+                ? ex.Message
+                : LocalizationHelper.GetString("Setup_ClipboardUnsupported");
+        }
+    }
+
+    private async void OnImportQrImage(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker();
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+            picker.FileTypeFilter.Add(".png");
+            picker.FileTypeFilter.Add(".jpg");
+            picker.FileTypeFilter.Add(".jpeg");
+            picker.FileTypeFilter.Add(".bmp");
+            picker.FileTypeFilter.Add(".gif");
+
+            var file = await picker.PickSingleFileAsync();
+            if (file == null)
+            {
+                return;
+            }
+
+            using var randomAccessStream = await file.OpenReadAsync();
+            using var stream = randomAccessStream.AsStreamForRead();
+            var setupCode = DecodeQrSetupCode(stream);
+            ApplyDecodedSetupCode(setupCode, LocalizationHelper.GetString("Setup_QrDecoded"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or IOException or UnauthorizedAccessException)
+        {
+            Logger.Warn($"[Setup] QR image import failed: {ex.Message}");
+            _testStatusLabel.Text = ex is InvalidOperationException
+                ? ex.Message
+                : LocalizationHelper.GetString("Setup_QrDecodeFailed");
+        }
+    }
+
+    private void ApplyDecodedSetupCode(string setupCode, string successMessage)
+    {
+        if (string.IsNullOrWhiteSpace(setupCode))
+        {
+            throw new InvalidOperationException(LocalizationHelper.GetString("Setup_QrDecodeFailed"));
+        }
+
+        _setupCodeBox.Text = setupCode.Trim();
+        if (!TryApplySetupCode(setupCode, successMessage))
+        {
+            throw new InvalidOperationException(LocalizationHelper.GetString("Setup_QrDecodeFailed"));
+        }
+    }
+
+    private static string DecodeQrSetupCode(Stream stream)
+    {
+        using var source = new DrawingBitmap(stream);
+        using var bitmap = new DrawingBitmap(source.Width, source.Height, DrawingPixelFormat.Format32bppArgb);
+        using (var graphics = DrawingGraphics.FromImage(bitmap))
+        {
+            graphics.DrawImage(source, 0, 0, source.Width, source.Height);
+        }
+
+        var bounds = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        var data = bitmap.LockBits(bounds, DrawingImageLockMode.ReadOnly, DrawingPixelFormat.Format32bppArgb);
+        try
+        {
+            var rowBytes = bitmap.Width * 4;
+            var pixels = new byte[rowBytes * bitmap.Height];
+            for (var y = 0; y < bitmap.Height; y++)
+            {
+                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), pixels, y * rowBytes, rowBytes);
+            }
+
+            var reader = new BarcodeReaderGeneric
+            {
+                AutoRotate = true,
+                Options = new DecodingOptions
+                {
+                    PossibleFormats = new List<BarcodeFormat> { BarcodeFormat.QR_CODE },
+                    TryHarder = true,
+                    TryInverted = true
+                }
+            };
+
+            var result = reader.Decode(pixels, bitmap.Width, bitmap.Height, RGBLuminanceSource.BitmapFormat.BGRA32);
+            if (string.IsNullOrWhiteSpace(result?.Text))
+            {
+                throw new InvalidOperationException(LocalizationHelper.GetString("Setup_QrDecodeFailed"));
+            }
+
+            return result.Text;
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+    }
+
+    private void UpdateNodeModePairingVisibility(bool showPairing)
+    {
+        _deviceIdText.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
+        _copyDeviceIdButton.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
+        _pairingStatusText.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void OnTestConnection(object sender, RoutedEventArgs e)
@@ -427,9 +613,18 @@ public sealed class SetupWizardWindow : WindowEx
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_draftToken))
+        if (string.IsNullOrWhiteSpace(_draftToken) &&
+            string.IsNullOrWhiteSpace(_draftBootstrapToken))
         {
             _testStatusLabel.Text = LocalizationHelper.GetString("Setup_TokenRequired");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_draftToken) &&
+            !string.IsNullOrWhiteSpace(_draftBootstrapToken))
+        {
+            _testStatusLabel.Text = LocalizationHelper.GetString("Setup_CodeDecoded");
+            _connectionTested = true;
             return;
         }
 
@@ -526,6 +721,10 @@ public sealed class SetupWizardWindow : WindowEx
         _existingSettings.GatewayUrl = _draftGatewayUrl;
         _existingSettings.Token = _draftToken;
         _existingSettings.EnableNodeMode = _draftEnableNodeMode;
+        _existingSettings.BootstrapToken =
+            _draftEnableNodeMode && string.IsNullOrWhiteSpace(_draftToken)
+                ? _draftBootstrapToken
+                : "";
         _existingSettings.Save();
 
         Completed = true;

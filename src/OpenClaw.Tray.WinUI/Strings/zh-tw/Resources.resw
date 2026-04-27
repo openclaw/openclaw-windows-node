@@ -569,6 +569,12 @@
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>在閘道器上執行: openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>複製核准命令</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>配對命令已複製</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ 節點已配對！</value>
   </data>
@@ -643,6 +649,21 @@
   </data>
   <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
     <value>貼上來自閘道器儀表板的設定碼</value>
+  </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>貼上設定碼 / QR</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>匯入 QR 圖片...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ QR 圖片已解碼 — 請按「測試連線」</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ 無法在該圖片中找到有效的設定 QR 碼。</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ 剪貼簿不包含設定碼文字或 QR 圖片。</value>
   </data>
   <data name="Setup_ManualEntryToggle" xml:space="preserve">
     <value>或手動輸入 URL 和權杖 ▾</value>

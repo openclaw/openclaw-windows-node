@@ -721,6 +721,93 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public void BuildNodeConnectMessage_UsesBootstrapToken_WhenNoStoredDeviceToken()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient(
+                "ws://localhost:18789",
+                "",
+                dataPath,
+                bootstrapToken: "bootstrap-token-123");
+
+            var json = InvokeBuildNodeConnectMessage(client);
+            using var doc = JsonDocument.Parse(json);
+            var auth = doc.RootElement.GetProperty("params").GetProperty("auth");
+
+            Assert.Equal("bootstrap-token-123", auth.GetProperty("bootstrapToken").GetString());
+            Assert.False(auth.TryGetProperty("token", out _));
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void BuildNodeConnectMessage_UsesStoredDeviceToken_OverBootstrapToken()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient(
+                "ws://localhost:18789",
+                "",
+                dataPath,
+                bootstrapToken: "bootstrap-token-123");
+
+            var identityField = typeof(WindowsNodeClient).GetField(
+                "_deviceIdentity",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var identity = identityField!.GetValue(client)!;
+            var storeMethod = identity.GetType().GetMethod("StoreDeviceToken");
+            storeMethod!.Invoke(identity, ["stored-device-token"]);
+
+            var json = InvokeBuildNodeConnectMessage(client);
+            using var doc = JsonDocument.Parse(json);
+            var auth = doc.RootElement.GetProperty("params").GetProperty("auth");
+
+            Assert.Equal("stored-device-token", auth.GetProperty("token").GetString());
+            Assert.False(auth.TryGetProperty("bootstrapToken", out _));
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void BuildNodeConnectMessage_UsesGatewayToken_WhenNoBootstrapOrDeviceToken()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "gateway-token", dataPath);
+
+            var json = InvokeBuildNodeConnectMessage(client);
+            using var doc = JsonDocument.Parse(json);
+            var auth = doc.RootElement.GetProperty("params").GetProperty("auth");
+
+            Assert.Equal("gateway-token", auth.GetProperty("token").GetString());
+            Assert.False(auth.TryGetProperty("bootstrapToken", out _));
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public void RegisterCapability_AddsToCapabilitiesListAndRegistration()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
@@ -1020,6 +1107,16 @@ public class WindowsNodeClientTests
         var task = handleEventMethod!.Invoke(client, [doc.RootElement.Clone()]) as Task;
         Assert.NotNull(task);
         await task!;
+    }
+
+    private static string InvokeBuildNodeConnectMessage(WindowsNodeClient client)
+    {
+        var method = typeof(WindowsNodeClient).GetMethod(
+            "BuildNodeConnectMessage",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        return (string)method!.Invoke(client, ["nonce-123", 0L])!;
     }
 
     // ─── Command dispatch map tests ────────────────────────────────────────────

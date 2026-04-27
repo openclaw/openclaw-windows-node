@@ -238,25 +238,41 @@ When a node connects with `auth: { token: "...", bootstrapToken: "..." }`, the g
    - Preferred over shared-secret even if both succeed (QR flow relies on this)
 3. **Device token** — `auth.token` as device-token fallback (for already-paired devices)
 
-### 4.4 What Our Setup Wizard Does (and the Gap)
+### 4.4 Setup Wizard Entry Points
 
-Currently, our Setup Wizard:
-1. Decodes the setup code from `openclaw qr`
-2. Extracts `url` and `bootstrapToken`
-3. Stores `bootstrapToken` as the settings `Token` field
-4. Sends it as `auth.token` in the connect handshake
+The setup code and QR code are the same bootstrap concept in different packaging:
 
-**The problem**: We send it as `auth.token`, not `auth.bootstrapToken`. The gateway's auth resolution:
-- Tries `auth.token` as shared-secret → **fails** (it's not the gateway token)
-- Never sees `auth.bootstrapToken` → never tries bootstrap-token auth
-- Falls back to device-token → **fails** (no prior pairing)
+```text
+QR image
+  -> decodes to setup code text
+    -> decodes to JSON payload
+      -> contains gateway URL + bootstrapToken + expiry
+```
 
-**The fix**: Send the bootstrap token as `auth.bootstrapToken` in the connect payload, separate from `auth.token`. This lets the gateway correctly classify it as a bootstrap-token handshake, which enables:
+Advanced users can drop into setup at any level:
+
+| Entry point | User has | Wizard behavior |
+|---|---|---|
+| QR image | A saved/screenshot/email attachment containing the QR | Import or paste the image, decode QR text, then decode the setup payload |
+| Setup code | The pasteable text from `openclaw qr` | Paste the text directly, then decode the setup payload |
+| Manual URL + token | Gateway URL/IP and a long-lived gateway token | Skip bootstrap; connect with `auth.token` and use manual approval if required |
+
+The QR/setup-code path is preferred for first-time node onboarding because it avoids telling users to copy permanent gateway secrets and enables auto-approval.
+
+### 4.5 What Our Setup Wizard Does
+
+The Windows Setup Wizard:
+1. Accepts a QR image, clipboard QR image, pasteable setup code, or manual gateway URL/token.
+2. For QR/setup-code input, decodes `{ url, bootstrapToken, expiresAtMs }`.
+3. Stores `bootstrapToken` separately from the normal gateway `Token` setting.
+4. Sends it as `auth.bootstrapToken` in the node connect handshake.
+
+This lets the gateway correctly classify QR setup as a bootstrap-token handshake, which enables:
 - Silent auto-approval (no manual `devices approve` needed)
 - Bootstrap token revocation after pairing
 - Bounded operator token handoff (if configured)
 
-### 4.5 Post-Pairing: Device Tokens
+### 4.6 Post-Pairing: Device Tokens
 
 After a successful bootstrap-token pairing:
 1. Gateway issues a `deviceToken` in `hello-ok.auth.deviceToken`
@@ -264,13 +280,13 @@ After a successful bootstrap-token pairing:
 3. Future connections use `auth.token = <deviceToken>` (device-token auth path)
 4. The bootstrap token is revoked and no longer valid
 
-**We're not doing step 2-3 yet.** Our node uses the same settings token forever. It works because the settings token matches the gateway's shared secret (if the user entered it manually), but it means QR-based pairing doesn't complete the handoff properly.
+Windows stores `hello-ok.auth.deviceToken` in its device identity file and prefers that saved device token on future node connections. The bootstrap token is only used when there is no saved device token yet.
 
-### 4.6 Ideal Bootstrap Flow (What We Should Implement)
+### 4.7 Bootstrap Flow
 
 ```
 1. User runs `openclaw qr` on gateway host
-2. User pastes setup code into Windows Setup Wizard
+2. User imports/scans QR image or pastes setup code into Windows Setup Wizard
 3. Wizard decodes → { url, bootstrapToken, expiresAtMs }
 4. Node connects with: auth: { bootstrapToken: "<token>" }
 5. Gateway auto-approves pairing (bootstrap-token auth method)
@@ -280,7 +296,7 @@ After a successful bootstrap-token pairing:
 9. No manual `devices approve` needed!
 ```
 
-This would make pairing truly seamless — scan QR, auto-paired, done.
+Manual URL/token setup remains useful for advanced troubleshooting and environments where QR/bootstrap is unavailable. In that path, the tray may show a pairing notification with an `openclaw devices approve <device-id>` command that must be run on the gateway host.
 
 ---
 
@@ -319,10 +335,11 @@ Until the gateway expands Windows safe defaults, the practical local solution is
 - [x] Remove `screen.list` from declared commands
 - [ ] Remove debug logging from `WindowsNodeClient.cs` (done)
 
-### 5.2 Setup Wizard Improvements (Next Sprint)
+### 5.2 Setup Wizard Improvements
 
-- [ ] Send `bootstrapToken` in correct field: `auth.bootstrapToken` not `auth.token`
-- [ ] Handle `hello-ok.auth.deviceToken` — save it for future connections
+- [x] Send `bootstrapToken` in correct field: `auth.bootstrapToken` not `auth.token`
+- [x] Handle `hello-ok.auth.deviceToken` — save it for future connections
+- [x] Accept QR images and clipboard setup content as alternate ways to enter the same bootstrap payload
 - [ ] Show "auto-paired!" vs "waiting for approval" based on auth method
 - [ ] Handle bootstrap token expiry gracefully (re-generate if expired)
 

@@ -29,6 +29,8 @@ public class WindowsNodeClient : WebSocketClientBase
     private bool _isPaired;
     // Bridges the gap between an approval event and the next hello-ok when the gateway omits auth.deviceToken.
     private bool _pairingApprovedAwaitingReconnect;
+    private readonly string _gatewayToken;
+    private readonly string? _bootstrapToken;
     
     // Cached serialization/validation — reused on every message instead of allocating per-call
     private static readonly JsonSerializerOptions s_ignoreNullOptions = new()
@@ -64,9 +66,12 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override int ReceiveBufferSize => 65536;
     protected override string ClientRole => "node";
     
-    public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null)
-        : base(gatewayUrl, token, logger)
+    public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null, string? bootstrapToken = null)
+        : base(gatewayUrl, ResolveRequiredCredential(token, bootstrapToken), logger)
     {
+        _gatewayToken = NormalizeOptionalCredential(token);
+        _bootstrapToken = NormalizeOptionalCredential(bootstrapToken);
+
         // Initialize device identity
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
@@ -79,6 +84,28 @@ public class WindowsNodeClient : WebSocketClientBase
             Platform = "windows",
             DisplayName = $"Windows Node ({Environment.MachineName})"
         };
+    }
+
+    private static string NormalizeOptionalCredential(string? credential)
+    {
+        return string.IsNullOrWhiteSpace(credential) ? string.Empty : credential;
+    }
+
+    private static string ResolveRequiredCredential(string? token, string? bootstrapToken)
+    {
+        var gatewayToken = NormalizeOptionalCredential(token);
+        if (!string.IsNullOrEmpty(gatewayToken))
+        {
+            return gatewayToken;
+        }
+
+        var bootstrap = NormalizeOptionalCredential(bootstrapToken);
+        if (!string.IsNullOrEmpty(bootstrap))
+        {
+            return bootstrap;
+        }
+
+        throw new ArgumentException("Token or bootstrap token is required.", nameof(token));
     }
     
     /// <summary>
@@ -446,29 +473,34 @@ public class WindowsNodeClient : WebSocketClientBase
     
     private async Task SendNodeConnectAsync(string? nonce, long ts)
     {
+        var isPaired = !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
+        var usingBootstrap = !isPaired && !string.IsNullOrEmpty(_bootstrapToken);
+
+        _logger.Info($"Connecting with Ed25519 device identity (paired: {isPaired}, bootstrap: {usingBootstrap})");
+
+        await SendRawAsync(BuildNodeConnectMessage(nonce, ts));
+        _logger.Info($"Sent node registration with device ID: {_deviceIdentity.DeviceId[..16]}..., paired: {isPaired}");
+    }
+
+    private string BuildNodeConnectMessage(string? nonce, long ts)
+    {
         // Sign the full payload with Ed25519 - this is how device pairing works
         string? signature = null;
         var signedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        
-        // Use device token if we have one (already paired), otherwise use operator token
-        // IMPORTANT: This token must be included in the signed payload!
-        var authToken = _deviceIdentity.DeviceToken ?? _token;
-        var isPaired = !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
+        var (auth, tokenForSignature) = BuildConnectAuth();
         
         if (!string.IsNullOrEmpty(nonce))
         {
             try
             {
-                signature = _deviceIdentity.SignPayload(nonce, signedAt, ClientId, authToken);
+                signature = _deviceIdentity.SignPayload(nonce, signedAt, ClientId, tokenForSignature);
             }
             catch (Exception ex)
             {
                 _logger.Error($"Failed to sign payload: {ex.Message}");
             }
         }
-        
-        _logger.Info($"Connecting with Ed25519 device identity (paired: {isPaired})");
-        
+
         // Always include device identity - this is required for pairing
         var msg = new
         {
@@ -492,7 +524,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 caps = _registration.Capabilities,
                 commands = _registration.Commands,
                 permissions = _registration.Permissions,
-                auth = new { token = authToken },
+                auth,
                 locale = "en-US",
                 userAgent = $"openclaw-windows-node/{_registration.Version}",
                 device = new
@@ -505,9 +537,23 @@ public class WindowsNodeClient : WebSocketClientBase
                 }
             }
         };
-        
-        await SendRawAsync(JsonSerializer.Serialize(msg));
-        _logger.Info($"Sent node registration with device ID: {_deviceIdentity.DeviceId[..16]}..., paired: {isPaired}");
+
+        return JsonSerializer.Serialize(msg, s_ignoreNullOptions);
+    }
+
+    private (Dictionary<string, string> Auth, string TokenForSignature) BuildConnectAuth()
+    {
+        if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+        {
+            return (new Dictionary<string, string> { ["token"] = _deviceIdentity.DeviceToken }, _deviceIdentity.DeviceToken);
+        }
+
+        if (!string.IsNullOrEmpty(_bootstrapToken))
+        {
+            return (new Dictionary<string, string> { ["bootstrapToken"] = _bootstrapToken }, string.Empty);
+        }
+
+        return (new Dictionary<string, string> { ["token"] = _gatewayToken }, _gatewayToken);
     }
     
     private void HandleResponse(JsonElement root)

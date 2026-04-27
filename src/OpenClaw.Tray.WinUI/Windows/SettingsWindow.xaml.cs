@@ -91,6 +91,10 @@ public sealed partial class SettingsWindow : WindowEx
             _manualGatewayUrl = _settings.GatewayUrl;
         }
         _settings.Token = TokenTextBox.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(_settings.Token))
+        {
+            _settings.BootstrapToken = "";
+        }
         _settings.AutoStart = AutoStartToggle.IsOn;
         _settings.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn;
         _settings.ShowNotifications = NotificationsToggle.IsOn;

@@ -569,6 +569,12 @@ Gebruik een van deze opties:
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>Voer uit op gateway: openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>Goedkeuringsopdracht kopiëren</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>Koppelingsopdracht gekopieerd</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>&#x2705; Node gekoppeld!</value>
   </data>
@@ -643,6 +649,21 @@ Gebruik een van deze opties:
   </data>
   <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
     <value>Plak de installatiecode van uw gateway-dashboard</value>
+  </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>Setupcode / QR plakken</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>QR-afbeelding importeren...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ QR-afbeelding gedecodeerd — klik op Verbinding testen</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ Geen geldige setup-QR-code gevonden in die afbeelding.</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ Het klembord bevat geen setupcodetekst of QR-afbeelding.</value>
   </data>
   <data name="Setup_ManualEntryToggle" xml:space="preserve">
     <value>Of voer URL en token handmatig in ▾</value>

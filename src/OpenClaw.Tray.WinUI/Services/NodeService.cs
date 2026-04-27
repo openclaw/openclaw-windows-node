@@ -59,7 +59,7 @@ public class NodeService : IDisposable
     /// <summary>
     /// Initialize and connect the node
     /// </summary>
-    public async Task ConnectAsync(string gatewayUrl, string token)
+    public async Task ConnectAsync(string gatewayUrl, string token, string? bootstrapToken = null)
     {
         if (_nodeClient != null)
         {
@@ -69,7 +69,7 @@ public class NodeService : IDisposable
         _logger.Info($"Starting Windows Node connection to {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
         _token = token;
         
-        _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger);
+        _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger, bootstrapToken);
         _nodeClient.StatusChanged += OnNodeStatusChanged;
         _nodeClient.PairingStatusChanged += OnPairingStatusChanged;
         

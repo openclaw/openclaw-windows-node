@@ -274,7 +274,7 @@ public partial class App : Application
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
         // First-run check
-        if (string.IsNullOrWhiteSpace(_settings.Token))
+        if (RequiresSetup(_settings))
         {
             await ShowSetupWizardAsync();
         }
@@ -1152,9 +1152,10 @@ public partial class App : Application
     {
         if (_settings == null || !_settings.EnableNodeMode) return;
         if (_dispatcherQueue == null) return;
-        if (string.IsNullOrWhiteSpace(_settings.Token))
+        if (string.IsNullOrWhiteSpace(_settings.Token) &&
+            string.IsNullOrWhiteSpace(_settings.BootstrapToken))
         {
-            Logger.Warn("Node mode enabled but no token configured — skipping node service. Run Setup Guide to configure.");
+            Logger.Warn("Node mode enabled but no token or bootstrap token configured — skipping node service. Run Setup Guide to configure.");
             return;
         }
         if (!EnsureSshTunnelConfigured()) return;
@@ -1169,12 +1170,22 @@ public partial class App : Application
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             
             // Connect to gateway as a node (separate connection from operator)
-            _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token);
+            _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
         }
         catch (Exception ex)
         {
             Logger.Error($"Failed to initialize node service: {ex.Message}");
         }
+    }
+
+    private static bool RequiresSetup(SettingsManager settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.Token))
+        {
+            return false;
+        }
+
+        return !(settings.EnableNodeMode && !string.IsNullOrWhiteSpace(settings.BootstrapToken));
     }
     
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
@@ -1211,10 +1222,15 @@ public partial class App : Application
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
                 AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
+                var approvalCommand = $"openclaw devices approve {args.DeviceId}";
                 // Show toast with approval instructions
                 ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16))));
+                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
+                    .AddButton(new ToastButton()
+                        .SetContent(LocalizationHelper.GetString("Toast_CopyPairingCommand"))
+                        .AddArgument("action", "copy_pairing_command")
+                        .AddArgument("command", approvalCommand)));
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
@@ -2150,9 +2166,22 @@ public partial class App : Application
                     case "open_activity":
                         ShowActivityStream();
                         break;
+                    case "copy_pairing_command" when arguments.TryGetValue("command", out var command):
+                        CopyTextToClipboard(command);
+                        ShowToast(new ToastContentBuilder()
+                            .AddText(LocalizationHelper.GetString("Toast_PairingCommandCopied"))
+                            .AddText(command));
+                        break;
                 }
             });
         }
+    }
+
+    private static void CopyTextToClipboard(string text)
+    {
+        var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
+        dataPackage.SetText(text);
+        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
     }
 
     #endregion

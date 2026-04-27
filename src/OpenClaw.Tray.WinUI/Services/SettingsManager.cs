@@ -19,6 +19,7 @@ public class SettingsManager
     // Connection
     public string GatewayUrl { get; set; } = "ws://localhost:18789";
     public string Token { get; set; } = "";
+    public string BootstrapToken { get; set; } = "";
     public bool UseSshTunnel { get; set; } = false;
     public string SshTunnelUser { get; set; } = "";
     public string SshTunnelHost { get; set; } = "";
@@ -70,6 +71,7 @@ public class SettingsManager
                 {
                     GatewayUrl = loaded.GatewayUrl ?? GatewayUrl;
                     Token = loaded.Token ?? Token;
+                    BootstrapToken = loaded.BootstrapToken ?? BootstrapToken;
                     UseSshTunnel = loaded.UseSshTunnel;
                     SshTunnelUser = loaded.SshTunnelUser ?? SshTunnelUser;
                     SshTunnelHost = loaded.SshTunnelHost ?? SshTunnelHost;
@@ -113,6 +115,7 @@ public class SettingsManager
             {
                 GatewayUrl = GatewayUrl,
                 Token = Token,
+                BootstrapToken = string.IsNullOrWhiteSpace(BootstrapToken) ? null : BootstrapToken,
                 UseSshTunnel = UseSshTunnel,
                 SshTunnelUser = SshTunnelUser,
                 SshTunnelHost = SshTunnelHost,
