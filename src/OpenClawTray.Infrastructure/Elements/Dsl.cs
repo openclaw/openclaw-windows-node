@@ -15,7 +15,7 @@ namespace OpenClawTray.Infrastructure;
 // Factory methods return Element records (virtual DOM), never real WinUI controls.
 // Organization: Text → Buttons → Input → Layout → Navigation → Dialogs → Data → Media → Markdown.
 // Layout helpers: VStack/HStack/Grid/Canvas/RelativePanel produce container elements.
-// FlexRow/FlexColumn are Yoga-based flexbox containers (see FlexPanel.cs).
+
 
 /// <summary>
 /// Static factory methods that form the Reactor DSL.
@@ -252,20 +252,6 @@ public static partial class Factories
     public static ViewboxElement Viewbox(Element child) => new(child);
 
     public static CanvasElement Canvas(params Element?[] children) => new(FilterChildren(children));
-
-    // ── Flex ────────────────────────────────────────────────────────
-
-    public static FlexElement Flex(params Element?[] children) =>
-        new(FilterChildren(children));
-
-    public static FlexElement Flex(OpenClawTray.Infrastructure.Layout.FlexDirection direction, params Element?[] children) =>
-        new(FilterChildren(children)) { Direction = direction };
-
-    public static FlexElement FlexRow(params Element?[] children) =>
-        new(FilterChildren(children)) { Direction = OpenClawTray.Infrastructure.Layout.FlexDirection.Row };
-
-    public static FlexElement FlexColumn(params Element?[] children) =>
-        new(FilterChildren(children)) { Direction = OpenClawTray.Infrastructure.Layout.FlexDirection.Column };
 
     // ── Grid ────────────────────────────────────────────────────────
 

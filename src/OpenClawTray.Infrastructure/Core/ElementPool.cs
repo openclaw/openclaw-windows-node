@@ -228,18 +228,6 @@ public sealed class ElementPool : IDisposable
         fe.ClearValue(Microsoft.UI.Xaml.Automation.AutomationProperties.HeadingLevelProperty);
         fe.AccessKey = "";
 
-        // Clear flex attached properties so pooled controls don't carry stale
-        // Grow/Shrink/Basis values into their next parent FlexPanel.
-        fe.ClearValue(Layout.FlexPanel.GrowProperty);
-        fe.ClearValue(Layout.FlexPanel.ShrinkProperty);
-        fe.ClearValue(Layout.FlexPanel.BasisProperty);
-        fe.ClearValue(Layout.FlexPanel.AlignSelfProperty);
-        fe.ClearValue(Layout.FlexPanel.PositionProperty);
-        fe.ClearValue(Layout.FlexPanel.LeftProperty);
-        fe.ClearValue(Layout.FlexPanel.TopProperty);
-        fe.ClearValue(Layout.FlexPanel.RightProperty);
-        fe.ClearValue(Layout.FlexPanel.BottomProperty);
-
         // Type-specific cleanup
         switch (fe)
         {

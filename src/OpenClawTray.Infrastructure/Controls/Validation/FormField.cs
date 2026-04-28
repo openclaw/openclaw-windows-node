@@ -1,7 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using OpenClawTray.Infrastructure.Core;
-using OpenClawTray.Infrastructure.Data;
-using OpenClawTray.Infrastructure.Controls.Validation;
 using static OpenClawTray.Infrastructure.Factories;
 
 namespace OpenClawTray.Infrastructure.Controls.Validation;
@@ -49,46 +47,6 @@ public static class FormFieldDsl
             FieldName = fieldName,
             ShowWhen = showWhen
         };
-
-    /// <summary>
-    /// Creates an auto-wired FormField from a FieldDescriptor.
-    /// Resolves the editor from TypeRegistry, sets label/description from the descriptor,
-    /// detects required from validators, and wires validation.
-    /// </summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "TypeRegistry.Resolve uses Activator.CreateInstance; acceptable for non-AOT builds.")]
-    public static FormFieldElement FormField(
-        FieldDescriptor field,
-        object value,
-        Action<object> onChange,
-        OpenClawTray.Infrastructure.Controls.TypeRegistry? registry = null)
-    {
-        // Resolve editor
-        Element content;
-        if (field.Editor is not null)
-        {
-            content = field.Editor(value, onChange);
-        }
-        else if (registry is not null)
-        {
-            var meta = registry.Resolve(field.FieldType);
-            content = meta.Editor is not null
-                ? meta.Editor(value, onChange)
-                : TextBlock(value?.ToString() ?? "(null)");
-        }
-        else
-        {
-            content = TextBlock(value?.ToString() ?? "(null)");
-        }
-
-        var label = field.DisplayName ?? field.Name;
-        var description = field.Description;
-        var required = field.Validators?.Any(v => v is RequiredValidator) == true;
-
-        return new FormFieldElement(content, label, required, description)
-        {
-            FieldName = field.Name,
-        };
-    }
 }
 
 /// <summary>

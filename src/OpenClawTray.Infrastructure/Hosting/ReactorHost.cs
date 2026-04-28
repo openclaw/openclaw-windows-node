@@ -43,7 +43,6 @@ public sealed class ReactorHost : IDisposable
     private global::Windows.UI.ViewManagement.UISettings? _uiSettings;
     private volatile bool _isForcedColors;
     private volatile bool _isReducedMotion;
-    private Charting.ForcedColorsTheme? _forcedColorsTheme;
 
     // Captured AnimationScope curve — when a state setter is called inside
     // WithAnimation, the scope is synchronous but the render is async.
@@ -148,8 +147,6 @@ public sealed class ReactorHost : IDisposable
         {
             _accessibilitySettings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
             _isForcedColors = _accessibilitySettings.HighContrast;
-            if (_isForcedColors)
-                _forcedColorsTheme = Charting.ForcedColorsTheme.FromSystem();
             _accessibilitySettings.HighContrastChanged += OnHighContrastChanged;
         }
         catch { /* headless / unit-test host — no accessibility settings */ }
@@ -161,9 +158,6 @@ public sealed class ReactorHost : IDisposable
             _uiSettings.ColorValuesChanged += OnColorValuesChanged;
         }
         catch { /* headless / unit-test host — no UI settings */ }
-
-        // Register built-in custom element types
-        Controls.ResizeGripRegistration.Register(_reconciler);
 
         // Stop the render loop when the window closes — background threads
         // may still call setState after this, but RequestRender will bail out.
@@ -250,12 +244,6 @@ public sealed class ReactorHost : IDisposable
             Element? newTree = null;
 
             _phaseSw.Restart();
-
-            // Propagate accessibility state to D3Dsl thread-statics so all chart
-            // rendering picks up forced-colors / reduced-motion automatically.
-            Charting.D3Dsl.IsForcedColors = _isForcedColors;
-            Charting.D3Dsl.IsReducedMotion = _isReducedMotion;
-            Charting.D3Dsl.ForcedColors = _forcedColorsTheme;
 
             if (_rootComponent is not null)
             {
@@ -465,7 +453,6 @@ public sealed class ReactorHost : IDisposable
         global::Windows.UI.ViewManagement.AccessibilitySettings sender, object args)
     {
         _isForcedColors = sender.HighContrast;
-        _forcedColorsTheme = _isForcedColors ? Charting.ForcedColorsTheme.FromSystem() : null;
         _logger.LogDebug("High-contrast changed to {IsHighContrast} — re-rendering", _isForcedColors);
         RequestRender();
     }
@@ -480,7 +467,6 @@ public sealed class ReactorHost : IDisposable
         if (_accessibilitySettings is { } a11y)
         {
             _isForcedColors = a11y.HighContrast;
-            _forcedColorsTheme = _isForcedColors ? Charting.ForcedColorsTheme.FromSystem() : null;
         }
         RequestRender();
     }
