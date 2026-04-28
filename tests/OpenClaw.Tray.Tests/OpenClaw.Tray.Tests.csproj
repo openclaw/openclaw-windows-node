@@ -2,6 +2,16 @@
 
   <PropertyGroup>
     <DefineConstants>$(DefineConstants);OPENCLAW_TRAY_TESTS</DefineConstants>
+    <!--
+      CI builds the tests with `-r win-x64` plus `no-restore` so the same
+      restore output drives Tray.Tests, IntegrationTests, and UITests.
+      Without a declared RID here, the top-level dotnet restore produces
+      only default-RID assets and the no-restore build then fails with
+      NETSDK1047 ("Assets file doesn't have a target for net10.0/win-x64").
+      Declaring win-x64 + win-arm64 makes restore generate the matching
+      assets for both architectures used by the build/release matrix.
+    -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
