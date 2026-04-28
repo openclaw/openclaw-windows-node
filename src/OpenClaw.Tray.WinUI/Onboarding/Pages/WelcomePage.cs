@@ -16,16 +16,23 @@ public sealed class WelcomePage : Component
     {
         return VStack(10,
             TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_Title"))
-                .FontSize(24)
+                .FontSize(22)
                 .FontWeight(new global::Windows.UI.Text.FontWeight(700))
                 .HAlign(HorizontalAlignment.Center)
                 .TextWrapping(),
 
             TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_Subtitle"))
-                .FontSize(13)
-                .Opacity(0.7)
+                .FontSize(14)
+                .Opacity(0.6)
                 .HAlign(HorizontalAlignment.Center)
                 .TextWrapping(),
+
+            TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_GetConnected"))
+                .FontSize(13)
+                .Opacity(0.5)
+                .HAlign(HorizontalAlignment.Center)
+                .TextWrapping()
+                .Margin(0, 4, 0, 0),
 
             // Combined security notice + trust card
             Border(
@@ -37,11 +44,11 @@ public sealed class WelcomePage : Component
                             .FontWeight(new global::Windows.UI.Text.FontWeight(600))
                     ),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_SecurityBody"))
-                        .FontSize(11)
+                        .FontSize(12)
                         .Opacity(0.85)
                         .TextWrapping(),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_TrustTitle"))
-                        .FontSize(12)
+                        .FontSize(13)
                         .FontWeight(new global::Windows.UI.Text.FontWeight(600))
                         .Margin(0, 4, 0, 0),
                     BulletItem("Onboarding_Welcome_Trust_Commands", "Run commands on your computer"),
@@ -54,6 +61,7 @@ public sealed class WelcomePage : Component
             .Margin(0, 12, 0, 0)
         )
         .HAlign(HorizontalAlignment.Center)
+        .VAlign(VerticalAlignment.Center)
         .MaxWidth(460)
         .Padding(0, 8, 0, 0);
     }

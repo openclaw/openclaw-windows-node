@@ -35,6 +35,15 @@ public partial class App : Application
 
     private TrayIcon? _trayIcon;
     private OpenClawGatewayClient? _gatewayClient;
+
+    /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
+    public OpenClawGatewayClient? GatewayClient => _gatewayClient;
+
+    /// <summary>
+    /// Reinitializes the gateway client with current settings.
+    /// Called by the onboarding wizard after saving URL + Token.
+    /// </summary>
+    public void ReinitializeGatewayClient() => InitializeGatewayClient();
     private SettingsManager? _settings;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
@@ -106,6 +115,18 @@ public partial class App : Application
 
     public App()
     {
+        // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
+        var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
+        if (!string.IsNullOrEmpty(langOverride))
+        {
+            // SECURITY: Whitelist known locale codes to prevent locale injection
+            string[] allowedLocales = ["en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw"];
+            if (allowedLocales.Contains(langOverride.ToLowerInvariant()))
+                LocalizationHelper.SetLanguageOverride(langOverride);
+            else
+                Logger.Warn($"[App] Ignoring invalid OPENCLAW_LANGUAGE value: {langOverride}");
+        }
+
         InitializeComponent();
         
         CheckPreviousRun();
@@ -260,12 +281,15 @@ public partial class App : Application
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
-        // Check for updates before launching
-        var shouldLaunch = await CheckForUpdatesAsync();
-        if (!shouldLaunch)
+        // Check for updates before launching (skip in test mode)
+        if (Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
-            Exit();
-            return;
+            var shouldLaunch = await CheckForUpdatesAsync();
+            if (!shouldLaunch)
+            {
+                Exit();
+                return;
+            }
         }
 
         // Register toast activation handler
@@ -274,8 +298,9 @@ public partial class App : Application
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
-        // First-run check
-        if (string.IsNullOrWhiteSpace(_settings.Token))
+        // First-run check (also supports forced onboarding for testing)
+        if (string.IsNullOrWhiteSpace(_settings.Token) ||
+            Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
         {
             await ShowOnboardingAsync();
         }
@@ -1109,10 +1134,18 @@ public partial class App : Application
         if (_settings == null) return;
         if (!EnsureSshTunnelConfigured()) return;
 
+        // Guard against empty gateway URL (e.g., fresh install before onboarding)
+        var gatewayUrl = _settings.GetEffectiveGatewayUrl();
+        if (string.IsNullOrWhiteSpace(gatewayUrl))
+        {
+            Logger.Info("Gateway URL not configured — skipping client initialization");
+            return;
+        }
+
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
 
-        _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
+        _gatewayClient = new OpenClawGatewayClient(gatewayUrl, _settings.Token, new AppLogger());
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
@@ -1509,6 +1542,15 @@ public partial class App : Application
         if (notification.IsChat && !_settings.NotifyChatResponses)
             return false;
 
+        // Suppress chat notifications when a chat window is already showing them
+        if (notification.IsChat)
+        {
+            if (_webChatWindow != null && !_webChatWindow.IsClosed)
+                return false;
+            if (_onboardingWindow != null)
+                return false; // Onboarding window has chat overlay
+        }
+
         var type = notification.Type;
         if (type == null) return true;
         return s_notifTypeMap.TryGetValue(type, out var selector) ? selector(_settings) : true;
@@ -1794,9 +1836,17 @@ public partial class App : Application
         _onboardingWindow = new OnboardingWindow(_settings);
         _onboardingWindow.OnboardingCompleted += (s, e) =>
         {
-            Logger.Info("Onboarding completed, reinitializing connections");
+            Logger.Info("Onboarding completed");
             _onboardingWindow = null;
 
+            // If the persistent client was already initialized during onboarding, keep it
+            if (_gatewayClient?.IsConnectedToGateway == true)
+            {
+                Logger.Info("Gateway client already connected from onboarding — keeping");
+                return;
+            }
+
+            // Otherwise reinitialize with saved settings
             UnsubscribeGatewayEvents();
             _gatewayClient?.Dispose();
             _gatewayClient = null;

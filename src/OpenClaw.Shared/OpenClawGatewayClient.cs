@@ -59,8 +59,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private bool _authFailed;
+
+    /// <summary>True when the gateway reported "pairing required" for this device.</summary>
+    public bool IsPairingRequired => _pairingRequiredAwaitingApproval;
+
+    /// <summary>True when the device signature was rejected in all supported modes.</summary>
+    public bool IsAuthFailed => _authFailed;
+
+    /// <summary>The gateway auth token used for this connection.</summary>
+    public string ConnectAuthToken => _connectAuthToken;
     private IReadOnlyList<UserNotificationRule>? _userRules;
     private bool _preferStructuredCategories = true;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pendingWizardResponses = new();
 
     /// <summary>
     /// Controls whether structured notification metadata (Intent, Channel) takes priority
@@ -105,6 +115,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
     protected override bool ShouldAutoReconnect()
     {
         return !_pairingRequiredAwaitingApproval && !_authFailed;
+    }
+
+    /// <summary>
+    /// Reconnects the existing client after device pairing has been approved.
+    /// Resets the pairing flag and triggers reconnect without creating a new client.
+    /// This avoids another V3→V2 signature fallback cycle.
+    /// </summary>
+    public void ReconnectAfterApproval()
+    {
+        _pairingRequiredAwaitingApproval = false;
+        _authFailed = false;
+        _ = ReconnectWithBackoffAsync();
     }
 
     protected override void OnDisconnected()
@@ -229,6 +251,41 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
         await completion.Task;
         _logger.Info($"Sent chat message ({message.Length} chars)");
+    }
+
+    /// <summary>
+    /// Sends a wizard RPC request and waits for the response payload.
+    /// Used for wizard.start, wizard.next, wizard.cancel, wizard.status.
+    /// </summary>
+    public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
+    {
+        if (!IsConnected)
+            throw new InvalidOperationException("Gateway connection is not open");
+
+        var requestId = Guid.NewGuid().ToString();
+        var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingWizardResponses[requestId] = completion;
+        TrackPendingRequest(requestId, method);
+
+        try
+        {
+            await SendRawAsync(SerializeRequest(requestId, method, parameters));
+        }
+        catch
+        {
+            _pendingWizardResponses.TryRemove(requestId, out _);
+            RemovePendingRequest(requestId);
+            throw;
+        }
+
+        var completedTask = await Task.WhenAny(completion.Task, Task.Delay(timeoutMs, CancellationToken));
+        if (completedTask != completion.Task)
+        {
+            _pendingWizardResponses.TryRemove(requestId, out _);
+            throw new TimeoutException($"Timed out waiting for {method} response");
+        }
+
+        return await completion.Task;
     }
 
     /// <summary>Request session list from gateway.</summary>
@@ -433,7 +490,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 caps = Array.Empty<string>(),
                 commands = Array.Empty<string>(),
                 permissions = new { },
-                auth = new { token = _connectAuthToken },
+                auth = BuildAuthPayload(),
                 locale = "en-US",
                 userAgent = "openclaw-windows-tray/1.0.0",
                 device = new
@@ -456,6 +513,30 @@ public class OpenClawGatewayClient : WebSocketClientBase
             RemovePendingRequest(requestId);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Builds the auth payload for the connect handshake, matching the gateway's
+    /// HandshakeConnectAuth type: { token?, bootstrapToken?, deviceToken?, password? }.
+    /// Fresh devices send bootstrapToken for initial QR/setup-code pairing.
+    /// Paired devices send an explicit deviceToken.
+    /// </summary>
+    private Dictionary<string, string> BuildAuthPayload()
+    {
+        var auth = new Dictionary<string, string> { ["token"] = _connectAuthToken };
+
+        if (_deviceIdentity.DeviceToken != null)
+        {
+            // Paired device: send explicit device token for cleaner auth path
+            auth["deviceToken"] = _deviceIdentity.DeviceToken;
+        }
+        else
+        {
+            // Fresh device: send bootstrap token for initial pairing
+            auth["bootstrapToken"] = _token;
+        }
+
+        return auth;
     }
 
     private async Task SendTrackedRequestAsync(string method, object? parameters = null)
@@ -645,6 +726,27 @@ public class OpenClawGatewayClient : WebSocketClientBase
             }
 
             pendingChatSend.TrySetResult(true);
+            return;
+        }
+
+        // Check for pending wizard response
+        if (requestId != null && _pendingWizardResponses.TryRemove(requestId, out var wizardCompletion))
+        {
+            if (root.TryGetProperty("ok", out var okWiz) && okWiz.ValueKind == JsonValueKind.False)
+            {
+                var message = TryGetErrorMessage(root) ?? "wizard request failed";
+                wizardCompletion.TrySetException(new InvalidOperationException(message));
+            }
+            else if (root.TryGetProperty("payload", out var wizPayload))
+            {
+                // Log the payload kind for debugging
+                _logger.Info($"Wizard response payload kind={wizPayload.ValueKind}, raw={wizPayload.ToString()?.Substring(0, Math.Min(200, wizPayload.ToString()?.Length ?? 0))}");
+                wizardCompletion.TrySetResult(wizPayload.Clone());
+            }
+            else
+            {
+                wizardCompletion.TrySetResult(root.Clone());
+            }
             return;
         }
 

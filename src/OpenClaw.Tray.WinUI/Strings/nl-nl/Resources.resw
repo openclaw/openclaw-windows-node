@@ -845,4 +845,214 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
     <value>Zorg ervoor dat uw externe gateway actief en bereikbaar is.</value>
   </data>
+  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
+    <value>Laten we u in enkele stappen verbinden.</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
+    <value>Configuratiecode</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCodePlaceholder" xml:space="preserve">
+    <value>Klik om configuratiecode te plakken</value>
+  </data>
+  <data name="Onboarding_Connection_GatewayUrl" xml:space="preserve">
+    <value>Gateway-URL</value>
+  </data>
+  <data name="Onboarding_Connection_Token" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="Onboarding_Connection_TokenPlaceholder" xml:space="preserve">
+    <value>Plak bootstrap-token</value>
+  </data>
+  <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
+    <value>Node Mode</value>
+  </data>
+  <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
+    <value>Verbinding testen</value>
+  </data>
+  <data name="Onboarding_Connection_Ready" xml:space="preserve">
+    <value>Klaar om te verbinden</value>
+  </data>
+  <data name="Onboarding_Connection_Approve" xml:space="preserve">
+    <value>Verbinding goedkeuren</value>
+  </data>
+  <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
+    <value>U kunt de gatewayverbinding later configureren via het systeemvakmenu.</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDecoded" xml:space="preserve">
+    <value>Configuratiecode gedecodeerd</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenRequired" xml:space="preserve">
+    <value>Token is vereist</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnecting" xml:space="preserve">
+    <value>Verbinden…</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnected" xml:space="preserve">
+    <value>Verbonden met gateway</value>
+  </data>
+  <data name="Onboarding_Connection_StatusPairing" xml:space="preserve">
+    <value>Apparaat vereist goedkeuring</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
+    <value>Token onjuist — controleer uw bootstrap-token</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
+    <value>Verbinding verlopen (15s) — controleer of de gateway actief is</value>
+  </data>
+  <data name="Onboarding_Permissions_Title" xml:space="preserve">
+    <value>Machtigingen verlenen</value>
+  </data>
+  <data name="Onboarding_Permissions_Description" xml:space="preserve">
+    <value>OpenClaw werkt het beste wanneer het meldingen kan verzenden, toegang heeft tot uw camera en microfoon, uw scherm kan vastleggen en uw locatie kent. Verleen hieronder machtigingen.</value>
+  </data>
+  <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
+    <value>Status vernieuwen</value>
+  </data>
+  <data name="Onboarding_Permissions_OpenSettings" xml:space="preserve">
+    <value>Instellingen openen</value>
+  </data>
+  <data name="Onboarding_Permissions_Checking" xml:space="preserve">
+    <value>Machtigingen controleren…</value>
+  </data>
+  <data name="Onboarding_Chat_Title" xml:space="preserve">
+    <value>Maak kennis met uw agent</value>
+  </data>
+  <data name="Onboarding_Chat_Loading" xml:space="preserve">
+    <value>Chat laden…</value>
+  </data>
+  <data name="Onboarding_Wizard_Title" xml:space="preserve">
+    <value>Gateway configureren</value>
+  </data>
+  <data name="Onboarding_Wizard_Continue" xml:space="preserve">
+    <value>Doorgaan</value>
+  </data>
+  <data name="Onboarding_Wizard_Skip" xml:space="preserve">
+    <value>Overslaan</value>
+  </data>
+  <data name="Onboarding_Wizard_Complete" xml:space="preserve">
+    <value>Gatewayconfiguratie voltooid!</value>
+  </data>
+  <data name="Onboarding_Wizard_Offline" xml:space="preserve">
+    <value>Gateway-wizard niet beschikbaar</value>
+  </data>
+  <data name="Onboarding_Wizard_OfflineMessage" xml:space="preserve">
+    <value>De gateway biedt dynamische configuratiestappen. Deze worden uitgevoerd zodra de verbinding tot stand is gebracht.</value>
+  </data>
+  <data name="Onboarding_Perm_Notifications" xml:space="preserve">
+    <value>Meldingen</value>
+  </data>
+  <data name="Onboarding_Perm_Camera" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="Onboarding_Perm_Microphone" xml:space="preserve">
+    <value>Microfoon</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCapture" xml:space="preserve">
+    <value>Schermopname</value>
+  </data>
+  <data name="Onboarding_Perm_Location" xml:space="preserve">
+    <value>Locatie (optioneel)</value>
+  </data>
+  <data name="Onboarding_Perm_Enabled" xml:space="preserve">
+    <value>Ingeschakeld</value>
+  </data>
+  <data name="Onboarding_Perm_EnabledDefault" xml:space="preserve">
+    <value>Ingeschakeld (standaard)</value>
+  </data>
+  <data name="Onboarding_Perm_Disabled" xml:space="preserve">
+    <value>Uitgeschakeld</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledManifest" xml:space="preserve">
+    <value>Uitgeschakeld in app-manifest</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledPolicy" xml:space="preserve">
+    <value>Uitgeschakeld door beleid</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
+    <value>Uitgeschakeld — open Instellingen</value>
+  </data>
+  <data name="Onboarding_Perm_Allowed" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
+    <value>Geweigerd — open Instellingen</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
+    <value>Geweigerd door systeembeleid</value>
+  </data>
+  <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
+    <value>Niet bepaald — open Instellingen</value>
+  </data>
+  <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
+    <value>Kan niet worden gecontroleerd</value>
+  </data>
+  <data name="Onboarding_Perm_NoCameraDetected" xml:space="preserve">
+    <value>Geen camera gedetecteerd</value>
+  </data>
+  <data name="Onboarding_Perm_NoMicDetected" xml:space="preserve">
+    <value>Geen microfoon gedetecteerd</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
+    <value>Beschikbaar — gebruikt kiezer per opname</value>
+  </data>
+  <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
+    <value>Niet ondersteund op dit apparaat</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledSystem" xml:space="preserve">
+    <value>Locatieservices uitgeschakeld voor het hele systeem</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledUser" xml:space="preserve">
+    <value>Locatie uitgeschakeld voor deze gebruiker</value>
+  </data>
+  <data name="Onboarding_Perm_LocationEnabled" xml:space="preserve">
+    <value>Locatieservices ingeschakeld</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
+    <value>Toegang via het systeemvak</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
+    <value>Instellingen → Kanalen</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
+    <value>Activeer met uw stem</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
+    <value>Visuele werkruimte</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
+    <value>Instellingen → Vaardigheden</value>
+  </data>
+  <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
+    <value>Oorsprong niet toegestaan — gateway weigert deze verbinding</value>
+  </data>
+  <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
+    <value>Snelheidsbeperking — wacht even en probeer opnieuw</value>
+  </data>
+  <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
+    <value>Voer uit op uw gateway:</value>
+  </data>
+  <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
+    <value>Klik om te kopiëren</value>
+  </data>
+  <data name="Onboarding_Connection_StatusApproved" xml:space="preserve">
+    <value>Apparaat goedgekeurd — opnieuw verbinden…</value>
+  </data>
+  <data name="Onboarding_Connection_Copied" xml:space="preserve">
+    <value>Gekopieerd!</value>
+  </data>
+  <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
+    <value>Verbinding mislukt — controleer URL en token en probeer opnieuw</value>
+  </data>
+  <data name="Onboarding_Wizard_StepError" xml:space="preserve">
+    <value>Er is een fout opgetreden bij het verwerken van deze stap</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetecting" xml:space="preserve">
+    <value>Gateway detecteren...</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetected" xml:space="preserve">
+    <value>Gateway gedetecteerd op dev-poort</value>
+  </data>
+  <data name="Onboarding_Connection_StatusAuthenticating" xml:space="preserve">
+    <value>Authenticeren...</value>
+  </data>
 </root>

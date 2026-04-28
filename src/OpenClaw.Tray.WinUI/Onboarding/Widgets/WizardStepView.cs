@@ -115,13 +115,14 @@ public sealed class WizardStepView : Component<WizardStepProps>
         {
             var isChecked = selections.Contains(i);
             return HStack(8,
-                ToggleButton("", isChecked, _ =>
+                CheckBox(isChecked, _ =>
                 {
                     var next = new HashSet<int>(selections);
                     if (isChecked) next.Remove(i); else next.Add(i);
                     setSelections(next);
-                }).Width(40),
+                }),
                 TextBlock(opt).FontSize(13)
+                    .VAlign(Microsoft.UI.Xaml.VerticalAlignment.Center)
             );
         }).ToArray();
 

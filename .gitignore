@@ -355,3 +355,8 @@ state.json
 CLAUDE.md
 CLAUDE.local.md
 visual-test-output/
+
+# E2E test capture artifacts
+tests/e2e/screenshots/*.bin
+tests/e2e/screenshots/*.png
+

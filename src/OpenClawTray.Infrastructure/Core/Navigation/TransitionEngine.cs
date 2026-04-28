@@ -296,8 +296,15 @@ internal static class TransitionEngine
         Compositor compositor, Visual outVisual, Visual inVisual,
         SlideInOnlyTransition slideIn, NavigationMode mode)
     {
+        // Cancel any in-progress animations to prevent overlapping pages on rapid navigation
+        outVisual.StopAnimation("Offset");
+        outVisual.StopAnimation("Opacity");
+        inVisual.StopAnimation("Offset");
+        inVisual.StopAnimation("Opacity");
+
         // Instantly hide old content — zero flicker
         outVisual.Opacity = 0;
+        outVisual.Offset = Vector3.Zero;
 
         var duration = slideIn.Duration ?? TimeSpan.FromMilliseconds(200);
         var distance = (float)slideIn.Distance;

@@ -132,4 +132,107 @@ public class OnboardingStateTests
     }
 
     #endregion
+
+    #region NotifyRouteChanged
+
+    [Fact]
+    public void NotifyRouteChanged_UpdatesCurrentRoute()
+    {
+        var state = CreateState();
+        state.NotifyRouteChanged(OnboardingRoute.Permissions);
+
+        Assert.Equal(OnboardingRoute.Permissions, state.CurrentRoute);
+    }
+
+    [Fact]
+    public void NotifyRouteChanged_FiresRouteChangedEvent()
+    {
+        var state = CreateState();
+        OnboardingRoute? received = null;
+        state.RouteChanged += (_, route) => received = route;
+
+        state.NotifyRouteChanged(OnboardingRoute.Chat);
+
+        Assert.Equal(OnboardingRoute.Chat, received);
+    }
+
+    [Fact]
+    public void RouteChanged_NotFired_WhenNoHandler()
+    {
+        var state = CreateState();
+        var ex = Record.Exception(() => state.NotifyRouteChanged(OnboardingRoute.Wizard));
+        Assert.Null(ex);
+    }
+
+    #endregion
+
+    #region Property defaults
+
+    [Fact]
+    public void WizardSessionId_DefaultsToNull()
+    {
+        Assert.Null(CreateState().WizardSessionId);
+    }
+
+    [Fact]
+    public void WizardStepPayload_DefaultsToNull()
+    {
+        Assert.Null(CreateState().WizardStepPayload);
+    }
+
+    [Fact]
+    public void WizardLifecycleState_DefaultsToNull()
+    {
+        Assert.Null(CreateState().WizardLifecycleState);
+    }
+
+    [Fact]
+    public void ConnectionTested_DefaultsToFalse()
+    {
+        Assert.False(CreateState().ConnectionTested);
+    }
+
+    #endregion
+
+    #region NotifyPageChanged
+
+    [Fact]
+    public void NotifyPageChanged_FiresPageChangedEvent()
+    {
+        var state = CreateState();
+        var fired = false;
+        state.PageChanged += (_, _) => fired = true;
+
+        state.NotifyPageChanged();
+
+        Assert.True(fired);
+    }
+
+    #endregion
+
+    #region Settings
+
+    [Fact]
+    public void Settings_ReturnsInjectedManager()
+    {
+        var settings = new SettingsManager();
+        var state = new OnboardingState(settings);
+
+        Assert.Same(settings, state.Settings);
+    }
+
+    #endregion
+
+    #region Dispose
+
+    [Fact]
+    public void Dispose_NullsOutGatewayClient()
+    {
+        var state = CreateState();
+        // GatewayClient starts null; Dispose should handle gracefully
+        state.Dispose();
+        Assert.Null(state.GatewayClient);
+    }
+
+    #endregion
 }
