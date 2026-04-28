@@ -66,7 +66,7 @@ public class DeviceIdentity
             _deviceId = data.DeviceId;
             _deviceToken = data.DeviceToken;
             
-            _logger.Info($"Loaded Ed25519 device identity: {_deviceId?.Substring(0, 16)}...");
+            _logger.Info($"Loaded Ed25519 device identity: {_deviceId?[..16]}...");
         }
         catch (Exception ex)
         {

@@ -11,7 +11,7 @@ public static class ActivityStreamService
 {
     private static readonly LinkedList<ActivityStreamItem> _items = new();
     private static readonly object _lock = new();
-    private const int MaxItems = 200;
+    public const int MaxStoredItems = 400;
 
     public static event EventHandler? Updated;
 
@@ -38,10 +38,10 @@ public static class ActivityStreamService
                 NodeId = nodeId
             });
 
-            while (_items.Count > MaxItems)
+            while (_items.Count > MaxStoredItems)
             {
                 _items.RemoveLast();
-                Logger.Debug($"[ActivityStream] Trimmed oldest item (exceeded max {MaxItems})");
+                Logger.Debug($"[ActivityStream] Trimmed oldest item (exceeded max {MaxStoredItems})");
             }
         }
 
@@ -51,18 +51,51 @@ public static class ActivityStreamService
         Updated?.Invoke(null, EventArgs.Empty);
     }
 
-    public static IReadOnlyList<ActivityStreamItem> GetItems(int maxItems = 200, string? category = null)
+    public static IReadOnlyList<ActivityStreamItem> GetItems(int maxItems = MaxStoredItems, string? category = null)
     {
         lock (_lock)
         {
             IEnumerable<ActivityStreamItem> query = _items;
             if (!string.IsNullOrWhiteSpace(category))
             {
-                query = query.Where(item => string.Equals(item.Category, category, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(item => CategoryMatches(item.Category, category));
             }
 
             return query.Take(Math.Max(0, maxItems)).ToList();
         }
+    }
+
+    public static string BuildSupportBundle(int maxItems = MaxStoredItems)
+    {
+        IReadOnlyList<ActivityStreamItem> snapshot;
+        lock (_lock)
+        {
+            snapshot = _items.Take(Math.Max(0, maxItems)).ToList();
+        }
+
+        var lines = new List<string>
+        {
+            "OpenClaw Tray activity support bundle",
+            $"Generated: {DateTimeOffset.Now:O}",
+            $"Items: {snapshot.Count}",
+            ""
+        };
+
+        foreach (var item in snapshot)
+        {
+            var details = string.IsNullOrWhiteSpace(item.Details)
+                ? ""
+                : $" | {item.Details}";
+            var session = string.IsNullOrWhiteSpace(item.SessionKey)
+                ? ""
+                : $" | session={item.SessionKey}";
+            var node = string.IsNullOrWhiteSpace(item.NodeId)
+                ? ""
+                : $" | node={ShortId(item.NodeId)}";
+            lines.Add($"{item.Timestamp:O} [{item.Category}] {item.Title}{details}{session}{node}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     public static void Clear()
@@ -74,6 +107,17 @@ public static class ActivityStreamService
 
         Updated?.Invoke(null, EventArgs.Empty);
     }
+
+    private static bool CategoryMatches(string itemCategory, string requestedCategory)
+    {
+        if (string.Equals(requestedCategory, "all", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return string.Equals(itemCategory, requestedCategory, StringComparison.OrdinalIgnoreCase) ||
+               itemCategory.StartsWith(requestedCategory + ".", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ShortId(string value) => value.Length <= 16 ? value : value[..16] + "...";
 }
 
 public class ActivityStreamItem

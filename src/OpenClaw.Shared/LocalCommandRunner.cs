@@ -164,9 +164,9 @@ public class LocalCommandRunner : ICommandRunner
     
     private static (string fileName, string arguments) BuildProcessArgs(CommandRequest request)
     {
-        var shell = (request.Shell ?? "powershell").ToLowerInvariant();
+        var shell = request.Shell ?? "powershell";
         var command = request.Command;
-        var isCmd = shell == "cmd";
+        var isCmd = shell.Equals("cmd", StringComparison.OrdinalIgnoreCase);
         
         if (request.Args is { Length: > 0 })
         {
@@ -176,12 +176,11 @@ public class LocalCommandRunner : ICommandRunner
             command = command + " " + string.Join(" ", quoted);
         }
         
-        return shell switch
-        {
-            "cmd" => ("cmd.exe", $"/C {command}"),
-            "pwsh" => ("pwsh.exe", $"-NoProfile -NonInteractive -Command {command}"),
-            _ => ("powershell.exe", $"-NoProfile -NonInteractive -Command {command}")
-        };
+        if (isCmd)
+            return ("cmd.exe", $"/C {command}");
+        if (shell.Equals("pwsh", StringComparison.OrdinalIgnoreCase))
+            return ("pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
+        return ("powershell.exe", $"-NoProfile -NonInteractive -Command {command}");
     }
     
     private void KillProcess(Process process)

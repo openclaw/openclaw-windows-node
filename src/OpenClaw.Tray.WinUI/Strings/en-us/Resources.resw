@@ -141,6 +141,30 @@
   <data name="StatusChannelsHeader.Text" xml:space="preserve">
     <value>CHANNELS</value>
   </data>
+  <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
+    <value>GATEWAY TOPOLOGY</value>
+  </data>
+  <data name="StatusSupportDebugHeader.Text" xml:space="preserve">
+    <value>SUPPORT &amp; DEBUG</value>
+  </data>
+  <data name="StatusPortDiagnosticsHeader.Text" xml:space="preserve">
+    <value>PORT DIAGNOSTICS</value>
+  </data>
+  <data name="StatusPermissionsHeader.Text" xml:space="preserve">
+    <value>PERMISSIONS</value>
+  </data>
+  <data name="StatusCostTrendHeader.Text" xml:space="preserve">
+    <value>30-DAY COST TREND</value>
+  </data>
+  <data name="StatusExtensibilityHeader.Text" xml:space="preserve">
+    <value>EXTENSIBILITY</value>
+  </data>
+  <data name="StatusNodesHeader.Text" xml:space="preserve">
+    <value>NODES</value>
+  </data>
+  <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
+    <value>RECENT ACTIVITY</value>
+  </data>
 
   <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
@@ -160,10 +184,82 @@
   <data name="StatusNoSessions.Text" xml:space="preserve">
     <value>No active sessions</value>
   </data>
+  <data name="StatusNoNodes.Text" xml:space="preserve">
+    <value>No nodes reported</value>
+  </data>
+  <data name="StatusNoRecentActivity.Text" xml:space="preserve">
+    <value>No recent activity</value>
+  </data>
+  <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
+    <value>Channel setup, skills, and scheduled automations are gateway-owned surfaces. Use these links when the connected gateway exposes the matching dashboard pages.</value>
+  </data>
+  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
+    <value>Channel setup / schemas</value>
+  </data>
+  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
+    <value>Open channel setup for schema-driven auth, QR, login, and dashboard flows where available.</value>
+  </data>
+  <data name="StatusSkillsTitle.Text" xml:space="preserve">
+    <value>Skills</value>
+  </data>
+  <data name="StatusSkillsDescription.Text" xml:space="preserve">
+    <value>Open gateway skills configuration when the connected gateway supports it.</value>
+  </data>
+  <data name="StatusCronTitle.Text" xml:space="preserve">
+    <value>Cron / schedules</value>
+  </data>
+  <data name="StatusCronDescription.Text" xml:space="preserve">
+    <value>Open scheduled automation controls when the connected gateway supports them.</value>
+  </data>
 
   <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>Refresh</value>
+  </data>
+  <data name="StatusOpenLogsButton.Content" xml:space="preserve">
+    <value>Open Logs</value>
+  </data>
+  <data name="StatusOpenConfigButton.Content" xml:space="preserve">
+    <value>Open Config</value>
+  </data>
+  <data name="StatusRefreshHealthButton.Content" xml:space="preserve">
+    <value>Refresh Health</value>
+  </data>
+  <data name="StatusOpenDiagnosticsJsonlButton.Content" xml:space="preserve">
+    <value>Open Diagnostics JSONL</value>
+  </data>
+  <data name="StatusCopySupportContextButton.Content" xml:space="preserve">
+    <value>Copy Support Context</value>
+  </data>
+  <data name="StatusRestartSshTunnelButton.Content" xml:space="preserve">
+    <value>Restart SSH Tunnel</value>
+  </data>
+  <data name="StatusCopyBrowserSetupButton.Content" xml:space="preserve">
+    <value>Copy Browser Setup</value>
+  </data>
+  <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
+    <value>Copy Debug Bundle</value>
+  </data>
+  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
+    <value>Check Updates</value>
+  </data>
+  <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
+    <value>Copy Port Diagnostics</value>
+  </data>
+  <data name="StatusCopyButton.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="StatusSettingsButton.Content" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="StatusOpenButton.Content" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="StatusCopyNodeInventoryButton.Content" xml:space="preserve">
+    <value>Copy Node Inventory</value>
+  </data>
+  <data name="StatusOpenStreamButton.Content" xml:space="preserve">
+    <value>Open Stream</value>
   </data>
 
   <!-- ==================== ActivityStreamWindow.xaml ==================== -->
@@ -374,6 +470,60 @@
   <data name="Menu_CopyNodeSummary" xml:space="preserve">
     <value>Copy node summary</value>
   </data>
+  <data name="Menu_CheckForUpdates" xml:space="preserve">
+    <value>Check for Updates</value>
+  </data>
+  <data name="Menu_SetupGuide" xml:space="preserve">
+    <value>Setup Guide...</value>
+  </data>
+  <data name="Menu_SupportDebugHeader" xml:space="preserve">
+    <value>🧰 Support &amp; Debug</value>
+  </data>
+  <data name="Menu_OpenSupportFiles" xml:space="preserve">
+    <value>Open Support Files</value>
+  </data>
+  <data name="Menu_LogsFolder" xml:space="preserve">
+    <value>Logs Folder</value>
+  </data>
+  <data name="Menu_ConfigFolder" xml:space="preserve">
+    <value>Config Folder</value>
+  </data>
+  <data name="Menu_DiagnosticsFolder" xml:space="preserve">
+    <value>Diagnostics Folder</value>
+  </data>
+  <data name="Menu_CopyDiagnostics" xml:space="preserve">
+    <value>Copy Diagnostics</value>
+  </data>
+  <data name="Menu_SupportContext" xml:space="preserve">
+    <value>Support Context</value>
+  </data>
+  <data name="Menu_DebugBundle" xml:space="preserve">
+    <value>Debug Bundle</value>
+  </data>
+  <data name="Menu_BrowserSetup" xml:space="preserve">
+    <value>Browser Setup</value>
+  </data>
+  <data name="Menu_PortDiagnostics" xml:space="preserve">
+    <value>Port Diagnostics</value>
+  </data>
+  <data name="Menu_CapabilityDiagnostics" xml:space="preserve">
+    <value>Capability Diagnostics</value>
+  </data>
+  <data name="Menu_NodeInventory" xml:space="preserve">
+    <value>Node Inventory</value>
+  </data>
+  <data name="Menu_ChannelSummary" xml:space="preserve">
+    <value>Channel Summary</value>
+  </data>
+  <data name="Menu_ActivitySummary" xml:space="preserve">
+    <value>Activity Summary</value>
+  </data>
+  <data name="Menu_ExtensibilitySummary" xml:space="preserve">
+    <value>Extensibility Summary</value>
+  </data>
+  <data name="Menu_RestartSshTunnel" xml:space="preserve">
+    <value>Restart SSH Tunnel</value>
+  </data>
 
   <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
@@ -569,6 +719,12 @@ Use one of these options:
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>Run on gateway: openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>Copy approval command</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>Pairing command copied</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node Paired!</value>
   </data>
@@ -622,6 +778,195 @@ Use one of these options:
   </data>
   <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
     <value>Open Activity Stream</value>
+  </data>
+
+  <!-- ==================== SetupWizardWindow (C# code) ==================== -->
+
+  <data name="Setup_Title" xml:space="preserve">
+    <value>OpenClaw Setup</value>
+  </data>
+  <data name="Setup_StepConnect" xml:space="preserve">
+    <value>Step 1 of 3 — Connect</value>
+  </data>
+  <data name="Setup_ConnectTitle" xml:space="preserve">
+    <value>Connect to your gateway</value>
+  </data>
+  <data name="Setup_ConnectDescription" xml:space="preserve">
+    <value>On your gateway host (Mac/Linux), run this to get a setup code:</value>
+  </data>
+  <data name="Setup_SetupCodeHeader" xml:space="preserve">
+    <value>Setup Code</value>
+  </data>
+  <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
+    <value>Paste the setup code from your gateway dashboard</value>
+  </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>Paste setup code / QR</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>Import QR image...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ QR image decoded — press Test Connection</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ Could not find a valid setup QR code in that image.</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ Clipboard does not contain setup code text or a QR image.</value>
+  </data>
+  <data name="Setup_ManualEntryToggle" xml:space="preserve">
+    <value>Or enter URL and token manually ▾</value>
+  </data>
+  <data name="Setup_ManualEntryToggleHide" xml:space="preserve">
+    <value>Hide manual entry ▴</value>
+  </data>
+  <data name="Setup_GatewayUrlHeader" xml:space="preserve">
+    <value>Gateway URL</value>
+  </data>
+  <data name="Setup_GatewayUrlPlaceholder" xml:space="preserve">
+    <value>ws://192.168.1.x:18789</value>
+  </data>
+  <data name="Setup_GatewayUrlHint" xml:space="preserve">
+    <value>💡 Accepts ws://, wss://, http://, or https://</value>
+  </data>
+  <data name="Setup_TokenHeader" xml:space="preserve">
+    <value>Gateway Token</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>Paste your token here</value>
+  </data>
+  <data name="Setup_TestButton" xml:space="preserve">
+    <value>Test Connection</value>
+  </data>
+  <data name="Setup_Testing" xml:space="preserve">
+    <value>⏳ Connecting to gateway...</value>
+  </data>
+  <data name="Setup_Connected" xml:space="preserve">
+    <value>✅ Connected!</value>
+  </data>
+  <data name="Setup_PairingRequired" xml:space="preserve">
+    <value>✅ Gateway reached! Device needs pairing approval.
+
+On your gateway host (Mac/Linux), run:
+
+  openclaw devices approve {0}</value>
+  </data>
+  <data name="Setup_TokenMismatch" xml:space="preserve">
+    <value>❌ Token doesn't match.
+
+💡 Check gateway auth token:
+  cat ~/.openclaw/openclaw.json | grep token</value>
+  </data>
+  <data name="Setup_OriginNotAllowed" xml:space="preserve">
+    <value>❌ Origin not allowed.
+
+💡 Add this machine to gateway.controlUi.allowedOrigins.</value>
+  </data>
+  <data name="Setup_RateLimited" xml:space="preserve">
+    <value>❌ Rate-limited. Wait a minute and try again.</value>
+  </data>
+  <data name="Setup_TimedOut" xml:space="preserve">
+    <value>❌ Timed out. Check the URL and gateway is running.</value>
+  </data>
+  <data name="Setup_TokenRequired" xml:space="preserve">
+    <value>❌ Please enter a token</value>
+  </data>
+  <data name="Setup_TestFirst" xml:space="preserve">
+    <value>⚠️ Please test the connection first</value>
+  </data>
+  <data name="Setup_CodeDecoded" xml:space="preserve">
+    <value>✅ Setup code decoded — press Test Connection</value>
+  </data>
+  <data name="Setup_NodeModeTitle" xml:space="preserve">
+    <value>Enable Node Mode (optional)</value>
+  </data>
+  <data name="Setup_NodeModeDescription" xml:space="preserve">
+    <value>Node Mode lets your Windows machine run tasks for OpenClaw — like screen capture, camera access, and canvas drawing.</value>
+  </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>Only enable Node Mode for gateways and agents you trust</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>Approved agents can run local commands and may access enabled device surfaces such as screen, camera, location, browser, and canvas. You can disable capability groups later in Settings.</value>
+  </data>
+  <data name="Setup_NodeModeToggle" xml:space="preserve">
+    <value>Enable Node Mode</value>
+  </data>
+  <data name="Setup_DeviceIdLoading" xml:space="preserve">
+    <value>Device ID: loading...</value>
+  </data>
+  <data name="Setup_DeviceIdFallback" xml:space="preserve">
+    <value>Device ID: (will be generated on first connect)</value>
+  </data>
+  <data name="Setup_CopyDeviceId" xml:space="preserve">
+    <value>📋 Copy Device ID</value>
+  </data>
+  <data name="Setup_DeviceIdCopied" xml:space="preserve">
+    <value>✅ Copied!</value>
+  </data>
+  <data name="Setup_ApproveInstructions" xml:space="preserve">
+    <value>To approve this node, run on your gateway host:</value>
+  </data>
+  <data name="Setup_ApproveHint" xml:space="preserve">
+    <value>💡 You can finish setup now — pairing will continue in the background. You'll get a notification when approved.</value>
+  </data>
+  <data name="Setup_DoneTitle" xml:space="preserve">
+    <value>🎉 You're all set!</value>
+  </data>
+  <data name="Setup_DoneDescription" xml:space="preserve">
+    <value>OpenClaw Tray will connect to your gateway and start monitoring.</value>
+  </data>
+  <data name="Setup_BackButton" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Setup_NextButton" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="Setup_FinishButton" xml:space="preserve">
+    <value>Finish</value>
+  </data>
+  <data name="Setup_StepNodeMode" xml:space="preserve">
+    <value>Step 2 of 3 — Node Mode</value>
+  </data>
+  <data name="Setup_StepDone" xml:space="preserve">
+    <value>Step 3 of 3 — Done</value>
+  </data>
+
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>DEVELOPER MODE</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>Enable Local MCP Server</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>Exposes the same node capabilities (system, screen, camera, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code).</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>Endpoint:</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>Status:</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>Listening</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>Will start on Save</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>Will stop on Save</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>Failed to start: </value>
   </data>
 
   <!-- ==================== DownloadProgressDialog ==================== -->

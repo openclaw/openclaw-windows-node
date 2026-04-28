@@ -32,7 +32,7 @@
                     Spacing="16"
                     Padding="32">
             <TextBlock x:Uid="CanvasErrorTitle" Text="❌ Canvas Error" 
-                       FontSize="18" 
+                       Style="{StaticResource SubtitleTextBlockStyle}" 
                        FontWeight="SemiBold"
                        HorizontalAlignment="Center"/>
             <TextBlock x:Name="ErrorText" 
@@ -40,7 +40,7 @@
                        MaxWidth="400"
                        HorizontalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <Button x:Uid="CanvasRetryButton" Content="Retry" 
+            <Button x:Name="RetryButton" x:Uid="CanvasRetryButton" AutomationProperties.AutomationId="RetryButton" Content="Retry" 
                     HorizontalAlignment="Center"
                     Click="OnRetryClick"/>
         </StackPanel>

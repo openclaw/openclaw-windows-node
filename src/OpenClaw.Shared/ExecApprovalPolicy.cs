@@ -2,7 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -35,7 +36,7 @@ public enum ExecApprovalAction
 {
     Allow,
     Deny,
-    Prompt  // Future: show user a confirmation dialog
+    Prompt
 }
 
 /// <summary>
@@ -98,8 +99,7 @@ public class ExecApprovalPolicy
             };
         }
         
-        // Compute once; only used if any rule has shell filters.
-        var normalizedShell = (shell ?? "powershell").ToLowerInvariant();
+        var shellSpan = (shell ?? "powershell").AsSpan();
 
         foreach (var rule in _rules)
         {
@@ -111,7 +111,7 @@ public class ExecApprovalPolicy
                 var shellMatched = false;
                 foreach (var s in rule.Shells)
                 {
-                    if (s.Equals(normalizedShell, StringComparison.OrdinalIgnoreCase))
+                    if (s.AsSpan().Equals(shellSpan, StringComparison.OrdinalIgnoreCase))
                     {
                         shellMatched = true;
                         break;
@@ -198,6 +198,13 @@ public class ExecApprovalPolicy
             DefaultAction = _defaultAction,
             Rules = _rules.ToList()
         };
+    }
+
+    public string GetPolicyHash()
+    {
+        var json = JsonSerializer.Serialize(GetPolicyData(), _jsonOptions);
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(json));
+        return $"sha256:{Convert.ToHexString(bytes).ToLowerInvariant()}";
     }
     
     /// <summary>

@@ -1,8 +1,6 @@
 using OpenClaw.Shared;
 using System;
 using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
 
@@ -25,36 +23,67 @@ public sealed class SshTunnelService : IDisposable
     }
 
     public bool IsRunning => _process is { HasExited: false };
+    public string? CurrentUser { get; private set; }
+    public string? CurrentHost { get; private set; }
+    public int CurrentRemotePort { get; private set; }
+    public int CurrentLocalPort { get; private set; }
+    public int CurrentBrowserProxyRemotePort { get; private set; }
+    public int CurrentBrowserProxyLocalPort { get; private set; }
+    public DateTime? StartedAtUtc { get; private set; }
+    public string? LastError { get; private set; }
+    public TunnelStatus Status { get; private set; } = TunnelStatus.NotConfigured;
+
+    public void MarkRestarting(int exitCode)
+    {
+        Status = TunnelStatus.Restarting;
+        LastError = $"SSH tunnel exited unexpectedly with code {exitCode}; restart is scheduled.";
+    }
 
     public void EnsureStarted(SettingsManager settings)
     {
         if (!settings.UseSshTunnel)
         {
             Stop();
+            LastError = null;
+            Status = TunnelStatus.NotConfigured;
             return;
+        }
+
+        var includeBrowserProxyForward =
+            settings.NodeBrowserProxyEnabled &&
+            SshTunnelCommandLine.CanForwardBrowserProxyPort(settings.SshTunnelRemotePort, settings.SshTunnelLocalPort);
+        if (settings.NodeBrowserProxyEnabled && !includeBrowserProxyForward)
+        {
+            _logger.Warn("SSH tunnel browser proxy forward was skipped because gateway port + 2 is outside the valid TCP port range.");
         }
 
         EnsureStarted(
             settings.SshTunnelUser,
             settings.SshTunnelHost,
             settings.SshTunnelRemotePort,
-            settings.SshTunnelLocalPort);
+            settings.SshTunnelLocalPort,
+            includeBrowserProxyForward);
     }
 
     public void EnsureStarted(string user, string host, int remotePort, int localPort)
+        => EnsureStarted(user, host, remotePort, localPort, includeBrowserProxyForward: false);
+
+    public void EnsureStarted(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward)
     {
         user = user.Trim();
         host = host.Trim();
 
-        var spec = BuildSpec(user, host, remotePort, localPort);
+        var spec = BuildSpec(user, host, remotePort, localPort, includeBrowserProxyForward);
 
         if (IsRunning && string.Equals(_lastSpec, spec, StringComparison.Ordinal))
         {
+            Status = TunnelStatus.Up;
             return;
         }
 
         Stop();
-        StartProcess(user, host, remotePort, localPort);
+        Status = TunnelStatus.Starting;
+        StartProcess(user, host, remotePort, localPort, includeBrowserProxyForward);
         _lastSpec = spec;
     }
 
@@ -62,6 +91,10 @@ public sealed class SshTunnelService : IDisposable
     {
         if (_process == null)
         {
+            CurrentBrowserProxyLocalPort = 0;
+            CurrentBrowserProxyRemotePort = 0;
+            if (Status != TunnelStatus.NotConfigured)
+                Status = TunnelStatus.Stopped;
             return;
         }
 
@@ -85,16 +118,21 @@ public sealed class SshTunnelService : IDisposable
             try { _process.Dispose(); } catch { }
             _process = null;
             _lastSpec = null;
+            CurrentBrowserProxyLocalPort = 0;
+            CurrentBrowserProxyRemotePort = 0;
+            StartedAtUtc = null;
+            if (Status != TunnelStatus.NotConfigured)
+                Status = TunnelStatus.Stopped;
             _stopping = false;
         }
     }
 
-    private void StartProcess(string user, string host, int remotePort, int localPort)
+    private void StartProcess(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward)
     {
         var psi = new ProcessStartInfo
         {
             FileName = "ssh",
-            Arguments = BuildArguments(user, host, remotePort, localPort),
+            Arguments = SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -133,9 +171,14 @@ public sealed class SshTunnelService : IDisposable
             else
             {
                 _logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode})");
+                LastError = $"SSH tunnel exited unexpectedly with code {exitCode}.";
+                StartedAtUtc = null;
+                Status = TunnelStatus.Failed;
                 try { process.Dispose(); } catch { }
                 _process = null;
                 _lastSpec = null;
+                CurrentBrowserProxyLocalPort = 0;
+                CurrentBrowserProxyRemotePort = 0;
                 TunnelExited?.Invoke(this, exitCode);
             }
         };
@@ -149,6 +192,8 @@ public sealed class SshTunnelService : IDisposable
         }
         catch (Exception ex)
         {
+            LastError = ex.Message;
+            Status = TunnelStatus.Failed;
             process.Dispose();
             throw new InvalidOperationException("Unable to start SSH tunnel process. Ensure OpenSSH client is installed and available in PATH.", ex);
         }
@@ -156,36 +201,25 @@ public sealed class SshTunnelService : IDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         _process = process;
+        CurrentUser = user;
+        CurrentHost = host;
+        CurrentRemotePort = remotePort;
+        CurrentLocalPort = localPort;
+        CurrentBrowserProxyRemotePort = includeBrowserProxyForward ? remotePort + 2 : 0;
+        CurrentBrowserProxyLocalPort = includeBrowserProxyForward ? localPort + 2 : 0;
+        StartedAtUtc = DateTime.UtcNow;
+        LastError = null;
+        Status = TunnelStatus.Up;
 
         _logger.Info($"SSH tunnel started: 127.0.0.1:{localPort} -> 127.0.0.1:{remotePort} via {user}@{host}");
+        if (includeBrowserProxyForward)
+        {
+            _logger.Info($"SSH tunnel browser proxy forward started: 127.0.0.1:{localPort + 2} -> 127.0.0.1:{remotePort + 2} via {user}@{host}");
+        }
     }
 
-    private static string BuildSpec(string user, string host, int remotePort, int localPort)
-        => $"{user}@{host}:{localPort}:{remotePort}";
-
-    // Strict validation for SSH user/host to prevent command injection
-    private static readonly Regex s_validSshUser = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
-    private static readonly Regex s_validSshHost = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
-
-    private static string BuildArguments(string user, string host, int remotePort, int localPort)
-    {
-        if (!s_validSshUser.IsMatch(user))
-            throw new ArgumentException($"SSH user contains invalid characters: '{user}'");
-        if (!s_validSshHost.IsMatch(host))
-            throw new ArgumentException($"SSH host contains invalid characters: '{host}'");
-
-        var sb = new StringBuilder();
-        sb.Append("-N ");
-        sb.Append("-L ");
-        sb.Append(localPort);
-        sb.Append(":127.0.0.1:");
-        sb.Append(remotePort);
-        sb.Append(' ');
-        sb.Append(user);
-        sb.Append('@');
-        sb.Append(host);
-        return sb.ToString();
-    }
+    private static string BuildSpec(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward)
+        => $"{user}@{host}:{localPort}:{remotePort}:browserProxy={includeBrowserProxyForward}";
 
     public void Dispose()
     {

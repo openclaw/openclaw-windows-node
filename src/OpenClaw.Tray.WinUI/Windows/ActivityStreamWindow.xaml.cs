@@ -6,6 +6,7 @@ using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Windows.ApplicationModel.DataTransfer;
 using WinUIEx;
 
 namespace OpenClawTray.Windows;
@@ -34,7 +35,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
         FilterCombo.SelectedIndex = 0;
         LoadActivity();
 
-        var initialCount = ActivityStreamService.GetItems(200).Count;
+        var initialCount = ActivityStreamService.GetItems(ActivityStreamService.MaxStoredItems).Count;
         Logger.Info($"[ActivityStream] Window opened with {initialCount} items");
     }
 
@@ -73,7 +74,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
             _currentFilter = item.Tag?.ToString() ?? "all";
             LoadActivity();
             var category = _currentFilter == "all" ? null : _currentFilter;
-            var count = ActivityStreamService.GetItems(200, category).Count;
+            var count = ActivityStreamService.GetItems(ActivityStreamService.MaxStoredItems, category).Count;
             Logger.Info($"[ActivityStream] Filter changed to '{_currentFilter}', {count} items");
         }
     }
@@ -81,7 +82,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
     private void LoadActivity()
     {
         var category = _currentFilter == "all" ? null : _currentFilter;
-        var items = ActivityStreamService.GetItems(200, category);
+        var items = ActivityStreamService.GetItems(ActivityStreamService.MaxStoredItems, category);
         Logger.Debug($"[ActivityStream] Items loaded: {items.Count} (filter={_currentFilter})");
         CountText.Text = $"({items.Count})";
 
@@ -131,6 +132,11 @@ public sealed partial class ActivityStreamWindow : WindowEx
             "usage" => "usage",
             "nodes" => "node",
             "notifications" => "notification",
+            "invokes" => "node.invoke",
+            "node.invoke" => "node.invoke",
+            "channel" => "channel",
+            "channels" => "channel",
+            "gateway" => "gateway",
             "all" => "all",
             "session" => "session",
             "node" => "node",
@@ -168,6 +174,14 @@ public sealed partial class ActivityStreamWindow : WindowEx
     private void OnOpenDashboard(object sender, RoutedEventArgs e)
     {
         _openDashboard(null);
+    }
+
+    private void OnCopySupportBundle(object sender, RoutedEventArgs e)
+    {
+        var package = new DataPackage();
+        package.SetText(ActivityStreamService.BuildSupportBundle());
+        Clipboard.SetContent(package);
+        Logger.Info("[ActivityStream] Copied support bundle");
     }
 
     private void OnClearAll(object sender, RoutedEventArgs e)

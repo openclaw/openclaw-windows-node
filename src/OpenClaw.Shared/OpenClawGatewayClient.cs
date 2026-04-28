@@ -58,6 +58,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _nodeListUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
+    private bool _authFailed;
     private IReadOnlyList<UserNotificationRule>? _userRules;
     private bool _preferStructuredCategories = true;
 
@@ -103,7 +104,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     protected override bool ShouldAutoReconnect()
     {
-        return !_pairingRequiredAwaitingApproval;
+        return !_pairingRequiredAwaitingApproval && !_authFailed;
     }
 
     protected override void OnDisconnected()
@@ -127,6 +128,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public event EventHandler<GatewayNodeInfo[]>? NodesUpdated;
     public event EventHandler<SessionsPreviewPayloadInfo>? SessionPreviewUpdated;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
+    public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
@@ -665,9 +667,12 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
             _pairingRequiredAwaitingApproval = false;
+            _authFailed = false;
+            ResetReconnectAttempts();
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
             _mainSessionKey = TryGetHandshakeMainSessionKey(payload) ?? "main";
+            PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             var newDeviceToken = TryGetHandshakeDeviceToken(payload);
             if (!string.IsNullOrWhiteSpace(newDeviceToken))
             {
@@ -702,6 +707,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         // Handle health response — channels
         if (payload.TryGetProperty("channels", out var channels))
         {
+            PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
             ParseChannelHealth(channels);
         }
 
@@ -728,6 +734,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         switch (method)
         {
             case "health":
+                PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
                 if (payload.TryGetProperty("channels", out var channels))
                     ParseChannelHealth(channels);
                 return true;
@@ -792,6 +799,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
             }
 
             _logger.Warn("Gateway rejected device signature in all supported payload modes");
+            _authFailed = true;
+            RaiseAuthenticationFailed("device signature rejected in all modes — the gateway may require a different auth protocol version");
+            RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
 
@@ -800,6 +810,15 @@ public class OpenClawGatewayClient : WebSocketClientBase
         {
             _pairingRequiredAwaitingApproval = true;
             _logger.Warn("Pairing approval required for this device; auto-reconnect paused until manual reconnect or app restart");
+            RaiseStatusChanged(ConnectionStatus.Error);
+            return;
+        }
+
+        // Permanent auth failures — stop retrying and notify the app
+        if (method == "connect" && IsTerminalAuthError(message))
+        {
+            _authFailed = true;
+            RaiseAuthenticationFailed(message);
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
@@ -904,6 +923,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
         return errorMessage.Contains("unknown method", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsTerminalAuthError(string errorMessage)
+    {
+        return errorMessage.Contains("token mismatch", StringComparison.OrdinalIgnoreCase) ||
+               errorMessage.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
+               errorMessage.Contains("too many failed", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsMissingScopeError(string errorMessage, string scope)
     {
         if (string.IsNullOrWhiteSpace(errorMessage) || string.IsNullOrWhiteSpace(scope))
@@ -948,23 +974,22 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (payload.TryGetProperty("scopes", out var scopesProp) &&
             scopesProp.ValueKind == JsonValueKind.Array)
         {
-            var scopes = new List<string>();
+            var buffer = new string[scopesProp.GetArrayLength()];
+            var count = 0;
             foreach (var scope in scopesProp.EnumerateArray())
             {
                 if (scope.ValueKind == JsonValueKind.String)
                 {
                     var value = scope.GetString();
                     if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        scopes.Add(value);
-                    }
+                        buffer[count++] = value;
                 }
             }
 
-            return scopes.ToArray();
+            return buffer[..count];
         }
 
-        return Array.Empty<string>();
+        return [];
     }
 
     private static string? TryGetHandshakeMainSessionKey(JsonElement payload)
@@ -1098,7 +1123,10 @@ public class OpenClawGatewayClient : WebSocketClientBase
             case "health":
                 if (root.TryGetProperty("payload", out var hp) &&
                     hp.TryGetProperty("channels", out var ch))
+                {
+                    PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(hp));
                     ParseChannelHealth(ch);
+                }
                 break;
             case "chat":
                 HandleChatEvent(root);
@@ -1210,15 +1238,15 @@ public class OpenClawGatewayClient : WebSocketClientBase
             if (data.TryGetProperty("args", out var args))
             {
                 if (args.TryGetProperty("command", out var cmd))
-                    label = TruncateLabel(cmd.GetString()?.Split('\n')[0] ?? "");
+                    label = MenuDisplayHelper.TruncateText(cmd.GetString()?.Split('\n')[0], 60);
                 else if (args.TryGetProperty("path", out var path))
                     label = ShortenPath(path.GetString() ?? "");
                 else if (args.TryGetProperty("file_path", out var filePath))
                     label = ShortenPath(filePath.GetString() ?? "");
                 else if (args.TryGetProperty("query", out var query))
-                    label = TruncateLabel(query.GetString() ?? "");
+                    label = MenuDisplayHelper.TruncateText(query.GetString(), 60);
                 else if (args.TryGetProperty("url", out var url))
-                    label = TruncateLabel(url.GetString() ?? "");
+                    label = MenuDisplayHelper.TruncateText(url.GetString(), 60);
             }
         }
 
@@ -1254,7 +1282,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private void HandleChatEvent(JsonElement root)
     {
         var rawText = root.GetRawText();
-        _logger.Debug($"Chat event received: {rawText.Substring(0, Math.Min(200, rawText.Length))}");
+        _logger.Debug($"Chat event received: {rawText[..Math.Min(200, rawText.Length)]}");
         
         if (!root.TryGetProperty("payload", out var payload)) return;
 
@@ -1276,7 +1304,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                                 payload.TryGetProperty("state", out var state) && 
                                 state.GetString() == "final")
                             {
-                                _logger.Info($"Assistant response: {text.Substring(0, Math.Min(100, text.Length))}...");
+                                _logger.Info($"Assistant response: {text[..Math.Min(100, text.Length)]}...");
                                 EmitChatNotification(text);
                             }
                         }
@@ -1293,7 +1321,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 role.GetString() == "assistant" &&
                 !string.IsNullOrEmpty(text))
             {
-                _logger.Info($"Assistant response (legacy): {text.Substring(0, Math.Min(100, text.Length))}");
+                _logger.Info($"Assistant response (legacy): {text[..Math.Min(100, text.Length)]}");
                 EmitChatNotification(text);
             }
         }
@@ -1373,74 +1401,22 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private void ParseChannelHealth(JsonElement channels)
     {
-        var healthList = new List<ChannelHealth>();
-        
         // Debug: log raw channel data
         _logger.Debug($"Raw channel health JSON: {channels.GetRawText()}");
+        var healthList = ChannelHealthParser.Parse(channels);
 
-        foreach (var prop in channels.EnumerateObject())
-        {
-            var ch = new ChannelHealth { Name = prop.Name };
-            var val = prop.Value;
-
-            // Get running status
-            bool isRunning = false;
-            bool isConfigured = false;
-            bool isLinked = false;
-            bool probeOk = false;
-            bool hasError = false;
-            string? tokenSource = null;
-            
-            if (val.TryGetProperty("running", out var running))
-                isRunning = running.GetBoolean();
-            if (val.TryGetProperty("configured", out var configured))
-                isConfigured = configured.GetBoolean();
-            if (val.TryGetProperty("linked", out var linked))
-            {
-                isLinked = linked.GetBoolean();
-                ch.IsLinked = isLinked;
-            }
-            // Check probe status for webhook-based channels like Telegram
-            if (val.TryGetProperty("probe", out var probe) && probe.TryGetProperty("ok", out var ok))
-                probeOk = ok.GetBoolean();
-            // Check for errors
-            if (val.TryGetProperty("lastError", out var lastError) && lastError.ValueKind != JsonValueKind.Null)
-                hasError = true;
-            // Check token source (for Telegram - if configured, bot token was validated)
-            if (val.TryGetProperty("tokenSource", out var ts))
-                tokenSource = ts.GetString();
-            
-            // Determine status string - unified for parity between channels
-            // Key insight: if configured=true and no errors, the channel is ready
-            // - WhatsApp: linked=true means authenticated
-            // - Telegram: configured=true means bot token was validated
-            if (val.TryGetProperty("status", out var status))
-                ch.Status = status.GetString() ?? "unknown";
-            else if (hasError)
-                ch.Status = "error";
-            else if (isRunning)
-                ch.Status = "running";
-            else if (isConfigured && (probeOk || isLinked))
-                ch.Status = "ready";  // Explicitly verified ready
-            else if (isConfigured && !hasError)
-                ch.Status = "ready";  // Configured without errors = ready (token was validated at config time)
-            else
-                ch.Status = "not configured";
-            
-            if (val.TryGetProperty("error", out var error))
-                ch.Error = error.GetString();
-            if (val.TryGetProperty("authAge", out var authAge))
-                ch.AuthAge = authAge.GetString();
-            if (val.TryGetProperty("type", out var chType))
-                ch.Type = chType.GetString();
-
-            healthList.Add(ch);
-        }
-
-        _logger.Info(healthList.Count > 0
-            ? $"Channel health: {string.Join(", ", healthList.ConvertAll(c => $"{c.Name}={c.Status}"))}"
+        _logger.Info(healthList.Length > 0
+            ? $"Channel health: {string.Join(", ", healthList.Select(c => $"{c.Name}={c.Status}"))}"
             : "Channel health: no channels");
-        ChannelHealthUpdated?.Invoke(this, healthList.ToArray());
+        ChannelHealthUpdated?.Invoke(this, healthList);
+    }
+
+    private void PublishGatewaySelf(GatewaySelfInfo info)
+    {
+        if (!info.HasAnyDetails)
+            return;
+
+        GatewaySelfUpdated?.Invoke(this, info);
     }
 
     private void ParseSessions(JsonElement sessions)
@@ -1607,7 +1583,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
             if (nodes.ValueKind != JsonValueKind.Array)
                 return;
 
-            var parsed = new List<GatewayNodeInfo>();
+            var buffer = new GatewayNodeInfo[nodes.GetArrayLength()];
+            var count = 0;
             foreach (var nodeElement in nodes.EnumerateArray())
             {
                 if (nodeElement.ValueKind != JsonValueKind.Object)
@@ -1627,8 +1604,15 @@ public class OpenClawGatewayClient : WebSocketClientBase
                     "unknown");
                 var connected = GetOptionalBool(nodeElement, "connected");
                 var online = GetOptionalBool(nodeElement, "online");
+                var capabilities = GetStringArray(nodeElement, "caps");
+                if (capabilities.Length == 0)
+                    capabilities = GetStringArray(nodeElement, "capabilities");
+                var commands = GetStringArray(nodeElement, "declaredCommands");
+                if (commands.Length == 0)
+                    commands = GetStringArray(nodeElement, "commands");
+                var permissions = GetBoolDictionary(nodeElement, "permissions");
 
-                parsed.Add(new GatewayNodeInfo
+                buffer[count++] = new GatewayNodeInfo
                 {
                     NodeId = nodeId!,
                     DisplayName = FirstNonEmpty(
@@ -1649,21 +1633,24 @@ public class OpenClawGatewayClient : WebSocketClientBase
                                ParseUnixTimestampMs(nodeElement, "lastSeen") ??
                                ParseUnixTimestampMs(nodeElement, "updatedAt") ??
                                ParseUnixTimestampMs(nodeElement, "connectedAt"),
-                    CapabilityCount = Math.Max(
-                        GetArrayLength(nodeElement, "caps"),
-                        GetArrayLength(nodeElement, "capabilities")),
-                    CommandCount = Math.Max(
-                        GetArrayLength(nodeElement, "declaredCommands"),
-                        GetArrayLength(nodeElement, "commands")),
+                    Capabilities = capabilities.ToList(),
+                    Commands = commands.ToList(),
+                    Permissions = permissions,
+                    CapabilityCount = capabilities.Length,
+                    CommandCount = commands.Length,
                     IsOnline = online ?? connected ?? status is "ok" or "online" or "connected" or "ready" or "active"
-                });
+                };
             }
 
-            var ordered = parsed
-                .OrderByDescending(n => n.IsOnline)
-                .ThenByDescending(n => n.LastSeen ?? DateTime.MinValue)
-                .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var ordered = buffer[..count];
+            Array.Sort(ordered, static (a, b) =>
+            {
+                int c = b.IsOnline.CompareTo(a.IsOnline);
+                if (c != 0) return c;
+                c = (b.LastSeen ?? DateTime.MinValue).CompareTo(a.LastSeen ?? DateTime.MinValue);
+                if (c != 0) return c;
+                return StringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
+            });
 
             NodesUpdated?.Invoke(this, ordered);
         }
@@ -1994,6 +1981,46 @@ public class OpenClawGatewayClient : WebSocketClientBase
         return value.GetArrayLength();
     }
 
+    private static string[] GetStringArray(JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var buffer = new string[value.GetArrayLength()];
+        var count = 0;
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+                continue;
+
+            var text = item.GetString();
+            if (!string.IsNullOrWhiteSpace(text))
+                buffer[count++] = text;
+        }
+
+        return count == 0 ? [] : buffer[..count];
+    }
+
+    private static Dictionary<string, bool> GetBoolDictionary(JsonElement parent, string property)
+    {
+        var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        if (!parent.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Object)
+            return result;
+
+        foreach (var item in value.EnumerateObject())
+        {
+            if (string.IsNullOrWhiteSpace(item.Name))
+                continue;
+
+            if (item.Value.ValueKind == JsonValueKind.True)
+                result[item.Name] = true;
+            else if (item.Value.ValueKind == JsonValueKind.False)
+                result[item.Name] = false;
+        }
+
+        return result;
+    }
+
     private static DateTime? ParseUnixTimestampMs(JsonElement parent, string property)
     {
         if (!parent.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Number)
@@ -2057,11 +2084,5 @@ public class OpenClawGatewayClient : WebSocketClientBase
         return parts.Length > 2
             ? $"…/{parts[^2]}/{parts[^1]}"
             : parts[^1];
-    }
-
-    private static string TruncateLabel(string text, int maxLen = 60)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLen) return text;
-        return text[..(maxLen - 1)] + "…";
     }
 }

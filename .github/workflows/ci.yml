@@ -11,17 +11,17 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
     - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -40,15 +40,15 @@ jobs:
       run: dotnet restore
 
     - name: Build Shared Library
-      run: dotnet build src/OpenClaw.Shared -c Debug
+      run: dotnet build src/OpenClaw.Shared -c Debug --no-restore
 
     - name: Build Tray App (WinUI)
       run: dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64
 
     - name: Build Tests
       run: |
-        dotnet build tests/OpenClaw.Shared.Tests -c Debug
-        dotnet build tests/OpenClaw.Tray.Tests -c Debug
+        dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.Tray.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
       env:
@@ -74,7 +74,7 @@ jobs:
 
     - name: Upload Test Results
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: test-results
         path: TestResults/
@@ -92,15 +92,15 @@ jobs:
         rid: [win-x64, win-arm64]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -113,11 +113,11 @@ jobs:
       run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }} -p:Version=${{ needs.test.outputs.semVer }}
 
     - name: Publish WinUI Tray App
-      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained -p:Version=${{ needs.test.outputs.semVer }} -o publish
+      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -p:Version=${{ needs.test.outputs.semVer }} -o publish
 
     - name: Azure Login for Signing
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -138,7 +138,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Upload Tray Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-tray-${{ matrix.rid }}
         path: publish/
@@ -158,22 +158,30 @@ jobs:
             platform: ARM64
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
-    - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+    - name: Setup .NET 10 for VS MSBuild
+      uses: actions/setup-dotnet@v5
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: 10.0.100
+
+    - name: Pin .NET SDK for MSIX packaging
+      shell: pwsh
+      run: |
+        $globalJson = Get-Content global.json -Raw | ConvertFrom-Json
+        $globalJson.sdk.rollForward = "disable"
+        $globalJson | ConvertTo-Json -Depth 5 | Set-Content global.json
+        dotnet --version
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     - name: Restore
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
@@ -217,7 +225,7 @@ jobs:
 
     - name: Sign MSIX
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -239,7 +247,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Upload MSIX Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-msix-${{ matrix.rid }}
         path: ${{ steps.find-msix.outputs.msix_path }}
@@ -252,15 +260,15 @@ jobs:
         platform: [x64, arm64]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -270,10 +278,10 @@ jobs:
       run: dotnet restore src/OpenClaw.CommandPalette
 
     - name: Build Command Palette Extension
-      run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }}
+      run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }} --no-restore
 
     - name: Upload Extension Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-commandpalette-${{ matrix.platform }}
         path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
@@ -286,34 +294,34 @@ jobs:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Download win-x64 tray artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-tray-win-x64
         path: artifacts/tray-win-x64
 
     - name: Download win-arm64 tray artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-tray-win-arm64
         path: artifacts/tray-win-arm64
 
     - name: Download win-x64 cmdpal artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-commandpalette-x64
         path: artifacts/cmdpal-x64
 
     - name: Download win-arm64 cmdpal artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-commandpalette-arm64
         path: artifacts/cmdpal-arm64
 
     - name: Download win-x64 MSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       continue-on-error: true
       id: msix-x64
       with:
@@ -321,7 +329,7 @@ jobs:
         path: artifacts/msix-x64
 
     - name: Download win-arm64 MSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       continue-on-error: true
       id: msix-arm64
       with:
@@ -339,7 +347,7 @@ jobs:
 
     # Sign ARM64 artifacts on x64 runner (ARM64 runner can't run the signing dlib)
     - name: Azure Login for ARM64 Signing
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -412,7 +420,7 @@ jobs:
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
 
     - name: Azure Login for Signing
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -432,7 +440,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Create Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
         files: |

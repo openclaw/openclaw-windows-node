@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 
 namespace OpenClaw.Shared;
@@ -11,38 +12,47 @@ internal sealed class ExecEnvSanitizeResult
 
 internal static class ExecEnvSanitizer
 {
-    private static readonly HashSet<string> _blockedNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "PATH",
-        "PATHEXT",
-        "ComSpec",
-        "PSModulePath",
-        "NODE_OPTIONS",
-        "NODE_PATH",
-        "PYTHONPATH",
-        "PYTHONSTARTUP",
-        "PYTHONUSERBASE",
-        "RUBYOPT",
-        "RUBYLIB",
-        "PERL5OPT",
-        "PERL5LIB",
-        "PERLIO",
-        "GIT_SSH",
-        "GIT_SSH_COMMAND",
-        "GIT_EXEC_PATH",
-        "GIT_PROXY_COMMAND",
-        "GIT_ASKPASS",
-        "BASH_ENV",
-        "ENV",
-        "CDPATH",
-        "PROMPT_COMMAND",
-        "ZDOTDIR",
-        "LD_PRELOAD",
-        "LD_LIBRARY_PATH",
-        "LD_AUDIT",
-        "DYLD_INSERT_LIBRARIES",
-        "DYLD_LIBRARY_PATH"
-    };
+    private static readonly FrozenSet<string> _blockedNames =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PATH",
+            "PATHEXT",
+            "ComSpec",
+            "PSModulePath",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+            "PYTHONPATH",
+            "PYTHONSTARTUP",
+            "PYTHONUSERBASE",
+            "RUBYOPT",
+            "RUBYLIB",
+            "PERL5OPT",
+            "PERL5LIB",
+            "PERLIO",
+            "GIT_SSH",
+            "GIT_SSH_COMMAND",
+            "GIT_EXEC_PATH",
+            "GIT_PROXY_COMMAND",
+            "GIT_ASKPASS",
+            "BASH_ENV",
+            "ENV",
+            "CDPATH",
+            "PROMPT_COMMAND",
+            "ZDOTDIR",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AZURE_CLIENT_SECRET",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "NPM_TOKEN",
+            "OPENAI_API_KEY"
+        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     internal static ExecEnvSanitizeResult Sanitize(Dictionary<string, string>? env)
     {
@@ -87,7 +97,66 @@ internal static class ExecEnvSanitizer
         }
 
         return _blockedNames.Contains(name)
+            || HasCredentialMarker(name)
             || name.StartsWith("LD_", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith("DYLD_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasCredentialMarker(string name)
+    {
+        return HasSegment(name, "TOKEN")
+            || HasSegment(name, "SECRET")
+            || HasSegment(name, "PASSWORD")
+            || HasSegment(name, "PASSWD")
+            || HasCompoundMarker(name, "API", "KEY")
+            || HasCompoundMarker(name, "ACCESS", "KEY")
+            || HasCompoundMarker(name, "PRIVATE", "KEY")
+            || HasCompoundMarker(name, "CLIENT", "SECRET")
+            || HasCompoundMarker(name, "CONNECTION", "STRING")
+            || HasSegment(name, "CREDENTIAL")
+            || HasSegment(name, "CREDENTIALS")
+            || name.Contains("CONNSTR", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasCompoundMarker(string name, string first, string second)
+    {
+        var span = name.AsSpan();
+        var firstSpan = first.AsSpan();
+        var secondSpan = second.AsSpan();
+        var start = 0;
+        var previousMatched = false;
+        for (var i = 0; i <= span.Length; i++)
+        {
+            if (i < span.Length && span[i] is not ('_' or '-' or '.'))
+                continue;
+
+            var current = span[start..i];
+            if (previousMatched && current.Equals(secondSpan, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            previousMatched = current.Equals(firstSpan, StringComparison.OrdinalIgnoreCase);
+            start = i + 1;
+        }
+
+        return false;
+    }
+
+    private static bool HasSegment(string name, string segment)
+    {
+        var span = name.AsSpan();
+        var segmentSpan = segment.AsSpan();
+        var start = 0;
+        for (var i = 0; i <= span.Length; i++)
+        {
+            if (i < span.Length && span[i] is not ('_' or '-' or '.'))
+                continue;
+
+            if (span[start..i].Equals(segmentSpan, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            start = i + 1;
+        }
+
+        return false;
     }
 }

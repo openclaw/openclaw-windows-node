@@ -1,4 +1,7 @@
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
@@ -306,6 +309,388 @@ public class SystemCapabilityTests
         Assert.Null(SystemCapability.ResolveExecutable("C:\\Windows\\cmd"));
     }
 
+    [Fact]
+    public async Task RunPrepare_ReturnsCommandText_ForArray()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p1",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":["echo","hello world"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("cmdText", out var cmdText));
+        Assert.Contains("echo", cmdText.GetString());
+    }
+
+    [Fact]
+    public async Task RunPrepare_ReturnsCommandText_ForString()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p2",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":"hostname","rawCommand":"hostname"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("cmdText", out var cmdText));
+        Assert.Equal("hostname", cmdText.GetString());
+    }
+
+    [Fact]
+    public async Task RunPrepare_ReturnsPlan_WithArgvAndCwd()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p3",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"sk1"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("plan", out var plan));
+        Assert.True(plan.TryGetProperty("argv", out var argv));
+        Assert.Equal(2, argv.GetArrayLength());
+        Assert.True(plan.TryGetProperty("cwd", out var cwd));
+        Assert.Equal("/tmp", cwd.GetString());
+        Assert.True(plan.TryGetProperty("agentId", out var agentId));
+        Assert.Equal("agent1", agentId.GetString());
+    }
+
+    [Fact]
+    public async Task RunPrepare_ReturnsError_WhenMissingCommand()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p4",
+            Command = "system.run.prepare",
+            Args = Parse("""{}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Missing command", res.Error);
+    }
+
+    [Fact]
+    public async Task ExecApprovalsGet_WhenNoPolicyConfigured_ReturnsDisabled()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "ea1",
+            Command = "system.execApprovals.get",
+            Args = Parse("""{}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("enabled", out var enabled));
+        Assert.False(enabled.GetBoolean());
+    }
+
+    [Fact]
+    public async Task ExecApprovalsGet_WhenPolicySet_ReturnsRules()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea2",
+                Command = "system.execApprovals.get",
+                Args = Parse("""{}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+            Assert.True(res.Ok);
+            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+            Assert.True(payload.TryGetProperty("enabled", out var enabled));
+            Assert.True(enabled.GetBoolean());
+            Assert.True(payload.TryGetProperty("hash", out var hash));
+            Assert.StartsWith("sha256:", hash.GetString());
+            Assert.True(payload.TryGetProperty("baseHash", out var baseHash));
+            Assert.Equal(hash.GetString(), baseHash.GetString());
+            Assert.True(payload.TryGetProperty("rules", out _));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_WhenNoPolicyConfigured_ReturnsError()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest
+        {
+            Id = "ea3",
+            Command = "system.execApprovals.set",
+            Args = Parse("""{"rules":[]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("No exec policy configured", res.Error);
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_UpdatesRules()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea4",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"git *","action":"allow","description":"Allow git","enabled":true}],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+            Assert.True(res.Ok);
+            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+            Assert.True(payload.TryGetProperty("updated", out var updated));
+            Assert.True(updated.GetBoolean());
+            Assert.True(payload.TryGetProperty("ruleCount", out var ruleCount));
+            Assert.Equal(1, ruleCount.GetInt32());
+            Assert.True(payload.TryGetProperty("hash", out var hash));
+            Assert.NotEqual(req.Args.GetProperty("baseHash").GetString(), hash.GetString());
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsGet_ReturnsRemoteMutationConstraints()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-constraints",
+                Command = "system.execApprovals.get",
+                Args = Parse("""{}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.True(res.Ok);
+            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+            Assert.True(payload.TryGetProperty("constraints", out var constraints));
+            Assert.True(constraints.GetProperty("baseHashRequired").GetBoolean());
+            Assert.False(constraints.GetProperty("defaultAllowAllowed").GetBoolean());
+            Assert.False(constraints.GetProperty("broadAllowRulesAllowed").GetBoolean());
+            Assert.False(constraints.GetProperty("dangerousAllowRulesAllowed").GetBoolean());
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RejectsDefaultAllow()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-default-allow",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[],"defaultAction":"allow"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("Default allow", res.Error);
+            Assert.Equal(ExecApprovalAction.Deny, policy.DefaultAction);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("cmd *")]
+    [InlineData("Remove-Item *")]
+    [InlineData("Invoke-WebRequest *")]
+    [InlineData("Start-Process *")]
+    public async Task ExecApprovalsSet_RejectsUnsafeAllowRules(string pattern)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-unsafe-allow",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"{{pattern}}","action":"allow","enabled":true}],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("allow rule", res.Error, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task Run_BlockedEnvVar_ReturnsError()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(new FakeCommandRunner());
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "e1",
+            Command = "system.run",
+            Args = Parse("""{"command":["echo","test"],"env":{"PATH":"C:\\evil"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("PATH", res.Error);
+    }
+
+    [Fact]
+    public async Task Run_AllowedEnvVar_Passes()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var runner = new FakeCommandRunner();
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "e2",
+            Command = "system.run",
+            Args = Parse("""{"command":["echo","test"],"env":{"MY_CUSTOM_VAR":"hello"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(runner.LastRequest!.Env);
+        Assert.True(runner.LastRequest.Env!.ContainsKey("MY_CUSTOM_VAR"));
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RequiresBaseHash()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-missing-base-hash",
+                Command = "system.execApprovals.set",
+                Args = Parse("""{"rules":[],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("baseHash", res.Error);
+            Assert.NotEmpty(policy.Rules);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RejectsStaleBaseHash()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var staleHash = policy.GetPolicyHash();
+            policy.InsertRule(0, new ExecApprovalRule
+            {
+                Pattern = "hostname",
+                Action = ExecApprovalAction.Allow,
+                Description = "Local edit after remote read"
+            });
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-stale-base-hash",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{staleHash}}","rules":[],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("Refresh policy", res.Error);
+            Assert.Contains(policy.Rules, rule => rule.Description == "Local edit after remote read");
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
     private class FakeCommandRunner : ICommandRunner
     {
         public string Name => "fake";
@@ -323,6 +708,235 @@ public class SystemCapabilityTests
                 DurationMs = 1
             });
         }
+    }
+}
+
+public class BrowserProxyCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ForwardsToLocalControlPortWithBearerAuth()
+    {
+        var handler = new CapturingHandler("""{"ok":true,"url":"https://example.com"}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-1",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"POST","path":"/snapshot","query":{"format":"aria"},"profile":"openclaw","body":{"limit":1},"timeoutMs":5000}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(handler.LastRequest);
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.Equal("http://127.0.0.1:18791/snapshot?format=aria&profile=openclaw", handler.LastRequest.RequestUri!.ToString());
+        Assert.Equal("Bearer", handler.LastRequest.Headers.Authorization?.Scheme);
+        Assert.Equal("secret-token", handler.LastRequest.Headers.Authorization?.Parameter);
+
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("result", out var result));
+        Assert.True(result.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_RejectsAbsoluteUrlPath()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            new CapturingHandler("""{"ok":true}"""));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-2",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"https://example.com"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("must be a local control path", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ReturnsUnauthorizedAsAuthError()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "wrong-token",
+            new CapturingHandler("Unauthorized", HttpStatusCode.Unauthorized));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-3",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("authentication", res.Error);
+        Assert.Contains("Verify the gateway token saved in Settings", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnauthorizedWithoutTokenExplainsMissingSharedToken()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "",
+            new CapturingHandler("Unauthorized", HttpStatusCode.Unauthorized));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-unauthenticated",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("unauthenticated request", res.Error);
+        Assert.Contains("no gateway shared token saved", res.Error);
+        Assert.Contains("Settings", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_RetriesUnauthorizedWithPasswordAuth()
+    {
+        var handler = new BrowserProxyAuthFallbackHandler();
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "browser-secret",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-4",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"DELETE","path":"/tabs/1","body":{"reason":"test"}}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal("Bearer", handler.Requests[0].Headers.Authorization?.Scheme);
+        Assert.Equal("Basic", handler.Requests[1].Headers.Authorization?.Scheme);
+        Assert.Equal(
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(":browser-secret")),
+            handler.Requests[1].Headers.Authorization?.Parameter);
+        Assert.True(handler.Requests[1].Headers.TryGetValues("x-openclaw-password", out var passwordValues));
+        Assert.Contains("browser-secret", passwordValues);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnreachableHostExplainsGatewayPlusTwoAndSshForward()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "browser-secret",
+            new ThrowingBrowserProxyHandler());
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-5",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("127.0.0.1:18791", res.Error);
+        Assert.Contains("gateway port + 2", res.Error);
+        Assert.Contains("ssh -N -L 18791:127.0.0.1:<remote-gateway-port+2>", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnreachableHostUsesRemoteGatewayPortInSshGuidance()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:28789",
+            "browser-secret",
+            new ThrowingBrowserProxyHandler(),
+            sshRemoteGatewayPort: 18789);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-6",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("127.0.0.1:28791", res.Error);
+        Assert.Contains("ssh -N -L 28791:127.0.0.1:18791", res.Error);
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        private readonly string _response;
+        private readonly HttpStatusCode _statusCode;
+
+        public HttpRequestMessage? LastRequest { get; private set; }
+
+        public CapturingHandler(string response, HttpStatusCode statusCode = HttpStatusCode.OK)
+        {
+            _response = response;
+            _statusCode = statusCode;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return Task.FromResult(new HttpResponseMessage(_statusCode)
+            {
+                Content = new StringContent(_response)
+            });
+        }
+    }
+
+    private sealed class BrowserProxyAuthFallbackHandler : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            var hasPasswordHeader =
+                request.Headers.TryGetValues("x-openclaw-password", out var passwordValues) &&
+                passwordValues.Contains("browser-secret");
+            var isBasic = request.Headers.Authorization?.Scheme == "Basic";
+            var status = hasPasswordHeader && isBasic ? HttpStatusCode.OK : HttpStatusCode.Unauthorized;
+            var response = status == HttpStatusCode.OK ? """{"ok":true}""" : "Unauthorized";
+
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(response)
+            });
+        }
+    }
+
+    private sealed class ThrowingBrowserProxyHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new HttpRequestException("connection refused");
     }
 }
 
@@ -344,6 +958,7 @@ public class CanvasCapabilityTests
         Assert.True(cap.CanHandle("canvas.eval"));
         Assert.True(cap.CanHandle("canvas.snapshot"));
         Assert.True(cap.CanHandle("canvas.a2ui.push"));
+        Assert.True(cap.CanHandle("canvas.a2ui.pushJSONL"));
         Assert.True(cap.CanHandle("canvas.a2ui.reset"));
         Assert.False(cap.CanHandle("canvas.unknown"));
         Assert.Equal("canvas", cap.Category);
@@ -504,6 +1119,26 @@ public class CanvasCapabilityTests
         Assert.True(res.Ok);
         Assert.NotNull(received);
         Assert.Contains("text", received!.Jsonl);
+    }
+
+    [Fact]
+    public async Task A2UIPushJSONL_RaisesSameEventAsPush()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        CanvasA2UIArgs? received = null;
+        cap.A2UIPushRequested += (s, a) => received = a;
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c10b",
+            Command = "canvas.a2ui.pushJSONL",
+            Args = Parse("""{"jsonl":"{\"type\":\"text\",\"value\":\"legacy\"}"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Contains("legacy", received!.Jsonl);
     }
 
     [Fact]
@@ -669,6 +1304,88 @@ public class CanvasCapabilityTests
     }
 }
 
+public class DeviceCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void CanHandle_DeviceCommands()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+
+        Assert.True(cap.CanHandle("device.info"));
+        Assert.True(cap.CanHandle("device.status"));
+        Assert.False(cap.CanHandle("device.unknown"));
+        Assert.Equal("device", cap.Category);
+    }
+
+    [Fact]
+    public async Task DeviceInfo_ReturnsMacCompatiblePayloadShape()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "d1", Command = "device.info", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("deviceName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("modelIdentifier").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemVersion").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appVersion").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appBuild").GetString()));
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("locale").ValueKind);
+    }
+
+    [Fact]
+    public async Task DeviceStatus_ReturnsMacCompatiblePayloadShape()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "d2", Command = "device.status", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var battery = payload.GetProperty("battery");
+        Assert.Equal("unknown", battery.GetProperty("state").GetString());
+        Assert.False(battery.GetProperty("lowPowerModeEnabled").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, battery.GetProperty("level").ValueKind);
+
+        Assert.Equal("nominal", payload.GetProperty("thermal").GetProperty("state").GetString());
+
+        var storage = payload.GetProperty("storage");
+        Assert.True(storage.GetProperty("totalBytes").GetInt64() >= 0);
+        Assert.True(storage.GetProperty("freeBytes").GetInt64() >= 0);
+        Assert.True(storage.GetProperty("usedBytes").GetInt64() >= 0);
+
+        var network = payload.GetProperty("network");
+        Assert.Contains(network.GetProperty("status").GetString(), new[] { "satisfied", "unsatisfied" });
+        Assert.False(network.GetProperty("isExpensive").GetBoolean());
+        Assert.False(network.GetProperty("isConstrained").GetBoolean());
+        Assert.Equal(JsonValueKind.Array, network.GetProperty("interfaces").ValueKind);
+
+        Assert.True(payload.GetProperty("uptimeSeconds").GetDouble() >= 0);
+    }
+
+    [Fact]
+    public async Task DeviceUnknownCommand_ReturnsError()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "d3", Command = "device.unknown", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
+    }
+}
+
 public class ScreenCapabilityTests
 {
     private static JsonElement Parse(string json)
@@ -681,9 +1398,12 @@ public class ScreenCapabilityTests
     public void CanHandle_ScreenCommands()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        Assert.True(cap.CanHandle("screen.capture"));
-        Assert.True(cap.CanHandle("screen.list"));
-        Assert.False(cap.CanHandle("screen.record"));
+        Assert.True(cap.CanHandle("screen.snapshot"));
+        Assert.True(cap.CanHandle("screen.record"));
+        Assert.False(cap.CanHandle("screen.capture"));
+        Assert.False(cap.CanHandle("screen.list"));
+        Assert.False(cap.CanHandle("screen.record.start"));
+        Assert.False(cap.CanHandle("screen.record.stop"));
         Assert.Equal("screen", cap.Category);
     }
 
@@ -691,7 +1411,7 @@ public class ScreenCapabilityTests
     public async Task Capture_ReturnsError_WhenNoHandler()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "s1", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s1", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
@@ -711,7 +1431,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest
         {
             Id = "s2",
-            Command = "screen.capture",
+            Command = "screen.snapshot",
             Args = Parse("""{"format":"jpeg","maxWidth":800,"quality":50,"screenIndex":1}""")
         };
 
@@ -725,67 +1445,15 @@ public class ScreenCapabilityTests
     }
 
     [Fact]
-    public async Task List_ReturnsError_WhenNoHandler()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "s3", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.NotNull(res.Error);
-        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task List_ReturnsScreens_WhenHandler()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        cap.ListRequested += () => Task.FromResult(new[] 
-        { 
-            new ScreenInfo { Index = 0, Name = "Main", IsPrimary = true, Width = 2560, Height = 1440 } 
-        });
-
-        var req = new NodeInvokeRequest { Id = "s4", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.NotNull(res.Payload);
-        
-        // Verify payload contains expected screen data
-        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("screens", out var screensEl));
-        Assert.Equal(System.Text.Json.JsonValueKind.Array, screensEl.ValueKind);
-        Assert.Equal(1, screensEl.GetArrayLength());
-        var screen = screensEl[0];
-        Assert.Equal("Main", screen.GetProperty("name").GetString());
-        Assert.True(screen.GetProperty("primary").GetBoolean());
-        var bounds = screen.GetProperty("bounds");
-        Assert.Equal(2560, bounds.GetProperty("width").GetInt32());
-        Assert.Equal(1440, bounds.GetProperty("height").GetInt32());
-    }
-
-    [Fact]
     public async Task Capture_ReturnsError_WhenHandlerThrows()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         cap.CaptureRequested += (args) => throw new InvalidOperationException("Display access denied");
 
-        var req = new NodeInvokeRequest { Id = "s5", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s5", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Display access denied", res.Error);
-    }
-
-    [Fact]
-    public async Task List_ReturnsError_WhenHandlerThrows()
-    {
-        var cap = new ScreenCapability(NullLogger.Instance);
-        cap.ListRequested += () => throw new InvalidOperationException("Screen enumeration failed");
-
-        var req = new NodeInvokeRequest { Id = "s6", Command = "screen.list", Args = Parse("""{}""") };
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("Screen enumeration failed", res.Error);
     }
 
     [Fact]
@@ -800,7 +1468,7 @@ public class ScreenCapabilityTests
             Base64 = "abc123"
         });
 
-        var req = new NodeInvokeRequest { Id = "s7", Command = "screen.capture", Args = Parse("""{}""") };
+        var req = new NodeInvokeRequest { Id = "s7", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
 
@@ -810,6 +1478,33 @@ public class ScreenCapabilityTests
         Assert.True(root.TryGetProperty("image", out var imageEl));
         Assert.StartsWith("data:image/png;base64,", imageEl.GetString());
         Assert.Contains("abc123", imageEl.GetString());
+    }
+
+    [Fact]
+    public async Task Capture_ClampsExtremeValues_ToSafeBounds()
+    {
+        // CR-007: oversized/negative caller values must be clamped before any
+        // downstream allocation (back-buffer sizes, image encoder buffers).
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenCaptureArgs? received = null;
+        cap.CaptureRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenCaptureResult { Format = "png", Width = 0, Height = 0, Base64 = "" });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clamp",
+            Command = "screen.snapshot",
+            Args = Parse("""{"maxWidth":99999,"quality":500,"screenIndex":-3}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.True(received!.MaxWidth <= 7680, $"maxWidth not clamped: {received.MaxWidth}");
+        Assert.InRange(received.Quality, 1, 100);
+        Assert.True(received.MonitorIndex >= 0, $"screenIndex not clamped: {received.MonitorIndex}");
     }
 
     [Fact]
@@ -827,13 +1522,183 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest
         {
             Id = "s8",
-            Command = "screen.capture",
+            Command = "screen.snapshot",
             Args = Parse("""{"monitor":2}""")
         };
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
         Assert.NotNull(receivedArgs);
         Assert.Equal(2, receivedArgs!.MonitorIndex);
+    }
+
+    [Fact]
+    public async Task Record_ReturnsError_WhenNoHandler()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "s9", Command = "screen.record", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Record_CallsHandler_WithMacCompatibleArgs()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenRecordArgs? receivedArgs = null;
+        cap.RecordRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new ScreenRecordResult
+            {
+                Format = "mp4",
+                Base64 = "video",
+                DurationMs = args.DurationMs,
+                Fps = args.Fps,
+                ScreenIndex = args.ScreenIndex,
+                HasAudio = false
+            });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s10",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":1500,"fps":7.5,"screenIndex":1,"format":"mp4","includeAudio":true}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal(1500, receivedArgs!.DurationMs);
+        Assert.Equal(7.5, receivedArgs.Fps);
+        Assert.Equal(1, receivedArgs.ScreenIndex);
+        Assert.Equal("mp4", receivedArgs.Format);
+        Assert.True(receivedArgs.IncludeAudio);
+    }
+
+    [Fact]
+    public async Task Record_RejectsUnsupportedFormat()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        var handlerCalled = false;
+        cap.RecordRequested += (args) =>
+        {
+            handlerCalled = true;
+            return Task.FromResult(new ScreenRecordResult());
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s11",
+            Command = "screen.record",
+            Args = Parse("""{"format":"webm"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.False(handlerCalled);
+        Assert.Contains("Only mp4", res.Error);
+    }
+
+    [Fact]
+    public async Task Record_ReturnsMacCompatiblePayload()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        cap.RecordRequested += (args) => Task.FromResult(new ScreenRecordResult
+        {
+            Format = "mp4",
+            Base64 = "abc123",
+            DurationMs = 2000,
+            Fps = 10,
+            ScreenIndex = 2,
+            Width = 1920,
+            Height = 1080,
+            HasAudio = false
+        });
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s12",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":2000,"fps":10,"screenIndex":2}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("mp4", root.GetProperty("format").GetString());
+        Assert.Equal("abc123", root.GetProperty("base64").GetString());
+        Assert.Equal(2000, root.GetProperty("durationMs").GetInt32());
+        Assert.Equal(10, root.GetProperty("fps").GetDouble());
+        Assert.Equal(2, root.GetProperty("screenIndex").GetInt32());
+        Assert.False(root.GetProperty("hasAudio").GetBoolean());
+        Assert.False(root.TryGetProperty("filePath", out _));
+        Assert.False(root.TryGetProperty("width", out _));
+        Assert.False(root.TryGetProperty("height", out _));
+    }
+
+    [Fact]
+    public async Task Record_UsesDefaultFps_WhenFpsMissing()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenRecordArgs? received = null;
+        cap.RecordRequested += (args) =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenRecordResult { Format = "mp4", Fps = args.Fps });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s13",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":5000}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(10.0, received!.Fps);
+    }
+
+    [Fact]
+    public async Task Record_UsesDefaultFps_WhenFpsIsNonNumeric()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenRecordArgs? received = null;
+        cap.RecordRequested += (args) =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenRecordResult { Format = "mp4", Fps = args.Fps });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s14",
+            Command = "screen.record",
+            Args = Parse("""{"fps":"fast"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(10.0, received!.Fps);
+    }
+
+    [Fact]
+    public async Task Record_ReturnsError_WhenHandlerThrows()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        cap.RecordRequested += (_) => throw new InvalidOperationException("Capture permission denied");
+
+        var req = new NodeInvokeRequest { Id = "s15", Command = "screen.record", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Capture permission denied", res.Error);
     }
 }
 
@@ -851,7 +1716,8 @@ public class CameraCapabilityTests
         var cap = new CameraCapability(NullLogger.Instance);
         Assert.True(cap.CanHandle("camera.list"));
         Assert.True(cap.CanHandle("camera.snap"));
-        Assert.False(cap.CanHandle("camera.clip"));
+        Assert.True(cap.CanHandle("camera.clip"));
+        Assert.False(cap.CanHandle("camera.unknown"));
         Assert.Equal("camera", cap.Category);
     }
 
@@ -963,5 +1829,274 @@ public class CameraCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Camera access blocked", res.Error);
+    }
+
+    [Fact]
+    public void CameraClipArgs_DefaultValues()
+    {
+        var args = new CameraClipArgs();
+        Assert.Equal(3000, args.DurationMs);
+        Assert.True(args.IncludeAudio);
+        Assert.Equal("mp4", args.Format);
+        Assert.Null(args.DeviceId);
+    }
+
+    [Fact]
+    public async Task Clip_ClampsDuration_ToMax60000()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? receivedArgs = null;
+        cap.ClipRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "vid", DurationMs = args.DurationMs, HasAudio = true });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip1",
+            Command = "camera.clip",
+            Args = Parse("""{"durationMs":120000}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal(60000, receivedArgs!.DurationMs);
+    }
+
+    [Fact]
+    public async Task Clip_RoutesToHandler_WithArgs()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? receivedArgs = null;
+        cap.ClipRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "vid", DurationMs = args.DurationMs, HasAudio = args.IncludeAudio });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip2",
+            Command = "camera.clip",
+            Args = Parse("""{"deviceId":"cam-1","durationMs":5000,"includeAudio":false,"format":"mp4"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal("cam-1", receivedArgs!.DeviceId);
+        Assert.Equal(5000, receivedArgs.DurationMs);
+        Assert.False(receivedArgs.IncludeAudio);
+        Assert.Equal("mp4", receivedArgs.Format);
+    }
+
+    [Fact]
+    public async Task Clip_ReturnsError_WhenNoHandler()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "clip3", Command = "camera.clip", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Clip_ClampsZeroAndNegativeDuration_ToMinimum()
+    {
+        // CR-007: durationMs <= 0 used to slip through the original
+        // `Math.Min(value, 60000)` cap and ask the recorder to capture for
+        // zero / negative seconds, which produced a degenerate file.
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? received = null;
+        cap.ClipRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "", DurationMs = args.DurationMs, HasAudio = false });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip-clamp",
+            Command = "camera.clip",
+            Args = Parse("""{"durationMs":-500}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.True(received!.DurationMs >= 100, $"duration not floor-clamped: {received.DurationMs}");
+        Assert.True(received.DurationMs <= 60000);
+    }
+}
+
+public class LocationCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void LocationGetArgs_HasCorrectDefaults()
+    {
+        var args = new LocationGetArgs();
+        Assert.Equal("default", args.Accuracy);
+        Assert.Equal(30000, args.MaxAgeMs);
+        Assert.Equal(10000, args.TimeoutMs);
+    }
+
+    [Fact]
+    public void CanHandle_LocationCommands()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        Assert.True(cap.CanHandle("location.get"));
+        Assert.False(cap.CanHandle("location.watch"));
+        Assert.Equal("location", cap.Category);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsError_WhenNoHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "loc1", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.NotNull(res.Error);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsLocation_WhenHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        cap.GetRequested += (args) => Task.FromResult(new LocationResult
+        {
+            Latitude = 47.6062,
+            Longitude = -122.3321,
+            AccuracyMeters = 15.5,
+            TimestampMs = 1700000000000
+        });
+
+        var req = new NodeInvokeRequest { Id = "loc2", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(res.Payload);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal(47.6062, root.GetProperty("latitude").GetDouble(), 4);
+        Assert.Equal(-122.3321, root.GetProperty("longitude").GetDouble(), 4);
+        Assert.Equal(15.5, root.GetProperty("accuracy").GetDouble(), 1);
+        Assert.Equal(1700000000000, root.GetProperty("timestamp").GetInt64());
+    }
+
+    [Fact]
+    public async Task Get_PassesArgs_ToHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        LocationGetArgs? receivedArgs = null;
+        cap.GetRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new LocationResult
+            {
+                Latitude = 0, Longitude = 0, AccuracyMeters = 0, TimestampMs = 0
+            });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "loc3",
+            Command = "location.get",
+            Args = Parse("""{"accuracy":"precise","maxAge":5000,"locationTimeout":3000}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(receivedArgs);
+        Assert.Equal("precise", receivedArgs!.Accuracy);
+        Assert.Equal(5000, receivedArgs.MaxAgeMs);
+        Assert.Equal(3000, receivedArgs.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task Get_UsesDefaults_WhenArgsMissing()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        LocationGetArgs? receivedArgs = null;
+        cap.GetRequested += (args) =>
+        {
+            receivedArgs = args;
+            return Task.FromResult(new LocationResult
+            {
+                Latitude = 0, Longitude = 0, AccuracyMeters = 0, TimestampMs = 0
+            });
+        };
+
+        var req = new NodeInvokeRequest { Id = "loc4", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.Equal("default", receivedArgs!.Accuracy);
+        Assert.Equal(30000, receivedArgs.MaxAgeMs);
+        Assert.Equal(10000, receivedArgs.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsPermissionError_WhenUnauthorized()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        cap.GetRequested += (args) => throw new UnauthorizedAccessException("No permission");
+
+        var req = new NodeInvokeRequest { Id = "loc5", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Equal("LOCATION_PERMISSION_REQUIRED", res.Error);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsError_WhenHandlerThrows()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        cap.GetRequested += (args) => throw new InvalidOperationException("GPS unavailable");
+
+        var req = new NodeInvokeRequest { Id = "loc6", Command = "location.get", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("GPS unavailable", res.Error);
+    }
+
+    [Fact]
+    public void LocationResult_Serialization()
+    {
+        var result = new LocationResult
+        {
+            Latitude = 48.8566,
+            Longitude = 2.3522,
+            AccuracyMeters = 10.0,
+            TimestampMs = 1700000000000
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        var deserialized = System.Text.Json.JsonSerializer.Deserialize<LocationResult>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(result.Latitude, deserialized!.Latitude);
+        Assert.Equal(result.Longitude, deserialized.Longitude);
+        Assert.Equal(result.AccuracyMeters, deserialized.AccuracyMeters);
+        Assert.Equal(result.TimestampMs, deserialized.TimestampMs);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReturnsError_ForUnknownCommand()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        var req = new NodeInvokeRequest { Id = "loc7", Command = "location.watch", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
     }
 }

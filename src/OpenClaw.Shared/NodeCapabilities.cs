@@ -25,6 +25,16 @@ public class NodeInvokeRequest
     public JsonElement Args { get; set; }
 }
 
+public class NodeInvokeCompletedEventArgs : EventArgs
+{
+    public string RequestId { get; set; } = "";
+    public string Command { get; set; } = "";
+    public bool Ok { get; set; }
+    public string? Error { get; set; }
+    public TimeSpan Duration { get; set; }
+    public string? NodeId { get; set; }
+}
+
 /// <summary>
 /// Response to a node.invoke request
 /// </summary>
@@ -150,7 +160,8 @@ public abstract class NodeCapabilityBase : INodeCapability
         if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
             return Array.Empty<string>();
 
-        var list = new List<string>();
+        var buffer = new string[prop.GetArrayLength()];
+        var count = 0;
         foreach (var item in prop.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.String)
@@ -158,10 +169,10 @@ public abstract class NodeCapabilityBase : INodeCapability
 
             var value = item.GetString()?.Trim();
             if (!string.IsNullOrEmpty(value))
-                list.Add(value);
+                buffer[count++] = value;
         }
 
-        return list.Count > 0 ? list.ToArray() : Array.Empty<string>();
+        return count > 0 ? buffer[..count] : [];
     }
 }
 
