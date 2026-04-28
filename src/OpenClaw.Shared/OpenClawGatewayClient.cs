@@ -128,6 +128,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public event EventHandler<GatewayNodeInfo[]>? NodesUpdated;
     public event EventHandler<SessionsPreviewPayloadInfo>? SessionPreviewUpdated;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
+    public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
@@ -671,6 +672,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
             _mainSessionKey = TryGetHandshakeMainSessionKey(payload) ?? "main";
+            PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             var newDeviceToken = TryGetHandshakeDeviceToken(payload);
             if (!string.IsNullOrWhiteSpace(newDeviceToken))
             {
@@ -705,6 +707,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         // Handle health response — channels
         if (payload.TryGetProperty("channels", out var channels))
         {
+            PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
             ParseChannelHealth(channels);
         }
 
@@ -731,6 +734,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         switch (method)
         {
             case "health":
+                PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
                 if (payload.TryGetProperty("channels", out var channels))
                     ParseChannelHealth(channels);
                 return true;
@@ -1119,7 +1123,10 @@ public class OpenClawGatewayClient : WebSocketClientBase
             case "health":
                 if (root.TryGetProperty("payload", out var hp) &&
                     hp.TryGetProperty("channels", out var ch))
+                {
+                    PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(hp));
                     ParseChannelHealth(ch);
+                }
                 break;
             case "chat":
                 HandleChatEvent(root);
@@ -1402,6 +1409,14 @@ public class OpenClawGatewayClient : WebSocketClientBase
             ? $"Channel health: {string.Join(", ", healthList.Select(c => $"{c.Name}={c.Status}"))}"
             : "Channel health: no channels");
         ChannelHealthUpdated?.Invoke(this, healthList);
+    }
+
+    private void PublishGatewaySelf(GatewaySelfInfo info)
+    {
+        if (!info.HasAnyDetails)
+            return;
+
+        GatewaySelfUpdated?.Invoke(this, info);
     }
 
     private void ParseSessions(JsonElement sessions)

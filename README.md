@@ -130,7 +130,8 @@ If Quick Send fails with `pairing required` / `NOT_PAIRED`, that is a **device a
 - **Nodes** - Online/offline node inventory and copyable summary
 - **Recent Activity** - Timestamped event stream for sessions, usage, nodes, and notifications
 - **Actions** - Dashboard, Web Chat, Quick Send, Activity Stream, History
-- **Settings** - Configuration, auto-start, logs
+- **Support & Debug** - Logs, config, diagnostics folder, redacted support context, browser setup, port/capability/node/channel/activity summaries, and managed SSH tunnel restart
+- **Settings** - Configuration and auto-start
 
 ### Mac Parity Status
 
@@ -140,11 +141,11 @@ Comparing against [openclaw-menubar](https://github.com/magimetal/openclaw-menub
 |---------|-----|---------|-------|
 | Menu bar/tray icon | ✅ | ✅ | Color-coded status |
 | Gateway status display | ✅ | ✅ | Connected/Disconnected |
-| PID display | ✅ | ❌ | Mac shows gateway PID |
+| PID display | ✅ | ✅ | Command Center shows gateway listener process/PID |
 | Channel status | ✅ | ✅ | Mac: Discord / Win: Telegram+WhatsApp |
 | Sessions count | ✅ | ✅ | |
 | Last check timestamp | ✅ | ✅ | Shown in tray tooltip |
-| Gateway start/stop/restart | ✅ | ❌ | Mac controls gateway process |
+| Gateway start/stop/restart | ✅ | ⚠️ | Windows can restart the managed SSH tunnel from tray Support & Debug and Command Center; external gateway process control is not implemented |
 | View Logs | ✅ | ✅ | |
 | Open Web UI | ✅ | ✅ | |
 | Refresh | ✅ | ✅ | Auto-refresh on menu open |
@@ -294,11 +295,34 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 | Link | Description |
 |------|-------------|
 | `openclaw://settings` | Open Settings dialog |
+| `openclaw://setup` | Open Setup Wizard |
 | `openclaw://chat` | Open Web Chat window |
+| `openclaw://commandcenter` | Open Command Center diagnostics |
+| `openclaw://activity` | Open Activity Stream |
+| `openclaw://history` | Open Notification History |
 | `openclaw://dashboard` | Open Dashboard in browser |
 | `openclaw://dashboard/sessions` | Open specific dashboard page |
+| `openclaw://dashboard/channels` | Open Channels dashboard page |
+| `openclaw://dashboard/skills` | Open Skills dashboard page |
+| `openclaw://dashboard/cron` | Open Cron dashboard page |
+| `openclaw://healthcheck` | Run a manual health check |
+| `openclaw://check-updates` | Run a manual update check |
+| `openclaw://logs` | Open the current tray log file |
+| `openclaw://log-folder` | Open the logs folder |
+| `openclaw://config` | Open the config folder |
+| `openclaw://diagnostics` | Open the diagnostics JSONL folder |
+| `openclaw://support-context` | Copy redacted support context |
+| `openclaw://debug-bundle` | Copy a combined debug bundle for support |
+| `openclaw://browser-setup` | Copy browser.proxy/browser-control setup guidance |
+| `openclaw://port-diagnostics` | Copy gateway/browser/tunnel port diagnostics with owner PID stop hints |
+| `openclaw://capability-diagnostics` | Copy permissions, allowlist, and parity diagnostics |
+| `openclaw://node-inventory` | Copy node capabilities, commands, and policy status |
+| `openclaw://channel-summary` | Copy channel health and start/stop availability |
+| `openclaw://activity-summary` | Copy recent tray activity for troubleshooting |
+| `openclaw://extensibility-summary` | Copy channel, skills, and cron dashboard surface guidance |
+| `openclaw://restart-ssh-tunnel` | Restart the tray-managed SSH tunnel when enabled |
 | `openclaw://send?message=Hello` | Open Quick Send with pre-filled text |
-| `openclaw://agent?message=Hello` | Send message directly (with confirmation) |
+| `openclaw://agent?message=Hello` | Send message directly to the connected gateway |
 
 Deep links work even when Molty is already running - they're forwarded via IPC.
 
@@ -308,9 +332,30 @@ PowerToys Command Palette extension for quick OpenClaw access.
 
 ### Commands
 - **🦞 Open Dashboard** - Launch the OpenClaw web dashboard
+- **💬 Dashboard: Sessions** - Open the sessions dashboard
+- **📡 Dashboard: Channels** - Open the channel configuration dashboard
+- **🧩 Dashboard: Skills** - Open the skills dashboard
+- **⏱️ Dashboard: Cron** - Open the scheduled jobs dashboard
 - **💬 Web Chat** - Open the embedded Web Chat window
 - **📝 Quick Send** - Open the Quick Send dialog to compose a message
+- **🧭 Setup Wizard** - Open pairing/setup
+- **🧭 Command Center** - Open diagnostics and support actions
+- **🔄 Run Health Check** - Refresh connection health
+- **⬇️ Check for Updates** - Run a manual GitHub Releases update check
+- **⚡ Activity Stream** - Open recent activity
+- **📋 Notification History** - Open notification history
 - **⚙️ Settings** - Open the OpenClaw Tray Settings dialog
+- **📄 Open Log File / 📁 Logs / 🗂️ Config / 🧪 Diagnostics** - Open support files and folders
+- **📋 Copy Support Context** - Copy redacted Command Center metadata
+- **🧰 Copy Debug Bundle** - Copy combined support, port, capability, node, channel, and activity diagnostics
+- **🌐 Copy Browser Setup** - Copy browser.proxy and node-host setup guidance
+- **🔌 Copy Port Diagnostics** - Copy gateway/browser/tunnel port owners and stop hints
+- **🛡️ Copy Capability Diagnostics** - Copy permission, allowlist, and parity diagnostics
+- **🖥️ Copy Node Inventory** - Copy node capabilities, commands, and policy status
+- **📡 Copy Channel Summary** - Copy channel health and start/stop availability
+- **⚡ Copy Activity Summary** - Copy recent tray activity
+- **🧩 Copy Extensibility Summary** - Copy channel, skills, and cron surface guidance
+- **🔁 Restart SSH Tunnel** - Restart the tray-managed SSH tunnel when enabled
 
 ### Installation
 1. Run the OpenClaw Tray installer and tick **"Install PowerToys Command Palette extension"**, or

@@ -63,6 +63,14 @@ public class ExecEnvSanitizerTests
     [InlineData("LD_AUDIT")]
     [InlineData("DYLD_INSERT_LIBRARIES")]
     [InlineData("DYLD_LIBRARY_PATH")]
+    [InlineData("AWS_ACCESS_KEY_ID")]
+    [InlineData("AWS_SECRET_ACCESS_KEY")]
+    [InlineData("AWS_SESSION_TOKEN")]
+    [InlineData("AZURE_CLIENT_SECRET")]
+    [InlineData("GITHUB_TOKEN")]
+    [InlineData("GH_TOKEN")]
+    [InlineData("NPM_TOKEN")]
+    [InlineData("OPENAI_API_KEY")]
     public void IsBlocked_KnownDangerousName_ReturnsTrue(string name)
     {
         Assert.True(ExecEnvSanitizer.IsBlocked(name));
@@ -88,6 +96,24 @@ public class ExecEnvSanitizerTests
     [InlineData("DYLD_CUSTOM")]
     [InlineData("dyld_custom")]
     public void IsBlocked_LdDyldPrefix_ReturnsTrue(string name)
+    {
+        Assert.True(ExecEnvSanitizer.IsBlocked(name));
+    }
+
+    [Theory]
+    [InlineData("MY_TOKEN")]
+    [InlineData("APP_SECRET")]
+    [InlineData("DATABASE_PASSWORD")]
+    [InlineData("DB_PASSWD")]
+    [InlineData("SERVICE_API_KEY")]
+    [InlineData("STORAGE_ACCESS_KEY")]
+    [InlineData("CUSTOM_ACCESS_KEY_ID")]
+    [InlineData("SSH_PRIVATE_KEY")]
+    [InlineData("OAUTH_CLIENT_SECRET")]
+    [InlineData("DEFAULT_CONNECTION_STRING")]
+    [InlineData("SQLCONNSTR_MAIN")]
+    [InlineData("GOOGLE_APPLICATION_CREDENTIALS")]
+    public void IsBlocked_CredentialMarker_ReturnsTrue(string name)
     {
         Assert.True(ExecEnvSanitizer.IsBlocked(name));
     }
@@ -123,6 +149,8 @@ public class ExecEnvSanitizerTests
     [InlineData("APP_ENV")]
     [InlineData("TEST_OPENCLAW_VAR")]
     [InlineData("SOME_123_VAR")]
+    [InlineData("TOKENIZERS_PARALLELISM")]
+    [InlineData("KEYBOARD_LAYOUT")]
     public void IsBlocked_SafeName_ReturnsFalse(string name)
     {
         Assert.False(ExecEnvSanitizer.IsBlocked(name));

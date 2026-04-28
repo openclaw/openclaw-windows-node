@@ -37,15 +37,22 @@ public class ScreenCapability : NodeCapabilityBase
         };
     }
     
+    // Clamp bounds — reject extreme caller values before any work starts.
+    private const int MinDimension = 16;
+    private const int MaxScreenWidth = 7680;       // 8K horizontal
+    private const int MinQuality = 1;
+    private const int MaxQuality = 100;
+    private const int MaxScreenIndex = 32;          // far above any plausible monitor count
+
     private async Task<NodeInvokeResponse> HandleCaptureAsync(NodeInvokeRequest request)
     {
         var format = GetStringArg(request.Args, "format", "png");
-        var maxWidth = GetIntArg(request.Args, "maxWidth", 1920);
-        var quality = GetIntArg(request.Args, "quality", 80);
+        var maxWidth = Clamp(GetIntArg(request.Args, "maxWidth", 1920), MinDimension, MaxScreenWidth);
+        var quality = Clamp(GetIntArg(request.Args, "quality", 80), MinQuality, MaxQuality);
         var monitor = GetIntArg(request.Args, "monitor", 0);
-        var screenIndex = GetIntArg(request.Args, "screenIndex", monitor);
+        var screenIndex = Clamp(GetIntArg(request.Args, "screenIndex", monitor), 0, MaxScreenIndex);
         var includePointer = GetBoolArg(request.Args, "includePointer", true);
-        
+
         Logger.Info($"screen.snapshot: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
         
         if (CaptureRequested == null)
@@ -90,9 +97,10 @@ public class ScreenCapability : NodeCapabilityBase
             return Error("Unsupported screen recording format. Only mp4 is supported.");
         }
 
-        var durationMs = GetIntArg(request.Args, "durationMs", 10000);
-        var fps = GetDoubleArg(request.Args, "fps", 10);
-        var screenIndex = GetIntArg(request.Args, "screenIndex", 0);
+        var durationMs = Clamp(GetIntArg(request.Args, "durationMs", 10000), 100, MaxRecordDurationMs);
+        var fpsRaw = GetDoubleArg(request.Args, "fps", 10);
+        var fps = fpsRaw < 1 ? 1 : (fpsRaw > 60 ? 60 : fpsRaw);
+        var screenIndex = Clamp(GetIntArg(request.Args, "screenIndex", 0), 0, MaxScreenIndex);
         var includeAudio = GetBoolArg(request.Args, "includeAudio", false);
 
         Logger.Info($"screen.record: durationMs={durationMs}, fps={fps}, screenIndex={screenIndex}, includeAudio={includeAudio}");
@@ -129,6 +137,11 @@ public class ScreenCapability : NodeCapabilityBase
             return Error($"Recording failed: {ex.Message}");
         }
     }
+
+    private const int MaxRecordDurationMs = 5 * 60 * 1000; // 5 minutes
+
+    private static int Clamp(int value, int min, int max)
+        => value < min ? min : (value > max ? max : value);
 
     private static double GetDoubleArg(System.Text.Json.JsonElement args, string name, double defaultValue)
     {

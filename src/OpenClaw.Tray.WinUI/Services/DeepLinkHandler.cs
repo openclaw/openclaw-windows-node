@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
@@ -12,10 +13,11 @@ public static class DeepLinkHandler
     private const string UriScheme = "openclaw";
     private const string UriSchemeKey = @"SOFTWARE\Classes\openclaw";
 
+    [SupportedOSPlatform("windows")]
     public static void RegisterUriScheme()
     {
         // MSIX-packaged apps declare the protocol in Package.appxmanifest — skip registry
-        if (Helpers.PackageHelper.IsPackaged)
+        if (IsPackagedApp())
         {
             Logger.Info("URI scheme handled by MSIX manifest (packaged mode)");
             return;
@@ -43,6 +45,12 @@ public static class DeepLinkHandler
         }
     }
 
+#if OPENCLAW_TRAY_TESTS
+    private static bool IsPackagedApp() => false;
+#else
+    private static bool IsPackagedApp() => OpenClawTray.Helpers.PackageHelper.IsPackaged;
+#endif
+
     public static void Handle(string uri, DeepLinkActions actions)
     {
         var result = OpenClaw.Shared.DeepLinkParser.ParseDeepLink(uri);
@@ -63,6 +71,105 @@ public static class DeepLinkHandler
                 actions.OpenSetup?.Invoke();
                 break;
 
+            case "health":
+            case "healthcheck":
+            case "health-check":
+                if (actions.RunHealthCheck != null)
+                {
+                    _ = Task.Run(actions.RunHealthCheck);
+                }
+                break;
+
+            case "updates":
+            case "update":
+            case "check-updates":
+            case "update-check":
+                if (actions.CheckForUpdates != null)
+                {
+                    _ = actions.CheckForUpdates();
+                }
+                break;
+
+            case "log":
+            case "logs":
+            case "log-file":
+                actions.OpenLogFile?.Invoke();
+                break;
+
+            case "log-folder":
+            case "logs-folder":
+                actions.OpenLogFolder?.Invoke();
+                break;
+
+            case "config":
+            case "config-folder":
+            case "settings-folder":
+                actions.OpenConfigFolder?.Invoke();
+                break;
+
+            case "diagnostics":
+            case "diagnostics-folder":
+                actions.OpenDiagnosticsFolder?.Invoke();
+                break;
+
+            case "support":
+            case "support-context":
+                actions.CopySupportContext?.Invoke();
+                break;
+
+            case "debug-bundle":
+            case "diagnostics-bundle":
+            case "support-bundle":
+                actions.CopyDebugBundle?.Invoke();
+                break;
+
+            case "browser-setup":
+            case "browser-guidance":
+            case "browser-proxy-setup":
+                actions.CopyBrowserSetupGuidance?.Invoke();
+                break;
+
+            case "ports":
+            case "port-diagnostics":
+            case "copy-port-diagnostics":
+                actions.CopyPortDiagnostics?.Invoke();
+                break;
+
+            case "capabilities":
+            case "capability-diagnostics":
+            case "copy-capability-diagnostics":
+                actions.CopyCapabilityDiagnostics?.Invoke();
+                break;
+
+            case "nodes":
+            case "node-inventory":
+            case "copy-node-inventory":
+                actions.CopyNodeInventory?.Invoke();
+                break;
+
+            case "channels":
+            case "channel-summary":
+            case "copy-channel-summary":
+                actions.CopyChannelSummary?.Invoke();
+                break;
+
+            case "activity-summary":
+            case "copy-activity-summary":
+                actions.CopyActivitySummary?.Invoke();
+                break;
+
+            case "extensibility":
+            case "extensibility-summary":
+            case "copy-extensibility-summary":
+                actions.CopyExtensibilitySummary?.Invoke();
+                break;
+
+            case "ssh-restart":
+            case "restart-ssh":
+            case "restart-ssh-tunnel":
+                actions.RestartSshTunnel?.Invoke();
+                break;
+
             case "chat":
                 actions.OpenChat?.Invoke();
                 break;
@@ -71,6 +178,17 @@ public static class DeepLinkHandler
             case "commandcenter":
             case "command-center":
                 actions.OpenCommandCenter?.Invoke();
+                break;
+
+            case "activity":
+            case "activity-stream":
+                actions.OpenActivityStream?.Invoke(result.Parameters.GetValueOrDefault("filter"));
+                break;
+
+            case "history":
+            case "notifications":
+            case "notification-history":
+                actions.OpenNotificationHistory?.Invoke();
                 break;
 
             case "dashboard":
@@ -121,8 +239,26 @@ public class DeepLinkActions
 {
     public Action? OpenSettings { get; set; }
     public Action? OpenSetup { get; set; }
+    public Func<Task>? RunHealthCheck { get; set; }
+    public Func<Task>? CheckForUpdates { get; set; }
+    public Action? OpenLogFile { get; set; }
+    public Action? OpenLogFolder { get; set; }
+    public Action? OpenConfigFolder { get; set; }
+    public Action? OpenDiagnosticsFolder { get; set; }
+    public Action? CopySupportContext { get; set; }
+    public Action? CopyDebugBundle { get; set; }
+    public Action? CopyBrowserSetupGuidance { get; set; }
+    public Action? CopyPortDiagnostics { get; set; }
+    public Action? CopyCapabilityDiagnostics { get; set; }
+    public Action? CopyNodeInventory { get; set; }
+    public Action? CopyChannelSummary { get; set; }
+    public Action? CopyActivitySummary { get; set; }
+    public Action? CopyExtensibilitySummary { get; set; }
+    public Action? RestartSshTunnel { get; set; }
     public Action? OpenChat { get; set; }
     public Action? OpenCommandCenter { get; set; }
+    public Action<string?>? OpenActivityStream { get; set; }
+    public Action? OpenNotificationHistory { get; set; }
     public Action<string?>? OpenDashboard { get; set; }
     public Action<string?>? OpenQuickSend { get; set; }
     public Func<string, Task>? SendMessage { get; set; }

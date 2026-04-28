@@ -8,9 +8,11 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
@@ -60,6 +62,7 @@ public sealed class SetupWizardWindow : WindowEx
     private readonly TextBlock _deviceIdText;
     private readonly Button _copyDeviceIdButton;
     private readonly TextBlock _pairingStatusText;
+    private bool _hasStoredDeviceToken;
 
     // Result
     public bool Completed { get; private set; } = false;
@@ -200,6 +203,11 @@ public sealed class SetupWizardWindow : WindowEx
         };
         AutomationProperties.SetAutomationId(_tokenBox, "TokenBox");
         _tokenBox.PasswordChanged += (s, e) => _connectionTested = false;
+        _tokenBox.PasswordChanged += (s, e) =>
+        {
+            _draftToken = _tokenBox.Password;
+            UpdatePairingStatusText();
+        };
         _manualEntryPanel.Children.Add(_tokenBox);
         _stepPanels[0].Children.Add(_manualEntryPanel);
 
@@ -230,6 +238,16 @@ public sealed class SetupWizardWindow : WindowEx
             TextWrapping = TextWrapping.Wrap,
             Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
+        var securityWarning = new InfoBar
+        {
+            Title = LocalizationHelper.GetString("Setup_NodeModeSecurityTitle"),
+            Message = LocalizationHelper.GetString("Setup_NodeModeSecurityMessage"),
+            Severity = InfoBarSeverity.Warning,
+            IsOpen = true,
+            IsClosable = false
+        };
+        AutomationProperties.SetAutomationId(securityWarning, "SetupNodeModeSecurityWarning");
+        _stepPanels[1].Children.Add(securityWarning);
         _nodeModeToggle = new ToggleSwitch
         {
             Header = LocalizationHelper.GetString("Setup_NodeModeToggle"),
@@ -266,6 +284,7 @@ public sealed class SetupWizardWindow : WindowEx
             TextWrapping = TextWrapping.Wrap,
             Visibility = _draftEnableNodeMode ? Visibility.Visible : Visibility.Collapsed
         };
+        AutomationProperties.SetAutomationId(_pairingStatusText, "SetupPairingStatusText");
         _stepPanels[1].Children.Add(_pairingStatusText);
 
         var pairingInstructions = new StackPanel
@@ -445,6 +464,17 @@ public sealed class SetupWizardWindow : WindowEx
                 _draftEnableNodeMode = !string.IsNullOrWhiteSpace(_draftBootstrapToken);
                 _nodeModeToggle.IsOn = _draftEnableNodeMode;
                 UpdateNodeModePairingVisibility(_draftEnableNodeMode);
+                UpdatePairingStatusText();
+            }
+
+            if (TryGetSetupCodeExpiry(doc.RootElement, out var expiresAt) &&
+                expiresAt <= DateTimeOffset.UtcNow)
+            {
+                _draftBootstrapToken = "";
+                _connectionTested = false;
+                _testStatusLabel.Text = "❌ Setup code expired. Generate a fresh QR/setup code from the gateway and try again.";
+                Logger.Warn($"[Setup] Setup code expired at {expiresAt:O}");
+                return false;
             }
 
             if (string.IsNullOrWhiteSpace(_draftGatewayUrl) ||
@@ -469,6 +499,56 @@ public sealed class SetupWizardWindow : WindowEx
             return false;
         }
     }
+
+    internal static bool TryGetSetupCodeExpiry(JsonElement payload, out DateTimeOffset expiresAt)
+    {
+        foreach (var propertyName in new[] { "expiresAt", "expires_at", "expires", "expiry", "exp" })
+        {
+            if (payload.TryGetProperty(propertyName, out var value) &&
+                TryParseSetupCodeExpiryValue(value, out expiresAt))
+            {
+                return true;
+            }
+        }
+
+        expiresAt = default;
+        return false;
+    }
+
+    private static bool TryParseSetupCodeExpiryValue(JsonElement value, out DateTimeOffset expiresAt)
+    {
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            var text = value.GetString();
+            if (DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out expiresAt))
+            {
+                return true;
+            }
+
+            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unixFromString))
+            {
+                expiresAt = UnixTimeToDateTimeOffset(unixFromString);
+                return true;
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var unix))
+        {
+            expiresAt = UnixTimeToDateTimeOffset(unix);
+            return true;
+        }
+
+        expiresAt = default;
+        return false;
+    }
+
+    private static DateTimeOffset UnixTimeToDateTimeOffset(long value) =>
+        value > 10_000_000_000
+            ? DateTimeOffset.FromUnixTimeMilliseconds(value)
+            : DateTimeOffset.FromUnixTimeSeconds(value);
 
     private async void OnPasteSetupFromClipboard(object sender, RoutedEventArgs e)
     {
@@ -600,12 +680,15 @@ public sealed class SetupWizardWindow : WindowEx
         _deviceIdText.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
         _copyDeviceIdButton.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
         _pairingStatusText.Visibility = showPairing ? Visibility.Visible : Visibility.Collapsed;
+        _draftEnableNodeMode = showPairing;
+        UpdatePairingStatusText();
     }
 
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         _draftGatewayUrl = _gatewayUrlBox.Text.Trim();
         _draftToken = _tokenBox.Password;
+        UpdatePairingStatusText();
 
         if (!GatewayUrlHelper.IsValidGatewayUrl(_draftGatewayUrl))
         {
@@ -746,12 +829,59 @@ public sealed class SetupWizardWindow : WindowEx
             var shortId = fullId.Length > 12 ? fullId[..12] : fullId;
             _deviceIdText.Text = $"Device ID: {shortId}...";
             _copyDeviceIdButton.Tag = fullId;
+            _hasStoredDeviceToken = !string.IsNullOrWhiteSpace(identity.DeviceToken);
+            UpdatePairingStatusText();
         }
         catch (Exception ex)
         {
             Logger.Warn($"[Setup] Could not load device identity: {ex.Message}");
             _deviceIdText.Text = LocalizationHelper.GetString("Setup_DeviceIdFallback");
+            _hasStoredDeviceToken = false;
+            UpdatePairingStatusText();
         }
+    }
+
+    private void UpdatePairingStatusText()
+    {
+        if (_pairingStatusText == null)
+        {
+            return;
+        }
+
+        _pairingStatusText.Text = BuildPairingExpectationText(
+            _draftEnableNodeMode,
+            _hasStoredDeviceToken,
+            !string.IsNullOrWhiteSpace(_draftBootstrapToken),
+            !string.IsNullOrWhiteSpace(_draftToken));
+    }
+
+    internal static string BuildPairingExpectationText(
+        bool nodeModeEnabled,
+        bool hasStoredDeviceToken,
+        bool hasBootstrapToken,
+        bool hasGatewayToken)
+    {
+        if (!nodeModeEnabled)
+        {
+            return "Node Mode is off; this tray will only act as an operator UI.";
+        }
+
+        if (hasStoredDeviceToken)
+        {
+            return "Already paired: this device has a saved gateway device token and should reconnect without manual approval.";
+        }
+
+        if (hasBootstrapToken)
+        {
+            return "Auto-pairing expected: this setup code includes a bootstrap token. Finish setup and the gateway should approve this node automatically. If the bootstrap token expired or was already used, Command Center will show a waiting-for-approval repair command.";
+        }
+
+        if (hasGatewayToken)
+        {
+            return "Manual approval expected: this setup uses a gateway token, not a bootstrap token. Finish setup, then approve the device from the gateway CLI if Command Center reports that the node is waiting for approval.";
+        }
+
+        return "Pairing method unknown: enter a setup code for auto-pairing or a gateway token for manual approval.";
     }
 
     private void OnCopyDeviceId(object sender, RoutedEventArgs e)

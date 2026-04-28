@@ -16,6 +16,9 @@ public class SettingsManager
 
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
 
+    public static string SettingsDirectoryPath => SettingsDirectory;
+    public static string SettingsPath => SettingsFilePath;
+
     // Connection
     public string GatewayUrl { get; set; } = "ws://localhost:18789";
     public string Token { get; set; } = "";
@@ -49,8 +52,15 @@ public class SettingsManager
     public bool PreferStructuredCategories { get; set; } = true;
     public List<OpenClaw.Shared.UserNotificationRule> UserRules { get; set; } = new();
     
-    // Node mode (enables Windows as a node, not just operator)
+    // Node mode (gateway WebSocket connection — separate from MCP)
     public bool EnableNodeMode { get; set; } = false;
+    public bool NodeCanvasEnabled { get; set; } = true;
+    public bool NodeScreenEnabled { get; set; } = true;
+    public bool NodeCameraEnabled { get; set; } = true;
+    public bool NodeLocationEnabled { get; set; } = true;
+    public bool NodeBrowserProxyEnabled { get; set; } = true;
+    // Local MCP HTTP server (independent of EnableNodeMode)
+    public bool EnableMcpServer { get; set; } = false;
     public bool HasSeenActivityStreamTip { get; set; } = false;
     public string SkippedUpdateTag { get; set; } = "";
 
@@ -90,6 +100,24 @@ public class SettingsManager
                     NotifyStock = loaded.NotifyStock;
                     NotifyInfo = loaded.NotifyInfo;
                     EnableNodeMode = loaded.EnableNodeMode;
+                    NodeCanvasEnabled = loaded.NodeCanvasEnabled;
+                    NodeScreenEnabled = loaded.NodeScreenEnabled;
+                    NodeCameraEnabled = loaded.NodeCameraEnabled;
+                    NodeLocationEnabled = loaded.NodeLocationEnabled;
+                    NodeBrowserProxyEnabled = loaded.NodeBrowserProxyEnabled;
+                    EnableMcpServer = loaded.EnableMcpServer;
+                    // Legacy McpOnlyMode migration:
+                    //   true  → node off (no gateway), MCP on
+                    //   false → leave MCP off; the user has not opted in to a
+                    //           local HTTP server. Earlier dev builds tied MCP
+                    //           to EnableNodeMode silently — we deliberately
+                    //           do *not* re-enable MCP for those users on
+                    //           upgrade. They can flip the toggle in Settings.
+                    if (loaded.McpOnlyMode is bool legacyMcpOnly && legacyMcpOnly)
+                    {
+                        EnableMcpServer = true;
+                        EnableNodeMode = false;
+                    }
                     HasSeenActivityStreamTip = loaded.HasSeenActivityStreamTip;
                     SkippedUpdateTag = loaded.SkippedUpdateTag ?? SkippedUpdateTag;
                     NotifyChatResponses = loaded.NotifyChatResponses;
@@ -134,6 +162,13 @@ public class SettingsManager
                 NotifyStock = NotifyStock,
                 NotifyInfo = NotifyInfo,
                 EnableNodeMode = EnableNodeMode,
+                NodeCanvasEnabled = NodeCanvasEnabled,
+                NodeScreenEnabled = NodeScreenEnabled,
+                NodeCameraEnabled = NodeCameraEnabled,
+                NodeLocationEnabled = NodeLocationEnabled,
+                NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
+                EnableMcpServer = EnableMcpServer,
+                // McpOnlyMode is legacy — never written; remains null in serialized output.
                 HasSeenActivityStreamTip = HasSeenActivityStreamTip,
                 SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
                 NotifyChatResponses = NotifyChatResponses,

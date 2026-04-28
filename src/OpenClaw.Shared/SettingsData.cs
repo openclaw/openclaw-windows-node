@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenClaw.Shared;
 
@@ -28,13 +29,30 @@ public class SettingsData
     public bool NotifyStock { get; set; } = true;
     public bool NotifyInfo { get; set; } = true;
     public bool EnableNodeMode { get; set; } = false;
+    public bool NodeCanvasEnabled { get; set; } = true;
+    public bool NodeScreenEnabled { get; set; } = true;
+    public bool NodeCameraEnabled { get; set; } = true;
+    public bool NodeLocationEnabled { get; set; } = true;
+    public bool NodeBrowserProxyEnabled { get; set; } = true;
+    /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
+    public bool EnableMcpServer { get; set; } = false;
+    /// <summary>
+    /// Legacy flag (replaced by EnableMcpServer + the EnableNodeMode pair).
+    /// Kept for one-time migration on Load; not written on Save.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? McpOnlyMode { get; set; }
     public bool HasSeenActivityStreamTip { get; set; } = false;
     public string? SkippedUpdateTag { get; set; }
     public bool NotifyChatResponses { get; set; } = true;
     public bool PreferStructuredCategories { get; set; } = true;
     public List<UserNotificationRule>? UserRules { get; set; }
 
-    private static readonly JsonSerializerOptions s_options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions s_options = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
     public string ToJson() => JsonSerializer.Serialize(this, s_options);
 

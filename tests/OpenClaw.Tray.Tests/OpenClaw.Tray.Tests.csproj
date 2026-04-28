@@ -1,7 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);OPENCLAW_TRAY_TESTS</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
   </ItemGroup>
 
 </Project>

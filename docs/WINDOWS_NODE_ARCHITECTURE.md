@@ -152,7 +152,7 @@ This operator-only mode provides Quick Send, embedded WebChat, Command Center di
 |--------|---------|
 | **Gateway** | WSL2 (Ubuntu) |
 | **Nodes** | OpenClaw.Tray registers as `role: "node"` from Windows |
-| **Capabilities** | Camera ✅ (MediaCapture API) Canvas ✅ (WebView2) Screen ✅ (Graphics Capture) Notifications ✅ (Toast + agent-driven) Browser ❌ (WSL2 browser proxy) Exec ✅ (WSL2 + optionally Windows `cmd`/`powershell`) Location ⚠️ (Windows Location API — desktop, less useful) Audio/TTS ✅ (Windows Speech) |
+| **Capabilities** | Camera ✅ (MediaCapture API) Canvas ✅ (WebView2) Screen ✅ (Graphics Capture) Notifications ✅ (Toast + agent-driven) Browser ✅/⚠️ (local `browser.proxy` bridge; requires browser-control host on gateway port + 2) Exec ✅ (WSL2 + optionally Windows `cmd`/`powershell`) Location ⚠️ (Windows Location API — desktop, less useful) Voice/TTS ⚠️ (separate parity track) |
 | **Networking** | WSL2 NAT still involved for gateway, but tray app connects outward to WSL2's WS — simpler direction. |
 | **Setup complexity** | Medium — WSL2 gateway + tray app auto-discovers and pairs |
 | **UX Rating** | ⭐⭐⭐⭐ Agent can now see and interact with Windows! |
@@ -169,7 +169,7 @@ The tray now also has a Command Center surface that combines gateway channel hea
 |--------|---------|
 | **Gateway** | Windows native (Node.js on Windows — `node.exe`) |
 | **Nodes** | OpenClaw.Tray as full Windows node |
-| **Capabilities** | Camera ✅ Canvas ✅ Screen ✅ Notifications ✅ Browser ✅ (Playwright on Windows) Exec ✅ (native `cmd.exe`, PowerShell, `wsl.exe`) Location ⚠️ Audio/TTS ✅ |
+| **Capabilities** | Camera ✅ Canvas ✅ Screen ✅ Notifications ✅ Browser ✅/⚠️ (`browser.proxy` bridge; needs browser-control host on gateway+2) Exec ✅ (native `cmd.exe`, PowerShell, `wsl.exe`) Location ⚠️ Voice/TTS ⚠️ (separate parity track) |
 | **Networking** | `ws://127.0.0.1:18789` — pure loopback, no NAT, no WSL2 networking issues |
 | **Setup complexity** | Low — `npm install -g openclaw && openclaw onboard` from PowerShell. Same as Mac. |
 | **UX Rating** | ⭐⭐⭐⭐⭐ True feature parity with Mac |
@@ -261,9 +261,9 @@ Niche scenario. If the "server" must be Windows for some reason, this works but 
 | `location.get` | ✅ CLLocationManager | ✅ CLLocationManager | ✅ FusedLocation | ❌ | **✅** | Windows.Devices.Geolocation |
 | `device.info/status` | ✅ shared schema | ✅ shared schema | ✅ shared schema | ❌ | **✅** | .NET runtime, storage, network |
 | `sms.send` | ❌ | ❌ | ✅ | ❌ | ❌ | N/A |
-| Browser proxy | ✅ | ❌ | ❌ | ✅ Playwright | **⚠️ Future** | Playwright on Windows |
+| Browser proxy | ✅ | ❌ | ❌ | ✅ Playwright | **✅/⚠️ Local bridge** | Browser-control host on gateway port + 2 |
 | Accessibility | ✅ AX API | ❌ | ❌ | ❌ | **⚠️ Future** | UI Automation |
-| Speech/TTS | ✅ NSSpeechSynthesizer | ❌ | ❌ | ❌ | **✅** | Windows.Media.SpeechSynthesis |
+| Speech/TTS | ✅ NSSpeechSynthesizer | ❌ | ❌ | ❌ | **⚠️ Planned** | Windows.Media.SpeechSynthesis |
 | Microphone | ✅ AVAudioEngine | ✅ | ✅ | ❌ | **⚠️ Future** | Windows.Media.Audio |
 
 ---
@@ -292,7 +292,7 @@ The tray app uses a dedicated node connection (`WindowsNodeClient`) with `role: 
     },
     "role": "node",
     "scopes": [],
-    "caps": ["canvas", "camera", "screen", "notifications", "system", "device"],
+    "caps": ["canvas", "camera", "screen", "notifications", "system", "device", "browser"],
     "commands": [
       "canvas.present", "canvas.hide", "canvas.navigate",
       "canvas.eval", "canvas.snapshot", "canvas.a2ui.push",
@@ -302,7 +302,8 @@ The tray app uses a dedicated node connection (`WindowsNodeClient`) with `role: 
       "location.get",
       "device.info", "device.status",
       "system.run", "system.run.prepare", "system.which", "system.notify",
-      "system.execApprovals.get", "system.execApprovals.set"
+      "system.execApprovals.get", "system.execApprovals.set",
+      "browser.proxy"
     ],
     "permissions": {
       "camera.capture": true,
@@ -475,6 +476,10 @@ var stream = await synth.SynthesizeTextToStreamAsync(text);
 // Play via MediaElement or save to file
 ```
 
+This is a candidate implementation path, not an implemented node command yet. Voice/Talk mode parity should stay on its own track so Windows does not advertise a speech capability before there is a shared command contract and permission model.
+
+Current PR review status: open PR #120 (`feature/voice-mode`) is a useful prototype but should not merge as-is. It currently conflicts with the active capability-settings branch, advertises `voice.*` commands without the default-off Settings gate used for other privacy-sensitive capability groups, widens operator scopes in the same PR, persists cloud TTS provider keys in plain settings JSON, and introduces a Windows-specific wire schema before the Mac runtime/controller/session contract is agreed. Safe next step: split schema, gateway scope, chat transport, Windows runtime, WebChat integration, and cloud-provider credentials into separate reviews; keep the first merge behind a default-off Voice Settings group and gateway dangerous-command allowlist.
+
 ---
 
 ## Architectural Questions
@@ -519,7 +524,7 @@ On macOS: launchd plist. On Linux: systemd unit. On Windows, options include:
 - **Startup folder** (simplest, least robust)
 - **Tray app manages gateway process** (like macOS menubar app can start/stop gateway)
 
-The Mac menubar app has "Gateway start/stop/restart" in its menu. The tray app has this marked as ❌ in the parity table. If the gateway runs on Windows, the tray app could manage it.
+The Mac menubar app has "Gateway start/stop/restart" in its menu. Windows Command Center can restart a tray-managed SSH tunnel, but it intentionally does not stop or kill externally managed gateway processes. If the gateway runs as a future Windows-managed process, the tray app could add explicit start/stop/restart controls for that owned process.
 
 ### 4. WSL2 networking: the NAT problem
 
@@ -574,7 +579,7 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [x] `device.info` / `device.status` — metadata and lightweight status payloads
 - [x] `system.run` — exec commands on Windows (PowerShell/cmd) with ICommandRunner abstraction
 - [x] `system.execApprovals.get/set` — remote-manageable exec approval policy
-- [ ] Settings UI for node capabilities (enable/disable camera, screen, etc.)
+- [x] Settings UI for node capabilities (enable/disable canvas, screen, camera, location, browser proxy)
 - [x] Resolve #9 (WebView2 ARM64) — required for canvas
 
 **Depends on:** #5 (Canvas Panel), #9 (WebView2 ARM64)
@@ -607,10 +612,12 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [x] `location.get` — Windows Location API
 - [ ] TTS / Speech Synthesis
 - [ ] Microphone / voice input
-- [ ] Browser proxy (Playwright on Windows, launched by tray app)
+- [x] `browser.proxy` — local browser-control bridge on gateway port + 2, including SSH companion-forward diagnostics
+- [x] Browser-control host setup guidance and local host runtime smoke for end-to-end browser smoke tests
+- [ ] Bundled/browser-control host installer/launcher
 - [ ] UI Automation (Windows equivalent of macOS Accessibility API)
 - [ ] Auto-update improvements (current auto-update from GitHub Releases → MSI/MSIX?)
-- [ ] PowerToys Command Palette integration for node commands
+- [x] PowerToys Command Palette integration for Command Center diagnostics entrypoint
 
 ---
 
@@ -680,18 +687,18 @@ This is a big effort and **contributions are very welcome!** Here's how to get s
 
 ### Good First Issues
 
-1. **Capability diagnostics copy** — Add a copyable summary that explains declared commands, gateway allowlist status, and dangerous-command opt-ins.
+1. **Capability diagnostics copy** — ✅ Command Center can copy a summary of declared commands, gateway allowlist status, and dangerous-command opt-ins.
 2. **Gateway health summary** — Show version, update state, auth state, and active connection health in one panel.
 3. **Channel status cards** — Surface configured/running/error/probe state for channels.
 
 ### Medium Issues
 
-4. **Browser proxy parity** — Investigate a safe Windows implementation for Mac-compatible `browser.proxy`.
+4. **Browser proxy parity** — Windows now includes a Mac-compatible local `browser.proxy` bridge to the browser control host on gateway port + 2, and managed SSH tunnel mode forwards local+2 to remote+2 when the browser proxy capability is enabled; continue hardening live browser-host setup guidance and diagnostics.
 5. **Gateway/channel flyout** — Show configured/running/error/probe state for channels and gateway health in the tray.
 
 ### Harder Issues
 
-6. **Voice mode parity** — Review the open Windows Voice Mode PR against the current Mac voice runtime/controller/session split.
+6. **Voice mode parity** — PR #120 has been reviewed and should stay blocked until it is rebased/split, gated default-off through Settings, aligned with a shared Mac/gateway voice command contract, and hardened for credential storage and permission prompts.
 7. **Native Windows gateway audit** — Run `openclaw gateway` on Windows, identify and fix platform-specific failures.
 8. **Richer channel operations** — Add tray surfaces for channel configuration, probe status, token source, last error, and recovery actions.
 
@@ -711,9 +718,9 @@ Requires .NET 10.0 SDK, Windows 10/11. For testing node protocol, you'll need a 
 
 ## Open Questions
 
-- [ ] Should dangerous command opt-ins be shown in the tray as a guided repair flow, a docs link, or both?
+- [x] Should dangerous command opt-ins be shown in the tray as a guided repair flow, a docs link, or both? Command Center now shows copyable safety guidance but intentionally avoids one-click dangerous repair commands.
 - [ ] How much channel management should live in the native tray versus opening the web dashboard?
-- [ ] Should Voice Mode land as a separate parity track after the open PR is reviewed against current Mac architecture?
+- [x] Should Voice Mode land as a separate parity track after the open PR is reviewed against current Mac architecture? Yes. PR #120 should not advertise voice commands from Windows until the shared contract, Settings gate, gateway allowlist, and credential-storage concerns are resolved.
 
 ---
 

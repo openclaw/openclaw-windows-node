@@ -72,11 +72,35 @@ OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a 
 | Link | Action |
 |------|--------|
 | `openclaw://dashboard` | Open the OpenClaw web dashboard |
+| `openclaw://dashboard/sessions` | Open the sessions dashboard page |
+| `openclaw://dashboard/channels` | Open the channels dashboard page |
+| `openclaw://dashboard/skills` | Open the skills dashboard page |
+| `openclaw://dashboard/cron` | Open the cron dashboard page |
 | `openclaw://chat` | Open the embedded Web Chat window |
 | `openclaw://send` | Open the Quick Send dialog |
 | `openclaw://send?message=Hello` | Open Quick Send with pre-filled text |
 | `openclaw://settings` | Open the Settings dialog |
-| `openclaw://agent?message=Hello` | Send a message directly (with confirmation) |
+| `openclaw://setup` | Open the Setup Wizard |
+| `openclaw://commandcenter` | Open Command Center diagnostics |
+| `openclaw://activity` | Open the Activity Stream |
+| `openclaw://history` | Open Notification History |
+| `openclaw://healthcheck` | Run a manual health check |
+| `openclaw://check-updates` | Run a manual update check |
+| `openclaw://logs` | Open the current tray log file |
+| `openclaw://log-folder` | Open the logs folder |
+| `openclaw://config` | Open the config folder |
+| `openclaw://diagnostics` | Open the diagnostics JSONL folder |
+| `openclaw://support-context` | Copy redacted support context |
+| `openclaw://debug-bundle` | Copy a combined debug bundle for support |
+| `openclaw://browser-setup` | Copy browser.proxy/browser-control setup guidance |
+| `openclaw://port-diagnostics` | Copy gateway/browser/tunnel port diagnostics with owner PID stop hints |
+| `openclaw://capability-diagnostics` | Copy permissions, allowlist, and parity diagnostics |
+| `openclaw://node-inventory` | Copy node capabilities, commands, and policy status |
+| `openclaw://channel-summary` | Copy channel health and start/stop availability |
+| `openclaw://activity-summary` | Copy recent tray activity for troubleshooting |
+| `openclaw://extensibility-summary` | Copy channel, skills, and cron dashboard surface guidance |
+| `openclaw://restart-ssh-tunnel` | Restart the tray-managed SSH tunnel when enabled |
+| `openclaw://agent?message=Hello` | Send a message directly to the connected gateway |
 
 ## Troubleshooting
 

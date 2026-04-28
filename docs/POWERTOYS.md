@@ -35,9 +35,33 @@ Open Command Palette (`Win+Alt+Space`), type **"OpenClaw"** — you should see t
 | Command | Action |
 |---------|--------|
 | **🦞 Open Dashboard** | Opens the OpenClaw web dashboard in your default browser |
+| **💬 Dashboard: Sessions** | Opens the sessions dashboard |
+| **📡 Dashboard: Channels** | Opens the channel configuration dashboard |
+| **🧩 Dashboard: Skills** | Opens the skills dashboard |
+| **⏱️ Dashboard: Cron** | Opens the scheduled jobs dashboard |
 | **💬 Web Chat** | Opens the embedded Web Chat window in OpenClaw Tray |
 | **📝 Quick Send** | Opens the Quick Send dialog to compose a message |
+| **🧭 Setup Wizard** | Opens QR, setup code, and manual gateway pairing |
+| **🧭 Command Center** | Opens gateway, tunnel, node, browser, and support diagnostics |
+| **🔄 Run Health Check** | Refreshes gateway or node connection health |
+| **⬇️ Check for Updates** | Runs a manual GitHub Releases update check |
+| **⚡ Activity Stream** | Opens recent tray activity and support bundle actions |
+| **📋 Notification History** | Opens recent OpenClaw tray notifications |
 | **⚙️ Settings** | Opens the OpenClaw Tray Settings dialog |
+| **📄 Open Log File** | Opens the current OpenClaw Tray log |
+| **📁 Open Logs Folder** | Opens the OpenClaw Tray logs folder |
+| **🗂️ Open Config Folder** | Opens the OpenClaw Tray configuration folder |
+| **🧪 Open Diagnostics Folder** | Opens the diagnostics JSONL folder |
+| **📋 Copy Support Context** | Copies redacted Command Center support metadata |
+| **🧰 Copy Debug Bundle** | Copies combined support, port, capability, node, channel, and activity diagnostics |
+| **🌐 Copy Browser Setup** | Copies browser.proxy and node-host setup guidance |
+| **🔌 Copy Port Diagnostics** | Copies gateway/browser/tunnel port owners and stop hints |
+| **🛡️ Copy Capability Diagnostics** | Copies permission, allowlist, and parity diagnostics |
+| **🖥️ Copy Node Inventory** | Copies node capabilities, commands, and policy status |
+| **📡 Copy Channel Summary** | Copies channel health and start/stop availability |
+| **⚡ Copy Activity Summary** | Copies recent tray activity |
+| **🧩 Copy Extensibility Summary** | Copies channel, skills, and cron surface guidance |
+| **🔁 Restart SSH Tunnel** | Restarts the tray-managed SSH tunnel when enabled |
 
 ## Usage
 
@@ -87,6 +111,30 @@ Get-AppxPackage -Name '*OpenClaw*' | Remove-AppxPackage
   | Command | Deep link |
   |---------|-----------|
   | Open Dashboard | `openclaw://dashboard` |
+  | Dashboard: Sessions | `openclaw://dashboard/sessions` |
+  | Dashboard: Channels | `openclaw://dashboard/channels` |
+  | Dashboard: Skills | `openclaw://dashboard/skills` |
+  | Dashboard: Cron | `openclaw://dashboard/cron` |
   | Web Chat | `openclaw://chat` |
   | Quick Send | `openclaw://send` |
+  | Setup Wizard | `openclaw://setup` |
+  | Command Center | `openclaw://commandcenter` |
+  | Run Health Check | `openclaw://healthcheck` |
+  | Check for Updates | `openclaw://check-updates` |
+  | Activity Stream | `openclaw://activity` |
+  | Notification History | `openclaw://history` |
   | Settings | `openclaw://settings` |
+  | Open Log File | `openclaw://logs` |
+  | Open Logs Folder | `openclaw://log-folder` |
+  | Open Config Folder | `openclaw://config` |
+  | Open Diagnostics Folder | `openclaw://diagnostics` |
+  | Copy Support Context | `openclaw://support-context` |
+  | Copy Debug Bundle | `openclaw://debug-bundle` |
+  | Copy Browser Setup | `openclaw://browser-setup` |
+  | Copy Port Diagnostics | `openclaw://port-diagnostics` |
+  | Copy Capability Diagnostics | `openclaw://capability-diagnostics` |
+  | Copy Node Inventory | `openclaw://node-inventory` |
+  | Copy Channel Summary | `openclaw://channel-summary` |
+  | Copy Activity Summary | `openclaw://activity-summary` |
+  | Copy Extensibility Summary | `openclaw://extensibility-summary` |
+  | Restart SSH Tunnel | `openclaw://restart-ssh-tunnel` |

@@ -177,7 +177,7 @@ PR #159 originally explored session-based start/stop recording commands, but the
 
 | Command | macOS | Windows | Notes |
 |---------|-------|---------|-------|
-| `browser.proxy` | ✅ | ❌ | Chrome DevTools proxy |
+| `browser.proxy` | ✅ | ✅ | Local browser-control bridge; requires browser control host on gateway port + 2, retries with password/basic auth if bearer auth is rejected, and managed SSH tunnel mode forwards local+2 to remote+2 when enabled |
 
 ### 2.6 Safe Gateway-Policy Gaps to Consider
 
@@ -343,25 +343,49 @@ Until the gateway expands Windows safe defaults, the practical local solution is
 2. Configure `gateway.nodes.allowCommands` for the Windows companion features.
 3. Re-pair after command-list changes because the gateway snapshots commands at approval time.
 
-### 5.1 Immediate Code Fixes (This Branch)
+### 5.1 Gateway Node Allowlist Configuration
+
+`gateway.nodes.allowCommands` is the explicit opt-in list the gateway uses after platform defaults. It should contain exact command names, not broad wildcard grants, for commands that are safe but not yet in the Windows default policy.
+
+Recommended safe Windows companion allowlist:
+
+```bash
+openclaw config set gateway.nodes.allowCommands '["canvas.present","canvas.hide","canvas.navigate","canvas.eval","canvas.snapshot","canvas.a2ui.push","canvas.a2ui.pushJSONL","canvas.a2ui.reset","camera.list","location.get","screen.snapshot","device.info","device.status","system.execApprovals.get","system.execApprovals.set"]'
+openclaw gateway restart
+```
+
+`gateway.nodes.denyCommands` can be used as a final explicit blocklist when you want to suppress a command even if a platform default or allowlist entry would otherwise allow it.
+
+Privacy-sensitive commands should stay out of the default safe list and should only be added deliberately:
+
+```text
+camera.snap
+camera.clip
+screen.record
+```
+
+After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyCommands`, re-approve or re-pair the Windows node. Approved device records may keep a snapshot of the commands that were visible at approval time, so a gateway restart alone may not refresh existing approvals.
+
+### 5.2 Immediate Code Fixes (This Branch)
 
 - [x] Rename `screen.capture` → `screen.snapshot` in `ScreenCapability.cs`
 - [x] Remove `screen.list` from declared commands
 - [x] Remove debug logging from `WindowsNodeClient.cs`
 - [x] Add Mac-compatible fixed-duration `screen.record`; do not add `screen.list` or record start/stop commands
 
-### 5.2 Setup Wizard Improvements
+### 5.3 Setup Wizard Improvements
 
 - [x] Send `bootstrapToken` in correct field: `auth.bootstrapToken` not `auth.token`
 - [x] Handle `hello-ok.auth.deviceToken` — save it for future connections
 - [x] Accept QR images and clipboard setup content as alternate ways to enter the same bootstrap payload
-- [ ] Show "auto-paired!" vs "waiting for approval" based on auth method
-- [ ] Handle bootstrap token expiry gracefully (re-generate if expired)
+- [x] Show "auto-paired!" vs "waiting for approval" based on auth method
+- [x] Handle bootstrap token expiry gracefully when setup code payloads include expiry metadata (`expiresAt`, `expires_at`, `expires`, `expiry`, or `exp`)
+- [x] Add Settings toggles for optional Windows node capability groups (`canvas`, `screen`, `camera`, `location`, `browser.proxy`)
 
-### 5.3 Upstream Contributions / Issues to File
+### 5.4 Upstream Contributions / Issues to File
 
-- [ ] **Request Windows/macOS parity for safe declared commands** — Windows should allow the same safe companion commands macOS does, while dangerous commands stay explicit opt-in.
-- [ ] **Document `gateway.nodes.allowCommands`** — it's not in the config reference page
+- [x] **Request Windows/macOS parity for safe declared commands** — Windows should allow the same safe companion commands macOS does, while dangerous commands stay explicit opt-in. Draft included below.
+- [x] **Document `gateway.nodes.allowCommands`** — local Windows integration docs now describe allowCommands, denyCommands, safe parity commands, privacy-sensitive opt-ins, and re-pair requirements.
 - [x] **Add `canvas.a2ui.pushJSONL`** — current Mac supports it as a legacy JSONL alias; Windows routes it through the same A2UI push handler
 
 #### Upstream issue draft
@@ -404,7 +428,7 @@ This does not grant capabilities to headless Windows hosts by itself. A command 
 
 Related documentation gap: `gateway.nodes.allowCommands` and `gateway.nodes.denyCommands` should be documented in the gateway configuration reference, including the requirement to re-pair after command-list changes because approved pairing records snapshot declared commands.
 
-### 5.4 User-Facing Documentation
+### 5.5 User-Facing Documentation
 
 When shipping the Windows node, README/wiki should tell users:
 

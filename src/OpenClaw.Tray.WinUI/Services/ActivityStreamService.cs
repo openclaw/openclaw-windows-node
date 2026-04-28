@@ -11,7 +11,7 @@ public static class ActivityStreamService
 {
     private static readonly LinkedList<ActivityStreamItem> _items = new();
     private static readonly object _lock = new();
-    private const int MaxItems = 200;
+    public const int MaxStoredItems = 400;
 
     public static event EventHandler? Updated;
 
@@ -38,10 +38,10 @@ public static class ActivityStreamService
                 NodeId = nodeId
             });
 
-            while (_items.Count > MaxItems)
+            while (_items.Count > MaxStoredItems)
             {
                 _items.RemoveLast();
-                Logger.Debug($"[ActivityStream] Trimmed oldest item (exceeded max {MaxItems})");
+                Logger.Debug($"[ActivityStream] Trimmed oldest item (exceeded max {MaxStoredItems})");
             }
         }
 
@@ -51,7 +51,7 @@ public static class ActivityStreamService
         Updated?.Invoke(null, EventArgs.Empty);
     }
 
-    public static IReadOnlyList<ActivityStreamItem> GetItems(int maxItems = 200, string? category = null)
+    public static IReadOnlyList<ActivityStreamItem> GetItems(int maxItems = MaxStoredItems, string? category = null)
     {
         lock (_lock)
         {
@@ -65,7 +65,7 @@ public static class ActivityStreamService
         }
     }
 
-    public static string BuildSupportBundle(int maxItems = 50)
+    public static string BuildSupportBundle(int maxItems = MaxStoredItems)
     {
         IReadOnlyList<ActivityStreamItem> snapshot;
         lock (_lock)

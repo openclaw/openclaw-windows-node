@@ -28,6 +28,9 @@ public class CameraCapability : NodeCapabilityBase
     public CameraCapability(IOpenClawLogger logger) : base(logger)
     {
     }
+
+    private static int Clamp(int value, int min, int max)
+        => value < min ? min : (value > max ? max : value);
     
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
     {
@@ -61,12 +64,19 @@ public class CameraCapability : NodeCapabilityBase
         }
     }
     
+    // Boundary clamps — reject extreme/negative caller values up-front.
+    private const int MinCameraDimension = 16;
+    private const int MaxCameraWidth = 4096;
+    private const int MinQuality = 1;
+    private const int MaxQuality = 100;
+    private const int MaxClipDurationMs = 60_000;
+
     private async Task<NodeInvokeResponse> HandleSnapAsync(NodeInvokeRequest request)
     {
         var deviceId = GetStringArg(request.Args, "deviceId");
         var format = GetStringArg(request.Args, "format", "jpeg");
-        var maxWidth = GetIntArg(request.Args, "maxWidth", 1280);
-        var quality = GetIntArg(request.Args, "quality", 80);
+        var maxWidth = Clamp(GetIntArg(request.Args, "maxWidth", 1280), MinCameraDimension, MaxCameraWidth);
+        var quality = Clamp(GetIntArg(request.Args, "quality", 80), MinQuality, MaxQuality);
         
         Logger.Info($"camera.snap: deviceId={deviceId ?? "(default)"}, format={format}");
         
@@ -103,7 +113,9 @@ public class CameraCapability : NodeCapabilityBase
     private async Task<NodeInvokeResponse> HandleClipAsync(NodeInvokeRequest request)
     {
         var deviceId = GetStringArg(request.Args, "deviceId");
-        var durationMs = Math.Min(GetIntArg(request.Args, "durationMs", 3000), 60000);
+        // Floor at 100ms — anything shorter is meaningless and a 0/negative
+        // value previously slipped through the `Math.Min` cap.
+        var durationMs = Clamp(GetIntArg(request.Args, "durationMs", 3000), 100, MaxClipDurationMs);
         var includeAudio = GetBoolArg(request.Args, "includeAudio", true);
         var format = GetStringArg(request.Args, "format", "mp4") ?? "mp4";
         

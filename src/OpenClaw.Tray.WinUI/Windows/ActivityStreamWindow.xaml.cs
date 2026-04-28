@@ -35,7 +35,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
         FilterCombo.SelectedIndex = 0;
         LoadActivity();
 
-        var initialCount = ActivityStreamService.GetItems(200).Count;
+        var initialCount = ActivityStreamService.GetItems(ActivityStreamService.MaxStoredItems).Count;
         Logger.Info($"[ActivityStream] Window opened with {initialCount} items");
     }
 
@@ -74,7 +74,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
             _currentFilter = item.Tag?.ToString() ?? "all";
             LoadActivity();
             var category = _currentFilter == "all" ? null : _currentFilter;
-            var count = ActivityStreamService.GetItems(200, category).Count;
+            var count = ActivityStreamService.GetItems(ActivityStreamService.MaxStoredItems, category).Count;
             Logger.Info($"[ActivityStream] Filter changed to '{_currentFilter}', {count} items");
         }
     }
@@ -82,7 +82,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
     private void LoadActivity()
     {
         var category = _currentFilter == "all" ? null : _currentFilter;
-        var items = ActivityStreamService.GetItems(200, category);
+        var items = ActivityStreamService.GetItems(ActivityStreamService.MaxStoredItems, category);
         Logger.Debug($"[ActivityStream] Items loaded: {items.Count} (filter={_currentFilter})");
         CountText.Text = $"({items.Count})";
 

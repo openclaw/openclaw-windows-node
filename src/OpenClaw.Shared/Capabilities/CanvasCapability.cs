@@ -38,6 +38,15 @@ public class CanvasCapability : NodeCapabilityBase
     public CanvasCapability(IOpenClawLogger logger) : base(logger)
     {
     }
+
+    private static int Clamp(int value, int min, int max)
+        => value < min ? min : (value > max ? max : value);
+
+    private static int ClampPosition(int value)
+    {
+        if (value == -1) return -1; // documented "center" sentinel
+        return value < MinPosition ? MinPosition : (value > MaxPosition ? MaxPosition : value);
+    }
     
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
     {
@@ -55,14 +64,25 @@ public class CanvasCapability : NodeCapabilityBase
         };
     }
     
+    // Window-bounds clamps. -1 is the documented "center" sentinel for x/y so
+    // we preserve negatives below MinPosition by routing them to -1.
+    private const int MinDimension = 100;
+    private const int MaxDimension = 7680;
+    private const int MinPosition = -16384;
+    private const int MaxPosition = 16384;
+    private const int MinSnapshotWidth = 32;
+    private const int MaxSnapshotWidth = 7680;
+    private const int MinQuality = 1;
+    private const int MaxQuality = 100;
+
     private Task<NodeInvokeResponse> HandlePresentAsync(NodeInvokeRequest request)
     {
         var url = GetStringArg(request.Args, "url");
         var html = GetStringArg(request.Args, "html");
-        var width = GetIntArg(request.Args, "width", 800);
-        var height = GetIntArg(request.Args, "height", 600);
-        var x = GetIntArg(request.Args, "x", -1); // -1 = center
-        var y = GetIntArg(request.Args, "y", -1);
+        var width = Clamp(GetIntArg(request.Args, "width", 800), MinDimension, MaxDimension);
+        var height = Clamp(GetIntArg(request.Args, "height", 600), MinDimension, MaxDimension);
+        var x = ClampPosition(GetIntArg(request.Args, "x", -1)); // -1 = center
+        var y = ClampPosition(GetIntArg(request.Args, "y", -1));
         var title = GetStringArg(request.Args, "title", "Canvas");
         var alwaysOnTop = GetBoolArg(request.Args, "alwaysOnTop", false);
         
@@ -135,8 +155,8 @@ public class CanvasCapability : NodeCapabilityBase
     private async Task<NodeInvokeResponse> HandleSnapshotAsync(NodeInvokeRequest request)
     {
         var format = GetStringArg(request.Args, "format", "png");
-        var maxWidth = GetIntArg(request.Args, "maxWidth", 1200);
-        var quality = GetIntArg(request.Args, "quality", 80);
+        var maxWidth = Clamp(GetIntArg(request.Args, "maxWidth", 1200), MinSnapshotWidth, MaxSnapshotWidth);
+        var quality = Clamp(GetIntArg(request.Args, "quality", 80), MinQuality, MaxQuality);
         
         Logger.Info($"canvas.snapshot: format={format}, maxWidth={maxWidth}");
         

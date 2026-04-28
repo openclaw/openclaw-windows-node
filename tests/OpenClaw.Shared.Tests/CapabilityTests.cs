@@ -1,4 +1,7 @@
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
@@ -422,6 +425,10 @@ public class SystemCapabilityTests
             var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
             Assert.True(payload.TryGetProperty("enabled", out var enabled));
             Assert.True(enabled.GetBoolean());
+            Assert.True(payload.TryGetProperty("hash", out var hash));
+            Assert.StartsWith("sha256:", hash.GetString());
+            Assert.True(payload.TryGetProperty("baseHash", out var baseHash));
+            Assert.Equal(hash.GetString(), baseHash.GetString());
             Assert.True(payload.TryGetProperty("rules", out _));
         }
         finally
@@ -461,7 +468,7 @@ public class SystemCapabilityTests
             {
                 Id = "ea4",
                 Command = "system.execApprovals.set",
-                Args = Parse("""{"rules":[{"pattern":"git *","action":"allow","description":"Allow git","enabled":true}],"defaultAction":"deny"}""")
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"git *","action":"allow","description":"Allow git","enabled":true}],"defaultAction":"deny"}""")
             };
 
             var res = await cap.ExecuteAsync(req);
@@ -471,6 +478,106 @@ public class SystemCapabilityTests
             Assert.True(updated.GetBoolean());
             Assert.True(payload.TryGetProperty("ruleCount", out var ruleCount));
             Assert.Equal(1, ruleCount.GetInt32());
+            Assert.True(payload.TryGetProperty("hash", out var hash));
+            Assert.NotEqual(req.Args.GetProperty("baseHash").GetString(), hash.GetString());
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsGet_ReturnsRemoteMutationConstraints()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-constraints",
+                Command = "system.execApprovals.get",
+                Args = Parse("""{}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.True(res.Ok);
+            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+            Assert.True(payload.TryGetProperty("constraints", out var constraints));
+            Assert.True(constraints.GetProperty("baseHashRequired").GetBoolean());
+            Assert.False(constraints.GetProperty("defaultAllowAllowed").GetBoolean());
+            Assert.False(constraints.GetProperty("broadAllowRulesAllowed").GetBoolean());
+            Assert.False(constraints.GetProperty("dangerousAllowRulesAllowed").GetBoolean());
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RejectsDefaultAllow()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-default-allow",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[],"defaultAction":"allow"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("Default allow", res.Error);
+            Assert.Equal(ExecApprovalAction.Deny, policy.DefaultAction);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("cmd *")]
+    [InlineData("Remove-Item *")]
+    [InlineData("Invoke-WebRequest *")]
+    [InlineData("Start-Process *")]
+    public async Task ExecApprovalsSet_RejectsUnsafeAllowRules(string pattern)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-unsafe-allow",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"{{pattern}}","action":"allow","enabled":true}],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("allow rule", res.Error, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -516,6 +623,74 @@ public class SystemCapabilityTests
         Assert.True(runner.LastRequest.Env!.ContainsKey("MY_CUSTOM_VAR"));
     }
 
+    [Fact]
+    public async Task ExecApprovalsSet_RequiresBaseHash()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-missing-base-hash",
+                Command = "system.execApprovals.set",
+                Args = Parse("""{"rules":[],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("baseHash", res.Error);
+            Assert.NotEmpty(policy.Rules);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RejectsStaleBaseHash()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var staleHash = policy.GetPolicyHash();
+            policy.InsertRule(0, new ExecApprovalRule
+            {
+                Pattern = "hostname",
+                Action = ExecApprovalAction.Allow,
+                Description = "Local edit after remote read"
+            });
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-stale-base-hash",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{staleHash}}","rules":[],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("Refresh policy", res.Error);
+            Assert.Contains(policy.Rules, rule => rule.Description == "Local edit after remote read");
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
     private class FakeCommandRunner : ICommandRunner
     {
         public string Name => "fake";
@@ -533,6 +708,235 @@ public class SystemCapabilityTests
                 DurationMs = 1
             });
         }
+    }
+}
+
+public class BrowserProxyCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ForwardsToLocalControlPortWithBearerAuth()
+    {
+        var handler = new CapturingHandler("""{"ok":true,"url":"https://example.com"}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-1",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"POST","path":"/snapshot","query":{"format":"aria"},"profile":"openclaw","body":{"limit":1},"timeoutMs":5000}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(handler.LastRequest);
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.Equal("http://127.0.0.1:18791/snapshot?format=aria&profile=openclaw", handler.LastRequest.RequestUri!.ToString());
+        Assert.Equal("Bearer", handler.LastRequest.Headers.Authorization?.Scheme);
+        Assert.Equal("secret-token", handler.LastRequest.Headers.Authorization?.Parameter);
+
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.True(payload.TryGetProperty("result", out var result));
+        Assert.True(result.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_RejectsAbsoluteUrlPath()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            new CapturingHandler("""{"ok":true}"""));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-2",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"https://example.com"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("must be a local control path", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ReturnsUnauthorizedAsAuthError()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "wrong-token",
+            new CapturingHandler("Unauthorized", HttpStatusCode.Unauthorized));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-3",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("authentication", res.Error);
+        Assert.Contains("Verify the gateway token saved in Settings", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnauthorizedWithoutTokenExplainsMissingSharedToken()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "",
+            new CapturingHandler("Unauthorized", HttpStatusCode.Unauthorized));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-unauthenticated",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("unauthenticated request", res.Error);
+        Assert.Contains("no gateway shared token saved", res.Error);
+        Assert.Contains("Settings", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_RetriesUnauthorizedWithPasswordAuth()
+    {
+        var handler = new BrowserProxyAuthFallbackHandler();
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "browser-secret",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-4",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"DELETE","path":"/tabs/1","body":{"reason":"test"}}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal("Bearer", handler.Requests[0].Headers.Authorization?.Scheme);
+        Assert.Equal("Basic", handler.Requests[1].Headers.Authorization?.Scheme);
+        Assert.Equal(
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(":browser-secret")),
+            handler.Requests[1].Headers.Authorization?.Parameter);
+        Assert.True(handler.Requests[1].Headers.TryGetValues("x-openclaw-password", out var passwordValues));
+        Assert.Contains("browser-secret", passwordValues);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnreachableHostExplainsGatewayPlusTwoAndSshForward()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "browser-secret",
+            new ThrowingBrowserProxyHandler());
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-5",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("127.0.0.1:18791", res.Error);
+        Assert.Contains("gateway port + 2", res.Error);
+        Assert.Contains("ssh -N -L 18791:127.0.0.1:<remote-gateway-port+2>", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnreachableHostUsesRemoteGatewayPortInSshGuidance()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:28789",
+            "browser-secret",
+            new ThrowingBrowserProxyHandler(),
+            sshRemoteGatewayPort: 18789);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-6",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("127.0.0.1:28791", res.Error);
+        Assert.Contains("ssh -N -L 28791:127.0.0.1:18791", res.Error);
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        private readonly string _response;
+        private readonly HttpStatusCode _statusCode;
+
+        public HttpRequestMessage? LastRequest { get; private set; }
+
+        public CapturingHandler(string response, HttpStatusCode statusCode = HttpStatusCode.OK)
+        {
+            _response = response;
+            _statusCode = statusCode;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return Task.FromResult(new HttpResponseMessage(_statusCode)
+            {
+                Content = new StringContent(_response)
+            });
+        }
+    }
+
+    private sealed class BrowserProxyAuthFallbackHandler : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            var hasPasswordHeader =
+                request.Headers.TryGetValues("x-openclaw-password", out var passwordValues) &&
+                passwordValues.Contains("browser-secret");
+            var isBasic = request.Headers.Authorization?.Scheme == "Basic";
+            var status = hasPasswordHeader && isBasic ? HttpStatusCode.OK : HttpStatusCode.Unauthorized;
+            var response = status == HttpStatusCode.OK ? """{"ok":true}""" : "Unauthorized";
+
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(response)
+            });
+        }
+    }
+
+    private sealed class ThrowingBrowserProxyHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new HttpRequestException("connection refused");
     }
 }
 
@@ -1077,6 +1481,33 @@ public class ScreenCapabilityTests
     }
 
     [Fact]
+    public async Task Capture_ClampsExtremeValues_ToSafeBounds()
+    {
+        // CR-007: oversized/negative caller values must be clamped before any
+        // downstream allocation (back-buffer sizes, image encoder buffers).
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenCaptureArgs? received = null;
+        cap.CaptureRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenCaptureResult { Format = "png", Width = 0, Height = 0, Base64 = "" });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clamp",
+            Command = "screen.snapshot",
+            Args = Parse("""{"maxWidth":99999,"quality":500,"screenIndex":-3}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.True(received!.MaxWidth <= 7680, $"maxWidth not clamped: {received.MaxWidth}");
+        Assert.InRange(received.Quality, 1, 100);
+        Assert.True(received.MonitorIndex >= 0, $"screenIndex not clamped: {received.MonitorIndex}");
+    }
+
+    [Fact]
     public async Task Capture_UsesMonitorAlias_ForScreenIndex()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
@@ -1470,6 +1901,33 @@ public class CameraCapabilityTests
         Assert.False(res.Ok);
         Assert.NotNull(res.Error);
         Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Clip_ClampsZeroAndNegativeDuration_ToMinimum()
+    {
+        // CR-007: durationMs <= 0 used to slip through the original
+        // `Math.Min(value, 60000)` cap and ask the recorder to capture for
+        // zero / negative seconds, which produced a degenerate file.
+        var cap = new CameraCapability(NullLogger.Instance);
+        CameraClipArgs? received = null;
+        cap.ClipRequested += args =>
+        {
+            received = args;
+            return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "", DurationMs = args.DurationMs, HasAudio = false });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "clip-clamp",
+            Command = "camera.clip",
+            Args = Parse("""{"durationMs":-500}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.True(received!.DurationMs >= 100, $"duration not floor-clamped: {received.DurationMs}");
+        Assert.True(received.DurationMs <= 60000);
     }
 }
 

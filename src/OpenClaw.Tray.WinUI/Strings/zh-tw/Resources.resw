@@ -141,6 +141,30 @@
   <data name="StatusChannelsHeader.Text" xml:space="preserve">
     <value>頻道</value>
   </data>
+  <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
+    <value>閘道拓撲</value>
+  </data>
+  <data name="StatusSupportDebugHeader.Text" xml:space="preserve">
+    <value>支援和偵錯</value>
+  </data>
+  <data name="StatusPortDiagnosticsHeader.Text" xml:space="preserve">
+    <value>連接埠診斷</value>
+  </data>
+  <data name="StatusPermissionsHeader.Text" xml:space="preserve">
+    <value>權限</value>
+  </data>
+  <data name="StatusCostTrendHeader.Text" xml:space="preserve">
+    <value>30 天費用趨勢</value>
+  </data>
+  <data name="StatusExtensibilityHeader.Text" xml:space="preserve">
+    <value>擴充性</value>
+  </data>
+  <data name="StatusNodesHeader.Text" xml:space="preserve">
+    <value>節點</value>
+  </data>
+  <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
+    <value>最近活動</value>
+  </data>
 
   <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
@@ -160,10 +184,82 @@
   <data name="StatusNoSessions.Text" xml:space="preserve">
     <value>無活躍會話</value>
   </data>
+  <data name="StatusNoNodes.Text" xml:space="preserve">
+    <value>未回報節點</value>
+  </data>
+  <data name="StatusNoRecentActivity.Text" xml:space="preserve">
+    <value>沒有最近活動</value>
+  </data>
+  <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
+    <value>頻道設定、技能和排程自動化由閘道管理。連線的閘道公開相符儀表板頁面時，請使用這些連結。</value>
+  </data>
+  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
+    <value>頻道設定 / 結構描述</value>
+  </data>
+  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
+    <value>在可用時開啟頻道設定，用於結構描述導向的驗證、QR、登入和儀表板流程。</value>
+  </data>
+  <data name="StatusSkillsTitle.Text" xml:space="preserve">
+    <value>技能</value>
+  </data>
+  <data name="StatusSkillsDescription.Text" xml:space="preserve">
+    <value>當連線的閘道支援時，開啟閘道技能設定。</value>
+  </data>
+  <data name="StatusCronTitle.Text" xml:space="preserve">
+    <value>Cron / 排程</value>
+  </data>
+  <data name="StatusCronDescription.Text" xml:space="preserve">
+    <value>當連線的閘道支援時，開啟排程自動化控制項。</value>
+  </data>
 
   <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>重新整理</value>
+  </data>
+  <data name="StatusOpenLogsButton.Content" xml:space="preserve">
+    <value>開啟記錄</value>
+  </data>
+  <data name="StatusOpenConfigButton.Content" xml:space="preserve">
+    <value>開啟設定</value>
+  </data>
+  <data name="StatusRefreshHealthButton.Content" xml:space="preserve">
+    <value>重新整理健康狀態</value>
+  </data>
+  <data name="StatusOpenDiagnosticsJsonlButton.Content" xml:space="preserve">
+    <value>開啟診斷 JSONL</value>
+  </data>
+  <data name="StatusCopySupportContextButton.Content" xml:space="preserve">
+    <value>複製支援內容</value>
+  </data>
+  <data name="StatusRestartSshTunnelButton.Content" xml:space="preserve">
+    <value>重新啟動 SSH 通道</value>
+  </data>
+  <data name="StatusCopyBrowserSetupButton.Content" xml:space="preserve">
+    <value>複製瀏覽器設定</value>
+  </data>
+  <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
+    <value>複製偵錯套件</value>
+  </data>
+  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
+    <value>檢查更新</value>
+  </data>
+  <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
+    <value>複製連接埠診斷</value>
+  </data>
+  <data name="StatusCopyButton.Content" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="StatusSettingsButton.Content" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="StatusOpenButton.Content" xml:space="preserve">
+    <value>開啟</value>
+  </data>
+  <data name="StatusCopyNodeInventoryButton.Content" xml:space="preserve">
+    <value>複製節點清單</value>
+  </data>
+  <data name="StatusOpenStreamButton.Content" xml:space="preserve">
+    <value>開啟串流</value>
   </data>
 
   <!-- ==================== ActivityStreamWindow.xaml ==================== -->
@@ -373,6 +469,60 @@
   </data>
   <data name="Menu_CopyNodeSummary" xml:space="preserve">
     <value>複製節點摘要</value>
+  </data>
+  <data name="Menu_CheckForUpdates" xml:space="preserve">
+    <value>檢查更新</value>
+  </data>
+  <data name="Menu_SetupGuide" xml:space="preserve">
+    <value>設定指南...</value>
+  </data>
+  <data name="Menu_SupportDebugHeader" xml:space="preserve">
+    <value>🧰 支援和偵錯</value>
+  </data>
+  <data name="Menu_OpenSupportFiles" xml:space="preserve">
+    <value>開啟支援檔案</value>
+  </data>
+  <data name="Menu_LogsFolder" xml:space="preserve">
+    <value>記錄資料夾</value>
+  </data>
+  <data name="Menu_ConfigFolder" xml:space="preserve">
+    <value>設定資料夾</value>
+  </data>
+  <data name="Menu_DiagnosticsFolder" xml:space="preserve">
+    <value>診斷資料夾</value>
+  </data>
+  <data name="Menu_CopyDiagnostics" xml:space="preserve">
+    <value>複製診斷</value>
+  </data>
+  <data name="Menu_SupportContext" xml:space="preserve">
+    <value>支援內容</value>
+  </data>
+  <data name="Menu_DebugBundle" xml:space="preserve">
+    <value>偵錯套件</value>
+  </data>
+  <data name="Menu_BrowserSetup" xml:space="preserve">
+    <value>瀏覽器設定</value>
+  </data>
+  <data name="Menu_PortDiagnostics" xml:space="preserve">
+    <value>連接埠診斷</value>
+  </data>
+  <data name="Menu_CapabilityDiagnostics" xml:space="preserve">
+    <value>功能診斷</value>
+  </data>
+  <data name="Menu_NodeInventory" xml:space="preserve">
+    <value>節點清單</value>
+  </data>
+  <data name="Menu_ChannelSummary" xml:space="preserve">
+    <value>頻道摘要</value>
+  </data>
+  <data name="Menu_ActivitySummary" xml:space="preserve">
+    <value>活動摘要</value>
+  </data>
+  <data name="Menu_ExtensibilitySummary" xml:space="preserve">
+    <value>擴充性摘要</value>
+  </data>
+  <data name="Menu_RestartSshTunnel" xml:space="preserve">
+    <value>重新啟動 SSH 通道</value>
   </data>
 
   <!-- Tray menu dynamic text -->
@@ -734,6 +884,12 @@
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>節點模式允許您的 Windows 電腦為 OpenClaw 執行任務 — 如螢幕擷取、攝影機存取和畫布繪製。</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>只為您信任的閘道和代理程式啟用節點模式</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>已核准的代理程式可以執行本機命令，並可能存取已啟用的裝置介面，例如螢幕、攝影機、位置、瀏覽器和畫布。您稍後可以在設定中停用能力群組。</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>啟用節點模式</value>
   </data>
@@ -775,6 +931,42 @@
   </data>
   <data name="Setup_StepDone" xml:space="preserve">
     <value>第 3 步（共 3 步）— 完成</value>
+  </data>
+
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>開發人員模式</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>啟用本機 MCP 伺服器</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>向本機 MCP 用戶端（Claude Desktop、Cursor、Claude Code）公開相同的節點功能（系統、螢幕、攝影機、畫布）。</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>端點：</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>狀態：</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>已停用</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>監聽中</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>儲存後將啟動</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>儲存後將停止</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>啟動失敗：</value>
   </data>
 
   <!-- ==================== DownloadProgressDialog ==================== -->
