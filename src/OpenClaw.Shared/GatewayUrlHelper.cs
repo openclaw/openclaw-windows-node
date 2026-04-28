@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 
 namespace OpenClaw.Shared;
 
@@ -6,7 +7,8 @@ public static class GatewayUrlHelper
 {
     public const string ValidationMessage = "Gateway URL must be a valid URL (ws://, wss://, http://, or https://).";
 
-    private static readonly char[] s_authorityTerminators = { '/', '?', '#' };
+    private static readonly SearchValues<char> s_authorityTerminators =
+        SearchValues.Create("/?#");
 
     public static bool IsValidGatewayUrl(string? gatewayUrl) =>
         TryNormalizeWebSocketUrl(gatewayUrl, out _);
@@ -143,11 +145,8 @@ public static class GatewayUrlHelper
         }
 
         var authorityStart = schemeSeparator + 3;
-        var authorityEnd = url.IndexOfAny(s_authorityTerminators, authorityStart);
-        if (authorityEnd < 0)
-        {
-            authorityEnd = url.Length;
-        }
+        var relativeEnd = url.AsSpan(authorityStart).IndexOfAny(s_authorityTerminators);
+        var authorityEnd = relativeEnd < 0 ? url.Length : authorityStart + relativeEnd;
 
         var atIndex = url.IndexOf('@', authorityStart);
         if (atIndex < 0 || atIndex >= authorityEnd)

@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -32,6 +33,17 @@ public class DeepLinkParserTests
         Assert.Equal("dashboard/sessions", result.Path);
     }
 
+    [Theory]
+    [InlineData("openclaw://dashboard/channels", "dashboard/channels")]
+    [InlineData("openclaw://dashboard/skills", "dashboard/skills")]
+    [InlineData("openclaw://dashboard/cron", "dashboard/cron")]
+    public void ParseDeepLink_DashboardKnownSubpaths(string uri, string expectedPath)
+    {
+        var result = DeepLinkParser.ParseDeepLink(uri);
+        Assert.NotNull(result);
+        Assert.Equal(expectedPath, result.Path);
+    }
+
     [Fact]
     public void ParseDeepLink_SendWithMessage()
     {
@@ -57,6 +69,48 @@ public class DeepLinkParserTests
         Assert.Equal("agent", result.Path);
         Assert.Equal("hi", result.Parameters["message"]);
         Assert.Equal("abc", result.Parameters["key"]);
+    }
+
+    [Fact]
+    public void ParseDeepLink_ActivityWithFilter()
+    {
+        var result = DeepLinkParser.ParseDeepLink("openclaw://activity?filter=nodes");
+        Assert.NotNull(result);
+        Assert.Equal("activity", result.Path);
+        Assert.Equal("nodes", result.Parameters["filter"]);
+    }
+
+    [Fact]
+    public void ParseDeepLink_History()
+    {
+        var result = DeepLinkParser.ParseDeepLink("openclaw://history");
+        Assert.NotNull(result);
+        Assert.Equal("history", result.Path);
+    }
+
+    [Theory]
+    [InlineData("openclaw://setup", "setup")]
+    [InlineData("openclaw://healthcheck", "healthcheck")]
+    [InlineData("openclaw://check-updates", "check-updates")]
+    [InlineData("openclaw://logs", "logs")]
+    [InlineData("openclaw://log-folder", "log-folder")]
+    [InlineData("openclaw://config", "config")]
+    [InlineData("openclaw://diagnostics", "diagnostics")]
+    [InlineData("openclaw://support-context", "support-context")]
+    [InlineData("openclaw://debug-bundle", "debug-bundle")]
+    [InlineData("openclaw://browser-setup", "browser-setup")]
+    [InlineData("openclaw://port-diagnostics", "port-diagnostics")]
+    [InlineData("openclaw://capability-diagnostics", "capability-diagnostics")]
+    [InlineData("openclaw://node-inventory", "node-inventory")]
+    [InlineData("openclaw://channel-summary", "channel-summary")]
+    [InlineData("openclaw://activity-summary", "activity-summary")]
+    [InlineData("openclaw://extensibility-summary", "extensibility-summary")]
+    [InlineData("openclaw://restart-ssh-tunnel", "restart-ssh-tunnel")]
+    public void ParseDeepLink_TrayUtilityEntrypoints(string uri, string expectedPath)
+    {
+        var result = DeepLinkParser.ParseDeepLink(uri);
+        Assert.NotNull(result);
+        Assert.Equal(expectedPath, result.Path);
     }
 
     [Fact]
@@ -166,6 +220,148 @@ public class DeepLinkParserTests
     public void GetQueryParam_ValueWithEquals()
     {
         Assert.Equal("a=b", DeepLinkParser.GetQueryParam("token=a=b", "token"));
+    }
+
+    #endregion
+
+    #region DeepLinkHandler
+
+    [Theory]
+    [InlineData("openclaw://settings", nameof(DeepLinkActions.OpenSettings))]
+    [InlineData("openclaw://setup", nameof(DeepLinkActions.OpenSetup))]
+    [InlineData("openclaw://chat", nameof(DeepLinkActions.OpenChat))]
+    [InlineData("openclaw://commandcenter", nameof(DeepLinkActions.OpenCommandCenter))]
+    [InlineData("openclaw://history", nameof(DeepLinkActions.OpenNotificationHistory))]
+    [InlineData("openclaw://logs", nameof(DeepLinkActions.OpenLogFile))]
+    [InlineData("openclaw://log-folder", nameof(DeepLinkActions.OpenLogFolder))]
+    [InlineData("openclaw://config", nameof(DeepLinkActions.OpenConfigFolder))]
+    [InlineData("openclaw://diagnostics", nameof(DeepLinkActions.OpenDiagnosticsFolder))]
+    [InlineData("openclaw://support-context", nameof(DeepLinkActions.CopySupportContext))]
+    [InlineData("openclaw://debug-bundle", nameof(DeepLinkActions.CopyDebugBundle))]
+    [InlineData("openclaw://browser-setup", nameof(DeepLinkActions.CopyBrowserSetupGuidance))]
+    [InlineData("openclaw://port-diagnostics", nameof(DeepLinkActions.CopyPortDiagnostics))]
+    [InlineData("openclaw://capability-diagnostics", nameof(DeepLinkActions.CopyCapabilityDiagnostics))]
+    [InlineData("openclaw://node-inventory", nameof(DeepLinkActions.CopyNodeInventory))]
+    [InlineData("openclaw://channel-summary", nameof(DeepLinkActions.CopyChannelSummary))]
+    [InlineData("openclaw://activity-summary", nameof(DeepLinkActions.CopyActivitySummary))]
+    [InlineData("openclaw://extensibility-summary", nameof(DeepLinkActions.CopyExtensibilitySummary))]
+    [InlineData("openclaw://check-updates", nameof(DeepLinkActions.CheckForUpdates))]
+    [InlineData("openclaw://restart-ssh-tunnel", nameof(DeepLinkActions.RestartSshTunnel))]
+    public void Handle_InvokesExpectedAction(string uri, string expectedAction)
+    {
+        var invoked = "";
+        var actions = new DeepLinkActions
+        {
+            OpenSettings = () => invoked = nameof(DeepLinkActions.OpenSettings),
+            OpenSetup = () => invoked = nameof(DeepLinkActions.OpenSetup),
+            OpenChat = () => invoked = nameof(DeepLinkActions.OpenChat),
+            OpenCommandCenter = () => invoked = nameof(DeepLinkActions.OpenCommandCenter),
+            OpenNotificationHistory = () => invoked = nameof(DeepLinkActions.OpenNotificationHistory),
+            OpenLogFile = () => invoked = nameof(DeepLinkActions.OpenLogFile),
+            OpenLogFolder = () => invoked = nameof(DeepLinkActions.OpenLogFolder),
+            OpenConfigFolder = () => invoked = nameof(DeepLinkActions.OpenConfigFolder),
+            OpenDiagnosticsFolder = () => invoked = nameof(DeepLinkActions.OpenDiagnosticsFolder),
+            CopySupportContext = () => invoked = nameof(DeepLinkActions.CopySupportContext),
+            CopyDebugBundle = () => invoked = nameof(DeepLinkActions.CopyDebugBundle),
+            CopyBrowserSetupGuidance = () => invoked = nameof(DeepLinkActions.CopyBrowserSetupGuidance),
+            CopyPortDiagnostics = () => invoked = nameof(DeepLinkActions.CopyPortDiagnostics),
+            CopyCapabilityDiagnostics = () => invoked = nameof(DeepLinkActions.CopyCapabilityDiagnostics),
+            CopyNodeInventory = () => invoked = nameof(DeepLinkActions.CopyNodeInventory),
+            CopyChannelSummary = () => invoked = nameof(DeepLinkActions.CopyChannelSummary),
+            CopyActivitySummary = () => invoked = nameof(DeepLinkActions.CopyActivitySummary),
+            CopyExtensibilitySummary = () => invoked = nameof(DeepLinkActions.CopyExtensibilitySummary),
+            CheckForUpdates = () =>
+            {
+                invoked = nameof(DeepLinkActions.CheckForUpdates);
+                return Task.CompletedTask;
+            },
+            RestartSshTunnel = () => invoked = nameof(DeepLinkActions.RestartSshTunnel)
+        };
+
+        DeepLinkHandler.Handle(uri, actions);
+
+        Assert.Equal(expectedAction, invoked);
+    }
+
+    [Fact]
+    public void Handle_DashboardSubpath_PassesPath()
+    {
+        string? dashboardPath = null;
+        var actions = new DeepLinkActions
+        {
+            OpenDashboard = path => dashboardPath = path
+        };
+
+        DeepLinkHandler.Handle("openclaw://dashboard/skills", actions);
+
+        Assert.Equal("skills", dashboardPath);
+    }
+
+    [Fact]
+    public void Handle_Activity_PassesFilter()
+    {
+        string? filter = null;
+        var actions = new DeepLinkActions
+        {
+            OpenActivityStream = value => filter = value
+        };
+
+        DeepLinkHandler.Handle("openclaw://activity?filter=nodes", actions);
+
+        Assert.Equal("nodes", filter);
+    }
+
+    [Fact]
+    public void Handle_Send_PassesPrefillMessage()
+    {
+        string? message = null;
+        var actions = new DeepLinkActions
+        {
+            OpenQuickSend = value => message = value
+        };
+
+        DeepLinkHandler.Handle("openclaw://send?message=hello%20world", actions);
+
+        Assert.Equal("hello world", message);
+    }
+
+    [Fact]
+    public async Task Handle_Agent_SendsMessage()
+    {
+        var sent = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var actions = new DeepLinkActions
+        {
+            SendMessage = message =>
+            {
+                sent.SetResult(message);
+                return Task.CompletedTask;
+            }
+        };
+
+        DeepLinkHandler.Handle("openclaw://agent?message=ping", actions);
+
+        var completed = await Task.WhenAny(sent.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        Assert.Same(sent.Task, completed);
+        Assert.Equal("ping", await sent.Task);
+    }
+
+    [Fact]
+    public async Task Handle_HealthCheck_RunsAction()
+    {
+        var ran = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var actions = new DeepLinkActions
+        {
+            RunHealthCheck = () =>
+            {
+                ran.SetResult(true);
+                return Task.CompletedTask;
+            }
+        };
+
+        DeepLinkHandler.Handle("openclaw://healthcheck", actions);
+
+        var completed = await Task.WhenAny(ran.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        Assert.Same(ran.Task, completed);
     }
 
     #endregion

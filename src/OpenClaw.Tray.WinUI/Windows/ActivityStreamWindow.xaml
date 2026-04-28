@@ -30,6 +30,9 @@
                 <ComboBoxItem x:Uid="ActivityFilterSessions" Content="Sessions" Tag="session" />
                 <ComboBoxItem x:Uid="ActivityFilterUsage" Content="Usage" Tag="usage" />
                 <ComboBoxItem x:Uid="ActivityFilterNodes" Content="Nodes" Tag="node" />
+                <ComboBoxItem Content="Node invokes" Tag="node.invoke" />
+                <ComboBoxItem Content="Channels" Tag="channel" />
+                <ComboBoxItem Content="Gateway" Tag="gateway" />
                 <ComboBoxItem x:Uid="ActivityFilterNotifications" Content="Notifications" Tag="notification" />
             </ComboBox>
         </StackPanel>
@@ -91,6 +94,7 @@
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8"
                     HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="OpenDashboardButton" x:Uid="ActivityOpenDashboardButton" AutomationProperties.AutomationId="OpenDashboardButton" Content="Open Dashboard" Click="OnOpenDashboard"/>
+            <Button x:Name="CopySupportBundleButton" AutomationProperties.AutomationId="CopySupportBundleButton" Content="Copy Support Bundle" Click="OnCopySupportBundle"/>
             <Button x:Name="ClearButton" x:Uid="ActivityClearAllButton" AutomationProperties.AutomationId="ClearButton" Content="Clear All" Click="OnClearAll"/>
             <Button x:Name="CloseButton" x:Uid="ActivityCloseButton" AutomationProperties.AutomationId="CloseButton" Content="Close" Click="OnClose"/>
         </StackPanel>

@@ -47,8 +47,8 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - ✅ Notify defaults title to "OpenClaw"
 - ✅ Unknown command returns error
 
-#### CanvasCapabilityTests (12 tests)
-- ✅ CanHandle all 7 canvas commands
+#### CanvasCapabilityTests (13 tests)
+- ✅ CanHandle all 8 canvas commands
 - ✅ Present raises event with url/width/height/title/alwaysOnTop
 - ✅ Present uses defaults when args missing
 - ✅ Hide raises event
@@ -59,14 +59,25 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - ✅ Snapshot returns error when no handler
 - ✅ A2UI push returns error when no jsonl
 - ✅ A2UI push raises event with jsonl content
+- ✅ A2UI pushJSONL legacy alias raises the same event
 - ✅ A2UI reset raises event
 
-#### ScreenCapabilityTests (5 tests)
-- ✅ CanHandle screen.capture and screen.list
+#### DeviceCapabilityTests (4 tests)
+- ✅ CanHandle device.info/device.status
+- ✅ device.info returns Mac-compatible metadata payload
+- ✅ device.status returns Mac-compatible status payload
+- ✅ Unknown command returns error
+
+#### ScreenCapabilityTests (9 tests)
+- ✅ CanHandle screen.snapshot/screen.record and rejects non-gateway screen.capture/screen.list/start/stop commands
 - ✅ Capture returns error when no handler
 - ✅ Capture calls handler with parsed args (format, maxWidth, quality, screenIndex)
-- ✅ List returns error when no handler
-- ✅ List returns screens when handler set
+- ✅ Capture returns error when handler throws
+- ✅ Capture includes data URI response
+- ✅ Record returns error when no handler
+- ✅ Record calls handler with Mac-compatible args
+- ✅ Record rejects unsupported non-mp4 format
+- ✅ Record returns Mac-compatible payload
 
 #### CameraCapabilityTests (7 tests)
 - ✅ CanHandle camera.list and camera.snap

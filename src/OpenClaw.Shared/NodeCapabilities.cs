@@ -25,6 +25,16 @@ public class NodeInvokeRequest
     public JsonElement Args { get; set; }
 }
 
+public class NodeInvokeCompletedEventArgs : EventArgs
+{
+    public string RequestId { get; set; } = "";
+    public string Command { get; set; } = "";
+    public bool Ok { get; set; }
+    public string? Error { get; set; }
+    public TimeSpan Duration { get; set; }
+    public string? NodeId { get; set; }
+}
+
 /// <summary>
 /// Response to a node.invoke request
 /// </summary>

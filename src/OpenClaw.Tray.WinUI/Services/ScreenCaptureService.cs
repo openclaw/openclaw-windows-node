@@ -22,41 +22,6 @@ public class ScreenCaptureService
     }
     
     /// <summary>
-    /// List all available screens
-    /// </summary>
-    public Task<ScreenInfo[]> ListScreensAsync()
-    {
-        var result = new System.Collections.Generic.List<ScreenInfo>();
-        
-        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
-        {
-            var info = new MONITORINFOEX();
-            info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
-            
-            if (GetMonitorInfo(hMonitor, ref info))
-            {
-                result.Add(new ScreenInfo
-                {
-                    Index = result.Count,
-                    Name = info.szDevice,
-                    Width = info.rcMonitor.right - info.rcMonitor.left,
-                    Height = info.rcMonitor.bottom - info.rcMonitor.top,
-                    IsPrimary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0,
-                    X = info.rcMonitor.left,
-                    Y = info.rcMonitor.top,
-                    WorkingX = info.rcWork.left,
-                    WorkingY = info.rcWork.top,
-                    WorkingWidth = info.rcWork.right - info.rcWork.left,
-                    WorkingHeight = info.rcWork.bottom - info.rcWork.top
-                });
-            }
-            return true;
-        }, IntPtr.Zero);
-        
-        return Task.FromResult(result.ToArray());
-    }
-    
-    /// <summary>
     /// Capture a screenshot
     /// </summary>
     public Task<ScreenCaptureResult> CaptureAsync(ScreenCaptureArgs args)

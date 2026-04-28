@@ -169,6 +169,26 @@ public class SystemRunTests
     }
 
     [Fact]
+    public async Task SystemRun_BlocksSecretEnvOverride()
+    {
+        var runner = new FakeCommandRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "r5d",
+            Command = "system.run",
+            Args = Parse("""{"command":"test","env":{"GITHUB_TOKEN":"secret","FOO":"bar"}}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("GITHUB_TOKEN", res.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Fact]
     public async Task SystemRun_DefaultsTimeout_To30s()
     {
         var runner = new FakeCommandRunner();
@@ -376,6 +396,107 @@ public class SystemRunTests
         }
     }
 
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_AllowsOnce_WhenUserApproves()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce()));
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-1",
+                Command = "system.run",
+                Args = Parse("""{"command":"Write-Output hello","shell":"powershell"}""")
+            });
+
+            Assert.True(res.Ok);
+            Assert.NotNull(runner.LastRequest);
+            Assert.Empty(policy.Rules);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_PersistsExactAllowRule_WhenUserAlwaysAllows()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(new FakeCommandRunner());
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(new FakePromptHandler(ExecApprovalPromptDecision.AlwaysAllow()));
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-2",
+                Command = "system.run",
+                Args = Parse("""{"command":"whoami"}""")
+            });
+
+            Assert.True(res.Ok);
+            Assert.Single(policy.Rules);
+            Assert.Equal("whoami", policy.Rules[0].Pattern);
+            Assert.Equal(ExecApprovalAction.Allow, policy.Rules[0].Action);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_Denies_WhenUserDenies()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(new FakePromptHandler(ExecApprovalPromptDecision.Deny()));
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-3",
+                Command = "system.run",
+                Args = Parse("""{"command":"whoami"}""")
+            });
+
+            Assert.False(res.Ok);
+            Assert.Null(runner.LastRequest);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
     /// <summary>
     /// Fake runner for unit testing — no actual process execution.
     /// </summary>
@@ -393,6 +514,21 @@ public class SystemRunTests
                 throw new InvalidOperationException("Runner error");
             return Task.FromResult(Result);
         }
+    }
+
+    private sealed class FakePromptHandler : IExecApprovalPromptHandler
+    {
+        private readonly ExecApprovalPromptDecision _decision;
+
+        public FakePromptHandler(ExecApprovalPromptDecision decision)
+        {
+            _decision = decision;
+        }
+
+        public Task<ExecApprovalPromptDecision> RequestAsync(
+            ExecApprovalPromptRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_decision);
     }
 }
 

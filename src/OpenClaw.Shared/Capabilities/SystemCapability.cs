@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClaw.Shared.Capabilities;
 
@@ -12,7 +13,10 @@ namespace OpenClaw.Shared.Capabilities;
 public class SystemCapability : NodeCapabilityBase
 {
     public override string Category => "system";
-    
+
+    private const int DefaultRunTimeoutMs = 30_000;
+    private const int MaxRunTimeoutMs = 600_000; // 10 minutes
+
     private static readonly string[] _commands = new[]
     {
         "system.notify",
@@ -22,6 +26,26 @@ public class SystemCapability : NodeCapabilityBase
         "system.execApprovals.get",
         "system.execApprovals.set"
     };
+
+    private static readonly string[] DangerousAllowPatternFragments =
+    [
+        "remove-item",
+        "rm ",
+        "del ",
+        "erase ",
+        "rd ",
+        "rmdir ",
+        "format-",
+        "stop-computer",
+        "restart-computer",
+        "shutdown",
+        "invoke-webrequest",
+        "invoke-restmethod",
+        "start-process",
+        "set-executionpolicy",
+        "reg ",
+        "net "
+    ];
     
     public override IReadOnlyList<string> Commands => _commands;
     
@@ -30,9 +54,13 @@ public class SystemCapability : NodeCapabilityBase
     
     // Command runner for system.run (swappable: local, docker, wsl)
     private ICommandRunner? _commandRunner;
-    
+
     // Exec approval policy (optional - if null, all commands are allowed)
     private ExecApprovalPolicy? _approvalPolicy;
+    private IExecApprovalPromptHandler? _promptHandler;
+
+    // V2 exec approval handler (null = legacy path; inert until explicitly set)
+    private IExecApprovalV2Handler? _v2Handler;
     
     public SystemCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -52,6 +80,20 @@ public class SystemCapability : NodeCapabilityBase
     public void SetApprovalPolicy(ExecApprovalPolicy policy)
     {
         _approvalPolicy = policy;
+    }
+
+    public void SetPromptHandler(IExecApprovalPromptHandler promptHandler)
+    {
+        _promptHandler = promptHandler;
+    }
+
+    /// <summary>
+    /// Install a V2 exec approval handler. When set, system.run routes to the V2 path
+    /// instead of the legacy path. The V2 path is inert until this is called.
+    /// </summary>
+    public void SetV2Handler(IExecApprovalV2Handler handler)
+    {
+        _v2Handler = handler;
     }
     
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
@@ -122,8 +164,8 @@ public class SystemCapability : NodeCapabilityBase
         if (OperatingSystem.IsWindows())
         {
             var pathext = Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM";
-            extensions.AddRange(pathext.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                .Select(e => e.ToLowerInvariant()));
+            foreach (var e in pathext.Split(';', StringSplitOptions.RemoveEmptyEntries))
+                extensions.Add(e.ToLowerInvariant());
         }
         else
         {
@@ -214,6 +256,34 @@ public class SystemCapability : NodeCapabilityBase
     
     private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)
     {
+        var correlationId = Guid.NewGuid().ToString("N")[..8];
+
+        // Routing seam (rail 2): select path, delegate — no approval logic here.
+        if (_v2Handler != null)
+        {
+            Logger.Info($"[system.run] corr={correlationId} path=v2");
+            ExecApprovalV2Result v2Result;
+            try
+            {
+                v2Result = await _v2Handler.HandleAsync(request, correlationId);
+            }
+            catch (Exception ex)
+            {
+                // Rail 1: no silent fallback — handler exceptions become typed denies.
+                Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
+                v2Result = ExecApprovalV2Result.ValidationFailed($"Handler exception: {ex.Message}");
+            }
+
+            Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
+            // Rail 1: no silent fallback to legacy regardless of result code.
+            // In PR1 only ExecApprovalV2NullHandler exists (always unavailable); the real
+            // coordinator that can produce an allow decision is wired in PR7/PR8.
+            return Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
+        }
+
+        // Legacy path — untouched (rail 3).
+        Logger.Info($"[system.run] corr={correlationId} path=legacy decision=legacy reason=legacy");
+
         if (_commandRunner == null)
         {
             return Error("Command execution not available");
@@ -246,8 +316,15 @@ public class SystemCapability : NodeCapabilityBase
         
         var shell = GetStringArg(request.Args, "shell");
         var cwd = GetStringArg(request.Args, "cwd");
-        var timeoutMs = GetIntArg(request.Args, "timeoutMs", 
-            GetIntArg(request.Args, "timeout", 30000));
+        var timeoutMs = GetIntArg(request.Args, "timeoutMs",
+            GetIntArg(request.Args, "timeout", DefaultRunTimeoutMs));
+        // Clamp caller-supplied timeouts. timeoutMs <= 0 historically meant
+        // "wait forever" inside LocalCommandRunner; that lets a wedged process
+        // pin a handler slot indefinitely, so we coerce to the default. The
+        // upper bound is generous but prevents a multi-day timeout request
+        // from accidentally outliving the tray.
+        if (timeoutMs <= 0) timeoutMs = DefaultRunTimeoutMs;
+        if (timeoutMs > MaxRunTimeoutMs) timeoutMs = MaxRunTimeoutMs;
         
         // Parse env dict if present
         Dictionary<string, string>? env = null;
@@ -266,7 +343,9 @@ public class SystemCapability : NodeCapabilityBase
         var envResult = ExecEnvSanitizer.Sanitize(env);
         if (envResult.Blocked.Length > 0)
         {
-            var blockedList = string.Join(", ", envResult.Blocked.OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+            var blockedNames = (string[])envResult.Blocked.Clone();
+            Array.Sort(blockedNames, StringComparer.OrdinalIgnoreCase);
+            var blockedList = string.Join(", ", blockedNames);
             Logger.Warn($"system.run DENIED: blocked environment overrides [{blockedList}]");
             return Error($"Unsafe environment variable override blocked: {blockedList}");
         }
@@ -286,7 +365,7 @@ public class SystemCapability : NodeCapabilityBase
         if (_approvalPolicy != null)
         {
             var approval = _approvalPolicy.Evaluate(fullCommand, shell);
-            if (!approval.Allowed)
+            if (!await EnsureApprovedAsync(fullCommand, shell, approval))
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
                 return Error($"Command denied by exec policy: {approval.Reason}");
@@ -302,7 +381,7 @@ public class SystemCapability : NodeCapabilityBase
             foreach (var target in parseResult.Targets)
             {
                 var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
-                if (!innerApproval.Allowed)
+                if (!await EnsureApprovedAsync(target.Command, target.Shell, innerApproval))
                 {
                     Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
                     return Error($"Command denied by exec policy: {innerApproval.Reason}");
@@ -337,6 +416,59 @@ public class SystemCapability : NodeCapabilityBase
             return Error($"Execution failed: {ex.Message}");
         }
     }
+
+    private async Task<bool> EnsureApprovedAsync(
+        string command,
+        string? shell,
+        ExecApprovalResult approval,
+        CancellationToken cancellationToken = default)
+    {
+        if (approval.Allowed)
+            return true;
+
+        if (approval.Action != ExecApprovalAction.Prompt || _promptHandler == null || _approvalPolicy == null)
+            return false;
+
+        var decision = await _promptHandler.RequestAsync(new ExecApprovalPromptRequest
+        {
+            Command = command,
+            Shell = shell,
+            MatchedPattern = approval.MatchedPattern,
+            Reason = approval.Reason ?? "Command requires approval"
+        }, cancellationToken);
+
+        if (decision.Kind == ExecApprovalPromptDecisionKind.Deny)
+        {
+            Logger.Warn($"system.run DENIED by prompt: {command} ({decision.Reason})");
+            return false;
+        }
+
+        if (decision.Kind == ExecApprovalPromptDecisionKind.AlwaysAllow)
+        {
+            if (CanPersistExactAllowRule(command))
+            {
+                _approvalPolicy.InsertRule(0, new ExecApprovalRule
+                {
+                    Pattern = command,
+                    Action = ExecApprovalAction.Allow,
+                    Shells = string.IsNullOrWhiteSpace(shell) ? null : [shell],
+                    Description = "Approved from Windows tray prompt"
+                });
+                Logger.Info($"system.run prompt persisted exact allow rule: {command}");
+            }
+            else
+            {
+                Logger.Warn($"system.run prompt could not persist wildcard command; allowing once only: {command}");
+            }
+        }
+
+        Logger.Info($"system.run APPROVED by prompt: {command} ({decision.Kind})");
+        return true;
+    }
+
+    private static bool CanPersistExactAllowRule(string command) =>
+        !string.IsNullOrWhiteSpace(command) &&
+        command.IndexOfAny(['*', '?']) < 0;
     
     private NodeInvokeResponse HandleExecApprovalsGet()
     {
@@ -346,18 +478,36 @@ public class SystemCapability : NodeCapabilityBase
         }
         
         var data = _approvalPolicy.GetPolicyData();
-        return Success(new
+        var policyHash = _approvalPolicy.GetPolicyHash();
+        var rules = data.Rules;
+        var rulesSummary = new object[rules.Count];
+        for (var i = 0; i < rules.Count; i++)
         {
-            enabled = true,
-            defaultAction = data.DefaultAction.ToString().ToLowerInvariant(),
-            rules = data.Rules.Select(r => new
+            var r = rules[i];
+            rulesSummary[i] = new
             {
                 pattern = r.Pattern,
                 action = r.Action.ToString().ToLowerInvariant(),
                 shells = r.Shells,
                 description = r.Description,
                 enabled = r.Enabled
-            }).ToArray()
+            };
+        }
+
+        return Success(new
+        {
+            enabled = true,
+            hash = policyHash,
+            baseHash = policyHash,
+            defaultAction = data.DefaultAction.ToString().ToLowerInvariant(),
+            constraints = new
+            {
+                baseHashRequired = true,
+                defaultAllowAllowed = false,
+                broadAllowRulesAllowed = false,
+                dangerousAllowRulesAllowed = false
+            },
+            rules = rulesSummary
         });
     }
     
@@ -370,6 +520,19 @@ public class SystemCapability : NodeCapabilityBase
         
         try
         {
+            var currentHash = _approvalPolicy.GetPolicyHash();
+            if (!TryGetBaseHash(request.Args, out var baseHash))
+            {
+                Logger.Warn("execApprovals.set denied: baseHash is required");
+                return Error("baseHash is required for exec approval policy updates. Refresh policy and retry.");
+            }
+
+            if (!HashesMatch(baseHash, currentHash))
+            {
+                Logger.Warn("execApprovals.set denied: stale baseHash");
+                return Error("Exec approval policy changed since it was loaded. Refresh policy and retry.");
+            }
+
             // Parse rules from args
             var rules = new List<ExecApprovalRule>();
             
@@ -403,10 +566,13 @@ public class SystemCapability : NodeCapabilityBase
                     
                     if (ruleEl.TryGetProperty("shells", out var shellsEl) && shellsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
-                        rule.Shells = shellsEl.EnumerateArray()
-                            .Where(s => s.ValueKind == System.Text.Json.JsonValueKind.String)
-                            .Select(s => s.GetString() ?? "")
-                            .ToArray();
+                        var shellsList = new List<string>(shellsEl.GetArrayLength());
+                        foreach (var s in shellsEl.EnumerateArray())
+                        {
+                            if (s.ValueKind == System.Text.Json.JsonValueKind.String)
+                                shellsList.Add(s.GetString() ?? "");
+                        }
+                        rule.Shells = shellsList.ToArray();
                     }
                     
                     rules.Add(rule);
@@ -425,17 +591,94 @@ public class SystemCapability : NodeCapabilityBase
                     _ => ExecApprovalAction.Deny
                 };
             }
-            
+
+            if (defaultAction == ExecApprovalAction.Allow)
+            {
+                Logger.Warn("execApprovals.set denied: default allow is not permitted");
+                return Error("Default allow is not permitted for remote exec approval policy updates.");
+            }
+
+            var validationError = ValidateExecApprovalRules(rules);
+            if (validationError != null)
+            {
+                Logger.Warn($"execApprovals.set denied: {validationError}");
+                return Error(validationError);
+            }
+             
             _approvalPolicy.SetRules(rules, defaultAction);
+            var newHash = _approvalPolicy.GetPolicyHash();
             Logger.Info($"Exec approval policy updated: {rules.Count} rules");
-            
-            return Success(new { updated = true, ruleCount = rules.Count });
+             
+            return Success(new { updated = true, ruleCount = rules.Count, hash = newHash, baseHash = newHash });
         }
         catch (Exception ex)
         {
             Logger.Error("execApprovals.set failed", ex);
             return Error($"Failed to update policy: {ex.Message}");
         }
+    }
+
+    private static string? ValidateExecApprovalRules(IEnumerable<ExecApprovalRule> rules)
+    {
+        foreach (var rule in rules)
+        {
+            if (rule.Action != ExecApprovalAction.Allow)
+                continue;
+
+            var pattern = rule.Pattern.Trim();
+            if (string.IsNullOrWhiteSpace(pattern))
+                return "Empty allow rule patterns are not permitted.";
+
+            var normalized = pattern.ToLowerInvariant();
+            if (normalized is "*" or "* *" or "powershell *" or "pwsh *" or "cmd *" or "cmd.exe *")
+                return $"Broad allow rule is not permitted: {pattern}";
+
+            foreach (var dangerous in DangerousAllowPatternFragments)
+            {
+                if (normalized.Contains(dangerous, StringComparison.Ordinal))
+                    return $"Dangerous allow rule is not permitted: {pattern}";
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryGetBaseHash(System.Text.Json.JsonElement args, out string baseHash)
+    {
+        baseHash = "";
+        if (args.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+            return false;
+
+        if (args.TryGetProperty("baseHash", out var baseHashEl) &&
+            baseHashEl.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            baseHash = baseHashEl.GetString() ?? "";
+            return !string.IsNullOrWhiteSpace(baseHash);
+        }
+
+        if (args.TryGetProperty("base_hash", out var baseHashSnakeEl) &&
+            baseHashSnakeEl.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            baseHash = baseHashSnakeEl.GetString() ?? "";
+            return !string.IsNullOrWhiteSpace(baseHash);
+        }
+
+        return false;
+    }
+
+    private static bool HashesMatch(string candidate, string currentHash)
+    {
+        if (string.Equals(candidate, currentHash, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        const string prefix = "sha256:";
+        if (currentHash.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate, currentHash[prefix.Length..], StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 }
 

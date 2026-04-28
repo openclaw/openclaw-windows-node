@@ -141,6 +141,30 @@
   <data name="StatusChannelsHeader.Text" xml:space="preserve">
     <value>频道</value>
   </data>
+  <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
+    <value>网关拓扑</value>
+  </data>
+  <data name="StatusSupportDebugHeader.Text" xml:space="preserve">
+    <value>支持和调试</value>
+  </data>
+  <data name="StatusPortDiagnosticsHeader.Text" xml:space="preserve">
+    <value>端口诊断</value>
+  </data>
+  <data name="StatusPermissionsHeader.Text" xml:space="preserve">
+    <value>权限</value>
+  </data>
+  <data name="StatusCostTrendHeader.Text" xml:space="preserve">
+    <value>30 天费用趋势</value>
+  </data>
+  <data name="StatusExtensibilityHeader.Text" xml:space="preserve">
+    <value>扩展性</value>
+  </data>
+  <data name="StatusNodesHeader.Text" xml:space="preserve">
+    <value>节点</value>
+  </data>
+  <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
+    <value>最近活动</value>
+  </data>
 
   <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
@@ -160,10 +184,82 @@
   <data name="StatusNoSessions.Text" xml:space="preserve">
     <value>无活跃会话</value>
   </data>
+  <data name="StatusNoNodes.Text" xml:space="preserve">
+    <value>未报告节点</value>
+  </data>
+  <data name="StatusNoRecentActivity.Text" xml:space="preserve">
+    <value>没有最近活动</value>
+  </data>
+  <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
+    <value>频道设置、技能和计划自动化由网关管理。连接的网关公开相应仪表板页面时，请使用这些链接。</value>
+  </data>
+  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
+    <value>频道设置 / 架构</value>
+  </data>
+  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
+    <value>在可用时打开频道设置，用于基于架构的身份验证、二维码、登录和仪表板流程。</value>
+  </data>
+  <data name="StatusSkillsTitle.Text" xml:space="preserve">
+    <value>技能</value>
+  </data>
+  <data name="StatusSkillsDescription.Text" xml:space="preserve">
+    <value>当连接的网关支持时，打开网关技能配置。</value>
+  </data>
+  <data name="StatusCronTitle.Text" xml:space="preserve">
+    <value>Cron / 计划</value>
+  </data>
+  <data name="StatusCronDescription.Text" xml:space="preserve">
+    <value>当连接的网关支持时，打开计划自动化控件。</value>
+  </data>
 
   <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>刷新</value>
+  </data>
+  <data name="StatusOpenLogsButton.Content" xml:space="preserve">
+    <value>打开日志</value>
+  </data>
+  <data name="StatusOpenConfigButton.Content" xml:space="preserve">
+    <value>打开配置</value>
+  </data>
+  <data name="StatusRefreshHealthButton.Content" xml:space="preserve">
+    <value>刷新健康状态</value>
+  </data>
+  <data name="StatusOpenDiagnosticsJsonlButton.Content" xml:space="preserve">
+    <value>打开诊断 JSONL</value>
+  </data>
+  <data name="StatusCopySupportContextButton.Content" xml:space="preserve">
+    <value>复制支持上下文</value>
+  </data>
+  <data name="StatusRestartSshTunnelButton.Content" xml:space="preserve">
+    <value>重启 SSH 隧道</value>
+  </data>
+  <data name="StatusCopyBrowserSetupButton.Content" xml:space="preserve">
+    <value>复制浏览器设置</value>
+  </data>
+  <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
+    <value>复制调试包</value>
+  </data>
+  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
+    <value>复制端口诊断</value>
+  </data>
+  <data name="StatusCopyButton.Content" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="StatusSettingsButton.Content" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="StatusOpenButton.Content" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="StatusCopyNodeInventoryButton.Content" xml:space="preserve">
+    <value>复制节点清单</value>
+  </data>
+  <data name="StatusOpenStreamButton.Content" xml:space="preserve">
+    <value>打开流</value>
   </data>
 
   <!-- ==================== ActivityStreamWindow.xaml ==================== -->
@@ -374,6 +470,60 @@
   <data name="Menu_CopyNodeSummary" xml:space="preserve">
     <value>复制节点摘要</value>
   </data>
+  <data name="Menu_CheckForUpdates" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="Menu_SetupGuide" xml:space="preserve">
+    <value>设置指南...</value>
+  </data>
+  <data name="Menu_SupportDebugHeader" xml:space="preserve">
+    <value>🧰 支持和调试</value>
+  </data>
+  <data name="Menu_OpenSupportFiles" xml:space="preserve">
+    <value>打开支持文件</value>
+  </data>
+  <data name="Menu_LogsFolder" xml:space="preserve">
+    <value>日志文件夹</value>
+  </data>
+  <data name="Menu_ConfigFolder" xml:space="preserve">
+    <value>配置文件夹</value>
+  </data>
+  <data name="Menu_DiagnosticsFolder" xml:space="preserve">
+    <value>诊断文件夹</value>
+  </data>
+  <data name="Menu_CopyDiagnostics" xml:space="preserve">
+    <value>复制诊断</value>
+  </data>
+  <data name="Menu_SupportContext" xml:space="preserve">
+    <value>支持上下文</value>
+  </data>
+  <data name="Menu_DebugBundle" xml:space="preserve">
+    <value>调试包</value>
+  </data>
+  <data name="Menu_BrowserSetup" xml:space="preserve">
+    <value>浏览器设置</value>
+  </data>
+  <data name="Menu_PortDiagnostics" xml:space="preserve">
+    <value>端口诊断</value>
+  </data>
+  <data name="Menu_CapabilityDiagnostics" xml:space="preserve">
+    <value>功能诊断</value>
+  </data>
+  <data name="Menu_NodeInventory" xml:space="preserve">
+    <value>节点清单</value>
+  </data>
+  <data name="Menu_ChannelSummary" xml:space="preserve">
+    <value>频道摘要</value>
+  </data>
+  <data name="Menu_ActivitySummary" xml:space="preserve">
+    <value>活动摘要</value>
+  </data>
+  <data name="Menu_ExtensibilitySummary" xml:space="preserve">
+    <value>扩展性摘要</value>
+  </data>
+  <data name="Menu_RestartSshTunnel" xml:space="preserve">
+    <value>重启 SSH 隧道</value>
+  </data>
 
   <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
@@ -569,6 +719,12 @@
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>在网关上运行: openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>复制批准命令</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>配对命令已复制</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ 节点已配对！</value>
   </data>
@@ -644,6 +800,21 @@
   <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
     <value>粘贴来自网关仪表板的设置码</value>
   </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>粘贴设置码 / QR</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>导入 QR 图片...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ QR 图片已解码 — 请点击"测试连接"</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ 无法在该图片中找到有效的设置 QR 码。</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ 剪贴板不包含设置码文本或 QR 图片。</value>
+  </data>
   <data name="Setup_ManualEntryToggle" xml:space="preserve">
     <value>或手动输入 URL 和令牌 ▾</value>
   </data>
@@ -713,6 +884,12 @@
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>节点模式允许您的 Windows 电脑为 OpenClaw 执行任务 — 如屏幕截图、摄像头访问和画布绘制。</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>仅为您信任的网关和代理启用节点模式</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>已批准的代理可以运行本地命令，并可能访问已启用的设备表面，例如屏幕、摄像头、位置、浏览器和画布。您稍后可以在设置中禁用能力组。</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>启用节点模式</value>
   </data>
@@ -754,6 +931,42 @@
   </data>
   <data name="Setup_StepDone" xml:space="preserve">
     <value>第 3 步（共 3 步）— 完成</value>
+  </data>
+
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>开发者模式</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>启用本地 MCP 服务器</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>向本地 MCP 客户端（Claude Desktop、Cursor、Claude Code）公开相同的节点功能（系统、屏幕、摄像头、画布）。</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>终结点：</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>状态：</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>已禁用</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>正在监听</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>保存后将启动</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>保存后将停止</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>启动失败：</value>
   </data>
 
   <!-- ==================== DownloadProgressDialog ==================== -->
