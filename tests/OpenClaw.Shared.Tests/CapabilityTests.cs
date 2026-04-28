@@ -1640,6 +1640,66 @@ public class ScreenCapabilityTests
         Assert.False(root.TryGetProperty("width", out _));
         Assert.False(root.TryGetProperty("height", out _));
     }
+
+    [Fact]
+    public async Task Record_UsesDefaultFps_WhenFpsMissing()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenRecordArgs? received = null;
+        cap.RecordRequested += (args) =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenRecordResult { Format = "mp4", Fps = args.Fps });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s13",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":5000}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(10.0, received!.Fps);
+    }
+
+    [Fact]
+    public async Task Record_UsesDefaultFps_WhenFpsIsNonNumeric()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenRecordArgs? received = null;
+        cap.RecordRequested += (args) =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenRecordResult { Format = "mp4", Fps = args.Fps });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "s14",
+            Command = "screen.record",
+            Args = Parse("""{"fps":"fast"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(10.0, received!.Fps);
+    }
+
+    [Fact]
+    public async Task Record_ReturnsError_WhenHandlerThrows()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        cap.RecordRequested += (_) => throw new InvalidOperationException("Capture permission denied");
+
+        var req = new NodeInvokeRequest { Id = "s15", Command = "screen.record", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("Capture permission denied", res.Error);
+    }
 }
 
 public class CameraCapabilityTests

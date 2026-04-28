@@ -1298,6 +1298,142 @@ public class CommandCenterModelTests
             w.Title == "SSH tunnel failed" &&
             w.Detail == "ssh exited");
     }
+
+    [Fact]
+    public void SortAndDedupeWarnings_ExcludesBlankTitles()
+    {
+        var warnings = CommandCenterDiagnostics.SortAndDedupeWarnings(
+        [
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Warning, Category = "node", Title = "" },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Warning, Category = "node", Title = "   " },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Info, Category = "node", Title = "Keep me" }
+        ]);
+
+        Assert.Single(warnings);
+        Assert.Equal("Keep me", warnings[0].Title);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_ExactKeyMatch()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["screen.snapshot"] = false
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "screen.snapshot", out var allowed));
+        Assert.False(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_CommandsDotPrefix()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["commands.canvas.present"] = false
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "canvas.present", out var allowed));
+        Assert.False(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_CommandColonPrefix()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["command:screen.record"] = false
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "screen.record", out var allowed));
+        Assert.False(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_ReturnsTrue_WhenAllowed()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["screen.record"] = true
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "screen.record", out var allowed));
+        Assert.True(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_ReturnsFalse_WhenNotPresent()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.False(CommandCenterDiagnostics.TryGetCommandPermission(perms, "system.notify", out _));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void TryGetCommandPermission_ReturnsFalse_ForBlankCommand(string? command)
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["system.notify"] = true
+        };
+
+        Assert.False(CommandCenterDiagnostics.TryGetCommandPermission(perms, command!, out _));
+    }
+
+    [Fact]
+    public void BuildNodeWarnings_SomeCommandsFiltered_WhenNonCategorizedCommandBlocked()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-x",
+            DisplayName = "Test Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands = ["system.notify", "system.run"],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["system.notify"] = false,
+                ["system.run"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("system.notify", info.BlockedDeclaredCommands);
+        Assert.Contains("system.run", info.BlockedDeclaredCommands);
+        Assert.Empty(info.MissingSafeAllowlistCommands);
+        Assert.Empty(info.MissingDangerousAllowlistCommands);
+
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Some node commands are filtered" &&
+            w.Severity == GatewayDiagnosticSeverity.Info &&
+            w.Category == "allowlist");
+    }
+
+    [Fact]
+    public void BuildNodeWarnings_SomeCommandsFiltered_NotEmittedWhenSafeOrDangerousWarningAlsoFires()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-y",
+            DisplayName = "Test Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands = ["canvas.present"],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["canvas.present"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("canvas.present", info.MissingSafeAllowlistCommands);
+        Assert.DoesNotContain(info.Warnings, w => w.Title == "Some node commands are filtered");
+    }
 }
 
 public class SessionInfoAgeTextTests
