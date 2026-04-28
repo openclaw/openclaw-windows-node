@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -46,7 +47,7 @@ public static class Logger
     private static void Log(string level, string message)
     {
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-        var line = $"[{timestamp}] [{level}] {message}";
+        var line = $"[{timestamp}] [{level}] {TokenSanitizer.Sanitize(message)}";
 
         lock (_lock)
         {

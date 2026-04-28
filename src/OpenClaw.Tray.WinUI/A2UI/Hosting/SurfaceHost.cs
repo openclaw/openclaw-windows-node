@@ -43,6 +43,7 @@ public sealed class SurfaceHost : IDisposable
     private string? _rootId;
     private int _renderDepth;
     private int _renderCount;
+    private MediaLoadBudget _mediaBudget = new();
 
     public string SurfaceId { get; }
     public string? Title { get; private set; }
@@ -181,6 +182,7 @@ public sealed class SurfaceHost : IDisposable
         _secretPaths.Clear();
         _renderDepth = 0;
         _renderCount = 0;
+        _mediaBudget = new MediaLoadBudget();
         if (_rootId == null) return;
 
         var built = BuildElement(_rootId);
@@ -224,6 +226,7 @@ public sealed class SurfaceHost : IDisposable
                 Subscriptions = _subscriptions,
                 SecretPaths = _secretPaths,
                 Logger = _logger,
+                MediaBudget = _mediaBudget,
             };
 
             try { return renderer.Render(def, ctx); }

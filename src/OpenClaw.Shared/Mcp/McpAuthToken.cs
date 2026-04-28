@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace OpenClaw.Shared.Mcp;
 
@@ -67,6 +68,24 @@ public static class McpAuthToken
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         var token = Generate();
         File.WriteAllText(path, token);
+        return token;
+    }
+
+    public static string Reset(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Token path is required", nameof(path));
+
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+        var token = Generate();
+        var tempPath = Path.Combine(
+            string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir,
+            $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+
+        File.WriteAllText(tempPath, token, Encoding.UTF8);
+        File.Move(tempPath, path, overwrite: true);
         return token;
     }
 

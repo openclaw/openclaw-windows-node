@@ -27,6 +27,7 @@ public sealed class MediaResolver
     private readonly IOpenClawLogger _logger;
     private readonly HashSet<string> _hostAllowlist = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient _http;
+    private static readonly SemaphoreSlim s_svgDecodeSemaphore = new(3, 3);
     private const long DataUrlMaxBytes = 2L * 1024 * 1024;
     /// <summary>Hard cap on remote image bytes. Sized to dwarf realistic UI imagery while still preventing OOM from a hostile/compromised allowlisted host.</summary>
     internal const long RemoteImageMaxBytes = 8L * 1024 * 1024;
@@ -71,7 +72,7 @@ public sealed class MediaResolver
                 // record slip through.
                 foreach (var ip in addresses)
                 {
-                    if (!IsPublicAddress(ip))
+                    if (!HttpUrlRiskEvaluator.IsPublicAddress(ip))
                     {
                         logger.Warn($"[A2UI] Refusing to connect to '{ctx.DnsEndPoint.Host}': resolved to non-public address {ip}");
                         throw new HttpRequestException($"Refusing to connect to non-public address {ip} for host '{ctx.DnsEndPoint.Host}'");
@@ -94,41 +95,6 @@ public sealed class MediaResolver
         };
     }
 
-    private static bool IsPublicAddress(IPAddress ip)
-    {
-        if (IPAddress.IsLoopback(ip)) return false;
-        if (ip.AddressFamily == AddressFamily.InterNetwork)
-        {
-            var b = ip.GetAddressBytes();
-            // 0.0.0.0/8 (this network), 10.0.0.0/8 (private), 100.64.0.0/10 (CGNAT),
-            // 127.0.0.0/8 (loopback), 169.254.0.0/16 (link-local),
-            // 172.16.0.0/12 (private), 192.168.0.0/16 (private), 224.0.0.0/4 (multicast),
-            // 240.0.0.0/4 (reserved/broadcast).
-            if (b[0] == 0) return false;
-            if (b[0] == 10) return false;
-            if (b[0] == 100 && (b[1] & 0xC0) == 64) return false;
-            if (b[0] == 127) return false;
-            if (b[0] == 169 && b[1] == 254) return false;
-            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return false;
-            if (b[0] == 192 && b[1] == 168) return false;
-            if (b[0] >= 224) return false;
-            return true;
-        }
-        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            if (ip.IsIPv6LinkLocal) return false;
-            if (ip.IsIPv6SiteLocal) return false;
-            if (ip.IsIPv6Multicast) return false;
-            // fc00::/7 (unique local).
-            var b = ip.GetAddressBytes();
-            if ((b[0] & 0xFE) == 0xFC) return false;
-            // ::1 (loopback already caught), ::ffff:0:0/96 (IPv4-mapped) treated as v4.
-            if (ip.IsIPv4MappedToIPv6) return IsPublicAddress(ip.MapToIPv4());
-            return true;
-        }
-        return false;
-    }
-
     public void AllowHost(string host)
     {
         if (string.IsNullOrWhiteSpace(host)) return;
@@ -144,6 +110,7 @@ public sealed class MediaResolver
         }
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
         if (uri.Scheme != Uri.UriSchemeHttps) return false;
+        if (!string.IsNullOrEmpty(uri.UserInfo)) return false;
         return _hostAllowlist.Contains(uri.Host);
     }
 
@@ -294,6 +261,61 @@ public sealed class MediaResolver
     public Uri? AsUri(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var u) ? u : null;
 
+    public Task<Uri?> ResolveMediaUriAsync(string url) => ResolveMediaUriAsync(url, CancellationToken.None);
+
+    public async Task<Uri?> ResolveMediaUriAsync(string url, CancellationToken cancellationToken)
+    {
+        if (!IsAllowed(url))
+        {
+            _logger.Warn($"[A2UI] Media blocked: {Truncate(url)}");
+            return null;
+        }
+
+        var uri = AsUri(url);
+        if (uri == null) return null;
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return uri;
+
+        try
+        {
+            if (IPAddress.TryParse(uri.Host, out var literal))
+            {
+                if (!HttpUrlRiskEvaluator.IsPublicAddress(literal))
+                {
+                    _logger.Warn($"[A2UI] Media blocked: host '{uri.Host}' is not public");
+                    return null;
+                }
+                return uri;
+            }
+
+            var addresses = await Dns.GetHostAddressesAsync(uri.Host, cancellationToken).ConfigureAwait(false);
+            if (addresses.Length == 0)
+            {
+                _logger.Warn($"[A2UI] Media blocked: DNS returned no addresses for '{uri.Host}'");
+                return null;
+            }
+
+            foreach (var ip in addresses)
+            {
+                if (!HttpUrlRiskEvaluator.IsPublicAddress(ip))
+                {
+                    _logger.Warn($"[A2UI] Media blocked: '{uri.Host}' resolved to non-public address {ip}");
+                    return null;
+                }
+            }
+            return uri;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[A2UI] Media URL validation failed for {Truncate(url)}: {ex.Message}");
+            return null;
+        }
+    }
+
     private static async Task<BitmapImage> BitmapFromBytes(byte[] bytes)
     {
         var bmp = new BitmapImage();
@@ -318,36 +340,49 @@ public sealed class MediaResolver
     /// </summary>
     private async Task<ImageSource?> SvgFromBytesAsync(byte[] bytes, CancellationToken cancellationToken)
     {
-        bytes = StripDoctype(bytes);
-        var svg = new SvgImageSource();
-        using var ms = new InMemoryRandomAccessStream();
-        using (var w = new DataWriter(ms))
+        if (!await s_svgDecodeSemaphore.WaitAsync(SvgRenderTimeout, cancellationToken).ConfigureAwait(false))
         {
-            w.WriteBytes(bytes);
-            await w.StoreAsync();
-            await w.FlushAsync();
-            w.DetachStream();
+            _logger.Warn("[A2UI] SVG decode queue saturated");
+            return null;
         }
-        ms.Seek(0);
 
-        using var renderTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        renderTimeout.CancelAfter(SvgRenderTimeout);
-        SvgImageSourceLoadStatus status;
         try
         {
-            status = await svg.SetSourceAsync(ms).AsTask().WaitAsync(renderTimeout.Token).ConfigureAwait(false);
+            bytes = StripDoctype(bytes);
+            var svg = new SvgImageSource();
+            using var ms = new InMemoryRandomAccessStream();
+            using (var w = new DataWriter(ms))
+            {
+                w.WriteBytes(bytes);
+                await w.StoreAsync();
+                await w.FlushAsync();
+                w.DetachStream();
+            }
+            ms.Seek(0);
+
+            using var renderTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            renderTimeout.CancelAfter(SvgRenderTimeout);
+            SvgImageSourceLoadStatus status;
+            try
+            {
+                status = await svg.SetSourceAsync(ms).AsTask().WaitAsync(renderTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.Warn("[A2UI] SVG decode timed out");
+                return null;
+            }
+            if (status != SvgImageSourceLoadStatus.Success)
+            {
+                _logger.Warn($"[A2UI] SVG decode failed: {status}");
+                return null;
+            }
+            return svg;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        finally
         {
-            _logger.Warn("[A2UI] SVG decode timed out");
-            return null;
+            s_svgDecodeSemaphore.Release();
         }
-        if (status != SvgImageSourceLoadStatus.Success)
-        {
-            _logger.Warn($"[A2UI] SVG decode failed: {status}");
-            return null;
-        }
-        return svg;
     }
 
     /// <summary>Cheap content sniff for SVG bytes after BOM and leading whitespace.</summary>

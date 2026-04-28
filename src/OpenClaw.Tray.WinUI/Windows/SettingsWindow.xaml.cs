@@ -116,11 +116,13 @@ public sealed partial class SettingsWindow : WindowEx
             McpTokenTextBox.Text = "(not generated — enable MCP server and click Save)";
             McpTokenRevealButton.IsEnabled = false;
             McpTokenCopyButton.IsEnabled = false;
+            McpTokenResetButton.IsEnabled = true;
             McpTokenHintText.Text = $"Stored at {path}";
             return;
         }
         McpTokenRevealButton.IsEnabled = true;
         McpTokenCopyButton.IsEnabled = true;
+        McpTokenResetButton.IsEnabled = true;
         McpTokenTextBox.Text = _mcpTokenRevealed ? token : new string('•', token.Length);
         McpTokenRevealButton.Content = _mcpTokenRevealed ? "Hide" : "Reveal";
         McpTokenHintText.Text =
@@ -146,6 +148,32 @@ public sealed partial class SettingsWindow : WindowEx
         catch (Exception ex)
         {
             Logger.Warn($"[Settings] Failed to copy MCP bearer token: {ex.Message}");
+        }
+    }
+
+    private void OnResetMcpToken(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var nodeService = _nodeServiceProvider();
+            if (nodeService != null)
+                nodeService.ResetMcpToken();
+            else
+                OpenClaw.Shared.Mcp.McpAuthToken.Reset(NodeService.McpTokenPath);
+
+            _mcpTokenRevealed = false;
+            UpdateMcpTokenDisplay();
+            Logger.Info("[Settings] MCP bearer token reset");
+
+            new ToastContentBuilder()
+                .AddText("MCP token reset")
+                .AddText("Old MCP bearer tokens are now invalid.")
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Settings] Failed to reset MCP bearer token: {ex.Message}");
+            McpTokenHintText.Text = $"Failed to reset token: {ex.Message}";
         }
     }
 

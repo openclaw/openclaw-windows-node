@@ -66,7 +66,7 @@ public sealed class McpHttpServer : IDisposable
     /// pre-auth contract — kept so existing dev configs keep working). When set,
     /// every POST must carry <c>Authorization: Bearer &lt;token&gt;</c>.
     /// </summary>
-    private readonly string? _authToken;
+    private string? _authToken;
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _handlerLimiter = new(MaxConcurrentHandlers, MaxConcurrentHandlers);
     private readonly object _activeLock = new();
@@ -95,6 +95,11 @@ public sealed class McpHttpServer : IDisposable
         _listener.Start();
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
         _logger.Info($"[MCP] HTTP server listening on {Endpoint}");
+    }
+
+    public void UpdateAuthToken(string? authToken)
+    {
+        Volatile.Write(ref _authToken, string.IsNullOrEmpty(authToken) ? null : authToken);
     }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
@@ -293,16 +298,18 @@ public sealed class McpHttpServer : IDisposable
 
     private bool IsAuthorized(string? authHeader)
     {
-        if (_authToken == null) return true;
+        var authToken = Volatile.Read(ref _authToken);
+        if (authToken == null) return true;
         if (string.IsNullOrEmpty(authHeader)) return false;
         // Accept "Bearer <token>" (RFC 6750) — case-insensitive scheme, exact token.
         const string scheme = "Bearer ";
         if (!authHeader.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) return false;
         var presented = authHeader.Substring(scheme.Length).Trim();
+        if (presented.Length != authToken.Length) return false;
         // Constant-time compare; both strings already known length.
         return CryptographicOperations.FixedTimeEquals(
             Encoding.UTF8.GetBytes(presented),
-            Encoding.UTF8.GetBytes(_authToken));
+            Encoding.UTF8.GetBytes(authToken));
     }
 
     private static bool IsHostAllowed(string? host)

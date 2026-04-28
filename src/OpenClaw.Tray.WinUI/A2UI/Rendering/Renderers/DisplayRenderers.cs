@@ -65,6 +65,7 @@ public sealed class ImageRenderer : IComponentRenderer
         // the bitmap if no later load has started. Stops a slow first response
         // from clobbering a faster second one when the URL flips quickly.
         var generation = new int[] { 0 };
+        System.Threading.CancellationTokenSource? loadCts = null;
         var urlVal = ctx.GetValue(c, "url");
         void Update()
         {
@@ -72,11 +73,19 @@ public sealed class ImageRenderer : IComponentRenderer
             if (string.IsNullOrEmpty(url))
             {
                 System.Threading.Interlocked.Increment(ref generation[0]);
+                loadCts?.Cancel();
                 image.Source = null;
                 return;
             }
+            if (ctx.MediaBudget?.TryReserveImageLoad() == false)
+            {
+                ctx.Logger?.Warn("[A2UI] Image load rejected: surface media budget exhausted");
+                return;
+            }
             int token = System.Threading.Interlocked.Increment(ref generation[0]);
-            _ = LoadAsync(image, url, generation, token);
+            loadCts?.Cancel();
+            loadCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
+            _ = LoadAsync(image, url, generation, token, loadCts.Token, ctx.Logger);
         }
         Update();
         ctx.WatchValue(c.Id, "url", urlVal, Update);
@@ -102,14 +111,27 @@ public sealed class ImageRenderer : IComponentRenderer
         return image;
     }
 
-    private async Task LoadAsync(Image target, string url, int[] generation, int token)
+    private async Task LoadAsync(
+        Image target,
+        string url,
+        int[] generation,
+        int token,
+        System.Threading.CancellationToken cancellationToken,
+        OpenClaw.Shared.IOpenClawLogger? logger)
     {
-        // ImageSource is the common base of BitmapImage (raster) and SvgImageSource — Image.Source accepts either.
-        var src = await _media.LoadImageAsync(url).ConfigureAwait(true);
-        // Only commit if our token is still current. Volatile read is sufficient
-        // — UI thread is the only writer and we're awaited back onto it.
-        if (src != null && System.Threading.Volatile.Read(ref generation[0]) == token)
-            target.Source = src;
+        try
+        {
+            // ImageSource is the common base of BitmapImage (raster) and SvgImageSource — Image.Source accepts either.
+            var src = await _media.LoadImageAsync(url, cancellationToken).ConfigureAwait(true);
+            // Only commit if our token is still current. Volatile read is sufficient
+            // — UI thread is the only writer and we're awaited back onto it.
+            if (src != null && System.Threading.Volatile.Read(ref generation[0]) == token)
+                target.Source = src;
+        }
+        catch (OperationCanceledException)
+        {
+            logger?.Debug("[A2UI] Image load cancelled");
+        }
     }
 
     private static void ApplyFit(Image image, string? fit)
@@ -265,19 +287,44 @@ public sealed class VideoRenderer : IComponentRenderer
             AreTransportControlsEnabled = true,
             MinHeight = 180,
         };
+        var generation = new int[] { 0 };
         var urlVal = ctx.GetValue(c, "url");
         void Update()
         {
             var url = ctx.ResolveString(urlVal);
-            if (string.IsNullOrEmpty(url)) return;
-            if (!_media.IsAllowed(url)) return;
-            var uri = _media.AsUri(url);
-            if (uri != null) player.Source = global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
+            if (string.IsNullOrEmpty(url))
+            {
+                System.Threading.Interlocked.Increment(ref generation[0]);
+                player.Source = null;
+                return;
+            }
+            int token = System.Threading.Interlocked.Increment(ref generation[0]);
+            _ = LoadMediaAsync(player, url, generation, token, ctx.Logger);
         }
         Update();
         ctx.WatchValue(c.Id, "url", urlVal, Update);
         AutomationHelpers.Apply(player, c, ctx);
         return player;
+    }
+
+    private async Task LoadMediaAsync(
+        MediaPlayerElement player,
+        string url,
+        int[] generation,
+        int token,
+        OpenClaw.Shared.IOpenClawLogger? logger)
+    {
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var uri = await _media.ResolveMediaUriAsync(url, cts.Token).ConfigureAwait(true);
+            if (uri != null && System.Threading.Volatile.Read(ref generation[0]) == token)
+                player.Source = global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
+        }
+        catch (OperationCanceledException)
+        {
+            logger?.Warn("[A2UI] Video URL validation timed out");
+        }
     }
 }
 
@@ -303,14 +350,19 @@ public sealed class AudioPlayerRenderer : IComponentRenderer
             AreTransportControlsEnabled = true,
             MinHeight = 50,
         };
+        var generation = new int[] { 0 };
         var urlVal = ctx.GetValue(c, "url");
         void UrlUpdate()
         {
             var url = ctx.ResolveString(urlVal);
-            if (string.IsNullOrEmpty(url)) return;
-            if (!_media.IsAllowed(url)) return;
-            var uri = _media.AsUri(url);
-            if (uri != null) player.Source = global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
+            if (string.IsNullOrEmpty(url))
+            {
+                System.Threading.Interlocked.Increment(ref generation[0]);
+                player.Source = null;
+                return;
+            }
+            int token = System.Threading.Interlocked.Increment(ref generation[0]);
+            _ = LoadMediaAsync(player, url, generation, token, ctx.Logger);
         }
         UrlUpdate();
         ctx.WatchValue(c.Id, "url", urlVal, UrlUpdate);
@@ -319,5 +371,25 @@ public sealed class AudioPlayerRenderer : IComponentRenderer
         stack.Children.Add(player);
         AutomationHelpers.Apply(stack, c, ctx);
         return stack;
+    }
+
+    private async Task LoadMediaAsync(
+        MediaPlayerElement player,
+        string url,
+        int[] generation,
+        int token,
+        OpenClaw.Shared.IOpenClawLogger? logger)
+    {
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var uri = await _media.ResolveMediaUriAsync(url, cts.Token).ConfigureAwait(true);
+            if (uri != null && System.Threading.Volatile.Read(ref generation[0]) == token)
+                player.Source = global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
+        }
+        catch (OperationCanceledException)
+        {
+            logger?.Warn("[A2UI] Audio URL validation timed out");
+        }
     }
 }

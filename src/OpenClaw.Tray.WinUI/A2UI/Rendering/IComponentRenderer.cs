@@ -50,6 +50,7 @@ public sealed class RenderContext
     public required IDictionary<string, IDisposable> Subscriptions { get; init; }
     /// <summary>Surface-scoped logger; <c>null</c> if the host did not supply one.</summary>
     public OpenClaw.Shared.IOpenClawLogger? Logger { get; init; }
+    public MediaLoadBudget? MediaBudget { get; init; }
     /// <summary>
     /// Surface-scoped set of JSON Pointer paths that hold sensitive values.
     /// Populated by renderers (e.g., obscured TextField); consulted by
@@ -293,4 +294,13 @@ public sealed class RenderContext
         public bool Overlaps(IEnumerable<string> other) => false;
         public bool SetEquals(IEnumerable<string> other) { foreach (var _ in other) return false; return true; }
     }
+}
+
+public sealed class MediaLoadBudget
+{
+    internal const int MaxImageLoadsPerRender = 128;
+    private int _imageLoadsRemaining = MaxImageLoadsPerRender;
+
+    public bool TryReserveImageLoad() =>
+        System.Threading.Interlocked.Decrement(ref _imageLoadsRemaining) >= 0;
 }

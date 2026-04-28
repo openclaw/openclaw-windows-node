@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -48,7 +49,7 @@ public static class DiagnosticsJsonlService
             try
             {
                 RotateIfNeeded();
-                File.AppendAllText(s_filePath!, JsonSerializer.Serialize(record) + Environment.NewLine);
+                File.AppendAllText(s_filePath!, TokenSanitizer.Sanitize(JsonSerializer.Serialize(record)) + Environment.NewLine);
             }
             catch (IOException ex)
             {

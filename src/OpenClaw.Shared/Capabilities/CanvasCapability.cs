@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 
 namespace OpenClaw.Shared.Capabilities;
 
@@ -282,51 +285,13 @@ public class CanvasCapability : NodeCapabilityBase
 
         if (string.IsNullOrWhiteSpace(jsonl) && !string.IsNullOrWhiteSpace(jsonlPath))
         {
-            // Validate jsonlPath to prevent arbitrary file reads.
-            // Resolve to absolute path, follow reparse points, and reject anything
-            // that doesn't ultimately live inside the system temp directory.
-            string fullPath;
-            FileInfo fi;
             try
             {
-                fullPath = Path.GetFullPath(jsonlPath);
-                fi = new FileInfo(fullPath);
-                // Resolve symlinks/junctions where possible: a junction inside temp
-                // pointing at a user-writable folder elsewhere would otherwise pass
-                // the StartsWith check below. (M5 in the unified review.) For
-                // non-existent or non-link entries this is a no-op or returns null.
-                try
-                {
-                    var resolved = fi.ResolveLinkTarget(returnFinalTarget: true);
-                    if (resolved != null) fullPath = resolved.FullName;
-                }
-                catch { /* non-link, non-existent, or insufficient permission — fall back to the raw path */ }
-
-                var tempRoot = Path.GetFullPath(Path.GetTempPath());
-                if (!fullPath.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    Logger.Warn($"{request.Command}: jsonlPath outside temp directory: {fullPath}");
-                    return Error("jsonlPath must be within the system temp directory");
-                }
-
-                if (fi.Exists && fi.Length > MaxA2UIJsonlBytes)
-                {
-                    Logger.Warn($"{request.Command}: jsonlPath file too large ({fi.Length} > {MaxA2UIJsonlBytes})");
-                    return Error($"jsonlPath exceeds maximum size of {MaxA2UIJsonlBytes} bytes");
-                }
+                jsonl = ReadValidatedJsonlPath(jsonlPath, request.Command);
             }
             catch (Exception ex)
             {
-                return Error($"Invalid jsonlPath: {ex.Message}");
-            }
-
-            try
-            {
-                jsonl = File.ReadAllText(fullPath);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"{request.Command}: failed to read jsonlPath ({jsonlPath})", ex);
+                Logger.Error($"{request.Command}: failed to read jsonlPath", ex);
                 return Error($"Failed to read jsonlPath: {ex.Message}");
             }
         }
@@ -386,6 +351,122 @@ public class CanvasCapability : NodeCapabilityBase
         if (inLine) count++;
         return count;
     }
+
+    private string ReadValidatedJsonlPath(string jsonlPath, string command)
+    {
+        string fullPath;
+        string tempRoot;
+        try
+        {
+            fullPath = Path.GetFullPath(jsonlPath);
+            tempRoot = EnsureTrailingSeparator(Path.GetFullPath(Path.GetTempPath()));
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Invalid jsonlPath: {ex.Message}", ex);
+        }
+
+        if (!IsPathWithinRoot(fullPath, tempRoot))
+        {
+            Logger.Warn($"{command}: jsonlPath outside temp directory: {fullPath}");
+            throw new InvalidOperationException("jsonlPath must be within the system temp directory");
+        }
+
+        var fi = new FileInfo(fullPath);
+        if (fi.Exists && fi.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            FileSystemInfo? resolved;
+            try
+            {
+                resolved = fi.ResolveLinkTarget(returnFinalTarget: true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"{command}: jsonlPath reparse point could not be resolved: {ex.Message}");
+                throw new InvalidOperationException("jsonlPath contains an unresolvable reparse point", ex);
+            }
+
+            if (resolved == null)
+            {
+                Logger.Warn($"{command}: jsonlPath reparse point could not be resolved");
+                throw new InvalidOperationException("jsonlPath contains an unresolvable reparse point");
+            }
+
+            if (!IsPathWithinRoot(resolved.FullName, tempRoot))
+            {
+                Logger.Warn($"{command}: jsonlPath reparse point resolves outside temp directory: {resolved.FullName}");
+                throw new InvalidOperationException("jsonlPath reparse point must resolve within the system temp directory");
+            }
+        }
+
+        using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var finalPath = GetFinalPathFromHandle(stream.SafeFileHandle);
+        if (!IsPathWithinRoot(finalPath, tempRoot))
+        {
+            Logger.Warn($"{command}: jsonlPath file handle resolves outside temp directory: {finalPath}");
+            throw new InvalidOperationException("jsonlPath must resolve within the system temp directory");
+        }
+
+        if (stream.Length > MaxA2UIJsonlBytes)
+        {
+            Logger.Warn($"{command}: jsonlPath file too large ({stream.Length} > {MaxA2UIJsonlBytes})");
+            throw new InvalidOperationException($"jsonlPath exceeds maximum size of {MaxA2UIJsonlBytes} bytes");
+        }
+
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
+    private static bool IsPathWithinRoot(string path, string root)
+    {
+        var normalizedPath = Path.GetFullPath(NormalizeFinalPath(path));
+        var normalizedRoot = EnsureTrailingSeparator(Path.GetFullPath(NormalizeFinalPath(root)));
+        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string EnsureTrailingSeparator(string path)
+    {
+        if (path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar))
+            return path;
+        return path + Path.DirectorySeparatorChar;
+    }
+
+    private static string GetFinalPathFromHandle(SafeFileHandle handle)
+    {
+        if (!OperatingSystem.IsWindows())
+            return string.Empty;
+
+        var capacity = 512;
+        while (capacity <= 32768)
+        {
+            var sb = new StringBuilder(capacity);
+            var length = GetFinalPathNameByHandle(handle, sb, (uint)sb.Capacity, 0);
+            if (length == 0)
+                throw new IOException($"GetFinalPathNameByHandle failed with Win32 error {Marshal.GetLastWin32Error()}");
+            if (length < sb.Capacity)
+                return NormalizeFinalPath(sb.ToString());
+            capacity = (int)length + 1;
+        }
+        throw new IOException("GetFinalPathNameByHandle returned an unexpectedly long path");
+    }
+
+    private static string NormalizeFinalPath(string path)
+    {
+        const string extendedPrefix = @"\\?\";
+        const string extendedUncPrefix = @"\\?\UNC\";
+        if (path.StartsWith(extendedUncPrefix, StringComparison.OrdinalIgnoreCase))
+            return @"\\" + path.Substring(extendedUncPrefix.Length);
+        if (path.StartsWith(extendedPrefix, StringComparison.OrdinalIgnoreCase))
+            return path.Substring(extendedPrefix.Length);
+        return path;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern uint GetFinalPathNameByHandle(
+        SafeFileHandle hFile,
+        StringBuilder lpszFilePath,
+        uint cchFilePath,
+        uint dwFlags);
     
     private NodeInvokeResponse HandleA2UIReset(NodeInvokeRequest request)
     {

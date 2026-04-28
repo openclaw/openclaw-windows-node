@@ -215,11 +215,11 @@ public static class A2UIMessageParser
                         try { msg = ParseLine(trimmed); }
                         catch (JsonException ex)
                         {
-                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {Truncate(trimmed, 200)} — {ex.Message}");
+                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {OpenClaw.Shared.TokenSanitizer.Sanitize(Truncate(trimmed, 200))} — {ex.Message}");
                         }
                         catch (FormatException ex)
                         {
-                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {Truncate(trimmed, 200)} — {ex.Message}");
+                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {OpenClaw.Shared.TokenSanitizer.Sanitize(Truncate(trimmed, 200))} — {ex.Message}");
                         }
                         if (msg != null) yield return msg;
                     }

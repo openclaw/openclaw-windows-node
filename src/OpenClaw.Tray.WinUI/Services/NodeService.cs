@@ -38,6 +38,7 @@ public class NodeService : IDisposable
     private ScreenRecordingService? _screenRecordingService;
     private CameraCaptureService? _cameraCaptureService;
     private DateTime _lastScreenCaptureNotification = DateTime.MinValue;
+    private readonly HashSet<string> _allowedNavigationHosts = new(StringComparer.OrdinalIgnoreCase);
     
     // Capabilities
     private SystemCapability? _systemCapability;
@@ -366,6 +367,14 @@ public class NodeService : IDisposable
         _mcpStartupError = null;
     }
 
+    public string ResetMcpToken()
+    {
+        var token = McpAuthToken.Reset(McpTokenPath);
+        _mcpServer?.UpdateAuthToken(token);
+        _logger.Info("[MCP] Bearer token rotated");
+        return token;
+    }
+
     public GatewayNodeInfo? GetLocalNodeInfo()
     {
         if (_nodeClient == null)
@@ -567,15 +576,69 @@ public class NodeService : IDisposable
         if (!HttpUrlValidator.TryParse(url, out var canonical, out var validationError))
         {
             _logger.Warn($"OnCanvasNavigate rejected (validator): {validationError}");
-            return Task.FromException<string>(new InvalidOperationException($"Invalid url: {validationError}"));
+            throw new InvalidOperationException($"Invalid url: {validationError}");
         }
 
-        // Hand off to the OS default browser, then close any open in-app canvas
-        // windows: the user's attention is moving to the browser, so leaving an
-        // embedded canvas (web or A2UI) open is just clutter — and worse, an
-        // earlier canvas.present for the same URL would otherwise leave a
-        // misrendered gateway-pinned page sitting in the WebView2 host.
-        //
+        var risk = HttpUrlRiskEvaluator.Evaluate(canonical!);
+        var requiresPrompt =
+            risk.RequiresConfirmation && !_allowedNavigationHosts.Contains(risk.HostKey);
+
+        // The agent gets the same response shape and the same response time
+        // whether or not a confirmation prompt is needed. If we awaited the
+        // prompt here, response latency would leak the user's decision time
+        // (or even the existence of a prompt). Fire the prompt+launch off as
+        // a background task and return the synthesized success immediately.
+        if (requiresPrompt)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var decision = await new UrlNavigationApprovalService(_logger)
+                        .RequestAsync(risk, BuildNavigationAgentIdentity())
+                        .ConfigureAwait(false);
+
+                    if (decision.Kind == UrlNavigationApprovalDecisionKind.Deny)
+                    {
+                        _logger.Warn($"Canvas navigate denied: {risk.CanonicalOrigin} ({decision.Reason ?? "user denied"}); already reported success to agent");
+                        return;
+                    }
+
+                    if (decision.Kind == UrlNavigationApprovalDecisionKind.AllowHost)
+                    {
+                        _allowedNavigationHosts.Add(risk.HostKey);
+                        _logger.Info($"Canvas navigate host allowlisted for this session: {risk.HostKey}");
+                    }
+
+                    LaunchAndCleanup(canonical!);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Canvas navigate (deferred) failed", ex);
+                }
+            });
+        }
+        else
+        {
+            // Low-risk path runs synchronously (still very fast — Process.Start
+            // doesn't wait for the browser to render). The constant-time
+            // contract is "high-risk paths don't reveal user choice", not
+            // "high- and low-risk are indistinguishable" — the URL and risk
+            // profile are the agent's own input, so it already knows which
+            // path applies.
+            LaunchAndCleanup(canonical!);
+        }
+
+        return Task.FromResult("browser");
+    }
+
+    /// <summary>
+    /// Hand off to the OS default browser via ShellExecuteEx, then close any
+    /// open in-app canvas surfaces (web or A2UI) on the dispatcher. Failures
+    /// are logged but never thrown — callers expect a fire-and-forget shape.
+    /// </summary>
+    private void LaunchAndCleanup(string canonical)
+    {
         // Process.Start with UseShellExecute=true wraps ShellExecuteEx, which
         // routes the URL to the user's registered http/https handler — never
         // to a script host or file association — given the validator already
@@ -585,7 +648,7 @@ public class NodeService : IDisposable
         {
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = canonical!,
+                FileName = canonical,
                 UseShellExecute = true,
             };
             using var proc = System.Diagnostics.Process.Start(psi);
@@ -594,7 +657,6 @@ public class NodeService : IDisposable
         catch (Exception ex)
         {
             _logger.Error("Canvas navigate failed", ex);
-            return Task.FromException<string>(ex);
         }
 
         _dispatcherQueue.TryEnqueue(() =>
@@ -602,8 +664,15 @@ public class NodeService : IDisposable
             try { CloseWebCanvasWindow(); } catch (Exception ex) { _logger.Warn($"Close web canvas after navigate failed: {ex.Message}"); }
             try { CloseA2UICanvasWindow(); } catch (Exception ex) { _logger.Warn($"Close A2UI canvas after navigate failed: {ex.Message}"); }
         });
+    }
 
-        return Task.FromResult("browser");
+    private string BuildNavigationAgentIdentity()
+    {
+        var device = _nodeClient?.ShortDeviceId ?? _nodeClient?.FullDeviceId ?? "local MCP";
+        var gateway = _nodeClient?.GatewayUrl;
+        return string.IsNullOrWhiteSpace(gateway)
+            ? device
+            : $"{device} via {GatewayUrlHelper.SanitizeForDisplay(gateway)}";
     }
 
     private async Task<string> OnCanvasEval(string script)
@@ -1059,4 +1128,3 @@ public class NodeService : IDisposable
         }
     }
 }
-

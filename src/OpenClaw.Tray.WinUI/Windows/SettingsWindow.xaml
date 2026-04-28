@@ -237,10 +237,11 @@
                     <Grid Margin="0,4,0,0" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+                             <ColumnDefinition Width="*"/>
+                             <ColumnDefinition Width="Auto"/>
+                             <ColumnDefinition Width="Auto"/>
+                             <ColumnDefinition Width="Auto"/>
+                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" x:Uid="SettingsMcpTokenLabel" Text="Bearer token:" Style="{StaticResource CaptionTextBlockStyle}"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -252,10 +253,13 @@
                         <Button Grid.Column="2" x:Name="McpTokenRevealButton" x:Uid="SettingsMcpTokenRevealButton"
                                 AutomationProperties.AutomationId="McpTokenRevealButton"
                                 Content="Reveal" Click="OnRevealMcpToken" Padding="8,2"/>
-                        <Button Grid.Column="3" x:Name="McpTokenCopyButton" x:Uid="SettingsMcpTokenCopyButton"
-                                AutomationProperties.AutomationId="McpTokenCopyButton"
-                                Content="Copy" Click="OnCopyMcpToken" Padding="8,2" Margin="4,0,0,0"/>
-                    </Grid>
+                         <Button Grid.Column="3" x:Name="McpTokenCopyButton" x:Uid="SettingsMcpTokenCopyButton"
+                                 AutomationProperties.AutomationId="McpTokenCopyButton"
+                                 Content="Copy" Click="OnCopyMcpToken" Padding="8,2" Margin="4,0,0,0"/>
+                         <Button Grid.Column="4" x:Name="McpTokenResetButton"
+                                 AutomationProperties.AutomationId="McpTokenResetButton"
+                                 Content="Reset" Click="OnResetMcpToken" Padding="8,2" Margin="4,0,0,0"/>
+                     </Grid>
                     <TextBlock x:Uid="SettingsMcpTokenHint"
                                x:Name="McpTokenHintText"
                                Style="{StaticResource CaptionTextBlockStyle}"

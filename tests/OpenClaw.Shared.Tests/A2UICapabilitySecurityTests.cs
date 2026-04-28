@@ -81,4 +81,56 @@ public class A2UICapabilitySecurityTests
             try { File.Delete(tmpFile); } catch { }
         }
     }
+
+    [Fact]
+    public async Task A2UIPush_FileJsonl_SymlinkOutsideTemp_ReturnsError()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData))
+            return;
+
+        var outsideDir = Path.Combine(localAppData, "OpenClawTests", Guid.NewGuid().ToString("N"));
+        var outsideFile = Path.Combine(outsideDir, "payload.jsonl");
+        var linkPath = Path.Combine(Path.GetTempPath(), $"a2ui-link-{Guid.NewGuid():N}.jsonl");
+
+        try
+        {
+            Directory.CreateDirectory(outsideDir);
+            await File.WriteAllTextAsync(outsideFile, "{}");
+            try
+            {
+                File.CreateSymbolicLink(linkPath, outsideFile);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return;
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var cap = new CanvasCapability(NullLogger.Instance);
+            var req = new NodeInvokeRequest
+            {
+                Id = "sec4",
+                Command = "canvas.a2ui.push",
+                Args = Parse($"{{\"jsonlPath\":{JsonSerializer.Serialize(linkPath)}}}"),
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("temp", res.Error, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { File.Delete(linkPath); } catch { }
+            try { Directory.Delete(outsideDir, recursive: true); } catch { }
+        }
+    }
 }
