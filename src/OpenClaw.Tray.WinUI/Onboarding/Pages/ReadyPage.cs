@@ -18,58 +18,71 @@ public sealed class ReadyPage : Component<OnboardingState>
     {
         var (launchAtLogin, setLaunchAtLogin) = UseState(false);
 
-        return VStack(16,
-            TextBlock("🎉").FontSize(48)
-                .HAlign(HorizontalAlignment.Center)
-                .Margin(0, 8, 0, 4),
+        return ScrollView(
+            VStack(12,
+                TextBlock("🎉").FontSize(40)
+                    .HAlign(HorizontalAlignment.Center)
+                    .Margin(0, 4, 0, 2),
 
-            TextBlock(LocalizationHelper.GetString("Onboarding_Ready_Title"))
-                .FontSize(28)
-                .FontWeight(new global::Windows.UI.Text.FontWeight(700))
-                .HAlign(HorizontalAlignment.Center),
+                TextBlock(LocalizationHelper.GetString("Onboarding_Ready_Title"))
+                    .FontSize(22)
+                    .FontWeight(new global::Windows.UI.Text.FontWeight(700))
+                    .HAlign(HorizontalAlignment.Center),
 
-            TextBlock(LocalizationHelper.GetString("Onboarding_Ready_Subtitle"))
-                .FontSize(14)
-                .Opacity(0.7)
-                .HAlign(HorizontalAlignment.Center)
-                .TextWrapping(),
+                TextBlock(LocalizationHelper.GetString("Onboarding_Ready_Subtitle"))
+                    .FontSize(14)
+                    .Opacity(0.7)
+                    .HAlign(HorizontalAlignment.Center)
+                    .TextWrapping(),
 
-            // Mode-specific info card
-            ModeInfoCard(),
+                // Mode-specific info card
+                ModeInfoCard(),
 
-            // Feature rows
-            Border(
-                VStack(4,
-                    FeatureActionRow("📋", "Onboarding_Ready_Feature_TrayMenu",
-                        "Open menu bar panel", "Access from system tray"),
-                    FeatureActionRow("💬", "Onboarding_Ready_Feature_Channels",
-                        "Connect WhatsApp, Telegram", "Settings → Channels"),
-                    FeatureActionRow("🎤", "Onboarding_Ready_Feature_Voice",
-                        "Try Voice Wake", "Wake with your voice"),
-                    FeatureActionRow("🎨", "Onboarding_Ready_Feature_Canvas",
-                        "Use Canvas", "Visual workspace"),
-                    FeatureActionRow("⚡", "Onboarding_Ready_Feature_Skills",
-                        "Enable Skills", "Settings → Skills")
-                ).Padding(12)
+                // Feature rows — different content for Node Mode vs Operator Mode
+                Border(
+                    VStack(4,
+                        Props.Settings.EnableNodeMode ? NodeModeFeatureRows() : OperatorModeFeatureRows()
+                    ).Padding(12)
+                )
+                .CornerRadius(8)
+                .Background("#F8F8F8"),
+
+                // Launch at Login toggle
+                HStack(8,
+                    ToggleSwitch(launchAtLogin, v => setLaunchAtLogin(v)),
+                    TextBlock(LocalizationHelper.GetString("Onboarding_Ready_LaunchAtLogin"))
+                        .FontSize(13)
+                        .VAlign(VerticalAlignment.Center)
+                )
             )
-            .CornerRadius(8)
-            .Background("#F8F8F8")
-            .Margin(0, 8, 0, 0),
-
-            // Launch at Login toggle
-            HStack(8,
-                ToggleButton("", launchAtLogin, v => setLaunchAtLogin(v))
-                    .Width(40),
-                TextBlock(LocalizationHelper.GetString("Onboarding_Ready_LaunchAtLogin"))
-                    .FontSize(13)
-            ).Margin(0, 8, 0, 0)
-        )
-        .MaxWidth(460)
-        .Padding(0, 8, 0, 0);
+            .HAlign(HorizontalAlignment.Center)
+            .MaxWidth(460)
+            .Padding(0, 8, 0, 0)
+        ).HorizontalScrollMode(Microsoft.UI.Xaml.Controls.ScrollMode.Disabled);
     }
 
     private Element ModeInfoCard()
     {
+        if (Props.Settings.EnableNodeMode)
+        {
+            return Border(
+                VStack(8,
+                    TextBlock("🔌 Node Mode Active")
+                        .FontSize(14)
+                        .FontWeight(new global::Windows.UI.Text.FontWeight(600)),
+                    TextBlock("This PC will operate as a remote compute node. " +
+                        "The gateway can invoke screen capture, camera, and system " +
+                        "commands on this machine.")
+                        .FontSize(12)
+                        .Opacity(0.8)
+                        .TextWrapping()
+                ).Padding(12)
+            )
+            .CornerRadius(8)
+            .Background("#FFF3E0")
+            .Margin(0, 8, 0, 0);
+        }
+
         var message = Props.Mode switch
         {
             ConnectionMode.Later => LocalizationHelper.GetString("Onboarding_Ready_ConfigureLater"),
@@ -97,17 +110,54 @@ public sealed class ReadyPage : Component<OnboardingState>
         .Margin(0, 8, 0, 0);
     }
 
-    private static Element FeatureActionRow(string icon, string labelKey, string fallback, string subtitle)
+    private static Element FeatureActionRow(string icon, string labelKey, string fallback, string subtitleKey, string subtitleFallback)
     {
         var label = LocalizationHelper.GetString(labelKey);
         if (label == labelKey) label = fallback;
+
+        var subtitle = LocalizationHelper.GetString(subtitleKey);
+        if (subtitle == subtitleKey) subtitle = subtitleFallback;
 
         return HStack(12,
             TextBlock(icon).FontSize(18).Width(24),
             VStack(2,
                 TextBlock(label).FontSize(13).FontWeight(new global::Windows.UI.Text.FontWeight(500)),
                 TextBlock(subtitle).FontSize(11).Opacity(0.6)
-            )
-        ).Padding(6, 6, 6, 6);
+            ),
+            TextBlock("›")
+                .FontSize(16)
+                .Opacity(0.3)
+                .VAlign(VerticalAlignment.Center)
+                .HAlign(HorizontalAlignment.Right)
+                .Margin(0, 0, 4, 0)
+        ).Padding(6, 8, 6, 8);
     }
+
+    private static Element[] NodeModeFeatureRows() =>
+    [
+        FeatureActionRow("🖥️", "Onboarding_Ready_Node_ScreenCapture", "Screen Capture",
+            "Onboarding_Ready_Node_ScreenCapture_Sub", "Remote screen access"),
+        FeatureActionRow("📷", "Onboarding_Ready_Node_Camera", "Camera",
+            "Onboarding_Ready_Node_Camera_Sub", "Remote camera access"),
+        FeatureActionRow("⚙️", "Onboarding_Ready_Node_SystemCmd", "System Commands",
+            "Onboarding_Ready_Node_SystemCmd_Sub", "Remote command execution"),
+        FeatureActionRow("🎨", "Onboarding_Ready_Node_Canvas", "Canvas Rendering",
+            "Onboarding_Ready_Node_Canvas_Sub", "Visual workspace output"),
+        FeatureActionRow("🔔", "Onboarding_Ready_Node_Notify", "Notifications",
+            "Onboarding_Ready_Node_Notify_Sub", "System notifications"),
+    ];
+
+    private static Element[] OperatorModeFeatureRows() =>
+    [
+        FeatureActionRow("📋", "Onboarding_Ready_Feature_TrayMenu", "Open menu bar panel",
+            "Onboarding_Ready_Feature_TrayMenu_Subtitle", "Access from system tray"),
+        FeatureActionRow("💬", "Onboarding_Ready_Feature_Channels", "Connect WhatsApp, Telegram",
+            "Onboarding_Ready_Feature_Channels_Subtitle", "Settings → Channels"),
+        FeatureActionRow("🎤", "Onboarding_Ready_Feature_Voice", "Try Voice Wake",
+            "Onboarding_Ready_Feature_Voice_Subtitle", "Wake with your voice"),
+        FeatureActionRow("🎨", "Onboarding_Ready_Feature_Canvas", "Use Canvas",
+            "Onboarding_Ready_Feature_Canvas_Subtitle", "Visual workspace"),
+        FeatureActionRow("⚡", "Onboarding_Ready_Feature_Skills", "Enable Skills",
+            "Onboarding_Ready_Feature_Skills_Subtitle", "Settings → Skills"),
+    ];
 }

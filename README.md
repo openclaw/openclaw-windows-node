@@ -105,7 +105,7 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
 - ⏱ **Cron Jobs** - Quick access to scheduled tasks
 - 🚀 **Auto-start** - Launch with Windows
 - ⚙️ **Settings** - Full configuration dialog
-- 🎯 **First-run experience** - Welcome dialog guides new users
+- 🎯 **First-run onboarding** — 6-screen setup wizard (connection, permissions, chat, configuration)
 
 #### Quick Send scope requirement
 
@@ -164,7 +164,7 @@ These features are available in Windows but not in the Mac app:
 | Channel control | Start/stop Telegram & WhatsApp |
 | Modern flyout menu | Windows 11-style with dark/light mode |
 | Deep links | `openclaw://` URL scheme with IPC |
-| First-run welcome | Guided onboarding for new users |
+| First-run onboarding | 6-screen guided setup wizard (Welcome → Connection → Wizard → Permissions → Chat → Ready) |
 | PowerToys integration | Command Palette extension |
 
 ### 🔌 Node Mode (Agent Control)
@@ -402,10 +402,16 @@ Default gateway: `ws://localhost:18789`
 
 ### First Run
 
-On first run without a token, Molty displays a welcome dialog that:
-1. Explains what's needed to get started
-2. Links to [documentation](https://docs.molt.bot/web/dashboard) for token setup
-3. Opens Settings to configure the connection
+On first run, Molty launches a guided onboarding wizard that walks you through setup:
+
+1. **Welcome** — introduces OpenClaw and starts the setup flow
+2. **Connection** — choose Local gateway, Remote gateway, or configure later. Paste a setup code or enter gateway URL and token manually. Tests the connection with Ed25519 device authentication.
+3. **Wizard** — gateway-driven configuration steps (AI provider selection, personality setup, communication channels). Steps are defined by your gateway.
+4. **Permissions** — reviews Windows system permissions (notifications, camera, microphone, screen capture, location) and links to system settings to grant them.
+5. **Chat** — meet your agent in a live chat powered by the gateway's web UI.
+6. **Ready** — summary of available features, option to launch at startup, and a Finish button.
+
+For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md). For the full onboarding architecture, see [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md).
 
 ## License
 

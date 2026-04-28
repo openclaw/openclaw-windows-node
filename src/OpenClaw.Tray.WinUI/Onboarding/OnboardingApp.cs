@@ -23,6 +23,12 @@ public sealed class OnboardingApp : Component<OnboardingState>
         var (pageIndex, setPageIndex) = UseState(0);
         var pages = Props.GetPageOrder();
 
+        // Clamp pageIndex if page order changed (e.g., node mode toggled)
+        if (pageIndex >= pages.Length)
+        {
+            setPageIndex(pages.Length - 1);
+        }
+
         void GoNext()
         {
             if (pageIndex < pages.Length - 1)
@@ -30,6 +36,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 setPageIndex(pageIndex + 1);
                 nav.Navigate(pages[pageIndex + 1]);
                 Props.NotifyPageChanged();
+                Props.NotifyRouteChanged(pages[pageIndex + 1]);
             }
         }
 
@@ -40,6 +47,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 setPageIndex(pageIndex - 1);
                 nav.GoBack();
                 Props.NotifyPageChanged();
+                Props.NotifyRouteChanged(pages[pageIndex - 1]);
             }
         }
 
@@ -64,7 +72,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 _ => TextBlock("Unknown page"),
             }) with { Transition = NavigationTransition.SlideInOnly(
                 direction: SlideDirection.FromRight,
-                duration: TimeSpan.FromMilliseconds(200),
+                duration: TimeSpan.FromMilliseconds(400),
                 distance: 80) })
             .Height(520),
 
@@ -72,7 +80,8 @@ public sealed class OnboardingApp : Component<OnboardingState>
             HStack(16,
                 Button(Helpers.LocalizationHelper.GetString("Onboarding_Back"), GoBack)
                     .Disabled(pageIndex <= 0)
-                    .Width(100),
+                    .Width(100)
+                    .Set(b => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingBack")),
                 Component<StepIndicator, StepIndicatorProps>(
                     new StepIndicatorProps(pages.Length, pageIndex)),
                 Button(
@@ -81,6 +90,22 @@ public sealed class OnboardingApp : Component<OnboardingState>
                         : Helpers.LocalizationHelper.GetString("Onboarding_Next"),
                     isLastPage ? Props.Complete : GoNext)
                     .Width(100)
+                    .Set(b =>
+                    {
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingNext");
+                        b.Resources["ButtonBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.ColorHelper.FromArgb(255, 211, 47, 47)); // #D32F2F
+                        b.Resources["ButtonBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.ColorHelper.FromArgb(255, 198, 40, 40)); // #C62828
+                        b.Resources["ButtonBackgroundPressed"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.ColorHelper.FromArgb(255, 183, 28, 28)); // #B71C1C
+                        b.Resources["ButtonForeground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.Colors.White);
+                        b.Resources["ButtonForegroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.Colors.White);
+                        b.Resources["ButtonForegroundPressed"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.Colors.White);
+                    })
             ).HAlign(HorizontalAlignment.Center)
              .Padding(0, 12, 0, 12)
         ).Padding(20);

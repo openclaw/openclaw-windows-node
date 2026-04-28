@@ -18,11 +18,11 @@ public sealed class StepIndicator : Component<StepIndicatorProps>
         var dots = new Element[Props.TotalSteps];
         for (var i = 0; i < Props.TotalSteps; i++)
         {
-            var color = i == Props.CurrentStep ? "#0078D4" : "#C0C0C0";
+            var color = i == Props.CurrentStep ? "#0078D4" : "#999999";
             dots[i] = Border(TextBlock(""))
-                .Width(8)
-                .Height(8)
-                .CornerRadius(4)
+                .Width(10)
+                .Height(10)
+                .CornerRadius(5)
                 .Background(color);
         }
 

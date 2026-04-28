@@ -133,11 +133,7 @@ public sealed class PermissionsPage : Component<OnboardingState>
             _ => "⚪"
         };
 
-        var statusCol = TextBlock(statusIcon).FontSize(16)
-            .VAlign(VerticalAlignment.Center)
-            .HAlign(HorizontalAlignment.Left)
-            .Grid(row: 0, column: 0);
-
+        // Left: icon + name/status (fills available width)
         var nameCol = HStack(8,
             TextBlock(perm.Icon).FontSize(18).Width(28),
             VStack(2,
@@ -147,19 +143,25 @@ public sealed class PermissionsPage : Component<OnboardingState>
                     .Opacity(0.6)
                     .TextWrapping()
             ).MinWidth(120).MaxWidth(180)
-        ).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 1);
+        ).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 0);
 
-        // Always show "Open Settings" for permissions that have a settings URI
-        Element? settingsCol = !string.IsNullOrEmpty(perm.SettingsUri)
-            ? Button(LocalizationHelper.GetString("Onboarding_Permissions_OpenSettings"), onOpenSettings)
+        // Right: emoji + button grouped as one unit so emoji always aligns
+        // regardless of whether a button is present.
+        // MinWidth ensures consistent column width even without a button.
+        var rightSide = HStack(4,
+            TextBlock(statusIcon).FontSize(16)
                 .VAlign(VerticalAlignment.Center)
-                .Grid(row: 0, column: 2)
-            : null;
+                .Width(30)
+                .HAlign(HorizontalAlignment.Center),
+            !string.IsNullOrEmpty(perm.SettingsUri)
+                ? Button(LocalizationHelper.GetString("Onboarding_Permissions_OpenSettings"), onOpenSettings)
+                    .VAlign(VerticalAlignment.Center)
+                : (Element)TextBlock("")
+        ).VAlign(VerticalAlignment.Center).MinWidth(150).Grid(row: 0, column: 1);
 
-        return Grid(["Auto", "1*", "Auto"], ["Auto"],
-            statusCol,
+        return Grid(["1*", "Auto"], ["Auto"],
             nameCol,
-            settingsCol
+            rightSide
         ).Padding(6, 8, 6, 8);
     }
 }

@@ -331,35 +331,7 @@ public sealed partial class WebChatWindow : WindowEx
 
     private bool TryBuildChatUrl(out string url, out string errorMessage)
     {
-        url = string.Empty;
-        errorMessage = string.Empty;
-
-        if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedGatewayUrl) ||
-            !Uri.TryCreate(normalizedGatewayUrl, UriKind.Absolute, out var gatewayUri))
-        {
-            errorMessage = string.Format(LocalizationHelper.GetString("WebChat_InvalidUrl"), _gatewayUrl);
-            return false;
-        }
-
-        var webScheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
-            ? "https"
-            : "http";
-
-        if (webScheme == "http" && !IsLocalHost(gatewayUri))
-        {
-            errorMessage = LocalizationHelper.GetString("WebChat_SecureContextRequired");
-            return false;
-        }
-
-        var builder = new UriBuilder(gatewayUri)
-        {
-            Scheme = webScheme,
-            Port = gatewayUri.Port
-        };
-
-        var baseUrl = builder.Uri.GetLeftPart(UriPartial.Authority);
-        url = $"{baseUrl}?token={Uri.EscapeDataString(_token)}";
-        return true;
+        return GatewayChatHelper.TryBuildChatUrl(_gatewayUrl, _token, out url, out errorMessage);
     }
 
     private void ShowErrorMessage(string message)

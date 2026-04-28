@@ -30,6 +30,12 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\OnboardingState.cs" Link="Imported\OnboardingState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Widgets\WizardStepModels.cs" Link="Imported\WizardStepModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Imported\SettingsManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalGatewayApprover.cs" Link="Imported\LocalGatewayApprover.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\SetupCodeDecoder.cs" Link="Imported\SetupCodeDecoder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\GatewayHealthCheck.cs" Link="Imported\GatewayHealthCheck.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\InputValidator.cs" Link="Imported\InputValidator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardStepParser.cs" Link="Imported\WizardStepParser.cs" />
   </ItemGroup>
 
 </Project>
