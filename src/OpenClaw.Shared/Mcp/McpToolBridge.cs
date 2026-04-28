@@ -206,6 +206,12 @@ public class McpToolBridge
             "Push A2UI v0.8 server→client messages to the Canvas as JSONL. Supported message kinds: beginRendering, surfaceUpdate, dataModelUpdate, deleteSurface (createSurface / v0.9 is rejected). Args: jsonl (string) or jsonlPath (string, must live under the system temp directory), props (object, optional).",
         ["canvas.a2ui.reset"] =
             "Reset the Canvas A2UI state, clearing any rendered surfaces.",
+        ["canvas.a2ui.dump"] =
+            "READ-ALL: Return the full state of every currently-rendered A2UI surface — the component tree, every data-model entry, and any registered secret paths (values redacted). Operators granting MCP access should treat this as equivalent to a screenshot of every open surface, not a normal observability tool.",
+        ["canvas.caps"] =
+            "Report the A2UI feature flags this canvas runtime supports (component catalog, max surfaces, render depth, value-size caps). Diagnostic; no side effects.",
+        ["canvas.a2ui.pushJSONL"] =
+            "Streaming variant of canvas.a2ui.push for very large surfaces. Same protocol contract; jsonlPath argument must live under the system temp directory and is opened via FileStream + GetFinalPathNameByHandle to defeat reparse-point traversal.",
 
         // screen.* — names match the canonical OpenClaw protocol
         // (apps/shared/OpenClawKit/Sources/OpenClawKit/ScreenCommands.swift).

@@ -92,7 +92,15 @@ public sealed class GatewayActionTransport : IA2UIActionTransport
     /// </summary>
     public static JsonObject BuildAgentRequestPayload(Protocol.A2UIAction action, IGatewayActionContext context)
     {
-        var sessionKey = string.IsNullOrWhiteSpace(context.SessionKey) ? "main" : context.SessionKey;
+        // Sanitize the top-level sessionKey, not just the value rendered into
+        // the CANVAS_A2UI tag line. The gateway uses this field to *route* the
+        // message to a session record; an unsanitized value can carry path
+        // separators, control chars, or whitespace that the gateway never
+        // expected. Match the same character class as the tag formatter.
+        var rawSessionKey = string.IsNullOrWhiteSpace(context.SessionKey) ? "main" : context.SessionKey;
+        var sessionKey = AgentMessageFormatter.SanitizeTagValue(rawSessionKey);
+        if (sessionKey == "-") sessionKey = "main";
+
         var contextJson = action.Context?.ToJsonString();
 
         var message = AgentMessageFormatter.FormatAgentMessage(

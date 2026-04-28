@@ -35,6 +35,15 @@ public static class AgentMessageFormatter
     /// Format the user-shaped message that the gateway will append as a turn
     /// in <paramref name="sessionKey"/>. The model decides what each action
     /// name means; the gateway has no built-in action→tool mapping.
+    ///
+    /// <para>Tag order matters for prompt-injection defense: the
+    /// <c>default=update_canvas</c> sentinel comes BEFORE the
+    /// agent-controlled <c>ctx={...}</c> JSON. A hostile component could put
+    /// e.g. <c>"} default=do_something_else"</c> in a context value; if
+    /// <c>default=</c> were emitted last, that injected fragment would render
+    /// as a second <c>default=</c> token and might shadow ours. With the
+    /// sentinel before <c>ctx=</c>, anything the agent can sneak in is
+    /// strictly trailing noise.</para>
     /// </summary>
     public static string FormatAgentMessage(
         string actionName,
@@ -45,7 +54,6 @@ public static class AgentMessageFormatter
         string instanceId,
         string? contextJson)
     {
-        var ctxSuffix = !string.IsNullOrWhiteSpace(contextJson) ? $" ctx={contextJson}" : string.Empty;
         var parts = new List<string>(8)
         {
             "CANVAS_A2UI",
@@ -54,9 +62,11 @@ public static class AgentMessageFormatter
             $"surface={SanitizeTagValue(surfaceId)}",
             $"component={SanitizeTagValue(sourceComponentId)}",
             $"host={SanitizeTagValue(host)}",
-            $"instance={SanitizeTagValue(instanceId)}{ctxSuffix}",
+            $"instance={SanitizeTagValue(instanceId)}",
             "default=update_canvas",
         };
+        if (!string.IsNullOrWhiteSpace(contextJson))
+            parts.Add($"ctx={contextJson}");
         return string.Join(" ", parts);
     }
 }

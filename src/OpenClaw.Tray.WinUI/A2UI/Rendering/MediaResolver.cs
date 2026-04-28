@@ -22,11 +22,12 @@ namespace OpenClawTray.A2UI.Rendering;
 /// Allowlist is mutable at runtime so a future <c>createSurface.theme</c> /
 /// manifest can extend it without restarting the process.
 /// </summary>
-public sealed class MediaResolver
+public sealed class MediaResolver : IDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly HashSet<string> _hostAllowlist = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient _http;
+    private bool _disposed;
     private static readonly SemaphoreSlim s_svgDecodeSemaphore = new(3, 3);
     private const long DataUrlMaxBytes = 2L * 1024 * 1024;
     /// <summary>Hard cap on remote image bytes. Sized to dwarf realistic UI imagery while still preventing OOM from a hostile/compromised allowlisted host.</summary>
@@ -59,6 +60,11 @@ public sealed class MediaResolver
     {
         return new SocketsHttpHandler
         {
+            // The ConnectCallback validates IP addresses, but auto-redirect
+            // would let an allowlisted host respond with a 30x to a hostname
+            // we never validated against the allowlist. Disable redirects
+            // entirely — a broken image is preferable to an SSRF window.
+            AllowAutoRedirect = false,
             // Disable connection pooling so a host's resolution can't be cached
             // across requests in a way that bypasses revalidation.
             PooledConnectionLifetime = TimeSpan.FromMinutes(2),
@@ -93,6 +99,17 @@ public sealed class MediaResolver
                 }
             },
         };
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        // disposeHandler:true on the production path means HttpClient.Dispose
+        // also tears down the SocketsHttpHandler and its connection pool.
+        // The test seam path (handler:null overload above) uses
+        // disposeHandler:false, so the test owns the handler lifecycle.
+        try { _http.Dispose(); } catch (Exception ex) { _logger.Debug($"[A2UI] MediaResolver dispose: {ex.Message}"); }
     }
 
     public void AllowHost(string host)
@@ -468,6 +485,12 @@ public sealed class MediaResolver
         return -1;
     }
 
-    private static string Truncate(string s) =>
-        s.Length <= 60 ? s : s.Substring(0, 60) + "...";
+    // Truncation alone leaks query/fragment for any URL shorter than 60
+    // chars. Sanitize first (drop query+fragment, keep first path segment),
+    // then bound the length so the format strings stay tidy.
+    private static string Truncate(string s)
+    {
+        var sanitized = UrlLogSanitizer.Sanitize(s);
+        return sanitized.Length <= 60 ? sanitized : sanitized.Substring(0, 60) + "...";
+    }
 }

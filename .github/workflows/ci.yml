@@ -39,6 +39,13 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
+    # dotnet-coverage replaces coverlet because the integration tests spawn the
+    # tray exe out-of-process; coverlet only instruments the in-proc test
+    # assembly. Installing once at the job level lets every test step wrap its
+    # `dotnet test` invocation in `dotnet-coverage collect`.
+    - name: Install dotnet-coverage
+      run: dotnet tool install --global dotnet-coverage
+
     - name: Build Shared Library
       run: dotnet build src/OpenClaw.Shared -c Debug --no-restore
 
@@ -56,54 +63,63 @@ jobs:
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
-        dotnet test tests/OpenClaw.Shared.Tests
+        dotnet-coverage collect
+        --output TestResults\Shared\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Shared.Tests
         --no-build
         -c Debug
         --verbosity normal
-        --collect:"XPlat Code Coverage"
         --results-directory TestResults\Shared
-        --logger "trx;LogFileName=OpenClaw.Shared.Tests.trx"
+        --logger trx;LogFileName=OpenClaw.Shared.Tests.trx"
 
     - name: Run Tray Tests
       run: >
-        dotnet test tests/OpenClaw.Tray.Tests
+        dotnet-coverage collect
+        --output TestResults\Tray\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Tray.Tests
         --no-build
         -c Debug
         -r win-x64
         --verbosity normal
-        --collect:"XPlat Code Coverage"
         --results-directory TestResults\Tray
-        --logger "trx;LogFileName=OpenClaw.Tray.Tests.trx"
+        --logger trx;LogFileName=OpenClaw.Tray.Tests.trx"
 
     # Tray integration tests gate on OPENCLAW_RUN_INTEGRATION; set it so the
-    # MCP-server / capability tests actually run. M3 (tool-name drift) and
-    # similar would have been caught here if these had ever been wired.
+    # MCP-server / capability tests actually run. dotnet-coverage with no
+    # filter captures coverage for both the test host AND the spawned tray
+    # exe (coverlet could not — see tests/Directory.Build.props comment).
     - name: Run Tray Integration Tests
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
-        dotnet test tests/OpenClaw.Tray.IntegrationTests
+        dotnet-coverage collect
+        --output TestResults\TrayIntegration\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Tray.IntegrationTests
         --no-build
         -c Debug
         -r win-x64
         --verbosity normal
-        --collect:"XPlat Code Coverage"
         --results-directory TestResults\TrayIntegration
-        --logger "trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
+        --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree; on the GitHub windows-latest runner this
     # is a Window Station with WindowsAppSDK available, which is enough for
     # WinUI 3 UI tests. Failures here block PRs.
     - name: Run Tray UI Tests
       run: >
-        dotnet test tests/OpenClaw.Tray.UITests
+        dotnet-coverage collect
+        --output TestResults\TrayUI\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Tray.UITests
         --no-build
         -c Debug
         -r win-x64
         --verbosity normal
-        --collect:"XPlat Code Coverage"
         --results-directory TestResults\TrayUI
-        --logger "trx;LogFileName=OpenClaw.Tray.UITests.trx"
+        --logger trx;LogFileName=OpenClaw.Tray.UITests.trx"
 
     - name: Upload Test Results
       if: always()

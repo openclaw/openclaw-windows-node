@@ -214,7 +214,7 @@ public sealed class DateTimeInputRenderer : IComponentRenderer
 
         if (enableDate)
         {
-            datePicker = new CalendarDatePicker { PlaceholderText = "Select date" };
+            datePicker = new CalendarDatePicker { PlaceholderText = OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_DateTimeSelectDate") };
             sp.Children.Add(datePicker);
         }
         if (enableTime)
@@ -289,7 +289,7 @@ public sealed class MultipleChoiceRenderer : IComponentRenderer
 
         if (single)
         {
-            var combo = new ComboBox { PlaceholderText = "Select..." };
+            var combo = new ComboBox { PlaceholderText = OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_MultipleChoiceSelect") };
             foreach (var (label, value) in options)
                 combo.Items.Add(new ComboBoxItem { Content = label, Tag = value });
 

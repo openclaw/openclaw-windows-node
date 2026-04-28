@@ -639,6 +639,18 @@
   <data name="A2UI_UnsupportedComponent" xml:space="preserve">
     <value>Composant non pris en charge : {0}</value>
   </data>
+  <data name="A2UI_TabFallback" xml:space="preserve">
+    <value>Onglet</value>
+  </data>
+  <data name="A2UI_ModalClose" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+  <data name="A2UI_DateTimeSelectDate" xml:space="preserve">
+    <value>Sélectionner une date</value>
+  </data>
+  <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
+    <value>Sélectionner...</value>
+  </data>
 
   <!-- ==================== WebChatWindow.xaml ==================== -->
 
@@ -975,6 +987,57 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Échec du démarrage : </value>
   </data>
 
+  <!-- ==================== MCP token (SettingsWindow) ==================== -->
+
+  <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
+    <value>Jeton porteur :</value>
+  </data>
+  <data name="SettingsMcpTokenRevealButton.Content" xml:space="preserve">
+    <value>Afficher</value>
+  </data>
+  <data name="SettingsMcpTokenCopyButton.Content" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="SettingsMcpTokenResetButton.Content" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="SettingsMcpToken_RevealButton" xml:space="preserve">
+    <value>Afficher</value>
+  </data>
+  <data name="SettingsMcpToken_HideButton" xml:space="preserve">
+    <value>Masquer</value>
+  </data>
+  <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
+    <value>(non généré — activez le serveur MCP et cliquez sur Enregistrer)</value>
+  </data>
+  <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
+    <value>Stocké à {0}</value>
+  </data>
+  <data name="SettingsMcpToken_HintFormat" xml:space="preserve">
+    <value>Envoyer comme 'Authorization: Bearer &lt;token&gt;' à chaque requête. Stocké à {0}.</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastTitle" xml:space="preserve">
+    <value>Jeton MCP réinitialisé</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastBody" xml:space="preserve">
+    <value>Les anciens jetons porteur MCP sont désormais invalides.</value>
+  </data>
+  <data name="SettingsMcpToken_ResetFailedFormat" xml:space="preserve">
+    <value>Échec de la réinitialisation du jeton : {0}</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Title" xml:space="preserve">
+    <value>Réinitialiser le jeton porteur MCP ?</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Body" xml:space="preserve">
+    <value>Les clients MCP locaux existants (Claude Desktop, Cursor, Claude Code) cesseront de fonctionner jusqu'à ce que vous les reconfiguriez avec le nouveau jeton.</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_PrimaryButton" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">
@@ -982,5 +1045,35 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>Téléchargement en cours...</value>
+  </data>
+
+  <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
+
+  <data name="UrlApproval_Caption" xml:space="preserve">
+    <value>OpenClaw — Approuver l'URL</value>
+  </data>
+  <data name="UrlApproval_Body" xml:space="preserve">
+    <value>Un agent souhaite ouvrir une destination à haut risque dans votre navigateur.</value>
+  </data>
+  <data name="UrlApproval_NoReasons" xml:space="preserve">
+    <value>(aucune raison spécifique capturée)</value>
+  </data>
+  <data name="UrlApproval_ZoneFormat" xml:space="preserve">
+    <value>Zone : {0}</value>
+  </data>
+  <data name="UrlApproval_AgentFormat" xml:space="preserve">
+    <value>Agent : {0}</value>
+  </data>
+  <data name="UrlApproval_HostFormat" xml:space="preserve">
+    <value>Hôte : {0}</value>
+  </data>
+  <data name="UrlApproval_ReasonsHeader" xml:space="preserve">
+    <value>Raisons :</value>
+  </data>
+  <data name="UrlApproval_YesHint" xml:space="preserve">
+    <value>Oui — ouvrir cette URL.</value>
+  </data>
+  <data name="UrlApproval_NoHint" xml:space="preserve">
+    <value>Non — la bloquer.</value>
   </data>
 </root>

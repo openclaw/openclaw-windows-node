@@ -636,6 +636,18 @@
   <data name="A2UI_CanvasTitle" xml:space="preserve">
     <value>畫布</value>
   </data>
+  <data name="A2UI_TabFallback" xml:space="preserve">
+    <value>索引標籤</value>
+  </data>
+  <data name="A2UI_ModalClose" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="A2UI_DateTimeSelectDate" xml:space="preserve">
+    <value>選擇日期</value>
+  </data>
+  <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
+    <value>選擇...</value>
+  </data>
   <data name="A2UI_UnsupportedComponent" xml:space="preserve">
     <value>不支援的元件: {0}</value>
   </data>
@@ -975,6 +987,57 @@
     <value>啟動失敗：</value>
   </data>
 
+  <!-- ==================== MCP token (SettingsWindow) ==================== -->
+
+  <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
+    <value>Bearer 權杖：</value>
+  </data>
+  <data name="SettingsMcpTokenRevealButton.Content" xml:space="preserve">
+    <value>顯示</value>
+  </data>
+  <data name="SettingsMcpTokenCopyButton.Content" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="SettingsMcpTokenResetButton.Content" xml:space="preserve">
+    <value>重設</value>
+  </data>
+  <data name="SettingsMcpToken_RevealButton" xml:space="preserve">
+    <value>顯示</value>
+  </data>
+  <data name="SettingsMcpToken_HideButton" xml:space="preserve">
+    <value>隱藏</value>
+  </data>
+  <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
+    <value>(尚未產生 — 啟用 MCP 伺服器並按儲存)</value>
+  </data>
+  <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
+    <value>儲存於 {0}</value>
+  </data>
+  <data name="SettingsMcpToken_HintFormat" xml:space="preserve">
+    <value>每次請求皆以 'Authorization: Bearer &lt;token&gt;' 傳送。儲存於 {0}。</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastTitle" xml:space="preserve">
+    <value>MCP 權杖已重設</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastBody" xml:space="preserve">
+    <value>舊的 MCP Bearer 權杖現已失效。</value>
+  </data>
+  <data name="SettingsMcpToken_ResetFailedFormat" xml:space="preserve">
+    <value>重設權杖失敗：{0}</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Title" xml:space="preserve">
+    <value>重設 MCP Bearer 權杖？</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Body" xml:space="preserve">
+    <value>現有的本機 MCP 用戶端（Claude Desktop、Cursor、Claude Code）將停止運作，直到您使用新權杖重新設定它們。</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_PrimaryButton" xml:space="preserve">
+    <value>重設</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
+    <value>取消</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">
@@ -982,6 +1045,36 @@
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>正在下載更新...</value>
+  </data>
+
+  <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
+
+  <data name="UrlApproval_Caption" xml:space="preserve">
+    <value>OpenClaw — 核准 URL</value>
+  </data>
+  <data name="UrlApproval_Body" xml:space="preserve">
+    <value>代理想在您的瀏覽器中開啟高風險目標。</value>
+  </data>
+  <data name="UrlApproval_NoReasons" xml:space="preserve">
+    <value>(未記錄特定原因)</value>
+  </data>
+  <data name="UrlApproval_ZoneFormat" xml:space="preserve">
+    <value>區域：{0}</value>
+  </data>
+  <data name="UrlApproval_AgentFormat" xml:space="preserve">
+    <value>代理：{0}</value>
+  </data>
+  <data name="UrlApproval_HostFormat" xml:space="preserve">
+    <value>主機：{0}</value>
+  </data>
+  <data name="UrlApproval_ReasonsHeader" xml:space="preserve">
+    <value>原因：</value>
+  </data>
+  <data name="UrlApproval_YesHint" xml:space="preserve">
+    <value>是 — 開啟此 URL。</value>
+  </data>
+  <data name="UrlApproval_NoHint" xml:space="preserve">
+    <value>否 — 封鎖此項。</value>
   </data>
 
 </root>

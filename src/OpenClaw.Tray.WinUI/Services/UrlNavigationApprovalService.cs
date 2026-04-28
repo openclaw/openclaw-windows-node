@@ -1,9 +1,11 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Services;
 
@@ -11,14 +13,16 @@ internal enum UrlNavigationApprovalDecisionKind
 {
     Deny,
     AllowOnce,
-    AllowHost,
+    // AllowHost was reserved for a "remember this host for the session"
+    // button, but the Win32 MessageBoxW prompt only exposes Yes/No. Removed
+    // until the prompt is reworked into a Fluent ContentDialog with a third
+    // button (worklist T2-43).
 }
 
 internal sealed record UrlNavigationApprovalDecision(UrlNavigationApprovalDecisionKind Kind, string? Reason = null)
 {
     public static UrlNavigationApprovalDecision Deny(string? reason = null) => new(UrlNavigationApprovalDecisionKind.Deny, reason);
     public static UrlNavigationApprovalDecision AllowOnce() => new(UrlNavigationApprovalDecisionKind.AllowOnce);
-    public static UrlNavigationApprovalDecision AllowHost() => new(UrlNavigationApprovalDecisionKind.AllowHost);
 }
 
 /// <summary>
@@ -49,23 +53,33 @@ internal sealed class UrlNavigationApprovalService
         if (cancellationToken.IsCancellationRequested)
             return Task.FromResult(UrlNavigationApprovalDecision.Deny("Navigation prompt was cancelled"));
 
-        var caption = "OpenClaw — Approve URL";
+        // All user-facing strings come from Resources.resw so we ship the prompt
+        // in every supported locale. Reasons themselves originate in
+        // HttpUrlRiskEvaluator and are still English; localizing that catalog is
+        // a separate item (see worklist).
+        var caption = LocalizationHelper.GetString("UrlApproval_Caption");
         var reasonsBlock = risk.Reasons.Count == 0
-            ? "(no specific reasons captured)"
+            ? LocalizationHelper.GetString("UrlApproval_NoReasons")
             : string.Join(Environment.NewLine, risk.Reasons.Select(r => "• " + r));
+        var zoneLine = string.Format(CultureInfo.CurrentCulture,
+            LocalizationHelper.GetString("UrlApproval_ZoneFormat"), risk.Zone);
+        var agentLine = string.Format(CultureInfo.CurrentCulture,
+            LocalizationHelper.GetString("UrlApproval_AgentFormat"), agentIdentity);
+        var hostLine = string.Format(CultureInfo.CurrentCulture,
+            LocalizationHelper.GetString("UrlApproval_HostFormat"), risk.HostKey);
         var text =
-            "An agent wants to open a high-risk destination in your browser." + Environment.NewLine +
+            LocalizationHelper.GetString("UrlApproval_Body") + Environment.NewLine +
             Environment.NewLine +
             risk.CanonicalOrigin + Environment.NewLine +
             Environment.NewLine +
-            $"Zone: {risk.Zone}" + Environment.NewLine +
-            $"Agent: {agentIdentity}" + Environment.NewLine +
-            $"Host: {risk.HostKey}" + Environment.NewLine +
+            zoneLine + Environment.NewLine +
+            agentLine + Environment.NewLine +
+            hostLine + Environment.NewLine +
             Environment.NewLine +
-            "Reasons:" + Environment.NewLine + reasonsBlock + Environment.NewLine +
+            LocalizationHelper.GetString("UrlApproval_ReasonsHeader") + Environment.NewLine + reasonsBlock + Environment.NewLine +
             Environment.NewLine +
-            "Yes — open this URL." + Environment.NewLine +
-            "No — block it.";
+            LocalizationHelper.GetString("UrlApproval_YesHint") + Environment.NewLine +
+            LocalizationHelper.GetString("UrlApproval_NoHint");
 
         // Run MessageBoxW on a worker thread so the calling MCP handler's
         // continuation doesn't pin while the user thinks. MessageBoxW pumps its
@@ -79,7 +93,7 @@ internal sealed class UrlNavigationApprovalService
                 var decision = result == IDYES
                     ? UrlNavigationApprovalDecision.AllowOnce()
                     : UrlNavigationApprovalDecision.Deny();
-                _logger.Info($"[NavigationApproval] Prompt decision: {decision.Kind} for {risk.CanonicalOrigin}");
+                _logger.Info($"[NavigationApproval] Prompt decision: {decision.Kind} for {UrlLogSanitizer.Sanitize(risk.CanonicalOrigin)}");
                 return decision;
             }
             catch (Exception ex)

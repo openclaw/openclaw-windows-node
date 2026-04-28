@@ -151,7 +151,12 @@ public class SettingsManager
         try
         {
             Directory.CreateDirectory(SettingsDirectory);
-            
+            // Lock the tray data dir to current user + SYSTEM + Administrators —
+            // it co-locates the MCP bearer token, settings.json (which embeds
+            // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
+            // running as the same user could otherwise read these freely.
+            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(SettingsDirectory);
+
             var data = new SettingsData
             {
                 GatewayUrl = GatewayUrl,

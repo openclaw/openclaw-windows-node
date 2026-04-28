@@ -187,11 +187,15 @@ public class CanvasCapability : NodeCapabilityBase
         // URIs. The subscriber re-validates as defense-in-depth.
         if (!HttpUrlValidator.TryParse(rawUrl, out var canonical, out var validationError))
         {
-            Logger.Warn($"canvas.navigate rejected: {validationError} (raw: {rawUrl})");
+            // Avoid leaking the raw URL — agents sometimes hand us tokenized
+            // OAuth/reset URLs that fail validation, and our log files have
+            // an effectively-unbounded retention policy. Sanitize to scheme +
+            // host + first path segment.
+            Logger.Warn($"canvas.navigate rejected: {validationError} (sanitized: {UrlLogSanitizer.Sanitize(rawUrl)})");
             return Error($"Invalid url: {validationError}");
         }
 
-        Logger.Info($"canvas.navigate: {canonical}");
+        Logger.Info($"canvas.navigate: {UrlLogSanitizer.Sanitize(canonical)}");
 
         var handler = _navigateRequested;
         if (handler == null)

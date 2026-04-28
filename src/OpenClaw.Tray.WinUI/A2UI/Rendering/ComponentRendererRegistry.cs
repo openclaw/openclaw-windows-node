@@ -13,9 +13,9 @@ namespace OpenClawTray.A2UI.Rendering;
 public sealed class ComponentRendererRegistry
 {
     private readonly Dictionary<string, IComponentRenderer> _byName;
-    private readonly UnknownRenderer _unknown;
+    private readonly IComponentRenderer _unknown;
 
-    public ComponentRendererRegistry(IEnumerable<IComponentRenderer> renderers, UnknownRenderer unknown)
+    internal ComponentRendererRegistry(IEnumerable<IComponentRenderer> renderers, UnknownRenderer unknown)
     {
         _byName = new(StringComparer.OrdinalIgnoreCase);
         foreach (var r in renderers) _byName[r.ComponentName] = r;

@@ -16,6 +16,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\GatewayActionTransport.cs" Link="A2UI\Actions\GatewayActionTransport.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\IActionSink.cs" Link="A2UI\Actions\IActionSink.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Protocol\A2UIProtocol.cs" Link="A2UI\Protocol\A2UIProtocol.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Rendering\SecretRedactor.cs" Link="A2UI\Rendering\SecretRedactor.cs" />
   </ItemGroup>
 
 </Project>

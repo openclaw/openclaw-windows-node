@@ -11,7 +11,7 @@ namespace OpenClawTray.A2UI.Rendering.Renderers;
 /// the offending name + a warning glyph so operators can see catalog drift.
 /// Also used for renderer-thrown exceptions (registered under "__error__").
 /// </summary>
-public sealed class UnknownRenderer : IComponentRenderer
+internal sealed class UnknownRenderer : IComponentRenderer
 {
     public string ComponentName => "<unknown>";
 

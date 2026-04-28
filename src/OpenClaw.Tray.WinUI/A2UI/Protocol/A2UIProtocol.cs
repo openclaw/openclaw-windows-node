@@ -293,6 +293,12 @@ public static class A2UIMessageParser
             return new DeleteSurfaceMessage { SurfaceId = RequireString(ds, "surfaceId") };
         }
 
+        // Empty root object: nothing to dispatch on. Return null so the
+        // caller's per-line error path logs a malformed-input warning instead
+        // of returning UnknownEnvelopeMessage{ Kind="" }, which would
+        // present as a normal-but-unsupported envelope and confuse triage.
+        if (root.Count == 0) return null;
+
         var kind = string.Empty;
         foreach (var kv in root) { kind = kv.Key; break; }
         return new UnknownEnvelopeMessage { Kind = kind, Body = root };
@@ -310,7 +316,13 @@ public static class A2UIMessageParser
         foreach (var kv in wrapper)
         {
             name = kv.Key;
-            props = kv.Value as JsonObject ?? new JsonObject();
+            // Reject malformed payloads where the wrapper-key value is NOT a
+            // JsonObject. Accepting an empty JsonObject masks gateway/model
+            // bugs (e.g. shipping a string where a properties object was
+            // expected) and renders an empty-but-named component, which is
+            // indistinguishable from a legitimate component with no props.
+            if (kv.Value is JsonObject o) props = o;
+            else return null;
             break;
         }
         if (name == null) return null;

@@ -24,7 +24,7 @@ public interface IActionSink
 /// true wins. If none are available, actions go to an in-memory fallback
 /// queue that drains on the next available transport.
 /// </summary>
-public sealed class ActionDispatcher : IActionSink
+public sealed class ActionDispatcher : IActionSink, IDisposable
 {
     /// <summary>Cap for the debounce dictionary. Sweeps oldest entries past <see cref="DebounceWindow"/>.</summary>
     internal const int MaxDebounceEntries = 256;
@@ -138,6 +138,19 @@ public sealed class ActionDispatcher : IActionSink
             }
         }
         return false;
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        // SemaphoreSlim wraps a kernel event handle; surface rebuilds drop the
+        // dispatcher reference, so without explicit Dispose the handle survives
+        // until GC. Disposable transports are the responsibility of whoever
+        // constructed them.
+        try { _sendGate.Dispose(); } catch { /* ignore */ }
     }
 }
 

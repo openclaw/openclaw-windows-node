@@ -17,13 +17,28 @@ internal static class SecretRedactor
     /// Path-segment substring denylist. Matches when a single JSON Pointer
     /// segment contains any of these (case-insensitive). Use substring rather
     /// than prefix so <c>/auth/sessionToken</c> and <c>/loginPassword</c> are
-    /// caught alongside the obvious <c>/password</c>.
+    /// caught alongside the obvious <c>/password</c>. False positives (e.g.
+    /// "private" matching "/privateBeta") are preferred to false negatives:
+    /// hiding a non-secret leaks nothing, leaking a secret is the failure mode.
     /// </summary>
     private static readonly string[] s_denylist =
     {
         "password",
         "secret",
         "token",
+        "apikey",
+        "bearer",
+        "authorization",
+        "pin",
+        "otp",
+        "mfa",
+        "credential",
+        "session",
+        "cookie",
+        "auth",
+        "refresh",
+        "private",
+        "access",
     };
 
     /// <summary>

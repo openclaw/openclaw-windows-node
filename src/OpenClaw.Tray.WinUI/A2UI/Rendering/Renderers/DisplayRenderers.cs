@@ -7,6 +7,23 @@ using OpenClawTray.A2UI.Protocol;
 
 namespace OpenClawTray.A2UI.Rendering.Renderers;
 
+/// <summary>
+/// Tiny IDisposable shim so renderers can stash arbitrary cleanup actions in
+/// the surface's subscription dictionary. The host disposes registered
+/// subscriptions on rebuild, which is exactly when we want to cancel async
+/// work the renderer kicked off (e.g. timer-bound CancellationTokenSources).
+/// </summary>
+internal sealed class RendererCleanup : IDisposable
+{
+    private Action? _onDispose;
+    public RendererCleanup(Action onDispose) => _onDispose = onDispose;
+    public void Dispose()
+    {
+        var action = System.Threading.Interlocked.Exchange(ref _onDispose, null);
+        try { action?.Invoke(); } catch { /* cleanup must never throw */ }
+    }
+}
+
 public sealed class TextRenderer : IComponentRenderer
 {
     public string ComponentName => "Text";
@@ -73,7 +90,13 @@ public sealed class ImageRenderer : IComponentRenderer
             if (string.IsNullOrEmpty(url))
             {
                 System.Threading.Interlocked.Increment(ref generation[0]);
-                loadCts?.Cancel();
+                var prev = loadCts;
+                loadCts = null;
+                if (prev != null)
+                {
+                    try { prev.Cancel(); } catch { }
+                    prev.Dispose();
+                }
                 image.Source = null;
                 return;
             }
@@ -83,12 +106,30 @@ public sealed class ImageRenderer : IComponentRenderer
                 return;
             }
             int token = System.Threading.Interlocked.Increment(ref generation[0]);
-            loadCts?.Cancel();
+            // Cancel + dispose the previous timer-bound CTS. CancellationTokenSource
+            // wraps a kernel timer when constructed with a TimeSpan, so leaking
+            // these on a chatty url path holds handles until GC.
+            var prevCts = loadCts;
             loadCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
+            if (prevCts != null)
+            {
+                try { prevCts.Cancel(); } catch { }
+                prevCts.Dispose();
+            }
             _ = LoadAsync(image, url, generation, token, loadCts.Token, ctx.Logger);
         }
         Update();
         ctx.WatchValue(c.Id, "url", urlVal, Update);
+        // Cancel + dispose the live CTS on surface rebuild so an in-flight load
+        // doesn't continue running after the visual tree has moved on.
+        ctx.RegisterSubscription(c.Id, "imageLoadCts", new RendererCleanup(() =>
+        {
+            var cts = loadCts;
+            loadCts = null;
+            if (cts == null) return;
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
+        }));
         // A2UI carries alt text in `description` (preferred) or `label` for images.
         AutomationHelpers.Apply(image, c, ctx);
 
@@ -203,10 +244,18 @@ public sealed class IconRenderer : IComponentRenderer
         }
         Update();
         ctx.WatchValue(c.Id, "name", nameVal, Update);
-        // The icon name is the natural automation label when no explicit one is set.
+        // Prefer the A2UI label/description fields (they are human-readable
+        // and localized by the agent). Fall back to NOT announcing the icon
+        // at all — the previous behavior would speak raw enum names like
+        // "moreHoriz" or "accountCircle" to Narrator users, which is worse
+        // than the icon being skipped. Decorative icons inside Buttons / Cards
+        // already have parent labels for assistive tech.
         AutomationHelpers.Apply(fontIcon, c, ctx);
         if (string.IsNullOrEmpty(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(fontIcon)))
-            AutomationHelpers.SetName(fontIcon, ctx.ResolveString(nameVal));
+        {
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                fontIcon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        }
         return fontIcon;
     }
 

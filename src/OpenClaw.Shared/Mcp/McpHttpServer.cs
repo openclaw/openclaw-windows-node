@@ -45,7 +45,11 @@ namespace OpenClaw.Shared.Mcp;
 public sealed class McpHttpServer : IDisposable
 {
     private const long MaxRequestBodyBytes = 4L * 1024 * 1024; // 4 MiB
-    private const int MaxConcurrentHandlers = 8;
+    // 16 leaves headroom for parallel tool callers (e.g. an editor + Claude
+    // Desktop + a CLI script) without making each connection cheap enough to
+    // become a DoS lever — request size cap + per-handler timeout still bound
+    // memory. Bumped from 8 after queue-stall reports under multi-IDE use.
+    private const int MaxConcurrentHandlers = 16;
     // Sized to cover the longest legitimate capability: screen.record up to
     // 300s plus encoding + serialization. Earlier 90s deadline silently abort
     // ed valid recording requests while the OS capture pipeline kept running
@@ -135,7 +139,10 @@ public sealed class McpHttpServer : IDisposable
 
             // Cap concurrent handlers — a misbehaving local client can otherwise
             // pin every threadpool thread on long-running screen/camera calls.
-            if (!await _handlerLimiter.WaitAsync(0, ct).ConfigureAwait(false))
+            // Wait briefly: a slot freed during typical request handoff is well
+            // under 50ms, so a small queue here turns transient spikes into
+            // success rather than 503s without inviting unbounded queueing.
+            if (!await _handlerLimiter.WaitAsync(50, ct).ConfigureAwait(false))
             {
                 Reject(ctx, (HttpStatusCode)503, "server busy");
                 continue;
@@ -192,6 +199,17 @@ public sealed class McpHttpServer : IDisposable
             if (!string.IsNullOrEmpty(origin))
             {
                 Reject(ctx, HttpStatusCode.Forbidden, "origin not allowed");
+                return;
+            }
+            // Belt-and-suspenders: a browser may strip Origin (e.g. via a
+            // privacy extension) but still send Sec-Fetch-Site / Sec-Fetch-Mode
+            // / Referer. Treat any of those as evidence of a browser context.
+            // Native MCP clients don't emit these headers.
+            if (!string.IsNullOrEmpty(ctx.Request.Headers["Sec-Fetch-Site"]) ||
+                !string.IsNullOrEmpty(ctx.Request.Headers["Sec-Fetch-Mode"]) ||
+                !string.IsNullOrEmpty(ctx.Request.Headers["Referer"]))
+            {
+                Reject(ctx, HttpStatusCode.Forbidden, "browser context not allowed");
                 return;
             }
 
@@ -315,10 +333,20 @@ public sealed class McpHttpServer : IDisposable
     private static bool IsHostAllowed(string? host)
     {
         if (string.IsNullOrEmpty(host)) return false;
-        // Strip port if present.
-        var colon = host.LastIndexOf(':');
-        var hostname = (colon > 0 && host.IndexOf(']') < colon ? host.Substring(0, colon) : host).Trim();
+        var trimmed = host.Trim();
+        // IPv6 form: [::1]:port — strip the bracketed address.
+        if (trimmed.StartsWith('['))
+        {
+            var closeBracket = trimmed.IndexOf(']');
+            if (closeBracket < 0) return false;
+            var v6 = trimmed.Substring(1, closeBracket - 1);
+            return string.Equals(v6, "::1", StringComparison.Ordinal);
+        }
+        // IPv4 / hostname: strip trailing :port if present.
+        var colon = trimmed.LastIndexOf(':');
+        var hostname = (colon > 0 ? trimmed.Substring(0, colon) : trimmed).Trim();
         return string.Equals(hostname, "127.0.0.1", StringComparison.Ordinal)
+            || string.Equals(hostname, "::1", StringComparison.Ordinal)
             || string.Equals(hostname, "localhost", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -328,19 +356,28 @@ public sealed class McpHttpServer : IDisposable
         // can send chunked encoding or just lie. Read up to maxBytes+1 and
         // throw if we crossed the cap. The cancellation token enforces the
         // per-request deadline so a slow-body client can't hold a handler slot.
+        // Pool the read buffer so we don't allocate 8 KiB per request — under
+        // load these are a noticeable LOH-adjacent allocation.
         var encoding = request.ContentEncoding ?? Encoding.UTF8;
-        var buffer = new byte[8192];
-        using var ms = new MemoryStream();
-        long total = 0;
-        while (true)
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(8192);
+        try
         {
-            var n = await request.InputStream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false);
-            if (n <= 0) break;
-            total += n;
-            if (total > maxBytes) throw new InvalidDataException("request body exceeds cap");
-            ms.Write(buffer, 0, n);
+            using var ms = new MemoryStream();
+            long total = 0;
+            while (true)
+            {
+                var n = await request.InputStream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false);
+                if (n <= 0) break;
+                total += n;
+                if (total > maxBytes) throw new InvalidDataException("request body exceeds cap");
+                ms.Write(buffer, 0, n);
+            }
+            return encoding.GetString(ms.GetBuffer(), 0, (int)ms.Length);
         }
-        return encoding.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     private static void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)

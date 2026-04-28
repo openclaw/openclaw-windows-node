@@ -19,7 +19,7 @@ namespace OpenClawTray.Services;
 /// <summary>
 /// Windows Node service - manages node connection and capabilities
 /// </summary>
-public class NodeService : IDisposable
+public sealed class NodeService : IDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly DispatcherQueue _dispatcherQueue;
@@ -38,7 +38,11 @@ public class NodeService : IDisposable
     private ScreenRecordingService? _screenRecordingService;
     private CameraCaptureService? _cameraCaptureService;
     private DateTime _lastScreenCaptureNotification = DateTime.MinValue;
-    private readonly HashSet<string> _allowedNavigationHosts = new(StringComparer.OrdinalIgnoreCase);
+    // Concurrent navigates from rapid-fire agent requests can race on the
+    // bucket structure of a HashSet. Use ConcurrentDictionary as a thread-safe
+    // set; value byte is unused.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _allowedNavigationHosts =
+        new(StringComparer.OrdinalIgnoreCase);
     
     // Capabilities
     private SystemCapability? _systemCapability;
@@ -322,6 +326,13 @@ public class NodeService : IDisposable
             // remain in front; this layer rejects untrusted local processes
             // that could otherwise reach the predictable 127.0.0.1:port endpoint.
             var authToken = OpenClaw.Shared.Mcp.McpAuthToken.LoadOrCreate(McpTokenPath);
+            // ACL hygiene check: warn if the token file is owned by someone
+            // else, or if the DACL grants read to anyone outside
+            // {current user, SYSTEM, Administrators}. Warning-only — restricting
+            // ACLs is best-effort and a malicious local user can already do
+            // worse than read this file. The point is operator visibility.
+            var aclWarning = OpenClaw.Shared.Mcp.McpAuthToken.VerifyAcl(McpTokenPath);
+            if (aclWarning != null) _logger.Warn($"[MCP] {aclWarning}");
             attempt = new McpHttpServer(bridge, McpPort, _logger, authToken);
             attempt.Start();
             _mcpServer = attempt;
@@ -435,7 +446,13 @@ public class NodeService : IDisposable
     
     private void OnPairingStatusChanged(object? sender, PairingStatusEventArgs args)
     {
-        _logger.Info($"Pairing status changed: {args.Status} (device: {args.DeviceId.Substring(0, 16)}...)");
+        // Guard the slice — a malformed/missing/short device id would otherwise
+        // throw out of the event handler and suppress PairingStatusChanged,
+        // hiding the very pairing problem the listener is trying to diagnose.
+        var displayId = string.IsNullOrEmpty(args.DeviceId)
+            ? "unknown"
+            : args.DeviceId[..Math.Min(16, args.DeviceId.Length)];
+        _logger.Info($"Pairing status changed: {args.Status} (device: {displayId}...)");
         PairingStatusChanged?.Invoke(this, args);
     }
 
@@ -579,57 +596,103 @@ public class NodeService : IDisposable
             throw new InvalidOperationException($"Invalid url: {validationError}");
         }
 
-        var risk = HttpUrlRiskEvaluator.Evaluate(canonical!);
-        var requiresPrompt =
-            risk.RequiresConfirmation && !_allowedNavigationHosts.Contains(risk.HostKey);
+        var initialRisk = HttpUrlRiskEvaluator.Evaluate(canonical!);
 
-        // The agent gets the same response shape and the same response time
-        // whether or not a confirmation prompt is needed. If we awaited the
-        // prompt here, response latency would leak the user's decision time
-        // (or even the existence of a prompt). Fire the prompt+launch off as
-        // a background task and return the synthesized success immediately.
-        if (requiresPrompt)
+        // Move the entire decision off the request thread so the agent's
+        // response latency carries no signal about the user's decision (see
+        // long comment retained below). DNS resolution + prompt + launch all
+        // run from the worker.
+        _ = Task.Run(async () =>
         {
-            _ = Task.Run(async () =>
+            try
             {
-                try
+                // Pin DNS at approval time. A bare hostname like "example.com"
+                // would otherwise pass HttpUrlRiskEvaluator (since only IP
+                // literals are inspected) and hand-off to the browser without
+                // ever checking what IP it actually resolves to. A hostile DNS
+                // could point a public-looking name at an internal address.
+                var pinnedRisk = await EnrichWithDnsRiskAsync(initialRisk).ConfigureAwait(false);
+                var requiresPrompt =
+                    pinnedRisk.RequiresConfirmation && !_allowedNavigationHosts.ContainsKey(pinnedRisk.HostKey);
+
+                if (requiresPrompt)
                 {
                     var decision = await new UrlNavigationApprovalService(_logger)
-                        .RequestAsync(risk, BuildNavigationAgentIdentity())
+                        .RequestAsync(pinnedRisk, BuildNavigationAgentIdentity())
                         .ConfigureAwait(false);
 
                     if (decision.Kind == UrlNavigationApprovalDecisionKind.Deny)
                     {
-                        _logger.Warn($"Canvas navigate denied: {risk.CanonicalOrigin} ({decision.Reason ?? "user denied"}); already reported success to agent");
+                        _logger.Warn($"Canvas navigate denied: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)} ({decision.Reason ?? "user denied"}); already reported success to agent");
                         return;
                     }
 
-                    if (decision.Kind == UrlNavigationApprovalDecisionKind.AllowHost)
-                    {
-                        _allowedNavigationHosts.Add(risk.HostKey);
-                        _logger.Info($"Canvas navigate host allowlisted for this session: {risk.HostKey}");
-                    }
-
-                    LaunchAndCleanup(canonical!);
+                    // AllowHost (session-allowlist) is currently unreachable from
+                    // the Win32 prompt — Yes maps to AllowOnce only. The session
+                    // allowlist remains in NodeService as scaffolding for a future
+                    // Fluent ContentDialog prompt (worklist T2-43).
                 }
-                catch (Exception ex)
+
+                // Re-resolve immediately before launch so a TTL-1 record can't
+                // flip the resolved IP between approval and shell-execute.
+                var preLaunchRisk = await EnrichWithDnsRiskAsync(initialRisk).ConfigureAwait(false);
+                if (preLaunchRisk.RequiresConfirmation && !_allowedNavigationHosts.ContainsKey(preLaunchRisk.HostKey))
                 {
-                    _logger.Error("Canvas navigate (deferred) failed", ex);
+                    _logger.Warn($"Canvas navigate aborted at launch: pre-launch DNS re-check flagged {OpenClaw.Shared.UrlLogSanitizer.Sanitize(preLaunchRisk.CanonicalOrigin)}");
+                    return;
                 }
-            });
-        }
-        else
-        {
-            // Low-risk path runs synchronously (still very fast — Process.Start
-            // doesn't wait for the browser to render). The constant-time
-            // contract is "high-risk paths don't reveal user choice", not
-            // "high- and low-risk are indistinguishable" — the URL and risk
-            // profile are the agent's own input, so it already knows which
-            // path applies.
-            LaunchAndCleanup(canonical!);
-        }
 
+                LaunchAndCleanup(canonical!);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("Canvas navigate (deferred) failed", ex);
+            }
+        });
+
+        // The agent gets the same response shape and the same response time
+        // whether or not a confirmation prompt is needed. If we awaited the
+        // prompt here, response latency would leak the user's decision time
+        // (or even the existence of a prompt).
         return Task.FromResult("browser");
+    }
+
+    /// <summary>
+    /// If the URL's host is a DNS name, resolve it and treat any non-public
+    /// answer as a Reason. Returns the input profile unchanged for IP literals
+    /// or when DNS resolution fails (a failed DNS lookup is its own
+    /// confirmation trigger).
+    /// </summary>
+    private static async Task<HttpUrlRiskProfile> EnrichWithDnsRiskAsync(HttpUrlRiskProfile risk)
+    {
+        if (!Uri.TryCreate(risk.CanonicalUrl, UriKind.Absolute, out var uri)) return risk;
+        if (System.Net.IPAddress.TryParse(uri.Host, out _)) return risk;
+
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var addresses = await System.Net.Dns.GetHostAddressesAsync(uri.Host, cts.Token).ConfigureAwait(false);
+            var extra = new List<string>(risk.Reasons);
+            bool anyNonPublic = false;
+            foreach (var ip in addresses)
+            {
+                if (!HttpUrlRiskEvaluator.IsPublicAddress(ip))
+                {
+                    anyNonPublic = true;
+                    extra.Add($"DNS resolved '{uri.Host}' to non-public address {ip}");
+                }
+            }
+            if (!anyNonPublic) return risk;
+            var merged = extra.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            return risk with { RequiresConfirmation = true, Reasons = merged };
+        }
+        catch (Exception ex)
+        {
+            // Failed lookup → require prompt: better to ask than to ship the
+            // user to an unverifiable destination.
+            var extra = new List<string>(risk.Reasons) { $"DNS resolution failed for '{uri.Host}': {ex.Message}" };
+            return risk with { RequiresConfirmation = true, Reasons = extra.Distinct(StringComparer.OrdinalIgnoreCase).ToArray() };
+        }
     }
 
     /// <summary>
@@ -1112,7 +1175,15 @@ public class NodeService : IDisposable
 
         try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
         try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
-        
+        // MediaResolver owns SocketsHttpHandler + HttpClient (disposeHandler:true);
+        // without disposal the connection pool survives node teardown/recreate.
+        try { _mediaResolver?.Dispose(); } catch { /* ignore */ }
+        _mediaResolver = null;
+        // ActionDispatcher owns a SemaphoreSlim; without disposal the kernel
+        // handle survives node teardown/recreate.
+        try { _actionDispatcher?.Dispose(); } catch { /* ignore */ }
+        _actionDispatcher = null;
+
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
             var window = _canvasWindow;

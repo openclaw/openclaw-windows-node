@@ -169,7 +169,7 @@ public sealed class RenderContext
     /// <summary>True if <paramref name="path"/> is a secret path (registered or matches denylist).</summary>
     public bool IsSecretPath(string? path)
     {
-        if (SecretPaths == null) return SecretRedactor.IsSecret(path, EmptySet.Instance);
+        if (SecretPaths == null) return SecretRedactor.IsSecret(path, System.Collections.Frozen.FrozenSet<string>.Empty);
         return SecretRedactor.IsSecret(path, (IReadOnlySet<string>)SecretPaths);
     }
 
@@ -178,15 +178,21 @@ public sealed class RenderContext
     /// source component's declared <c>dataBinding</c> (or, in its absence,
     /// the set of paths the component references in any other property).
     /// Paths outside that scope are silently dropped to prevent unrelated
-    /// surface state from leaking into the agent envelope. Secret paths are
-    /// always dropped.
+    /// surface state from leaking into the agent envelope. Secret paths
+    /// (registered via obscured TextField, or matching the SecretRedactor
+    /// denylist) are always dropped — even when the component declares an
+    /// explicit <c>dataBinding</c>. <c>dataBinding: ["/"]</c> is a root-level
+    /// wildcard that opts in to everything; allowing secret paths through it
+    /// (or through any explicit binding) lets a malicious surface drain
+    /// credentials into the action envelope. The component can still bind
+    /// secret values for display; it just cannot exfiltrate them.
     /// </summary>
     public JsonObject? BuildActionContext(A2UIComponentDef sourceComponent, JsonNode? actionNode)
     {
         if (actionNode is not JsonObject actionObj) return null;
         if (actionObj["context"] is not JsonArray ctxArr) return null;
 
-        var (allowed, isExplicit) = CollectAllowedBindingPaths(sourceComponent);
+        var (allowed, _) = CollectAllowedBindingPaths(sourceComponent);
         var result = new JsonObject();
         foreach (var item in ctxArr)
         {
@@ -202,9 +208,7 @@ public sealed class RenderContext
             {
                 var path = val.Path!;
                 if (!IsAllowedPath(path, allowed)) continue;
-                // Secret paths require explicit dataBinding opt-in. The implicit
-                // walk over component properties is too generous to count as opt-in.
-                if (IsSecretPath(path) && !isExplicit) continue;
+                if (IsSecretPath(path)) continue;
                 result[key] = DataModel.Read(path)?.DeepClone();
             }
         }
@@ -280,20 +284,9 @@ public sealed class RenderContext
     private static string NormalizePath(string p) =>
         string.IsNullOrEmpty(p) ? "/" : (p[0] == '/' ? p : "/" + p);
 
-    private sealed class EmptySet : IReadOnlySet<string>
-    {
-        public static readonly EmptySet Instance = new();
-        public int Count => 0;
-        public bool Contains(string item) => false;
-        public IEnumerator<string> GetEnumerator() { yield break; }
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-        public bool IsProperSubsetOf(IEnumerable<string> other) => true;
-        public bool IsProperSupersetOf(IEnumerable<string> other) => false;
-        public bool IsSubsetOf(IEnumerable<string> other) => true;
-        public bool IsSupersetOf(IEnumerable<string> other) => false;
-        public bool Overlaps(IEnumerable<string> other) => false;
-        public bool SetEquals(IEnumerable<string> other) { foreach (var _ in other) return false; return true; }
-    }
+    // EmptySet was a hand-rolled stand-in for an empty IReadOnlySet<string>.
+    // FrozenSet<string>.Empty is a single shared, allocation-free instance
+    // with the same behavior — see IsSecretPath above.
 }
 
 public sealed class MediaLoadBudget

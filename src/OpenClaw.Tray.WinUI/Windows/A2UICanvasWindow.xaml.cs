@@ -56,7 +56,9 @@ public sealed partial class A2UICanvasWindow : WindowEx
     {
         InitializeComponent();
         this.SetIcon("Assets\\openclaw.ico");
-        Closed += (_, _) => IsClosed = true;
+        // Title is set programmatically (rather than via XAML literal) so we
+        // never flash "Canvas" in en-US before the locale's resw value loads.
+        Title = OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_CanvasTitle");
         WaitingForContentText.Text = OpenClawTray.Helpers.LocalizationHelper.GetString("Canvas_WaitingForContent");
 
         _dispatcher = DispatcherQueue.GetForCurrentThread();
@@ -66,6 +68,19 @@ public sealed partial class A2UICanvasWindow : WindowEx
 
         _router.SurfaceCreated += OnSurfaceCreated;
         _router.SurfaceDeleted += OnSurfaceDeleted;
+
+        // Explicit teardown: unsubscribe router events and reset surfaces so
+        // the router's component subscriptions don't outlive the window. The
+        // router holds back-references via event delegates; without this, a
+        // closed window stays GC-rooted by router state until the next
+        // ResetAll, which may never come if the window owned the router.
+        Closed += (_, _) =>
+        {
+            IsClosed = true;
+            try { _router.SurfaceCreated -= OnSurfaceCreated; } catch { }
+            try { _router.SurfaceDeleted -= OnSurfaceDeleted; } catch { }
+            try { _router.ResetAll(); } catch { }
+        };
     }
 
     /// <summary>

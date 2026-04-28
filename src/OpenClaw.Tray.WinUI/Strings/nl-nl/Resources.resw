@@ -639,6 +639,18 @@
   <data name="A2UI_UnsupportedComponent" xml:space="preserve">
     <value>Niet-ondersteunde component: {0}</value>
   </data>
+  <data name="A2UI_TabFallback" xml:space="preserve">
+    <value>Tabblad</value>
+  </data>
+  <data name="A2UI_ModalClose" xml:space="preserve">
+    <value>Sluiten</value>
+  </data>
+  <data name="A2UI_DateTimeSelectDate" xml:space="preserve">
+    <value>Datum kiezen</value>
+  </data>
+  <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
+    <value>Kiezen...</value>
+  </data>
 
   <!-- ==================== WebChatWindow.xaml ==================== -->
 
@@ -975,6 +987,57 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Starten mislukt: </value>
   </data>
 
+  <!-- ==================== MCP token (SettingsWindow) ==================== -->
+
+  <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
+    <value>Bearer-token:</value>
+  </data>
+  <data name="SettingsMcpTokenRevealButton.Content" xml:space="preserve">
+    <value>Tonen</value>
+  </data>
+  <data name="SettingsMcpTokenCopyButton.Content" xml:space="preserve">
+    <value>Kopiëren</value>
+  </data>
+  <data name="SettingsMcpTokenResetButton.Content" xml:space="preserve">
+    <value>Resetten</value>
+  </data>
+  <data name="SettingsMcpToken_RevealButton" xml:space="preserve">
+    <value>Tonen</value>
+  </data>
+  <data name="SettingsMcpToken_HideButton" xml:space="preserve">
+    <value>Verbergen</value>
+  </data>
+  <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
+    <value>(niet gegenereerd — schakel de MCP-server in en klik op Opslaan)</value>
+  </data>
+  <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
+    <value>Opgeslagen op {0}</value>
+  </data>
+  <data name="SettingsMcpToken_HintFormat" xml:space="preserve">
+    <value>Stuur bij elke aanvraag mee als 'Authorization: Bearer &lt;token&gt;'. Opgeslagen op {0}.</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastTitle" xml:space="preserve">
+    <value>MCP-token gereset</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastBody" xml:space="preserve">
+    <value>Oude MCP-bearer-tokens zijn nu ongeldig.</value>
+  </data>
+  <data name="SettingsMcpToken_ResetFailedFormat" xml:space="preserve">
+    <value>Resetten van token mislukt: {0}</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Title" xml:space="preserve">
+    <value>MCP-bearer-token resetten?</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Body" xml:space="preserve">
+    <value>Bestaande lokale MCP-clients (Claude Desktop, Cursor, Claude Code) werken niet meer totdat je ze opnieuw configureert met het nieuwe token.</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_PrimaryButton" xml:space="preserve">
+    <value>Resetten</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">
@@ -982,6 +1045,36 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>Update downloaden...</value>
+  </data>
+
+  <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
+
+  <data name="UrlApproval_Caption" xml:space="preserve">
+    <value>OpenClaw — URL goedkeuren</value>
+  </data>
+  <data name="UrlApproval_Body" xml:space="preserve">
+    <value>Een agent wil een risicovolle bestemming in je browser openen.</value>
+  </data>
+  <data name="UrlApproval_NoReasons" xml:space="preserve">
+    <value>(geen specifieke redenen vastgelegd)</value>
+  </data>
+  <data name="UrlApproval_ZoneFormat" xml:space="preserve">
+    <value>Zone: {0}</value>
+  </data>
+  <data name="UrlApproval_AgentFormat" xml:space="preserve">
+    <value>Agent: {0}</value>
+  </data>
+  <data name="UrlApproval_HostFormat" xml:space="preserve">
+    <value>Host: {0}</value>
+  </data>
+  <data name="UrlApproval_ReasonsHeader" xml:space="preserve">
+    <value>Redenen:</value>
+  </data>
+  <data name="UrlApproval_YesHint" xml:space="preserve">
+    <value>Ja — open deze URL.</value>
+  </data>
+  <data name="UrlApproval_NoHint" xml:space="preserve">
+    <value>Nee — blokkeer hem.</value>
   </data>
 
 </root>

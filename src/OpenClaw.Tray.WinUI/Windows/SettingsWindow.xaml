@@ -256,7 +256,7 @@
                          <Button Grid.Column="3" x:Name="McpTokenCopyButton" x:Uid="SettingsMcpTokenCopyButton"
                                  AutomationProperties.AutomationId="McpTokenCopyButton"
                                  Content="Copy" Click="OnCopyMcpToken" Padding="8,2" Margin="4,0,0,0"/>
-                         <Button Grid.Column="4" x:Name="McpTokenResetButton"
+                         <Button Grid.Column="4" x:Name="McpTokenResetButton" x:Uid="SettingsMcpTokenResetButton"
                                  AutomationProperties.AutomationId="McpTokenResetButton"
                                  Content="Reset" Click="OnResetMcpToken" Padding="8,2" Margin="4,0,0,0"/>
                      </Grid>

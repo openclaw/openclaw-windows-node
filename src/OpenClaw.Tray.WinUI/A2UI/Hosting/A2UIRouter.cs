@@ -107,7 +107,13 @@ public sealed class A2UIRouter
     private void DispatchToUI(Action action)
     {
         if (_dispatcher.HasThreadAccess) { action(); return; }
-        _dispatcher.TryEnqueue(() => action());
+        // TryEnqueue returns false when the dispatcher is shutting down (or
+        // its queue is at capacity). Silently dropping a router push there
+        // would hide the failure from upstream callers that already returned
+        // success on the wire — log a warning so we can correlate the dropped
+        // surface update with whatever shutdown sequence is underway.
+        if (!_dispatcher.TryEnqueue(() => action()))
+            _logger.Warn("[A2UI] Router dispatch dropped: dispatcher unavailable (likely shutting down)");
     }
 
     private void Apply(A2UIMessage msg)
@@ -117,6 +123,7 @@ public sealed class A2UIRouter
             case SurfaceUpdateMessage su:
             {
                 var host = GetOrCreateSurface(su.SurfaceId);
+                if (host == null) break; // cap reached; logged inside GetOrCreateSurface
                 host.ApplyComponents(su.Components);
                 _logger.Info($"[A2UI] surfaceUpdate '{LogSafe(su.SurfaceId)}' ({su.Components.Count} component(s))");
                 _telemetry.Push(su.SurfaceId, "surfaceUpdate", su.Components.Count);
@@ -126,6 +133,7 @@ public sealed class A2UIRouter
             case BeginRenderingMessage br:
             {
                 var host = GetOrCreateSurface(br.SurfaceId);
+                if (host == null) break;
                 host.BeginRendering(br.Root, br.Styles);
                 SurfaceRendered?.Invoke(this, host);
                 _logger.Info($"[A2UI] beginRendering '{LogSafe(br.SurfaceId)}' root='{LogSafe(br.Root)}' (catalog={LogSafe(br.CatalogId) ?? "default"})");
@@ -161,20 +169,18 @@ public sealed class A2UIRouter
         }
     }
 
-    private SurfaceHost GetOrCreateSurface(string surfaceId)
+    private SurfaceHost? GetOrCreateSurface(string surfaceId)
     {
         if (_surfaces.TryGetValue(surfaceId, out var existing)) return existing;
         if (_surfaces.Count >= MaxSurfaces)
         {
-            // Refuse to grow past the cap. Returning the most recently created
-            // surface keeps the router alive while signaling that something is
-            // misbehaving — the alternative (silently dropping) is worse for
-            // diagnostics. Sanitize the ID before logging (see L1).
-            _logger.Warn($"[A2UI] surface cap ({MaxSurfaces}) reached; ignoring new surface '{LogSafe(surfaceId)}'");
-            // Reuse the first existing surface as a degraded fallback so the
-            // caller still receives a host reference and the router stays
-            // internally consistent.
-            foreach (var kv in _surfaces) return kv.Value;
+            // Cap reached. The previous "degraded fallback" returned the first
+            // existing surface, which corrupted unrelated surface state — a
+            // surfaceUpdate aimed at the new id would clobber the components
+            // of an entirely different surface. Skip the message instead and
+            // let the cap log + telemetry counter signal the misbehavior.
+            _logger.Warn($"[A2UI] surface cap ({MaxSurfaces}) reached; dropping push for new surface '{LogSafe(surfaceId)}'");
+            return null;
         }
 
         var observable = _dataModel.GetOrCreate(surfaceId);

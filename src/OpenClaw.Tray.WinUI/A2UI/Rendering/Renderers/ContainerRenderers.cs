@@ -206,7 +206,7 @@ public sealed class TabsRenderer : IComponentRenderer
             {
                 if (node is not JsonObject tabObj) { tabIndex++; continue; }
                 var titleVal = A2UIValue.From(tabObj["title"]);
-                var titleText = ctx.ResolveString(titleVal) ?? "Tab";
+                var titleText = ctx.ResolveString(titleVal) ?? OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_TabFallback");
                 var childId = tabObj["child"]?.GetValue<string>();
 
                 var tab = new TabViewItem
@@ -222,7 +222,7 @@ public sealed class TabsRenderer : IComponentRenderer
                 if (titleVal?.HasPath == true)
                 {
                     var subKey = $"tab::{tabIndex}::title";
-                    void Update() => tab.Header = ctx.ResolveString(titleVal) ?? "Tab";
+                    void Update() => tab.Header = ctx.ResolveString(titleVal) ?? OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_TabFallback");
                     ctx.WatchValue(c.Id, subKey, titleVal, Update);
                 }
 
@@ -273,7 +273,7 @@ public sealed class ModalRenderer : IComponentRenderer
                 XamlRoot = trigger.XamlRoot,
                 Title = titleText ?? string.Empty,
                 Content = contentElement,
-                CloseButtonText = "Close",
+                CloseButtonText = OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_ModalClose"),
             };
             try { await dialog.ShowAsync(); }
             catch { /* ContentDialog throws if another dialog is open; swallow */ }
