@@ -550,27 +550,60 @@ public class NodeService : IDisposable
         });
     }
     
-    private void OnCanvasNavigate(object? sender, string url)
+    /// <summary>
+    /// Service a <c>canvas.navigate</c> request by launching the URL in the
+    /// OS default browser. Always — even if a WebView2 canvas window is open.
+    /// Rationale: "open this link" on Windows means the default browser, and
+    /// the embedded WebView2 canvas runs URL-rewriting (gateway-origin pinning,
+    /// CSP, etc.) that mangles arbitrary external URLs. Agents that want to
+    /// load a page inside an embedded surface should use <c>canvas.present</c>.
+    ///
+    /// CanvasCapability has already validated the URL with HttpUrlValidator;
+    /// we re-validate here as defense-in-depth so the OS-level shell-execute
+    /// can never see an unvetted string.
+    /// </summary>
+    private Task<string> OnCanvasNavigate(string url)
     {
+        if (!HttpUrlValidator.TryParse(url, out var canonical, out var validationError))
+        {
+            _logger.Warn($"OnCanvasNavigate rejected (validator): {validationError}");
+            return Task.FromException<string>(new InvalidOperationException($"Invalid url: {validationError}"));
+        }
+
+        // Hand off to the OS default browser, then close any open in-app canvas
+        // windows: the user's attention is moving to the browser, so leaving an
+        // embedded canvas (web or A2UI) open is just clutter — and worse, an
+        // earlier canvas.present for the same URL would otherwise leave a
+        // misrendered gateway-pinned page sitting in the WebView2 host.
+        //
+        // Process.Start with UseShellExecute=true wraps ShellExecuteEx, which
+        // routes the URL to the user's registered http/https handler — never
+        // to a script host or file association — given the validator already
+        // restricted the scheme. Browser launch doesn't need the UI dispatcher;
+        // the canvas-window cleanup does.
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = canonical!,
+                UseShellExecute = true,
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            _logger.Info($"Canvas navigate → default browser: {canonical}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Canvas navigate failed", ex);
+            return Task.FromException<string>(ex);
+        }
+
         _dispatcherQueue.TryEnqueue(() =>
         {
-            try
-            {
-                if (_canvasWindow != null && !_canvasWindow.IsClosed)
-                {
-                    _canvasWindow.Navigate(url);
-                }
-                else
-                {
-                    // Native A2UI canvas can't navigate to URLs — that's a web-canvas concept.
-                    _logger.Warn("Canvas navigate ignored: web canvas not available (native A2UI surface does not support URL navigation)");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Error("Canvas navigate failed", ex);
-            }
+            try { CloseWebCanvasWindow(); } catch (Exception ex) { _logger.Warn($"Close web canvas after navigate failed: {ex.Message}"); }
+            try { CloseA2UICanvasWindow(); } catch (Exception ex) { _logger.Warn($"Close A2UI canvas after navigate failed: {ex.Message}"); }
         });
+
+        return Task.FromResult("browser");
     }
 
     private async Task<string> OnCanvasEval(string script)
@@ -691,7 +724,11 @@ public class NodeService : IDisposable
                     renderer = nativeOpen ? "native" : (webOpen ? "web" : "none"),
                     eval = webOpen,
                     snapshot = webOpen || nativeOpen,
-                    navigate = webOpen,
+                    // navigate is always available: when no web canvas is open
+                    // we fall back to launching the OS default browser. The
+                    // navigate response carries an "opener" field so the agent
+                    // can tell which path was taken.
+                    navigate = true,
                     a2ui = new
                     {
                         version = "0.8",
@@ -722,6 +759,26 @@ public class NodeService : IDisposable
         }
     }
 
+    // Mutable context shared with GatewayActionTransport. SessionKey is updated
+    // from push props (when the agent supplies one); host/instance stay tied to
+    // the node client identity. Default sessionKey is "main", matching Android's
+    // resolveMainSessionKey() fallback.
+    private sealed class GatewayActionContext : IGatewayActionContext
+    {
+        private readonly Func<WindowsNodeClient?> _client;
+        private string _sessionKey = "main";
+        public GatewayActionContext(Func<WindowsNodeClient?> client) { _client = client; }
+        public string SessionKey
+        {
+            get => _sessionKey;
+            set => _sessionKey = string.IsNullOrWhiteSpace(value) ? "main" : value.Trim();
+        }
+        public string Host => _client()?.DisplayName ?? $"Windows Node ({Environment.MachineName})";
+        public string InstanceId => _client()?.FullDeviceId.ToLowerInvariant() ?? string.Empty;
+    }
+
+    private GatewayActionContext? _actionContext;
+
     /// <summary>
     /// Lazily build the action dispatcher + media resolver shared by the
     /// native A2UI canvas. The dispatcher routes outbound user actions to
@@ -732,13 +789,42 @@ public class NodeService : IDisposable
     {
         if (_actionDispatcher != null) return _actionDispatcher;
 
+        _actionContext = new GatewayActionContext(() => _nodeClient);
         var transports = new IA2UIActionTransport[]
         {
-            new GatewayActionTransport(() => _nodeClient, _logger),
+            new GatewayActionTransport(() => _nodeClient, _actionContext, _logger),
             new LoggingActionTransport(_logger),
         };
         _actionDispatcher = new ActionDispatcher(transports, _logger);
         return _actionDispatcher;
+    }
+
+    /// <summary>
+    /// Pull <c>sessionKey</c> out of the push props blob and update the action
+    /// context so subsequent button clicks route to the same session. Silently
+    /// no-ops when props is malformed or doesn't include a sessionKey — the
+    /// previous (or default "main") value stays in effect.
+    /// </summary>
+    private void UpdateSessionKeyFromPushProps(string? propsJson)
+    {
+        if (_actionContext == null) return;
+        if (string.IsNullOrWhiteSpace(propsJson)) return;
+        try
+        {
+            using var doc = JsonDocument.Parse(propsJson);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("sessionKey", out var sk) &&
+                sk.ValueKind == JsonValueKind.String)
+            {
+                var v = sk.GetString();
+                if (!string.IsNullOrWhiteSpace(v)) _actionContext.SessionKey = v!;
+            }
+        }
+        catch
+        {
+            // Bad props JSON is a gateway/agent bug, not an action-routing bug.
+            // Keep the previous sessionKey rather than failing the push.
+        }
     }
 
     private MediaResolver GetOrCreateMediaResolver()
@@ -781,6 +867,9 @@ public class NodeService : IDisposable
                     _logger.Error("Canvas A2UI push failed: native canvas window not available");
                     return;
                 }
+                // Pick up an explicit sessionKey from props if the agent supplied one,
+                // so a Button click on this surface routes back to the same session.
+                UpdateSessionKeyFromPushProps(args.Props);
                 _a2uiCanvasWindow.Push(args.Jsonl ?? string.Empty);
                 _a2uiCanvasWindow.BringToFront(false);
             }

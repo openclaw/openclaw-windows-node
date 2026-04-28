@@ -1,39 +1,137 @@
 using System;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 
 namespace OpenClawTray.A2UI.Actions;
 
 /// <summary>
-/// Sends A2UI actions over the gateway WebSocket as a node-originated
-/// notification (method: <c>canvas.a2ui.action</c>). The gateway does not
-/// yet broker these to the agent — that wiring is being added in parallel.
-/// Until then the message is logged on the gateway side.
+/// Per-node identity / session context the transport needs to format the
+/// CANVAS_A2UI message. Supplied by NodeService — sessionKey can change over
+/// the lifetime of the node (re-resolved on each delivery), the rest is
+/// effectively immutable per process.
+/// </summary>
+public interface IGatewayActionContext
+{
+    /// <summary>Logical session the action should be appended to. Defaults to "main".</summary>
+    string SessionKey { get; }
+    /// <summary>Display name of this node (e.g. "Windows Node (DESKTOP-123)") — shown to the model as <c>host=</c>.</summary>
+    string Host { get; }
+    /// <summary>Stable per-device id, lowercased — shown to the model as <c>instance=</c>.</summary>
+    string InstanceId { get; }
+}
+
+/// <summary>
+/// Raised after a transport attempt so the renderer can clear a spinner / show
+/// an error. Mirrors the Android <c>jsDispatchA2UIActionStatus</c> path but
+/// stays in-process.
+/// </summary>
+public sealed class A2UIActionStatusEventArgs : EventArgs
+{
+    public required string ActionId { get; init; }
+    public required bool Ok { get; init; }
+    public string? Error { get; init; }
+}
+
+/// <summary>
+/// Sends A2UI actions to the gateway by formatting them as a tagged user
+/// message and delivering through the gateway's <c>agent.request</c> node-event
+/// channel (the same path Android uses, see
+/// <c>NodeRuntime.handleCanvasA2UIActionFromWebView</c>). The gateway appends
+/// the message as a user turn in the named session and runs an agent step;
+/// there is no server-side action→tool registry — the model decides.
 /// </summary>
 public sealed class GatewayActionTransport : IA2UIActionTransport
 {
     private readonly Func<WindowsNodeClient?> _clientProvider;
+    private readonly IGatewayActionContext _context;
     private readonly IOpenClawLogger _logger;
 
-    public GatewayActionTransport(Func<WindowsNodeClient?> clientProvider, IOpenClawLogger logger)
+    /// <summary>Raised after each delivery attempt — successful or not.</summary>
+    public event EventHandler<A2UIActionStatusEventArgs>? ActionStatus;
+
+    public GatewayActionTransport(
+        Func<WindowsNodeClient?> clientProvider,
+        IGatewayActionContext context,
+        IOpenClawLogger logger)
     {
         _clientProvider = clientProvider;
+        _context = context;
         _logger = logger;
     }
 
     public bool IsAvailable => _clientProvider()?.IsConnected == true;
 
-    public Task DeliverAsync(Protocol.A2UIAction action)
+    public async Task DeliverAsync(Protocol.A2UIAction action)
     {
         // Capture once: between IsAvailable and here the dispatcher may have
         // disconnected/recreated the client, and a second call to the provider
         // can return a different instance.
         var client = _clientProvider();
         if (client == null || !client.IsConnected)
+        {
+            RaiseStatus(action.Id, ok: false, error: "gateway not connected");
             throw new InvalidOperationException("Gateway not connected");
+        }
 
-        var envelope = A2UIActionEnvelope.ToEnvelope(action);
-        return client.SendCanvasA2UIActionAsync(envelope);
+        var payload = BuildAgentRequestPayload(action, _context);
+        var sent = await client.SendNodeEventAsync("agent.request", payload).ConfigureAwait(false);
+        if (!sent)
+        {
+            RaiseStatus(action.Id, ok: false, error: "send failed");
+            throw new InvalidOperationException("Gateway send failed");
+        }
+
+        RaiseStatus(action.Id, ok: true, error: null);
+    }
+
+    /// <summary>
+    /// Build the <c>agent.request</c> deep-link payload that the gateway
+    /// receives via <c>node.event</c>. Pure helper — exposed for tests so the
+    /// wire contract can be asserted without spinning up a real node client.
+    /// </summary>
+    public static JsonObject BuildAgentRequestPayload(Protocol.A2UIAction action, IGatewayActionContext context)
+    {
+        var sessionKey = string.IsNullOrWhiteSpace(context.SessionKey) ? "main" : context.SessionKey;
+        var contextJson = action.Context?.ToJsonString();
+
+        var message = AgentMessageFormatter.FormatAgentMessage(
+            actionName: action.Name,
+            sessionKey: sessionKey,
+            surfaceId: action.SurfaceId,
+            sourceComponentId: action.SourceComponentId ?? string.Empty,
+            host: context.Host,
+            instanceId: context.InstanceId,
+            contextJson: contextJson);
+
+        // deliver=false keeps the raw CANVAS_A2UI line out of the visible
+        // chat; only the model's response is shown to the user. thinking=low
+        // matches the Android budget hint for a quick agentic step.
+        return new JsonObject
+        {
+            ["message"] = message,
+            ["sessionKey"] = sessionKey,
+            ["thinking"] = "low",
+            ["deliver"] = false,
+            ["key"] = action.Id,
+        };
+    }
+
+    private void RaiseStatus(string actionId, bool ok, string? error)
+    {
+        try
+        {
+            ActionStatus?.Invoke(this, new A2UIActionStatusEventArgs
+            {
+                ActionId = actionId,
+                Ok = ok,
+                Error = error,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[A2UI] ActionStatus listener threw: {ex.Message}");
+        }
     }
 }
 

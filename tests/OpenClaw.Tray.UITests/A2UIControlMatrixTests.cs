@@ -144,8 +144,8 @@ public sealed class A2UIControlMatrixTests
         });
 
     [Fact]
-    public Task Modal_RendersExpander_WithEntryPointAndContent() => RunAsync(
-        "Modal → Expander",
+    public Task Modal_RendersTriggerButton_ContentDeferredUntilClick() => RunAsync(
+        "Modal → Button trigger (ContentDialog on click)",
         Surface("s", "modal", new[]
         {
             Component("modal", "Modal", new()
@@ -158,11 +158,15 @@ public sealed class A2UIControlMatrixTests
         }),
         root =>
         {
-            var exp = FindLogical<Expander>(root).Single();
-            Assert.NotNull(exp.Header);
-            Assert.NotNull(exp.Content);
-            // Two TextBlocks: one in the header, one in the content (only header is realized
-            // in the visual tree until the user expands, so we don't assert visible count).
+            // Modal now renders as a Button whose Content is the entry-point
+            // child; clicking it opens a ContentDialog hosting the content
+            // child. The body Text isn't in the visual tree until the dialog
+            // is opened, so we assert the trigger label is realized but the
+            // body label is not.
+            var btn = FindLogical<Button>(root).Single();
+            var labels = FindLogical<TextBlock>(root).Select(t => t.Text).ToArray();
+            Assert.Contains("Click me", labels);
+            Assert.DoesNotContain("hidden body", labels);
         });
 
     [Fact]

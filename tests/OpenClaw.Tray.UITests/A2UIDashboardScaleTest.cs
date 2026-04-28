@@ -66,7 +66,9 @@ public sealed class A2UIDashboardScaleTest
             Assert.NotEmpty(FindLogical<TextBlock>(root));                 // Text
             Assert.NotEmpty(FindLogical<Border>(root));                    // Card
             Assert.NotEmpty(FindLogical<ScrollViewer>(root));              // List
-            Assert.NotEmpty(FindLogical<Expander>(root));                  // Modal
+            // Modal renders as a trigger Button hosting the entry-point child;
+            // clicking it shows a ContentDialog. We don't assert a Modal-specific
+            // type here — its presence is reflected in the Button count below.
             Assert.NotEmpty(FindLogical<Rectangle>(root));                 // Divider
             Assert.NotEmpty(FindLogical<Button>(root));                    // Button
             Assert.NotEmpty(FindLogical<CheckBox>(root));                  // CheckBox
@@ -84,8 +86,11 @@ public sealed class A2UIDashboardScaleTest
             Assert.Equal(3, sliders.Count); // 2 in Overview card + 1 in Settings (Volume)
 
             var buttons = FindLogical<Button>(root).ToList();
-            // Header refresh + 3 in Help row + 1 inside Modal entry-point = 5
-            Assert.Equal(5, buttons.Count);
+            // Header refresh (1) + 3 in Help row (3) + Modal trigger Button (1)
+            // wrapping its entry-point Button (1) = 6. The Modal now wraps its
+            // entry-point in a uniform click target, so the entry Button shows
+            // up nested inside the trigger.
+            Assert.Equal(6, buttons.Count);
 
             var textBoxes = FindLogical<TextBox>(root).ToList();
             Assert.Equal(2, textBoxes.Count); // shortText "Display name" + longText "Bio"

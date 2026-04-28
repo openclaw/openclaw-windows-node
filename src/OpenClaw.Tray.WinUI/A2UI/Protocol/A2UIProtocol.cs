@@ -155,6 +155,12 @@ public sealed record A2UIValue
 /// </summary>
 public sealed record A2UIAction
 {
+    /// <summary>
+    /// Idempotency / dedup key. The gateway uses this as the <c>key</c> field
+    /// on the <c>agent.request</c> deep-link so a double-click doesn't produce
+    /// two agent turns. Generated per-Raise; callers don't supply it.
+    /// </summary>
+    public string Id { get; init; } = Guid.NewGuid().ToString();
     public required string Name { get; init; }
     public required string SurfaceId { get; init; }
     public string? SourceComponentId { get; init; }

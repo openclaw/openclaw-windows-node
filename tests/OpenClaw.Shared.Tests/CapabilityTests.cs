@@ -1157,11 +1157,15 @@ public class CanvasCapabilityTests
     }
 
     [Fact]
-    public async Task Navigate_RaisesEvent_WhenUrlPresent()
+    public async Task Navigate_InvokesHandler_WithCanonicalUrl()
     {
         var cap = new CanvasCapability(NullLogger.Instance);
-        string? navigatedUrl = null;
-        cap.NavigateRequested += (s, url) => navigatedUrl = url;
+        string? handlerSawUrl = null;
+        cap.NavigateRequested += url =>
+        {
+            handlerSawUrl = url;
+            return Task.FromResult("browser");
+        };
 
         var req = new NodeInvokeRequest
         {
@@ -1171,7 +1175,93 @@ public class CanvasCapabilityTests
         };
         var res = await cap.ExecuteAsync(req);
         Assert.True(res.Ok);
-        Assert.Equal("https://example.com/page", navigatedUrl);
+        Assert.Equal("https://example.com/page", handlerSawUrl);
+    }
+
+    [Fact]
+    public async Task Navigate_ResponseIncludesOpenerAndCanonicalUrl()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.NavigateRequested += _ => Task.FromResult("browser");
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c12b",
+            Command = "canvas.navigate",
+            // Mixed-case scheme/host should be canonicalized to lowercase before
+            // the agent sees the response.
+            Args = Parse("""{"url":"HTTPS://Example.COM/Path"}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"opener\":\"browser\"", json);
+        Assert.Contains("\"navigated\":true", json);
+        // Scheme and host lowercased; path preserved.
+        Assert.Contains("\"url\":\"https://example.com/Path\"", json);
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("file:///C:/Windows/System32/calc.exe")]
+    [InlineData("ms-settings:network")]
+    [InlineData("/relative/path")]
+    [InlineData("https://attacker@evil.example.com/")]
+    public async Task Navigate_RejectsUnsafeUrls_WithoutInvokingHandler(string url)
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        bool handlerCalled = false;
+        cap.NavigateRequested += _ =>
+        {
+            handlerCalled = true;
+            return Task.FromResult("browser");
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c12c",
+            Command = "canvas.navigate",
+            Args = Parse($$"""{"url":{{System.Text.Json.JsonSerializer.Serialize(url)}}}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.False(handlerCalled);
+        Assert.Contains("Invalid url", res.Error);
+    }
+
+    [Fact]
+    public async Task Navigate_NoHandler_ReturnsError()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        // No NavigateRequested subscription — agent should be told honestly.
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c12d",
+            Command = "canvas.navigate",
+            Args = Parse("""{"url":"https://example.com/"}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("CANVAS_NOT_AVAILABLE", res.Error);
+    }
+
+    [Fact]
+    public async Task Navigate_HandlerThrows_SurfacesAsError()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.NavigateRequested += _ => throw new InvalidOperationException("browser refused");
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c12e",
+            Command = "canvas.navigate",
+            Args = Parse("""{"url":"https://example.com/"}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.Contains("browser refused", res.Error);
     }
 
     [Fact]

@@ -66,7 +66,10 @@ public class WindowsNodeClient : WebSocketClientBase
     
     /// <summary>Full device ID for approval command</summary>
     public string FullDeviceId => _deviceIdentity.DeviceId;
-    
+
+    /// <summary>Human-readable display name surfaced to the gateway and other nodes.</summary>
+    public string DisplayName => _registration.DisplayName;
+
     protected override int ReceiveBufferSize => 65536;
     protected override string ClientRole => "node";
     
@@ -921,25 +924,48 @@ public class WindowsNodeClient : WebSocketClientBase
     }
     
     /// <summary>
-    /// Send a node-originated A2UI action notification to the gateway. The
-    /// payload follows the v0.8 client→server envelope ({ "action": {...} }).
-    /// Method namespace is <c>canvas.a2ui.action</c> so the gateway can route
-    /// it to the originating agent. Safe to call when not connected — drops.
+    /// Send a generic node-event to the gateway. Mirrors the Android
+    /// <c>GatewaySession.sendNodeEvent</c> wire shape: a JSON-RPC request with
+    /// method <c>node.event</c> and params <c>{ event, payloadJSON }</c>,
+    /// where <c>payloadJSON</c> is the inner payload as a *string*, not a
+    /// nested object. The gateway's node-event dispatcher
+    /// (<c>server-node-events.ts</c>) then re-parses it.
+    ///
+    /// Returns false when not connected so callers can surface a status to the
+    /// renderer (e.g. clear a button-loading spinner with an error). Throws on
+    /// argument problems but swallows transport-layer errors as false.
     /// </summary>
-    public async Task SendCanvasA2UIActionAsync(System.Text.Json.Nodes.JsonObject payload)
+    public async Task<bool> SendNodeEventAsync(string eventName, System.Text.Json.Nodes.JsonObject payload)
     {
-        if (!_isConnected) return;
+        if (string.IsNullOrEmpty(eventName)) throw new ArgumentException("eventName is required", nameof(eventName));
         if (payload is null) throw new ArgumentNullException(nameof(payload));
+        if (!_isConnected) return false;
 
+        // payloadJSON is a STRING containing JSON, matching the Android wire
+        // shape and the gateway's parser at server-node-events.ts:380 which
+        // does JSON.parse(evt.payloadJSON).
         var msg = new
         {
             type = "req",
             id = Guid.NewGuid().ToString(),
-            method = "canvas.a2ui.action",
-            @params = payload,
+            method = "node.event",
+            @params = new
+            {
+                @event = eventName,
+                payloadJSON = payload.ToJsonString(),
+            },
         };
 
-        await SendRawAsync(JsonSerializer.Serialize(msg, s_ignoreNullOptions));
+        try
+        {
+            await SendRawAsync(JsonSerializer.Serialize(msg, s_ignoreNullOptions));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"node.event '{eventName}' send failed: {ex.Message}");
+            return false;
+        }
     }
 
     private async Task SendPongAsync(string? requestId)

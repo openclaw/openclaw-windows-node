@@ -31,7 +31,19 @@ public class CanvasCapability : NodeCapabilityBase
     // Events for UI to handle
     public event EventHandler<CanvasPresentArgs>? PresentRequested;
     public event EventHandler? HideRequested;
-    public event EventHandler<string>? NavigateRequested;
+    /// <summary>
+    /// Subscriber decides how to handle a navigate request and returns the
+    /// opener that actually serviced it: <c>"canvas"</c> if an in-process
+    /// WebView2 frame navigated, <c>"browser"</c> if the URL was handed to the
+    /// OS default browser. Throwing surfaces as an error to the gateway.
+    /// Single-subscriber: same multi-handler hazard as the other Func events.
+    /// </summary>
+    private Func<string, Task<string>>? _navigateRequested;
+    public event Func<string, Task<string>> NavigateRequested
+    {
+        add => SetSingleHandler(ref _navigateRequested, value, nameof(NavigateRequested));
+        remove => ClearSingleHandler(ref _navigateRequested, value);
+    }
     // Func-based "events" are inherently single-handler — multi-subscribe to a
     // Delegate.Combine'd Func silently invokes only the last subscriber's
     // return value, hiding the others. Expose them as single-subscriber events
@@ -161,16 +173,45 @@ public class CanvasCapability : NodeCapabilityBase
     
     private async Task<NodeInvokeResponse> HandleNavigateAsync(NodeInvokeRequest request)
     {
-        var url = GetStringArg(request.Args, "url");
-        if (string.IsNullOrEmpty(url))
+        var rawUrl = GetStringArg(request.Args, "url");
+        if (string.IsNullOrEmpty(rawUrl))
         {
             return Error("Missing url parameter");
         }
-        
-        Logger.Info($"canvas.navigate: {url}");
-        NavigateRequested?.Invoke(this, url);
-        
-        return Success(new { navigated = true });
+
+        // Validate up front so the OS-level Process.Start in the subscriber
+        // can't be tricked into shell-executing javascript:/file:/app-protocol
+        // URIs. The subscriber re-validates as defense-in-depth.
+        if (!HttpUrlValidator.TryParse(rawUrl, out var canonical, out var validationError))
+        {
+            Logger.Warn($"canvas.navigate rejected: {validationError} (raw: {rawUrl})");
+            return Error($"Invalid url: {validationError}");
+        }
+
+        Logger.Info($"canvas.navigate: {canonical}");
+
+        var handler = _navigateRequested;
+        if (handler == null)
+        {
+            // No subscriber means there's no surface to navigate and no opener
+            // to fall back to. Tell the agent honestly so it can pick another
+            // tool instead of believing it succeeded.
+            return Error("CANVAS_NOT_AVAILABLE: no navigate handler registered");
+        }
+
+        try
+        {
+            var opener = await handler(canonical!);
+            // opener is the subscriber's word for how it serviced the request:
+            // "canvas" (existing WebView2 frame), "browser" (default browser),
+            // or anything else the subscriber wants to surface back to the agent.
+            return Success(new { navigated = true, opener, url = canonical });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"canvas.navigate handler failed: {ex.Message}", ex);
+            return Error($"Navigate failed: {ex.Message}");
+        }
     }
     
     private async Task<NodeInvokeResponse> HandleEvalAsync(NodeInvokeRequest request)
