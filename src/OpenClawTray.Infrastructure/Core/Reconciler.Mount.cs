@@ -103,7 +103,6 @@ public sealed partial class Reconciler
             SplitViewElement sv => MountSplitView(sv, requestRerender),
             ViewboxElement vb => MountViewbox(vb, requestRerender),
             CanvasElement cvs => MountCanvas(cvs, requestRerender),
-            FlexElement flex => MountFlex(flex, requestRerender),
             NavigationHostElement navHost => MountNavigationHost(navHost, requestRerender),
             NavigationViewElement nav => MountNavigationView(nav, requestRerender),
             TitleBarElement tb => MountTitleBar(tb, requestRerender),
@@ -949,30 +948,6 @@ public sealed partial class Reconciler
         SetElementTag(canvas, cvs);
         ApplySetters(cvs.Setters, canvas);
         return canvas;
-    }
-
-    private Layout.FlexPanel MountFlex(FlexElement flex, Action requestRerender)
-    {
-        var panel = _pool.TryRent(typeof(Layout.FlexPanel)) as Layout.FlexPanel ?? new Layout.FlexPanel();
-        panel.Direction = flex.Direction;
-        panel.JustifyContent = flex.JustifyContent;
-        panel.AlignItems = flex.AlignItems;
-        panel.AlignContent = flex.AlignContent;
-        panel.Wrap = flex.Wrap;
-        panel.ColumnGap = flex.ColumnGap;
-        panel.RowGap = flex.RowGap;
-        panel.FlexPadding = flex.FlexPadding;
-        foreach (var child in flex.Children)
-        {
-            var ctrl = Mount(child, requestRerender);
-            if (ctrl is null) continue;
-            // Always apply flex properties — clears stale values on pool-rented controls.
-            ApplyFlexAttached(child, ctrl);
-            panel.Children.Add(ctrl);
-        }
-        SetElementTag(panel, flex);
-        ApplySetters(flex.Setters, panel);
-        return panel;
     }
 
     private WinUI.Grid MountNavigationHost(NavigationHostElement element, Action requestRerender)

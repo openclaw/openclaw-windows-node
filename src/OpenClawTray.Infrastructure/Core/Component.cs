@@ -140,12 +140,6 @@ public abstract class Component
         InfiniteResourceOptions? options = null)
         => Context.UseInfiniteResource(fetchPage, deps, options);
 
-    protected InfiniteResource<TItem> UseDataSource<TItem>(
-        Data.IDataSource<TItem> source,
-        Data.DataRequest request,
-        InfiniteResourceOptions? options = null)
-        => Data.DataSourceResourceExtensions.UseDataSource(Context, source, request, options);
-
     protected Hooks.Mutation<TInput, TResult> UseMutation<TInput, TResult>(
         Func<TInput, CancellationToken, Task<TResult>> mutator,
         Hooks.MutationOptions<TInput, TResult>? options = null)

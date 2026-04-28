@@ -203,8 +203,6 @@ public sealed partial class Reconciler
                 => UpdateGrid(o, n, g, requestRerender),
             (CanvasElement o, CanvasElement n, WinUI.Canvas cvs)
                 => UpdateCanvas(o, n, cvs, requestRerender),
-            (FlexElement o, FlexElement n, Layout.FlexPanel fp)
-                => UpdateFlex(o, n, fp, requestRerender),
             (TemplatedListElementBase o, TemplatedListElementBase n, WinUI.ListView lv)
                 => UpdateTemplatedListView(o, n, lv, requestRerender),
             (TemplatedListElementBase o, TemplatedListElementBase n, WinUI.GridView gv)
@@ -2649,56 +2647,6 @@ public sealed partial class Reconciler
         SetElementTag(g, n);
         ApplySetters(n.Setters, g);
         return null;
-    }
-
-    private UIElement? UpdateFlex(FlexElement o, FlexElement n, Layout.FlexPanel panel, Action requestRerender)
-    {
-        panel.Direction = n.Direction;
-        panel.JustifyContent = n.JustifyContent;
-        panel.AlignItems = n.AlignItems;
-        panel.AlignContent = n.AlignContent;
-        panel.Wrap = n.Wrap;
-        panel.ColumnGap = n.ColumnGap;
-        panel.RowGap = n.RowGap;
-        panel.FlexPadding = n.FlexPadding;
-
-        ReconcileChildren(o.Children, n.Children, panel, requestRerender);
-
-        // Re-apply flex attached properties — skip nulls/EmptyElements to stay
-        // aligned with panel.Children (ChildReconciler filters those out).
-        int panelIdx = 0;
-        for (int i = 0; i < n.Children.Length && panelIdx < panel.Children.Count; i++)
-        {
-            if (n.Children[i] is null or EmptyElement) continue;
-            ApplyFlexAttached(n.Children[i], panel.Children[panelIdx]);
-            panelIdx++;
-        }
-
-        SetElementTag(panel, n);
-        ApplySetters(n.Setters, panel);
-        return null;
-    }
-
-    private static void ApplyFlexAttached(Element child, Microsoft.UI.Xaml.UIElement ctrl)
-    {
-        var fa = child.GetAttached<FlexAttached>();
-        // Always apply — reset to defaults when no FlexAttached, so stale values
-        // from pool-rented or reconciler-reused controls are cleared.
-        Layout.FlexPanel.SetGrow(ctrl, fa?.Grow ?? 0);
-        Layout.FlexPanel.SetShrink(ctrl, fa?.Shrink ?? 1);
-        if (fa is { Basis: { } basis }) Layout.FlexPanel.SetBasis(ctrl, basis);
-        else ctrl.ClearValue(Layout.FlexPanel.BasisProperty);
-        if (fa is { AlignSelf: { } alignSelf }) Layout.FlexPanel.SetAlignSelf(ctrl, alignSelf);
-        else ctrl.ClearValue(Layout.FlexPanel.AlignSelfProperty);
-        Layout.FlexPanel.SetPosition(ctrl, fa?.Position ?? Layout.FlexPositionType.Relative);
-        if (fa is { Left: { } left }) Layout.FlexPanel.SetLeft(ctrl, left);
-        else ctrl.ClearValue(Layout.FlexPanel.LeftProperty);
-        if (fa is { Top: { } top }) Layout.FlexPanel.SetTop(ctrl, top);
-        else ctrl.ClearValue(Layout.FlexPanel.TopProperty);
-        if (fa is { Right: { } right }) Layout.FlexPanel.SetRight(ctrl, right);
-        else ctrl.ClearValue(Layout.FlexPanel.RightProperty);
-        if (fa is { Bottom: { } bottom }) Layout.FlexPanel.SetBottom(ctrl, bottom);
-        else ctrl.ClearValue(Layout.FlexPanel.BottomProperty);
     }
 
     private UIElement? UpdateTreeView(TreeViewElement o, TreeViewElement n, WinUI.TreeView tv, Action requestRerender)

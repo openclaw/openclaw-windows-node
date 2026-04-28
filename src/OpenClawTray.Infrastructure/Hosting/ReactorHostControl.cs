@@ -122,9 +122,6 @@ public sealed partial class ReactorHostControl : ContentControl, IDisposable
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
 
-        // Register built-in custom element types
-        Controls.ResizeGripRegistration.Register(_reconciler);
-
         if (component is not null)
             Mount(component);
     }

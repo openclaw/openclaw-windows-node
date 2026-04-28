@@ -260,18 +260,6 @@ public abstract record Element
                 && ReferenceEquals(sva.Child, svb.Child)
                 && sva.Setters.Length == 0 && svb.Setters.Length == 0,
 
-            (FlexElement fa, FlexElement fb) =>
-                fa.Direction == fb.Direction
-                && fa.JustifyContent == fb.JustifyContent
-                && fa.AlignItems == fb.AlignItems
-                && fa.AlignContent == fb.AlignContent
-                && fa.Wrap == fb.Wrap
-                && fa.ColumnGap == fb.ColumnGap
-                && fa.RowGap == fb.RowGap
-                && fa.FlexPadding == fb.FlexPadding
-                && ReferenceEquals(fa.Children, fb.Children)
-                && fa.Setters.Length == 0 && fb.Setters.Length == 0,
-
             (EmptyElement, EmptyElement) => true,
 
             // ErrorBoundary contains delegates — always update
@@ -327,17 +315,6 @@ public abstract record Element
                 && sva.VerticalScrollMode == svb.VerticalScrollMode
                 && sva.ZoomMode == svb.ZoomMode
                 && sva.Setters.Length == 0 && svb.Setters.Length == 0,
-
-            (FlexElement fa, FlexElement fb) =>
-                fa.Direction == fb.Direction
-                && fa.JustifyContent == fb.JustifyContent
-                && fa.AlignItems == fb.AlignItems
-                && fa.AlignContent == fb.AlignContent
-                && fa.Wrap == fb.Wrap
-                && fa.ColumnGap == fb.ColumnGap
-                && fa.RowGap == fb.RowGap
-                && fa.FlexPadding == fb.FlexPadding
-                && fa.Setters.Length == 0 && fb.Setters.Length == 0,
 
             (CanvasElement ca, CanvasElement cb) =>
                 ca.Setters.Length == 0 && cb.Setters.Length == 0,
@@ -921,19 +898,6 @@ public record GridAttached(int Row = 0, int Column = 0, int RowSpan = 1, int Col
 /// <summary>Attached property data for Canvas children. Set via .Canvas(left:, top:) extension.</summary>
 public record CanvasAttached(double Left = 0, double Top = 0);
 
-/// <summary>Attached property data for Flex children. Set via .Flex(grow:, shrink:, ...) extension.</summary>
-public record FlexAttached(
-    double Grow = 0,
-    double Shrink = 1,
-    double? Basis = null,
-    Layout.FlexAlign? AlignSelf = null,
-    Layout.FlexPositionType Position = Layout.FlexPositionType.Relative,
-    double? Left = null,
-    double? Top = null,
-    double? Right = null,
-    double? Bottom = null
-);
-
 /// <summary>Attached property data for RelativePanel children. Set via .RelativePanel(...) extension.</summary>
 public record RelativePanelAttached(string Name)
 {
@@ -1464,19 +1428,6 @@ public record GridElement(
     internal Action<WinUI.Grid>[] Setters { get; init; } = [];
 }
 
-public record FlexElement(Element[] Children) : Element
-{
-    public Layout.FlexDirection Direction { get; init; } = Layout.FlexDirection.Row;
-    public Layout.FlexJustify JustifyContent { get; init; } = Layout.FlexJustify.FlexStart;
-    public Layout.FlexAlign AlignItems { get; init; } = Layout.FlexAlign.Stretch;
-    public Layout.FlexAlign AlignContent { get; init; } = Layout.FlexAlign.FlexStart;
-    public Layout.FlexWrap Wrap { get; init; } = Layout.FlexWrap.NoWrap;
-    public double ColumnGap { get; init; }
-    public double RowGap { get; init; }
-    public Thickness FlexPadding { get; init; }
-    internal Action<Layout.FlexPanel>[] Setters { get; init; } = [];
-}
-
 public record ScrollViewElement(Element Child) : Element
 {
     public Orientation Orientation { get; init; } = Orientation.Vertical;
@@ -1534,47 +1485,6 @@ public record CanvasElement(Element[] Children) : Element
     public double? Height { get; init; }
     public Brush? Background { get; init; }
     internal Action<WinUI.Canvas>[] Setters { get; init; } = [];
-
-    /// <summary>
-    /// When this Canvas was created by a chart element, carries the chart's
-    /// accessibility data so the scanner can inspect chart-specific properties.
-    /// Null for non-chart canvases.
-    /// </summary>
-    internal Charting.Accessibility.IChartAccessibilityData? ChartData { get; init; }
-
-    /// <summary>
-    /// When set, indicates this chart used <c>.ColorOnly()</c> — scanner flags as A11Y_CHART_004.
-    /// </summary>
-    internal bool IsColorOnly { get; init; }
-
-    /// <summary>
-    /// When set, indicates this chart used <c>.RawColors()</c> — scanner flags as A11Y_CHART_012.
-    /// </summary>
-    internal bool IsRawColors { get; init; }
-
-    /// <summary>Custom palette set on the chart, if any — scanner validates for contrast.</summary>
-    internal Charting.Accessibility.ChartPalette? CustomPalette { get; init; }
-
-    /// <summary>When true, chart is interactive with keyboard navigation enabled.</summary>
-    internal bool IsInteractive { get; init; }
-
-    /// <summary>When true, keyboard navigation is explicitly disabled. Scanner flags as A11Y_CHART_003.</summary>
-    internal bool IsKeyboardDisabled { get; init; }
-
-    /// <summary>When true, hit targets are not expanded to 24×24. Scanner flags as A11Y_CHART_005.</summary>
-    internal bool IsTightHitTest { get; init; }
-
-    /// <summary>
-    /// When set, a custom focus indicator color is used instead of the default double-ring.
-    /// Scanner validates it meets 3:1 contrast (A11Y_CHART_006).
-    /// </summary>
-    internal global::Windows.UI.Color? CustomFocusColor { get; init; }
-
-    /// <summary>
-    /// When true, the chart announces every animation frame via the live region,
-    /// which floods assistive technology. Scanner flags as A11Y_CHART_007.
-    /// </summary>
-    internal bool IsAnnounceEveryFrame { get; init; }
 }
 
 // ════════════════════════════════════════════════════════════════════════
