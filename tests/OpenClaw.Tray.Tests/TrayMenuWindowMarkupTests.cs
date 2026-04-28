@@ -431,8 +431,13 @@ public class TrayMenuWindowMarkupTests
 
         Assert.Contains("AddFlyoutMenuItem", source);
         Assert.Contains("Button", source);
-        Assert.Contains("Flyout = flyout", source);
-        Assert.Contains("MenuFlyoutItem", source);
+        Assert.Contains("ShowCascadingFlyout", source);
+        Assert.Contains("ShowAdjacentTo", source);
+        Assert.Contains("MonitorFromPoint", source);
+        Assert.Contains("CreateRoundRectRgn", source);
+        Assert.Contains("SetWindowRgn(hwnd, region, false)", source);
+        Assert.Contains("WS_EX_NOACTIVATE", source);
+        Assert.Contains("_activeFlyoutOwner", source);
         Assert.Contains("TrayMenuFlyoutItem", source);
     }
 

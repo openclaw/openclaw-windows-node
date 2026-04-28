@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Input;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using WinUIEx;
 
@@ -44,11 +46,29 @@ public sealed partial class TrayMenuWindow : WindowEx
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRoundRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
     private const uint MONITOR_DEFAULTTONEAREST = 2;
     private const int GWL_STYLE = -16;
+    private const int GWL_EXSTYLE = -20;
     private const int WS_CAPTION = 0x00C00000;
     private const int WS_THICKFRAME = 0x00040000;
     private const int WS_SYSMENU = 0x00080000;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
     
     // SetWindowPos flags
     private const uint SWP_NOMOVE = 0x0002;
@@ -84,9 +104,21 @@ public sealed partial class TrayMenuWindow : WindowEx
     private int _separatorCount = 0;
     private int _headerCount = 0;
     private bool _styleApplied = false;
+    private readonly TrayMenuWindow? _ownerMenu;
+    private TrayMenuWindow? _activeFlyoutWindow;
+    private Button? _activeFlyoutOwner;
+    private string? _activeFlyoutKey;
+    private bool _isShown;
+    private global::Windows.Graphics.RectInt32? _lastMoveAndResizeRect;
 
-    public TrayMenuWindow()
+    public TrayMenuWindow() : this(ownerMenu: null)
     {
+    }
+
+    private TrayMenuWindow(TrayMenuWindow? ownerMenu)
+    {
+        _ownerMenu = ownerMenu;
+
         InitializeComponent();
 
         // Configure as popup-style window
@@ -107,26 +139,19 @@ public sealed partial class TrayMenuWindow : WindowEx
     {
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            this.Hide();
+            if (_activeFlyoutWindow == null)
+            {
+                this.Hide();
+                return;
+            }
+
+            HideCascadeIfFocusLeavesMenu();
         }
     }
 
     public void ShowAtCursor()
     {
-        // Remove title bar via Win32 (once, on first show)
-        if (!_styleApplied)
-        {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            int style = GetWindowLong(hwnd, GWL_STYLE);
-            style &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU);
-            SetWindowLong(hwnd, GWL_STYLE, style);
-            
-            // Must call SetWindowPos with SWP_FRAMECHANGED to apply the style change
-            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-            
-            _styleApplied = true;
-        }
+        ApplyPopupStyle();
 
         if (GetCursorPos(out POINT pt))
         {
@@ -173,8 +198,62 @@ public sealed partial class TrayMenuWindow : WindowEx
             this.Move(x, y);
         }
 
+        ApplyRoundedWindowRegion();
         Activate();
         SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
+    private void ShowAdjacentTo(FrameworkElement parentElement)
+    {
+        ApplyPopupStyle();
+
+        if (!TryGetElementScreenRect(parentElement, out var parentRect))
+        {
+            ShowAtCursor();
+            return;
+        }
+
+        var center = new POINT
+        {
+            X = parentRect.Left + ((parentRect.Right - parentRect.Left) / 2),
+            Y = parentRect.Top + ((parentRect.Bottom - parentRect.Top) / 2)
+        };
+        var hMonitor = MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
+        var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        GetMonitorInfo(hMonitor, ref monitorInfo);
+        var workArea = monitorInfo.rcWork;
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
+        var submenuWidthPx = ConvertViewUnitsToPixels(280, dpi);
+        var submenuHeightPx = ConvertViewUnitsToPixels(_menuHeight, dpi);
+
+        const int overlap = 2;
+        const int margin = 8;
+        var roomRight = workArea.Right - parentRect.Right;
+        var roomLeft = parentRect.Left - workArea.Left;
+        var openRight = roomRight >= submenuWidthPx + margin || roomRight >= roomLeft;
+        var x = openRight
+            ? parentRect.Right - overlap
+            : parentRect.Left - submenuWidthPx + overlap;
+        var y = parentRect.Top;
+
+        x = Math.Clamp(x, workArea.Left + margin, Math.Max(workArea.Left + margin, workArea.Right - submenuWidthPx - margin));
+        y = Math.Clamp(y, workArea.Top + margin, Math.Max(workArea.Top + margin, workArea.Bottom - submenuHeightPx - margin));
+
+        var targetRect = new global::Windows.Graphics.RectInt32(x, y, submenuWidthPx, submenuHeightPx);
+        if (!RectEquals(_lastMoveAndResizeRect, targetRect))
+        {
+            AppWindow.MoveAndResize(targetRect);
+            _lastMoveAndResizeRect = targetRect;
+        }
+
+        ApplyRoundedWindowRegion();
+        if (!_isShown)
+        {
+            AppWindow.Show();
+            _isShown = true;
+        }
     }
 
     public void AddMenuItem(string text, string? icon, string action, bool isEnabled = true, bool indent = false)
@@ -206,7 +285,7 @@ public sealed partial class TrayMenuWindow : WindowEx
         button.Click += (s, e) =>
         {
             MenuItemClicked?.Invoke(this, action);
-            this.Hide(); // Hide instead of close - window is reused
+            HideCascade(); // Hide instead of close - window is reused
         };
 
         // Hover effect
@@ -233,21 +312,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             IsTextSelectionEnabled = false
         };
 
-        var flyout = new MenuFlyout();
-        foreach (var item in items)
-        {
-            var menuItem = new MenuFlyoutItem
-            {
-                Text = string.IsNullOrEmpty(item.Icon) ? item.Text : $"{item.Icon}  {item.Text}",
-                Tag = item.Action
-            };
-            menuItem.Click += (s, e) =>
-            {
-                MenuItemClicked?.Invoke(this, item.Action);
-                this.Hide();
-            };
-            flyout.Items.Add(menuItem);
-        }
+        var flyoutItems = items.ToArray();
 
         var leftPadding = indent ? 28 : 12;
         var button = new Button
@@ -258,18 +323,19 @@ public sealed partial class TrayMenuWindow : WindowEx
             Padding = new Thickness(leftPadding, 8, 12, 8),
             Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
-            Flyout = flyout,
             CornerRadius = new CornerRadius(4)
         };
 
         button.PointerEntered += (s, e) =>
         {
             button.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            ShowCascadingFlyout(button, flyoutItems);
         };
         button.PointerExited += (s, e) =>
         {
             button.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
         };
+        button.Click += (s, e) => ShowCascadingFlyout(button, flyoutItems);
 
         MenuPanel.Children.Add(button);
         _itemCount++;
@@ -327,10 +393,18 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public void ClearItems()
     {
+        HideActiveFlyout();
         MenuPanel.Children.Clear();
         _itemCount = 0;
         _separatorCount = 0;
         _headerCount = 0;
+    }
+
+    public void HideCascade()
+    {
+        HideActiveFlyout();
+        this.Hide();
+        _isShown = false;
     }
 
     /// <summary>
@@ -355,6 +429,7 @@ public sealed partial class TrayMenuWindow : WindowEx
         }
 
         this.SetWindowSize(280, _menuHeight);
+        ApplyRoundedWindowRegion();
     }
 
     private bool TryGetCurrentMonitorMetrics(out int workAreaHeight, out uint dpi)
@@ -405,6 +480,172 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         var dpi = hwnd != IntPtr.Zero ? GetDpiForWindow(hwnd) : 0;
         return dpi == 0 ? 96u : dpi;
+    }
+
+    private void ApplyPopupStyle()
+    {
+        if (_styleApplied)
+            return;
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        int style = GetWindowLong(hwnd, GWL_STYLE);
+        style &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU);
+        SetWindowLong(hwnd, GWL_STYLE, style);
+
+        int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        exStyle |= WS_EX_TOOLWINDOW;
+        if (_ownerMenu != null)
+            exStyle |= WS_EX_NOACTIVATE;
+
+        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+
+        // Must call SetWindowPos with SWP_FRAMECHANGED to apply the style change.
+        SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
+        _styleApplied = true;
+        ApplyRoundedWindowRegion();
+    }
+
+    private void ApplyRoundedWindowRegion()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        if (hwnd == IntPtr.Zero)
+            return;
+
+        if (!GetWindowRect(hwnd, out var rect))
+            return;
+
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0)
+            return;
+
+        var dpi = GetDpiForWindow(hwnd);
+        var cornerDiameter = ConvertViewUnitsToPixels(16, dpi);
+        var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, cornerDiameter, cornerDiameter);
+        if (region == IntPtr.Zero)
+            return;
+
+        if (SetWindowRgn(hwnd, region, false) == 0)
+        {
+            DeleteObject(region);
+        }
+    }
+
+    private void ShowCascadingFlyout(Button ownerButton, IReadOnlyList<TrayMenuFlyoutItem> items)
+    {
+        var flyoutKey = CreateFlyoutKey(items);
+        var flyoutWindow = _activeFlyoutWindow;
+        if (flyoutWindow == null)
+        {
+            flyoutWindow = new TrayMenuWindow(this);
+            flyoutWindow.MenuItemClicked += (_, action) =>
+            {
+                MenuItemClicked?.Invoke(this, action);
+                HideCascade();
+            };
+
+            _activeFlyoutWindow = flyoutWindow;
+        }
+
+        if (!ReferenceEquals(_activeFlyoutOwner, ownerButton) || !string.Equals(_activeFlyoutKey, flyoutKey, StringComparison.Ordinal))
+        {
+            flyoutWindow.ClearItems();
+            foreach (var item in items)
+            {
+                flyoutWindow.AddMenuItem(item.Text, item.Icon, item.Action);
+            }
+
+            flyoutWindow.SizeToContent();
+            _activeFlyoutOwner = ownerButton;
+            _activeFlyoutKey = flyoutKey;
+        }
+
+        flyoutWindow.ShowAdjacentTo(ownerButton);
+    }
+
+    private void HideActiveFlyout()
+    {
+        _activeFlyoutWindow?.HideCascade();
+        _activeFlyoutWindow = null;
+        _activeFlyoutOwner = null;
+        _activeFlyoutKey = null;
+    }
+
+    private static string CreateFlyoutKey(IEnumerable<TrayMenuFlyoutItem> items)
+    {
+        return string.Join('\u001f', items.Select(item => $"{item.Text}\u001e{item.Icon}\u001e{item.Action}"));
+    }
+
+    private static bool RectEquals(global::Windows.Graphics.RectInt32? current, global::Windows.Graphics.RectInt32 next)
+    {
+        return current.HasValue &&
+            current.Value.X == next.X &&
+            current.Value.Y == next.Y &&
+            current.Value.Width == next.Width &&
+            current.Value.Height == next.Height;
+    }
+
+    private bool TryGetElementScreenRect(FrameworkElement element, out RECT rect)
+    {
+        rect = default;
+
+        try
+        {
+            var transform = element.TransformToVisual(null);
+            var bounds = transform.TransformBounds(new global::Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            var scale = element.XamlRoot?.RasterizationScale ?? 1.0;
+            var sourceWindow = _ownerMenu ?? this;
+            var windowPosition = sourceWindow.AppWindow.Position;
+
+            rect = new RECT
+            {
+                Left = windowPosition.X + (int)Math.Round(bounds.Left * scale),
+                Top = windowPosition.Y + (int)Math.Round(bounds.Top * scale),
+                Right = windowPosition.X + (int)Math.Round(bounds.Right * scale),
+                Bottom = windowPosition.Y + (int)Math.Round(bounds.Bottom * scale)
+            };
+
+            return rect.Right > rect.Left && rect.Bottom > rect.Top;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static int ConvertViewUnitsToPixels(int viewUnits, uint dpi)
+    {
+        if (viewUnits <= 0)
+            return 1;
+
+        if (dpi == 0)
+            dpi = 96;
+
+        return Math.Max(1, (int)Math.Ceiling(viewUnits * dpi / 96.0));
+    }
+
+    private void HideCascadeIfFocusLeavesMenu()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(150);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            var foreground = GetForegroundWindow();
+            var thisHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var flyoutHwnd = _activeFlyoutWindow == null
+                ? IntPtr.Zero
+                : WinRT.Interop.WindowNative.GetWindowHandle(_activeFlyoutWindow);
+
+            if (foreground != thisHwnd && foreground != flyoutHwnd)
+            {
+                HideCascade();
+            }
+        };
+        timer.Start();
     }
 }
 
