@@ -89,7 +89,7 @@ See [DEVELOPMENT.md](../DEVELOPMENT.md#developing--testing-the-onboarding-wizard
 | Path | Purpose |
 |------|---------|
 | `Onboarding/OnboardingWindow.cs` | Host window with WebView2 overlay |
-| `Onboarding/OnboardingApp.cs` | Reactor root component, page navigation |
+| `Onboarding/OnboardingApp.cs` | Functional UI root component, page navigation |
 | `Onboarding/Services/OnboardingState.cs` | Shared state across all pages |
 | `Onboarding/Pages/*.cs` | Individual wizard screens |
 | `Onboarding/Services/SetupCodeDecoder.cs` | Base64url setup code parsing |

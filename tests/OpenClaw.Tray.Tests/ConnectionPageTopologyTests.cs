@@ -9,7 +9,7 @@ namespace OpenClaw.Tray.Tests;
 ///   - 5-mode page-order behaviour (Local/Wsl/Remote/Ssh/Later)
 ///   - GatewayTopologyClassifier.Classify() outputs for each mode's canonical URL
 ///   - SshTunnelCommandLine preview generation matches the mockup format
-/// These tests do not spin up Reactor — they exercise the same public APIs the page calls
+    /// These tests do not spin up WinUI — they exercise the same public APIs the page calls
 /// during Render(), so a regression in any of them will surface clearly.
 /// </summary>
 public class ConnectionPageTopologyTests

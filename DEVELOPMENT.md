@@ -749,7 +749,7 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
 
 ## Developing & Testing the Onboarding Wizard
 
-The onboarding wizard is a 6-screen flow built with the Reactor framework (declarative React-like C# UI, snapped from `microsoft/microsoft-ui-reactor`). The chat page uses a WebView2 overlay for visual consistency with the post-setup chat experience.
+The onboarding wizard is a 6-screen flow built with OpenClaw's minimal FunctionalUI helper layer for declarative C# WinUI. The chat page uses a WebView2 overlay for visual consistency with the post-setup chat experience.
 
 ### Building
 
@@ -785,7 +785,8 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 
 ### Architecture
 
-- **Pages**: `src/OpenClaw.Tray.WinUI/Onboarding/Pages/` — Reactor components for each wizard screen
+- **FunctionalUI**: `src/OpenClawTray.FunctionalUI/` — Minimal declarative WinUI helper layer used by onboarding
+- **Pages**: `src/OpenClaw.Tray.WinUI/Onboarding/Pages/` — Functional UI components for each wizard screen
 - **Services**: `src/OpenClaw.Tray.WinUI/Onboarding/Services/` — State management, setup code decoder, permission checker, health check, input validation
 - **Widgets**: `src/OpenClaw.Tray.WinUI/Onboarding/Widgets/` — Shared UI components (cards, step indicators, feature rows)
 - **Window**: `src/OpenClaw.Tray.WinUI/Onboarding/OnboardingWindow.cs` — Host window with WebView2 overlay for chat

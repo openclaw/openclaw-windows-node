@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenClaw.Shared;
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Core;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Services;
-using static OpenClawTray.Infrastructure.Factories;
+using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
 namespace OpenClawTray.Onboarding.Pages;
@@ -382,7 +382,7 @@ public sealed class WizardPage : Component<OnboardingState>
         }
 
         // Always render exactly the same element tree structure.
-        // Use empty strings for unused fields — Reactor needs consistent child count.
+        // Use empty strings for unused fields to keep a consistent child count.
         string displayTitle = "";
         string displayMessage = "";
         Element inputArea = TextBlock(""); // placeholder for input controls

@@ -1,16 +1,16 @@
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Core;
-using OpenClawTray.Infrastructure.Navigation;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
+using OpenClawTray.FunctionalUI.Navigation;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Onboarding.Pages;
 using OpenClawTray.Onboarding.Widgets;
-using static OpenClawTray.Infrastructure.Factories;
+using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
 namespace OpenClawTray.Onboarding;
 
 /// <summary>
-/// Root Reactor component for the onboarding wizard.
+/// Root functional UI component for the onboarding wizard.
 /// Manages navigation between pages with GlowingIcon header,
 /// NavigationHost for page content, and a step indicator + back/next nav bar.
 /// Matches macOS OnboardingView layout: icon → page content → navigation bar.
@@ -57,7 +57,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
 
         var isLastPage = pageIndex >= pages.Length - 1;
 
-        // VStack for Reactor content (icon + pages only).
+        // VStack for functional UI content (icon + pages only).
         // The nav bar is rendered natively in OnboardingWindow for reliable bottom pinning.
         return VStack(
             // GlowingIcon header

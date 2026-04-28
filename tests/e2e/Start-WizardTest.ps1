@@ -36,7 +36,7 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\helpers\UIA-Helpers.ps1"
 
 # ── Constants ───────────────────────────────────────────
-$AppExePath     = "C:\Users\mharsh\gt\openclaw\crew\mharsh\src\OpenClaw.Tray.WinUI\bin\x64\Debug\net10.0-windows10.0.19041.0\OpenClaw.Tray.WinUI.exe"
+$AppExePath     = "C:\Users\mharsh\gt\openclaw\crew\mharsh\src\OpenClaw.Tray.WinUI\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\OpenClaw.Tray.WinUI.exe"
 $AppProjectPath = "C:\Users\mharsh\gt\openclaw\crew\mharsh\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
 $SettingsPath   = "$env:APPDATA\OpenClawTray\settings.json"
 $GatewayPort    = 19001
