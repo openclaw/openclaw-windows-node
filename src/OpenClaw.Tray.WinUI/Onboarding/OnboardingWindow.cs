@@ -54,7 +54,7 @@ public sealed class OnboardingWindow : WindowEx
             : null;
 
         Title = LocalizationHelper.GetString("Onboarding_Title");
-        this.SetWindowSize(720, 752);
+        this.SetWindowSize(720, 900);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
         SystemBackdrop = new MicaBackdrop();
@@ -68,6 +68,22 @@ public sealed class OnboardingWindow : WindowEx
         _state = new OnboardingState(settings);
         _state.Finished += OnOnboardingFinished;
         _state.RouteChanged += OnRouteChanged;
+
+        // Optional override for visual tests / engineering: jump straight to a route.
+        // Accepts the OnboardingRoute enum name (e.g., "Connection").
+        var startRoute = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_ROUTE");
+        if (!string.IsNullOrWhiteSpace(startRoute) &&
+            Enum.TryParse<OnboardingRoute>(startRoute, ignoreCase: true, out var parsed))
+        {
+            _state.CurrentRoute = parsed;
+        }
+        // Optional override for visual tests: pre-select a connection mode (Local/Wsl/Remote/Ssh/Later).
+        var startMode = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_MODE");
+        if (!string.IsNullOrWhiteSpace(startMode) &&
+            Enum.TryParse<ConnectionMode>(startMode, ignoreCase: true, out var parsedMode))
+        {
+            _state.Mode = parsedMode;
+        }
 
         _host = new ReactorHostControl();
         _host.Mount(ctx =>

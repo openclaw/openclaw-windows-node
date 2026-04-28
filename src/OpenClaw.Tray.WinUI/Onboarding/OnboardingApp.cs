@@ -19,8 +19,12 @@ public sealed class OnboardingApp : Component<OnboardingState>
 {
     public override Element Render()
     {
-        var nav = UseNavigation(OnboardingRoute.Welcome);
-        var (pageIndex, setPageIndex) = UseState(0);
+        // Seed navigation + page index from Props.CurrentRoute (used by visual tests via
+        // OPENCLAW_ONBOARDING_START_ROUTE; defaults to Welcome on normal launches).
+        var pagesInit = Props.GetPageOrder();
+        var initialIdx = Math.Max(0, Array.IndexOf(pagesInit, Props.CurrentRoute));
+        var nav = UseNavigation(pagesInit[initialIdx]);
+        var (pageIndex, setPageIndex) = UseState(initialIdx);
         var pages = Props.GetPageOrder();
 
         // Clamp pageIndex if page order changed (e.g., node mode toggled)
@@ -74,7 +78,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 direction: SlideDirection.FromRight,
                 duration: TimeSpan.FromMilliseconds(400),
                 distance: 80) })
-            .Height(520),
+            .Height(680),
 
             // Navigation bar
             HStack(16,

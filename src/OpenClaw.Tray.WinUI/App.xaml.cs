@@ -41,6 +41,21 @@ public partial class App : Application
     public OpenClawGatewayClient? GatewayClient => _gatewayClient;
 
     /// <summary>
+    /// Ensures the managed SSH tunnel is started using the current settings.
+    /// Used by the onboarding ConnectionPage when the user picks the SSH topology.
+    /// </summary>
+    public void EnsureSshTunnelStarted() => _sshTunnelService?.EnsureStarted(_settings);
+
+    /// <summary>
+    /// Returns the HWND of the active onboarding window, or IntPtr.Zero if none.
+    /// Used by onboarding pages that need to host file pickers / dialogs.
+    /// </summary>
+    public IntPtr GetOnboardingWindowHandle()
+        => _onboardingWindow != null
+            ? WinRT.Interop.WindowNative.GetWindowHandle(_onboardingWindow)
+            : IntPtr.Zero;
+
+    /// <summary>
     /// Reinitializes the gateway client with current settings.
     /// Called by the onboarding wizard after saving URL + Token.
     /// </summary>
