@@ -1,12 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared;
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Core;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Services;
-using static OpenClawTray.Infrastructure.Factories;
+using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 using Windows.Storage.Pickers;
 
@@ -29,7 +29,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
     /// <summary>
     /// Returns the detected local gateway URL. Does a fast synchronous TCP probe
-    /// on common ports. Safe to call from Reactor Render() — no async/await.
+    /// on common ports. Safe to call from Render() — no async/await.
     /// </summary>
     private static string GetDetectedLocalUrl()
     {
@@ -388,17 +388,6 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         var showFields = mode != ConnectionMode.Later;
 
-        // Map mode to RadioButtons index (5 entries: Local / WSL / Remote / SSH / Later)
-        var modeIndex = mode switch
-        {
-            ConnectionMode.Local  => 0,
-            ConnectionMode.Wsl    => 1,
-            ConnectionMode.Remote => 2,
-            ConnectionMode.Ssh    => 3,
-            ConnectionMode.Later  => 4,
-            _ => 0
-        };
-
         // Build the full status text for the always-visible status area
         var fullStatus = statusMsg;
         if (!string.IsNullOrEmpty(pairingDeviceId))
@@ -418,32 +407,23 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 .HAlign(HorizontalAlignment.Left)
         };
 
-        // Build card content — RadioButtons always first, fields conditionally below
+        Element ModeOption(ConnectionMode option, string label) =>
+            RadioButton(label, mode == option, isChecked =>
+                {
+                    if (isChecked)
+                        SelectMode(option);
+                },
+                groupName: "connection-mode");
+
+        // Build card content — mode selector always first, fields conditionally below
         var cardChildren = new List<Element>
         {
-            // Mode selector inside card for consistent alignment (5 modes, two rows)
-            RadioButtons(
-                [
-                    $"🖥️ {LocalizationHelper.GetString("Onboarding_Connection_Local")}",
-                    $"🐧 {LocalizationHelper.GetString("Onboarding_Connection_Wsl")}",
-                    $"🌐 {LocalizationHelper.GetString("Onboarding_Connection_Remote")}",
-                    $"🔐 {LocalizationHelper.GetString("Onboarding_Connection_Ssh")}",
-                    $"⏭️ {LocalizationHelper.GetString("Onboarding_Connection_Later")}",
-                ],
-                modeIndex,
-                index =>
-                {
-                    var selected = index switch
-                    {
-                        0 => ConnectionMode.Local,
-                        1 => ConnectionMode.Wsl,
-                        2 => ConnectionMode.Remote,
-                        3 => ConnectionMode.Ssh,
-                        _ => ConnectionMode.Later
-                    };
-                    SelectMode(selected);
-                })
-                .Set(rb => rb.MaxColumns = 3)
+            Grid(["1*", "1*"], ["Auto", "Auto", "Auto"],
+                ModeOption(ConnectionMode.Local, $"🖥️ {LocalizationHelper.GetString("Onboarding_Connection_Local")}").Grid(0, 0),
+                ModeOption(ConnectionMode.Ssh, $"🔐 {LocalizationHelper.GetString("Onboarding_Connection_Ssh")}").Grid(0, 1),
+                ModeOption(ConnectionMode.Wsl, $"🐧 {LocalizationHelper.GetString("Onboarding_Connection_Wsl")}").Grid(1, 0),
+                ModeOption(ConnectionMode.Later, $"⏭️ {LocalizationHelper.GetString("Onboarding_Connection_Later")}").Grid(1, 1),
+                ModeOption(ConnectionMode.Remote, $"🌐 {LocalizationHelper.GetString("Onboarding_Connection_Remote")}").Grid(2, 0))
         };
 
         if (showFields)

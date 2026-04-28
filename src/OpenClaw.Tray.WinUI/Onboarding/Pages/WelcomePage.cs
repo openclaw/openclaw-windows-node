@@ -1,7 +1,7 @@
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Core;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Helpers;
-using static OpenClawTray.Infrastructure.Factories;
+using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
 namespace OpenClawTray.Onboarding.Pages;

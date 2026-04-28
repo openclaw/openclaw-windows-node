@@ -1,8 +1,8 @@
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Core;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
-using static OpenClawTray.Infrastructure.Factories;
+using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
 namespace OpenClawTray.Onboarding.Pages;
@@ -10,7 +10,7 @@ namespace OpenClawTray.Onboarding.Pages;
 /// <summary>
 /// Page 4: Meet your Agent — embedded gateway chat via WebView2 overlay.
 /// The actual chat UI is managed by OnboardingWindow's WebView2 overlay
-/// which shows/hides based on the current route. This Reactor component
+    /// which shows/hides based on the current route. This functional UI component
 /// serves as a transparent placeholder that lets the overlay show through.
 /// </summary>
 public sealed class ChatPage : Component<OnboardingState>

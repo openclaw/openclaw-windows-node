@@ -8,8 +8,8 @@ using Microsoft.Web.WebView2.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Onboarding.Services;
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Hosting;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Hosting;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -18,7 +18,7 @@ using WinUIEx;
 namespace OpenClawTray.Onboarding;
 
 /// <summary>
-/// Host window for the Reactor-based onboarding wizard.
+/// Host window for the functional UI onboarding wizard.
 /// Manages a WebView2 overlay for the Chat page to provide a consistent
 /// chat experience that matches the post-setup WebChatWindow.
 /// Supports visual test capture via OPENCLAW_VISUAL_TEST env var.
@@ -29,7 +29,7 @@ public sealed class OnboardingWindow : WindowEx
     public bool Completed { get; private set; }
 
     private readonly SettingsManager _settings;
-    private readonly ReactorHostControl _host;
+    private readonly FunctionalHostControl _host;
     private readonly string? _visualTestDir;
     private readonly DispatcherQueue _dispatcherQueue;
     private int _captureIndex;
@@ -85,7 +85,7 @@ public sealed class OnboardingWindow : WindowEx
             _state.Mode = parsedMode;
         }
 
-        _host = new ReactorHostControl();
+        _host = new FunctionalHostControl();
         _host.Mount(ctx =>
         {
             var (s, _) = ctx.UseState(_state);
@@ -93,13 +93,16 @@ public sealed class OnboardingWindow : WindowEx
         });
 
         // Build the chat overlay (hidden by default)
-        // Leave bottom 60px uncovered so the Reactor nav bar (Back/Next/dots) is visible and clickable
+        // Leave bottom 60px uncovered so the functional UI nav bar (Back/Next/dots) is visible and clickable
         _chatOverlay = BuildChatOverlay();
         _chatOverlay.Visibility = Visibility.Collapsed;
         _chatOverlay.VerticalAlignment = VerticalAlignment.Top;
 
-        // Root grid: Reactor fills everything, overlay sits on top (except nav bar)
-        _rootGrid = new Grid();
+        // Root grid: functional UI host fills everything, overlay sits on top (except nav bar)
+        _rootGrid = new Grid
+        {
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
+        };
         _rootGrid.Children.Add(_host);
         _rootGrid.Children.Add(_chatOverlay);
         Content = _rootGrid;
@@ -122,6 +125,13 @@ public sealed class OnboardingWindow : WindowEx
                     DispatcherQueuePriority.Low,
                     () => _ = CaptureCurrentPageAsync());
             };
+
+            Task.Delay(1500).ContinueWith(_ =>
+                _dispatcherQueue.TryEnqueue(() => _ = CaptureCurrentPageAsync()),
+                TaskScheduler.Default);
+            Task.Delay(5000).ContinueWith(_ =>
+                _dispatcherQueue.TryEnqueue(() => _ = CaptureCurrentPageAsync()),
+                TaskScheduler.Default);
 
             _state.PageChanged += (_, _) =>
             {
@@ -148,7 +158,7 @@ public sealed class OnboardingWindow : WindowEx
                 Microsoft.UI.Colors.White);
         }
 
-        // Match the Reactor layout: 20px padding, header + WebView2 content
+        // Match the functional UI layout: 20px padding, header + WebView2 content
         grid.Padding = new Thickness(20, 0, 20, 0);
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(70) });   // Header space
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // WebView2
@@ -555,13 +565,13 @@ public sealed class OnboardingWindow : WindowEx
         {
             await Task.Delay(300);
 
+            var fileName = $"page-{_captureIndex:D2}.png";
+            var filePath = Path.Combine(_visualTestDir, fileName);
+
             var rtb = new RenderTargetBitmap();
             await rtb.RenderAsync(_rootGrid);
             var pixels = await rtb.GetPixelsAsync();
             var pixelBytes = pixels.ToArray();
-
-            var fileName = $"page-{_captureIndex:D2}.png";
-            var filePath = Path.Combine(_visualTestDir, fileName);
 
             using var stream = new InMemoryRandomAccessStream();
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
@@ -586,6 +596,7 @@ public sealed class OnboardingWindow : WindowEx
             Logger.Warn($"[VisualTest] Capture failed: {ex.Message}");
         }
     }
+
 
     private void OnOnboardingFinished(object? sender, EventArgs e)
     {

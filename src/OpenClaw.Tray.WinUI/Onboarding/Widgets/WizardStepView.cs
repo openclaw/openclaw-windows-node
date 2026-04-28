@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using OpenClawTray.Infrastructure;
-using OpenClawTray.Infrastructure.Core;
-using static OpenClawTray.Infrastructure.Factories;
+using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
+using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
 namespace OpenClawTray.Onboarding.Widgets;
