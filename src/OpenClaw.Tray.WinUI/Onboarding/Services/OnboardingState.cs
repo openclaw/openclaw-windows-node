@@ -78,7 +78,7 @@ public sealed class OnboardingState : IDisposable
         {
             return Mode switch
             {
-                ConnectionMode.Local or ConnectionMode.Remote =>
+                ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Remote or ConnectionMode.Ssh =>
                     [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
                 _ => // Later or unknown
                     [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
@@ -87,8 +87,9 @@ public sealed class OnboardingState : IDisposable
 
         return (Mode, ShowChat) switch
         {
-            (ConnectionMode.Local, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
-            (ConnectionMode.Local, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            // Local-style flows (Local, WSL, SSH tunnel) all run wizard locally
+            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
             (ConnectionMode.Remote, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
             (ConnectionMode.Remote, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
             (ConnectionMode.Later, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Chat, OnboardingRoute.Ready],
@@ -122,7 +123,9 @@ public sealed class OnboardingState : IDisposable
 public enum ConnectionMode
 {
     Local,
+    Wsl,
     Remote,
+    Ssh,
     Later,
 }
 

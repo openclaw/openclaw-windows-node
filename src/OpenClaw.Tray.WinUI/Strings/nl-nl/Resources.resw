@@ -1268,4 +1268,53 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Onboarding_Connection_StatusAuthenticating" xml:space="preserve">
     <value>Authenticeren...</value>
   </data>
+  <data name="Onboarding_Connection_Wsl" xml:space="preserve">
+    <value>WSL-gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Ssh" xml:space="preserve">
+    <value>SSH-tunnel</value>
+  </data>
+  <data name="Onboarding_Connection_PasteSetup" xml:space="preserve">
+    <value>Plakken</value>
+  </data>
+  <data name="Onboarding_Connection_QrButton" xml:space="preserve">
+    <value>QR</value>
+  </data>
+  <data name="Onboarding_Connection_QrFilePickerTitle" xml:space="preserve">
+    <value>QR-afbeelding importeren</value>
+  </data>
+  <data name="Onboarding_Connection_QrDecodeFailed" xml:space="preserve">
+    <value>Kan installatiecode niet decoderen uit deze afbeelding</value>
+  </data>
+  <data name="Onboarding_Connection_SshHint" xml:space="preserve">
+    <value>OpenClaw maakt een beheerde SSH-tunnel om de gateway-poort van de externe host naar deze pc door te sturen.</value>
+  </data>
+  <data name="Onboarding_Connection_SshUser" xml:space="preserve">
+    <value>SSH-gebruiker</value>
+  </data>
+  <data name="Onboarding_Connection_SshHost" xml:space="preserve">
+    <value>SSH-host</value>
+  </data>
+  <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
+    <value>Externe gatewaypoort</value>
+  </data>
+  <data name="Onboarding_Connection_SshLocalPort" xml:space="preserve">
+    <value>Lokale doorstuurpoort</value>
+  </data>
+  <data name="Onboarding_Connection_SshPreviewLabel" xml:space="preserve">
+    <value>Beheerde tunnel:</value>
+  </data>
+  <data name="Onboarding_Connection_SshUserInvalid" xml:space="preserve">
+    <value>Voer een geldige SSH-gebruiker in voordat u verbinding maakt.</value>
+  </data>
+  <data name="Onboarding_Connection_SshHostInvalid" xml:space="preserve">
+    <value>Voer een geldige SSH-host in (bijv. mac-studio.local) voordat u verbinding maakt.</value>
+  </data>
+  <data name="Onboarding_Connection_TopologyDetectedFmt" xml:space="preserve">
+    <value>Gedetecteerd: {0}</value>
+  </data>
+  <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
+    <value>U kunt de gateway later configureren in Instellingen.</value>
+  </data>
+
 </root>

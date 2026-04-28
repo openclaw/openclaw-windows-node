@@ -8,6 +8,7 @@ using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Services;
 using static OpenClawTray.Infrastructure.Factories;
 using Microsoft.UI.Xaml;
+using Windows.Storage.Pickers;
 
 namespace OpenClawTray.Onboarding.Pages;
 
@@ -96,11 +97,26 @@ public sealed class ConnectionPage : Component<OnboardingState>
     {
         var (mode, setMode) = UseState(Props.Mode);
         // For Local mode, use the detected gateway URL (probes 18789 and 19001)
-        var initialUrl = Props.Mode == ConnectionMode.Local ? GetDetectedLocalUrl() : Props.Settings.GatewayUrl;
+        var initialUrl = Props.Mode switch
+        {
+            ConnectionMode.Local => GetDetectedLocalUrl(),
+            ConnectionMode.Wsl   => "ws://wsl.localhost:18789",
+            ConnectionMode.Ssh   => $"ws://127.0.0.1:{Math.Max(1, Props.Settings.SshTunnelLocalPort)}",
+            ConnectionMode.Later => "",
+            _ => Props.Settings.GatewayUrl
+        };
         var (url, setUrl) = UseState(initialUrl);
         var (token, setToken) = UseState(Props.Settings.Token);
         var (nodeMode, setNodeMode) = UseState(Props.Settings.EnableNodeMode);
         var (setupCode, setSetupCode) = UseState("");
+
+        // SSH tunnel state — bound to Props.Settings.SshTunnel*
+        var (useSshTunnel, setUseSshTunnel) = UseState(Props.Mode == ConnectionMode.Ssh || Props.Settings.UseSshTunnel);
+        var (sshUser, setSshUser)           = UseState(Props.Settings.SshTunnelUser ?? "");
+        var (sshHost, setSshHost)           = UseState(Props.Settings.SshTunnelHost ?? "");
+        var (sshRemotePort, setSshRemotePort) = UseState(Props.Settings.SshTunnelRemotePort > 0 ? Props.Settings.SshTunnelRemotePort : 18789);
+        var (sshLocalPort, setSshLocalPort)   = UseState(Props.Settings.SshTunnelLocalPort  > 0 ? Props.Settings.SshTunnelLocalPort  : 18789);
+
         var detectedUrl = GetDetectedLocalUrl();
         var detectedMsg = detectedUrl != DefaultLocalUrl
             ? $"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDetected")}"
@@ -112,6 +128,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
         var (copied, setCopied) = UseState(false);
 
         var isLocal = LocalGatewayApprover.IsLocalGateway(url);
+        var urlReadOnly = mode == ConnectionMode.Ssh; // Ssh mode pins the local-forward URL
 
         void SelectMode(ConnectionMode m)
         {
@@ -121,14 +138,52 @@ public sealed class ConnectionPage : Component<OnboardingState>
             setStatusMsg("");
             setPairingDeviceId("");
 
-            if (m == ConnectionMode.Local)
+            switch (m)
             {
-                // Use cached detected URL (probed on first access)
-                var detected = GetDetectedLocalUrl();
-                setUrl(detected);
-                Props.Settings.GatewayUrl = detected;
-                if (detected != DefaultLocalUrl)
-                    setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDetected")}");
+                case ConnectionMode.Local:
+                {
+                    var detected = GetDetectedLocalUrl();
+                    setUrl(detected);
+                    Props.Settings.GatewayUrl = detected;
+                    setUseSshTunnel(false);
+                    Props.Settings.UseSshTunnel = false;
+                    if (detected != DefaultLocalUrl)
+                        setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDetected")}");
+                    break;
+                }
+                case ConnectionMode.Wsl:
+                {
+                    const string wslUrl = "ws://wsl.localhost:18789";
+                    setUrl(wslUrl);
+                    Props.Settings.GatewayUrl = wslUrl;
+                    setUseSshTunnel(false);
+                    Props.Settings.UseSshTunnel = false;
+                    break;
+                }
+                case ConnectionMode.Remote:
+                {
+                    setUseSshTunnel(false);
+                    Props.Settings.UseSshTunnel = false;
+                    // Leave URL untouched — user enters their gateway URL.
+                    break;
+                }
+                case ConnectionMode.Ssh:
+                {
+                    var localPort = sshLocalPort > 0 ? sshLocalPort : 18789;
+                    var sshUrl = $"ws://127.0.0.1:{localPort}";
+                    setUrl(sshUrl);
+                    Props.Settings.GatewayUrl = sshUrl;
+                    setUseSshTunnel(true);
+                    Props.Settings.UseSshTunnel = true;
+                    break;
+                }
+                case ConnectionMode.Later:
+                {
+                    setUseSshTunnel(false);
+                    Props.Settings.UseSshTunnel = false;
+                    setStatusMsg(LocalizationHelper.GetString("Onboarding_Connection_LaterStatus"));
+                    break;
+                }
             }
         }
 
@@ -188,6 +243,43 @@ public sealed class ConnectionPage : Component<OnboardingState>
         {
             Props.Settings.GatewayUrl = url;
             Props.Settings.Token = token;
+
+            // When SSH mode, start the managed tunnel before health-checking the local URL.
+            if (mode == ConnectionMode.Ssh)
+            {
+                if (string.IsNullOrWhiteSpace(sshUser))
+                {
+                    setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_SshUserInvalid")}");
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(sshHost))
+                {
+                    setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_SshHostInvalid")}");
+                    return;
+                }
+                Props.Settings.UseSshTunnel       = true;
+                Props.Settings.SshTunnelUser      = sshUser;
+                Props.Settings.SshTunnelHost      = sshHost;
+                Props.Settings.SshTunnelRemotePort = sshRemotePort;
+                Props.Settings.SshTunnelLocalPort  = sshLocalPort;
+                Props.Settings.Save();
+                try
+                {
+                    ((App)Microsoft.UI.Xaml.Application.Current).EnsureSshTunnelStarted();
+                    // Give the tunnel a brief moment to bind the local port before the health probe.
+                    await Task.Delay(800);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[Connection] SSH tunnel start failed: {ex.Message}");
+                    setStatusMsg($"❌ {ex.Message}");
+                    return;
+                }
+            }
+            else
+            {
+                Props.Settings.UseSshTunnel = false;
+            }
 
             if (!GatewayUrlHelper.IsValidGatewayUrl(url))
             {
@@ -296,12 +388,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         var showFields = mode != ConnectionMode.Later;
 
-        // Map mode to RadioButtons index
+        // Map mode to RadioButtons index (5 entries: Local / WSL / Remote / SSH / Later)
         var modeIndex = mode switch
         {
-            ConnectionMode.Local => 0,
-            ConnectionMode.Remote => 1,
-            ConnectionMode.Later => 2,
+            ConnectionMode.Local  => 0,
+            ConnectionMode.Wsl    => 1,
+            ConnectionMode.Remote => 2,
+            ConnectionMode.Ssh    => 3,
+            ConnectionMode.Later  => 4,
             _ => 0
         };
 
@@ -327,13 +421,26 @@ public sealed class ConnectionPage : Component<OnboardingState>
         // Build card content — RadioButtons always first, fields conditionally below
         var cardChildren = new List<Element>
         {
-            // Mode selector inside card for consistent alignment
+            // Mode selector inside card for consistent alignment (5 modes, two rows)
             RadioButtons(
-                [$"🖥️ {LocalizationHelper.GetString("Onboarding_Connection_Local")}", $"🌐 {LocalizationHelper.GetString("Onboarding_Connection_Remote")}", $"⏭️ {LocalizationHelper.GetString("Onboarding_Connection_Later")}"],
+                [
+                    $"🖥️ {LocalizationHelper.GetString("Onboarding_Connection_Local")}",
+                    $"🐧 {LocalizationHelper.GetString("Onboarding_Connection_Wsl")}",
+                    $"🌐 {LocalizationHelper.GetString("Onboarding_Connection_Remote")}",
+                    $"🔐 {LocalizationHelper.GetString("Onboarding_Connection_Ssh")}",
+                    $"⏭️ {LocalizationHelper.GetString("Onboarding_Connection_Later")}",
+                ],
                 modeIndex,
                 index =>
                 {
-                    var selected = index switch { 0 => ConnectionMode.Local, 1 => ConnectionMode.Remote, _ => ConnectionMode.Later };
+                    var selected = index switch
+                    {
+                        0 => ConnectionMode.Local,
+                        1 => ConnectionMode.Wsl,
+                        2 => ConnectionMode.Remote,
+                        3 => ConnectionMode.Ssh,
+                        _ => ConnectionMode.Later
+                    };
                     SelectMode(selected);
                 })
                 .Set(rb => rb.MaxColumns = 3)
@@ -341,45 +448,117 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         if (showFields)
         {
-            // Setup code
-            cardChildren.Add(
-                TextField(setupCode, OnSetupCodeChanged,
-                    placeholder: LocalizationHelper.GetString("Onboarding_Connection_SetupCodePlaceholder"),
-                    header: LocalizationHelper.GetString("Onboarding_Connection_SetupCode"))
-                    .OnGotFocus((sender, _) =>
+            // QR import handler — uses Helpers.QrSetupCodeReader on a stream from FileOpenPicker
+            async void ImportQrFromFile()
+            {
+                try
+                {
+                    var picker = new FileOpenPicker();
+                    var hwnd = ((App)Microsoft.UI.Xaml.Application.Current).GetOnboardingWindowHandle();
+                    if (hwnd != IntPtr.Zero)
+                        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+                    picker.FileTypeFilter.Add(".png");
+                    picker.FileTypeFilter.Add(".jpg");
+                    picker.FileTypeFilter.Add(".jpeg");
+                    picker.FileTypeFilter.Add(".bmp");
+                    picker.FileTypeFilter.Add(".gif");
+
+                    var file = await picker.PickSingleFileAsync();
+                    if (file == null) return;
+
+                    using var ras = await file.OpenReadAsync();
+                    using var stream = ras.AsStreamForRead();
+                    var decoded = QrSetupCodeReader.Decode(stream);
+                    if (string.IsNullOrWhiteSpace(decoded))
                     {
-                        if (sender is Microsoft.UI.Xaml.Controls.TextBox tb && string.IsNullOrEmpty(tb.Text))
+                        setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_QrDecodeFailed")}");
+                        return;
+                    }
+                    setSetupCode(decoded);
+                    OnSetupCodeChanged(decoded);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[Connection] QR import failed: {ex.Message}");
+                    setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_QrDecodeFailed")}");
+                }
+            }
+
+            void PasteSetupCode()
+            {
+                try
+                {
+                    var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+                    if (!content.Contains(global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
+                        return;
+                    var task = content.GetTextAsync();
+                    task.Completed = (op, status) =>
+                    {
+                        if (status != global::Windows.Foundation.AsyncStatus.Completed) return;
+                        var text = op.GetResults();
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() =>
                         {
-                            try
+                            setSetupCode(text);
+                            OnSetupCodeChanged(text);
+                        });
+                    };
+                }
+                catch { /* clipboard unavailable — ignore */ }
+            }
+
+            // Setup code row: TextField + Paste + QR buttons (Grid keeps the field expanding)
+            cardChildren.Add(
+                Grid(["1*", "Auto", "Auto"], ["Auto"],
+                    TextField(setupCode, OnSetupCodeChanged,
+                        placeholder: LocalizationHelper.GetString("Onboarding_Connection_SetupCodePlaceholder"),
+                        header: LocalizationHelper.GetString("Onboarding_Connection_SetupCode"))
+                        .OnGotFocus((sender, _) =>
+                        {
+                            if (sender is Microsoft.UI.Xaml.Controls.TextBox tb && string.IsNullOrEmpty(tb.Text))
                             {
-                                var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                                if (content.Contains(global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
+                                try
                                 {
-                                    var task = content.GetTextAsync();
-                                    task.Completed = (op, status) =>
+                                    var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+                                    if (content.Contains(global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
                                     {
-                                        if (status == global::Windows.Foundation.AsyncStatus.Completed)
+                                        var task = content.GetTextAsync();
+                                        task.Completed = (op, status) =>
                                         {
-                                            var text = op.GetResults();
-                                            tb.DispatcherQueue.TryEnqueue(() =>
+                                            if (status == global::Windows.Foundation.AsyncStatus.Completed)
                                             {
-                                                tb.Text = text;
-                                                OnSetupCodeChanged(text);
-                                            });
-                                        }
-                                    };
+                                                var text = op.GetResults();
+                                                tb.DispatcherQueue.TryEnqueue(() =>
+                                                {
+                                                    tb.Text = text;
+                                                    OnSetupCodeChanged(text);
+                                                });
+                                            }
+                                        };
+                                    }
                                 }
+                                catch { }
                             }
-                            catch { }
-                        }
-                    })
+                        })
+                        .Grid(row: 0, column: 0),
+                    Button(LocalizationHelper.GetString("Onboarding_Connection_PasteSetup"), PasteSetupCode)
+                        .VAlign(VerticalAlignment.Bottom)
+                        .Margin(6, 0, 0, 0)
+                        .Grid(row: 0, column: 1)
+                        .Set(b => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingPasteSetupCode")),
+                    Button(LocalizationHelper.GetString("Onboarding_Connection_QrButton"), ImportQrFromFile)
+                        .VAlign(VerticalAlignment.Bottom)
+                        .Margin(6, 0, 0, 0)
+                        .Grid(row: 0, column: 2)
+                        .Set(b => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingImportQr"))
+                )
             );
 
-            // Gateway URL
+            // Gateway URL — read-only when SSH (the local-forward URL is fixed)
             cardChildren.Add(
                 TextField(url, OnUrlChanged,
                     placeholder: "ws://host:port",
                     header: LocalizationHelper.GetString("Onboarding_Connection_GatewayUrl"))
+                    .ReadOnly(urlReadOnly)
                     .OnGotFocus((sender, _) =>
                     {
                         if (sender is Microsoft.UI.Xaml.Controls.TextBox tb)
@@ -395,6 +574,130 @@ public sealed class ConnectionPage : Component<OnboardingState>
                     header: LocalizationHelper.GetString("Onboarding_Connection_Token"))
                     .Set(tb => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingToken"))
             );
+
+            // ── SSH panel (only shown when mode == Ssh) ─────────────────────
+            if (mode == ConnectionMode.Ssh)
+            {
+                void OnSshUserChanged(string v)
+                {
+                    setSshUser(v);
+                    Props.Settings.SshTunnelUser = v;
+                }
+                void OnSshHostChanged(string v)
+                {
+                    setSshHost(v);
+                    Props.Settings.SshTunnelHost = v;
+                }
+                void OnSshRemotePortChanged(string v)
+                {
+                    if (int.TryParse(v, out var p) && p > 0 && p <= 65535)
+                    {
+                        setSshRemotePort(p);
+                        Props.Settings.SshTunnelRemotePort = p;
+                    }
+                }
+                void OnSshLocalPortChanged(string v)
+                {
+                    if (int.TryParse(v, out var p) && p > 0 && p <= 65535)
+                    {
+                        setSshLocalPort(p);
+                        Props.Settings.SshTunnelLocalPort = p;
+                        var sshUrl = $"ws://127.0.0.1:{p}";
+                        setUrl(sshUrl);
+                        Props.Settings.GatewayUrl = sshUrl;
+                    }
+                }
+
+                // Live `ssh ...` preview — defensively wrapped so an in-progress invalid host
+                // doesn't break the entire render pass.
+                string sshPreview;
+                try
+                {
+                    var args = SshTunnelCommandLine.BuildArguments(
+                        sshUser, sshHost, sshRemotePort, sshLocalPort,
+                        includeBrowserProxyForward: true);
+                    sshPreview = $"ssh {args}";
+                }
+                catch
+                {
+                    sshPreview = "ssh -N -L <port>:127.0.0.1:<port> user@host";
+                }
+
+                cardChildren.Add(
+                    Border(
+                        VStack(8,
+                            TextBlock(LocalizationHelper.GetString("Onboarding_Connection_SshHint"))
+                                .FontSize(12)
+                                .Opacity(0.7)
+                                .TextWrapping(),
+                            Grid(["1*", "1*"], ["Auto", "Auto"],
+                                TextField(sshUser, OnSshUserChanged,
+                                    placeholder: "user",
+                                    header: LocalizationHelper.GetString("Onboarding_Connection_SshUser"))
+                                    .Grid(row: 0, column: 0)
+                                    .Set(tb => { tb.Margin = new Thickness(0, 0, 4, 0); Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingSshUser"); }),
+                                TextField(sshHost, OnSshHostChanged,
+                                    placeholder: "mac-studio.local",
+                                    header: LocalizationHelper.GetString("Onboarding_Connection_SshHost"))
+                                    .Grid(row: 0, column: 1)
+                                    .Set(tb => { tb.Margin = new Thickness(4, 0, 0, 0); Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingSshHost"); }),
+                                TextField(sshRemotePort.ToString(), OnSshRemotePortChanged,
+                                    placeholder: "18789",
+                                    header: LocalizationHelper.GetString("Onboarding_Connection_SshRemotePort"))
+                                    .Grid(row: 1, column: 0)
+                                    .Set(tb => { tb.Margin = new Thickness(0, 8, 4, 0); Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingSshRemotePort"); }),
+                                TextField(sshLocalPort.ToString(), OnSshLocalPortChanged,
+                                    placeholder: "18789",
+                                    header: LocalizationHelper.GetString("Onboarding_Connection_SshLocalPort"))
+                                    .Grid(row: 1, column: 1)
+                                    .Set(tb => { tb.Margin = new Thickness(4, 8, 0, 0); Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingSshLocalPort"); })
+                            ),
+                            VStack(2,
+                                TextBlock(LocalizationHelper.GetString("Onboarding_Connection_SshPreviewLabel"))
+                                    .FontSize(11)
+                                    .Opacity(0.6),
+                                TextBlock(sshPreview)
+                                    .FontSize(11)
+                                    .FontFamily("Consolas")
+                                    .TextWrapping()
+                            )
+                        ).Padding(12)
+                    )
+                    .CornerRadius(6)
+                    .Background("#FAFAFA")
+                );
+            }
+
+            // Topology detection line — defensive against transient invalid SSH host/ports
+            string topologyText;
+            try
+            {
+                var info = GatewayTopologyClassifier.Classify(
+                    url,
+                    useSshTunnel: mode == ConnectionMode.Ssh,
+                    sshHost: sshHost,
+                    sshLocalPort: sshLocalPort,
+                    sshRemotePort: sshRemotePort);
+                var summary = string.IsNullOrEmpty(info.Detail)
+                    ? $"{info.DisplayName} · {info.Transport} · {info.Host}"
+                    : $"{info.DisplayName} · {info.Transport} · {info.Detail}";
+                topologyText = string.Format(
+                    LocalizationHelper.GetString("Onboarding_Connection_TopologyDetectedFmt"),
+                    summary);
+            }
+            catch
+            {
+                topologyText = string.Empty;
+            }
+            if (!string.IsNullOrEmpty(topologyText))
+            {
+                cardChildren.Add(
+                    TextBlock("● " + topologyText)
+                        .FontSize(12)
+                        .Opacity(0.75)
+                        .TextWrapping()
+                );
+            }
 
             // Node Mode left + Test Connection right (same row via Grid)
             cardChildren.Add(
@@ -541,9 +844,11 @@ public sealed class ConnectionPage : Component<OnboardingState>
             }
         }
 
-        return VStack(8, children.ToArray())
-            .MaxWidth(460)
-            .Padding(0, 12, 0, 0);
+        return ScrollView(
+            VStack(8, children.ToArray())
+                .MaxWidth(460)
+                .Padding(0, 12, 0, 12)
+        );
     }
 
     /// <summary>
