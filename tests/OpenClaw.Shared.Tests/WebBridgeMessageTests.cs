@@ -98,6 +98,21 @@ public class WebBridgeMessageTests
     }
 
     [Fact]
+    public void Constructor_InvalidStoredPayloadJson_Throws()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new WebBridgeMessage(WebBridgeMessage.TypeDraftText, "{bad json"));
+    }
+
+    [Fact]
+    public void Constructor_BlankStoredPayloadJson_TreatedAsNoPayload()
+    {
+        var msg = new WebBridgeMessage(WebBridgeMessage.TypeReady, "   ");
+        Assert.Null(msg.PayloadJson);
+        Assert.Contains("\"payload\":{}", msg.ToJson());
+    }
+
+    [Fact]
     public void ToJson_PassedPayloadOverridesStoredPayloadJson()
     {
         var msg = new WebBridgeMessage(WebBridgeMessage.TypeDraftText, """{"text":"old"}""");

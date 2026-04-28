@@ -11,8 +11,21 @@ namespace OpenClaw.Shared;
 /// Native → SPA: <c>CoreWebView2.PostWebMessageAsJson(msg.ToJson())</c>
 /// SPA → Native: <c>CoreWebView2.WebMessageReceived</c> → <c>WebBridgeMessage.TryParse(e.WebMessageAsJson)</c>
 /// </summary>
-public sealed record WebBridgeMessage(string Type, string? PayloadJson = null)
+public sealed record WebBridgeMessage
 {
+    public WebBridgeMessage(string type, string? payloadJson = null)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+            throw new ArgumentException("Bridge message type is required.", nameof(type));
+
+        Type = type.Trim();
+        PayloadJson = NormalizePayloadJson(payloadJson);
+    }
+
+    public string Type { get; init; }
+
+    public string? PayloadJson { get; init; }
+
     // ── well-known type constants ──────────────────────────────────────────
 
     /// <summary>Sent native→SPA when a screen-recording session starts.</summary>
@@ -70,6 +83,10 @@ public sealed record WebBridgeMessage(string Type, string? PayloadJson = null)
         {
             return null;
         }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     // ── serialisation ──────────────────────────────────────────────────────
@@ -93,5 +110,21 @@ public sealed record WebBridgeMessage(string Type, string? PayloadJson = null)
             return $"{{\"type\":{typeEncoded},\"payload\":{PayloadJson}}}";
 
         return $"{{\"type\":{typeEncoded},\"payload\":{{}}}}";
+    }
+
+    private static string? NormalizePayloadJson(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            return doc.RootElement.GetRawText();
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException("PayloadJson must be a valid JSON value.", nameof(payloadJson), ex);
+        }
     }
 }

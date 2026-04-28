@@ -17,6 +17,7 @@ public sealed partial class WebChatWindow : WindowEx
 {
     private readonly string _gatewayUrl;
     private readonly string _token;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     
     // Store event handlers for cleanup
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navigationCompletedHandler;
@@ -38,6 +39,7 @@ public sealed partial class WebChatWindow : WindowEx
         _token = token;
         
         InitializeComponent();
+        _dispatcherQueue = DispatcherQueue;
         
         // Window configuration
         this.SetWindowSize(520, 750);
@@ -98,10 +100,16 @@ public sealed partial class WebChatWindow : WindowEx
             // SPA → native: window.chrome.webview.postMessage({ type, payload })
             _webMessageReceivedHandler = (s, e) =>
             {
+                if (!IsTrustedBridgeSource(e.Source))
+                {
+                    Logger.Warn($"WebChatWindow: rejected bridge message from untrusted source {SanitizeBridgeLogValue(e.Source)}");
+                    return;
+                }
+
                 var msg = WebBridgeMessage.TryParse(e.WebMessageAsJson);
                 if (msg != null)
                 {
-                    Logger.Debug($"WebChatWindow: bridge message from SPA, type={msg.Type}");
+                    Logger.Debug($"WebChatWindow: bridge message from SPA, type={SanitizeBridgeLogValue(msg.Type)}");
                     BridgeMessageReceived?.Invoke(this, msg);
                 }
                 else
@@ -191,20 +199,134 @@ public sealed partial class WebChatWindow : WindowEx
     /// <summary>
     /// Sends a bridge message to the SPA via the WebView2 native→web channel.
     /// The SPA receives this via <c>window.chrome.webview.addEventListener('message', e => { const msg = e.data; ... })</c>.
-    /// This method is a no-op if the WebView2 core is not yet initialised.
+    /// This method is safe to call from background threads and is a no-op if the WebView2 core is not yet initialised.
     /// </summary>
     public void PostBridgeMessage(string type, object? payload = null)
     {
-        if (WebView.CoreWebView2 == null) return;
-        var msg = new WebBridgeMessage(type);
-        var json = msg.ToJson(payload);
-        Logger.Debug($"WebChatWindow: posting bridge message, type={type}");
-        WebView.CoreWebView2.PostWebMessageAsJson(json);
+        if (IsClosed)
+            return;
+
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("WebChatWindow: cannot post bridge message because DispatcherQueue is unavailable");
+            return;
+        }
+
+        if (!_dispatcherQueue.TryEnqueue(() => PostBridgeMessageOnUiThread(type, payload)))
+        {
+            Logger.Warn($"WebChatWindow: failed to enqueue bridge message, type={SanitizeBridgeLogValue(type)}");
+        }
+    }
+
+    private void PostBridgeMessageOnUiThread(string type, object? payload)
+    {
+        if (IsClosed || WebView.CoreWebView2 == null)
+            return;
+
+        try
+        {
+            var msg = new WebBridgeMessage(type);
+            var json = msg.ToJson(payload);
+            Logger.Debug($"WebChatWindow: posting bridge message, type={SanitizeBridgeLogValue(type)}");
+            WebView.CoreWebView2.PostWebMessageAsJson(json);
+        }
+        catch (ArgumentException ex)
+        {
+            Logger.Warn($"WebChatWindow: invalid bridge message payload: {ex.Message}");
+        }
+        catch (COMException ex)
+        {
+            Logger.Warn($"WebChatWindow: bridge message post failed: {ex.Message}");
+        }
+        catch (ObjectDisposedException ex)
+        {
+            Logger.Warn($"WebChatWindow: bridge message post skipped after disposal: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"WebChatWindow: bridge message post failed: {ex.Message}");
+        }
     }
 
     private static bool IsLocalHost(Uri uri)
     {
         return uri.IsLoopback || string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsTrustedBridgeSource(string? source)
+    {
+        return TryGetUriOrigin(source, out var sourceOrigin) &&
+            TryGetExpectedBridgeOrigin(out var expectedOrigin) &&
+            UriOriginsEqual(sourceOrigin, expectedOrigin);
+    }
+
+    private bool TryGetExpectedBridgeOrigin(out Uri origin)
+    {
+        origin = null!;
+
+        if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedGatewayUrl) ||
+            !Uri.TryCreate(normalizedGatewayUrl, UriKind.Absolute, out var gatewayUri))
+        {
+            return false;
+        }
+
+        var webScheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
+            ? "https"
+            : "http";
+
+        var builder = new UriBuilder(gatewayUri)
+        {
+            Scheme = webScheme,
+            Path = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        origin = builder.Uri;
+        return true;
+    }
+
+    private static bool TryGetUriOrigin(string? uriText, out Uri origin)
+    {
+        origin = null!;
+        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri))
+            return false;
+
+        var builder = new UriBuilder(uri)
+        {
+            Path = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        origin = builder.Uri;
+        return true;
+    }
+
+    private static bool UriOriginsEqual(Uri left, Uri right)
+    {
+        return string.Equals(left.Scheme, right.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(left.IdnHost, right.IdnHost, StringComparison.OrdinalIgnoreCase) &&
+            left.Port == right.Port;
+    }
+
+    private static string SanitizeBridgeLogValue(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        Span<char> buffer = stackalloc char[Math.Min(value.Length, 80)];
+        var count = 0;
+        foreach (var ch in value)
+        {
+            if (count == buffer.Length)
+                break;
+
+            buffer[count++] = char.IsControl(ch) ? ' ' : ch;
+        }
+
+        var sanitized = new string(buffer[..count]);
+        return value.Length > count ? sanitized + "..." : sanitized;
     }
 
     private bool TryBuildChatUrl(out string url, out string errorMessage)

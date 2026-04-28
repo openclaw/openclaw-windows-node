@@ -22,6 +22,26 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
+    public void WebChatWindow_BridgeValidatesOriginAndPostsOnDispatcher()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "WebChatWindow.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("IsTrustedBridgeSource(e.Source)", source);
+        Assert.Contains("rejected bridge message from untrusted source", source);
+        Assert.Contains("DispatcherQueue", source);
+        Assert.Contains("TryEnqueue(() => PostBridgeMessageOnUiThread", source);
+        Assert.Contains("PostWebMessageAsJson(json)", source);
+        Assert.Contains("SanitizeBridgeLogValue", source);
+    }
+
+    [Fact]
     public void SettingsWindow_HasCommandCenterEntryPoint()
     {
         var xamlPath = Path.Combine(
