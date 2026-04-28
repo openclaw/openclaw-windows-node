@@ -40,7 +40,6 @@ $AppExePath     = "C:\Users\mharsh\gt\openclaw\crew\mharsh\src\OpenClaw.Tray.Win
 $AppProjectPath = "C:\Users\mharsh\gt\openclaw\crew\mharsh\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
 $SettingsPath   = "$env:APPDATA\OpenClawTray\settings.json"
 $GatewayPort    = 19001
-$FallbackToken  = "299c37f5958914a61efec295656cc1ec4d2f773ded364c1a"
 $TotalSteps     = 7
 
 # ── Utility helpers ─────────────────────────────────────
@@ -213,17 +212,23 @@ exec node scripts/run-node.mjs --dev gateway --port 19001
     $stepTimer = [System.Diagnostics.Stopwatch]::StartNew()
     Write-Step 3 "Writing settings..."
 
-    # Read token from WSL gateway config
+    # Read token from WSL gateway config (preferred) or OPENCLAW_GATEWAY_TOKEN env var.
+    # NEVER hardcode tokens — they are dev secrets and get flagged by GitHub secret scanning.
     $token = $null
     try {
-        $tokenOutput = wsl bash -c 'node -p "JSON.parse(require(\"fs\").readFileSync(\"/home/mharsh/.openclaw-dev/openclaw.json\",\"utf8\")).gateway.auth.token"' 2>$null
+        $tokenOutput = wsl bash -c 'node -p "JSON.parse(require(\"fs\").readFileSync(\"$HOME/.openclaw-dev/openclaw.json\",\"utf8\")).gateway.auth.token"' 2>$null
         if ($tokenOutput -and $tokenOutput.Trim().Length -gt 10) {
             $token = $tokenOutput.Trim()
         }
     } catch {}
 
+    if (-not $token -and $env:OPENCLAW_GATEWAY_TOKEN) {
+        $token = $env:OPENCLAW_GATEWAY_TOKEN
+    }
+
     if (-not $token) {
-        $token = $FallbackToken
+        Write-Fail "Could not read gateway token from WSL (~/.openclaw-dev/openclaw.json) or OPENCLAW_GATEWAY_TOKEN env var. Start the dev gateway or set the env var, then retry."
+        exit 1
     }
 
     $tokenPreview = $token.Substring(0, [Math]::Min(10, $token.Length)) + "..."
