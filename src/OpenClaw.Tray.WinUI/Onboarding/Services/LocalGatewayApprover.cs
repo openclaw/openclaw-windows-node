@@ -228,7 +228,7 @@ public static class LocalGatewayApprover
         }
     }
 
-    /// <summary>Resolve WSL $HOME to an absolute path (e.g. /home/mharsh). Never use ~ directly.</summary>
+    /// <summary>Resolve WSL $HOME to an absolute path (for example, /home/user). Never use ~ directly.</summary>
     private static string? WslResolveHome()
     {
         try
