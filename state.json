@@ -1,16 +1,24 @@
 {
-  "last_run": "2026-04-28T12:57:08Z",
-  "run_id": "25054040613",
+  "last_run": "2026-04-29T01:11:49Z",
+  "run_id": "25085912343",
   "comments_made": {
+    "240": "2026-04-29T01:11:49Z",
     "237": "2026-04-28T12:57:08Z",
     "191": "2026-04-21T01:14:09Z",
     "120": "2026-04-19T12:29:00Z",
     "99": "prior run"
   },
   "fix_attempts": {
-    "mcp-linux-tests-2026-04-28": {
-      "pr_branch": "repo-assist/fix-mcp-linux-tests-2026-04-28",
+    "improve-device-status-2026-04-29": {
+      "pr_branch": "repo-assist/improve-device-status-2026-04-29",
       "pr_number": null,
+      "status": "open",
+      "created": "2026-04-29T01:11:49Z",
+      "description": "Task3: enhance device.status with os/cpu/memory/disk sections + sections[] filter; Closes #240; 967 Shared + 202 Tray pass"
+    },
+    "mcp-linux-tests-2026-04-28": {
+      "pr_branch": "repo-assist/fix-mcp-linux-tests-2026-04-28-0aa02d44cd756bd8",
+      "pr_number": 238,
       "status": "open",
       "created": "2026-04-28T12:57:08Z",
       "description": "Task4: fix McpHttpServer to register localhost prefix + fix 3 Linux HttpListener test failures; 967 Shared pass"
@@ -36,10 +44,10 @@
     "231": "merged individually by shanselman",
     "232": "merged individually by shanselman"
   },
-  "notes": "New large PR #237 from indierawk2k2: Reactor-based onboarding wizard (82k additions, 333 files). Repo Assist commented. PR #192 (WebView2 bridge) merged by shanselman. All Dependabot PRs #228-232 merged individually. MCP Linux test fix PR created this run (branch repo-assist/fix-mcp-linux-tests-2026-04-28). PR #120 Voice Mode still open.",
+  "notes": "Issue #191 (WebView2 bridge) still open but feature merged in #192. Issue #235 (Dependabot bundle) still open but all individual PRs merged. device.status PR created this run (repo-assist/improve-device-status-2026-04-29). PR #238 McpHttpServer Linux fix still open. Large PRs open: #239 (A2UI renderer by codemonkeychris), #241 (onboarding wizard by indierawk2k2). PR #120 Voice Mode still open.",
   "monthly_activity_issue": 127,
   "backlog_cursor": {
-    "issues": 237,
-    "prs": 237
+    "issues": 240,
+    "prs": 241
   }
 }
