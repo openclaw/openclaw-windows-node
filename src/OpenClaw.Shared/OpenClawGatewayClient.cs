@@ -25,6 +25,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
         "operator.approvals",
         "operator.pairing"
     ];
+    private static readonly string[] s_operatorBootstrapScopes =
+    [
+        "operator.approvals",
+        "operator.read",
+        "operator.talk.secrets",
+        "operator.write"
+    ];
 
     private enum SignatureTokenMode
     {
@@ -115,18 +122,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
     protected override bool ShouldAutoReconnect()
     {
         return !_pairingRequiredAwaitingApproval && !_authFailed;
-    }
-
-    /// <summary>
-    /// Reconnects the existing client after device pairing has been approved.
-    /// Resets the pairing flag and triggers reconnect without creating a new client.
-    /// This avoids another V3→V2 signature fallback cycle.
-    /// </summary>
-    public void ReconnectAfterApproval()
-    {
-        _pairingRequiredAwaitingApproval = false;
-        _authFailed = false;
-        _ = ReconnectWithBackoffAsync();
     }
 
     protected override void OnDisconnected()
@@ -441,6 +436,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     {
         var requestId = Guid.NewGuid().ToString();
         TrackPendingRequest(requestId, "connect");
+        var requestedScopes = GetRequestedOperatorScopes();
 
         var signedAt = _challengeTimestampMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var connectNonce = nonce ?? string.Empty;
@@ -455,7 +451,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 OperatorClientId,
                 OperatorClientMode,
                 OperatorRole,
-                s_operatorScopes,
+                requestedScopes,
                 signatureToken)
             : _deviceIdentity.SignConnectPayloadV3(
                 connectNonce,
@@ -463,7 +459,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 OperatorClientId,
                 OperatorClientMode,
                 OperatorRole,
-                s_operatorScopes,
+                requestedScopes,
                 signatureToken,
                 OperatorPlatform,
                 OperatorDeviceFamily);
@@ -487,7 +483,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                     displayName = OperatorClientDisplayName
                 },
                 role = OperatorRole,
-                scopes = s_operatorScopes,
+                scopes = requestedScopes,
                 caps = Array.Empty<string>(),
                 commands = Array.Empty<string>(),
                 permissions = new { },
@@ -516,6 +512,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
         }
     }
 
+    private string[] GetRequestedOperatorScopes() =>
+        string.IsNullOrEmpty(_deviceIdentity.DeviceToken) ? s_operatorBootstrapScopes : s_operatorScopes;
+
     /// <summary>
     /// Builds the auth payload for the connect handshake, matching the gateway's
     /// HandshakeConnectAuth type: { token?, bootstrapToken?, deviceToken?, password? }.
@@ -526,7 +525,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     {
         var auth = new Dictionary<string, string> { ["token"] = _connectAuthToken };
 
-        if (_deviceIdentity.DeviceToken != null)
+        if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
         {
             // Paired device: send explicit device token for cleaner auth path
             auth["deviceToken"] = _deviceIdentity.DeviceToken;

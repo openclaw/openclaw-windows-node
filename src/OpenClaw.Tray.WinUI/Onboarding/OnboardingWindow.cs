@@ -43,6 +43,7 @@ public sealed class OnboardingWindow : WindowEx
     private Button? _chatRetryButton;
     private bool _chatWebViewInitialized;
     private readonly OnboardingState _state;
+    private bool _stateDisposed;
 
     public OnboardingWindow(SettingsManager settings)
     {
@@ -106,6 +107,7 @@ public sealed class OnboardingWindow : WindowEx
         _rootGrid.Children.Add(_host);
         _rootGrid.Children.Add(_chatOverlay);
         Content = _rootGrid;
+        Closed += OnClosed;
 
         // Size the overlay after layout — leave space for the nav bar
         // Nav bar is ~60px + VStack bottom padding 20px = 80px minimum
@@ -602,8 +604,22 @@ public sealed class OnboardingWindow : WindowEx
     {
         _settings.Save();
         Completed = true;
+        _state.GatewayClient = null;
         OnboardingCompleted?.Invoke(this, EventArgs.Empty);
         Close();
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        if (_stateDisposed) return;
+        _stateDisposed = true;
+        _state.Finished -= OnOnboardingFinished;
+        _state.RouteChanged -= OnRouteChanged;
+        if (Completed)
+        {
+            _state.GatewayClient = null;
+        }
+        _state.Dispose();
     }
 
     /// <summary>

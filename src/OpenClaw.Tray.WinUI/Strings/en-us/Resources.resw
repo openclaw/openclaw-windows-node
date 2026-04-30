@@ -1185,9 +1185,6 @@ On your gateway host (Mac/Linux), run:
   <data name="Onboarding_Connection_Ready" xml:space="preserve">
     <value>Ready to connect</value>
   </data>
-  <data name="Onboarding_Connection_Approve" xml:space="preserve">
-    <value>Approve Connection</value>
-  </data>
   <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
     <value>You can configure the gateway connection later from the tray menu.</value>
   </data>
@@ -1347,8 +1344,8 @@ On your gateway host (Mac/Linux), run:
   <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
     <value>Click to copy</value>
   </data>
-  <data name="Onboarding_Connection_StatusApproved" xml:space="preserve">
-    <value>Device approved — reconnecting…</value>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>Copy failed — click to retry</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>Copied!</value>

@@ -85,7 +85,7 @@
 - **OnboardingStateTests** (19) — Page order, mode logic, route changes, wizard state persistence, completion, disposal
 - **WizardStepPropsTests** (4) — Enum values, record defaults, callback verification
 - **GatewayChatHelperTests** (11) — URL scheme conversion, token encoding, localhost checks, session keys
-- **LocalGatewayApproverTests** (13) — IsLocalGateway for localhost/remote/edge cases, path validation
+- **LocalGatewayApproverTests** (13) — IsLocalGateway for localhost/remote/edge cases
 - **SetupCodeDecoderTests** (14) — Base64url decode, size limits, JSON validation, URL/token extraction
 - **GatewayHealthCheckTests** (6) — Health URI building, scheme conversion, port preservation
 - **SecurityValidationTests** (16) — Locale whitelist, port range, path traversal, URI scheme validation

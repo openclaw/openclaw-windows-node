@@ -49,9 +49,9 @@ public class OnboardingStateTests
 
         Assert.DoesNotContain(OnboardingRoute.Wizard, pages);
         Assert.DoesNotContain(OnboardingRoute.Permissions, pages);
-        Assert.Contains(OnboardingRoute.Chat, pages);
+        Assert.DoesNotContain(OnboardingRoute.Chat, pages);
         Assert.Equal(
-            [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Chat, OnboardingRoute.Ready],
+            [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
             pages);
     }
 

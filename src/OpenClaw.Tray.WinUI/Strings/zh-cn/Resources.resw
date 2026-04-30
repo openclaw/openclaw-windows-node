@@ -1185,9 +1185,6 @@
   <data name="Onboarding_Connection_Ready" xml:space="preserve">
     <value>准备连接</value>
   </data>
-  <data name="Onboarding_Connection_Approve" xml:space="preserve">
-    <value>批准连接</value>
-  </data>
   <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
     <value>您可以稍后从托盘菜单配置网关连接。</value>
   </data>
@@ -1347,8 +1344,8 @@
   <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
     <value>点击复制</value>
   </data>
-  <data name="Onboarding_Connection_StatusApproved" xml:space="preserve">
-    <value>设备已批准 — 正在重新连接…</value>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>复制失败 — 点击重试</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>已复制！</value>

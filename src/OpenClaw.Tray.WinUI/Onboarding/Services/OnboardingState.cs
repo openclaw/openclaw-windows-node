@@ -92,8 +92,7 @@ public sealed class OnboardingState : IDisposable
             (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
             (ConnectionMode.Remote, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
             (ConnectionMode.Remote, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
-            (ConnectionMode.Later, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Chat, OnboardingRoute.Ready],
-            (ConnectionMode.Later, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
+            (ConnectionMode.Later, _) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
             _ => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
         };
     }

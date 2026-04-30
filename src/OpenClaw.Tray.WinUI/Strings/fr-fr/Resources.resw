@@ -1075,6 +1075,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
     <value>Non — la bloquer.</value>
+  </data>
   <data name="Onboarding_Title" xml:space="preserve">
     <value>Configuration d'OpenClaw</value>
   </data>
@@ -1182,9 +1183,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Onboarding_Connection_Ready" xml:space="preserve">
     <value>Prêt à se connecter</value>
-  </data>
-  <data name="Onboarding_Connection_Approve" xml:space="preserve">
-    <value>Approuver la connexion</value>
   </data>
   <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
     <value>Vous pouvez configurer la connexion à la passerelle ultérieurement depuis le menu de la barre des tâches.</value>
@@ -1345,8 +1343,8 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
     <value>Cliquer pour copier</value>
   </data>
-  <data name="Onboarding_Connection_StatusApproved" xml:space="preserve">
-    <value>Appareil approuvé — reconnexion…</value>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>Échec de la copie — cliquez pour réessayer</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>Copié !</value>

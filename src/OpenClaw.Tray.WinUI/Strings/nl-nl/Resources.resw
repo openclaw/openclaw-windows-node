@@ -1185,9 +1185,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Onboarding_Connection_Ready" xml:space="preserve">
     <value>Klaar om te verbinden</value>
   </data>
-  <data name="Onboarding_Connection_Approve" xml:space="preserve">
-    <value>Verbinding goedkeuren</value>
-  </data>
   <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
     <value>U kunt de gatewayverbinding later configureren via het systeemvakmenu.</value>
   </data>
@@ -1347,8 +1344,8 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
     <value>Klik om te kopiëren</value>
   </data>
-  <data name="Onboarding_Connection_StatusApproved" xml:space="preserve">
-    <value>Apparaat goedgekeurd — opnieuw verbinden…</value>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>Kopiëren mislukt — klik om opnieuw te proberen</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>Gekopieerd!</value>

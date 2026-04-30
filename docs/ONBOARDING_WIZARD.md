@@ -16,7 +16,7 @@ On first launch (or when no gateway token is configured), the wizard walks users
 The wizard adapts based on the connection mode:
 - **Local gateway**: All 6 screens (including Wizard for gateway configuration)
 - **Remote gateway**: Skips Wizard (assumes gateway is pre-configured)
-- **Configure Later**: Minimal flow — Welcome → Connection → Chat → Ready
+- **Configure Later**: Minimal flow — Welcome → Connection → Ready
 
 ## Screen Details
 
@@ -31,7 +31,7 @@ Three connection modes via radio buttons:
 
 Connection testing performs a real WebSocket handshake with Ed25519 device authentication. Status feedback shows connecting, connected, pairing required, token mismatch, or timeout.
 
-For local gateways, device approval is handled automatically by writing to the WSL gateway's `devices/paired.json`. For remote gateways, the wizard displays the CLI approval command.
+When pairing approval is required, the wizard displays the gateway CLI approval command, copies it to the clipboard, and shows a notification with a copy action. Approval still happens through the gateway's normal `openclaw devices approve <device-id>` flow; the Windows tray does not edit gateway pairing state directly.
 
 ### Wizard
 Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The gateway controls the flow — steps can be:
@@ -70,8 +70,7 @@ The onboarding wizard follows these security practices:
 - **URI scheme whitelists**: Only `ms-settings:` for permissions, `http/https` for chat
 - **Navigation restriction**: WebView2 `NavigationStarting` handler blocks navigation to external origins
 - **Token protection**: Query params stripped from all log output; WebView2 accelerator keys disabled
-- **Path traversal prevention**: WSL paths validated against expected prefix; `..` and null bytes rejected
-- **Atomic file writes**: Device pairing uses temp→rename pattern to prevent corruption
+- **Gateway-owned pairing**: Device approval uses the gateway CLI/API path so scope checks, token issuance, audit, and broadcasts stay centralized
 - **Error sanitization**: Exception details logged but not shown to users
 
 ## Localization
@@ -95,6 +94,6 @@ See [DEVELOPMENT.md](../DEVELOPMENT.md#developing--testing-the-onboarding-wizard
 | `Onboarding/Services/SetupCodeDecoder.cs` | Base64url setup code parsing |
 | `Onboarding/Services/InputValidator.cs` | Security input validation |
 | `Onboarding/Services/WizardStepParser.cs` | Wizard JSON step parsing |
-| `Onboarding/Services/LocalGatewayApprover.cs` | WSL device auto-approval |
+| `Onboarding/Services/LocalGatewayApprover.cs` | Local gateway URL classification |
 | `Onboarding/Services/PermissionChecker.cs` | Windows permission checks |
 | `Helpers/GatewayChatHelper.cs` | Shared WebView2 chat URL builder |

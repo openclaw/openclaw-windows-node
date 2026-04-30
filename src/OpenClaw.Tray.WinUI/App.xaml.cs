@@ -1374,16 +1374,7 @@ public partial class App : Application
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
-                AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                var approvalCommand = $"openclaw devices approve {args.DeviceId}";
-                // Show toast with approval instructions
-                ShowToast(new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
-                    .AddButton(new ToastButton()
-                        .SetContent(LocalizationHelper.GetString("Toast_CopyPairingCommand"))
-                        .AddArgument("action", "copy_pairing_command")
-                        .AddArgument("command", approvalCommand)));
+                ShowPairingPendingNotification(args.DeviceId);
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
@@ -1401,6 +1392,24 @@ public partial class App : Application
             }
         }
         catch { /* ignore */ }
+    }
+
+    public static string BuildPairingApprovalCommand(string deviceId) =>
+        $"openclaw devices approve {deviceId}";
+
+    public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
+    {
+        var command = approvalCommand ?? BuildPairingApprovalCommand(deviceId);
+        var shortDeviceId = deviceId.Length > 16 ? deviceId[..16] : deviceId;
+
+        AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: deviceId);
+        ShowToast(new ToastContentBuilder()
+            .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
+            .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), shortDeviceId))
+            .AddButton(new ToastButton()
+                .SetContent(LocalizationHelper.GetString("Toast_CopyPairingCommand"))
+                .AddArgument("action", "copy_pairing_command")
+                .AddArgument("command", command)));
     }
     
     private void OnNodeNotificationRequested(object? sender, OpenClaw.Shared.Capabilities.SystemNotifyArgs args)
@@ -3235,7 +3244,7 @@ public partial class App : Application
         }
     }
 
-    private static void CopyTextToClipboard(string text)
+    public static void CopyTextToClipboard(string text)
     {
         var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
         dataPackage.SetText(text);

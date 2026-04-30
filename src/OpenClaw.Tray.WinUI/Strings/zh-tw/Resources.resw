@@ -1185,9 +1185,6 @@
   <data name="Onboarding_Connection_Ready" xml:space="preserve">
     <value>準備連線</value>
   </data>
-  <data name="Onboarding_Connection_Approve" xml:space="preserve">
-    <value>核准連線</value>
-  </data>
   <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
     <value>您可以稍後從系統匣選單設定閘道連線。</value>
   </data>
@@ -1347,8 +1344,8 @@
   <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
     <value>點擊複製</value>
   </data>
-  <data name="Onboarding_Connection_StatusApproved" xml:space="preserve">
-    <value>裝置已核准 — 正在重新連線…</value>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>複製失敗 — 點擊重試</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>已複製！</value>

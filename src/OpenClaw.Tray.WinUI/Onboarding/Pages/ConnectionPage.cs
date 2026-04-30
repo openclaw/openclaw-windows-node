@@ -23,6 +23,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
 {
     private const string DefaultLocalUrl = ConnectionPageModeSelector.DefaultLocalUrl;
     private const string DevLocalUrl = ConnectionPageModeSelector.DevLocalUrl;
+    private const string VisualTestPairingDeviceId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     // Cache the detected URL so we only probe once per app session
     private static string? s_detectedLocalUrl;
@@ -93,8 +94,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
         return DefaultLocalUrl; // Fallback to default
     }
 
+    private static string GetVisualTestPairingDeviceId() =>
+        Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_PAIRING") == "1"
+            ? VisualTestPairingDeviceId
+            : "";
+
     public override Element Render()
     {
+        var visualPairingDeviceId = GetVisualTestPairingDeviceId();
         var (mode, setMode) = UseState(Props.Mode);
         // For Local mode, use the detected gateway URL (probes 18789 and 19001)
         var initialUrl = ConnectionPageModeSelector.GetInitialUrl(
@@ -120,11 +127,11 @@ public sealed class ConnectionPage : Component<OnboardingState>
             : LocalizationHelper.GetString("Onboarding_Connection_Ready");
         var (statusMsg, setStatusMsg) = UseState(Props.Mode == ConnectionMode.Local ? detectedMsg : LocalizationHelper.GetString("Onboarding_Connection_Ready"));
         var (testing, setTesting) = UseState(false);
-        var (pairingDeviceId, setPairingDeviceId) = UseState("");
-        var (pairingCommand, setPairingCommand) = UseState("");
-        var (copied, setCopied) = UseState(false);
+        var (pairingDeviceId, setPairingDeviceId) = UseState(visualPairingDeviceId);
+        var (pairingCommand, setPairingCommand) = UseState(string.IsNullOrEmpty(visualPairingDeviceId) ? "" : App.BuildPairingApprovalCommand(visualPairingDeviceId));
+        var (copied, setCopied) = UseState(!string.IsNullOrEmpty(visualPairingDeviceId));
+        var (copyFailed, setCopyFailed) = UseState(false);
 
-        var isLocal = LocalGatewayApprover.IsLocalGateway(url);
         var urlReadOnly = ConnectionPageModeSelector.IsGatewayUrlReadOnly(mode); // Ssh mode pins the local-forward URL
 
         void SelectMode(ConnectionMode m)
@@ -142,6 +149,9 @@ public sealed class ConnectionPage : Component<OnboardingState>
             Props.ConnectionTested = result.ConnectionTested;
             setStatusMsg(result.StatusMessage);
             setPairingDeviceId(result.PairingDeviceId);
+            setPairingCommand("");
+            setCopied(false);
+            setCopyFailed(false);
             setUseSshTunnel(result.UseSshTunnel);
             Props.Settings.UseSshTunnel = result.UseSshTunnel;
 
@@ -204,6 +214,20 @@ public sealed class ConnectionPage : Component<OnboardingState>
             Props.Settings.EnableNodeMode = v;
         }
 
+        bool TryCopyPairingCommand(string command)
+        {
+            try
+            {
+                App.CopyTextToClipboard(command);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[Connection] Failed to copy pairing command: {ex.Message}");
+                return false;
+            }
+        }
+
         async void TestConnection()
         {
             Props.Settings.GatewayUrl = url;
@@ -261,6 +285,9 @@ public sealed class ConnectionPage : Component<OnboardingState>
             setTesting(true);
             setStatusMsg(LocalizationHelper.GetString("Onboarding_Connection_StatusConnecting"));
             setPairingDeviceId("");
+            setPairingCommand("");
+            setCopied(false);
+            setCopyFailed(false);
             Props.ConnectionTested = false;
 
             try
@@ -326,9 +353,12 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
                     setStatusMsg($"⏳ {LocalizationHelper.GetString("Onboarding_Connection_StatusPairing")}");
                     setPairingDeviceId(deviceId);
-                    var cmd = $"cd ~/openclaw && npx openclaw devices approve {deviceId}";
+                    var cmd = App.BuildPairingApprovalCommand(deviceId);
                     setPairingCommand(cmd);
-                    setCopied(false);
+                    var commandCopied = TryCopyPairingCommand(cmd);
+                    setCopied(commandCopied);
+                    setCopyFailed(!commandCopied);
+                    app.ShowPairingPendingNotification(deviceId, cmd);
                 }
                 else if (authFailed)
                 {
@@ -359,8 +389,12 @@ public sealed class ConnectionPage : Component<OnboardingState>
         {
             var shortId = pairingDeviceId.Length > 16 ? pairingDeviceId[..16] + "…" : pairingDeviceId;
             fullStatus += $"\nDevice ID: {shortId}";
-            if (!isLocal)
-                fullStatus += $"\n\n{LocalizationHelper.GetString("Onboarding_Connection_RunOnGateway")}\n" + pairingCommand;
+            fullStatus += $"\n\n{LocalizationHelper.GetString("Onboarding_Connection_RunOnGateway")}\n" + pairingCommand;
+            fullStatus += copied
+                ? $"\n{LocalizationHelper.GetString("Onboarding_Connection_Copied")}"
+                : copyFailed
+                    ? $"\n{LocalizationHelper.GetString("Onboarding_Connection_CopyFailed")}"
+                    : "";
         }
 
         var children = new List<Element>
@@ -724,80 +758,33 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         if (showFields)
         {
-            // Approval action (conditional — only when pairing needed, outside card)
             if (!string.IsNullOrEmpty(pairingDeviceId))
             {
-                if (isLocal)
-                {
-                    // Local gateway: "Approve Connection" button
-                    children.Add(
-                        Button(LocalizationHelper.GetString("Onboarding_Connection_Approve"), async () =>
+                children.Add(
+                    Button(
+                        VStack(2,
+                            TextBlock(pairingCommand)
+                                .FontSize(11)
+                                .FontFamily("Consolas")
+                                .TextWrapping(),
+                            TextBlock(copied
+                                    ? $"✅ {LocalizationHelper.GetString("Onboarding_Connection_Copied")}"
+                                    : copyFailed
+                                        ? $"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_CopyFailed")}"
+                                        : LocalizationHelper.GetString("Onboarding_Connection_ClickToCopy"))
+                                .FontSize(11)
+                                .FontWeight(new global::Windows.UI.Text.FontWeight(700))
+                                .Opacity(copied ? 1.0 : 0.7)
+                        ),
+                        () =>
                         {
-                            var (success, message) = LocalGatewayApprover.ApproveDevice(pairingDeviceId);
-                            if (success)
-                            {
-                                setStatusMsg($"🔄 {LocalizationHelper.GetString("Onboarding_Connection_StatusAuthenticating")}");
-                                setPairingDeviceId("");
-                                setPairingCommand("");
-
-                                // Reconnect the EXISTING client (no new client, no V3→V2 repeat)
-                                var app = (App)Microsoft.UI.Xaml.Application.Current;
-                                var client = app.GatewayClient;
-                                if (client != null)
-                                {
-                                    client.ReconnectAfterApproval();
-
-                                    // Poll for Connected (should be fast — no signature renegotiation)
-                                    for (int i = 0; i < 20; i++)
-                                    {
-                                        await Task.Delay(1000);
-                                        if (client.IsConnectedToGateway)
-                                        {
-                                            setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusConnected")}");
-                                            Props.ConnectionTested = true;
-                                            Props.GatewayClient = client;
-                                            setTesting(false);
-                                            return;
-                                        }
-                                    }
-                                }
-                                setStatusMsg($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusTimeout")}");
-                            }
-                            else
-                            {
-                                setStatusMsg($"❌ {message}");
-                            }
-                            setTesting(false);
+                            var commandCopied = TryCopyPairingCommand(pairingCommand);
+                            setCopied(commandCopied);
+                            setCopyFailed(!commandCopied);
                         })
                         .HAlign(HorizontalAlignment.Stretch)
-                        .Set(b => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingApprove"))
-                    );
-                }
-                else
-                {
-                    // Remote gateway: copyable CLI command
-                    children.Add(
-                        Button(
-                            VStack(2,
-                                TextBlock(pairingCommand)
-                                    .FontSize(11)
-                                    .FontFamily("Consolas")
-                                    .TextWrapping(),
-                                TextBlock(copied ? $"✅ {LocalizationHelper.GetString("Onboarding_Connection_Copied")}" : LocalizationHelper.GetString("Onboarding_Connection_ClickToCopy"))
-                                    .FontSize(11)
-                                    .FontWeight(new global::Windows.UI.Text.FontWeight(700))
-                                    .Opacity(copied ? 1.0 : 0.6)
-                            ),
-                            () =>
-                            {
-                                var dp = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-                                dp.SetText(pairingCommand);
-                                global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
-                                setCopied(true);
-                            })
-                            .HAlign(HorizontalAlignment.Stretch)
-                    );
-                }
+                        .Set(b => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingCopyPairingCommand"))
+                );
             }
         }
 
