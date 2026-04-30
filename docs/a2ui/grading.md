@@ -40,7 +40,7 @@ agent; etc.
 | Action transport | B | A | Lit: DOM event passthrough; WinUI: debounced + single-flight + fallback queue + gateway tag protocol |
 | Action context security | D | A | Lit punts to host; WinUI scopes to declared `dataBinding` and redacts secrets |
 | Theming | A− | A− | Equivalent power; different idioms |
-| URL safety / SSRF | F | A | Lit unrestricted; WinUI DNS-rebinding defense + allowlist |
+| URL safety / SSRF | F | A− | Lit unrestricted; WinUI HTTPS+allowlist for `Image`/`Video`/`AudioPlayer`, plus DNS-rebinding pin on `Image` fetches only |
 | Modal lifecycle | A− | A | Both work; WinUI uses native `ContentDialog` |
 | List virtualization | C | A | Lit builds all items; WinUI uses `ItemsRepeater` w/ recycling |
 | Bi-directional binding (write-back) | A | A | Both implement; spec is silent (good deviation) |
@@ -162,7 +162,7 @@ This blocks the trivial "exfiltrate the whole tree" attack without
 requiring the host to know about A2UI internals. The Lit impl can't
 do this because it dispatches `action` straight through.
 
-### URL safety — DNS rebinding defense
+### URL safety — DNS rebinding defense (Image fetches)
 
 `Rendering/MediaResolver.cs:57–95`:
 
@@ -182,6 +182,14 @@ new SocketsHttpHandler {
 Plus an allowlist gate in `IsAllowed(url)`. Closes a TOCTOU window
 between an allowlist check and the actual TCP connect. The Lit impl
 does none of this.
+
+**Limitation: this pin is image-only.** `Video`/`AudioPlayer` route through
+`MediaSource.CreateFromUri`, which performs its own DNS resolution at
+playback time outside the resolver. The HTTPS+allowlist gate still
+applies to those URLs, but the connect-time IP check does not — see
+`MediaResolver.TryResolveMediaUri`. A local-proxy approach was scoped
+out of the v0.8 native renderer; the allowlist is the load-bearing
+defense for media playback.
 
 ### Streaming hardening
 
@@ -246,7 +254,7 @@ fake `WindowsNodeClient`).
 
 | Deviation | File | Why it's good |
 | --- | --- | --- |
-| DNS rebinding defense | `Rendering/MediaResolver.cs:57–95` | spec doesn't ask but a hostile agent can otherwise pivot through the renderer to internal HTTP services |
+| DNS rebinding defense (image fetches) | `Rendering/MediaResolver.cs:57–95` | spec doesn't ask but a hostile agent can otherwise pivot through the image fetch path to internal HTTP services. Does not extend to `Video`/`AudioPlayer` — see "URL safety" section. |
 | Action context allowlist | `Rendering/IComponentRenderer.cs:183–249` | minimum-information principle; spec leaves this open |
 | Secret denylist | `Rendering/SecretRedactor.cs` | catches `/auth/sessionToken` style names automatically |
 | `surfaceUpdate` diff | `Hosting/SurfaceHost.cs` | preserves caret/scroll/selection on re-emit |
@@ -315,7 +323,7 @@ For PR reviewers — quick "is this OK?" reference.
 | `valueString` auto-parsed as JSON | violation (type erasure) | ✓ | ✗ | Bug-shaped; rely on `valueMap`/`valueArray` |
 | Hard size caps on stream / model | silent | ✗ | ✓ | Good — DoS defense |
 | URL allowlist on media | silent | ✗ | ✓ | Good — SSRF defense |
-| DNS-rebinding defense | silent | ✗ | ✓ | Good — beyond allowlist |
+| DNS-rebinding defense (image fetches) | silent | ✗ | ✓ | Good — beyond allowlist. Image only; `Video`/`AudioPlayer` rely on the allowlist alone (OS media stack re-resolves at playback). |
 | Action context allowlist | silent | ✗ | ✓ | Good — minimum information |
 | Secret-path redaction | silent | ✗ | ✓ | Good — keeps tokens off the wire |
 | Component diff on `surfaceUpdate` | "structural diffing" (vague) | ✗ | ✓ | Good — preserves UI state |

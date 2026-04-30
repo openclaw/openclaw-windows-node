@@ -190,6 +190,12 @@ public sealed class McpHttpServer : IDisposable
 
     private async Task HandleAsync(HttpListenerContext ctx, CancellationToken ct)
     {
+        // Snapshot the auth token once. UpdateAuthToken can rotate _authToken
+        // on another thread, and reading the field separately for the null-test
+        // and the comparison would let a single request observe two different
+        // values (e.g. enter the auth branch with the old token, then compare
+        // against the new one — or vice versa).
+        var authToken = Volatile.Read(ref _authToken);
         try
         {
             // CSRF/browser gate — reject anything carrying a browser Origin.
@@ -241,7 +247,7 @@ public sealed class McpHttpServer : IDisposable
             // surface with the legitimate MCP client. Token lives in a
             // user-only-readable file under %LOCALAPPDATA%; CLI/agent
             // registration reads from there.
-            if (_authToken != null && !IsAuthorized(ctx.Request.Headers["Authorization"]))
+            if (authToken != null && !IsAuthorized(authToken, ctx.Request.Headers["Authorization"]))
             {
                 Reject(ctx, HttpStatusCode.Unauthorized, "missing or invalid bearer token");
                 return;
@@ -314,10 +320,8 @@ public sealed class McpHttpServer : IDisposable
         }
     }
 
-    private bool IsAuthorized(string? authHeader)
+    private static bool IsAuthorized(string authToken, string? authHeader)
     {
-        var authToken = Volatile.Read(ref _authToken);
-        if (authToken == null) return true;
         if (string.IsNullOrEmpty(authHeader)) return false;
         // Accept "Bearer <token>" (RFC 6750) — case-insensitive scheme, exact token.
         const string scheme = "Bearer ";

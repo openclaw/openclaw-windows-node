@@ -49,7 +49,7 @@ release; v0.9 exists as a draft.
 | Markdown in `Text` | ✓ (sandboxed iframe for HTML, escaped code) | ✗ (plain text only) | Spec is silent |
 | Modal | `<dialog>` w/ `showModal()` | `ContentDialog` (native) | Spec leaves shape open |
 | List virtualization | ✗ (StackPanel-style, all-at-once) | ✓ `ItemsRepeater` + cached child template | Spec calls for it |
-| URL safety / SSRF | None — passes URLs through to `<img>`/`<video>` | DNS-rebinding defense via `SocketsHttpHandler.ConnectCallback` + allowlist | Spec is silent (deferred) |
+| URL safety / SSRF | None — passes URLs through to `<img>`/`<video>` | HTTPS+allowlist for `Image`/`Video`/`AudioPlayer`; DNS-rebinding pin via `SocketsHttpHandler.ConnectCallback` on `Image` only — `Video`/`AudioPlayer` hand the URI to `MediaSource.CreateFromUri`, which re-resolves at playback | Spec is silent (deferred) |
 | Secret redaction | ✗ | ✓ denylist (`password`, `secret`, `token`) + registered paths | Spec is silent |
 | Action context scoping | Caller's responsibility | Explicit `dataBinding` + implicit walk + secret filter | Spec defines `context[]` only |
 | Test coverage | One model unit test; no per-component | Render matrix, scale test, security tests, integration smoke | — |

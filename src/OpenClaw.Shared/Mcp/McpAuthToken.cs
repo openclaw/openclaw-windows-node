@@ -124,10 +124,17 @@ public static class McpAuthToken
         var tempPath = Path.Combine(
             string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir,
             $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
-
-        File.WriteAllText(tempPath, token, Encoding.UTF8);
-        TryRestrictFileAcl(tempPath);
-        File.Move(tempPath, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(tempPath, token, Encoding.UTF8);
+            TryRestrictFileAcl(tempPath);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            throw;
+        }
         // Move on Windows preserves the source's DACL; re-apply defensively in
         // case a future rename strategy substitutes a different file.
         TryRestrictFileAcl(path);

@@ -278,59 +278,35 @@ public sealed class MediaResolver : IDisposable
     public Uri? AsUri(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var u) ? u : null;
 
-    public Task<Uri?> ResolveMediaUriAsync(string url) => ResolveMediaUriAsync(url, CancellationToken.None);
-
-    public async Task<Uri?> ResolveMediaUriAsync(string url, CancellationToken cancellationToken)
+    /// <summary>
+    /// Gate URL for Video / AudioPlayer playback. Enforces HTTPS+allowlist
+    /// (via <see cref="IsAllowed"/>) and rejects IP-literal hosts that are not
+    /// public (catches accidental allowlist entries like https://10.0.0.1/).
+    ///
+    /// NOT a DNS-rebinding pin: the OS media stack
+    /// (<c>MediaSource.CreateFromUri</c>) performs its own DNS resolution at
+    /// playback time, so any DNS lookup here would only be best-effort triage
+    /// against the lookup the platform actually uses. The allowlist is the
+    /// load-bearing defense; image fetches go through the safe
+    /// <see cref="HttpClient"/>'s <c>ConnectCallback</c> path which DOES pin.
+    /// </summary>
+    public Uri? TryResolveMediaUri(string url)
     {
         if (!IsAllowed(url))
         {
             _logger.Warn($"[A2UI] Media blocked: {Truncate(url)}");
             return null;
         }
-
         var uri = AsUri(url);
         if (uri == null) return null;
-        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            return uri;
-
-        try
+        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && IPAddress.TryParse(uri.Host, out var literal)
+            && !HttpUrlRiskEvaluator.IsPublicAddress(literal))
         {
-            if (IPAddress.TryParse(uri.Host, out var literal))
-            {
-                if (!HttpUrlRiskEvaluator.IsPublicAddress(literal))
-                {
-                    _logger.Warn($"[A2UI] Media blocked: host '{uri.Host}' is not public");
-                    return null;
-                }
-                return uri;
-            }
-
-            var addresses = await Dns.GetHostAddressesAsync(uri.Host, cancellationToken).ConfigureAwait(false);
-            if (addresses.Length == 0)
-            {
-                _logger.Warn($"[A2UI] Media blocked: DNS returned no addresses for '{uri.Host}'");
-                return null;
-            }
-
-            foreach (var ip in addresses)
-            {
-                if (!HttpUrlRiskEvaluator.IsPublicAddress(ip))
-                {
-                    _logger.Warn($"[A2UI] Media blocked: '{uri.Host}' resolved to non-public address {ip}");
-                    return null;
-                }
-            }
-            return uri;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"[A2UI] Media URL validation failed for {Truncate(url)}: {ex.Message}");
+            _logger.Warn($"[A2UI] Media blocked: host '{uri.Host}' is not public");
             return null;
         }
+        return uri;
     }
 
     private static async Task<BitmapImage> BitmapFromBytes(byte[] bytes)

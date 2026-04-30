@@ -178,7 +178,7 @@ node's formatter — the gateway parses tags identically across platforms.
 
 | Concern | Spec | Lit | WinUI |
 | --- | --- | --- | --- |
-| URL fetching for `Image`/`Video`/`AudioPlayer` | silent | unrestricted | allowlist + DNS rebinding defense (`MediaResolver.cs`) |
+| URL fetching for `Image`/`Video`/`AudioPlayer` | silent | unrestricted | HTTPS+allowlist for all three; DNS-rebinding pin only on `Image` fetches (`MediaResolver.cs`'s `SocketsHttpHandler.ConnectCallback`). `Video`/`AudioPlayer` hand the validated URI to `MediaSource.CreateFromUri`, which performs its own DNS at playback — allowlist is the load-bearing defense for media. |
 | Unknown component types | "render placeholder, don't crash" | placeholder for spec'd missing; **registers user-supplied custom elements** if a flag is set | strict 18-only `UnknownRenderer` placeholder |
 | Markdown / HTML in `Text` | spec says plain string | parses Markdown; HTML blocks rendered in `iframe sandbox=""`; code escaped | renders as plain string |
 | Action context leakage | underspecified | passthrough — host's problem | server allowlist + secret denylist |

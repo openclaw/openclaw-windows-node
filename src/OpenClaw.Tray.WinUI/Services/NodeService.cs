@@ -43,6 +43,23 @@ public sealed class NodeService : IDisposable
     // set; value byte is unused.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _allowedNavigationHosts =
         new(StringComparer.OrdinalIgnoreCase);
+
+    // Navigation-prompt rate-limit / coalescing state. A token-holding agent
+    // looping canvas.navigate could otherwise stack arbitrarily many topmost
+    // MessageBoxW prompts.
+    //   _navigationPromptGate: only one prompt visible at a time across all hosts.
+    //   _pendingNavigationPrompts: in-flight prompt per HostKey — a second
+    //     request for the same host inherits the user's decision instead of
+    //     queueing a duplicate prompt.
+    //   _navigationDenyCooldown: HostKey → expiresAt. After a Deny, repeated
+    //     requests for the same host auto-deny silently for the cooldown
+    //     window so a hostile loop can't keep nagging the user.
+    private readonly SemaphoreSlim _navigationPromptGate = new(1, 1);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<UrlNavigationApprovalDecision>> _pendingNavigationPrompts =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _navigationDenyCooldown =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan NavigationDenyCooldownDuration = TimeSpan.FromSeconds(30);
     
     // Capabilities
     private SystemCapability? _systemCapability;
@@ -612,43 +629,15 @@ public sealed class NodeService : IDisposable
         {
             try
             {
-                // Pin DNS at approval time. A bare hostname like "example.com"
-                // would otherwise pass HttpUrlRiskEvaluator (since only IP
-                // literals are inspected) and hand-off to the browser without
-                // ever checking what IP it actually resolves to. A hostile DNS
-                // could point a public-looking name at an internal address.
+                // Best-effort triage: resolve DNS now so a hostname pointing at
+                // an internal IP raises the prompt. This is NOT a pin on the
+                // launched request — the OS browser performs its own DNS
+                // resolution when handed the URL, so the actual trust boundary
+                // is the user's browser zone/proxy config. A second resolve
+                // immediately before ShellExecute would not change that.
                 var pinnedRisk = await EnrichWithDnsRiskAsync(initialRisk).ConfigureAwait(false);
-                var requiresPrompt =
-                    pinnedRisk.RequiresConfirmation && !_allowedNavigationHosts.ContainsKey(pinnedRisk.HostKey);
-
-                if (requiresPrompt)
-                {
-                    var decision = await new UrlNavigationApprovalService(_logger)
-                        .RequestAsync(pinnedRisk, BuildNavigationAgentIdentity())
-                        .ConfigureAwait(false);
-
-                    if (decision.Kind == UrlNavigationApprovalDecisionKind.Deny)
-                    {
-                        _logger.Warn($"Canvas navigate denied: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)} ({decision.Reason ?? "user denied"}); already reported success to agent");
-                        return;
-                    }
-
-                    // AllowHost (session-allowlist) is currently unreachable from
-                    // the Win32 prompt — Yes maps to AllowOnce only. The session
-                    // allowlist remains in NodeService as scaffolding for a future
-                    // Fluent ContentDialog prompt (worklist T2-43).
-                }
-
-                // Re-resolve immediately before launch so a TTL-1 record can't
-                // flip the resolved IP between approval and shell-execute.
-                var preLaunchRisk = await EnrichWithDnsRiskAsync(initialRisk).ConfigureAwait(false);
-                if (preLaunchRisk.RequiresConfirmation && !_allowedNavigationHosts.ContainsKey(preLaunchRisk.HostKey))
-                {
-                    _logger.Warn($"Canvas navigate aborted at launch: pre-launch DNS re-check flagged {OpenClaw.Shared.UrlLogSanitizer.Sanitize(preLaunchRisk.CanonicalOrigin)}");
-                    return;
-                }
-
-                LaunchInDefaultBrowser(canonical!);
+                if (await ShouldLaunchAfterPromptAsync(pinnedRisk).ConfigureAwait(false))
+                    LaunchInDefaultBrowser(canonical!);
             }
             catch (Exception ex)
             {
@@ -661,6 +650,102 @@ public sealed class NodeService : IDisposable
         // prompt here, response latency would leak the user's decision time
         // (or even the existence of a prompt).
         return Task.FromResult("browser");
+    }
+
+    /// <summary>
+    /// Decide whether to launch given an enriched risk profile, prompting the
+    /// user when required while bounding prompt frequency:
+    ///   - HostKey in the deny cooldown → silently refuse (recent denial).
+    ///   - HostKey already in the session allowlist → launch.
+    ///   - Concurrent request for the same HostKey → await the existing prompt
+    ///     and inherit its decision rather than stacking a duplicate prompt.
+    ///   - Otherwise: hold the global single-prompt gate, show the prompt,
+    ///     record cooldown on Deny.
+    /// </summary>
+    private async Task<bool> ShouldLaunchAfterPromptAsync(HttpUrlRiskProfile pinnedRisk)
+    {
+        if (!pinnedRisk.RequiresConfirmation || _allowedNavigationHosts.ContainsKey(pinnedRisk.HostKey))
+            return true;
+
+        if (_navigationDenyCooldown.TryGetValue(pinnedRisk.HostKey, out var expiresAt))
+        {
+            if (DateTimeOffset.UtcNow < expiresAt)
+            {
+                _logger.Warn($"Canvas navigate auto-denied (cooldown): {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)}");
+                return false;
+            }
+            // Stale entry — drop it. A racing concurrent request can re-add via
+            // the deny path below; this is just opportunistic cleanup.
+            _navigationDenyCooldown.TryRemove(pinnedRisk.HostKey, out _);
+        }
+
+        // Coalesce: if a prompt is already pending for this host, await its
+        // outcome instead of showing a second prompt for the same destination.
+        // Use a TaskCompletionSource so all waiters resolve atomically.
+        var tcs = new TaskCompletionSource<UrlNavigationApprovalDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var existing = _pendingNavigationPrompts.GetOrAdd(pinnedRisk.HostKey, tcs.Task);
+        if (!ReferenceEquals(existing, tcs.Task))
+        {
+            var inherited = await existing.ConfigureAwait(false);
+            return inherited.Kind != UrlNavigationApprovalDecisionKind.Deny;
+        }
+
+        try
+        {
+            // Serialize prompt display globally — multiple HostKeys racing must
+            // not stack overlapping topmost MessageBoxes either.
+            await _navigationPromptGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Re-check cooldown / allowlist now that we hold the gate — a
+                // prior prompt's Deny may have populated the cooldown while we
+                // were queued.
+                if (_allowedNavigationHosts.ContainsKey(pinnedRisk.HostKey))
+                {
+                    var allowDecision = UrlNavigationApprovalDecision.AllowOnce();
+                    tcs.TrySetResult(allowDecision);
+                    return true;
+                }
+                if (_navigationDenyCooldown.TryGetValue(pinnedRisk.HostKey, out var nowExpires)
+                    && DateTimeOffset.UtcNow < nowExpires)
+                {
+                    var denyDecision = UrlNavigationApprovalDecision.Deny("cooldown");
+                    tcs.TrySetResult(denyDecision);
+                    _logger.Warn($"Canvas navigate auto-denied (cooldown): {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)}");
+                    return false;
+                }
+
+                var decision = await new UrlNavigationApprovalService(_logger)
+                    .RequestAsync(pinnedRisk, BuildNavigationAgentIdentity())
+                    .ConfigureAwait(false);
+                tcs.TrySetResult(decision);
+
+                if (decision.Kind == UrlNavigationApprovalDecisionKind.Deny)
+                {
+                    _navigationDenyCooldown[pinnedRisk.HostKey] = DateTimeOffset.UtcNow + NavigationDenyCooldownDuration;
+                    _logger.Warn($"Canvas navigate denied: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)} ({decision.Reason ?? "user denied"}); already reported success to agent");
+                    return false;
+                }
+                // AllowHost (session-allowlist) is currently unreachable from
+                // the Win32 prompt — Yes maps to AllowOnce only. The session
+                // allowlist remains as scaffolding for a future Fluent
+                // ContentDialog prompt (worklist T2-43).
+                return true;
+            }
+            finally
+            {
+                _navigationPromptGate.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            tcs.TrySetException(ex);
+            throw;
+        }
+        finally
+        {
+            _pendingNavigationPrompts.TryRemove(pinnedRisk.HostKey, out _);
+        }
     }
 
     /// <summary>
@@ -1190,6 +1275,8 @@ public sealed class NodeService : IDisposable
         // handle survives node teardown/recreate.
         try { _actionDispatcher?.Dispose(); } catch { /* ignore */ }
         _actionDispatcher = null;
+
+        try { _navigationPromptGate.Dispose(); } catch { /* ignore */ }
 
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {

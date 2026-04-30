@@ -336,44 +336,20 @@ public sealed class VideoRenderer : IComponentRenderer
             AreTransportControlsEnabled = true,
             MinHeight = 180,
         };
-        var generation = new int[] { 0 };
         var urlVal = ctx.GetValue(c, "url");
         void Update()
         {
             var url = ctx.ResolveString(urlVal);
-            if (string.IsNullOrEmpty(url))
-            {
-                System.Threading.Interlocked.Increment(ref generation[0]);
-                player.Source = null;
-                return;
-            }
-            int token = System.Threading.Interlocked.Increment(ref generation[0]);
-            _ = LoadMediaAsync(player, url, generation, token, ctx.Logger);
+            // Gate is allowlist + IP-literal-public only — DNS-rebinding pin
+            // would not hold here because MediaSource.CreateFromUri does its
+            // own resolution at playback. See MediaResolver.TryResolveMediaUri.
+            var uri = string.IsNullOrEmpty(url) ? null : _media.TryResolveMediaUri(url);
+            player.Source = uri == null ? null : global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
         }
         Update();
         ctx.WatchValue(c.Id, "url", urlVal, Update);
         AutomationHelpers.Apply(player, c, ctx);
         return player;
-    }
-
-    private async Task LoadMediaAsync(
-        MediaPlayerElement player,
-        string url,
-        int[] generation,
-        int token,
-        OpenClaw.Shared.IOpenClawLogger? logger)
-    {
-        try
-        {
-            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var uri = await _media.ResolveMediaUriAsync(url, cts.Token).ConfigureAwait(true);
-            if (uri != null && System.Threading.Volatile.Read(ref generation[0]) == token)
-                player.Source = global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
-        }
-        catch (OperationCanceledException)
-        {
-            logger?.Warn("[A2UI] Video URL validation timed out");
-        }
     }
 }
 
@@ -399,19 +375,12 @@ public sealed class AudioPlayerRenderer : IComponentRenderer
             AreTransportControlsEnabled = true,
             MinHeight = 50,
         };
-        var generation = new int[] { 0 };
         var urlVal = ctx.GetValue(c, "url");
         void UrlUpdate()
         {
             var url = ctx.ResolveString(urlVal);
-            if (string.IsNullOrEmpty(url))
-            {
-                System.Threading.Interlocked.Increment(ref generation[0]);
-                player.Source = null;
-                return;
-            }
-            int token = System.Threading.Interlocked.Increment(ref generation[0]);
-            _ = LoadMediaAsync(player, url, generation, token, ctx.Logger);
+            var uri = string.IsNullOrEmpty(url) ? null : _media.TryResolveMediaUri(url);
+            player.Source = uri == null ? null : global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
         }
         UrlUpdate();
         ctx.WatchValue(c.Id, "url", urlVal, UrlUpdate);
@@ -420,25 +389,5 @@ public sealed class AudioPlayerRenderer : IComponentRenderer
         stack.Children.Add(player);
         AutomationHelpers.Apply(stack, c, ctx);
         return stack;
-    }
-
-    private async Task LoadMediaAsync(
-        MediaPlayerElement player,
-        string url,
-        int[] generation,
-        int token,
-        OpenClaw.Shared.IOpenClawLogger? logger)
-    {
-        try
-        {
-            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var uri = await _media.ResolveMediaUriAsync(url, cts.Token).ConfigureAwait(true);
-            if (uri != null && System.Threading.Volatile.Read(ref generation[0]) == token)
-                player.Source = global::Windows.Media.Core.MediaSource.CreateFromUri(uri);
-        }
-        catch (OperationCanceledException)
-        {
-            logger?.Warn("[A2UI] Audio URL validation timed out");
-        }
     }
 }

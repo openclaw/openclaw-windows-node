@@ -176,7 +176,11 @@ visibility, visibilityOff, warning
 | --- | --- | --- |
 | `url` | `BoundValue<string>` | ✓ |
 
-> WinUI: `MediaPlayerElement` w/ transport controls.
+> WinUI: `MediaPlayerElement` w/ transport controls. URL gated by
+> `MediaResolver` HTTPS+allowlist. **No DNS-rebinding pin** — the OS
+> media stack does its own DNS lookup at playback time, so the
+> hostname-allowlist is the load-bearing defense (image fetches use a
+> separate, safer path that does pin).
 > Lit: `<video controls>`.
 
 ### `AudioPlayer`
@@ -187,7 +191,8 @@ visibility, visibilityOff, warning
 | `description` | `BoundValue<string>` | | |
 
 > WinUI: `MediaPlayerElement` w/ `description` rendered above as
-> `Caption`.
+> `Caption`. URL gated by `MediaResolver` HTTPS+allowlist; same
+> playback-time DNS caveat as `Video`.
 > Lit: `<audio controls>`; **`description` is ignored** (audio.ts).
 
 ---
