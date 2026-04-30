@@ -284,6 +284,9 @@ public sealed class NodeService : IDisposable
 
         // Device metadata/status capability
         _deviceCapability = new DeviceCapability(_logger);
+        // TODO: wire _deviceCapability.BatteryStatusRequested to a WinRT BatteryStatusProvider
+        // once the provider is implemented (Windows.Devices.Power.Battery.AggregateBattery).
+        // The event API is ready; the WinRT implementation is tracked as future work.
         Register(_deviceCapability);
 
         // BrowserProxy needs a live gateway connection — only register when gateway is up.

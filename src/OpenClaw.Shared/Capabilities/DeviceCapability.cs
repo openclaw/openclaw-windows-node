@@ -25,18 +25,27 @@ public class DeviceCapability : NodeCapabilityBase
 
     public override IReadOnlyList<string> Commands => _commands;
 
+    /// <summary>
+    /// Optional platform-specific battery provider.
+    /// When set, <c>device.status</c> calls this to populate the <c>battery</c> section.
+    /// When null (default), battery is reported as <c>state=unknown, level=null</c>.
+    /// Follows the same event-delegation pattern used by <see cref="CameraCapability"/>
+    /// and <see cref="ScreenCapability"/> to keep WinRT out of the Shared project.
+    /// </summary>
+    public event Func<Task<DeviceBatteryStatus?>>? BatteryStatusRequested;
+
     public DeviceCapability(IOpenClawLogger logger) : base(logger)
     {
     }
 
-    public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
     {
-        return Task.FromResult(request.Command switch
+        return request.Command switch
         {
             "device.info" => HandleInfo(),
-            "device.status" => HandleStatus(),
+            "device.status" => await HandleStatusAsync(),
             _ => Error($"Unknown command: {request.Command}")
-        });
+        };
     }
 
     private NodeInvokeResponse HandleInfo()
@@ -60,21 +69,51 @@ public class DeviceCapability : NodeCapabilityBase
         });
     }
 
-    private NodeInvokeResponse HandleStatus()
+    private async Task<NodeInvokeResponse> HandleStatusAsync()
     {
         Logger.Info("device.status");
+
+        DeviceBatteryStatus? batteryData = null;
+        if (BatteryStatusRequested != null)
+        {
+            try
+            {
+                batteryData = await BatteryStatusRequested();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"device.status: battery provider threw: {ex.Message}");
+            }
+        }
+
+        object battery;
+        if (batteryData != null)
+        {
+            battery = new
+            {
+                level = batteryData.ChargePercent.HasValue ? batteryData.ChargePercent.Value / 100.0 : (double?)null,
+                state = batteryData.IsCharging ? "charging" : (batteryData.Present ? "unplugged" : "unknown"),
+                lowPowerModeEnabled = false,
+                present = batteryData.Present
+            };
+        }
+        else
+        {
+            battery = new
+            {
+                level = (double?)null,
+                state = "unknown",
+                lowPowerModeEnabled = false,
+                present = false
+            };
+        }
 
         var storage = GetStorageStatus(Logger);
         var network = GetNetworkStatus(Logger);
 
         return Success(new
         {
-            battery = new
-            {
-                level = (double?)null,
-                state = "unknown",
-                lowPowerModeEnabled = false
-            },
+            battery,
             thermal = new
             {
                 state = "nominal"
@@ -183,3 +222,22 @@ public class DeviceCapability : NodeCapabilityBase
         };
     }
 }
+
+/// <summary>
+/// Battery status returned by the platform-specific <see cref="DeviceCapability.BatteryStatusRequested"/> provider.
+/// </summary>
+public sealed class DeviceBatteryStatus
+{
+    /// <summary>Whether a battery is physically present.</summary>
+    public bool Present { get; init; }
+
+    /// <summary>Battery charge level 0–100, or null if unavailable.</summary>
+    public int? ChargePercent { get; init; }
+
+    /// <summary>Whether the device is currently charging.</summary>
+    public bool IsCharging { get; init; }
+
+    /// <summary>Estimated minutes of battery life remaining, or null if unknown or charging.</summary>
+    public int? EstimatedMinutesRemaining { get; init; }
+}
+

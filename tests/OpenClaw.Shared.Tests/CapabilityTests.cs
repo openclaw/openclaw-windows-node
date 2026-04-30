@@ -1510,9 +1510,11 @@ public class DeviceCapabilityTests
         Assert.True(res.Ok);
         var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
         var battery = payload.GetProperty("battery");
+        // No provider wired — battery falls back to "unknown" stub
         Assert.Equal("unknown", battery.GetProperty("state").GetString());
         Assert.False(battery.GetProperty("lowPowerModeEnabled").GetBoolean());
         Assert.Equal(JsonValueKind.Null, battery.GetProperty("level").ValueKind);
+        Assert.False(battery.GetProperty("present").GetBoolean());
 
         Assert.Equal("nominal", payload.GetProperty("thermal").GetProperty("state").GetString());
 
@@ -1528,6 +1530,88 @@ public class DeviceCapabilityTests
         Assert.Equal(JsonValueKind.Array, network.GetProperty("interfaces").ValueKind);
 
         Assert.True(payload.GetProperty("uptimeSeconds").GetDouble() >= 0);
+    }
+
+    [Fact]
+    public async Task DeviceStatus_BatteryProvider_Charging_ReturnsChargingState()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        cap.BatteryStatusRequested += () => Task.FromResult<DeviceBatteryStatus?>(new DeviceBatteryStatus
+        {
+            Present = true,
+            ChargePercent = 72,
+            IsCharging = true,
+            EstimatedMinutesRemaining = null
+        });
+
+        var req = new NodeInvokeRequest { Id = "d4", Command = "device.status", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var battery = payload.GetProperty("battery");
+        Assert.Equal("charging", battery.GetProperty("state").GetString());
+        Assert.InRange(battery.GetProperty("level").GetDouble(), 0.71, 0.73);
+        Assert.True(battery.GetProperty("present").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DeviceStatus_BatteryProvider_Unplugged_ReturnsUnpluggedState()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        cap.BatteryStatusRequested += () => Task.FromResult<DeviceBatteryStatus?>(new DeviceBatteryStatus
+        {
+            Present = true,
+            ChargePercent = 45,
+            IsCharging = false,
+            EstimatedMinutesRemaining = 180
+        });
+
+        var req = new NodeInvokeRequest { Id = "d5", Command = "device.status", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var battery = payload.GetProperty("battery");
+        Assert.Equal("unplugged", battery.GetProperty("state").GetString());
+        Assert.InRange(battery.GetProperty("level").GetDouble(), 0.44, 0.46);
+        Assert.True(battery.GetProperty("present").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DeviceStatus_BatteryProvider_NotPresent_ReturnsUnknown()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        cap.BatteryStatusRequested += () => Task.FromResult<DeviceBatteryStatus?>(new DeviceBatteryStatus
+        {
+            Present = false,
+            ChargePercent = null,
+            IsCharging = false
+        });
+
+        var req = new NodeInvokeRequest { Id = "d6", Command = "device.status", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var battery = payload.GetProperty("battery");
+        Assert.Equal("unknown", battery.GetProperty("state").GetString());
+        Assert.False(battery.GetProperty("present").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DeviceStatus_BatteryProvider_Throws_FallsBackToUnknown()
+    {
+        var cap = new DeviceCapability(NullLogger.Instance);
+        cap.BatteryStatusRequested += () => throw new InvalidOperationException("WinRT not available");
+
+        var req = new NodeInvokeRequest { Id = "d7", Command = "device.status", Args = Parse("""{}""") };
+        var res = await cap.ExecuteAsync(req);
+
+        // Should succeed despite provider exception — graceful fallback
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.Equal("unknown", payload.GetProperty("battery").GetProperty("state").GetString());
     }
 
     [Fact]
