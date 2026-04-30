@@ -553,6 +553,11 @@ public class SystemCapabilityTests
 
     [Theory]
     [InlineData("*")]
+    [InlineData("**")]
+    [InlineData("***")]
+    [InlineData("?")]
+    [InlineData("? *")]
+    [InlineData("* ?")]
     [InlineData("cmd *")]
     [InlineData("Remove-Item *")]
     [InlineData("Invoke-WebRequest *")]

@@ -630,7 +630,17 @@ public class SystemCapability : NodeCapabilityBase
                 return "Empty allow rule patterns are not permitted.";
 
             var normalized = pattern.ToLowerInvariant();
-            if (normalized is "*" or "* *" or "powershell *" or "pwsh *" or "cmd *" or "cmd.exe *")
+
+            // Catch all-wildcard patterns (e.g. *, **, ?*, * ?) that match any command.
+            // Strip every wildcard character and whitespace; if nothing remains the pattern
+            // is effectively "match everything" and must be blocked regardless of spelling.
+            var nonWildcardContent = normalized.Replace("*", "").Replace("?", "").Trim();
+            if (string.IsNullOrEmpty(nonWildcardContent))
+                return $"Broad allow rule is not permitted: {pattern}";
+
+            // Catch shell-prefixed blanket patterns that match all commands in a given shell
+            // (e.g. "powershell *" allows every PowerShell command).
+            if (normalized is "powershell *" or "pwsh *" or "cmd *" or "cmd.exe *")
                 return $"Broad allow rule is not permitted: {pattern}";
 
             foreach (var dangerous in DangerousAllowPatternFragments)
