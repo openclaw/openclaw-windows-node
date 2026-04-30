@@ -79,6 +79,8 @@ Add ALL needed commands to `gateway.nodes.allowCommands` in `~/.openclaw/opencla
         // Device metadata/status
         "device.info",
         "device.status",
+        // Text-to-speech playback (enable only when agent-driven audio is desired)
+        "tts.speak",
         // System (already in Windows defaults, but listed for completeness)
         // "system.run",
         // "system.run.prepare",

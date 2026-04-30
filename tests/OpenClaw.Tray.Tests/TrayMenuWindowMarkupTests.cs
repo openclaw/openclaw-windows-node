@@ -346,6 +346,10 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"AutomationProperties.AutomationId=""NodeCameraToggle""", xaml);
         Assert.Contains(@"AutomationProperties.AutomationId=""NodeLocationToggle""", xaml);
         Assert.Contains(@"AutomationProperties.AutomationId=""NodeBrowserProxyToggle""", xaml);
+        Assert.Contains(@"AutomationProperties.AutomationId=""NodeTtsToggle""", xaml);
+        Assert.Contains(@"AutomationProperties.AutomationId=""TtsProviderComboBox""", xaml);
+        Assert.Contains(@"AutomationProperties.AutomationId=""TtsElevenLabsSettingsPanel""", xaml);
+        Assert.Contains(@"AutomationProperties.AutomationId=""TtsElevenLabsApiKeyPasswordBox""", xaml);
     }
 
     [Fact]

@@ -179,6 +179,7 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
 | **Camera** | `camera.list`, `camera.snap`, `camera.clip` | Enumerate cameras and capture still photos or short video clips |
 | **Location** | `location.get` | Return Windows geolocation when permission is available |
 | **Device** | `device.info`, `device.status` | Return Windows host/app metadata and lightweight status |
+| **Text-to-speech** | `tts.speak` | Speak text aloud through Windows speech synthesis, or ElevenLabs when configured |
 
 #### Node Setup
 
@@ -205,23 +206,24 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
            "canvas.hide",
            "canvas.navigate",
            "canvas.eval",
-            "canvas.snapshot",
-            "canvas.a2ui.push",
-            "canvas.a2ui.pushJSONL",
-            "canvas.a2ui.reset",
-            "screen.snapshot",
-            "camera.list",
-            "camera.snap",
-            "camera.clip",
-            "location.get",
-            "device.info",
-            "device.status"
+           "canvas.snapshot",
+           "canvas.a2ui.push",
+           "canvas.a2ui.pushJSONL",
+           "canvas.a2ui.reset",
+           "screen.snapshot",
+           "camera.list",
+           "camera.snap",
+           "camera.clip",
+           "location.get",
+           "device.info",
+           "device.status",
+           "tts.speak"
          ]
-        }
-      }
+       }
+     }
    }
    ```
-    > ⚠️ **Important**: The gateway has a server-side allowlist. Commands must be listed explicitly - wildcards like `canvas.*` don't work! Privacy-sensitive commands such as `screen.record` should only be added to `allowCommands` when you explicitly want to allow them.
+    > ⚠️ **Important**: The gateway has a server-side allowlist. Commands must be listed explicitly - wildcards like `canvas.*` don't work! Privacy-sensitive commands such as `screen.record` and agent-driven audio playback via `tts.speak` should only be added to `allowCommands` when you explicitly want to allow them.
 
 5. **Test it** from your Mac/gateway:
    ```bash
@@ -248,6 +250,9 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
 
     # Take a photo (NV12/MediaCapture fallback)
     openclaw nodes invoke --node <id> --command camera.snap --params '{"deviceId":"<device-id>","format":"jpeg","quality":80}'
+
+    # Speak text aloud on the Windows node (requires TTS enabled in Settings and tts.speak allowed on the gateway)
+    openclaw nodes invoke --node <id> --command tts.speak --params '{"text":"Hello from OpenClaw","provider":"windows"}'
 
     # Execute a command on the Windows node
     openclaw nodes invoke --node <id> --command system.run --params '{"command":"Get-Process | Select -First 5","shell":"powershell","timeoutMs":10000}'

@@ -200,6 +200,32 @@
                             <ToggleSwitch x:Name="NodeCameraToggle" AutomationProperties.AutomationId="NodeCameraToggle" Header="Camera list, snapshot, and clips"/>
                             <ToggleSwitch x:Name="NodeLocationToggle" AutomationProperties.AutomationId="NodeLocationToggle" Header="Location"/>
                             <ToggleSwitch x:Name="NodeBrowserProxyToggle" AutomationProperties.AutomationId="NodeBrowserProxyToggle" Header="Browser proxy bridge" Toggled="OnNodeBrowserProxyToggled"/>
+                            <ToggleSwitch x:Name="NodeTtsToggle" AutomationProperties.AutomationId="NodeTtsToggle" Header="Text-to-speech playback"/>
+                            <TextBlock Text="Text-to-speech exposes tts.speak. Gateway use still requires tts.speak in gateway.nodes.allowCommands."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                            <ComboBox x:Name="TtsProviderComboBox"
+                                      AutomationProperties.AutomationId="TtsProviderComboBox"
+                                      Header="TTS provider"
+                                      SelectionChanged="OnTtsProviderSelectionChanged">
+                                <ComboBoxItem Content="Windows built-in speech" Tag="windows"/>
+                                <ComboBoxItem Content="ElevenLabs" Tag="elevenlabs"/>
+                            </ComboBox>
+                            <StackPanel x:Name="TtsElevenLabsSettingsPanel"
+                                        AutomationProperties.AutomationId="TtsElevenLabsSettingsPanel"
+                                        Spacing="6">
+                                <PasswordBox x:Name="TtsElevenLabsApiKeyPasswordBox"
+                                             AutomationProperties.AutomationId="TtsElevenLabsApiKeyPasswordBox"
+                                             Header="ElevenLabs API key"/>
+                                <TextBox x:Name="TtsElevenLabsVoiceIdTextBox"
+                                         AutomationProperties.AutomationId="TtsElevenLabsVoiceIdTextBox"
+                                         Header="ElevenLabs voice ID"/>
+                                <TextBox x:Name="TtsElevenLabsModelTextBox"
+                                         AutomationProperties.AutomationId="TtsElevenLabsModelTextBox"
+                                         Header="ElevenLabs model"
+                                         PlaceholderText="eleven_multilingual_v2"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

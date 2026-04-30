@@ -69,6 +69,8 @@ public sealed class NodeService : IDisposable
     private LocationCapability? _locationCapability;
     private DeviceCapability? _deviceCapability;
     private BrowserProxyCapability? _browserProxyCapability;
+    private TtsCapability? _ttsCapability;
+    private TextToSpeechService? _textToSpeechService;
     private readonly string _dataPath;
     private string? _token;
 
@@ -282,6 +284,14 @@ public sealed class NodeService : IDisposable
             Register(_locationCapability);
         }
 
+        if (_settings?.NodeTtsEnabled == true)
+        {
+            _textToSpeechService ??= new TextToSpeechService(_logger, _settings);
+            _ttsCapability = new TtsCapability(_logger);
+            _ttsCapability.SpeakRequested += OnTtsSpeakAsync;
+            Register(_ttsCapability);
+        }
+
         // Device metadata/status capability
         _deviceCapability = new DeviceCapability(_logger);
         Register(_deviceCapability);
@@ -447,6 +457,8 @@ public sealed class NodeService : IDisposable
             disabled.AddRange(CommandCenterCommandGroups.SafeCompanionCommands.Where(command => command.StartsWith("location.", StringComparison.OrdinalIgnoreCase)));
         if (_settings?.NodeBrowserProxyEnabled == false)
             disabled.Add("browser.proxy");
+        if (_settings?.NodeTtsEnabled != true)
+            disabled.AddRange(CommandCenterCommandGroups.DangerousCommands.Where(command => command.StartsWith("tts.", StringComparison.OrdinalIgnoreCase)));
         return disabled;
     }
 
@@ -1265,6 +1277,14 @@ public sealed class NodeService : IDisposable
             TimestampMs = position.Coordinate.Timestamp.ToUnixTimeMilliseconds()
         };
     }
+
+    private Task<TtsSpeakResult> OnTtsSpeakAsync(TtsSpeakArgs args, CancellationToken cancellationToken)
+    {
+        if (_textToSpeechService == null)
+            throw new InvalidOperationException("Text-to-speech service not available");
+
+        return _textToSpeechService.SpeakAsync(args, cancellationToken);
+    }
     
     #endregion
     
@@ -1278,6 +1298,7 @@ public sealed class NodeService : IDisposable
 
         try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
         try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
+        try { _textToSpeechService?.Dispose(); } catch { /* ignore */ }
         // MediaResolver owns SocketsHttpHandler + HttpClient (disposeHandler:true);
         // without disposal the connection pool survives node teardown/recreate.
         try { _mediaResolver?.Dispose(); } catch { /* ignore */ }

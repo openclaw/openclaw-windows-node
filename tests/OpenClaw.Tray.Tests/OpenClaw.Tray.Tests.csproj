@@ -16,12 +16,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\AgentMessageFormatter.cs" Link="A2UI\Actions\AgentMessageFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\GatewayActionTransport.cs" Link="A2UI\Actions\GatewayActionTransport.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\IActionSink.cs" Link="A2UI\Actions\IActionSink.cs" />
