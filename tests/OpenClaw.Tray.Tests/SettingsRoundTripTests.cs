@@ -12,6 +12,7 @@ public class SettingsRoundTripTests
         {
             GatewayUrl = "ws://localhost:18789",
             Token = "secret-token",
+            BootstrapToken = "bootstrap-token",
             UseSshTunnel = true,
             SshTunnelUser = "user1",
             SshTunnelHost = "remote-host",
@@ -30,6 +31,11 @@ public class SettingsRoundTripTests
             NotifyStock = false,
             NotifyInfo = true,
             EnableNodeMode = true,
+            NodeCanvasEnabled = false,
+            NodeScreenEnabled = true,
+            NodeCameraEnabled = false,
+            NodeLocationEnabled = true,
+            NodeBrowserProxyEnabled = false,
             HasSeenActivityStreamTip = true,
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
@@ -46,6 +52,7 @@ public class SettingsRoundTripTests
         Assert.NotNull(restored);
         Assert.Equal(original.GatewayUrl, restored.GatewayUrl);
         Assert.Equal(original.Token, restored.Token);
+        Assert.Equal(original.BootstrapToken, restored.BootstrapToken);
         Assert.Equal(original.UseSshTunnel, restored.UseSshTunnel);
         Assert.Equal(original.SshTunnelUser, restored.SshTunnelUser);
         Assert.Equal(original.SshTunnelHost, restored.SshTunnelHost);
@@ -64,6 +71,11 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NotifyStock, restored.NotifyStock);
         Assert.Equal(original.NotifyInfo, restored.NotifyInfo);
         Assert.Equal(original.EnableNodeMode, restored.EnableNodeMode);
+        Assert.Equal(original.NodeCanvasEnabled, restored.NodeCanvasEnabled);
+        Assert.Equal(original.NodeScreenEnabled, restored.NodeScreenEnabled);
+        Assert.Equal(original.NodeCameraEnabled, restored.NodeCameraEnabled);
+        Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
+        Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
@@ -97,6 +109,7 @@ public class SettingsRoundTripTests
         Assert.NotNull(settings);
         Assert.Null(settings.GatewayUrl);
         Assert.Null(settings.Token);
+        Assert.Null(settings.BootstrapToken);
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
@@ -115,6 +128,11 @@ public class SettingsRoundTripTests
         Assert.True(settings.NotifyStock);
         Assert.True(settings.NotifyInfo);
         Assert.False(settings.EnableNodeMode);
+        Assert.True(settings.NodeCanvasEnabled);
+        Assert.True(settings.NodeScreenEnabled);
+        Assert.True(settings.NodeCameraEnabled);
+        Assert.True(settings.NodeLocationEnabled);
+        Assert.True(settings.NodeBrowserProxyEnabled);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
@@ -149,6 +167,7 @@ public class SettingsRoundTripTests
         Assert.NotNull(settings);
         Assert.Equal("ws://localhost:18789", settings.GatewayUrl);
         Assert.Equal("abc", settings.Token);
+        Assert.Null(settings.BootstrapToken);
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
@@ -158,6 +177,11 @@ public class SettingsRoundTripTests
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
         Assert.False(settings.EnableNodeMode);
+        Assert.True(settings.NodeCanvasEnabled);
+        Assert.True(settings.NodeScreenEnabled);
+        Assert.True(settings.NodeCameraEnabled);
+        Assert.True(settings.NodeLocationEnabled);
+        Assert.True(settings.NodeBrowserProxyEnabled);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);

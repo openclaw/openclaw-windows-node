@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
 
@@ -121,6 +122,121 @@ public class AgentActivityTests
             Label = "" 
         };
         Assert.Equal("Main · 🛠️ ", activity.DisplayText);
+    }
+}
+
+public class SshTunnelCommandLineTests
+{
+    [Fact]
+    public void BuildArguments_UsesMacParitySshOptions()
+    {
+        var args = SshTunnelCommandLine.BuildArguments("scott", "mac-mini.local", 18789, 28789);
+
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 scott@mac-mini.local", args);
+    }
+
+    [Fact]
+    public void BuildArguments_CanIncludeBrowserProxyForward()
+    {
+        var args = SshTunnelCommandLine.BuildArguments(
+            "scott",
+            "mac-mini.local",
+            18789,
+            28789,
+            includeBrowserProxyForward: true);
+
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 -L 28791:127.0.0.1:18791 scott@mac-mini.local", args);
+    }
+
+    [Fact]
+    public void BuildArguments_RejectsBrowserProxyForwardWhenPortPlusTwoOverflows()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            SshTunnelCommandLine.BuildArguments(
+                "scott",
+                "mac-mini.local",
+                65534,
+                28789,
+                includeBrowserProxyForward: true));
+    }
+
+    [Theory]
+    [InlineData("bad user", "mac-mini", 18789, 28789)]
+    [InlineData("scott", "mac mini", 18789, 28789)]
+    [InlineData("scott", "mac-mini", 0, 28789)]
+    [InlineData("scott", "mac-mini", 18789, 70000)]
+    public void BuildArguments_RejectsUnsafeInputs(string user, string host, int remotePort, int localPort)
+    {
+        Assert.ThrowsAny<ArgumentException>(() =>
+            SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort));
+    }
+}
+
+public class GatewaySelfInfoTests
+{
+    [Fact]
+    public void FromHelloOk_ParsesGatewaySnapshotAndPolicy()
+    {
+        using var doc = JsonDocument.Parse("""
+        {
+          "type": "hello-ok",
+          "protocol": 1,
+          "server": { "version": "0.7.0", "connId": "abc123" },
+          "snapshot": {
+            "presence": [{ "host": "mac", "ts": 123 }],
+            "health": {},
+            "stateVersion": { "presence": 4, "health": 9 },
+            "uptimeMs": 125000,
+            "authMode": "token"
+          },
+          "policy": {
+            "maxPayload": 1048576,
+            "maxBufferedBytes": 4194304,
+            "tickIntervalMs": 30000
+          }
+        }
+        """);
+
+        var info = GatewaySelfInfo.FromHelloOk(doc.RootElement);
+
+        Assert.True(info.HasAnyDetails);
+        Assert.Equal("0.7.0", info.ServerVersion);
+        Assert.Equal("abc123", info.ConnectionId);
+        Assert.Equal(1, info.Protocol);
+        Assert.Equal(125000, info.UptimeMs);
+        Assert.Equal("token", info.AuthMode);
+        Assert.Equal(4, info.StateVersionPresence);
+        Assert.Equal(9, info.StateVersionHealth);
+        Assert.Equal(1, info.PresenceCount);
+        Assert.Equal(1048576, info.MaxPayload);
+        Assert.Equal(4194304, info.MaxBufferedBytes);
+        Assert.Equal(30000, info.TickIntervalMs);
+        Assert.Equal("2m 5s", info.UptimeText);
+    }
+
+    [Fact]
+    public void Merge_PreservesExistingFieldsWhenUpdateIsPartial()
+    {
+        var existing = new GatewaySelfInfo
+        {
+            ServerVersion = "0.7.0",
+            Protocol = 1,
+            UptimeMs = 1000,
+            StateVersionPresence = 1
+        };
+        var update = new GatewaySelfInfo
+        {
+            UptimeMs = 2000,
+            StateVersionHealth = 3
+        };
+
+        var merged = existing.Merge(update);
+
+        Assert.Equal("0.7.0", merged.ServerVersion);
+        Assert.Equal(1, merged.Protocol);
+        Assert.Equal(2000, merged.UptimeMs);
+        Assert.Equal(1, merged.StateVersionPresence);
+        Assert.Equal(3, merged.StateVersionHealth);
     }
 }
 
@@ -757,6 +873,573 @@ public class GatewayNodeInfoTests
     {
         var node = new GatewayNodeInfo { NodeId = "n1", CommandCount = 0, CapabilityCount = 0 };
         Assert.Equal("no details", node.DetailText);
+    }
+
+    [Fact]
+    public void CapabilityLists_DefaultToEmptyCollections()
+    {
+        var node = new GatewayNodeInfo { NodeId = "n1" };
+        Assert.Empty(node.Capabilities);
+        Assert.Empty(node.Commands);
+        Assert.Empty(node.Permissions);
+    }
+}
+
+public class CommandCenterModelTests
+{
+    [Fact]
+    public void ChannelHealthParser_ParsesGatewayHealthObject()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse("""
+            {
+              "discord": { "configured": false, "running": false, "lastError": null },
+              "telegram": { "configured": true, "running": false, "tokenSource": "env" },
+              "whatsapp": { "configured": true, "running": true, "linked": true, "authAge": "5m", "type": "web" },
+              "broken": { "configured": true, "running": false, "lastError": "bad token" }
+            }
+            """);
+
+        var channels = ChannelHealthParser.Parse(doc.RootElement);
+
+        Assert.Equal(4, channels.Length);
+        Assert.Equal("not configured", channels.Single(c => c.Name == "discord").Status);
+        Assert.Equal("ready", channels.Single(c => c.Name == "telegram").Status);
+        Assert.Equal("running", channels.Single(c => c.Name == "whatsapp").Status);
+        Assert.True(channels.Single(c => c.Name == "whatsapp").IsLinked);
+        Assert.Equal("5m", channels.Single(c => c.Name == "whatsapp").AuthAge);
+        Assert.Equal("error", channels.Single(c => c.Name == "broken").Status);
+        Assert.Equal("bad token", channels.Single(c => c.Name == "broken").Error);
+    }
+
+    [Fact]
+    public void CommandGroups_IncludeCurrentSafeParityCommands()
+    {
+        Assert.Contains("canvas.a2ui.pushJSONL", CommandCenterCommandGroups.SafeCompanionCommands);
+        Assert.Contains("device.info", CommandCenterCommandGroups.SafeCompanionCommands);
+        Assert.Contains("device.status", CommandCenterCommandGroups.SafeCompanionCommands);
+        Assert.Contains("screen.record", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("browser.proxy", CommandCenterCommandGroups.BrowserCommands);
+        Assert.Contains("browser.proxy", CommandCenterCommandGroups.MacNodeParityCommands);
+    }
+
+    [Fact]
+    public void PermissionDiagnostics_BuildsSafeWindowsReviewMatrix()
+    {
+        var permissions = PermissionDiagnostics.BuildDefaultWindowsMatrix();
+
+        Assert.Contains(permissions, p =>
+            p.Name == "Camera" &&
+            p.Status == "review" &&
+            p.SettingsUri == "ms-settings:privacy-webcam");
+        Assert.Contains(permissions, p =>
+            p.Name == "Screen capture" &&
+            p.Detail.Contains("gateway-policy gated", StringComparison.OrdinalIgnoreCase));
+        Assert.All(permissions, p => Assert.StartsWith("ms-settings:", p.SettingsUri, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ChannelCommandCenterInfo_EnablesStopForHealthyChannel()
+    {
+        var info = ChannelCommandCenterInfo.FromHealth(new ChannelHealth
+        {
+            Name = "telegram",
+            Status = "running",
+            IsLinked = true,
+            AuthAge = "2h",
+            Type = "webhook"
+        });
+
+        Assert.Equal("telegram", info.Name);
+        Assert.True(info.CanStop);
+        Assert.False(info.CanStart);
+        Assert.True(info.IsLinked);
+        Assert.Equal("2h", info.AuthAge);
+        Assert.Equal("webhook", info.Type);
+    }
+
+    [Fact]
+    public void ChannelCommandCenterInfo_EnablesStartForStoppedChannel()
+    {
+        var info = ChannelCommandCenterInfo.FromHealth(new ChannelHealth
+        {
+            Name = "discord",
+            Status = "stopped"
+        });
+
+        Assert.True(info.CanStart);
+        Assert.False(info.CanStop);
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_GroupsCommandsAndWarnsForKnownWindowsGap()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            Capabilities = ["canvas", "camera", "screen", "location", "device"],
+            Commands =
+            [
+                "canvas.present",
+                "canvas.a2ui.pushJSONL",
+                "camera.list",
+                "camera.snap",
+                "screen.record",
+                "device.info",
+                "device.status",
+                "system.execApprovals.get"
+            ],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["screen.record"] = true
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("canvas.a2ui.pushJSONL", info.SafeDeclaredCommands);
+        Assert.Contains("device.info", info.SafeDeclaredCommands);
+        Assert.Contains("camera.snap", info.DangerousDeclaredCommands);
+        Assert.Contains("screen.record", info.DangerousDeclaredCommands);
+        Assert.Contains("system.execApprovals.get", info.WindowsSpecificDeclaredCommands);
+        Assert.True(info.Permissions["screen.record"]);
+        Assert.Empty(info.MissingDangerousAllowlistCommands);
+        Assert.Contains("browser.proxy", info.MissingMacParityCommands);
+        Assert.Contains(info.Warnings, w => w.Category == "allowlist" && w.Severity == GatewayDiagnosticSeverity.Info);
+        Assert.Contains(info.Warnings, w => w.Category == "parity" && w.Title.Contains("Browser proxy"));
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_WarnsForOfflineNodeWithNoCommands()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Offline Node",
+            Platform = "windows",
+            IsOnline = false
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains(info.Warnings, w => w.Title == "Node offline" && w.Severity == GatewayDiagnosticSeverity.Warning);
+        Assert.Contains(info.Warnings, w => w.Title == "No node commands visible" && w.Category == "allowlist");
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_SeparatesSafeAndDangerousPolicyBlocks()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands =
+            [
+                "canvas.present",
+                "screen.snapshot",
+                "screen.record",
+                "camera.snap"
+            ],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["commands.canvas.present"] = false,
+                ["screen.snapshot"] = false,
+                ["command:screen.record"] = false,
+                ["camera.snap"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("canvas.present", info.MissingSafeAllowlistCommands);
+        Assert.Contains("screen.snapshot", info.MissingSafeAllowlistCommands);
+        Assert.Contains("screen.record", info.MissingDangerousAllowlistCommands);
+        Assert.Contains("camera.snap", info.MissingDangerousAllowlistCommands);
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Safe node commands are filtered by gateway policy" &&
+            w.CopyText != null &&
+            w.CopyText.Contains("canvas.a2ui.pushJSONL", StringComparison.Ordinal) &&
+            !w.CopyText.Contains("screen.record", StringComparison.Ordinal));
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Privacy-sensitive commands are currently blocked" &&
+            w.CopyText != null &&
+            w.CopyText.Contains("screen.record", StringComparison.Ordinal) &&
+            w.CopyText.Contains("camera.snap", StringComparison.Ordinal) &&
+            !w.CopyText.Contains("openclaw config set", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Privacy-sensitive commands require explicit opt-in" &&
+            w.RepairAction == "Copy opt-in guidance" &&
+            !string.IsNullOrWhiteSpace(w.CopyText));
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_WarnsSpecificallyForBlockedBrowserProxy()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands =
+            [
+                "system.notify",
+                "system.run",
+                "system.which",
+                "browser.proxy"
+            ],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["browser.proxy"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("browser.proxy", info.BrowserDeclaredCommands);
+        Assert.Contains("browser.proxy", info.MissingBrowserAllowlistCommands);
+        Assert.DoesNotContain("browser.proxy", info.MissingMacParityCommands);
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Browser proxy command is filtered by gateway policy" &&
+            w.RepairAction == "Copy browser proxy allowlist repair command" &&
+            w.CopyText == "openclaw config set gateway.nodes.allowCommands '[\"browser.proxy\"]'");
+        Assert.DoesNotContain(info.Warnings, w => w.Title == "Some node commands are filtered");
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_TreatsDisabledCommandsAsSettingsChoice()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands =
+            [
+                "system.notify",
+                "system.run",
+                "system.which",
+                "device.info",
+                "device.status"
+            ],
+            DisabledCommands =
+            [
+                "camera.list",
+                "camera.snap",
+                "camera.clip",
+                "screen.snapshot",
+                "screen.record",
+                "browser.proxy"
+            ]
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("camera.snap", info.DisabledBySettingsCommands);
+        Assert.DoesNotContain("camera.list", info.MissingMacParityCommands);
+        Assert.DoesNotContain("screen.snapshot", info.MissingMacParityCommands);
+        Assert.DoesNotContain("browser.proxy", info.MissingMacParityCommands);
+        Assert.Contains(info.Warnings, w =>
+            w.Category == "settings" &&
+            w.Title == "Some node capabilities are disabled" &&
+            w.Detail.Contains("screen.record", StringComparison.Ordinal));
+        Assert.Contains(info.Warnings, w =>
+            w.Category == "settings" &&
+            w.Title == "Browser proxy bridge is disabled" &&
+            w.Detail.Contains("Mac browser-control parity", StringComparison.Ordinal) &&
+            w.CopyText != null &&
+            w.CopyText.Contains("local gateway port + 2 forwards to remote port + 2", StringComparison.Ordinal));
+        Assert.DoesNotContain(info.Warnings, w => w.Title == "Browser proxy host not available");
+    }
+
+    [Fact]
+    public void BuildAllowCommandsRepairCommand_IsStableAndDeduplicated()
+    {
+        var command = CommandCenterDiagnostics.BuildAllowCommandsRepairCommand(
+            ["screen.snapshot", "canvas.present", "screen.snapshot"]);
+
+        Assert.Equal("openclaw config set gateway.nodes.allowCommands '[\"canvas.present\",\"screen.snapshot\"]'", command);
+    }
+
+    [Fact]
+    public void BuildDangerousCommandOptInGuidance_IsStableAndDoesNotEmitRepairCommand()
+    {
+        var guidance = CommandCenterDiagnostics.BuildDangerousCommandOptInGuidance(
+            ["screen.record", "camera.snap", "screen.record"]);
+
+        Assert.Contains("camera.snap, screen.record", guidance);
+        Assert.Contains("Do not use wildcards", guidance);
+        Assert.DoesNotContain("openclaw config set", guidance, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SortAndDedupeWarnings_PrioritizesAndRemovesDuplicates()
+    {
+        var warnings = CommandCenterDiagnostics.SortAndDedupeWarnings(
+        [
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Info, Category = "node", Title = "Node info", Detail = "same" },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Warning, Category = "channel", Title = "Channel warning", Detail = "same" },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Critical, Category = "auth", Title = "Auth failed", Detail = "same" },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Info, Category = "node", Title = "Node info", Detail = "same" }
+        ]);
+
+        Assert.Equal(3, warnings.Count);
+        Assert.Equal(GatewayDiagnosticSeverity.Critical, warnings[0].Severity);
+        Assert.Equal(GatewayDiagnosticSeverity.Warning, warnings[1].Severity);
+        Assert.Equal(GatewayDiagnosticSeverity.Info, warnings[2].Severity);
+    }
+
+    [Fact]
+    public void SortAndDedupeWarnings_ExcludesBlankTitles()
+    {
+        var warnings = CommandCenterDiagnostics.SortAndDedupeWarnings(
+        [
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Warning, Category = "node", Title = "" },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Warning, Category = "node", Title = "   " },
+            new GatewayDiagnosticWarning { Severity = GatewayDiagnosticSeverity.Info, Category = "node", Title = "Keep me" }
+        ]);
+
+        Assert.Single(warnings);
+        Assert.Equal("Keep me", warnings[0].Title);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_ExactKeyMatch()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["screen.snapshot"] = false
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "screen.snapshot", out var allowed));
+        Assert.False(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_CommandsDotPrefix()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["commands.canvas.present"] = false
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "canvas.present", out var allowed));
+        Assert.False(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_CommandColonPrefix()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["command:screen.record"] = false
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "screen.record", out var allowed));
+        Assert.False(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_ReturnsTrue_WhenAllowed()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["screen.record"] = true
+        };
+
+        Assert.True(CommandCenterDiagnostics.TryGetCommandPermission(perms, "screen.record", out var allowed));
+        Assert.True(allowed);
+    }
+
+    [Fact]
+    public void TryGetCommandPermission_ReturnsFalse_WhenNotPresent()
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.False(CommandCenterDiagnostics.TryGetCommandPermission(perms, "system.notify", out _));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void TryGetCommandPermission_ReturnsFalse_ForBlankCommand(string? command)
+    {
+        var perms = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["system.notify"] = true
+        };
+
+        Assert.False(CommandCenterDiagnostics.TryGetCommandPermission(perms, command!, out _));
+    }
+
+    [Fact]
+    public void BuildNodeWarnings_SomeCommandsFiltered_WhenNonCategorizedCommandBlocked()
+    {
+        // system.notify and system.run are not in SafeCompanionCommandSet or DangerousCommandSet,
+        // so blocking them triggers the "Some node commands are filtered" Info warning instead
+        // of the safe/dangerous-specific warnings.
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-x",
+            DisplayName = "Test Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands = ["system.notify", "system.run"],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["system.notify"] = false,
+                ["system.run"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        // Should be in BlockedDeclaredCommands but NOT in safe/dangerous missing lists
+        Assert.Contains("system.notify", info.BlockedDeclaredCommands);
+        Assert.Contains("system.run", info.BlockedDeclaredCommands);
+        Assert.Empty(info.MissingSafeAllowlistCommands);
+        Assert.Empty(info.MissingDangerousAllowlistCommands);
+
+        // The "some commands are filtered" Info warning fires
+        Assert.Contains(info.Warnings, w =>
+            w.Title == "Some node commands are filtered" &&
+            w.Severity == GatewayDiagnosticSeverity.Info &&
+            w.Category == "allowlist");
+    }
+
+    [Fact]
+    public void BuildNodeWarnings_SomeCommandsFiltered_NotEmittedWhenSafeOrDangerousWarningAlsoFires()
+    {
+        // When MissingSafeAllowlistCommands is non-empty the "some commands filtered"
+        // generic fallback should NOT be appended on top of the specific warning.
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-y",
+            DisplayName = "Test Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands = ["canvas.present"],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["canvas.present"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains("canvas.present", info.MissingSafeAllowlistCommands);
+        Assert.DoesNotContain(info.Warnings, w => w.Title == "Some node commands are filtered");
+    }
+
+    [Fact]
+    public void UpdateCommandCenterInfo_DisplayTextIncludesCurrentAndLatest()
+    {
+        var info = new UpdateCommandCenterInfo
+        {
+            Status = "Available",
+            CurrentVersion = "1.2.3",
+            LatestVersion = "v1.2.4",
+            Detail = "prompted"
+        };
+
+        Assert.Equal("Available · current 1.2.3 · latest v1.2.4 · prompted", info.DisplayText);
+    }
+
+    [Fact]
+    public void GatewayRuntimeInfo_DisplayTextIncludesProcessPortAndForward()
+    {
+        var info = new GatewayRuntimeInfo
+        {
+            ProcessName = "ssh",
+            ProcessId = 1234,
+            Port = 18789,
+            IsSshForward = true
+        };
+
+        Assert.Equal("ssh (PID 1234) on :18789 · SSH local forward", info.DisplayText);
+    }
+
+    [Theory]
+    [InlineData("ws://localhost:18789", false, "", GatewayKind.WindowsNative)]
+    [InlineData("ws://127.0.0.1:18789", false, "", GatewayKind.WindowsNative)]
+    [InlineData("ws://wsl.localhost:18789", false, "", GatewayKind.Wsl)]
+    [InlineData("ws://Ubuntu.wsl.localhost:18789", false, "", GatewayKind.Wsl)]
+    [InlineData("ws://openclaw.wsl:18789", false, "", GatewayKind.Wsl)]
+    [InlineData("ws://192.168.1.20:18789", false, "", GatewayKind.RemoteLan)]
+    [InlineData("wss://openclaw.local:18789", false, "", GatewayKind.RemoteLan)]
+    [InlineData("wss://box.ts.net:18789", false, "", GatewayKind.Tailscale)]
+    [InlineData("ws://100.100.100.100:18789", false, "", GatewayKind.Tailscale)]
+    [InlineData("wss://example.com:18789", false, "", GatewayKind.Remote)]
+    [InlineData("ws://127.0.0.1:18789", true, "mac-mini", GatewayKind.MacOverSsh)]
+    public void GatewayTopologyClassifier_ClassifiesCommonTopologies(
+        string url,
+        bool useSshTunnel,
+        string sshHost,
+        GatewayKind expectedKind)
+    {
+        var topology = GatewayTopologyClassifier.Classify(url, useSshTunnel, sshHost, 18789, 18789);
+
+        Assert.Equal(expectedKind, topology.DetectedKind);
+    }
+
+    [Fact]
+    public void GatewayTopologyClassifier_UsesTunnelLocalPortWhenSshGatewayUrlIsStale()
+    {
+        var topology = GatewayTopologyClassifier.Classify(
+            "ws://127.0.0.1:18789",
+            useSshTunnel: true,
+            sshHost: "mac-mini",
+            sshLocalPort: 28789,
+            sshRemotePort: 18789);
+
+        Assert.Equal(GatewayKind.MacOverSsh, topology.DetectedKind);
+        Assert.Equal("ws://127.0.0.1:28789", topology.GatewayUrl);
+        Assert.Contains("Local port 28789 forwards to mac-mini:18789", topology.Detail);
+    }
+
+    [Fact]
+    public void GatewayTopologyClassifier_InvalidUrl_IsUnknown()
+    {
+        var topology = GatewayTopologyClassifier.Classify("not a url", useSshTunnel: false);
+
+        Assert.Equal(GatewayKind.Unknown, topology.DetectedKind);
+        Assert.Equal("Gateway URL is missing or invalid.", topology.Detail);
+    }
+
+    [Fact]
+    public void BuildTopologyWarnings_WarnsForRemotePlaintextWebSocket()
+    {
+        var topology = GatewayTopologyClassifier.Classify("ws://example.com:18789", useSshTunnel: false);
+
+        var warnings = CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel: null);
+
+        Assert.Contains(warnings, w =>
+            w.Category == "topology" &&
+            w.Title == "Remote gateway uses plaintext WebSocket");
+    }
+
+    [Fact]
+    public void BuildTopologyWarnings_WarnsWhenConfiguredTunnelIsDown()
+    {
+        var topology = GatewayTopologyClassifier.Classify("ws://127.0.0.1:18789", useSshTunnel: true, "mac-mini", 18789, 18789);
+        var tunnel = new TunnelCommandCenterInfo
+        {
+            Status = TunnelStatus.Failed,
+            LastError = "ssh exited"
+        };
+
+        var warnings = CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel);
+
+        Assert.Contains(warnings, w =>
+            w.Category == "tunnel" &&
+            w.Title == "SSH tunnel failed" &&
+            w.Detail == "ssh exited");
     }
 }
 

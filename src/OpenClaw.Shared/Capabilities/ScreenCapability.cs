@@ -13,16 +13,15 @@ public class ScreenCapability : NodeCapabilityBase
     
     private static readonly string[] _commands = new[]
     {
-        "screen.capture",
-        "screen.list"
-        // Future: "screen.record"
+        "screen.snapshot",
+        "screen.record"
     };
     
     public override IReadOnlyList<string> Commands => _commands;
     
     // Events for UI/platform-specific implementation
     public event Func<ScreenCaptureArgs, Task<ScreenCaptureResult>>? CaptureRequested;
-    public event Func<Task<ScreenInfo[]>>? ListRequested;
+    public event Func<ScreenRecordArgs, Task<ScreenRecordResult>>? RecordRequested;
     
     public ScreenCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -32,22 +31,29 @@ public class ScreenCapability : NodeCapabilityBase
     {
         return request.Command switch
         {
-            "screen.capture" => await HandleCaptureAsync(request),
-            "screen.list" => await HandleListAsync(request),
+            "screen.snapshot" => await HandleCaptureAsync(request),
+            "screen.record" => await HandleRecordAsync(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
     
+    // Clamp bounds — reject extreme caller values before any work starts.
+    private const int MinDimension = 16;
+    private const int MaxScreenWidth = 7680;       // 8K horizontal
+    private const int MinQuality = 1;
+    private const int MaxQuality = 100;
+    private const int MaxScreenIndex = 32;          // far above any plausible monitor count
+
     private async Task<NodeInvokeResponse> HandleCaptureAsync(NodeInvokeRequest request)
     {
         var format = GetStringArg(request.Args, "format", "png");
-        var maxWidth = GetIntArg(request.Args, "maxWidth", 1920);
-        var quality = GetIntArg(request.Args, "quality", 80);
+        var maxWidth = Clamp(GetIntArg(request.Args, "maxWidth", 1920), MinDimension, MaxScreenWidth);
+        var quality = Clamp(GetIntArg(request.Args, "quality", 80), MinQuality, MaxQuality);
         var monitor = GetIntArg(request.Args, "monitor", 0);
-        var screenIndex = GetIntArg(request.Args, "screenIndex", monitor);
+        var screenIndex = Clamp(GetIntArg(request.Args, "screenIndex", monitor), 0, MaxScreenIndex);
         var includePointer = GetBoolArg(request.Args, "includePointer", true);
-        
-        Logger.Info($"screen.capture: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
+
+        Logger.Info($"screen.snapshot: format={format}, maxWidth={maxWidth}, monitor={screenIndex}");
         
         if (CaptureRequested == null)
         {
@@ -81,38 +87,75 @@ public class ScreenCapability : NodeCapabilityBase
             return Error($"Capture failed: {ex.Message}");
         }
     }
-    
-    private async Task<NodeInvokeResponse> HandleListAsync(NodeInvokeRequest request)
+
+    private async Task<NodeInvokeResponse> HandleRecordAsync(NodeInvokeRequest request)
     {
-        Logger.Info("screen.list");
-        
-        if (ListRequested == null)
+        var format = GetStringArg(request.Args, "format", "mp4");
+        if (!string.IsNullOrWhiteSpace(format) &&
+            !string.Equals(format, "mp4", StringComparison.OrdinalIgnoreCase))
         {
-            return Error("Screen list not available");
+            return Error("Unsupported screen recording format. Only mp4 is supported.");
         }
-        
+
+        var durationMs = Clamp(GetIntArg(request.Args, "durationMs", 10000), 100, MaxRecordDurationMs);
+        var fpsRaw = GetDoubleArg(request.Args, "fps", 10);
+        var fps = fpsRaw < 1 ? 1 : (fpsRaw > 60 ? 60 : fpsRaw);
+        var screenIndex = Clamp(GetIntArg(request.Args, "screenIndex", 0), 0, MaxScreenIndex);
+        var includeAudio = GetBoolArg(request.Args, "includeAudio", false);
+
+        Logger.Info($"screen.record: durationMs={durationMs}, fps={fps}, screenIndex={screenIndex}, includeAudio={includeAudio}");
+
+        if (RecordRequested == null)
+        {
+            return Error("Screen recording not available");
+        }
+
         try
         {
-            var screens = await ListRequested();
-            var formatted = new List<object>();
-            foreach (var screen in screens)
+            var result = await RecordRequested(new ScreenRecordArgs
             {
-                formatted.Add(new
-                {
-                    index = screen.Index,
-                    name = screen.Name,
-                    primary = screen.IsPrimary,
-                    bounds = new { x = screen.X, y = screen.Y, width = screen.Width, height = screen.Height },
-                    workingArea = new { x = screen.WorkingX, y = screen.WorkingY, width = screen.WorkingWidth, height = screen.WorkingHeight }
-                });
-            }
-            return Success(new { screens = formatted });
+                DurationMs = durationMs,
+                Fps = fps,
+                ScreenIndex = screenIndex,
+                Format = "mp4",
+                IncludeAudio = includeAudio
+            });
+
+            return Success(new
+            {
+                format = result.Format,
+                base64 = result.Base64,
+                durationMs = result.DurationMs,
+                fps = result.Fps,
+                screenIndex = result.ScreenIndex,
+                hasAudio = result.HasAudio
+            });
         }
         catch (Exception ex)
         {
-            Logger.Error("Screen list failed", ex);
-            return Error($"List failed: {ex.Message}");
+            Logger.Error("Screen recording failed", ex);
+            return Error($"Recording failed: {ex.Message}");
         }
+    }
+
+    private const int MaxRecordDurationMs = 5 * 60 * 1000; // 5 minutes
+
+    private static int Clamp(int value, int min, int max)
+        => value < min ? min : (value > max ? max : value);
+
+    private static double GetDoubleArg(System.Text.Json.JsonElement args, string name, double defaultValue)
+    {
+        if (args.ValueKind == System.Text.Json.JsonValueKind.Undefined ||
+            args.ValueKind == System.Text.Json.JsonValueKind.Null)
+            return defaultValue;
+
+        if (args.TryGetProperty(name, out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.Number)
+        {
+            try { return prop.GetDouble(); }
+            catch (FormatException) { return defaultValue; }
+        }
+
+        return defaultValue;
     }
 }
 
@@ -133,17 +176,24 @@ public class ScreenCaptureResult
     public string Base64 { get; set; } = "";
 }
 
-public class ScreenInfo
+public class ScreenRecordArgs
 {
-    public int Index { get; set; }
-    public string Name { get; set; } = "";
+    public string Format { get; set; } = "mp4";
+    public int DurationMs { get; set; } = 10000;
+    public double Fps { get; set; } = 10;
+    public int ScreenIndex { get; set; }
+    public bool IncludeAudio { get; set; }
+}
+
+public class ScreenRecordResult
+{
+    public string Format { get; set; } = "mp4";
+    public string Base64 { get; set; } = "";
+    public int DurationMs { get; set; }
+    public double Fps { get; set; }
+    public int ScreenIndex { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
-    public int X { get; set; }
-    public int Y { get; set; }
-    public int WorkingX { get; set; }
-    public int WorkingY { get; set; }
-    public int WorkingWidth { get; set; }
-    public int WorkingHeight { get; set; }
-    public bool IsPrimary { get; set; }
+    public bool HasAudio { get; set; }
 }
+

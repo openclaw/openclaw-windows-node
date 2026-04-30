@@ -67,12 +67,10 @@ openclaw-windows-hub/
 ├── .github/workflows/
 │   └── ci.yml                        # GitHub Actions CI/CD workflow
 │
-├── moltbot-windows-hub.slnx          # Solution file (historical name)
+├── openclaw-windows-node.slnx        # Solution file
 ├── README.md                         # User-facing documentation
 └── DEVELOPMENT.md                    # This file
 ```
-
-> **Note on Naming:** The solution file is named `moltbot-windows-hub.slnx` due to the project's history (formerly known as Moltbot, formerly known as Clawdbot). The repository and current branding use "OpenClaw".
 
 ### Project Dependencies
 
@@ -168,7 +166,7 @@ dotnet build -p:EnableWindowsTargeting=true
 
 #### Visual Studio
 
-1. Open `moltbot-windows-hub.slnx` in Visual Studio 2022
+1. Open `openclaw-windows-node.slnx` in Visual Studio 2022
 2. Set `OpenClaw.Tray.WinUI` as the startup project
 3. Press F5 to run with debugging
 

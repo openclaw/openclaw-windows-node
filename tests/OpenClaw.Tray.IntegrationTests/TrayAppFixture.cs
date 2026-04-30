@@ -1,0 +1,224 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using OpenClaw.Shared;
+
+namespace OpenClaw.Tray.IntegrationTests;
+
+/// <summary>
+/// xUnit class fixture that spawns the WinUI tray app in MCP-only mode against
+/// an isolated data directory and a free localhost port, and waits for the MCP
+/// HTTP server to come up. One process is shared across the test class.
+/// </summary>
+public sealed class TrayAppFixture : IAsyncLifetime
+{
+    public string DataDir { get; }
+    public int McpPort { get; }
+    public string McpEndpoint => $"http://127.0.0.1:{McpPort}/mcp";
+    public McpClient Client { get; private set; }
+
+    private readonly string _exePath;
+    private readonly Process _process;
+    private bool _disposed;
+
+    public TrayAppFixture()
+    {
+        DataDir = Path.Combine(Path.GetTempPath(), "openclaw-tray-it-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(DataDir);
+
+        McpPort = FindFreePort();
+        WriteSettings();
+
+        _exePath = LocateTrayExe();
+        _process = SpawnTray();
+
+        // Note: token doesn't exist until the tray starts the MCP server.
+        // We reset Client.Authorization once the file appears in InitializeAsync.
+        Client = new McpClient(McpEndpoint);
+    }
+
+    public async Task InitializeAsync()
+    {
+        // Poll the friendly GET probe until the listener is up. The bridge starts
+        // synchronously inside RegisterCapabilities, but the WinUI startup sequence
+        // (mutex, settings, tray icon, etc.) runs first.
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var tokenPath = Path.Combine(DataDir, "mcp-token.txt");
+        string? token = null;
+        var clientHasToken = false;
+        Exception? lastEx = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_process.HasExited)
+            {
+                throw new InvalidOperationException(
+                    $"Tray process exited before MCP server became ready (exit code {_process.ExitCode}). " +
+                    $"Logs: {Path.Combine(DataDir, "openclaw-tray.log")}");
+            }
+            try
+            {
+                if (token is null && File.Exists(tokenPath))
+                {
+                    token = (await File.ReadAllTextAsync(tokenPath).ConfigureAwait(false)).Trim();
+                    http.DefaultRequestHeaders.Authorization =
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+
+                var resp = await http.GetAsync($"http://127.0.0.1:{McpPort}/").ConfigureAwait(false);
+                if (resp.StatusCode == HttpStatusCode.OK)
+                {
+                    // Server is up; re-issue Client with the bearer token so
+                    // subsequent POSTs are authorized too.
+                    if (token is not null && !clientHasToken)
+                    {
+                        Client.Dispose();
+                        Client = new McpClient(McpEndpoint, token);
+                        clientHasToken = true;
+                    }
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                lastEx = ex;
+            }
+            await Task.Delay(500).ConfigureAwait(false);
+        }
+        throw new TimeoutException(
+            $"MCP server never came up on {McpEndpoint}. Last error: {lastEx?.Message}. " +
+            $"Logs: {Path.Combine(DataDir, "openclaw-tray.log")}");
+    }
+
+    public Task DisposeAsync()
+    {
+        if (_disposed) return Task.CompletedTask;
+        _disposed = true;
+
+        Client.Dispose();
+
+        try
+        {
+            if (!_process.HasExited)
+            {
+                // Tray app has no clean IPC to ask it to quit, so just kill it.
+                // Mutex and HTTP listener are released on process exit.
+                _process.Kill(entireProcessTree: true);
+                _process.WaitForExit(5_000);
+            }
+        }
+        catch { /* best effort */ }
+        finally
+        {
+            _process.Dispose();
+        }
+
+        try { Directory.Delete(DataDir, recursive: true); } catch { /* best effort */ }
+        return Task.CompletedTask;
+    }
+
+    private void WriteSettings()
+    {
+        // Token must be non-empty to skip the setup wizard. HasSeenActivityStreamTip
+        // suppresses the first-run UI tip. EnableMcpServer + !EnableNodeMode routes
+        // through StartLocalOnlyAsync (no gateway WebSocket).
+        var settings = new SettingsData
+        {
+            Token = "integration-test-token",
+            EnableMcpServer = true,
+            EnableNodeMode = false,
+            AutoStart = false,
+            GlobalHotkeyEnabled = false,
+            ShowNotifications = false,
+            HasSeenActivityStreamTip = true,
+        };
+        File.WriteAllText(Path.Combine(DataDir, "settings.json"), settings.ToJson());
+    }
+
+    private static string LocateTrayExe()
+    {
+        var rid = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.Arm64 => "win-arm64",
+            Architecture.X64 => "win-x64",
+            var other => throw new PlatformNotSupportedException($"Unsupported process architecture: {other}"),
+        };
+
+        var configuration =
+#if DEBUG
+            "Debug";
+#else
+            "Release";
+#endif
+
+        var repoRoot = FindRepoRoot();
+        var exe = Path.Combine(
+            repoRoot,
+            "src", "OpenClaw.Tray.WinUI", "bin", configuration,
+            "net10.0-windows10.0.19041.0", rid, "OpenClaw.Tray.WinUI.exe");
+
+        if (!File.Exists(exe))
+        {
+            throw new FileNotFoundException(
+                $"Tray exe not found at {exe}. Build it first: " +
+                $"`dotnet build src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj -c {configuration} -r {rid}`");
+        }
+        return exe;
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(dir))
+        {
+            if (File.Exists(Path.Combine(dir, "openclaw-windows-node.slnx")))
+                return dir;
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent == dir || parent == null) break;
+            dir = parent;
+        }
+        throw new DirectoryNotFoundException("Could not locate repo root (openclaw-windows-node.slnx) from " + AppContext.BaseDirectory);
+    }
+
+    private static int FindFreePort()
+    {
+        // Bind to port 0 to let the OS pick a free port, then release it.
+        // There's a small race window where another process could grab the port
+        // before the tray app rebinds, but it's vanishingly small in practice.
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    private Process SpawnTray()
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = _exePath,
+            WorkingDirectory = Path.GetDirectoryName(_exePath)!,
+            UseShellExecute = false,
+            CreateNoWindow = false, // tray app is windowed; flag doesn't really apply
+        };
+        psi.Environment["OPENCLAW_TRAY_DATA_DIR"] = DataDir;
+        psi.Environment["OPENCLAW_MCP_PORT"] = McpPort.ToString();
+        psi.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
+
+        var p = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start tray app process");
+        return p;
+    }
+}

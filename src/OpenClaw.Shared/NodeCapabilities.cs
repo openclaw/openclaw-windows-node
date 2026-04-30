@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
@@ -25,6 +26,16 @@ public class NodeInvokeRequest
     public JsonElement Args { get; set; }
 }
 
+public class NodeInvokeCompletedEventArgs : EventArgs
+{
+    public string RequestId { get; set; } = "";
+    public string Command { get; set; } = "";
+    public bool Ok { get; set; }
+    public string? Error { get; set; }
+    public TimeSpan Duration { get; set; }
+    public string? NodeId { get; set; }
+}
+
 /// <summary>
 /// Response to a node.invoke request
 /// </summary>
@@ -43,15 +54,25 @@ public interface INodeCapability
 {
     /// <summary>The capability category (canvas, camera, screen, system)</summary>
     string Category { get; }
-    
+
     /// <summary>Commands this capability can handle</summary>
     IReadOnlyList<string> Commands { get; }
-    
+
     /// <summary>Check if this capability can handle the given command</summary>
     bool CanHandle(string command);
-    
+
     /// <summary>Execute a command and return the result</summary>
     Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request);
+
+    /// <summary>
+    /// Execute a command with a cancellation token. The default implementation
+    /// just calls <see cref="ExecuteAsync(NodeInvokeRequest)"/>; capabilities
+    /// with long-running work (screen.record, camera.clip) should override so
+    /// MCP request cancellation propagates into the underlying capture
+    /// pipeline rather than orphaning it.
+    /// </summary>
+    Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
+        => ExecuteAsync(request);
 }
 
 /// <summary>
@@ -61,20 +82,23 @@ public abstract class NodeCapabilityBase : INodeCapability
 {
     public abstract string Category { get; }
     public abstract IReadOnlyList<string> Commands { get; }
-    
+
     protected IOpenClawLogger Logger { get; }
-    
+
     protected NodeCapabilityBase(IOpenClawLogger logger)
     {
         Logger = logger;
     }
-    
+
     public virtual bool CanHandle(string command)
     {
         return Commands.Contains(command);
     }
-    
+
     public abstract Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request);
+
+    public virtual Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
+        => ExecuteAsync(request);
     
     protected NodeInvokeResponse Success(object? payload = null)
     {

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<winex:WindowEx
+    x:Class="OpenClawTray.Windows.A2UICanvasWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:winex="using:WinUIEx"
+    Width="900" Height="650"
+    MinWidth="320" MinHeight="240">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop/>
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <!-- Empty placeholder shown when no surfaces are active. The icon is
+             decorative — Narrator should announce only the text. -->
+        <StackPanel x:Name="EmptyPanel"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12"
+                    Padding="32"
+                    Visibility="Visible">
+            <FontIcon Glyph="&#xE71B;" FontSize="32" Opacity="0.55"
+                      AutomationProperties.AccessibilityView="Raw"/>
+            <TextBlock x:Name="WaitingForContentText"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Opacity="0.7"
+                       HorizontalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite"/>
+        </StackPanel>
+
+        <!-- Single-surface mode: SingleSurfaceHost holds the surface root. -->
+        <ContentControl x:Name="SingleSurfaceHost"
+                        Visibility="Collapsed"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalContentAlignment="Stretch"/>
+
+        <!-- Multi-surface mode: TabView shown when >1 surface active. -->
+        <TabView x:Name="MultiSurfaceTabs"
+                 Visibility="Collapsed"
+                 IsAddTabButtonVisible="False"
+                 CanReorderTabs="False"
+                 CanDragTabs="False"/>
+    </Grid>
+</winex:WindowEx>

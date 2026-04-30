@@ -141,6 +141,30 @@
   <data name="StatusChannelsHeader.Text" xml:space="preserve">
     <value>CANAUX</value>
   </data>
+  <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
+    <value>TOPOLOGIE DE LA PASSERELLE</value>
+  </data>
+  <data name="StatusSupportDebugHeader.Text" xml:space="preserve">
+    <value>SUPPORT ET DÉBOGAGE</value>
+  </data>
+  <data name="StatusPortDiagnosticsHeader.Text" xml:space="preserve">
+    <value>DIAGNOSTICS DES PORTS</value>
+  </data>
+  <data name="StatusPermissionsHeader.Text" xml:space="preserve">
+    <value>AUTORISATIONS</value>
+  </data>
+  <data name="StatusCostTrendHeader.Text" xml:space="preserve">
+    <value>TENDANCE DES COÛTS SUR 30 JOURS</value>
+  </data>
+  <data name="StatusExtensibilityHeader.Text" xml:space="preserve">
+    <value>EXTENSIBILITÉ</value>
+  </data>
+  <data name="StatusNodesHeader.Text" xml:space="preserve">
+    <value>NŒUDS</value>
+  </data>
+  <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
+    <value>ACTIVITÉ RÉCENTE</value>
+  </data>
 
   <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
@@ -160,10 +184,82 @@
   <data name="StatusNoSessions.Text" xml:space="preserve">
     <value>Aucune session active</value>
   </data>
+  <data name="StatusNoNodes.Text" xml:space="preserve">
+    <value>Aucun nœud signalé</value>
+  </data>
+  <data name="StatusNoRecentActivity.Text" xml:space="preserve">
+    <value>Aucune activité récente</value>
+  </data>
+  <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
+    <value>La configuration des canaux, les compétences et les automatisations planifiées sont gérées par la passerelle. Utilisez ces liens quand la passerelle connectée expose les pages de tableau de bord correspondantes.</value>
+  </data>
+  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
+    <value>Configuration des canaux / schémas</value>
+  </data>
+  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
+    <value>Ouvrir la configuration des canaux pour l'authentification pilotée par schéma, QR, connexion et flux de tableau de bord quand disponible.</value>
+  </data>
+  <data name="StatusSkillsTitle.Text" xml:space="preserve">
+    <value>Compétences</value>
+  </data>
+  <data name="StatusSkillsDescription.Text" xml:space="preserve">
+    <value>Ouvrir la configuration des compétences de la passerelle quand la passerelle connectée la prend en charge.</value>
+  </data>
+  <data name="StatusCronTitle.Text" xml:space="preserve">
+    <value>Cron / planifications</value>
+  </data>
+  <data name="StatusCronDescription.Text" xml:space="preserve">
+    <value>Ouvrir les contrôles d'automatisation planifiée quand la passerelle connectée les prend en charge.</value>
+  </data>
 
   <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>Rafraîchir</value>
+  </data>
+  <data name="StatusOpenLogsButton.Content" xml:space="preserve">
+    <value>Ouvrir les journaux</value>
+  </data>
+  <data name="StatusOpenConfigButton.Content" xml:space="preserve">
+    <value>Ouvrir la configuration</value>
+  </data>
+  <data name="StatusRefreshHealthButton.Content" xml:space="preserve">
+    <value>Actualiser l'état</value>
+  </data>
+  <data name="StatusOpenDiagnosticsJsonlButton.Content" xml:space="preserve">
+    <value>Ouvrir les diagnostics JSONL</value>
+  </data>
+  <data name="StatusCopySupportContextButton.Content" xml:space="preserve">
+    <value>Copier le contexte de support</value>
+  </data>
+  <data name="StatusRestartSshTunnelButton.Content" xml:space="preserve">
+    <value>Redémarrer le tunnel SSH</value>
+  </data>
+  <data name="StatusCopyBrowserSetupButton.Content" xml:space="preserve">
+    <value>Copier la configuration navigateur</value>
+  </data>
+  <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
+    <value>Copier le paquet de débogage</value>
+  </data>
+  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
+    <value>Rechercher des mises à jour</value>
+  </data>
+  <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
+    <value>Copier les diagnostics des ports</value>
+  </data>
+  <data name="StatusCopyButton.Content" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="StatusSettingsButton.Content" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="StatusOpenButton.Content" xml:space="preserve">
+    <value>Ouvrir</value>
+  </data>
+  <data name="StatusCopyNodeInventoryButton.Content" xml:space="preserve">
+    <value>Copier l'inventaire des nœuds</value>
+  </data>
+  <data name="StatusOpenStreamButton.Content" xml:space="preserve">
+    <value>Ouvrir le flux</value>
   </data>
 
   <!-- ==================== ActivityStreamWindow.xaml ==================== -->
@@ -374,6 +470,60 @@
   <data name="Menu_CopyNodeSummary" xml:space="preserve">
     <value>Copier le résumé Node</value>
   </data>
+  <data name="Menu_CheckForUpdates" xml:space="preserve">
+    <value>Rechercher des mises à jour</value>
+  </data>
+  <data name="Menu_SetupGuide" xml:space="preserve">
+    <value>Guide de configuration...</value>
+  </data>
+  <data name="Menu_SupportDebugHeader" xml:space="preserve">
+    <value>🧰 Support et débogage</value>
+  </data>
+  <data name="Menu_OpenSupportFiles" xml:space="preserve">
+    <value>Ouvrir les fichiers de support</value>
+  </data>
+  <data name="Menu_LogsFolder" xml:space="preserve">
+    <value>Dossier des journaux</value>
+  </data>
+  <data name="Menu_ConfigFolder" xml:space="preserve">
+    <value>Dossier de configuration</value>
+  </data>
+  <data name="Menu_DiagnosticsFolder" xml:space="preserve">
+    <value>Dossier des diagnostics</value>
+  </data>
+  <data name="Menu_CopyDiagnostics" xml:space="preserve">
+    <value>Copier les diagnostics</value>
+  </data>
+  <data name="Menu_SupportContext" xml:space="preserve">
+    <value>Contexte de support</value>
+  </data>
+  <data name="Menu_DebugBundle" xml:space="preserve">
+    <value>Paquet de débogage</value>
+  </data>
+  <data name="Menu_BrowserSetup" xml:space="preserve">
+    <value>Configuration navigateur</value>
+  </data>
+  <data name="Menu_PortDiagnostics" xml:space="preserve">
+    <value>Diagnostics des ports</value>
+  </data>
+  <data name="Menu_CapabilityDiagnostics" xml:space="preserve">
+    <value>Diagnostics des capacités</value>
+  </data>
+  <data name="Menu_NodeInventory" xml:space="preserve">
+    <value>Inventaire des nœuds</value>
+  </data>
+  <data name="Menu_ChannelSummary" xml:space="preserve">
+    <value>Résumé des canaux</value>
+  </data>
+  <data name="Menu_ActivitySummary" xml:space="preserve">
+    <value>Résumé d'activité</value>
+  </data>
+  <data name="Menu_ExtensibilitySummary" xml:space="preserve">
+    <value>Résumé d'extensibilité</value>
+  </data>
+  <data name="Menu_RestartSshTunnel" xml:space="preserve">
+    <value>Redémarrer le tunnel SSH</value>
+  </data>
 
   <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
@@ -483,6 +633,24 @@
   <data name="Canvas_WaitingForContent" xml:space="preserve">
     <value>En attente de contenu...</value>
   </data>
+  <data name="A2UI_CanvasTitle" xml:space="preserve">
+    <value>Canvas</value>
+  </data>
+  <data name="A2UI_UnsupportedComponent" xml:space="preserve">
+    <value>Composant non pris en charge : {0}</value>
+  </data>
+  <data name="A2UI_TabFallback" xml:space="preserve">
+    <value>Onglet</value>
+  </data>
+  <data name="A2UI_ModalClose" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+  <data name="A2UI_DateTimeSelectDate" xml:space="preserve">
+    <value>Sélectionner une date</value>
+  </data>
+  <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
+    <value>Sélectionner...</value>
+  </data>
 
   <!-- ==================== WebChatWindow.xaml ==================== -->
 
@@ -569,6 +737,12 @@ Utilisez l'une de ces options :
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>Lancer sur la passerelle : openclaw devices approve {0}...</value>
   </data>
+  <data name="Toast_CopyPairingCommand" xml:space="preserve">
+    <value>Copier la commande d'approbation</value>
+  </data>
+  <data name="Toast_PairingCommandCopied" xml:space="preserve">
+    <value>Commande de jumelage copiée</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Noeud appairé!</value>
   </data>
@@ -644,6 +818,21 @@ Utilisez l'une de ces options :
   <data name="Setup_SetupCodePlaceholder" xml:space="preserve">
     <value>Collez le code de configuration depuis le tableau de bord de votre passerelle</value>
   </data>
+  <data name="Setup_PasteSetupButton" xml:space="preserve">
+    <value>Coller le code / QR</value>
+  </data>
+  <data name="Setup_ImportQrButton" xml:space="preserve">
+    <value>Importer une image QR...</value>
+  </data>
+  <data name="Setup_QrDecoded" xml:space="preserve">
+    <value>✅ Image QR décodée — cliquez sur Tester la connexion</value>
+  </data>
+  <data name="Setup_QrDecodeFailed" xml:space="preserve">
+    <value>❌ Aucun code QR de configuration valide trouvé dans cette image.</value>
+  </data>
+  <data name="Setup_ClipboardUnsupported" xml:space="preserve">
+    <value>❌ Le presse-papiers ne contient pas de code de configuration texte ni d'image QR.</value>
+  </data>
   <data name="Setup_ManualEntryToggle" xml:space="preserve">
     <value>Ou entrez l'URL et le jeton manuellement ▾</value>
   </data>
@@ -713,6 +902,12 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>Le mode nœud permet à votre machine Windows d'exécuter des tâches pour OpenClaw — comme la capture d'écran, l'accès caméra et le dessin sur canevas.</value>
   </data>
+  <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
+    <value>Activez le mode nœud uniquement pour les passerelles et agents de confiance</value>
+  </data>
+  <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
+    <value>Les agents approuvés peuvent exécuter des commandes locales et accéder aux surfaces activées comme l'écran, la caméra, la localisation, le navigateur et le canevas. Vous pouvez désactiver des groupes de capacités plus tard dans Paramètres.</value>
+  </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
     <value>Activer le mode nœud</value>
   </data>
@@ -756,6 +951,93 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Étape 3 sur 3 — Terminé</value>
   </data>
 
+  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
+
+  <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
+    <value>MODE DÉVELOPPEUR</value>
+  </data>
+  <data name="SettingsMcpServerToggle.Header" xml:space="preserve">
+    <value>Activer le serveur MCP local</value>
+  </data>
+  <data name="SettingsMcpDescription.Text" xml:space="preserve">
+    <value>Expose les mêmes capacités du nœud (système, écran, caméra, canvas) aux clients MCP locaux (Claude Desktop, Cursor, Claude Code).</value>
+  </data>
+  <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
+    <value>Point de terminaison :</value>
+  </data>
+  <data name="SettingsMcpStatusLabel.Text" xml:space="preserve">
+    <value>État :</value>
+  </data>
+  <data name="Mcp_Status_Disabled" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="Mcp_Status_Listening" xml:space="preserve">
+    <value>À l'écoute</value>
+  </data>
+  <data name="Mcp_Status_Stopped" xml:space="preserve">
+    <value>Arrêté</value>
+  </data>
+  <data name="Mcp_Status_WillStartOnSave" xml:space="preserve">
+    <value>Démarrera lors de l'enregistrement</value>
+  </data>
+  <data name="Mcp_Status_WillStopOnSave" xml:space="preserve">
+    <value>S'arrêtera lors de l'enregistrement</value>
+  </data>
+  <data name="Mcp_Status_FailedToStart" xml:space="preserve">
+    <value>Échec du démarrage : </value>
+  </data>
+
+  <!-- ==================== MCP token (SettingsWindow) ==================== -->
+
+  <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
+    <value>Jeton porteur :</value>
+  </data>
+  <data name="SettingsMcpTokenRevealButton.Content" xml:space="preserve">
+    <value>Afficher</value>
+  </data>
+  <data name="SettingsMcpTokenCopyButton.Content" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="SettingsMcpTokenResetButton.Content" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="SettingsMcpToken_RevealButton" xml:space="preserve">
+    <value>Afficher</value>
+  </data>
+  <data name="SettingsMcpToken_HideButton" xml:space="preserve">
+    <value>Masquer</value>
+  </data>
+  <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
+    <value>(non généré — activez le serveur MCP et cliquez sur Enregistrer)</value>
+  </data>
+  <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
+    <value>Stocké à {0}</value>
+  </data>
+  <data name="SettingsMcpToken_HintFormat" xml:space="preserve">
+    <value>Envoyer comme 'Authorization: Bearer &lt;token&gt;' à chaque requête. Stocké à {0}.</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastTitle" xml:space="preserve">
+    <value>Jeton MCP réinitialisé</value>
+  </data>
+  <data name="SettingsMcpToken_ResetToastBody" xml:space="preserve">
+    <value>Les anciens jetons porteur MCP sont désormais invalides.</value>
+  </data>
+  <data name="SettingsMcpToken_ResetFailedFormat" xml:space="preserve">
+    <value>Échec de la réinitialisation du jeton : {0}</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Title" xml:space="preserve">
+    <value>Réinitialiser le jeton porteur MCP ?</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_Body" xml:space="preserve">
+    <value>Les clients MCP locaux existants (Claude Desktop, Cursor, Claude Code) cesseront de fonctionner jusqu'à ce que vous les reconfiguriez avec le nouveau jeton.</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_PrimaryButton" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+
   <!-- ==================== DownloadProgressDialog ==================== -->
 
   <data name="WindowTitle_Downloading" xml:space="preserve">
@@ -763,5 +1045,35 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>Téléchargement en cours...</value>
+  </data>
+
+  <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
+
+  <data name="UrlApproval_Caption" xml:space="preserve">
+    <value>OpenClaw — Approuver l'URL</value>
+  </data>
+  <data name="UrlApproval_Body" xml:space="preserve">
+    <value>Un agent souhaite ouvrir une destination à haut risque dans votre navigateur.</value>
+  </data>
+  <data name="UrlApproval_NoReasons" xml:space="preserve">
+    <value>(aucune raison spécifique capturée)</value>
+  </data>
+  <data name="UrlApproval_ZoneFormat" xml:space="preserve">
+    <value>Zone : {0}</value>
+  </data>
+  <data name="UrlApproval_AgentFormat" xml:space="preserve">
+    <value>Agent : {0}</value>
+  </data>
+  <data name="UrlApproval_HostFormat" xml:space="preserve">
+    <value>Hôte : {0}</value>
+  </data>
+  <data name="UrlApproval_ReasonsHeader" xml:space="preserve">
+    <value>Raisons :</value>
+  </data>
+  <data name="UrlApproval_YesHint" xml:space="preserve">
+    <value>Oui — ouvrir cette URL.</value>
+  </data>
+  <data name="UrlApproval_NoHint" xml:space="preserve">
+    <value>Non — la bloquer.</value>
   </data>
 </root>

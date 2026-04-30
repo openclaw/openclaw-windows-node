@@ -43,7 +43,15 @@ internal static class ExecEnvSanitizer
             "LD_LIBRARY_PATH",
             "LD_AUDIT",
             "DYLD_INSERT_LIBRARIES",
-            "DYLD_LIBRARY_PATH"
+            "DYLD_LIBRARY_PATH",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AZURE_CLIENT_SECRET",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "NPM_TOKEN",
+            "OPENAI_API_KEY"
         }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     internal static ExecEnvSanitizeResult Sanitize(Dictionary<string, string>? env)
@@ -89,7 +97,66 @@ internal static class ExecEnvSanitizer
         }
 
         return _blockedNames.Contains(name)
+            || HasCredentialMarker(name)
             || name.StartsWith("LD_", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith("DYLD_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasCredentialMarker(string name)
+    {
+        return HasSegment(name, "TOKEN")
+            || HasSegment(name, "SECRET")
+            || HasSegment(name, "PASSWORD")
+            || HasSegment(name, "PASSWD")
+            || HasCompoundMarker(name, "API", "KEY")
+            || HasCompoundMarker(name, "ACCESS", "KEY")
+            || HasCompoundMarker(name, "PRIVATE", "KEY")
+            || HasCompoundMarker(name, "CLIENT", "SECRET")
+            || HasCompoundMarker(name, "CONNECTION", "STRING")
+            || HasSegment(name, "CREDENTIAL")
+            || HasSegment(name, "CREDENTIALS")
+            || name.Contains("CONNSTR", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasCompoundMarker(string name, string first, string second)
+    {
+        var span = name.AsSpan();
+        var firstSpan = first.AsSpan();
+        var secondSpan = second.AsSpan();
+        var start = 0;
+        var previousMatched = false;
+        for (var i = 0; i <= span.Length; i++)
+        {
+            if (i < span.Length && span[i] is not ('_' or '-' or '.'))
+                continue;
+
+            var current = span[start..i];
+            if (previousMatched && current.Equals(secondSpan, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            previousMatched = current.Equals(firstSpan, StringComparison.OrdinalIgnoreCase);
+            start = i + 1;
+        }
+
+        return false;
+    }
+
+    private static bool HasSegment(string name, string segment)
+    {
+        var span = name.AsSpan();
+        var segmentSpan = segment.AsSpan();
+        var start = 0;
+        for (var i = 0; i <= span.Length; i++)
+        {
+            if (i < span.Length && span[i] is not ('_' or '-' or '.'))
+                continue;
+
+            if (span[start..i].Equals(segmentSpan, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            start = i + 1;
+        }
+
+        return false;
     }
 }

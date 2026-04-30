@@ -11,17 +11,17 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
     - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -39,6 +39,13 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
+    # dotnet-coverage replaces coverlet because the integration tests spawn the
+    # tray exe out-of-process; coverlet only instruments the in-proc test
+    # assembly. Installing once at the job level lets every test step wrap its
+    # `dotnet test` invocation in `dotnet-coverage collect`.
+    - name: Install dotnet-coverage
+      run: dotnet tool install --global dotnet-coverage
+
     - name: Build Shared Library
       run: dotnet build src/OpenClaw.Shared -c Debug --no-restore
 
@@ -48,33 +55,86 @@ jobs:
     - name: Build Tests
       run: |
         dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
-        dotnet build tests/OpenClaw.Tray.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.Tray.Tests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
 
     - name: Run Shared Tests
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
-        dotnet test tests/OpenClaw.Shared.Tests
+        dotnet-coverage collect
+        --output TestResults\Shared\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Shared.Tests
         --no-build
         -c Debug
         --verbosity normal
-        --collect:"XPlat Code Coverage"
         --results-directory TestResults\Shared
-        --logger "trx;LogFileName=OpenClaw.Shared.Tests.trx"
+        --logger trx;LogFileName=OpenClaw.Shared.Tests.trx"
 
     - name: Run Tray Tests
       run: >
-        dotnet test tests/OpenClaw.Tray.Tests
+        dotnet-coverage collect
+        --output TestResults\Tray\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Tray.Tests
         --no-build
         -c Debug
+        -r win-x64
         --verbosity normal
-        --collect:"XPlat Code Coverage"
         --results-directory TestResults\Tray
-        --logger "trx;LogFileName=OpenClaw.Tray.Tests.trx"
+        --logger trx;LogFileName=OpenClaw.Tray.Tests.trx"
+
+    # Tray integration tests gate on OPENCLAW_RUN_INTEGRATION; set it so the
+    # MCP-server / capability tests actually run. dotnet-coverage with no
+    # filter captures coverage for both the test host AND the spawned tray
+    # exe (coverlet could not — see tests/Directory.Build.props comment).
+    - name: Run Tray Integration Tests
+      env:
+        OPENCLAW_RUN_INTEGRATION: 1
+      run: >
+        dotnet-coverage collect
+        --output TestResults\TrayIntegration\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Tray.IntegrationTests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults\TrayIntegration
+        --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
+
+    # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
+    # framework MSIX — the test fixture calls Bootstrap.Initialize(1.8, stable),
+    # which looks up the framework package by identity. The hosted windows-2025
+    # runner image doesn't preinstall it, so we install it explicitly here.
+    # Version pinned to match Microsoft.WindowsAppSDK 1.8.260101001 in the csprojs.
+    - name: Install WindowsAppRuntime 1.8
+      shell: pwsh
+      run: |
+        $url = "https://aka.ms/windowsappsdk/1.8/1.8.260101001/windowsappruntimeinstall-x64.exe"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Run Tray UI Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\TrayUI\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Tray.UITests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults\TrayUI
+        --logger trx;LogFileName=OpenClaw.Tray.UITests.trx"
 
     - name: Upload Test Results
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: test-results
         path: TestResults/
@@ -92,15 +152,15 @@ jobs:
         rid: [win-x64, win-arm64]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -117,7 +177,7 @@ jobs:
 
     - name: Azure Login for Signing
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -138,7 +198,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Upload Tray Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-tray-${{ matrix.rid }}
         path: publish/
@@ -158,22 +218,30 @@ jobs:
             platform: ARM64
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
-    - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+    - name: Setup .NET 10 for VS MSBuild
+      uses: actions/setup-dotnet@v5
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: 10.0.100
+
+    - name: Pin .NET SDK for MSIX packaging
+      shell: pwsh
+      run: |
+        $globalJson = Get-Content global.json -Raw | ConvertFrom-Json
+        $globalJson.sdk.rollForward = "disable"
+        $globalJson | ConvertTo-Json -Depth 5 | Set-Content global.json
+        dotnet --version
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     - name: Restore
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
@@ -217,7 +285,7 @@ jobs:
 
     - name: Sign MSIX
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -239,7 +307,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Upload MSIX Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-msix-${{ matrix.rid }}
         path: ${{ steps.find-msix.outputs.msix_path }}
@@ -252,15 +320,15 @@ jobs:
         platform: [x64, arm64]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -273,7 +341,7 @@ jobs:
       run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }} --no-restore
 
     - name: Upload Extension Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: openclaw-commandpalette-${{ matrix.platform }}
         path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
@@ -286,34 +354,34 @@ jobs:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Download win-x64 tray artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-tray-win-x64
         path: artifacts/tray-win-x64
 
     - name: Download win-arm64 tray artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-tray-win-arm64
         path: artifacts/tray-win-arm64
 
     - name: Download win-x64 cmdpal artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-commandpalette-x64
         path: artifacts/cmdpal-x64
 
     - name: Download win-arm64 cmdpal artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: openclaw-commandpalette-arm64
         path: artifacts/cmdpal-arm64
 
     - name: Download win-x64 MSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       continue-on-error: true
       id: msix-x64
       with:
@@ -321,7 +389,7 @@ jobs:
         path: artifacts/msix-x64
 
     - name: Download win-arm64 MSIX artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       continue-on-error: true
       id: msix-arm64
       with:
@@ -339,7 +407,7 @@ jobs:
 
     # Sign ARM64 artifacts on x64 runner (ARM64 runner can't run the signing dlib)
     - name: Azure Login for ARM64 Signing
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -412,7 +480,7 @@ jobs:
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
 
     - name: Azure Login for Signing
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
@@ -432,7 +500,7 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Create Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
         files: |

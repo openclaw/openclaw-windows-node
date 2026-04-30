@@ -1,0 +1,34 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
+    <Project Path="src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
+    <Project Path="src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj">
+      <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj" />
+    <Project Path="tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj" />
+    <Project Path="tests/OpenClaw.Tray.IntegrationTests/OpenClaw.Tray.IntegrationTests.csproj" />
+    <Project Path="tests/OpenClaw.Tray.UITests/OpenClaw.Tray.UITests.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+  </Folder>
+</Solution>

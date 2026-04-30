@@ -682,6 +682,10 @@ public class SystemCapabilityExecApprovalsTests
             Assert.True(enabledEl.GetBoolean());
             Assert.True(root.TryGetProperty("defaultAction", out var defEl));
             Assert.Equal("deny", defEl.GetString());
+            Assert.True(root.TryGetProperty("hash", out var hashEl));
+            Assert.StartsWith("sha256:", hashEl.GetString());
+            Assert.True(root.TryGetProperty("baseHash", out var baseHashEl));
+            Assert.Equal(hashEl.GetString(), baseHashEl.GetString());
             Assert.True(root.TryGetProperty("rules", out var rulesEl));
             Assert.Equal(JsonValueKind.Array, rulesEl.ValueKind);
             Assert.True(rulesEl.GetArrayLength() > 0, "Default policy should have rules");
@@ -726,6 +730,7 @@ public class SystemCapabilityExecApprovalsTests
             var cap = CreateCapability(policy);
             
             var json = JsonDocument.Parse(@"{
+                ""baseHash"": """ + policy.GetPolicyHash() + @""",
                 ""rules"": [
                     {""pattern"": ""test *"", ""action"": ""allow"", ""description"": ""Test rule""}
                 ],

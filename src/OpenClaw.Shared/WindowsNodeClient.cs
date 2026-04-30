@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -29,6 +30,8 @@ public class WindowsNodeClient : WebSocketClientBase
     private bool _isPaired;
     // Bridges the gap between an approval event and the next hello-ok when the gateway omits auth.deviceToken.
     private bool _pairingApprovedAwaitingReconnect;
+    private readonly string _gatewayToken;
+    private readonly string? _bootstrapToken;
     
     // Cached serialization/validation — reused on every message instead of allocating per-call
     private static readonly JsonSerializerOptions s_ignoreNullOptions = new()
@@ -40,7 +43,10 @@ public class WindowsNodeClient : WebSocketClientBase
 
     // Events
     public event EventHandler<NodeInvokeRequest>? InvokeReceived;
+    public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+    public event EventHandler<JsonElement>? HealthReceived;
+    public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     
     public new bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
@@ -60,13 +66,19 @@ public class WindowsNodeClient : WebSocketClientBase
     
     /// <summary>Full device ID for approval command</summary>
     public string FullDeviceId => _deviceIdentity.DeviceId;
-    
+
+    /// <summary>Human-readable display name surfaced to the gateway and other nodes.</summary>
+    public string DisplayName => _registration.DisplayName;
+
     protected override int ReceiveBufferSize => 65536;
     protected override string ClientRole => "node";
     
-    public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null)
-        : base(gatewayUrl, token, logger)
+    public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null, string? bootstrapToken = null)
+        : base(gatewayUrl, ResolveRequiredCredential(token, bootstrapToken), logger)
     {
+        _gatewayToken = NormalizeOptionalCredential(token);
+        _bootstrapToken = NormalizeOptionalCredential(bootstrapToken);
+
         // Initialize device identity
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
@@ -79,6 +91,28 @@ public class WindowsNodeClient : WebSocketClientBase
             Platform = "windows",
             DisplayName = $"Windows Node ({Environment.MachineName})"
         };
+    }
+
+    private static string NormalizeOptionalCredential(string? credential)
+    {
+        return string.IsNullOrWhiteSpace(credential) ? string.Empty : credential;
+    }
+
+    private static string ResolveRequiredCredential(string? token, string? bootstrapToken)
+    {
+        var gatewayToken = NormalizeOptionalCredential(token);
+        if (!string.IsNullOrEmpty(gatewayToken))
+        {
+            return gatewayToken;
+        }
+
+        var bootstrap = NormalizeOptionalCredential(bootstrapToken);
+        if (!string.IsNullOrEmpty(bootstrap))
+        {
+            return bootstrap;
+        }
+
+        throw new ArgumentException("Token or bootstrap token is required.", nameof(token));
     }
     
     /// <summary>
@@ -211,6 +245,13 @@ public class WindowsNodeClient : WebSocketClientBase
                 break;
             case "node.invoke.request":
                 await HandleNodeInvokeEventAsync(root);
+                break;
+            case "health":
+                if (root.TryGetProperty("payload", out var payload))
+                {
+                    PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
+                    HealthReceived?.Invoke(this, payload.Clone());
+                }
                 break;
         }
     }
@@ -375,9 +416,11 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _logger.Warn($"[NODE] No capability registered for command: {command}");
             await SendNodeInvokeResultAsync(requestId, false, null, $"Command not supported: {command}");
+            RaiseInvokeCompleted(requestId, command, false, $"Command not supported: {command}", TimeSpan.Zero);
             return;
         }
         
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             // Raise event for UI notification
@@ -386,13 +429,17 @@ public class WindowsNodeClient : WebSocketClientBase
             // Execute the command
             var response = await capability.ExecuteAsync(request);
             response.Id = requestId;
-            
+             
             await SendNodeInvokeResultAsync(requestId, response.Ok, response.Payload, response.Error);
+            stopwatch.Stop();
+            RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
         }
         catch (Exception ex)
         {
             _logger.Error($"[NODE] Command execution failed: {command}", ex);
             await SendNodeInvokeResultAsync(requestId, false, null, $"Execution failed: {ex.Message}");
+            stopwatch.Stop();
+            RaiseInvokeCompleted(requestId, command, false, $"Execution failed: {ex.Message}", stopwatch.Elapsed);
         }
     }
     
@@ -446,29 +493,34 @@ public class WindowsNodeClient : WebSocketClientBase
     
     private async Task SendNodeConnectAsync(string? nonce, long ts)
     {
+        var isPaired = !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
+        var usingBootstrap = !isPaired && !string.IsNullOrEmpty(_bootstrapToken);
+
+        _logger.Info($"Connecting with Ed25519 device identity (paired: {isPaired}, bootstrap: {usingBootstrap})");
+
+        await SendRawAsync(BuildNodeConnectMessage(nonce, ts));
+        _logger.Info($"Sent node registration with device ID: {_deviceIdentity.DeviceId[..16]}..., paired: {isPaired}");
+    }
+
+    private string BuildNodeConnectMessage(string? nonce, long ts)
+    {
         // Sign the full payload with Ed25519 - this is how device pairing works
         string? signature = null;
         var signedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        
-        // Use device token if we have one (already paired), otherwise use operator token
-        // IMPORTANT: This token must be included in the signed payload!
-        var authToken = _deviceIdentity.DeviceToken ?? _token;
-        var isPaired = !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
+        var (auth, tokenForSignature) = BuildConnectAuth();
         
         if (!string.IsNullOrEmpty(nonce))
         {
             try
             {
-                signature = _deviceIdentity.SignPayload(nonce, signedAt, ClientId, authToken);
+                signature = _deviceIdentity.SignPayload(nonce, signedAt, ClientId, tokenForSignature);
             }
             catch (Exception ex)
             {
                 _logger.Error($"Failed to sign payload: {ex.Message}");
             }
         }
-        
-        _logger.Info($"Connecting with Ed25519 device identity (paired: {isPaired})");
-        
+
         // Always include device identity - this is required for pairing
         var msg = new
         {
@@ -492,7 +544,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 caps = _registration.Capabilities,
                 commands = _registration.Commands,
                 permissions = _registration.Permissions,
-                auth = new { token = authToken },
+                auth,
                 locale = "en-US",
                 userAgent = $"openclaw-windows-node/{_registration.Version}",
                 device = new
@@ -505,9 +557,23 @@ public class WindowsNodeClient : WebSocketClientBase
                 }
             }
         };
-        
-        await SendRawAsync(JsonSerializer.Serialize(msg));
-        _logger.Info($"Sent node registration with device ID: {_deviceIdentity.DeviceId[..16]}..., paired: {isPaired}");
+
+        return JsonSerializer.Serialize(msg, s_ignoreNullOptions);
+    }
+
+    private (Dictionary<string, string> Auth, string TokenForSignature) BuildConnectAuth()
+    {
+        if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+        {
+            return (new Dictionary<string, string> { ["token"] = _deviceIdentity.DeviceToken }, _deviceIdentity.DeviceToken);
+        }
+
+        if (!string.IsNullOrEmpty(_bootstrapToken))
+        {
+            return (new Dictionary<string, string> { ["bootstrapToken"] = _bootstrapToken }, _bootstrapToken);
+        }
+
+        return (new Dictionary<string, string> { ["token"] = _gatewayToken }, _gatewayToken);
     }
     
     private void HandleResponse(JsonElement root)
@@ -528,6 +594,7 @@ public class WindowsNodeClient : WebSocketClientBase
         // Handle hello-ok (successful registration)
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
+            PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             var reconnectingAfterApproval = _pairingApprovedAwaitingReconnect;
             _isConnected = true;
             ResetReconnectAttempts();
@@ -787,9 +854,11 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _logger.Warn($"No capability registered for command: {command}");
             await SendErrorResponseAsync(requestId, $"Command not supported: {command}");
+            RaiseInvokeCompleted(requestId, command, false, $"Command not supported: {command}", TimeSpan.Zero);
             return;
         }
         
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             // Raise event for UI notification
@@ -798,14 +867,31 @@ public class WindowsNodeClient : WebSocketClientBase
             // Execute the command
             var response = await capability.ExecuteAsync(request);
             response.Id = requestId;
-            
+             
             await SendInvokeResponseAsync(response);
+            stopwatch.Stop();
+            RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
         }
         catch (Exception ex)
         {
             _logger.Error($"Command execution failed: {command}", ex);
             await SendErrorResponseAsync(requestId, $"Execution failed: {ex.Message}");
+            stopwatch.Stop();
+            RaiseInvokeCompleted(requestId, command, false, $"Execution failed: {ex.Message}", stopwatch.Elapsed);
         }
+    }
+
+    private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)
+    {
+        InvokeCompleted?.Invoke(this, new NodeInvokeCompletedEventArgs
+        {
+            RequestId = requestId,
+            Command = command,
+            Ok = ok,
+            Error = error,
+            Duration = duration,
+            NodeId = _nodeId ?? _deviceIdentity.DeviceId
+        });
     }
     
     private async Task SendInvokeResponseAsync(NodeInvokeResponse response)
@@ -837,6 +923,51 @@ public class WindowsNodeClient : WebSocketClientBase
         await SendRawAsync(JsonSerializer.Serialize(msg));
     }
     
+    /// <summary>
+    /// Send a generic node-event to the gateway. Mirrors the Android
+    /// <c>GatewaySession.sendNodeEvent</c> wire shape: a JSON-RPC request with
+    /// method <c>node.event</c> and params <c>{ event, payloadJSON }</c>,
+    /// where <c>payloadJSON</c> is the inner payload as a *string*, not a
+    /// nested object. The gateway's node-event dispatcher
+    /// (<c>server-node-events.ts</c>) then re-parses it.
+    ///
+    /// Returns false when not connected so callers can surface a status to the
+    /// renderer (e.g. clear a button-loading spinner with an error). Throws on
+    /// argument problems but swallows transport-layer errors as false.
+    /// </summary>
+    public async Task<bool> SendNodeEventAsync(string eventName, System.Text.Json.Nodes.JsonObject payload)
+    {
+        if (string.IsNullOrEmpty(eventName)) throw new ArgumentException("eventName is required", nameof(eventName));
+        if (payload is null) throw new ArgumentNullException(nameof(payload));
+        if (!_isConnected) return false;
+
+        // payloadJSON is a STRING containing JSON, matching the Android wire
+        // shape and the gateway's parser at server-node-events.ts:380 which
+        // does JSON.parse(evt.payloadJSON).
+        var msg = new
+        {
+            type = "req",
+            id = Guid.NewGuid().ToString(),
+            method = "node.event",
+            @params = new
+            {
+                @event = eventName,
+                payloadJSON = payload.ToJsonString(),
+            },
+        };
+
+        try
+        {
+            await SendRawAsync(JsonSerializer.Serialize(msg, s_ignoreNullOptions));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"node.event '{eventName}' send failed: {ex.Message}");
+            return false;
+        }
+    }
+
     private async Task SendPongAsync(string? requestId)
     {
         if (requestId == null) return;
@@ -850,6 +981,14 @@ public class WindowsNodeClient : WebSocketClientBase
         };
         
         await SendRawAsync(JsonSerializer.Serialize(msg));
+    }
+
+    private void PublishGatewaySelf(GatewaySelfInfo info)
+    {
+        if (!info.HasAnyDetails)
+            return;
+
+        GatewaySelfUpdated?.Invoke(this, info);
     }
     
     protected override void OnDisconnected()

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      CI builds with -r win-x64 plus no-restore. Without RuntimeIdentifiers
+      declared here, the top-level dotnet restore produces only default-RID
+      assets and the no-restore build fails with NETSDK1047. Same fix as
+      Tray.Tests / matches the UITests project.
+    -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

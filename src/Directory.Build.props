@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    Shared build configuration for OpenClaw.Shared, OpenClaw.Tray.WinUI, and OpenClaw.Cli.
+
+    OpenClaw.CommandPalette has its own Directory.Build.props one level deeper, so MSBuild
+    stops walking up at that file and this one does NOT apply to CommandPalette.
+  -->
+
+  <PropertyGroup>
+    <!-- Audit all package dependencies (direct + transitive) for known CVEs during restore.
+         Defaults to "direct" in the SDK; "all" provides broader security coverage. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+  </PropertyGroup>
+
+</Project>
