@@ -10,7 +10,7 @@
         <MicaBackdrop Kind="Base"/>
     </Window.SystemBackdrop>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+    <ScrollViewer x:Name="RootScrollViewer" VerticalScrollBarVisibility="Auto" Padding="24">
         <StackPanel Spacing="16" MaxWidth="520">
             
             <!-- Status Header -->

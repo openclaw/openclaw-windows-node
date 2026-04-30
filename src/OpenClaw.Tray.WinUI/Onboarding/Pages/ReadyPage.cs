@@ -45,7 +45,7 @@ public sealed class ReadyPage : Component<OnboardingState>
                     ).Padding(12)
                 )
                 .CornerRadius(8)
-                .Background("#F8F8F8"),
+                .Background("#FFFFFF"),
 
                 // Launch at Login toggle
                 HStack(8,

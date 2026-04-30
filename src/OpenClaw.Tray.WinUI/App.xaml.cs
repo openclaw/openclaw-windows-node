@@ -3163,6 +3163,7 @@ public partial class App : Application
             RestartSshTunnel = RestartSshTunnel,
             OpenChat = ShowWebChat,
             OpenCommandCenter = ShowStatusDetail,
+            OpenTrayMenu = ShowTrayMenuPopup,
             OpenActivityStream = ShowActivityStream,
             OpenNotificationHistory = ShowNotificationHistory,
             OpenDashboard = OpenDashboard,

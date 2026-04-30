@@ -10,7 +10,7 @@
         <MicaBackdrop Kind="Base"/>
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -54,12 +54,13 @@
                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
         
         <!-- Error display (hidden by default) -->
-        <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
+        <ScrollViewer x:Name="ErrorPanel" AutomationProperties.AutomationId="WebChatErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold" 
-                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                 <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                           FontFamily="Consolas" Style="{StaticResource CaptionTextBlockStyle}"/>
+                            AutomationProperties.AutomationId="WebChatErrorText"
+                            FontFamily="Consolas" Style="{StaticResource CaptionTextBlockStyle}"/>
                 <Button x:Uid="WebChatOpenBrowserButton" Content="Open in Browser Instead" Click="OnPopout" HorizontalAlignment="Left"/>
             </StackPanel>
         </ScrollViewer>

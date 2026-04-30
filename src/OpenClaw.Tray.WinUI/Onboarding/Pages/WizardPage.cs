@@ -615,7 +615,7 @@ public sealed class WizardPage : Component<OnboardingState>
                 ).HorizontalScrollMode(Microsoft.UI.Xaml.Controls.ScrollMode.Disabled)
             )
             .CornerRadius(8)
-            .Background("#F5F5F5")
+            .Background("#FFFFFF")
             .MaxHeight(350),
 
             // Device code display (large, copyable — for auth flows)

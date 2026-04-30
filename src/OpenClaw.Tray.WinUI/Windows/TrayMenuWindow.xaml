@@ -10,7 +10,7 @@
 
     <!-- Backdrop disabled - causes crashes after idle periods -->
 
-    <Grid Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+    <Grid x:Name="RootGrid" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
         <Border Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"
@@ -18,7 +18,7 @@
             <ScrollViewer VerticalScrollBarVisibility="Visible"
                           VerticalScrollMode="Enabled"
                           HorizontalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="MenuPanel" Padding="4,6">
+                <StackPanel x:Name="MenuPanel" AutomationProperties.AutomationId="TrayMenuPanel" Padding="4,6">
                     <!-- Menu items will be added programmatically -->
                 </StackPanel>
             </ScrollViewer>

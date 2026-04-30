@@ -555,6 +555,12 @@ internal sealed class UiRenderer(Action requestRender)
         if (_controls.TryGetValue(path, out var existing) && existing is T typed)
             return typed;
 
+        if (existing is not null)
+        {
+            DetachChildren(existing);
+            RemoveFromParent(existing);
+        }
+
         var control = new T();
         _controls[path] = control;
         return control;
@@ -562,7 +568,8 @@ internal sealed class UiRenderer(Action requestRender)
 
     private UIElement RenderComponent(ComponentElement element, string path, List<Action> effects)
     {
-        var key = path + ":" + element.ComponentType.FullName;
+        var componentKey = GetComponentKey(element.ComponentType);
+        var key = path + ":" + componentKey;
         if (!_components.TryGetValue(key, out var component))
         {
             component = (Component)Activator.CreateInstance(element.ComponentType)!;
@@ -573,8 +580,15 @@ internal sealed class UiRenderer(Action requestRender)
             receiver.SetProps(element.Props);
 
         component.Context.BeginRender(requestRender, effects.Add);
-        return RenderElement(component.Render(), path + ".child", effects);
+        return RenderElement(component.Render(), $"{path}.{componentKey}.child", effects);
     }
+
+    private static string GetComponentKey(Type componentType) =>
+        componentType.FullName?
+            .Replace('.', '_')
+            .Replace('+', '_')
+            .Replace('`', '_')
+        ?? componentType.Name;
 
     private TextBlock ConfigureTextBlock(TextBlock control, TextBlockElement element)
     {
@@ -703,7 +717,10 @@ internal sealed class UiRenderer(Action requestRender)
 
     private Border ConfigureBorder(Border control, BorderElement element, string path, List<Action> effects)
     {
-        control.Child = element.Child is null ? null : RenderElement(element.Child, path + ".child", effects);
+        var child = element.Child is null ? null : RenderElement(element.Child, path + ".child", effects);
+        if (child is not null)
+            RemoveFromParent(child);
+        control.Child = child;
         ApplyModifiers(control, element);
         ApplySetters(control, element);
         return control;
@@ -715,7 +732,7 @@ internal sealed class UiRenderer(Action requestRender)
         panel.Orientation = element.Orientation;
         panel.Spacing = element.Spacing;
         SyncChildren(panel, element.Children, path, effects);
-        wrapper.Child = panel;
+        SetChild(wrapper, panel);
         ApplyModifiers(wrapper, element);
         ApplySetters(wrapper, element);
         return wrapper;
@@ -731,7 +748,7 @@ internal sealed class UiRenderer(Action requestRender)
         foreach (var row in element.Rows)
             grid.RowDefinitions.Add(new RowDefinition { Height = ParseGridLength(row) });
         SyncChildren(grid, element.Children, path, effects);
-        wrapper.Child = grid;
+        SetChild(wrapper, grid);
         ApplyModifiers(wrapper, element);
         ApplySetters(wrapper, element);
         return wrapper;
@@ -739,7 +756,10 @@ internal sealed class UiRenderer(Action requestRender)
 
     private ScrollViewer ConfigureScrollView(ScrollViewer control, ScrollViewElement element, string path, List<Action> effects)
     {
-        control.Content = element.Child is null ? null : RenderElement(element.Child, path + ".content", effects);
+        var child = element.Child is null ? null : RenderElement(element.Child, path + ".content", effects);
+        if (child is not null)
+            RemoveFromParent(child);
+        control.Content = child;
         control.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         control.HorizontalScrollMode = element.Modifiers.HorizontalScrollMode ?? ScrollMode.Auto;
         ApplyModifiers(control, element);
@@ -761,50 +781,98 @@ internal sealed class UiRenderer(Action requestRender)
 
     private void SyncChildren(Panel panel, IReadOnlyList<Element?> elements, string path, List<Action> effects)
     {
-        var children = elements
-            .Select((e, i) => e is null ? null : RenderElement(e, $"{path}.{i}", effects))
-            .Where(e => e is not null)
-            .Cast<UIElement>()
+        var renderedChildren = elements
+            .Select((e, i) => e is null ? null : new RenderedChild(e, RenderElement(e, $"{path}.{i}", effects)))
+            .Where(child => child is not null)
+            .Cast<RenderedChild>()
             .ToList();
 
-        while (panel.Children.Count > children.Count)
-            panel.Children.RemoveAt(panel.Children.Count - 1);
-
-        for (var i = 0; i < children.Count; i++)
+        foreach (var renderedChild in renderedChildren)
         {
-            var child = children[i];
-            if (child is FrameworkElement fe && elements.Where(e => e is not null).ElementAt(i)!.GridPosition is { } pos)
+            if (renderedChild.Control is FrameworkElement fe && renderedChild.Element.GridPosition is { } pos)
             {
                 WinGrid.SetRow(fe, pos.Row);
                 WinGrid.SetColumn(fe, pos.Column);
                 WinGrid.SetRowSpan(fe, pos.RowSpan);
                 WinGrid.SetColumnSpan(fe, pos.ColumnSpan);
             }
+        }
 
-            if (i < panel.Children.Count)
-            {
-                if (!ReferenceEquals(panel.Children[i], child))
-                {
-                    RemoveFromParent(child);
-                    panel.Children.RemoveAt(i);
-                    panel.Children.Insert(i, child);
-                }
-            }
-            else
-            {
-                RemoveFromParent(child);
-                panel.Children.Add(child);
-            }
+        panel.Children.Clear();
+        foreach (var child in renderedChildren.Select(child => child.Control))
+        {
+            RemoveFromParent(child);
+            panel.Children.Add(child);
         }
     }
 
-    private static void RemoveFromParent(UIElement element)
+    private sealed record RenderedChild(Element Element, UIElement Control);
+
+    private void SetChild(Border wrapper, UIElement child)
     {
-        if (element.XamlRoot is null) return;
+        if (ReferenceEquals(wrapper.Child, child))
+            return;
+
+        RemoveFromParent(child);
+        wrapper.Child = child;
+    }
+
+    private void RemoveFromParent(UIElement element)
+    {
         if (element is FrameworkElement { Parent: Panel panel })
             panel.Children.Remove(element);
         else if (element is FrameworkElement { Parent: Border border } && ReferenceEquals(border.Child, element))
             border.Child = null;
+        else if (element is FrameworkElement { Parent: ScrollViewer scrollViewer } && ReferenceEquals(scrollViewer.Content, element))
+            scrollViewer.Content = null;
+
+        foreach (var control in _controls.Values)
+        {
+            if (ReferenceEquals(control, element))
+                continue;
+
+            switch (control)
+            {
+                case Panel knownPanel:
+                    for (var i = knownPanel.Children.Count - 1; i >= 0; i--)
+                    {
+                        if (ReferenceEquals(knownPanel.Children[i], element))
+                            knownPanel.Children.RemoveAt(i);
+                    }
+                    break;
+
+                case Border knownBorder when ReferenceEquals(knownBorder.Child, element):
+                    knownBorder.Child = null;
+                    break;
+
+                case ScrollViewer knownScrollViewer when ReferenceEquals(knownScrollViewer.Content, element):
+                    knownScrollViewer.Content = null;
+                    break;
+
+                case ContentControl knownContentControl when ReferenceEquals(knownContentControl.Content, element):
+                    knownContentControl.Content = null;
+                    break;
+            }
+        }
+    }
+
+    private static void DetachChildren(UIElement element)
+    {
+        switch (element)
+        {
+            case Panel panel:
+                panel.Children.Clear();
+                break;
+            case Border border:
+                border.Child = null;
+                break;
+            case ScrollViewer scrollViewer:
+                scrollViewer.Content = null;
+                break;
+            case ContentControl contentControl:
+                contentControl.Content = null;
+                break;
+        }
     }
 
     private static void ApplyModifiers(FrameworkElement control, Element element)

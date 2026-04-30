@@ -61,7 +61,7 @@ public sealed class WizardStepView : Component<WizardStepProps>
             Header(),
             Border(
                 VStack(12, input).Padding(16)
-            ).CornerRadius(8).Background("#F5F5F5"),
+            ).CornerRadius(8).Background("#FFFFFF"),
             Button("Submit", () => Props.OnSubmit?.Invoke(value))
                 .HAlign(HorizontalAlignment.Center)
                 .Disabled(string.IsNullOrWhiteSpace(value))
@@ -95,7 +95,7 @@ public sealed class WizardStepView : Component<WizardStepProps>
                         RadioButton(opt, selected == i, _ => setSelected(i), groupName: Props.Id)
                     ).ToArray()
                 ).Padding(16)
-            ).CornerRadius(8).Background("#F5F5F5"),
+            ).CornerRadius(8).Background("#FFFFFF"),
             Button("Submit", () =>
             {
                 if (selected >= 0 && selected < options.Length)
@@ -130,7 +130,7 @@ public sealed class WizardStepView : Component<WizardStepProps>
             Header(),
             Border(
                 VStack(6, toggles).Padding(16)
-            ).CornerRadius(8).Background("#F5F5F5"),
+            ).CornerRadius(8).Background("#FFFFFF"),
             Button("Submit", () =>
             {
                 var chosen = selections

@@ -33,6 +33,7 @@ public sealed partial class SettingsWindow : WindowEx
         _settings = settings;
         _nodeServiceProvider = nodeServiceProvider;
         InitializeComponent();
+        VisualTestCapture.CaptureOnLoaded(RootGrid, "Settings");
         
         Title = LocalizationHelper.GetString("WindowTitle_Settings");
         

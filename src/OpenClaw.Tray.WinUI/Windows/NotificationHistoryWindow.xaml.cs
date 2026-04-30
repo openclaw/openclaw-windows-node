@@ -18,6 +18,7 @@ public sealed partial class NotificationHistoryWindow : WindowEx
     public NotificationHistoryWindow()
     {
         InitializeComponent();
+        VisualTestCapture.CaptureOnLoaded(RootGrid, "History");
         Title = LocalizationHelper.GetString("WindowTitle_NotificationHistory");
         
         // Window configuration

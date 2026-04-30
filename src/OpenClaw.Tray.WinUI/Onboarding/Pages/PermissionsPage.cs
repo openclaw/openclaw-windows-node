@@ -114,7 +114,7 @@ public sealed class PermissionsPage : Component<OnboardingState>
                 ).Padding(12)
             )
             .CornerRadius(8)
-            .Background("#F5F5F5")
+            .Background("#FFFFFF")
             .Margin(0, 8, 0, 0)
         )
         .MaxWidth(460)

@@ -180,6 +180,12 @@ public static class DeepLinkHandler
                 actions.OpenCommandCenter?.Invoke();
                 break;
 
+            case "tray":
+            case "tray-menu":
+            case "menu":
+                actions.OpenTrayMenu?.Invoke();
+                break;
+
             case "activity":
             case "activity-stream":
                 actions.OpenActivityStream?.Invoke(result.Parameters.GetValueOrDefault("filter"));
@@ -257,6 +263,7 @@ public class DeepLinkActions
     public Action? RestartSshTunnel { get; set; }
     public Action? OpenChat { get; set; }
     public Action? OpenCommandCenter { get; set; }
+    public Action? OpenTrayMenu { get; set; }
     public Action<string?>? OpenActivityStream { get; set; }
     public Action? OpenNotificationHistory { get; set; }
     public Action<string?>? OpenDashboard { get; set; }

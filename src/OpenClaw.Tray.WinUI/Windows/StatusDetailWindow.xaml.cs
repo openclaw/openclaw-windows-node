@@ -37,6 +37,7 @@ public sealed partial class StatusDetailWindow : WindowEx
     {
         _state = state;
         InitializeComponent();
+        VisualTestCapture.CaptureOnLoaded(RootScrollViewer, "CommandCenter");
         Title = "Command Center — OpenClaw Tray";
         
         // Window configuration

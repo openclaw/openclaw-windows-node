@@ -21,8 +21,8 @@ namespace OpenClawTray.Onboarding.Pages;
 /// </summary>
 public sealed class ConnectionPage : Component<OnboardingState>
 {
-    private const string DefaultLocalUrl = "ws://localhost:18789";
-    private const string DevLocalUrl = "ws://localhost:19001";
+    private const string DefaultLocalUrl = ConnectionPageModeSelector.DefaultLocalUrl;
+    private const string DevLocalUrl = ConnectionPageModeSelector.DevLocalUrl;
 
     // Cache the detected URL so we only probe once per app session
     private static string? s_detectedLocalUrl;
@@ -97,14 +97,11 @@ public sealed class ConnectionPage : Component<OnboardingState>
     {
         var (mode, setMode) = UseState(Props.Mode);
         // For Local mode, use the detected gateway URL (probes 18789 and 19001)
-        var initialUrl = Props.Mode switch
-        {
-            ConnectionMode.Local => GetDetectedLocalUrl(),
-            ConnectionMode.Wsl   => "ws://wsl.localhost:18789",
-            ConnectionMode.Ssh   => $"ws://127.0.0.1:{Math.Max(1, Props.Settings.SshTunnelLocalPort)}",
-            ConnectionMode.Later => "",
-            _ => Props.Settings.GatewayUrl
-        };
+        var initialUrl = ConnectionPageModeSelector.GetInitialUrl(
+            Props.Mode,
+            Props.Settings.GatewayUrl,
+            Props.Settings.SshTunnelLocalPort,
+            GetDetectedLocalUrl);
         var (url, setUrl) = UseState(initialUrl);
         var (token, setToken) = UseState(Props.Settings.Token);
         var (nodeMode, setNodeMode) = UseState(Props.Settings.EnableNodeMode);
@@ -128,62 +125,30 @@ public sealed class ConnectionPage : Component<OnboardingState>
         var (copied, setCopied) = UseState(false);
 
         var isLocal = LocalGatewayApprover.IsLocalGateway(url);
-        var urlReadOnly = mode == ConnectionMode.Ssh; // Ssh mode pins the local-forward URL
+        var urlReadOnly = ConnectionPageModeSelector.IsGatewayUrlReadOnly(mode); // Ssh mode pins the local-forward URL
 
         void SelectMode(ConnectionMode m)
         {
+            var result = ConnectionPageModeSelector.SelectMode(
+                m,
+                url,
+                GetDetectedLocalUrl(),
+                sshLocalPort,
+                $"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDetected")}",
+                LocalizationHelper.GetString("Onboarding_Connection_LaterStatus"));
+
             setMode(m);
             Props.Mode = m;
-            Props.ConnectionTested = false;
-            setStatusMsg("");
-            setPairingDeviceId("");
+            Props.ConnectionTested = result.ConnectionTested;
+            setStatusMsg(result.StatusMessage);
+            setPairingDeviceId(result.PairingDeviceId);
+            setUseSshTunnel(result.UseSshTunnel);
+            Props.Settings.UseSshTunnel = result.UseSshTunnel;
 
-            switch (m)
+            if (result.UpdateGatewayUrl)
             {
-                case ConnectionMode.Local:
-                {
-                    var detected = GetDetectedLocalUrl();
-                    setUrl(detected);
-                    Props.Settings.GatewayUrl = detected;
-                    setUseSshTunnel(false);
-                    Props.Settings.UseSshTunnel = false;
-                    if (detected != DefaultLocalUrl)
-                        setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDetected")}");
-                    break;
-                }
-                case ConnectionMode.Wsl:
-                {
-                    const string wslUrl = "ws://wsl.localhost:18789";
-                    setUrl(wslUrl);
-                    Props.Settings.GatewayUrl = wslUrl;
-                    setUseSshTunnel(false);
-                    Props.Settings.UseSshTunnel = false;
-                    break;
-                }
-                case ConnectionMode.Remote:
-                {
-                    setUseSshTunnel(false);
-                    Props.Settings.UseSshTunnel = false;
-                    // Leave URL untouched — user enters their gateway URL.
-                    break;
-                }
-                case ConnectionMode.Ssh:
-                {
-                    var localPort = sshLocalPort > 0 ? sshLocalPort : 18789;
-                    var sshUrl = $"ws://127.0.0.1:{localPort}";
-                    setUrl(sshUrl);
-                    Props.Settings.GatewayUrl = sshUrl;
-                    setUseSshTunnel(true);
-                    Props.Settings.UseSshTunnel = true;
-                    break;
-                }
-                case ConnectionMode.Later:
-                {
-                    setUseSshTunnel(false);
-                    Props.Settings.UseSshTunnel = false;
-                    setStatusMsg(LocalizationHelper.GetString("Onboarding_Connection_LaterStatus"));
-                    break;
-                }
+                setUrl(result.Url);
+                Props.Settings.GatewayUrl = result.Url;
             }
         }
 
@@ -386,7 +351,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             }
         }
 
-        var showFields = mode != ConnectionMode.Later;
+        var showFields = ConnectionPageModeSelector.ShouldShowConnectionFields(mode);
 
         // Build the full status text for the always-visible status area
         var fullStatus = statusMsg;
@@ -407,13 +372,24 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 .HAlign(HorizontalAlignment.Left)
         };
 
+        static string ModeAutomationId(ConnectionMode option) => option switch
+        {
+            ConnectionMode.Local => "OnboardingConnectionModeLocal",
+            ConnectionMode.Ssh => "OnboardingConnectionModeSsh",
+            ConnectionMode.Wsl => "OnboardingConnectionModeWsl",
+            ConnectionMode.Later => "OnboardingConnectionModeLater",
+            ConnectionMode.Remote => "OnboardingConnectionModeRemote",
+            _ => "OnboardingConnectionModeUnknown"
+        };
+
         Element ModeOption(ConnectionMode option, string label) =>
             RadioButton(label, mode == option, isChecked =>
                 {
                     if (isChecked)
                         SelectMode(option);
                 },
-                groupName: "connection-mode");
+                groupName: "connection-mode")
+                .Set(rb => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(rb, ModeAutomationId(option)));
 
         // Build card content — mode selector always first, fields conditionally below
         var cardChildren = new List<Element>
@@ -644,7 +620,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                         ).Padding(12)
                     )
                     .CornerRadius(6)
-                    .Background("#FAFAFA")
+                    .Background("#FFFFFF")
                 );
             }
 
@@ -702,6 +678,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                                 "Most users should leave this OFF (Operator mode)\n" +
                                 "which only monitors and sends chat.")),
                         ToggleSwitch(nodeMode, OnNodeModeToggled)
+                            .Set(ts => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(ts, "OnboardingNodeMode"))
                     ).Grid(row: 0, column: 0),
                     Button(LocalizationHelper.GetString("Onboarding_Connection_TestConnection"), TestConnection)
                         .Disabled(testing)
@@ -721,7 +698,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 )
                 .MinHeight(40)
                 .CornerRadius(4)
-                .Background("#EBEBEB")
+                .Background("#FFFFFF")
             );
         }
         else
@@ -741,7 +718,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 VStack(8, cardChildren.ToArray()).Padding(12)
             )
             .CornerRadius(8)
-            .Background("#F5F5F5")
+            .Background("#FFFFFF")
             .Margin(0, 4, 0, 0)
         );
 
