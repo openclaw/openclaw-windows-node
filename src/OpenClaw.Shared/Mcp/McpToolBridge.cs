@@ -169,6 +169,13 @@ public class McpToolBridge
     }
 
     /// <summary>
+    /// The complete set of commands documented in <see cref="CommandDescriptions"/>.
+    /// Exposed as a stable surface so out-of-process documentation (winnode's
+    /// skill.md) can be drift-tested against the canonical capability surface.
+    /// </summary>
+    public static IReadOnlyCollection<string> KnownCommands => CommandDescriptions.Keys;
+
+    /// <summary>
     /// Per-command descriptions advertised via <c>tools/list</c>. Sourced from
     /// the OpenClaw docs (docs/nodes/index.md, docs/platforms/mac/canvas.md) and
     /// the capability implementations under <c>OpenClaw.Shared.Capabilities</c>.

@@ -1,3 +1,13 @@
+<!--
+  REGENERATE-ME-WHEN-CAPABILITIES-CHANGE
+
+  The list of supported commands below is checked at CI time against the live
+  capability surface (see SkillMdDriftTests). When a capability is added,
+  removed, or renamed in src/OpenClaw.Shared/Mcp/McpToolBridge.cs
+  (CommandDescriptions), update this document so the drift test stays green —
+  the test compares command identifiers, so prose can still be tweaked by hand.
+-->
+
 # winnode skill reference
 
 `winnode.exe` invokes OpenClaw Windows-node commands on the local tray over a
@@ -18,13 +28,30 @@ winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>]
 
 - `--command` (required) — node command (e.g. `system.which`, `canvas.a2ui.push`).
 - `--params` — single JSON **object** string, default `{}`. Must be a JSON object,
-  not an array or scalar.
-- `--invoke-timeout` — milliseconds, default 15000. HTTP timeout adds a 5s buffer.
-- `--node`, `--idempotency-key` — accepted for parity with `openclaw nodes
-  invoke`; **ignored** locally. Safe to copy/paste from gateway-side commands.
+  not an array or scalar. **`--params @<path>`** loads the JSON object from a
+  file on disk (useful for big A2UI payloads / `canvas.eval` scripts).
+- `--invoke-timeout` — milliseconds, default 15000, max 600000 (10 min). HTTP
+  timeout adds a 5s buffer.
+- `--node` — accepted for parity with `openclaw nodes invoke`; **ignored**
+  locally. Safe to copy/paste from gateway-side commands.
+- `--idempotency-key` — accepted for parity; **ignored**, and the CLI emits a
+  `[winnode] WARN` to stderr because local MCP does *not* dedupe retries —
+  re-running a command after a transient failure can double-execute side
+  effects. If you need idempotency, target the gateway, not winnode.
 - `--mcp-url <url>` / `--mcp-port <port>` — override the endpoint. Falls back to
-  `OPENCLAW_MCP_PORT` env var, then port 8765.
-- `--verbose` — log endpoint + ignored flags to stderr.
+  `OPENCLAW_MCP_PORT` env var, then port 8765. `--mcp-port` must be in
+  `[1, 65535]`; out of range fails with exit code 2.
+- `--mcp-token <token>` — bearer token override (testing / explicit only). The
+  literal value is **visible to other same-user processes via the OS process
+  listing** (`Get-CimInstance Win32_Process | Select CommandLine`,
+  Process Explorer, etc.). The CLI emits a stderr warning when this flag is
+  used. **Prefer `OPENCLAW_MCP_TOKEN` (env var) or the on-disk
+  `%APPDATA%\OpenClawTray\mcp-token.txt`** which the tray writes when MCP is
+  enabled. Both `OPENCLAW_MCP_TOKEN` and the on-disk file should themselves be
+  treated as sensitive operational secrets.
+- `--verbose` — log endpoint + ignored flags to stderr. Without `--verbose`,
+  HTTP error bodies are emitted only as the first line; with `--verbose`, the
+  full body is shown (after sanitization + token-shape redaction).
 
 **Output contract:** stdout receives the capability payload as pretty-printed
 JSON (matches `openclaw nodes invoke`). stderr receives errors. Exit code:
@@ -33,7 +60,12 @@ JSON (matches `openclaw nodes invoke`). stderr receives errors. Exit code:
 |------|---------|
 | 0    | Success |
 | 1    | Tool error, JSON-RPC error, transport failure, or HTTP non-2xx |
-| 2    | Argument error (missing/invalid flags, bad `--params` JSON) |
+| 2    | Argument error (missing/invalid flags, bad `--params` JSON, out-of-range port/timeout, non-http URL) |
+
+**Off-loapback safety:** when `--mcp-url` points at a non-loopback host, the
+CLI **refuses to send the auto-loaded local MCP token** (and warns on stderr).
+An explicitly supplied `--mcp-token` is honored with a warning. This preserves
+the loopback-only threat model the tray's MCP server relies on.
 
 ---
 
@@ -132,16 +164,22 @@ automatically — no `canvas.present` required.
 ```
 Returns `{ "pushed": true }`. **See A2UI grammar below.**
 
+### canvas.a2ui.pushJSONL
+Streaming variant of `canvas.a2ui.push` for very large surfaces. Same protocol
+contract; `jsonlPath` argument must live under the system temp directory.
+
 ### canvas.a2ui.reset
 No params. Clears any rendered surfaces. Returns `{ "reset": true }`.
 
 ### canvas.a2ui.dump
-No params. Returns the current surface graph for introspection.
+No params. Returns the current surface graph for introspection. **Read-all:**
+this exposes every currently-rendered surface — operators should treat it as
+equivalent to a screenshot of every open A2UI surface.
 
 ### canvas.caps
 No params. Returns renderer capabilities (renderer, snapshot, a2ui version).
 
-### screen.capture
+### screen.snapshot
 ```
 {
   "format": "png|jpeg", "maxWidth": 1920, "quality": 80,
@@ -151,8 +189,16 @@ No params. Returns renderer capabilities (renderer, snapshot, a2ui version).
 ```
 Returns `{ format, width, height, base64, image }` (image is a `data:` URL).
 
-### screen.list
-No params. Returns `{ screens: [{ index, name, primary, bounds, workingArea }] }`.
+### screen.record
+```
+{
+  "durationMs": 5000,         // required, max 300000
+  "format": "mp4|webm",
+  "monitor": 0, "screenIndex": 0,
+  "maxWidth": 1920, "fps": 30
+}
+```
+Returns `{ format, durationMs, base64 }`.
 
 ### camera.list
 No params. Returns `{ cameras: [{ deviceId, name, isDefault }] }`.
@@ -163,6 +209,17 @@ No params. Returns `{ cameras: [{ deviceId, name, isDefault }] }`.
 ```
 Returns `{ format, width, height, base64 }`. `deviceId` defaults to system
 default camera.
+
+### camera.clip
+```
+{
+  "deviceId": "string",       // optional
+  "durationMs": 3000,         // required, max 60000
+  "format": "mp4|webm",
+  "maxWidth": 1280
+}
+```
+Returns `{ format, durationMs, base64 }`.
 
 ---
 
@@ -256,23 +313,31 @@ Pass this as the `jsonl` value (a single JSON string with `\n` between messages)
 ## Token-efficient call patterns
 
 1. **Skip `--node` / `--idempotency-key`** — they're ignored locally; including
-   them just costs tokens. Only include if you're literally pasting a gateway
-   command.
-2. **Omit `--params` when the command takes no args** (`screen.list`,
-   `camera.list`, `canvas.hide`, `canvas.a2ui.reset`, `canvas.a2ui.dump`,
-   `canvas.caps`, `system.execApprovals.get`).
+   them just costs tokens. `--idempotency-key` triggers a stderr warning.
+2. **Omit `--params` when the command takes no args** (`camera.list`,
+   `canvas.hide`, `canvas.a2ui.reset`, `canvas.a2ui.dump`, `canvas.caps`,
+   `system.execApprovals.get`).
 3. **Large A2UI payloads** — write the JSONL to a file under the system temp
    directory and pass `{"jsonlPath": "<path>"}`. The capability rejects paths
-   outside `%TEMP%`.
+   outside `%TEMP%`. Or pass `--params @<path>` to load the entire JSON
+   argument object from disk.
 4. **Big binary results (snapshots, captures)** — output is base64 in stdout.
    Pipe to a file (`> capture.json`) instead of letting the agent read it
    inline.
 5. **Errors are exit-code-driven** — check `$LASTEXITCODE` (or `$?` in bash)
    first, then read stderr only on non-zero. Exit 2 = your call is malformed.
+6. **Debug with `--verbose`, not by sharing transcripts** — without
+   `--verbose` the CLI shows only the first line of an HTTP error body and
+   redacts long base64url runs. With `--verbose` it shows the full sanitized
+   body. Treat any verbose output as containing potentially sensitive paths
+   or partial command output before pasting it elsewhere.
 
 ## What's NOT exposed
 - Pairing / device approval (gateway concept; doesn't apply locally).
 - `chat.send`, `sessions.list`, `usage.list`, `node.list` — these belong to the
   operator-side `OpenClaw.Cli.exe`, not `winnode.exe`.
+- Idempotency. The gateway de-dupes retries against `--idempotency-key`; local
+  MCP does not. Retrying a `system.run` / `system.notify` / `canvas.present`
+  call after a transient failure can double-execute the side effect.
 - Wildcards in `--command`. The MCP server has an explicit allowlist; unknown
   commands return `Unknown tool: <name>`.

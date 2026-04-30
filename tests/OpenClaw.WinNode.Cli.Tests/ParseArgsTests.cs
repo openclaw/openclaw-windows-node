@@ -68,11 +68,28 @@ public class ParseArgsTests
     [InlineData("--invoke-timeout", "abc")]
     [InlineData("--invoke-timeout", "0")]
     [InlineData("--invoke-timeout", "-5")]
+    [InlineData("--invoke-timeout", "600001")]            // F-18: above 10-min cap
+    [InlineData("--invoke-timeout", "2147483647")]        // F-18: int.MaxValue rejected
     [InlineData("--mcp-port", "not-a-number")]
     [InlineData("--mcp-port", "0")]
+    [InlineData("--mcp-port", "65536")]                   // F-19: above TCP max
+    [InlineData("--mcp-port", "999999")]                  // F-19: way above
+    [InlineData("--mcp-port", "-1")]                      // F-19: below
     public void Invalid_int_throws(string flag, string value)
     {
         var ex = Assert.Throws<ArgumentException>(() => CliRunner.ParseArgs(new[] { flag, value }));
         Assert.Contains(flag, ex.Message);
+    }
+
+    [Theory]
+    [InlineData("--mcp-port", "1")]
+    [InlineData("--mcp-port", "65535")]
+    [InlineData("--invoke-timeout", "1")]
+    [InlineData("--invoke-timeout", "600000")]
+    public void Boundary_values_accepted(string flag, string value)
+    {
+        // No throw. Bounds are inclusive.
+        var opts = CliRunner.ParseArgs(new[] { "--command", "x", flag, value });
+        Assert.NotNull(opts);
     }
 }

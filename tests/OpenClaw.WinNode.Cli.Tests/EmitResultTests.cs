@@ -5,11 +5,13 @@ namespace OpenClaw.WinNode.Cli.Tests;
 
 public class EmitResultTests
 {
-    private static (int Exit, string Stdout, string Stderr) Run(string body)
+    private static (int Exit, string Stdout, string Stderr) Run(string body, bool verbose = true)
     {
         var stdout = new StringWriter();
         var stderr = new StringWriter();
-        var exit = CliRunner.EmitResult(body, stdout, stderr);
+        // EmitResult now takes a verbose flag (F-21). Tests pass verbose:true
+        // by default so existing assertions about full body contents still hold.
+        var exit = CliRunner.EmitResult(body, stdout, stderr, verbose);
         return (exit, stdout.ToString(), stderr.ToString());
     }
 
@@ -85,6 +87,9 @@ public class EmitResultTests
         Assert.Equal(1, exit);
         Assert.Equal("", stdout);
         Assert.Contains("missing 'result'", stderr, StringComparison.OrdinalIgnoreCase);
+        // The full body is sanitized through SanitizeForStderr in verbose mode;
+        // it has no token-shaped substrings or control chars, so it survives
+        // verbatim apart from the trailing newline.
         Assert.Contains(body, stderr);
     }
 
