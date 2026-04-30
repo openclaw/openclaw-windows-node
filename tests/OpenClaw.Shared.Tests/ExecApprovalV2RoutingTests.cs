@@ -63,6 +63,15 @@ public class ExecApprovalV2RoutingTests
         Assert.NotEmpty(result.Reason);
     }
 
+    [Fact]
+    public void V2Result_ToString_IncludesCodeAndReason()
+    {
+        var result = ExecApprovalV2Result.SecurityDeny("access denied");
+        var text = result.ToString();
+        Assert.Contains("SecurityDeny", text);
+        Assert.Contains("access denied", text);
+    }
+
     // -------------------------------------------------------------------------
     // 2. NullHandler — always unavailable, never throws (rail 1, 19)
     // -------------------------------------------------------------------------

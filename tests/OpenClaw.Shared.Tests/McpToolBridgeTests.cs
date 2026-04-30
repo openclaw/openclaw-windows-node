@@ -318,4 +318,34 @@ public class McpToolBridgeTests
         Assert.Equal(-32603, error.GetProperty("code").GetInt32());
         Assert.DoesNotContain("secret-internal-detail", error.GetProperty("message").GetString());
     }
+
+    [Fact]
+    public async Task Initialize_ReturnsCustomServerNameAndVersion()
+    {
+        var bridge = new McpToolBridge(
+            () => new List<INodeCapability>(),
+            serverName: "my-mcp-server",
+            serverVersion: "1.2.3");
+
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var serverInfo = doc.RootElement.GetProperty("result").GetProperty("serverInfo");
+        Assert.Equal("my-mcp-server", serverInfo.GetProperty("name").GetString());
+        Assert.Equal("1.2.3", serverInfo.GetProperty("version").GetString());
+    }
+
+    [Fact]
+    public async Task ToolsCall_NullArguments_IsAccepted()
+    {
+        var fake = new FakeCapability("alpha", "alpha.echo");
+        var bridge = CreateBridge(new List<INodeCapability> { fake });
+
+        var resp = await bridge.HandleRequestAsync(
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""alpha.echo"",""arguments"":null}}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        Assert.True(doc.RootElement.TryGetProperty("result", out var result));
+        Assert.False(result.GetProperty("isError").GetBoolean());
+    }
 }
