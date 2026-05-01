@@ -637,6 +637,16 @@ public class SystemCapability : NodeCapabilityBase
             {
                 if (normalized.Contains(dangerous, StringComparison.Ordinal))
                     return $"Dangerous allow rule is not permitted: {pattern}";
+
+                // Also block stem+wildcard (e.g. "rm*" bypasses "rm " because the
+                // fragment has a trailing space that the wildcard replaces).
+                var stem = dangerous.TrimEnd();
+                if (stem.Length < dangerous.Length &&
+                    (normalized.Contains(stem + "*", StringComparison.Ordinal) ||
+                     normalized.Contains(stem + "?", StringComparison.Ordinal)))
+                {
+                    return $"Dangerous allow rule is not permitted: {pattern}";
+                }
             }
         }
 

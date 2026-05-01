@@ -654,6 +654,52 @@ public class SystemCapabilityExecApprovalsTests
         }
     }
 
+    /// <summary>
+    /// Verifies that exec-approvals.set rejects Allow rules where a dangerous command stem
+    /// is immediately followed by a wildcard (e.g. "rm*"), which would bypass the trailing-
+    /// space fragment check used for patterns like "rm ".
+    /// </summary>
+    [Theory]
+    [InlineData("rm*")]
+    [InlineData("rm?")]
+    [InlineData("del*")]
+    [InlineData("del?")]
+    [InlineData("remove-item*")]
+    [InlineData("shutdown*")]
+    [InlineData("net*")]
+    public async Task ExecApprovalsSet_RejectsDangerousStemPlusWildcardAllowRule(string dangerousPattern)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            var cap = CreateCapability(policy);
+
+            var json = JsonDocument.Parse($@"{{
+                ""baseHash"": ""{policy.GetPolicyHash()}"",
+                ""rules"": [
+                    {{""pattern"": ""{dangerousPattern}"", ""action"": ""allow""}}
+                ],
+                ""defaultAction"": ""deny""
+            }}");
+
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.execApprovals.set",
+                Args = json.RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("Dangerous allow rule is not permitted", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
     [Fact]
     public async Task ExecApprovalsGet_ReturnsPolicy()
     {
