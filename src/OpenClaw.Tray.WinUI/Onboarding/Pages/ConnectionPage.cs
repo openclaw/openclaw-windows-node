@@ -188,6 +188,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             {
                 setToken(result.Token);
                 Props.Settings.Token = result.Token;
+                Props.Settings.BootstrapToken = result.Token;
             }
             setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
         }
@@ -204,6 +205,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
         {
             setToken(v);
             Props.Settings.Token = v;
+            Props.Settings.BootstrapToken = "";
             Props.ConnectionTested = false;
             setStatusMsg("");
         }
@@ -313,7 +315,10 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 if (existingClient == null ||
                     (!existingClient.IsConnectedToGateway && !existingClient.IsPairingRequired && !existingClient.IsAuthFailed))
                 {
-                    app.ReinitializeGatewayClient();
+                    var useBootstrapHandoffAuth =
+                        !string.IsNullOrWhiteSpace(Props.Settings.BootstrapToken) &&
+                        string.Equals(token, Props.Settings.BootstrapToken, StringComparison.Ordinal);
+                    app.ReinitializeGatewayClient(useBootstrapHandoffAuth);
                 }
 
                 // Set Props.GatewayClient IMMEDIATELY so WizardPage can access it

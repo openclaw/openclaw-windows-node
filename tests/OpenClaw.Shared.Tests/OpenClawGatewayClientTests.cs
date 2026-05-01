@@ -14,14 +14,22 @@ public class OpenClawGatewayClientTests
     {
         private readonly OpenClawGatewayClient _client;
 
-        public GatewayClientTestHelper()
+        public GatewayClientTestHelper(bool useBootstrapHandoffAuth = false)
         {
-            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", new TestLogger());
+            _client = new OpenClawGatewayClient(
+                "ws://localhost:18789",
+                "test-token",
+                new TestLogger(),
+                useBootstrapHandoffAuth);
         }
 
-        public GatewayClientTestHelper(IOpenClawLogger logger)
+        public GatewayClientTestHelper(IOpenClawLogger logger, bool useBootstrapHandoffAuth = false)
         {
-            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
+            _client = new OpenClawGatewayClient(
+                "ws://localhost:18789",
+                "test-token",
+                logger,
+                useBootstrapHandoffAuth);
         }
 
         public string ClassifyNotification(string text)
@@ -330,9 +338,26 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void OperatorConnect_FreshDevice_RequestsBootstrapHandoffScopes()
+    public void OperatorConnect_FreshDevice_DefaultPathKeepsLegacyAuthShape()
     {
         var helper = new GatewayClientTestHelper();
+        helper.SetDeviceTokenForTest(null);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
+        Assert.DoesNotContain("operator.talk.secrets", scopes);
+        Assert.Equal("test-token", auth["token"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+        Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_SetupCodeBootstrapPath_RequestsBootstrapHandoffScopes()
+    {
+        var helper = new GatewayClientTestHelper(useBootstrapHandoffAuth: true);
         helper.SetDeviceTokenForTest(null);
 
         var scopes = helper.GetRequestedOperatorScopes();
@@ -348,7 +373,7 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void OperatorConnect_PairedDevice_RequestsFullOperatorScopes()
+    public void OperatorConnect_PairedDevice_DefaultPathKeepsLegacyAuthShape()
     {
         var helper = new GatewayClientTestHelper();
         helper.SetDeviceTokenForTest("paired-device-token");
@@ -359,7 +384,8 @@ public class OpenClawGatewayClientTests
         Assert.Contains("operator.admin", scopes);
         Assert.Contains("operator.pairing", scopes);
         Assert.DoesNotContain("operator.talk.secrets", scopes);
-        Assert.Equal("paired-device-token", auth["deviceToken"]);
+        Assert.Equal("paired-device-token", auth["token"]);
+        Assert.False(auth.ContainsKey("deviceToken"));
         Assert.False(auth.ContainsKey("bootstrapToken"));
     }
 

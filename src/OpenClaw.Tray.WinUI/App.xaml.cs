@@ -59,7 +59,8 @@ public partial class App : Application
     /// Reinitializes the gateway client with current settings.
     /// Called by the onboarding wizard after saving URL + Token.
     /// </summary>
-    public void ReinitializeGatewayClient() => InitializeGatewayClient();
+    public void ReinitializeGatewayClient(bool useBootstrapHandoffAuth = false) =>
+        InitializeGatewayClient(useBootstrapHandoffAuth);
     private SettingsManager? _settings;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
@@ -1215,7 +1216,7 @@ public partial class App : Application
 
     #region Gateway Client
 
-    private void InitializeGatewayClient()
+    private void InitializeGatewayClient(bool useBootstrapHandoffAuth = false)
     {
         if (_settings == null) return;
         if (!EnsureSshTunnelConfigured()) return;
@@ -1232,7 +1233,11 @@ public partial class App : Application
         UnsubscribeGatewayEvents();
         _lastGatewaySelf = null;
 
-        _gatewayClient = new OpenClawGatewayClient(gatewayUrl, _settings.Token, new AppLogger());
+        _gatewayClient = new OpenClawGatewayClient(
+            gatewayUrl,
+            _settings.Token,
+            new AppLogger(),
+            useBootstrapHandoffAuth);
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;

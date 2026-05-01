@@ -66,6 +66,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private bool _authFailed;
+    private readonly bool _useBootstrapHandoffAuth;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => _pairingRequiredAwaitingApproval;
@@ -151,9 +152,14 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
     public bool IsConnectedToGateway => IsConnected;
 
-    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null)
+    public OpenClawGatewayClient(
+        string gatewayUrl,
+        string token,
+        IOpenClawLogger? logger = null,
+        bool useBootstrapHandoffAuth = false)
         : base(gatewayUrl, token, logger)
     {
+        _useBootstrapHandoffAuth = useBootstrapHandoffAuth;
         var dataPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
@@ -513,7 +519,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
     }
 
     private string[] GetRequestedOperatorScopes() =>
-        string.IsNullOrEmpty(_deviceIdentity.DeviceToken) ? s_operatorBootstrapScopes : s_operatorScopes;
+        _useBootstrapHandoffAuth && string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
+            ? s_operatorBootstrapScopes
+            : s_operatorScopes;
 
     /// <summary>
     /// Builds the auth payload for the connect handshake, matching the gateway's
@@ -524,6 +532,11 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private Dictionary<string, string> BuildAuthPayload()
     {
         var auth = new Dictionary<string, string> { ["token"] = _connectAuthToken };
+
+        if (!_useBootstrapHandoffAuth)
+        {
+            return auth;
+        }
 
         if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
         {
