@@ -34,7 +34,10 @@ public sealed class WelcomePage : Component
                 .TextWrapping()
                 .Margin(0, 4, 0, 0),
 
-            // Combined security notice + trust card
+            // Combined security notice + trust card.
+            // Use explicit dark text on the yellow background so it remains
+            // readable in dark mode (where the inherited theme foreground is white
+            // and would otherwise render white-on-yellow).
             Border(
                 VStack(8,
                     HStack(6,
@@ -42,14 +45,17 @@ public sealed class WelcomePage : Component
                         TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_SecurityTitle"))
                             .FontSize(13)
                             .FontWeight(new global::Windows.UI.Text.FontWeight(600))
+                            .Foreground("#3D2A0F")
                     ),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_SecurityBody"))
                         .FontSize(12)
                         .Opacity(0.85)
+                        .Foreground("#3D2A0F")
                         .TextWrapping(),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Welcome_TrustTitle"))
                         .FontSize(13)
                         .FontWeight(new global::Windows.UI.Text.FontWeight(600))
+                        .Foreground("#3D2A0F")
                         .Margin(0, 4, 0, 0),
                     BulletItem("Onboarding_Welcome_Trust_Commands", "Run commands on your computer"),
                     BulletItem("Onboarding_Welcome_Trust_Files", "Read and write files"),
@@ -71,8 +77,8 @@ public sealed class WelcomePage : Component
         var text = LocalizationHelper.GetString(key);
         if (text == key) text = fallback;
         return HStack(6,
-            TextBlock("•").FontSize(12).Opacity(0.6),
-            TextBlock(text).FontSize(12).Opacity(0.7)
+            TextBlock("•").FontSize(12).Foreground("#3D2A0F").Opacity(0.6),
+            TextBlock(text).FontSize(12).Foreground("#3D2A0F").Opacity(0.8)
         );
     }
 }

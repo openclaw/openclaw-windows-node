@@ -30,6 +30,7 @@ public sealed class ElementModifiers
     public HorizontalAlignment? HorizontalAlignment { get; set; }
     public VerticalAlignment? VerticalAlignment { get; set; }
     public Brush? Background { get; set; }
+    public Brush? Foreground { get; set; }
     public CornerRadius? CornerRadius { get; set; }
     public double? FontSize { get; set; }
     public FontWeight? FontWeight { get; set; }
@@ -356,6 +357,10 @@ public static class ElementExtensions
         element.Apply(e => e.Modifiers.Background = new SolidColorBrush(ParseColor(hex)));
     public static T Background<T>(this T element, Color color) where T : Element =>
         element.Apply(e => e.Modifiers.Background = new SolidColorBrush(color));
+    public static T Foreground<T>(this T element, string hex) where T : Element =>
+        element.Apply(e => e.Modifiers.Foreground = new SolidColorBrush(ParseColor(hex)));
+    public static T Foreground<T>(this T element, Color color) where T : Element =>
+        element.Apply(e => e.Modifiers.Foreground = new SolidColorBrush(color));
     public static T CornerRadius<T>(this T element, double value) where T : Element =>
         element.Apply(e => e.Modifiers.CornerRadius = new CornerRadius(value));
     public static T FontSize<T>(this T element, double value) where T : Element =>
@@ -899,12 +904,14 @@ internal sealed class UiRenderer(Action requestRender)
                 if (m.FontFamily is { } textFamily) tb.FontFamily = textFamily;
                 if (m.TextWrapping is { } wrapping) tb.TextWrapping = wrapping;
                 if (m.Padding is { } textPadding) tb.Padding = textPadding;
+                if (m.Foreground is { } textFg) tb.Foreground = textFg;
                 break;
             case Control c:
                 if (m.Padding is { } controlPadding) c.Padding = controlPadding;
                 if (m.FontSize is { } controlSize) c.FontSize = controlSize;
                 if (m.FontWeight is { } controlWeight) c.FontWeight = controlWeight;
                 if (m.FontFamily is { } controlFamily) c.FontFamily = controlFamily;
+                if (m.Foreground is { } controlFg) c.Foreground = controlFg;
                 break;
             case Border b:
                 if (m.Padding is { } borderPadding) b.Padding = borderPadding;

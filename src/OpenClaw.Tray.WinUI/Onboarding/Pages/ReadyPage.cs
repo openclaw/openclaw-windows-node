@@ -69,12 +69,14 @@ public sealed class ReadyPage : Component<OnboardingState>
                 VStack(8,
                     TextBlock("🔌 Node Mode Active")
                         .FontSize(14)
-                        .FontWeight(new global::Windows.UI.Text.FontWeight(600)),
+                        .FontWeight(new global::Windows.UI.Text.FontWeight(600))
+                        .Foreground("#3D2A0F"),
                     TextBlock("This PC will operate as a remote compute node. " +
                         "The gateway can invoke screen capture, camera, and system " +
                         "commands on this machine.")
                         .FontSize(12)
-                        .Opacity(0.8)
+                        .Foreground("#3D2A0F")
+                        .Opacity(0.85)
                         .TextWrapping()
                 ).Padding(12)
             )
