@@ -16,9 +16,14 @@ public class ConnectionPageTopologyTests
 {
     private static OnboardingState CreateState(ConnectionMode m)
     {
-        var s = new OnboardingState(new SettingsManager());
+        var s = new OnboardingState(new SettingsManager(CreateTempSettingsDirectory()));
         s.Mode = m;
         return s;
+    }
+
+    private static string CreateTempSettingsDirectory()
+    {
+        return Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
     }
 
     [Fact]

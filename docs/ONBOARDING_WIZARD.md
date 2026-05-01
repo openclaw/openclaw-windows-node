@@ -83,6 +83,12 @@ Translations are AI-generated following the repo convention. Technical terms (Ga
 
 See [DEVELOPMENT.md](../DEVELOPMENT.md#developing--testing-the-onboarding-wizard) for build instructions, environment variables, and testing workflow.
 
+### Test Isolation
+
+`SettingsManager` loads `%APPDATA%\OpenClawTray\settings.json` by default. Onboarding tests must not use `new SettingsManager()` without an isolated settings directory, because local user settings such as `EnableNodeMode=true` change page ordering by intentionally skipping operator-only Wizard and Chat pages.
+
+Use a temp settings directory for tests that construct `SettingsManager`, or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
+
 ### Key Files
 
 | Path | Purpose |

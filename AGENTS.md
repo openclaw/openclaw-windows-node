@@ -22,4 +22,5 @@ If a command fails:
 Notes:
 
 - If a build/test is blocked by an environmental lock (for example running executable locking output assemblies), stop/close the locking process and rerun.
+- Tray tests must isolate `SettingsManager` from real user settings. Do not use `new SettingsManager()` in tests unless the test intentionally reads `%APPDATA%\OpenClawTray\settings.json`; pass a temp settings directory or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
 - Do not claim completion without reporting validation results.

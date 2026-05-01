@@ -12,17 +12,14 @@ public class SettingsManager
 {
     // OPENCLAW_TRAY_DATA_DIR overrides both this and App.DataPath so an isolated test
     // instance can run alongside the user's real tray without clobbering settings.
-    private static readonly string SettingsDirectory =
-        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
-            ? overrideDir
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "OpenClawTray");
+    private static readonly string DefaultSettingsDirectory = GetDefaultSettingsDirectory();
+    private static readonly string DefaultSettingsFilePath = Path.Combine(DefaultSettingsDirectory, "settings.json");
 
-    private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
+    private readonly string _settingsDirectory;
+    private readonly string _settingsFilePath;
 
-    public static string SettingsDirectoryPath => SettingsDirectory;
-    public static string SettingsPath => SettingsFilePath;
+    public static string SettingsDirectoryPath => DefaultSettingsDirectory;
+    public static string SettingsPath => DefaultSettingsFilePath;
 
     // Connection
     public string GatewayUrl { get; set; } = "ws://localhost:18789";
@@ -76,18 +73,36 @@ public class SettingsManager
     public bool HasSeenActivityStreamTip { get; set; } = false;
     public string SkippedUpdateTag { get; set; } = "";
 
-    public SettingsManager()
+    public SettingsManager() : this(DefaultSettingsDirectory)
     {
+    }
+
+    public SettingsManager(string settingsDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(settingsDirectory))
+            throw new ArgumentException("Settings directory cannot be empty.", nameof(settingsDirectory));
+
+        _settingsDirectory = settingsDirectory;
+        _settingsFilePath = Path.Combine(settingsDirectory, "settings.json");
         Load();
+    }
+
+    private static string GetDefaultSettingsDirectory()
+    {
+        return Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
+            ? overrideDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpenClawTray");
     }
 
     public void Load()
     {
         try
         {
-            if (File.Exists(SettingsFilePath))
+            if (File.Exists(_settingsFilePath))
             {
-                var json = File.ReadAllText(SettingsFilePath);
+                var json = File.ReadAllText(_settingsFilePath);
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
                 {
@@ -150,12 +165,12 @@ public class SettingsManager
     {
         try
         {
-            Directory.CreateDirectory(SettingsDirectory);
+            Directory.CreateDirectory(_settingsDirectory);
             // Lock the tray data dir to current user + SYSTEM + Administrators —
             // it co-locates the MCP bearer token, settings.json (which embeds
             // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
             // running as the same user could otherwise read these freely.
-            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(SettingsDirectory);
+            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
 
             var data = new SettingsData
             {
@@ -196,7 +211,7 @@ public class SettingsManager
             };
 
             var json = data.ToJson();
-            File.WriteAllText(SettingsFilePath, json);
+            File.WriteAllText(_settingsFilePath, json);
             
             Logger.Info("Settings saved");
         }

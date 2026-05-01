@@ -5,7 +5,22 @@ namespace OpenClaw.Tray.Tests;
 
 public class OnboardingStateTests
 {
-    private static OnboardingState CreateState() => new(new SettingsManager());
+    private static OnboardingState CreateState() => new(CreateSettings());
+
+    private static SettingsManager CreateSettings(bool enableNodeMode = false)
+    {
+        var settings = new SettingsManager(CreateTempSettingsDirectory())
+        {
+            EnableNodeMode = enableNodeMode
+        };
+
+        return settings;
+    }
+
+    private static string CreateTempSettingsDirectory()
+    {
+        return Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+    }
 
     #region GetPageOrder
 
@@ -52,6 +67,20 @@ public class OnboardingStateTests
         Assert.DoesNotContain(OnboardingRoute.Chat, pages);
         Assert.Equal(
             [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
+            pages);
+    }
+
+    [Fact]
+    public void GetPageOrder_NodeMode_SkipsOperatorPages()
+    {
+        var state = new OnboardingState(CreateSettings(enableNodeMode: true));
+        state.Mode = ConnectionMode.Local;
+        state.ShowChat = true;
+
+        var pages = state.GetPageOrder();
+
+        Assert.Equal(
+            [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
             pages);
     }
 
@@ -122,7 +151,7 @@ public class OnboardingStateTests
     [Fact]
     public void Complete_SavesSettings()
     {
-        var settings = new SettingsManager();
+        var settings = CreateSettings();
         settings.GatewayUrl = "ws://test:9999";
         var state = new OnboardingState(settings);
 
@@ -215,7 +244,7 @@ public class OnboardingStateTests
     [Fact]
     public void Settings_ReturnsInjectedManager()
     {
-        var settings = new SettingsManager();
+        var settings = CreateSettings();
         var state = new OnboardingState(settings);
 
         Assert.Same(settings, state.Settings);
