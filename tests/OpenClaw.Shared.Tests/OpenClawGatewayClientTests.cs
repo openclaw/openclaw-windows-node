@@ -346,6 +346,9 @@ public class OpenClawGatewayClientTests
         var scopes = helper.GetRequestedOperatorScopes();
         var auth = helper.BuildAuthPayload();
 
+        Assert.Equal(
+            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
+            scopes);
         Assert.Contains("operator.admin", scopes);
         Assert.Contains("operator.pairing", scopes);
         Assert.DoesNotContain("operator.talk.secrets", scopes);
@@ -373,6 +376,23 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void OperatorConnect_SetupCodeBootstrapPath_WithPairedDeviceUsesFullScopesAndDeviceToken()
+    {
+        var helper = new GatewayClientTestHelper(useBootstrapHandoffAuth: true);
+        helper.SetDeviceTokenForTest("paired-device-token");
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Equal(
+            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
+            scopes);
+        Assert.Equal("paired-device-token", auth["token"]);
+        Assert.Equal("paired-device-token", auth["deviceToken"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+    }
+
+    [Fact]
     public void OperatorConnect_PairedDevice_DefaultPathKeepsLegacyAuthShape()
     {
         var helper = new GatewayClientTestHelper();
@@ -381,6 +401,9 @@ public class OpenClawGatewayClientTests
         var scopes = helper.GetRequestedOperatorScopes();
         var auth = helper.BuildAuthPayload();
 
+        Assert.Equal(
+            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
+            scopes);
         Assert.Contains("operator.admin", scopes);
         Assert.Contains("operator.pairing", scopes);
         Assert.DoesNotContain("operator.talk.secrets", scopes);

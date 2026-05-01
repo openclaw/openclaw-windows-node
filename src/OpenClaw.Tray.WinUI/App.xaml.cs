@@ -2647,7 +2647,7 @@ public partial class App : Application
             _currentStatus = ConnectionStatus.Disconnected;
             UpdateTrayIcon();
 
-            if (_settings.EnableNodeMode)
+            if (_settings.EnableNodeMode || _settings.EnableMcpServer)
                 InitializeNodeService();
             else
                 InitializeGatewayClient();

@@ -247,8 +247,8 @@ public sealed class OnboardingWindow : WindowEx
             var gatewayUrl = _state.Settings.GetEffectiveGatewayUrl();
             // Use settings token for chat URL — this is the gateway shared secret
             // that the chat web UI's JavaScript uses for WebSocket authentication.
-            // NOTE: Do NOT use ConnectAuthToken here — after device pairing, that
-            // becomes the Ed25519 device token, which the HTTP chat JS doesn't understand.
+            // NOTE: Do NOT use the client's connect auth token here. After device pairing,
+            // that becomes the Ed25519 device token, which the HTTP chat JS doesn't understand.
             var token = _state.Settings.Token;
 
             // Pre-flight: verify gateway is reachable before loading chat

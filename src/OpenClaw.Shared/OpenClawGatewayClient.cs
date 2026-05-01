@@ -74,8 +74,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
     /// <summary>True when the device signature was rejected in all supported modes.</summary>
     public bool IsAuthFailed => _authFailed;
 
-    /// <summary>The gateway auth token used for this connection.</summary>
-    public string ConnectAuthToken => _connectAuthToken;
     private IReadOnlyList<UserNotificationRule>? _userRules;
     private bool _preferStructuredCategories = true;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pendingWizardResponses = new();
