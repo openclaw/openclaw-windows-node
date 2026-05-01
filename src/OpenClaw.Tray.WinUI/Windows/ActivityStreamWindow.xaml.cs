@@ -21,6 +21,7 @@ public sealed partial class ActivityStreamWindow : WindowEx
     public ActivityStreamWindow(Action<string?> openDashboard)
     {
         InitializeComponent();
+        VisualTestCapture.CaptureOnLoaded(RootGrid, "Activity");
         Title = LocalizationHelper.GetString("WindowTitle_ActivityStream");
 
         _openDashboard = openDashboard;

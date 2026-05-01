@@ -1077,4 +1077,341 @@ On your gateway host (Mac/Linux), run:
     <value>No — block it.</value>
   </data>
 
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>OpenClaw Setup</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>Finish</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>Welcome to OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>Your AI assistant, right from the system tray</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>Security Notice</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw runs an AI agent that can execute commands, read and write files, and interact with your system on your behalf.</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>Your agent can:</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>Run commands on your computer</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>Read and write files</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>Capture screenshots</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>Choose your Gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>Select how you want to connect to the OpenClaw gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>This PC (Local)</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>Remote Gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>Configure Later</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>All Set!</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw is ready to go. Here are some things to try:</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>Open menu bar panel</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>Connect messaging channels</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>Try Voice Wake</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>Use Canvas</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>Enable Skills</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>Launch OpenClaw at startup</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>You can configure your gateway connection anytime from the tray menu.</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>Make sure your remote gateway is running and accessible.</value>
+  </data>
+  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
+    <value>Let's get you connected in just a few steps.</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
+    <value>Setup Code</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCodePlaceholder" xml:space="preserve">
+    <value>Click to paste setup code</value>
+  </data>
+  <data name="Onboarding_Connection_GatewayUrl" xml:space="preserve">
+    <value>Gateway URL</value>
+  </data>
+  <data name="Onboarding_Connection_Token" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="Onboarding_Connection_TokenPlaceholder" xml:space="preserve">
+    <value>Paste bootstrap token</value>
+  </data>
+  <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
+    <value>Node Mode</value>
+  </data>
+  <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
+    <value>Test Connection</value>
+  </data>
+  <data name="Onboarding_Connection_Ready" xml:space="preserve">
+    <value>Ready to connect</value>
+  </data>
+  <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
+    <value>You can configure the gateway connection later from the tray menu.</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDecoded" xml:space="preserve">
+    <value>Setup code decoded</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenRequired" xml:space="preserve">
+    <value>Token is required</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnected" xml:space="preserve">
+    <value>Connected to gateway</value>
+  </data>
+  <data name="Onboarding_Connection_StatusPairing" xml:space="preserve">
+    <value>Device needs approval</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
+    <value>Token mismatch — check your bootstrap token</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
+    <value>Connection timed out (15s) — verify gateway is running</value>
+  </data>
+  <data name="Onboarding_Permissions_Title" xml:space="preserve">
+    <value>Grant Permissions</value>
+  </data>
+  <data name="Onboarding_Permissions_Description" xml:space="preserve">
+    <value>OpenClaw works best when it can send notifications, access your camera and microphone, capture your screen, and know your location. Grant permissions below.</value>
+  </data>
+  <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
+    <value>Refresh Status</value>
+  </data>
+  <data name="Onboarding_Permissions_OpenSettings" xml:space="preserve">
+    <value>Open Settings</value>
+  </data>
+  <data name="Onboarding_Permissions_Checking" xml:space="preserve">
+    <value>Checking permissions…</value>
+  </data>
+  <data name="Onboarding_Chat_Title" xml:space="preserve">
+    <value>Meet your Agent</value>
+  </data>
+  <data name="Onboarding_Chat_Loading" xml:space="preserve">
+    <value>Loading chat...</value>
+  </data>
+  <data name="Onboarding_Wizard_Title" xml:space="preserve">
+    <value>Configuring Gateway</value>
+  </data>
+  <data name="Onboarding_Wizard_Continue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="Onboarding_Wizard_Skip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="Onboarding_Wizard_Complete" xml:space="preserve">
+    <value>Gateway configuration complete!</value>
+  </data>
+  <data name="Onboarding_Wizard_Offline" xml:space="preserve">
+    <value>Gateway wizard not available</value>
+  </data>
+  <data name="Onboarding_Wizard_OfflineMessage" xml:space="preserve">
+    <value>The gateway provides dynamic setup steps. These will run when the connection is established.</value>
+  </data>
+  <data name="Onboarding_Perm_Notifications" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="Onboarding_Perm_Camera" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="Onboarding_Perm_Microphone" xml:space="preserve">
+    <value>Microphone</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCapture" xml:space="preserve">
+    <value>Screen Capture</value>
+  </data>
+  <data name="Onboarding_Perm_Location" xml:space="preserve">
+    <value>Location (optional)</value>
+  </data>
+  <data name="Onboarding_Perm_Enabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="Onboarding_Perm_EnabledDefault" xml:space="preserve">
+    <value>Enabled (default)</value>
+  </data>
+  <data name="Onboarding_Perm_Disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledManifest" xml:space="preserve">
+    <value>Disabled in app manifest</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledPolicy" xml:space="preserve">
+    <value>Disabled by policy</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
+    <value>Disabled — open Settings to enable</value>
+  </data>
+  <data name="Onboarding_Perm_Allowed" xml:space="preserve">
+    <value>Allowed</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
+    <value>Denied — open Settings to allow</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
+    <value>Denied by system policy</value>
+  </data>
+  <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
+    <value>Not determined — open Settings</value>
+  </data>
+  <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
+    <value>Unable to check</value>
+  </data>
+  <data name="Onboarding_Perm_NoCameraDetected" xml:space="preserve">
+    <value>No camera detected</value>
+  </data>
+  <data name="Onboarding_Perm_NoMicDetected" xml:space="preserve">
+    <value>No microphone detected</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
+    <value>Available — uses picker per capture</value>
+  </data>
+  <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
+    <value>Not supported on this device</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledSystem" xml:space="preserve">
+    <value>Location services disabled system-wide</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledUser" xml:space="preserve">
+    <value>Location disabled for this user</value>
+  </data>
+  <data name="Onboarding_Perm_LocationEnabled" xml:space="preserve">
+    <value>Location services enabled</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
+    <value>Access from system tray</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
+    <value>Settings → Channels</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
+    <value>Wake with your voice</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
+    <value>Visual workspace</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
+    <value>Settings → Skills</value>
+  </data>
+  <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
+    <value>Origin not allowed — gateway rejects this connection</value>
+  </data>
+  <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
+    <value>Rate limited — wait a moment and try again</value>
+  </data>
+  <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
+    <value>Run on your gateway:</value>
+  </data>
+  <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
+    <value>Click to copy</value>
+  </data>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>Copy failed — click to retry</value>
+  </data>
+  <data name="Onboarding_Connection_Copied" xml:space="preserve">
+    <value>Copied!</value>
+  </data>
+  <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
+    <value>Connection failed — check URL and token, then try again</value>
+  </data>
+  <data name="Onboarding_Wizard_StepError" xml:space="preserve">
+    <value>An error occurred processing this step</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetecting" xml:space="preserve">
+    <value>Detecting gateway...</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetected" xml:space="preserve">
+    <value>Gateway detected on dev port</value>
+  </data>
+  <data name="Onboarding_Connection_StatusAuthenticating" xml:space="preserve">
+    <value>Authenticating...</value>
+  </data>
+  <data name="Onboarding_Connection_Wsl" xml:space="preserve">
+    <value>WSL Gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Ssh" xml:space="preserve">
+    <value>SSH Tunnel</value>
+  </data>
+  <data name="Onboarding_Connection_PasteSetup" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="Onboarding_Connection_QrButton" xml:space="preserve">
+    <value>QR</value>
+  </data>
+  <data name="Onboarding_Connection_QrFilePickerTitle" xml:space="preserve">
+    <value>Import QR image</value>
+  </data>
+  <data name="Onboarding_Connection_QrDecodeFailed" xml:space="preserve">
+    <value>Could not decode setup code from this image</value>
+  </data>
+  <data name="Onboarding_Connection_SshHint" xml:space="preserve">
+    <value>OpenClaw will create a managed SSH tunnel to forward the gateway port from the remote host to this PC.</value>
+  </data>
+  <data name="Onboarding_Connection_SshUser" xml:space="preserve">
+    <value>SSH User</value>
+  </data>
+  <data name="Onboarding_Connection_SshHost" xml:space="preserve">
+    <value>SSH Host</value>
+  </data>
+  <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
+    <value>Remote Gateway Port</value>
+  </data>
+  <data name="Onboarding_Connection_SshLocalPort" xml:space="preserve">
+    <value>Local Forward Port</value>
+  </data>
+  <data name="Onboarding_Connection_SshPreviewLabel" xml:space="preserve">
+    <value>Managed tunnel:</value>
+  </data>
+  <data name="Onboarding_Connection_SshUserInvalid" xml:space="preserve">
+    <value>Enter a valid SSH user before connecting.</value>
+  </data>
+  <data name="Onboarding_Connection_SshHostInvalid" xml:space="preserve">
+    <value>Enter a valid SSH host (e.g., mac-studio.local) before connecting.</value>
+  </data>
+  <data name="Onboarding_Connection_TopologyDetectedFmt" xml:space="preserve">
+    <value>Detected: {0}</value>
+  </data>
+  <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
+    <value>You can configure the gateway later in Settings.</value>
+  </data>
+
 </root>

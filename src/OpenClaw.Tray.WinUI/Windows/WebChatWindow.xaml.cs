@@ -7,6 +7,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using WinUIEx;
 using Windows.Foundation;
@@ -23,6 +24,7 @@ public sealed partial class WebChatWindow : WindowEx
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navigationCompletedHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navigationStartingHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
+    private CancellationTokenSource? _navigationTimeoutCts;
 
     /// <summary>
     /// Fired when the SPA sends a message to the native side via
@@ -39,6 +41,7 @@ public sealed partial class WebChatWindow : WindowEx
         _token = token;
         
         InitializeComponent();
+        VisualTestCapture.CaptureOnLoaded(RootGrid, "WebChat");
         _dispatcherQueue = DispatcherQueue;
         
         // Window configuration
@@ -57,6 +60,7 @@ public sealed partial class WebChatWindow : WindowEx
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
         IsClosed = true;
+        CancelNavigationTimeout();
         
         // Cleanup WebView2 event handlers
         if (WebView.CoreWebView2 != null)
@@ -123,14 +127,26 @@ public sealed partial class WebChatWindow : WindowEx
             _navigationCompletedHandler = (s, e) =>
             {
                 Logger.Info($"WebChatWindow: Navigation completed, success={e.IsSuccess}, status={e.WebErrorStatus}");
+                CancelNavigationTimeout();
                 LoadingRing.IsActive = false;
                 LoadingRing.Visibility = Visibility.Collapsed;
-                
+
+                if (e.IsSuccess)
+                {
+                    if (ErrorPanel.Visibility == Visibility.Visible)
+                        return;
+
+                    WebView.Visibility = Visibility.Visible;
+                    ErrorPanel.Visibility = Visibility.Collapsed;
+                    return;
+                }
+                 
                 // Show friendly error if connection failed
-                if (!e.IsSuccess && (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
-                                      e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
-                                      e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionReset ||
-                                      e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable))
+                if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
+                    e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
+                    e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionReset ||
+                    e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable ||
+                    e.WebErrorStatus == CoreWebView2WebErrorStatus.Unknown)
                 {
                     Logger.Info("WebChatWindow: Gateway unreachable, showing friendly error");
                     ShowErrorMessage(LocalizationHelper.GetString("WebChat_ConnectionError") + "\n\n" +
@@ -143,7 +159,12 @@ public sealed partial class WebChatWindow : WindowEx
                 {
                     Logger.Info("WebChatWindow: TLS certificate issue detected");
                     ShowErrorMessage(LocalizationHelper.GetString("WebChat_CertError"));
+                    return;
                 }
+
+                Logger.Info($"WebChatWindow: Navigation failed with {e.WebErrorStatus}, showing friendly error");
+                ShowErrorMessage(LocalizationHelper.GetString("WebChat_ConnectionError") + "\n\n" +
+                    string.Format(LocalizationHelper.GetString("WebChat_ConnectionErrorDetail"), _gatewayUrl));
             };
             WebView.CoreWebView2.NavigationCompleted += _navigationCompletedHandler;
 
@@ -152,8 +173,17 @@ public sealed partial class WebChatWindow : WindowEx
                 // Strip query params to avoid logging tokens
                 var safeUri = e.Uri?.Split('?')[0] ?? "unknown";
                 Logger.Info($"WebChatWindow: Navigation starting to {safeUri}");
+                if (ErrorPanel.Visibility == Visibility.Visible &&
+                    string.Equals(safeUri, "about:blank", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 LoadingRing.IsActive = true;
                 LoadingRing.Visibility = Visibility.Visible;
+                WebView.Visibility = Visibility.Visible;
+                ErrorPanel.Visibility = Visibility.Collapsed;
+                StartNavigationTimeout();
             };
             WebView.CoreWebView2.NavigationStarting += _navigationStartingHandler;
 
@@ -190,6 +220,7 @@ public sealed partial class WebChatWindow : WindowEx
             }
             
             ErrorText.Text = errorDetails;
+            _ = VisualTestCapture.CaptureAsync(RootGrid, "WebChat");
         }
     }
 
@@ -364,12 +395,74 @@ public sealed partial class WebChatWindow : WindowEx
 
     private void ShowErrorMessage(string message)
     {
+        CancelNavigationTimeout();
         LoadingRing.IsActive = false;
         LoadingRing.Visibility = Visibility.Collapsed;
         WebView.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Visible;
         ErrorText.Text = message;
+        _ = CaptureWebChatErrorAsync();
     }
+
+    private async Task CaptureWebChatErrorAsync()
+    {
+        await Task.Delay(250);
+        await VisualTestCapture.CaptureAsync(RootGrid, "WebChat");
+        await Task.Delay(1000);
+        await VisualTestCapture.CaptureAsync(RootGrid, "WebChat");
+    }
+
+    private void StartNavigationTimeout()
+    {
+        CancelNavigationTimeout();
+
+        var timeoutCts = new CancellationTokenSource();
+        _navigationTimeoutCts = timeoutCts;
+        _ = ShowErrorIfNavigationTimesOutAsync(timeoutCts.Token);
+    }
+
+    private void CancelNavigationTimeout()
+    {
+        _navigationTimeoutCts?.Cancel();
+        _navigationTimeoutCts = null;
+    }
+
+    private async Task ShowErrorIfNavigationTimesOutAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(GetNavigationTimeout(), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (IsClosed || cancellationToken.IsCancellationRequested || _dispatcherQueue == null)
+            return;
+
+        if (!_dispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsClosed ||
+                cancellationToken.IsCancellationRequested ||
+                LoadingRing.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            Logger.Warn("WebChatWindow: navigation timed out, showing friendly error");
+            ShowErrorMessage(LocalizationHelper.GetString("WebChat_ConnectionError") + "\n\n" +
+                string.Format(LocalizationHelper.GetString("WebChat_ConnectionErrorDetail"), _gatewayUrl));
+        }))
+        {
+            Logger.Warn("WebChatWindow: could not enqueue navigation timeout handler");
+        }
+    }
+
+    private static TimeSpan GetNavigationTimeout() =>
+        Environment.GetEnvironmentVariable("OPENCLAW_UI_AUTOMATION") == "1"
+            ? TimeSpan.FromSeconds(2)
+            : TimeSpan.FromSeconds(12);
     
     private void NavigateToChat()
     {
@@ -392,6 +485,7 @@ public sealed partial class WebChatWindow : WindowEx
 
         var safeBaseUrl = url.Split('?')[0];
         Logger.Info($"WebChatWindow: Navigating to {safeBaseUrl} (token hidden)");
+        StartNavigationTimeout();
         WebView.CoreWebView2.Navigate(url);
     }
 

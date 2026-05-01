@@ -1077,4 +1077,341 @@
     <value>否 — 封鎖此項。</value>
   </data>
 
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>OpenClaw 設定</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>上一步</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>下一步</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>完成</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>歡迎使用 OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>您的 AI 助手，就在系統匣中</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>安全性通知</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw 執行的 AI 代理程式可以執行命令、讀寫檔案，並代表您與系統進行互動。</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>您的代理程式可以：</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>在您的電腦上執行命令</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>讀取和寫入檔案</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>擷取螢幕截圖</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>選擇閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>選擇您要如何連線到 OpenClaw 閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>本機（本地）</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>遠端閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>稍後設定</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>一切就緒！</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw 已準備就緒。以下是一些您可以嘗試的功能：</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>開啟功能表列面板</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>連接訊息頻道</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>試用語音喚醒</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>使用畫布</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>啟用技能</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>開機時啟動 OpenClaw</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>您可以隨時從系統匣選單設定閘道連線。</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>請確認您的遠端閘道正在執行且可以存取。</value>
+  </data>
+  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
+    <value>只需幾個步驟即可完成連線。</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
+    <value>設定碼</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCodePlaceholder" xml:space="preserve">
+    <value>點擊貼上設定碼</value>
+  </data>
+  <data name="Onboarding_Connection_GatewayUrl" xml:space="preserve">
+    <value>閘道 URL</value>
+  </data>
+  <data name="Onboarding_Connection_Token" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="Onboarding_Connection_TokenPlaceholder" xml:space="preserve">
+    <value>貼上引導 Token</value>
+  </data>
+  <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
+    <value>Node Mode</value>
+  </data>
+  <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
+    <value>測試連線</value>
+  </data>
+  <data name="Onboarding_Connection_Ready" xml:space="preserve">
+    <value>準備連線</value>
+  </data>
+  <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
+    <value>您可以稍後從系統匣選單設定閘道連線。</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDecoded" xml:space="preserve">
+    <value>設定碼已解碼</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenRequired" xml:space="preserve">
+    <value>Token 不能為空</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnecting" xml:space="preserve">
+    <value>正在連線…</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnected" xml:space="preserve">
+    <value>已連線到閘道</value>
+  </data>
+  <data name="Onboarding_Connection_StatusPairing" xml:space="preserve">
+    <value>裝置需要核准</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
+    <value>Token 不符 — 請檢查您的引導 Token</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
+    <value>連線逾時 (15s) — 請確認閘道正在執行</value>
+  </data>
+  <data name="Onboarding_Permissions_Title" xml:space="preserve">
+    <value>授予權限</value>
+  </data>
+  <data name="Onboarding_Permissions_Description" xml:space="preserve">
+    <value>當 OpenClaw 能夠傳送通知、存取攝影機和麥克風、擷取螢幕及取得位置資訊時，它的表現最佳。請在下方授予權限。</value>
+  </data>
+  <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
+    <value>重新整理狀態</value>
+  </data>
+  <data name="Onboarding_Permissions_OpenSettings" xml:space="preserve">
+    <value>開啟設定</value>
+  </data>
+  <data name="Onboarding_Permissions_Checking" xml:space="preserve">
+    <value>正在檢查權限…</value>
+  </data>
+  <data name="Onboarding_Chat_Title" xml:space="preserve">
+    <value>認識您的代理程式</value>
+  </data>
+  <data name="Onboarding_Chat_Loading" xml:space="preserve">
+    <value>正在載入聊天…</value>
+  </data>
+  <data name="Onboarding_Wizard_Title" xml:space="preserve">
+    <value>設定閘道</value>
+  </data>
+  <data name="Onboarding_Wizard_Continue" xml:space="preserve">
+    <value>繼續</value>
+  </data>
+  <data name="Onboarding_Wizard_Skip" xml:space="preserve">
+    <value>略過</value>
+  </data>
+  <data name="Onboarding_Wizard_Complete" xml:space="preserve">
+    <value>閘道設定完成！</value>
+  </data>
+  <data name="Onboarding_Wizard_Offline" xml:space="preserve">
+    <value>閘道精靈無法使用</value>
+  </data>
+  <data name="Onboarding_Wizard_OfflineMessage" xml:space="preserve">
+    <value>閘道提供動態設定步驟，將在連線建立後執行。</value>
+  </data>
+  <data name="Onboarding_Perm_Notifications" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="Onboarding_Perm_Camera" xml:space="preserve">
+    <value>相機</value>
+  </data>
+  <data name="Onboarding_Perm_Microphone" xml:space="preserve">
+    <value>麥克風</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCapture" xml:space="preserve">
+    <value>螢幕擷取</value>
+  </data>
+  <data name="Onboarding_Perm_Location" xml:space="preserve">
+    <value>位置（選用）</value>
+  </data>
+  <data name="Onboarding_Perm_Enabled" xml:space="preserve">
+    <value>已啟用</value>
+  </data>
+  <data name="Onboarding_Perm_EnabledDefault" xml:space="preserve">
+    <value>已啟用（預設）</value>
+  </data>
+  <data name="Onboarding_Perm_Disabled" xml:space="preserve">
+    <value>已停用</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledManifest" xml:space="preserve">
+    <value>在應用程式資訊清單中已停用</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledPolicy" xml:space="preserve">
+    <value>被原則停用</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
+    <value>已停用 — 開啟設定以啟用</value>
+  </data>
+  <data name="Onboarding_Perm_Allowed" xml:space="preserve">
+    <value>已允許</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
+    <value>被拒絕 — 開啟設定以允許</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
+    <value>被系統原則拒絕</value>
+  </data>
+  <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
+    <value>未確定 — 開啟設定</value>
+  </data>
+  <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
+    <value>無法檢查</value>
+  </data>
+  <data name="Onboarding_Perm_NoCameraDetected" xml:space="preserve">
+    <value>未偵測到相機</value>
+  </data>
+  <data name="Onboarding_Perm_NoMicDetected" xml:space="preserve">
+    <value>未偵測到麥克風</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
+    <value>可用 — 每次擷取使用選擇器</value>
+  </data>
+  <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
+    <value>此裝置不支援</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledSystem" xml:space="preserve">
+    <value>定位服務已在系統範圍停用</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledUser" xml:space="preserve">
+    <value>此使用者的位置已停用</value>
+  </data>
+  <data name="Onboarding_Perm_LocationEnabled" xml:space="preserve">
+    <value>定位服務已啟用</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
+    <value>從系統匣存取</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
+    <value>設定 → 頻道</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
+    <value>用語音喚醒</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
+    <value>視覺工作區</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
+    <value>設定 → 技能</value>
+  </data>
+  <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
+    <value>來源不允許 — 閘道拒絕此連線</value>
+  </data>
+  <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
+    <value>速率限制 — 請稍候再試</value>
+  </data>
+  <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
+    <value>在您的閘道上執行：</value>
+  </data>
+  <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
+    <value>點擊複製</value>
+  </data>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>複製失敗 — 點擊重試</value>
+  </data>
+  <data name="Onboarding_Connection_Copied" xml:space="preserve">
+    <value>已複製！</value>
+  </data>
+  <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
+    <value>連線失敗 — 請檢查 URL 和權杖，然後重試</value>
+  </data>
+  <data name="Onboarding_Wizard_StepError" xml:space="preserve">
+    <value>處理此步驟時發生錯誤</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetecting" xml:space="preserve">
+    <value>正在偵測閘道...</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetected" xml:space="preserve">
+    <value>已在開發連接埠偵測到閘道</value>
+  </data>
+  <data name="Onboarding_Connection_StatusAuthenticating" xml:space="preserve">
+    <value>正在驗證...</value>
+  </data>
+  <data name="Onboarding_Connection_Wsl" xml:space="preserve">
+    <value>WSL 閘道</value>
+  </data>
+  <data name="Onboarding_Connection_Ssh" xml:space="preserve">
+    <value>SSH 通道</value>
+  </data>
+  <data name="Onboarding_Connection_PasteSetup" xml:space="preserve">
+    <value>貼上</value>
+  </data>
+  <data name="Onboarding_Connection_QrButton" xml:space="preserve">
+    <value>QR 碼</value>
+  </data>
+  <data name="Onboarding_Connection_QrFilePickerTitle" xml:space="preserve">
+    <value>匯入 QR 影像</value>
+  </data>
+  <data name="Onboarding_Connection_QrDecodeFailed" xml:space="preserve">
+    <value>無法從此影像解碼設定代碼</value>
+  </data>
+  <data name="Onboarding_Connection_SshHint" xml:space="preserve">
+    <value>OpenClaw 會建立受控 SSH 通道，將閘道連接埠從遠端主機轉送到此電腦。</value>
+  </data>
+  <data name="Onboarding_Connection_SshUser" xml:space="preserve">
+    <value>SSH 使用者</value>
+  </data>
+  <data name="Onboarding_Connection_SshHost" xml:space="preserve">
+    <value>SSH 主機</value>
+  </data>
+  <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
+    <value>遠端閘道連接埠</value>
+  </data>
+  <data name="Onboarding_Connection_SshLocalPort" xml:space="preserve">
+    <value>本地轉送連接埠</value>
+  </data>
+  <data name="Onboarding_Connection_SshPreviewLabel" xml:space="preserve">
+    <value>受控通道：</value>
+  </data>
+  <data name="Onboarding_Connection_SshUserInvalid" xml:space="preserve">
+    <value>連線前請輸入有效的 SSH 使用者。</value>
+  </data>
+  <data name="Onboarding_Connection_SshHostInvalid" xml:space="preserve">
+    <value>連線前請輸入有效的 SSH 主機（例如 mac-studio.local）。</value>
+  </data>
+  <data name="Onboarding_Connection_TopologyDetectedFmt" xml:space="preserve">
+    <value>已偵測：{0}</value>
+  </data>
+  <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
+    <value>您可以稍後在「設定」中設定閘道。</value>
+  </data>
+
 </root>

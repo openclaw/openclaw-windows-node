@@ -1076,4 +1076,341 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="UrlApproval_NoHint" xml:space="preserve">
     <value>Non — la bloquer.</value>
   </data>
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>Configuration d'OpenClaw</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>Suivant</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>Terminer</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>Bienvenue dans OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>Votre assistant IA, directement depuis la barre des tâches</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>Avis de sécurité</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw exécute un agent IA capable d'exécuter des commandes, de lire et écrire des fichiers, et d'interagir avec votre système en votre nom.</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>Votre agent peut :</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>Exécuter des commandes sur votre ordinateur</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>Lire et écrire des fichiers</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>Capturer des captures d'écran</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>Choisissez votre passerelle</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>Sélectionnez comment vous souhaitez vous connecter à la passerelle OpenClaw</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>Cet ordinateur (local)</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>Passerelle distante</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>Configurer plus tard</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>Tout est prêt !</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw est prêt. Voici quelques fonctionnalités à essayer :</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>Ouvrir le panneau de la barre de menus</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>Connecter des canaux de messagerie</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>Essayer l'activation vocale</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>Utiliser le canevas</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>Activer les compétences</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>Lancer OpenClaw au démarrage</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>Vous pouvez configurer votre connexion à la passerelle à tout moment depuis le menu de la barre des tâches.</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>Assurez-vous que votre passerelle distante est en cours d'exécution et accessible.</value>
+  </data>
+  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
+    <value>Connectons-nous en quelques étapes.</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
+    <value>Code de configuration</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCodePlaceholder" xml:space="preserve">
+    <value>Cliquez pour coller le code de configuration</value>
+  </data>
+  <data name="Onboarding_Connection_GatewayUrl" xml:space="preserve">
+    <value>URL de la passerelle</value>
+  </data>
+  <data name="Onboarding_Connection_Token" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="Onboarding_Connection_TokenPlaceholder" xml:space="preserve">
+    <value>Collez le token d'amorçage</value>
+  </data>
+  <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
+    <value>Node Mode</value>
+  </data>
+  <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
+    <value>Tester la connexion</value>
+  </data>
+  <data name="Onboarding_Connection_Ready" xml:space="preserve">
+    <value>Prêt à se connecter</value>
+  </data>
+  <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
+    <value>Vous pouvez configurer la connexion à la passerelle ultérieurement depuis le menu de la barre des tâches.</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDecoded" xml:space="preserve">
+    <value>Code de configuration décodé</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenRequired" xml:space="preserve">
+    <value>Le token est requis</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnecting" xml:space="preserve">
+    <value>Connexion en cours…</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnected" xml:space="preserve">
+    <value>Connecté à la passerelle</value>
+  </data>
+  <data name="Onboarding_Connection_StatusPairing" xml:space="preserve">
+    <value>L'appareil nécessite une approbation</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
+    <value>Token incorrect — vérifiez votre token d'amorçage</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
+    <value>Connexion expirée (15 s) — vérifiez que la passerelle est en cours d'exécution</value>
+  </data>
+  <data name="Onboarding_Permissions_Title" xml:space="preserve">
+    <value>Accorder les autorisations</value>
+  </data>
+  <data name="Onboarding_Permissions_Description" xml:space="preserve">
+    <value>OpenClaw fonctionne mieux lorsqu'il peut envoyer des notifications, accéder à votre caméra et microphone, capturer votre écran et connaître votre position. Accordez les autorisations ci-dessous.</value>
+  </data>
+  <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
+    <value>Actualiser le statut</value>
+  </data>
+  <data name="Onboarding_Permissions_OpenSettings" xml:space="preserve">
+    <value>Ouvrir les paramètres</value>
+  </data>
+  <data name="Onboarding_Permissions_Checking" xml:space="preserve">
+    <value>Vérification des autorisations…</value>
+  </data>
+  <data name="Onboarding_Chat_Title" xml:space="preserve">
+    <value>Rencontrez votre agent</value>
+  </data>
+  <data name="Onboarding_Chat_Loading" xml:space="preserve">
+    <value>Chargement du chat…</value>
+  </data>
+  <data name="Onboarding_Wizard_Title" xml:space="preserve">
+    <value>Configuration de la passerelle</value>
+  </data>
+  <data name="Onboarding_Wizard_Continue" xml:space="preserve">
+    <value>Continuer</value>
+  </data>
+  <data name="Onboarding_Wizard_Skip" xml:space="preserve">
+    <value>Passer</value>
+  </data>
+  <data name="Onboarding_Wizard_Complete" xml:space="preserve">
+    <value>Configuration de la passerelle terminée !</value>
+  </data>
+  <data name="Onboarding_Wizard_Offline" xml:space="preserve">
+    <value>Assistant de configuration non disponible</value>
+  </data>
+  <data name="Onboarding_Wizard_OfflineMessage" xml:space="preserve">
+    <value>La passerelle fournit des étapes de configuration dynamiques. Celles-ci s'exécuteront une fois la connexion établie.</value>
+  </data>
+  <data name="Onboarding_Perm_Notifications" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="Onboarding_Perm_Camera" xml:space="preserve">
+    <value>Caméra</value>
+  </data>
+  <data name="Onboarding_Perm_Microphone" xml:space="preserve">
+    <value>Microphone</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCapture" xml:space="preserve">
+    <value>Capture d'écran</value>
+  </data>
+  <data name="Onboarding_Perm_Location" xml:space="preserve">
+    <value>Localisation (optionnel)</value>
+  </data>
+  <data name="Onboarding_Perm_Enabled" xml:space="preserve">
+    <value>Activé</value>
+  </data>
+  <data name="Onboarding_Perm_EnabledDefault" xml:space="preserve">
+    <value>Activé (par défaut)</value>
+  </data>
+  <data name="Onboarding_Perm_Disabled" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledManifest" xml:space="preserve">
+    <value>Désactivé dans le manifeste</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledPolicy" xml:space="preserve">
+    <value>Désactivé par la stratégie</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
+    <value>Désactivé — ouvrir les paramètres pour activer</value>
+  </data>
+  <data name="Onboarding_Perm_Allowed" xml:space="preserve">
+    <value>Autorisé</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
+    <value>Refusé — ouvrir les paramètres pour autoriser</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
+    <value>Refusé par la stratégie système</value>
+  </data>
+  <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
+    <value>Non déterminé — ouvrir les paramètres</value>
+  </data>
+  <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
+    <value>Impossible à vérifier</value>
+  </data>
+  <data name="Onboarding_Perm_NoCameraDetected" xml:space="preserve">
+    <value>Aucune caméra détectée</value>
+  </data>
+  <data name="Onboarding_Perm_NoMicDetected" xml:space="preserve">
+    <value>Aucun microphone détecté</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
+    <value>Disponible — utilise un sélecteur par capture</value>
+  </data>
+  <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
+    <value>Non pris en charge sur cet appareil</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledSystem" xml:space="preserve">
+    <value>Services de localisation désactivés à l'échelle du système</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledUser" xml:space="preserve">
+    <value>Localisation désactivée pour cet utilisateur</value>
+  </data>
+  <data name="Onboarding_Perm_LocationEnabled" xml:space="preserve">
+    <value>Services de localisation activés</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
+    <value>Accéder depuis la barre des tâches</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
+    <value>Paramètres → Canaux</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
+    <value>Réveillez avec votre voix</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
+    <value>Espace de travail visuel</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
+    <value>Paramètres → Compétences</value>
+  </data>
+  <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
+    <value>Origine non autorisée — la passerelle rejette cette connexion</value>
+  </data>
+  <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
+    <value>Limite de débit atteinte — attendez un moment et réessayez</value>
+  </data>
+  <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
+    <value>Exécutez sur votre passerelle :</value>
+  </data>
+  <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
+    <value>Cliquer pour copier</value>
+  </data>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>Échec de la copie — cliquez pour réessayer</value>
+  </data>
+  <data name="Onboarding_Connection_Copied" xml:space="preserve">
+    <value>Copié !</value>
+  </data>
+  <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
+    <value>Échec de la connexion — vérifiez l'URL et le jeton, puis réessayez</value>
+  </data>
+  <data name="Onboarding_Wizard_StepError" xml:space="preserve">
+    <value>Une erreur est survenue lors du traitement de cette étape</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetecting" xml:space="preserve">
+    <value>Détection de la passerelle...</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetected" xml:space="preserve">
+    <value>Passerelle détectée sur le port dev</value>
+  </data>
+  <data name="Onboarding_Connection_StatusAuthenticating" xml:space="preserve">
+    <value>Authentification...</value>
+  </data>
+  <data name="Onboarding_Connection_Wsl" xml:space="preserve">
+    <value>Passerelle WSL</value>
+  </data>
+  <data name="Onboarding_Connection_Ssh" xml:space="preserve">
+    <value>Tunnel SSH</value>
+  </data>
+  <data name="Onboarding_Connection_PasteSetup" xml:space="preserve">
+    <value>Coller</value>
+  </data>
+  <data name="Onboarding_Connection_QrButton" xml:space="preserve">
+    <value>QR</value>
+  </data>
+  <data name="Onboarding_Connection_QrFilePickerTitle" xml:space="preserve">
+    <value>Importer une image QR</value>
+  </data>
+  <data name="Onboarding_Connection_QrDecodeFailed" xml:space="preserve">
+    <value>Impossible de décoder le code de configuration de cette image</value>
+  </data>
+  <data name="Onboarding_Connection_SshHint" xml:space="preserve">
+    <value>OpenClaw créera un tunnel SSH géré pour transférer le port de la passerelle depuis l'hôte distant vers ce PC.</value>
+  </data>
+  <data name="Onboarding_Connection_SshUser" xml:space="preserve">
+    <value>Utilisateur SSH</value>
+  </data>
+  <data name="Onboarding_Connection_SshHost" xml:space="preserve">
+    <value>Hôte SSH</value>
+  </data>
+  <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
+    <value>Port de la passerelle distante</value>
+  </data>
+  <data name="Onboarding_Connection_SshLocalPort" xml:space="preserve">
+    <value>Port local de transfert</value>
+  </data>
+  <data name="Onboarding_Connection_SshPreviewLabel" xml:space="preserve">
+    <value>Tunnel géré :</value>
+  </data>
+  <data name="Onboarding_Connection_SshUserInvalid" xml:space="preserve">
+    <value>Saisissez un utilisateur SSH valide avant de vous connecter.</value>
+  </data>
+  <data name="Onboarding_Connection_SshHostInvalid" xml:space="preserve">
+    <value>Saisissez un hôte SSH valide (par exemple mac-studio.local) avant de vous connecter.</value>
+  </data>
+  <data name="Onboarding_Connection_TopologyDetectedFmt" xml:space="preserve">
+    <value>Détecté : {0}</value>
+  </data>
+  <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
+    <value>Vous pouvez configurer la passerelle plus tard dans les paramètres.</value>
+  </data>
+
 </root>

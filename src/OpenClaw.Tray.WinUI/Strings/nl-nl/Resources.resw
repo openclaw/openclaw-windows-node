@@ -1077,4 +1077,341 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Nee — blokkeer hem.</value>
   </data>
 
+  <data name="Onboarding_Title" xml:space="preserve">
+    <value>OpenClaw instellen</value>
+  </data>
+  <data name="Onboarding_Back" xml:space="preserve">
+    <value>Terug</value>
+  </data>
+  <data name="Onboarding_Next" xml:space="preserve">
+    <value>Volgende</value>
+  </data>
+  <data name="Onboarding_Finish" xml:space="preserve">
+    <value>Voltooien</value>
+  </data>
+  <data name="Onboarding_Welcome_Title" xml:space="preserve">
+    <value>Welkom bij OpenClaw</value>
+  </data>
+  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
+    <value>Uw AI-assistent, direct vanuit het systeemvak</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
+    <value>Beveiligingsmelding</value>
+  </data>
+  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
+    <value>OpenClaw draait een AI-agent die opdrachten kan uitvoeren, bestanden kan lezen en schrijven, en namens u met uw systeem kan communiceren.</value>
+  </data>
+  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
+    <value>Uw agent kan:</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
+    <value>Opdrachten uitvoeren op uw computer</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
+    <value>Bestanden lezen en schrijven</value>
+  </data>
+  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
+    <value>Schermafbeeldingen maken</value>
+  </data>
+  <data name="Onboarding_Connection_Title" xml:space="preserve">
+    <value>Kies uw gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Subtitle" xml:space="preserve">
+    <value>Selecteer hoe u verbinding wilt maken met de OpenClaw-gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Local" xml:space="preserve">
+    <value>Deze pc (lokaal)</value>
+  </data>
+  <data name="Onboarding_Connection_Remote" xml:space="preserve">
+    <value>Externe gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Later" xml:space="preserve">
+    <value>Later configureren</value>
+  </data>
+  <data name="Onboarding_Ready_Title" xml:space="preserve">
+    <value>Alles klaar!</value>
+  </data>
+  <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
+    <value>OpenClaw is klaar voor gebruik. Hier zijn enkele dingen om te proberen:</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
+    <value>Menubalkpaneel openen</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
+    <value>Berichtkanalen verbinden</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
+    <value>Spraakactivering proberen</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
+    <value>Canvas gebruiken</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
+    <value>Vaardigheden inschakelen</value>
+  </data>
+  <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
+    <value>OpenClaw starten bij het opstarten</value>
+  </data>
+  <data name="Onboarding_Ready_ConfigureLater" xml:space="preserve">
+    <value>U kunt uw gatewayverbinding op elk moment configureren via het systeemvakmenu.</value>
+  </data>
+  <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
+    <value>Zorg ervoor dat uw externe gateway actief en bereikbaar is.</value>
+  </data>
+  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
+    <value>Laten we u in enkele stappen verbinden.</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
+    <value>Configuratiecode</value>
+  </data>
+  <data name="Onboarding_Connection_SetupCodePlaceholder" xml:space="preserve">
+    <value>Klik om configuratiecode te plakken</value>
+  </data>
+  <data name="Onboarding_Connection_GatewayUrl" xml:space="preserve">
+    <value>Gateway-URL</value>
+  </data>
+  <data name="Onboarding_Connection_Token" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="Onboarding_Connection_TokenPlaceholder" xml:space="preserve">
+    <value>Plak bootstrap-token</value>
+  </data>
+  <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
+    <value>Node Mode</value>
+  </data>
+  <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
+    <value>Verbinding testen</value>
+  </data>
+  <data name="Onboarding_Connection_Ready" xml:space="preserve">
+    <value>Klaar om te verbinden</value>
+  </data>
+  <data name="Onboarding_Connection_ConfigureLaterMsg" xml:space="preserve">
+    <value>U kunt de gatewayverbinding later configureren via het systeemvakmenu.</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDecoded" xml:space="preserve">
+    <value>Configuratiecode gedecodeerd</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenRequired" xml:space="preserve">
+    <value>Token is vereist</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnecting" xml:space="preserve">
+    <value>Verbinden…</value>
+  </data>
+  <data name="Onboarding_Connection_StatusConnected" xml:space="preserve">
+    <value>Verbonden met gateway</value>
+  </data>
+  <data name="Onboarding_Connection_StatusPairing" xml:space="preserve">
+    <value>Apparaat vereist goedkeuring</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
+    <value>Token onjuist — controleer uw bootstrap-token</value>
+  </data>
+  <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
+    <value>Verbinding verlopen (15s) — controleer of de gateway actief is</value>
+  </data>
+  <data name="Onboarding_Permissions_Title" xml:space="preserve">
+    <value>Machtigingen verlenen</value>
+  </data>
+  <data name="Onboarding_Permissions_Description" xml:space="preserve">
+    <value>OpenClaw werkt het beste wanneer het meldingen kan verzenden, toegang heeft tot uw camera en microfoon, uw scherm kan vastleggen en uw locatie kent. Verleen hieronder machtigingen.</value>
+  </data>
+  <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
+    <value>Status vernieuwen</value>
+  </data>
+  <data name="Onboarding_Permissions_OpenSettings" xml:space="preserve">
+    <value>Instellingen openen</value>
+  </data>
+  <data name="Onboarding_Permissions_Checking" xml:space="preserve">
+    <value>Machtigingen controleren…</value>
+  </data>
+  <data name="Onboarding_Chat_Title" xml:space="preserve">
+    <value>Maak kennis met uw agent</value>
+  </data>
+  <data name="Onboarding_Chat_Loading" xml:space="preserve">
+    <value>Chat laden…</value>
+  </data>
+  <data name="Onboarding_Wizard_Title" xml:space="preserve">
+    <value>Gateway configureren</value>
+  </data>
+  <data name="Onboarding_Wizard_Continue" xml:space="preserve">
+    <value>Doorgaan</value>
+  </data>
+  <data name="Onboarding_Wizard_Skip" xml:space="preserve">
+    <value>Overslaan</value>
+  </data>
+  <data name="Onboarding_Wizard_Complete" xml:space="preserve">
+    <value>Gatewayconfiguratie voltooid!</value>
+  </data>
+  <data name="Onboarding_Wizard_Offline" xml:space="preserve">
+    <value>Gateway-wizard niet beschikbaar</value>
+  </data>
+  <data name="Onboarding_Wizard_OfflineMessage" xml:space="preserve">
+    <value>De gateway biedt dynamische configuratiestappen. Deze worden uitgevoerd zodra de verbinding tot stand is gebracht.</value>
+  </data>
+  <data name="Onboarding_Perm_Notifications" xml:space="preserve">
+    <value>Meldingen</value>
+  </data>
+  <data name="Onboarding_Perm_Camera" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="Onboarding_Perm_Microphone" xml:space="preserve">
+    <value>Microfoon</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCapture" xml:space="preserve">
+    <value>Schermopname</value>
+  </data>
+  <data name="Onboarding_Perm_Location" xml:space="preserve">
+    <value>Locatie (optioneel)</value>
+  </data>
+  <data name="Onboarding_Perm_Enabled" xml:space="preserve">
+    <value>Ingeschakeld</value>
+  </data>
+  <data name="Onboarding_Perm_EnabledDefault" xml:space="preserve">
+    <value>Ingeschakeld (standaard)</value>
+  </data>
+  <data name="Onboarding_Perm_Disabled" xml:space="preserve">
+    <value>Uitgeschakeld</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledManifest" xml:space="preserve">
+    <value>Uitgeschakeld in app-manifest</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledPolicy" xml:space="preserve">
+    <value>Uitgeschakeld door beleid</value>
+  </data>
+  <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
+    <value>Uitgeschakeld — open Instellingen</value>
+  </data>
+  <data name="Onboarding_Perm_Allowed" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
+    <value>Geweigerd — open Instellingen</value>
+  </data>
+  <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
+    <value>Geweigerd door systeembeleid</value>
+  </data>
+  <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
+    <value>Niet bepaald — open Instellingen</value>
+  </data>
+  <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
+    <value>Kan niet worden gecontroleerd</value>
+  </data>
+  <data name="Onboarding_Perm_NoCameraDetected" xml:space="preserve">
+    <value>Geen camera gedetecteerd</value>
+  </data>
+  <data name="Onboarding_Perm_NoMicDetected" xml:space="preserve">
+    <value>Geen microfoon gedetecteerd</value>
+  </data>
+  <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
+    <value>Beschikbaar — gebruikt kiezer per opname</value>
+  </data>
+  <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
+    <value>Niet ondersteund op dit apparaat</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledSystem" xml:space="preserve">
+    <value>Locatieservices uitgeschakeld voor het hele systeem</value>
+  </data>
+  <data name="Onboarding_Perm_LocationDisabledUser" xml:space="preserve">
+    <value>Locatie uitgeschakeld voor deze gebruiker</value>
+  </data>
+  <data name="Onboarding_Perm_LocationEnabled" xml:space="preserve">
+    <value>Locatieservices ingeschakeld</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
+    <value>Toegang via het systeemvak</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
+    <value>Instellingen → Kanalen</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
+    <value>Activeer met uw stem</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
+    <value>Visuele werkruimte</value>
+  </data>
+  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
+    <value>Instellingen → Vaardigheden</value>
+  </data>
+  <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
+    <value>Oorsprong niet toegestaan — gateway weigert deze verbinding</value>
+  </data>
+  <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
+    <value>Snelheidsbeperking — wacht even en probeer opnieuw</value>
+  </data>
+  <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
+    <value>Voer uit op uw gateway:</value>
+  </data>
+  <data name="Onboarding_Connection_ClickToCopy" xml:space="preserve">
+    <value>Klik om te kopiëren</value>
+  </data>
+  <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
+    <value>Kopiëren mislukt — klik om opnieuw te proberen</value>
+  </data>
+  <data name="Onboarding_Connection_Copied" xml:space="preserve">
+    <value>Gekopieerd!</value>
+  </data>
+  <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
+    <value>Verbinding mislukt — controleer URL en token en probeer opnieuw</value>
+  </data>
+  <data name="Onboarding_Wizard_StepError" xml:space="preserve">
+    <value>Er is een fout opgetreden bij het verwerken van deze stap</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetecting" xml:space="preserve">
+    <value>Gateway detecteren...</value>
+  </data>
+  <data name="Onboarding_Connection_StatusDetected" xml:space="preserve">
+    <value>Gateway gedetecteerd op dev-poort</value>
+  </data>
+  <data name="Onboarding_Connection_StatusAuthenticating" xml:space="preserve">
+    <value>Authenticeren...</value>
+  </data>
+  <data name="Onboarding_Connection_Wsl" xml:space="preserve">
+    <value>WSL-gateway</value>
+  </data>
+  <data name="Onboarding_Connection_Ssh" xml:space="preserve">
+    <value>SSH-tunnel</value>
+  </data>
+  <data name="Onboarding_Connection_PasteSetup" xml:space="preserve">
+    <value>Plakken</value>
+  </data>
+  <data name="Onboarding_Connection_QrButton" xml:space="preserve">
+    <value>QR</value>
+  </data>
+  <data name="Onboarding_Connection_QrFilePickerTitle" xml:space="preserve">
+    <value>QR-afbeelding importeren</value>
+  </data>
+  <data name="Onboarding_Connection_QrDecodeFailed" xml:space="preserve">
+    <value>Kan installatiecode niet decoderen uit deze afbeelding</value>
+  </data>
+  <data name="Onboarding_Connection_SshHint" xml:space="preserve">
+    <value>OpenClaw maakt een beheerde SSH-tunnel om de gateway-poort van de externe host naar deze pc door te sturen.</value>
+  </data>
+  <data name="Onboarding_Connection_SshUser" xml:space="preserve">
+    <value>SSH-gebruiker</value>
+  </data>
+  <data name="Onboarding_Connection_SshHost" xml:space="preserve">
+    <value>SSH-host</value>
+  </data>
+  <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
+    <value>Externe gatewaypoort</value>
+  </data>
+  <data name="Onboarding_Connection_SshLocalPort" xml:space="preserve">
+    <value>Lokale doorstuurpoort</value>
+  </data>
+  <data name="Onboarding_Connection_SshPreviewLabel" xml:space="preserve">
+    <value>Beheerde tunnel:</value>
+  </data>
+  <data name="Onboarding_Connection_SshUserInvalid" xml:space="preserve">
+    <value>Voer een geldige SSH-gebruiker in voordat u verbinding maakt.</value>
+  </data>
+  <data name="Onboarding_Connection_SshHostInvalid" xml:space="preserve">
+    <value>Voer een geldige SSH-host in (bijv. mac-studio.local) voordat u verbinding maakt.</value>
+  </data>
+  <data name="Onboarding_Connection_TopologyDetectedFmt" xml:space="preserve">
+    <value>Gedetecteerd: {0}</value>
+  </data>
+  <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
+    <value>U kunt de gateway later configureren in Instellingen.</value>
+  </data>
+
 </root>

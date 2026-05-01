@@ -7,6 +7,7 @@ using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
+using OpenClawTray.Onboarding;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -35,6 +36,31 @@ public partial class App : Application
 
     private TrayIcon? _trayIcon;
     private OpenClawGatewayClient? _gatewayClient;
+
+    /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
+    public OpenClawGatewayClient? GatewayClient => _gatewayClient;
+
+    /// <summary>
+    /// Ensures the managed SSH tunnel is started using the current settings.
+    /// Used by the onboarding ConnectionPage when the user picks the SSH topology.
+    /// </summary>
+    public void EnsureSshTunnelStarted() => _sshTunnelService?.EnsureStarted(_settings);
+
+    /// <summary>
+    /// Returns the HWND of the active onboarding window, or IntPtr.Zero if none.
+    /// Used by onboarding pages that need to host file pickers / dialogs.
+    /// </summary>
+    public IntPtr GetOnboardingWindowHandle()
+        => _onboardingWindow != null
+            ? WinRT.Interop.WindowNative.GetWindowHandle(_onboardingWindow)
+            : IntPtr.Zero;
+
+    /// <summary>
+    /// Reinitializes the gateway client with current settings.
+    /// Called by the onboarding wizard after saving URL + Token.
+    /// </summary>
+    public void ReinitializeGatewayClient(bool useBootstrapHandoffAuth = false) =>
+        InitializeGatewayClient(useBootstrapHandoffAuth);
     private SettingsManager? _settings;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
@@ -114,6 +140,18 @@ public partial class App : Application
 
     public App()
     {
+        // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
+        var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
+        if (!string.IsNullOrEmpty(langOverride))
+        {
+            // SECURITY: Whitelist known locale codes to prevent locale injection
+            string[] allowedLocales = ["en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw"];
+            if (allowedLocales.Contains(langOverride.ToLowerInvariant()))
+                LocalizationHelper.SetLanguageOverride(langOverride);
+            else
+                Logger.Warn($"[App] Ignoring invalid OPENCLAW_LANGUAGE value: {langOverride}");
+        }
+
         InitializeComponent();
         
         CheckPreviousRun();
@@ -289,7 +327,8 @@ public partial class App : Application
 
         // Check for updates before launching. Skip in test instances — no UI dialogs,
         // no network calls, no startup delay.
-        if (DataDirOverride is null)
+        if (DataDirOverride is null &&
+            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
             var shouldLaunch = await CheckForUpdatesAsync();
             if (!shouldLaunch)
@@ -305,10 +344,11 @@ public partial class App : Application
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
-        // First-run check
-        if (RequiresSetup(_settings))
+        // First-run check (also supports forced onboarding for testing)
+        if (RequiresSetup(_settings) ||
+            Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
         {
-            await ShowSetupWizardAsync();
+            await ShowOnboardingAsync();
         }
 
         // Initialize tray icon (window-less pattern from WinUIEx)
@@ -576,7 +616,7 @@ public partial class App : Application
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
             case "checkupdates": _ = CheckForUpdatesUserInitiatedAsync(); break;
             case "settings": ShowSettings(); break;
-            case "setup": _ = ShowSetupWizardAsync(); break;
+            case "setup": _ = ShowOnboardingAsync(); break;
             case "autostart": ToggleAutoStart(); break;
             case "log": OpenLogFile(); break;
             case "logfolder": OpenLogFolder(); break;
@@ -1176,16 +1216,28 @@ public partial class App : Application
 
     #region Gateway Client
 
-    private void InitializeGatewayClient()
+    private void InitializeGatewayClient(bool useBootstrapHandoffAuth = false)
     {
         if (_settings == null) return;
         if (!EnsureSshTunnelConfigured()) return;
+
+        // Guard against empty gateway URL (e.g., fresh install before onboarding)
+        var gatewayUrl = _settings.GetEffectiveGatewayUrl();
+        if (string.IsNullOrWhiteSpace(gatewayUrl))
+        {
+            Logger.Info("Gateway URL not configured — skipping client initialization");
+            return;
+        }
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
         _lastGatewaySelf = null;
 
-        _gatewayClient = new OpenClawGatewayClient(_settings.GetEffectiveGatewayUrl(), _settings.Token, new AppLogger());
+        _gatewayClient = new OpenClawGatewayClient(
+            gatewayUrl,
+            _settings.Token,
+            new AppLogger(),
+            useBootstrapHandoffAuth);
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
@@ -1327,16 +1379,7 @@ public partial class App : Application
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
-                AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                var approvalCommand = $"openclaw devices approve {args.DeviceId}";
-                // Show toast with approval instructions
-                ShowToast(new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
-                    .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), args.DeviceId.Substring(0, 16)))
-                    .AddButton(new ToastButton()
-                        .SetContent(LocalizationHelper.GetString("Toast_CopyPairingCommand"))
-                        .AddArgument("action", "copy_pairing_command")
-                        .AddArgument("command", approvalCommand)));
+                ShowPairingPendingNotification(args.DeviceId);
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
@@ -1354,6 +1397,24 @@ public partial class App : Application
             }
         }
         catch { /* ignore */ }
+    }
+
+    public static string BuildPairingApprovalCommand(string deviceId) =>
+        $"openclaw devices approve {deviceId}";
+
+    public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
+    {
+        var command = approvalCommand ?? BuildPairingApprovalCommand(deviceId);
+        var shortDeviceId = deviceId.Length > 16 ? deviceId[..16] : deviceId;
+
+        AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: deviceId);
+        ShowToast(new ToastContentBuilder()
+            .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
+            .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), shortDeviceId))
+            .AddButton(new ToastButton()
+                .SetContent(LocalizationHelper.GetString("Toast_CopyPairingCommand"))
+                .AddArgument("action", "copy_pairing_command")
+                .AddArgument("command", command)));
     }
     
     private void OnNodeNotificationRequested(object? sender, OpenClaw.Shared.Capabilities.SystemNotifyArgs args)
@@ -1714,6 +1775,15 @@ public partial class App : Application
         // Chat toggle: suppress all chat responses if disabled
         if (notification.IsChat && !_settings.NotifyChatResponses)
             return false;
+
+        // Suppress chat notifications when a chat window is already showing them
+        if (notification.IsChat)
+        {
+            if (_webChatWindow != null && !_webChatWindow.IsClosed)
+                return false;
+            if (_onboardingWindow != null)
+                return false; // Onboarding window has chat overlay
+        }
 
         var type = notification.Type;
         if (type == null) return true;
@@ -2542,24 +2612,31 @@ public partial class App : Application
         _activityStreamWindow.Activate();
     }
 
-    private SetupWizardWindow? _setupWizard;
+    private OnboardingWindow? _onboardingWindow;
 
-    private async Task ShowSetupWizardAsync()
+    private async Task ShowOnboardingAsync()
     {
         if (_settings == null) return;
 
-        if (_setupWizard != null)
+        if (_onboardingWindow != null)
         {
-            try { _setupWizard.Activate(); return; } catch { _setupWizard = null; }
+            try { _onboardingWindow.Activate(); return; } catch { _onboardingWindow = null; }
         }
 
-        _setupWizard = new SetupWizardWindow(_settings);
-        _setupWizard.SetupCompleted += (s, e) =>
+        _onboardingWindow = new OnboardingWindow(_settings);
+        _onboardingWindow.OnboardingCompleted += (s, e) =>
         {
-            Logger.Info("Setup wizard completed, reinitializing connections");
-            _setupWizard = null;
+            Logger.Info("Onboarding completed");
+            _onboardingWindow = null;
 
-            // Mirror OnSettingsSaved — clean up both, then start only one
+            // If the persistent client was already initialized during onboarding, keep it
+            if (_gatewayClient?.IsConnectedToGateway == true)
+            {
+                Logger.Info("Gateway client already connected from onboarding — keeping");
+                return;
+            }
+
+            // Otherwise reinitialize with saved settings
             UnsubscribeGatewayEvents();
             _gatewayClient?.Dispose();
             _gatewayClient = null;
@@ -2575,8 +2652,8 @@ public partial class App : Application
             else
                 InitializeGatewayClient();
         };
-        _setupWizard.Closed += (s, e) => _setupWizard = null;
-        _setupWizard.Activate();
+        _onboardingWindow.Closed += (s, e) => _onboardingWindow = null;
+        _onboardingWindow.Activate();
     }
 
     private void ShowSurfaceImprovementsTipIfNeeded()
@@ -3081,7 +3158,7 @@ public partial class App : Application
         DeepLinkHandler.Handle(uri, new DeepLinkActions
         {
             OpenSettings = ShowSettings,
-            OpenSetup = () => _ = ShowSetupWizardAsync(),
+            OpenSetup = () => _ = ShowOnboardingAsync(),
             RunHealthCheck = () => RunHealthCheckAsync(userInitiated: true),
             CheckForUpdates = CheckForUpdatesUserInitiatedAsync,
             OpenLogFile = OpenLogFile,
@@ -3100,6 +3177,7 @@ public partial class App : Application
             RestartSshTunnel = RestartSshTunnel,
             OpenChat = ShowWebChat,
             OpenCommandCenter = ShowStatusDetail,
+            OpenTrayMenu = ShowTrayMenuPopup,
             OpenActivityStream = ShowActivityStream,
             OpenNotificationHistory = ShowNotificationHistory,
             OpenDashboard = OpenDashboard,
@@ -3171,7 +3249,7 @@ public partial class App : Application
         }
     }
 
-    private static void CopyTextToClipboard(string text)
+    public static void CopyTextToClipboard(string text)
     {
         var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
         dataPackage.SetText(text);

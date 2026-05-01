@@ -1,17 +1,17 @@
 # Test Coverage Summary
 
-**571 tests total** (478 shared + 93 tray) — all passing ✅
+**914 tests total** (652 shared + 262 tray) — all passing ✅
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 571 |
-| Passing | 571 (100%) |
+| Total Tests | 914 |
+| Passing | 914 (100%) |
 | Failing | 0 |
 | Framework | xUnit 2.9.3 / .NET 10.0 |
 
 ## Test Projects
 
-### OpenClaw.Shared.Tests — 478 tests
+### OpenClaw.Shared.Tests — 652 tests
 
 #### ModelsTests
 - **AgentActivityTests** (~15) — glyph mapping for all ActivityKind values, display text formatting
@@ -71,29 +71,26 @@
 
 ---
 
-### OpenClaw.Tray.Tests — 93 tests
+### OpenClaw.Tray.Tests — 262 tests
 
-#### MenuDisplayHelperTests (~40)
-- `GetStatusIcon` — emoji mapping for Connected/Disconnected/Connecting/Error states
-- `GetChannelStatusIcon` — status icons for running/idle/pending/error/disconnected + case-insensitive variants
-- `GetNextToggleValue` — ON↔OFF toggling, case handling
-- Unknown/empty status fallback
+#### Core Tray Tests
 
-#### MenuPositionerTests (~15)
-- Screen edge clamping (top-left, bottom-right)
-- Taskbar-at-right scenario
-- Menu positioning relative to cursor
+- **MenuDisplayHelperTests** (~40) — `GetStatusIcon` emoji mapping for Connected/Disconnected/Connecting/Error states, `GetChannelStatusIcon` status icons for running/idle/pending/error/disconnected + case-insensitive variants, `GetNextToggleValue` ON↔OFF toggling, unknown/empty status fallback
+- **MenuPositionerTests** (~15) — Screen edge clamping (top-left, bottom-right), taskbar-at-right scenario, menu positioning relative to cursor
+- **SettingsRoundTripTests** (~15) — Serialization/deserialization round trips, default values on missing keys, backward compatibility with older settings formats
+- **DeepLinkParserTests** (~23) — `ParseDeepLink` protocol validation, null/empty handling, subpath parsing, trailing slash stripping, query parameter extraction, URL-encoded message handling
 
-#### SettingsRoundTripTests (~15)
-- Serialization/deserialization round trips
-- Default values on missing keys
-- Backward compatibility with older settings formats
+#### Onboarding Tests
 
-#### DeepLinkParserTests (~23)
-- `ParseDeepLink` — protocol validation, null/empty handling, subpath parsing, trailing slash stripping
-- Query parameter extraction (`GetQueryParam`)
-- URL-encoded message handling
-- Multiple query parameters, missing keys
+- **OnboardingStateTests** (19) — Page order, mode logic, route changes, wizard state persistence, completion, disposal
+- **WizardStepPropsTests** (4) — Enum values, record defaults, callback verification
+- **GatewayChatHelperTests** (11) — URL scheme conversion, token encoding, localhost checks, session keys
+- **LocalGatewayApproverTests** (13) — IsLocalGateway for localhost/remote/edge cases
+- **SetupCodeDecoderTests** (14) — Base64url decode, size limits, JSON validation, URL/token extraction
+- **GatewayHealthCheckTests** (6) — Health URI building, scheme conversion, port preservation
+- **SecurityValidationTests** (16) — Locale whitelist, port range, path traversal, URI scheme validation
+- **WizardStepParsingTests** (12) — JSON step parsing, options, completion, sensitive fields
+- **LocalizationValidationTests** (6) — 5-locale key parity, onboarding key presence, no duplicates
 
 ---
 
@@ -110,6 +107,9 @@ dotnet test tests/OpenClaw.Tray.Tests
 # Specific test class
 dotnet test --filter "FullyQualifiedName~MenuDisplayHelperTests"
 
+# Onboarding tests only
+dotnet test --filter "FullyQualifiedName~Onboarding"
+
 # Verbose output
 dotnet test --logger "console;verbosity=detailed"
 ```
@@ -120,9 +120,10 @@ dotnet test --logger "console;verbosity=detailed"
 - Real gateway message parsing
 - Concurrent event handling
 - File I/O and thread synchronization
+- End-to-end onboarding wizard flow (WebView2 requires runtime)
 
 ---
 
-**Last Updated**: 2026-03-18
+**Last Updated**: 2026-04-26
 **Framework**: xUnit 2.9.3 / .NET 10.0
-**Status**: ✅ 571 tests passing
+**Status**: ✅ 914 tests passing

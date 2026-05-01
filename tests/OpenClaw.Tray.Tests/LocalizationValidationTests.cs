@@ -114,4 +114,85 @@ public class LocalizationValidationTests
             }
         }
     }
+
+    [Fact]
+    public void AllFiveLocaleDirectories_Exist()
+    {
+        var stringsDir = GetStringsDirectory();
+        string[] expected = ["en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw"];
+
+        foreach (var locale in expected)
+        {
+            var dir = Path.Combine(stringsDir, locale);
+            Assert.True(Directory.Exists(dir), $"Locale directory missing: {locale}");
+            Assert.True(File.Exists(Path.Combine(dir, "Resources.resw")),
+                $"Resources.resw missing for locale: {locale}");
+        }
+    }
+
+    [Fact]
+    public void AllLocales_ContainOnboardingKeys()
+    {
+        var stringsDir = GetStringsDirectory();
+        var localeDirs = Directory.GetDirectories(stringsDir);
+
+        foreach (var localeDir in localeDirs)
+        {
+            var locale = Path.GetFileName(localeDir);
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var keys = LoadResw(reswPath).Keys;
+            var onboardingKeys = keys.Where(k => k.StartsWith("Onboarding_")).ToList();
+
+            Assert.True(onboardingKeys.Count > 0,
+                $"Locale '{locale}' has no Onboarding_* keys");
+        }
+    }
+
+    [Fact]
+    public void NoLocale_HasDuplicateKeys()
+    {
+        var stringsDir = GetStringsDirectory();
+        var localeDirs = Directory.GetDirectories(stringsDir);
+
+        foreach (var localeDir in localeDirs)
+        {
+            var locale = Path.GetFileName(localeDir);
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var doc = System.Xml.Linq.XDocument.Load(reswPath);
+            var names = doc.Descendants("data")
+                .Select(e => e.Attribute("name")!.Value)
+                .ToList();
+
+            var duplicates = names.GroupBy(n => n)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            Assert.True(duplicates.Count == 0,
+                $"Locale '{locale}' has duplicate keys: {string.Join(", ", duplicates)}");
+        }
+    }
+
+    [Fact]
+    public void AllLocales_HaveSameKeyCount()
+    {
+        var stringsDir = GetStringsDirectory();
+        var referencePath = Path.Combine(stringsDir, "en-us", "Resources.resw");
+        var referenceCount = LoadResw(referencePath).Count;
+
+        var localeDirs = Directory.GetDirectories(stringsDir);
+        foreach (var localeDir in localeDirs)
+        {
+            var locale = Path.GetFileName(localeDir);
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var count = LoadResw(reswPath).Count;
+            Assert.Equal(referenceCount, count);
+        }
+    }
 }

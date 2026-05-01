@@ -425,8 +425,8 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 ```
 
 **Test Coverage:**
-- ✅ **478 tests** in `OpenClaw.Shared.Tests` — models, gateway client, exec approvals, capabilities, URL helpers, notification categorization, shell quoting
-- ✅ **93 tests** in `OpenClaw.Tray.Tests` — menu display, menu positioning, settings round-trip, deep link parsing
+- ✅ **652 tests** in `OpenClaw.Shared.Tests` — models, gateway client, exec approvals, capabilities, URL helpers, notification categorization, shell quoting
+- ✅ **262 tests** in `OpenClaw.Tray.Tests` — menu display, menu positioning, settings round-trip, deep link parsing, onboarding state, setup code decoder, security validation, wizard step parsing, localization validation
 - ✅ All tests are pure unit tests (no network, no file system, no external dependencies)
 
 See [tests/OpenClaw.Shared.Tests/README.md](tests/OpenClaw.Shared.Tests/README.md) for detailed test documentation.
@@ -746,6 +746,51 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
 - **Issues**: [GitHub Issues](https://github.com/shanselman/openclaw-windows-hub/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/shanselman/openclaw-windows-hub/discussions)
 - **Documentation**: [OpenClaw Docs](https://docs.molt.bot)
+
+## Developing & Testing the Onboarding Wizard
+
+The onboarding wizard is a 6-screen flow built with OpenClaw's minimal FunctionalUI helper layer for declarative C# WinUI. The chat page uses a WebView2 overlay for visual consistency with the post-setup chat experience.
+
+### Building
+
+The WinUI project requires platform-specific build targets. Use the build script:
+
+```bash
+./build.ps1 -Project WinUI   # Builds with correct -r win-x64 targets
+```
+
+Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContained requires a supported Windows architecture".
+
+### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENCLAW_FORCE_ONBOARDING=1` | Show onboarding wizard even if a token already exists |
+| `OPENCLAW_SKIP_UPDATE_CHECK=1` | Skip the update dialog (useful during testing) |
+| `OPENCLAW_LANGUAGE=fr-fr` | Override UI language (validated: en-us, fr-fr, nl-nl, zh-cn, zh-tw) |
+| `OPENCLAW_GATEWAY_PORT=19001` | Override default gateway port for local dev |
+| `OPENCLAW_VISUAL_TEST=1` | Enable automatic screenshot capture on page transitions |
+| `OPENCLAW_VISUAL_TEST_DIR=path` | Output directory for visual test screenshots |
+
+### Testing the Wizard Locally
+
+1. Start a local gateway (e.g., in WSL): `cd ~/openclaw && npx openclaw gateway`
+2. Set env vars:
+   ```powershell
+   $env:OPENCLAW_FORCE_ONBOARDING = "1"
+   $env:OPENCLAW_SKIP_UPDATE_CHECK = "1"
+   ```
+3. Build and run: `./build.ps1 -Project WinUI` then launch the exe
+4. Navigate through all 6 screens to verify
+
+### Architecture
+
+- **FunctionalUI**: `src/OpenClawTray.FunctionalUI/` — Minimal declarative WinUI helper layer used by onboarding
+- **Pages**: `src/OpenClaw.Tray.WinUI/Onboarding/Pages/` — Functional UI components for each wizard screen
+- **Services**: `src/OpenClaw.Tray.WinUI/Onboarding/Services/` — State management, setup code decoder, permission checker, health check, input validation
+- **Widgets**: `src/OpenClaw.Tray.WinUI/Onboarding/Widgets/` — Shared UI components (cards, step indicators, feature rows)
+- **Window**: `src/OpenClaw.Tray.WinUI/Onboarding/OnboardingWindow.cs` — Host window with WebView2 overlay for chat
+- **Helpers**: `src/OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` — Shared WebView2 chat URL builder
 
 ---
 

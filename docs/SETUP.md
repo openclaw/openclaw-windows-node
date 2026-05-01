@@ -43,16 +43,35 @@ After the installer finishes, OpenClaw Tray starts automatically. Look for the �
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
 
-### 5. Configure the Connection
+### 5. Onboarding Wizard
 
-On first launch, a **Welcome** dialog appears. Click **Open Settings** to configure:
+On first launch, Molty opens a **6-screen onboarding wizard** that walks you through setup:
 
-| Setting | What to enter |
-|---------|--------------|
-| **Gateway URL** | `ws://localhost:18789` (if running OpenClaw locally) or your remote gateway address |
-| **Token** | Your OpenClaw API token from [openclaw.ai](https://openclaw.ai) |
+1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Get Started** to begin.
 
-Click **Save**. Molty will connect to the gateway and the tray icon will turn green when connected.
+2. **Connection** — Choose how to connect to your gateway:
+   - **Local** — Select this if the gateway runs on the same machine or in WSL. The URL is pre-filled to `ws://localhost:18789`.
+   - **Remote** — Enter your gateway URL and bootstrap token manually, **or** paste a base64url-encoded **setup code** (a single string containing both URL and token).
+   - **Later** — Skip connection setup for now. You can configure it later from the tray menu → Settings.
+
+   After entering your details, click **Test Connection**. The wizard performs a real WebSocket handshake with Ed25519 device authentication and shows real-time status feedback (connecting → connected → pairing).
+
+3. **Wizard** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+
+4. **Permissions** — Reviews Windows system permissions needed for full functionality:
+   - **Notifications** — for toast alerts
+   - **Camera** — for camera capture
+   - **Microphone** — for voice input
+   - **Screen Capture** — for screenshots
+   - **Location** — optional, for location-aware features
+
+   Each permission shows its current status. Click **Open Settings** next to any permission to jump directly to the relevant Windows Settings page.
+
+5. **Chat** — Meet your agent! This screen opens a live chat powered by the gateway's web UI. A bootstrap message is sent automatically to kick off your first conversation.
+
+6. **Ready** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
+
+After the wizard, the tray icon turns green when connected. You can re-run the wizard or change settings anytime from the tray menu.
 
 ## Tray Icon Status
 
@@ -130,6 +149,26 @@ openclaw devices approve <device-id>
 ```
 
 See [issue #81](https://github.com/openclaw/openclaw-windows-node/issues/81) for context on this flow.
+
+### Setup code doesn't work
+
+- Make sure you paste the **entire** setup code — it's a single base64url-encoded string.
+- Check for accidental leading/trailing whitespace.
+- The code must be from a compatible gateway version. Try entering the gateway URL and token manually instead.
+
+### Connection test fails
+
+- Verify the gateway URL is correct (e.g., `ws://localhost:18789` for local, or the full URL for remote).
+- Check that your token is valid and hasn't expired.
+- If the gateway is on another machine, ensure Windows Firewall allows traffic on the gateway port.
+- See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for detailed error messages.
+
+### Wizard shows "offline"
+
+The Wizard screen relies on the gateway's wizard protocol. If it shows offline:
+- The gateway may not support wizard mode yet — this is fine, configuration can be done later.
+- Check that the gateway is running and reachable.
+- You can skip the Wizard screen and configure your gateway manually from the tray menu → Settings.
 
 ### Settings are not saved
 

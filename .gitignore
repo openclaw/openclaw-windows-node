@@ -346,3 +346,6 @@ FodyWeavers.xsd
 Output/
 *.lscache
 test_ws.py
+
+# Local visual test output
+visual-test-output/

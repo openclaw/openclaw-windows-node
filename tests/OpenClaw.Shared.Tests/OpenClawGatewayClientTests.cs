@@ -14,14 +14,22 @@ public class OpenClawGatewayClientTests
     {
         private readonly OpenClawGatewayClient _client;
 
-        public GatewayClientTestHelper()
+        public GatewayClientTestHelper(bool useBootstrapHandoffAuth = false)
         {
-            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", new TestLogger());
+            _client = new OpenClawGatewayClient(
+                "ws://localhost:18789",
+                "test-token",
+                new TestLogger(),
+                useBootstrapHandoffAuth);
         }
 
-        public GatewayClientTestHelper(IOpenClawLogger logger)
+        public GatewayClientTestHelper(IOpenClawLogger logger, bool useBootstrapHandoffAuth = false)
         {
-            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
+            _client = new OpenClawGatewayClient(
+                "ws://localhost:18789",
+                "test-token",
+                logger,
+                useBootstrapHandoffAuth);
         }
 
         public string ClassifyNotification(string text)
@@ -249,6 +257,35 @@ public class OpenClawGatewayClientTests
         public string CallBuildPairingApprovalFixCommands() =>
             _client.BuildPairingApprovalFixCommands();
 
+        public string[] GetRequestedOperatorScopes()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "GetRequestedOperatorScopes",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (string[])method!.Invoke(_client, null)!;
+        }
+
+        public Dictionary<string, string> BuildAuthPayload()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "BuildAuthPayload",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (Dictionary<string, string>)method!.Invoke(_client, null)!;
+        }
+
+        public void SetDeviceTokenForTest(string? token)
+        {
+            var identityField = typeof(OpenClawGatewayClient).GetField(
+                "_deviceIdentity",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var identity = identityField!.GetValue(_client)!;
+            var tokenField = identity.GetType().GetField(
+                "_deviceToken",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            tokenField!.SetValue(identity, token);
+            SetPrivateField("_connectAuthToken", token ?? "test-token");
+        }
+
         public string GetFallbackDeviceId()
         {
             var identityField = typeof(OpenClawGatewayClient).GetField(
@@ -298,6 +335,81 @@ public class OpenClawGatewayClientTests
             _client.AuthenticationFailed += (_, msg) => events.Add(msg);
             return events;
         }
+    }
+
+    [Fact]
+    public void OperatorConnect_FreshDevice_DefaultPathKeepsLegacyAuthShape()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.SetDeviceTokenForTest(null);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Equal(
+            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
+            scopes);
+        Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
+        Assert.DoesNotContain("operator.talk.secrets", scopes);
+        Assert.Equal("test-token", auth["token"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+        Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_SetupCodeBootstrapPath_RequestsBootstrapHandoffScopes()
+    {
+        var helper = new GatewayClientTestHelper(useBootstrapHandoffAuth: true);
+        helper.SetDeviceTokenForTest(null);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Equal(
+            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
+            scopes);
+        Assert.DoesNotContain("operator.admin", scopes);
+        Assert.DoesNotContain("operator.pairing", scopes);
+        Assert.Equal("test-token", auth["bootstrapToken"]);
+        Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_SetupCodeBootstrapPath_WithPairedDeviceUsesFullScopesAndDeviceToken()
+    {
+        var helper = new GatewayClientTestHelper(useBootstrapHandoffAuth: true);
+        helper.SetDeviceTokenForTest("paired-device-token");
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Equal(
+            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
+            scopes);
+        Assert.Equal("paired-device-token", auth["token"]);
+        Assert.Equal("paired-device-token", auth["deviceToken"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_PairedDevice_DefaultPathKeepsLegacyAuthShape()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.SetDeviceTokenForTest("paired-device-token");
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Equal(
+            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
+            scopes);
+        Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
+        Assert.DoesNotContain("operator.talk.secrets", scopes);
+        Assert.Equal("paired-device-token", auth["token"]);
+        Assert.False(auth.ContainsKey("deviceToken"));
+        Assert.False(auth.ContainsKey("bootstrapToken"));
     }
 
     private class TestLogger : IOpenClawLogger

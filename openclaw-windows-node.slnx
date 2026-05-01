@@ -14,6 +14,7 @@
       <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
+    <Project Path="src/OpenClawTray.FunctionalUI/OpenClawTray.FunctionalUI.csproj" />
     <Project Path="src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj">
       <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
       <Platform Solution="*|Any CPU" Project="x64" />

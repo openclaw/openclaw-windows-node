@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using OpenClaw.Shared;
@@ -137,6 +138,9 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_UI_AUTOMATION") == "1")
+            return;
+
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
             if (_activeFlyoutWindow == null)
@@ -201,6 +205,7 @@ public sealed partial class TrayMenuWindow : WindowEx
         ApplyRoundedWindowRegion();
         Activate();
         SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _ = VisualTestCapture.CaptureAsync(RootGrid, "TrayMenu");
     }
 
     private void ShowAdjacentTo(FrameworkElement parentElement)
@@ -278,6 +283,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             Tag = action,
             CornerRadius = new CornerRadius(4)
         };
+        AutomationProperties.SetAutomationId(button, BuildMenuItemAutomationId(action, text));
 
         if (!isEnabled)
             content.Opacity = 0.5;
@@ -301,6 +307,18 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         MenuPanel.Children.Add(button);
         _itemCount++;
+    }
+
+    private static string BuildMenuItemAutomationId(string action, string text)
+    {
+        var source = string.IsNullOrWhiteSpace(action) ? text : action;
+        var chars = source
+            .Where(char.IsLetterOrDigit)
+            .Take(48)
+            .ToArray();
+        return chars.Length == 0
+            ? "TrayMenuItem"
+            : "TrayMenuItem" + new string(chars);
     }
 
     public void AddFlyoutMenuItem(string text, string? icon, IEnumerable<TrayMenuFlyoutItem> items, bool indent = false)
