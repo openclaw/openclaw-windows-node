@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -36,6 +37,11 @@ public class SettingsRoundTripTests
             NodeCameraEnabled = false,
             NodeLocationEnabled = true,
             NodeBrowserProxyEnabled = false,
+            NodeTtsEnabled = true,
+            TtsProvider = "elevenlabs",
+            TtsElevenLabsApiKey = "elevenlabs-key",
+            TtsElevenLabsModel = "eleven_multilingual_v2",
+            TtsElevenLabsVoiceId = "voice-123",
             HasSeenActivityStreamTip = true,
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
@@ -76,6 +82,11 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NodeCameraEnabled, restored.NodeCameraEnabled);
         Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
         Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
+        Assert.Equal(original.NodeTtsEnabled, restored.NodeTtsEnabled);
+        Assert.Equal(original.TtsProvider, restored.TtsProvider);
+        Assert.Equal(original.TtsElevenLabsApiKey, restored.TtsElevenLabsApiKey);
+        Assert.Equal(original.TtsElevenLabsModel, restored.TtsElevenLabsModel);
+        Assert.Equal(original.TtsElevenLabsVoiceId, restored.TtsElevenLabsVoiceId);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
@@ -133,6 +144,11 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCameraEnabled);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeTtsEnabled);
+        Assert.Equal("windows", settings.TtsProvider);
+        Assert.Null(settings.TtsElevenLabsApiKey);
+        Assert.Null(settings.TtsElevenLabsModel);
+        Assert.Null(settings.TtsElevenLabsVoiceId);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
@@ -182,6 +198,11 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCameraEnabled);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeTtsEnabled);
+        Assert.Equal("windows", settings.TtsProvider);
+        Assert.Null(settings.TtsElevenLabsApiKey);
+        Assert.Null(settings.TtsElevenLabsModel);
+        Assert.Null(settings.TtsElevenLabsVoiceId);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);
@@ -192,6 +213,23 @@ public class SettingsRoundTripTests
     public void InvalidJson_ReturnsNull()
     {
         Assert.Null(SettingsData.FromJson("not json at all"));
+    }
+
+    [Fact]
+    public void SettingsManager_ProtectsElevenLabsApiKeyForStorage()
+    {
+        var protectedValue = SettingsManager.ProtectSettingSecret("elevenlabs-key");
+
+        Assert.NotNull(protectedValue);
+        Assert.StartsWith("dpapi:", protectedValue);
+        Assert.DoesNotContain("elevenlabs-key", protectedValue);
+        Assert.Equal("elevenlabs-key", SettingsManager.UnprotectSettingSecret(protectedValue));
+    }
+
+    [Fact]
+    public void SettingsManager_ReturnsNullForCorruptedProtectedSecret()
+    {
+        Assert.Null(SettingsManager.UnprotectSettingSecret("dpapi:not-base64"));
     }
 
     [Theory]

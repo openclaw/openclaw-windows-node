@@ -34,6 +34,11 @@ public class SettingsData
     public bool NodeCameraEnabled { get; set; } = true;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    public bool NodeTtsEnabled { get; set; } = false;
+    public string TtsProvider { get; set; } = "windows";
+    public string? TtsElevenLabsApiKey { get; set; }
+    public string? TtsElevenLabsModel { get; set; }
+    public string? TtsElevenLabsVoiceId { get; set; }
     /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>

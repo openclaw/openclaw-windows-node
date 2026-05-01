@@ -2093,6 +2093,178 @@ public class CameraCapabilityTests
     }
 }
 
+public class TtsCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void CanHandle_TtsSpeak()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+
+        Assert.True(cap.CanHandle("tts.speak"));
+        Assert.False(cap.CanHandle("tts.stop"));
+        Assert.Equal("tts", cap.Category);
+    }
+
+    [Theory]
+    [InlineData("elevenlabs", "windows", "elevenlabs")]
+    [InlineData(" ELEVENLABS ", "windows", "elevenlabs")]
+    [InlineData(null, "elevenlabs", "elevenlabs")]
+    [InlineData("   ", "elevenlabs", "elevenlabs")]
+    [InlineData(null, "", "windows")]
+    [InlineData(null, "   ", "windows")]
+    public void ResolveProvider_NormalizesRequestedAndConfiguredValues(
+        string? requestedProvider,
+        string? configuredProvider,
+        string expected)
+    {
+        Assert.Equal(expected, TtsCapability.ResolveProvider(requestedProvider, configuredProvider));
+    }
+
+    [Fact]
+    public async Task Speak_ReturnsError_WhenTextMissing()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        var handlerCalled = false;
+        cap.SpeakRequested += (_, _) =>
+        {
+            handlerCalled = true;
+            return Task.FromResult(new TtsSpeakResult());
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-missing",
+            Command = "tts.speak",
+            Args = Parse("""{"text":"   "}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.False(handlerCalled);
+        Assert.Contains("text", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Speak_ReturnsError_WhenNoHandler()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-unavailable",
+            Command = "tts.speak",
+            Args = Parse("""{"text":"hello"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Speak_ReturnsError_WhenTextTooLong()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        var handlerCalled = false;
+        cap.SpeakRequested += (_, _) =>
+        {
+            handlerCalled = true;
+            return Task.FromResult(new TtsSpeakResult());
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-too-long",
+            Command = "tts.speak",
+            Args = Parse(JsonSerializer.Serialize(new
+            {
+                text = new string('x', TtsCapability.MaxTextLength + 1)
+            }))
+        });
+
+        Assert.False(res.Ok);
+        Assert.False(handlerCalled);
+        Assert.Contains(TtsCapability.MaxTextLength.ToString(), res.Error);
+    }
+
+    [Fact]
+    public async Task Speak_RaisesEvent_WithArgs()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        TtsSpeakArgs? received = null;
+        cap.SpeakRequested += (args, _) =>
+        {
+            received = args;
+            return Task.FromResult(new TtsSpeakResult
+            {
+                Provider = TtsCapability.ElevenLabsProvider,
+                ContentType = "audio/mpeg",
+                DurationMs = 123
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-args",
+            Command = "tts.speak",
+            Args = Parse("""{"text":" hello world ","provider":"elevenlabs","voiceId":"voice-1","model":"model-1","interrupt":true}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal("hello world", received!.Text);
+        Assert.Equal("elevenlabs", received.Provider);
+        Assert.Equal("voice-1", received.VoiceId);
+        Assert.Equal("model-1", received.Model);
+        Assert.True(received.Interrupt);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("spoken").GetBoolean());
+        Assert.Equal("elevenlabs", root.GetProperty("provider").GetString());
+        Assert.Equal("audio/mpeg", root.GetProperty("contentType").GetString());
+        Assert.Equal(123, root.GetProperty("durationMs").GetInt32());
+    }
+
+    [Fact]
+    public async Task Speak_ReturnsError_WhenHandlerThrows()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        cap.SpeakRequested += (_, _) => throw new InvalidOperationException("Audio device unavailable");
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-fail",
+            Command = "tts.speak",
+            Args = Parse("""{"text":"hello"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Audio device unavailable", res.Error);
+    }
+
+    [Fact]
+    public async Task UnknownCommand_ReturnsError()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-unknown",
+            Command = "tts.stop",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
+    }
+}
+
 public class LocationCapabilityTests
 {
     private static JsonElement Parse(string json)

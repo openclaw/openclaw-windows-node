@@ -61,6 +61,7 @@ These features need the gateway to send `node.invoke` commands:
 | `location.get` | Get Windows location | Uses Windows location permission/settings |
 | `device.info` / `device.status` | Device metadata/status | Returns host/app/locale plus battery/storage/network/uptime payloads |
 | `browser.proxy` | Proxy browser-control host requests | Requires Browser proxy bridge enabled, a compatible browser-control host listening on gateway port + 2, and matching browser-control auth |
+| `tts.speak` | Speak text aloud | Requires Text-to-speech playback enabled in Settings; gateway mode also requires `tts.speak` in `gateway.nodes.allowCommands` |
 
 ## Capabilities Advertised
 
@@ -72,6 +73,7 @@ When the node connects, it advertises these capabilities:
 - `location` - Windows.Devices.Geolocation
 - `device` - Host/app metadata and lightweight status
 - `browser` - Local `browser.proxy` bridge to a browser-control host on gateway port + 2, when enabled in Settings
+- `tts` - Windows speech synthesis or ElevenLabs playback, when enabled in Settings
 
 ## Security Features
 

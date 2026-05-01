@@ -937,6 +937,8 @@ public class CommandCenterModelTests
         Assert.Contains("device.info", CommandCenterCommandGroups.SafeCompanionCommands);
         Assert.Contains("device.status", CommandCenterCommandGroups.SafeCompanionCommands);
         Assert.Contains("screen.record", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("tts.speak", CommandCenterCommandGroups.DangerousCommands);
+        Assert.DoesNotContain("tts.speak", CommandCenterCommandGroups.MacNodeParityCommands);
         Assert.Contains("browser.proxy", CommandCenterCommandGroups.BrowserCommands);
         Assert.Contains("browser.proxy", CommandCenterCommandGroups.MacNodeParityCommands);
     }

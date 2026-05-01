@@ -4,7 +4,7 @@
 
 ## Summary
 
-The Windows tray app now ships a **local Model Context Protocol (MCP) server** alongside its existing OpenClaw gateway client. The same node capabilities the agent reaches over the OpenClaw gateway WebSocket — `system.run`, `screen.snapshot`, `canvas.*`, `camera.list`, `camera.snap`, `camera.clip`, `location.get`, `system.notify`, `system.execApprovals.*` — are advertised, on the same machine, as MCP tools over `http://127.0.0.1:8765/`.
+The Windows tray app now ships a **local Model Context Protocol (MCP) server** alongside its existing OpenClaw gateway client. The same node capabilities the agent reaches over the OpenClaw gateway WebSocket — `system.run`, `screen.snapshot`, `canvas.*`, `camera.list`, `camera.snap`, `camera.clip`, `location.get`, `tts.speak`, `system.notify`, `system.execApprovals.*` — are advertised, on the same machine, as MCP tools over `http://127.0.0.1:8765/`.
 
 This means any local MCP client (Claude Desktop, Claude Code, Cursor, an MCP-aware CLI, a custom dev script) can reach into the running tray and drive Windows-native capabilities directly, without an OpenClaw gateway in the loop. The tray app can run in **MCP-only mode** with no gateway connection at all.
 

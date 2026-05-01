@@ -235,6 +235,10 @@ public class McpToolBridge
             "Capture a still photo from a camera. Args: deviceId (string, optional — defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
         ["camera.clip"] =
             "Record a short clip from a camera. Args: deviceId (string, optional), durationMs (int, required, max 60000), format ('mp4'|'webm', default 'mp4'), maxWidth (int, default 1280). Returns { format, durationMs, base64 }.",
+
+        // tts.*
+        ["tts.speak"] =
+            "Speak text aloud on the Windows node. Args: text (string, required), provider ('windows'|'elevenlabs', optional), voiceId (string, optional), model (string, optional), interrupt (bool, default false). Returns { spoken, provider, contentType, durationMs }.",
     };
 
     private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)

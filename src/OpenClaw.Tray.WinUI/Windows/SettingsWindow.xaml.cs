@@ -95,6 +95,12 @@ public sealed partial class SettingsWindow : WindowEx
         NodeCameraToggle.IsOn = _settings.NodeCameraEnabled;
         NodeLocationToggle.IsOn = _settings.NodeLocationEnabled;
         NodeBrowserProxyToggle.IsOn = _settings.NodeBrowserProxyEnabled;
+        NodeTtsToggle.IsOn = _settings.NodeTtsEnabled;
+        SelectTtsProvider(_settings.TtsProvider);
+        TtsElevenLabsApiKeyPasswordBox.Password = _settings.TtsElevenLabsApiKey;
+        TtsElevenLabsVoiceIdTextBox.Text = _settings.TtsElevenLabsVoiceId;
+        TtsElevenLabsModelTextBox.Text = _settings.TtsElevenLabsModel;
+        UpdateTtsProviderUiState();
         UpdateSshTunnelPreviewText();
         McpServerToggle.IsOn = _settings.EnableMcpServer;
         McpUrlTextBox.Text = NodeService.McpServerUrl;
@@ -387,6 +393,11 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.NodeCameraEnabled = NodeCameraToggle.IsOn;
         _settings.NodeLocationEnabled = NodeLocationToggle.IsOn;
         _settings.NodeBrowserProxyEnabled = NodeBrowserProxyToggle.IsOn;
+        _settings.NodeTtsEnabled = NodeTtsToggle.IsOn;
+        _settings.TtsProvider = GetSelectedTtsProvider();
+        _settings.TtsElevenLabsApiKey = TtsElevenLabsApiKeyPasswordBox.Password.Trim();
+        _settings.TtsElevenLabsVoiceId = TtsElevenLabsVoiceIdTextBox.Text.Trim();
+        _settings.TtsElevenLabsModel = TtsElevenLabsModelTextBox.Text.Trim();
         _settings.EnableMcpServer = McpServerToggle.IsOn;
 
         _settings.Save();
@@ -629,6 +640,48 @@ public sealed partial class SettingsWindow : WindowEx
     private void OnNodeBrowserProxyToggled(object sender, RoutedEventArgs e)
     {
         UpdateSshTunnelPreviewText();
+    }
+
+    private void OnTtsProviderSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        UpdateTtsProviderUiState();
+    }
+
+    private void SelectTtsProvider(string provider)
+    {
+        for (int i = 0; i < TtsProviderComboBox.Items.Count; i++)
+        {
+            if (TtsProviderComboBox.Items[i] is Microsoft.UI.Xaml.Controls.ComboBoxItem item &&
+                string.Equals(item.Tag?.ToString(), provider, StringComparison.OrdinalIgnoreCase))
+            {
+                TtsProviderComboBox.SelectedIndex = i;
+                return;
+            }
+        }
+
+        TtsProviderComboBox.SelectedIndex = 0;
+    }
+
+    private string GetSelectedTtsProvider()
+    {
+        if (TtsProviderComboBox.SelectedItem is Microsoft.UI.Xaml.Controls.ComboBoxItem item &&
+            item.Tag is not null)
+        {
+            return item.Tag.ToString() ?? "windows";
+        }
+
+        return "windows";
+    }
+
+    private void UpdateTtsProviderUiState()
+    {
+        if (TtsElevenLabsSettingsPanel == null)
+            return;
+
+        TtsElevenLabsSettingsPanel.Visibility =
+            string.Equals(GetSelectedTtsProvider(), "elevenlabs", StringComparison.OrdinalIgnoreCase)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
     }
 
     private void OnUseLocalGateway(object sender, RoutedEventArgs e)

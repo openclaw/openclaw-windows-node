@@ -78,6 +78,7 @@ public class McpToolBridgeTests
             new FakeCapability("canvas", "canvas.a2ui.push"),
             new FakeCapability("screen", "screen.snapshot"),
             new FakeCapability("camera", "camera.snap"),
+            new FakeCapability("tts", "tts.speak"),
             new FakeCapability("custom", "custom.unknown"),
         };
         var bridge = CreateBridge(caps);
@@ -95,6 +96,7 @@ public class McpToolBridgeTests
         Assert.Contains("A2UI v0.8", byName["canvas.a2ui.push"]);
         Assert.Contains("screenshot", byName["screen.snapshot"]);
         Assert.Contains("camera", byName["camera.snap"], System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Speak text", byName["tts.speak"]);
 
         // Unknown commands keep the generic fallback so newly-added capabilities still render.
         Assert.Equal("custom capability: custom.unknown", byName["custom.unknown"]);

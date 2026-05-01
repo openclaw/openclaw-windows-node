@@ -1023,7 +1023,8 @@ public static class CommandCenterCommandGroups
     [
         "camera.snap",
         "camera.clip",
-        "screen.record"
+        "screen.record",
+        "tts.speak"
     ];
 
     public static readonly FrozenSet<string> DangerousCommandSet =
@@ -1046,7 +1047,9 @@ public static class CommandCenterCommandGroups
     public static readonly string[] MacNodeParityCommands =
     [
         .. SafeCompanionCommands,
-        .. DangerousCommands,
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
         "system.notify",
         "system.run",
         "system.which",
