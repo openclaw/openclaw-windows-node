@@ -23,7 +23,7 @@
 #>
 
 param(
-    [ValidateSet("All", "Tray", "WinUI", "Shared", "CommandPalette", "Cli")]
+    [ValidateSet("All", "Tray", "WinUI", "Shared", "CommandPalette", "Cli", "WinNodeCli")]
     [string]$Project = "All",
     
     [ValidateSet("Debug", "Release")]
@@ -188,12 +188,13 @@ function Build-Project($name, $path, $useRid = $false) {
 $projects = @{
     "Shared" = @{ Path = "src/OpenClaw.Shared/OpenClaw.Shared.csproj"; UseRid = $false }
     "Cli" = @{ Path = "src/OpenClaw.Cli/OpenClaw.Cli.csproj"; UseRid = $false }
+    "WinNodeCli" = @{ Path = "src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj"; UseRid = $false }
     "Tray" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
     "WinUI" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
     "CommandPalette" = @{ Path = "src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj"; UseRid = $false }
 }
 
-$toBuild = if ($Project -eq "All") { @("Shared", "Cli", "WinUI") } else { @($Project) }
+$toBuild = if ($Project -eq "All") { @("Shared", "Cli", "WinNodeCli", "WinUI") } else { @($Project) }
 
 # Always build Shared first if building other projects
 if ($Project -ne "Shared" -and $Project -ne "All" -and $toBuild -notcontains "Shared") {

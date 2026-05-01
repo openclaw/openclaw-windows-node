@@ -46,14 +46,22 @@ public sealed class TrayAppFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Poll the friendly GET probe until the listener is up. The bridge starts
-        // synchronously inside RegisterCapabilities, but the WinUI startup sequence
-        // (mutex, settings, tray icon, etc.) runs first.
+        // Readiness has two preconditions, both of which must hold before any
+        // test runs a JSON-RPC call:
+        //   1. mcp-token.txt has been written by the tray. The tray creates it
+        //      synchronously inside StartMcpServer, just before the listener
+        //      binds — so on a healthy run it appears slightly *before* the
+        //      HTTP server starts accepting. Required for Authorization headers.
+        //   2. GET / returns 200 with that bearer token. Confirms the listener
+        //      is up *and* the in-memory token matches the on-disk one.
+        // Returning ready on (2) alone is unsafe: against a tray binary built
+        // before the auth-before-dispatch hardening, GET / returns 200 even
+        // without auth, so the fixture would skip step (1) and hand out a
+        // tokenless Client — every subsequent POST then 401s.
         var deadline = DateTime.UtcNow.AddSeconds(60);
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         var tokenPath = Path.Combine(DataDir, "mcp-token.txt");
         string? token = null;
-        var clientHasToken = false;
         Exception? lastEx = null;
         while (DateTime.UtcNow < deadline)
         {
@@ -65,9 +73,23 @@ public sealed class TrayAppFixture : IAsyncLifetime
             }
             try
             {
-                if (token is null && File.Exists(tokenPath))
+                if (token is null)
                 {
+                    if (!File.Exists(tokenPath))
+                    {
+                        await Task.Delay(500).ConfigureAwait(false);
+                        continue;
+                    }
                     token = (await File.ReadAllTextAsync(tokenPath).ConfigureAwait(false)).Trim();
+                    if (string.IsNullOrEmpty(token))
+                    {
+                        // Mid-write zero-byte file is theoretically possible (the
+                        // tray writes to a sibling temp and renames, but file
+                        // systems are funny). Re-read on the next tick.
+                        token = null;
+                        await Task.Delay(500).ConfigureAwait(false);
+                        continue;
+                    }
                     http.DefaultRequestHeaders.Authorization =
                         new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
                 }
@@ -75,14 +97,8 @@ public sealed class TrayAppFixture : IAsyncLifetime
                 var resp = await http.GetAsync($"http://127.0.0.1:{McpPort}/").ConfigureAwait(false);
                 if (resp.StatusCode == HttpStatusCode.OK)
                 {
-                    // Server is up; re-issue Client with the bearer token so
-                    // subsequent POSTs are authorized too.
-                    if (token is not null && !clientHasToken)
-                    {
-                        Client.Dispose();
-                        Client = new McpClient(McpEndpoint, token);
-                        clientHasToken = true;
-                    }
+                    Client.Dispose();
+                    Client = new McpClient(McpEndpoint, token);
                     return;
                 }
             }
