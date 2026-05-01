@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -259,7 +258,13 @@ public class McpToolBridge
         }
 
         var caps = _capabilityProvider();
-        var capability = caps.FirstOrDefault(c => c.CanHandle(name));
+        INodeCapability? capability = null;
+        foreach (var c in caps)
+        {
+            if (!c.CanHandle(name)) continue;
+            capability = c;
+            break;
+        }
         if (capability == null)
             throw new McpToolException($"Unknown tool: {name}");
 
@@ -316,7 +321,7 @@ public class McpToolBridge
             JsonSerializer.Serialize(w, result, PayloadJsonOptions);
             w.WriteEndObject();
         }
-        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        return System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     private static string WriteError(JsonElement? id, int code, string message)
@@ -333,7 +338,7 @@ public class McpToolBridge
             w.WriteEndObject();
             w.WriteEndObject();
         }
-        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        return System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     /// <summary>
