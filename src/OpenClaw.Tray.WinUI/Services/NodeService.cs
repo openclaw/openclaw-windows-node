@@ -68,6 +68,7 @@ public sealed class NodeService : IDisposable
     private CameraCapability? _cameraCapability;
     private LocationCapability? _locationCapability;
     private DeviceCapability? _deviceCapability;
+    private DeviceStatusProvider? _deviceStatusProvider;
     private BrowserProxyCapability? _browserProxyCapability;
     private TtsCapability? _ttsCapability;
     private TextToSpeechService? _textToSpeechService;
@@ -292,8 +293,11 @@ public sealed class NodeService : IDisposable
             Register(_ttsCapability);
         }
 
-        // Device metadata/status capability
-        _deviceCapability = new DeviceCapability(_logger);
+        // Device metadata/status capability - dispose previous provider on re-registration
+        _deviceStatusProvider?.Dispose();
+        _deviceStatusProvider = new DeviceStatusProvider(_logger);
+        _deviceStatusProvider.StartCpuSampling();
+        _deviceCapability = new DeviceCapability(_logger, _deviceStatusProvider);
         Register(_deviceCapability);
 
         // BrowserProxy needs a live gateway connection — only register when gateway is up.
@@ -1309,6 +1313,8 @@ public sealed class NodeService : IDisposable
         _actionDispatcher = null;
 
         try { _navigationPromptGate.Dispose(); } catch { /* ignore */ }
+
+        try { _deviceStatusProvider?.Dispose(); } catch { /* ignore */ }
 
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
