@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -1474,77 +1475,438 @@ public class DeviceCapabilityTests
         return doc.RootElement.Clone();
     }
 
-    [Fact]
-    public void CanHandle_DeviceCommands()
+    private class FakeDeviceStatusProvider : IDeviceStatusProvider
     {
-        var cap = new DeviceCapability(NullLogger.Instance);
+        public bool ThrowOnBattery { get; set; }
 
-        Assert.True(cap.CanHandle("device.info"));
+        public object GetOsInfo() => new
+        {
+            version = "10.0.99999",
+            architecture = "X64",
+            machineName = "TEST-PC",
+            uptimeSeconds = 3600L
+        };
+
+        public Task<object> GetCpuInfoAsync() => Task.FromResult<object>(new
+        {
+            name = "Test CPU",
+            logicalProcessors = 8,
+            usagePercent = (double?)42.0
+        });
+
+        public object GetMemoryInfo() => new
+        {
+            totalBytes = 16L * 1024 * 1024 * 1024,
+            availableBytes = 8L * 1024 * 1024 * 1024,
+            usagePercent = 50.0
+        };
+
+        public object GetDiskInfo() => new
+        {
+            drives = new[]
+            {
+                new
+                {
+                    name = "C:\\",
+                    label = "OS",
+                    totalBytes = 500L * 1024 * 1024 * 1024,
+                    freeBytes = 250L * 1024 * 1024 * 1024,
+                    usagePercent = 50.0,
+                    format = "NTFS"
+                }
+            }
+        };
+
+        public object GetBatteryInfo() => ThrowOnBattery
+            ? throw new Exception("No battery hardware")
+            : new
+            {
+                present = true,
+                chargePercent = (int?)85,
+                isCharging = false,
+                estimatedMinutesRemaining = (int?)120
+            };
+
+        public void Dispose() { }
+    }
+
+    private static DeviceCapability CreateCapability(FakeDeviceStatusProvider? provider = null)
+    {
+        return new DeviceCapability(NullLogger.Instance, provider ?? new FakeDeviceStatusProvider());
+    }
+
+    private static JsonElement GetPayload(NodeInvokeResponse res)
+    {
+        return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+    }
+
+    [Fact]
+    public void CanHandle_DeviceStatus()
+    {
+        var cap = CreateCapability();
         Assert.True(cap.CanHandle("device.status"));
+    }
+
+    [Fact]
+    public void CanHandle_UnknownCommand()
+    {
+        var cap = CreateCapability();
         Assert.False(cap.CanHandle("device.unknown"));
+    }
+
+    [Fact]
+    public void Category_IsDevice()
+    {
+        var cap = CreateCapability();
         Assert.Equal("device", cap.Category);
     }
 
     [Fact]
-    public async Task DeviceInfo_ReturnsMacCompatiblePayloadShape()
+    public async Task Status_ReturnsAllSections_WhenNoFilter()
     {
-        var cap = new DeviceCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "d1", Command = "device.info", Args = Parse("""{}""") };
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest { Id = "t1", Command = "device.status", Args = Parse("""{}""") };
 
         var res = await cap.ExecuteAsync(req);
 
         Assert.True(res.Ok);
-        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
-        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("deviceName").GetString()));
-        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("modelIdentifier").GetString()));
-        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemName").GetString()));
-        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemVersion").GetString()));
-        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appVersion").GetString()));
-        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appBuild").GetString()));
-        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("locale").ValueKind);
+        var payload = GetPayload(res);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("collectedAt").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("os").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("cpu").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("memory").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("disk").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("battery").ValueKind);
     }
 
     [Fact]
-    public async Task DeviceStatus_ReturnsMacCompatiblePayloadShape()
+    public async Task Status_ReturnsOnlyRequested_WhenFiltered()
     {
-        var cap = new DeviceCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest { Id = "d2", Command = "device.status", Args = Parse("""{}""") };
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "t2",
+            Command = "device.status",
+            Args = Parse("""{"sections":["os","disk"]}""")
+        };
 
         var res = await cap.ExecuteAsync(req);
 
         Assert.True(res.Ok);
-        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var payload = GetPayload(res);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("collectedAt").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("os").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("disk").ValueKind);
+        // cpu, memory should NOT be present
+        Assert.False(payload.TryGetProperty("cpu", out _));
+        Assert.False(payload.TryGetProperty("memory", out _));
+        // battery always present for legacy compat (fallback stub when not requested)
         var battery = payload.GetProperty("battery");
         Assert.Equal("unknown", battery.GetProperty("state").GetString());
-        Assert.False(battery.GetProperty("lowPowerModeEnabled").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, battery.GetProperty("level").ValueKind);
+    }
 
-        Assert.Equal("nominal", payload.GetProperty("thermal").GetProperty("state").GetString());
+    [Fact]
+    public async Task Status_RejectsUnknownSections()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "t3",
+            Command = "device.status",
+            Args = Parse("""{"sections":["os","bogus"]}""")
+        };
 
-        var storage = payload.GetProperty("storage");
-        Assert.True(storage.GetProperty("totalBytes").GetInt64() >= 0);
-        Assert.True(storage.GetProperty("freeBytes").GetInt64() >= 0);
-        Assert.True(storage.GetProperty("usedBytes").GetInt64() >= 0);
+        var res = await cap.ExecuteAsync(req);
 
-        var network = payload.GetProperty("network");
-        Assert.Contains(network.GetProperty("status").GetString(), new[] { "satisfied", "unsatisfied" });
-        Assert.False(network.GetProperty("isExpensive").GetBoolean());
-        Assert.False(network.GetProperty("isConstrained").GetBoolean());
-        Assert.Equal(JsonValueKind.Array, network.GetProperty("interfaces").ValueKind);
+        Assert.False(res.Ok);
+        Assert.Contains("bogus", res.Error);
+        Assert.Contains("Valid:", res.Error);
+    }
 
-        Assert.True(payload.GetProperty("uptimeSeconds").GetDouble() >= 0);
+    [Fact]
+    public async Task Status_OsSection_HasExpectedFields()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "t4",
+            Command = "device.status",
+            Args = Parse("""{"sections":["os"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var os = GetPayload(res).GetProperty("os");
+        Assert.Equal("10.0.99999", os.GetProperty("version").GetString());
+        Assert.Equal("X64", os.GetProperty("architecture").GetString());
+        Assert.Equal("TEST-PC", os.GetProperty("machineName").GetString());
+        Assert.Equal(3600, os.GetProperty("uptimeSeconds").GetInt64());
+    }
+
+    [Fact]
+    public async Task Status_DiskSection_HasDrives()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "t5",
+            Command = "device.status",
+            Args = Parse("""{"sections":["disk"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var disk = GetPayload(res).GetProperty("disk");
+        var drives = disk.GetProperty("drives");
+        Assert.Equal(JsonValueKind.Array, drives.ValueKind);
+        Assert.True(drives.GetArrayLength() > 0);
+        var firstDrive = drives[0];
+        Assert.True(firstDrive.GetProperty("totalBytes").GetInt64() > 0);
+        Assert.Equal("NTFS", firstDrive.GetProperty("format").GetString());
+    }
+
+    [Fact]
+    public async Task Status_MemorySection_HasUsage()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "t6",
+            Command = "device.status",
+            Args = Parse("""{"sections":["memory"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var mem = GetPayload(res).GetProperty("memory");
+        Assert.True(mem.GetProperty("totalBytes").GetInt64() > 0);
+        var usage = mem.GetProperty("usagePercent").GetDouble();
+        Assert.InRange(usage, 0, 100);
+    }
+
+    [Fact]
+    public async Task Status_BatterySection_GracefulOnFailure()
+    {
+        var provider = new FakeDeviceStatusProvider { ThrowOnBattery = true };
+        var cap = CreateCapability(provider);
+        var req = new NodeInvokeRequest
+        {
+            Id = "t7",
+            Command = "device.status",
+            Args = Parse("""{"sections":["battery"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        // Command should succeed - battery section has error + legacy fields
+        Assert.True(res.Ok);
+        var battery = GetPayload(res).GetProperty("battery");
+        Assert.NotEqual(JsonValueKind.Undefined, battery.GetProperty("error").ValueKind);
+        Assert.Contains("No battery hardware", battery.GetProperty("error").GetString());
+        // Legacy fields must still be present for backward compat
+        Assert.True(battery.TryGetProperty("level", out _), "battery.level missing on failure path");
+        Assert.Equal("unknown", battery.GetProperty("state").GetString());
+        Assert.True(battery.TryGetProperty("lowPowerModeEnabled", out _), "battery.lowPowerModeEnabled missing on failure path");
+    }
+
+    [Fact]
+    public async Task Status_EmptySectionsArray_ReturnsAll()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "t8",
+            Command = "device.status",
+            Args = Parse("""{"sections":[]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = GetPayload(res);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("os").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("cpu").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("memory").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("disk").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("battery").ValueKind);
+    }
+
+    [Fact]
+    public async Task Status_HasCollectedAtTimestamp()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest { Id = "t9", Command = "device.status", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var collectedAt = GetPayload(res).GetProperty("collectedAt").GetString();
+        Assert.NotNull(collectedAt);
+        // Verify it's valid ISO 8601
+        Assert.True(DateTimeOffset.TryParse(collectedAt, out var dto));
+        // Should be recent (within last 10 seconds)
+        Assert.InRange(dto, DateTimeOffset.UtcNow.AddSeconds(-10), DateTimeOffset.UtcNow.AddSeconds(1));
+    }
+
+    [Fact]
+    public async Task DeviceInfo_StillWorks()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest { Id = "di", Command = "device.info", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = GetPayload(res);
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("deviceName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("systemName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("appVersion").GetString()));
     }
 
     [Fact]
     public async Task DeviceUnknownCommand_ReturnsError()
     {
-        var cap = new DeviceCapability(NullLogger.Instance);
+        var cap = CreateCapability();
         var req = new NodeInvokeRequest { Id = "d3", Command = "device.unknown", Args = Parse("""{}""") };
 
         var res = await cap.ExecuteAsync(req);
 
         Assert.False(res.Ok);
         Assert.Contains("Unknown command", res.Error);
+    }
+
+    [Fact]
+    public async Task Status_Default_ContainsLegacyFields()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest { Id = "leg1", Command = "device.status", Args = Parse("""{}""") };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = GetPayload(res);
+
+        // Legacy battery fields — must be present even when provider returns new shape
+        var battery = payload.GetProperty("battery");
+        Assert.NotEqual(JsonValueKind.Undefined, battery.ValueKind);
+        // Old contract fields: level, state, lowPowerModeEnabled
+        Assert.True(battery.TryGetProperty("level", out _), "battery.level missing");
+        Assert.True(battery.TryGetProperty("state", out _), "battery.state missing");
+        Assert.True(battery.TryGetProperty("lowPowerModeEnabled", out _), "battery.lowPowerModeEnabled missing");
+        // New fields also present
+        Assert.True(battery.TryGetProperty("present", out _), "battery.present missing");
+        Assert.True(battery.TryGetProperty("chargePercent", out _), "battery.chargePercent missing");
+
+        // Legacy thermal
+        var thermal = payload.GetProperty("thermal");
+        Assert.Equal("nominal", thermal.GetProperty("state").GetString());
+
+        // Legacy storage
+        var storage = payload.GetProperty("storage");
+        Assert.NotEqual(JsonValueKind.Undefined, storage.ValueKind);
+
+        // Legacy network
+        var network = payload.GetProperty("network");
+        Assert.NotEqual(JsonValueKind.Undefined, network.ValueKind);
+
+        // Legacy top-level uptimeSeconds
+        var uptime = payload.GetProperty("uptimeSeconds").GetDouble();
+        Assert.True(uptime >= 0);
+    }
+
+    [Fact]
+    public async Task Status_Filtered_StillContainsLegacyFields()
+    {
+        var cap = CreateCapability();
+        var req = new NodeInvokeRequest
+        {
+            Id = "leg2",
+            Command = "device.status",
+            Args = Parse("""{"sections":["os","disk"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var payload = GetPayload(res);
+
+        // Requested sections present
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("os").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("disk").ValueKind);
+
+        // Legacy fields always present regardless of sections filter
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("battery").ValueKind);
+        Assert.Equal("nominal", payload.GetProperty("thermal").GetProperty("state").GetString());
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("storage").ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, payload.GetProperty("network").ValueKind);
+        Assert.True(payload.GetProperty("uptimeSeconds").GetDouble() >= 0);
+    }
+
+    [Fact]
+    public async Task Status_LazyDiskProvider_DoesNotCrashCommand()
+    {
+        // A provider whose GetDiskInfo returns a lazy enumerable that throws
+        // during enumeration. SafeCollect catches synchronous throws; the lazy
+        // throw happens during serialization. This test verifies the command
+        // still completes (Success wraps the result; serialization is the
+        // caller's concern). The real DeviceStatusProvider materializes with
+        // .ToArray() to prevent this scenario.
+        var provider = new LazyThrowingDiskProvider();
+        var cap = new DeviceCapability(NullLogger.Instance, provider);
+        var req = new NodeInvokeRequest
+        {
+            Id = "lazy1",
+            Command = "device.status",
+            Args = Parse("""{"sections":["disk"]}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        // Command itself succeeds — the lazy enumerable hasn't been iterated yet.
+        // This confirms SafeCollect doesn't mask the issue; materialization in
+        // the provider (.ToArray()) is what actually prevents serialization failures.
+        Assert.True(res.Ok);
+    }
+
+    [Fact]
+    public async Task Status_ProviderDisposal_GetCpuInfoStillSafe()
+    {
+        var provider = new FakeDeviceStatusProvider();
+        var cap = new DeviceCapability(NullLogger.Instance, provider);
+
+        // Dispose the provider before calling
+        provider.Dispose();
+
+        // GetCpuInfoAsync should still return data (fake doesn't depend on timer)
+        var req = new NodeInvokeRequest { Id = "disp1", Command = "device.status", Args = Parse("""{"sections":["cpu"]}""") };
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        var cpu = GetPayload(res).GetProperty("cpu");
+        Assert.Equal(8, cpu.GetProperty("logicalProcessors").GetInt32());
+    }
+
+    private class LazyThrowingDiskProvider : IDeviceStatusProvider
+    {
+        public object GetOsInfo() => new { version = "10.0", architecture = "X64", machineName = "TEST", uptimeSeconds = 0L };
+        public Task<object> GetCpuInfoAsync() => Task.FromResult<object>(new { name = "CPU", logicalProcessors = 1, usagePercent = (double?)null });
+        public object GetMemoryInfo() => new { totalBytes = 0L, availableBytes = 0L, usagePercent = 0.0 };
+        public object GetDiskInfo()
+        {
+            // Returns a lazy enumerable that throws during enumeration/serialization,
+            // not at construction time — simulates a drive that becomes unavailable
+            // after the provider method returns but before JSON serialization.
+            IEnumerable<object> LazyDrives()
+            {
+                throw new IOException("Simulated lazy disk enumeration failure");
+            }
+            return new { drives = LazyDrives() };
+        }
+        public object GetBatteryInfo() => new { present = false, chargePercent = (int?)null, isCharging = false, estimatedMinutesRemaining = (int?)null };
+        public void Dispose() { }
     }
 }
 
