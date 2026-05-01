@@ -52,7 +52,8 @@ public static class ExecApprovalV2InputValidator
             env = dict;
         }
 
-        // timeoutMs / timeout — positive integer; defaults to 30 000
+        // timeoutMs / timeout — positive integer; defaults to 30 000.
+        // Upper-bound clamping (legacy safety limit) is enforced in the execution/policy phase, not here.
         var timeoutMs = DefaultTimeoutMs;
         if (request.Args.ValueKind == JsonValueKind.Object)
         {
@@ -96,25 +97,26 @@ public static class ExecApprovalV2InputValidator
             foreach (var item in cmdEl.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.String) { malformed = true; return null; }
-                list.Add(item.GetString()?.Trim() ?? "");
+                list.Add(item.GetString() ?? "");
             }
             return list.Count > 0 ? [.. list] : null;
         }
 
         if (cmdEl.ValueKind == JsonValueKind.String)
         {
-            var cmd = cmdEl.GetString()?.Trim();
-            if (string.IsNullOrEmpty(cmd)) return null;
+            var cmd = cmdEl.GetString();
+            if (string.IsNullOrWhiteSpace(cmd)) return null;
 
-            // Also merge a separate "args" array when command is a bare string
-            if (args.TryGetProperty("args", out var argsEl) &&
-                argsEl.ValueKind == JsonValueKind.Array)
+            // Also merge a separate "args" array when command is a bare string.
+            // A non-array "args" value is a protocol violation.
+            if (args.TryGetProperty("args", out var argsEl))
             {
+                if (argsEl.ValueKind != JsonValueKind.Array) { malformed = true; return null; }
                 var list = new List<string> { cmd };
                 foreach (var item in argsEl.EnumerateArray())
                 {
                     if (item.ValueKind != JsonValueKind.String) { malformed = true; return null; }
-                    list.Add(item.GetString()?.Trim() ?? "");
+                    list.Add(item.GetString() ?? "");
                 }
                 return [.. list];
             }

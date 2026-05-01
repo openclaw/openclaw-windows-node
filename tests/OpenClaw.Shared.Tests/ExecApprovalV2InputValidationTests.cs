@@ -136,7 +136,7 @@ public class ExecApprovalV2InputValidationTests
     [Fact]
     public void WhitespaceCommand_ValidationFailed()
     {
-        // String command trims to "" → TryParseArgv returns null → missing-command
+        // Whitespace-only string command → IsNullOrWhiteSpace → TryParseArgv returns null → missing-command
         var outcome = ExecApprovalV2InputValidator.Validate(Req("""{"command":"   "}"""));
 
         Assert.False(outcome.IsValid);
@@ -298,39 +298,42 @@ public class ExecApprovalV2InputValidationTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void ArrayCommand_ElementsAreTrimmed()
+    public void ArrayCommand_ElementsPreservedExactly()
     {
+        // argv elements are not trimmed; spaces are meaningful in arguments
         var outcome = ExecApprovalV2InputValidator.Validate(
             Req("""{"command":["  echo  ","  hello  "]}"""));
 
         Assert.True(outcome.IsValid);
-        Assert.Equal(["echo", "hello"], outcome.Request!.Argv);
+        Assert.Equal(["  echo  ", "  hello  "], outcome.Request!.Argv);
     }
 
     [Fact]
-    public void StringCommand_IsTrimmed()
+    public void StringCommand_PreservedExactly()
     {
+        // argv[0] from a string command is stored as-is; whitespace check uses IsNullOrWhiteSpace
         var outcome = ExecApprovalV2InputValidator.Validate(
             Req("""{"command":"  echo  "}"""));
 
         Assert.True(outcome.IsValid);
-        Assert.Equal(["echo"], outcome.Request!.Argv);
+        Assert.Equal(["  echo  "], outcome.Request!.Argv);
     }
 
     [Fact]
-    public void SeparateArgs_AreTrimmed()
+    public void SeparateArgs_PreservedExactly()
     {
+        // argv elements (including separate args) are not trimmed
         var outcome = ExecApprovalV2InputValidator.Validate(
             Req("""{"command":"  echo  ","args":["  hello  ","  world  "]}"""));
 
         Assert.True(outcome.IsValid);
-        Assert.Equal(["echo", "hello", "world"], outcome.Request!.Argv);
+        Assert.Equal(["  echo  ", "  hello  ", "  world  "], outcome.Request!.Argv);
     }
 
     [Fact]
     public void ArrayCommand_WhitespaceOnlyFirstElement_EmptyCommand()
     {
-        // In array path, trim produces ""; element stays in list → argv[0]="" → empty-command
+        // argv[0] is whitespace-only → IsNullOrWhiteSpace check → empty-command
         var outcome = ExecApprovalV2InputValidator.Validate(
             Req("""{"command":["  ","arg"]}"""));
 
@@ -339,21 +342,20 @@ public class ExecApprovalV2InputValidationTests
     }
 
     [Fact]
-    public void ArrayCommand_WhitespaceOnlyNonFirstElement_TrimmedToEmptyString_Allowed()
+    public void ArrayCommand_WhitespaceOnlyNonFirstElement_PreservedAsIs()
     {
-        // Trim normalizes whitespace but does not filter argv[1+]: "" is a valid POSIX argument.
-        // Only argv[0] (the executable) is checked for empty/whitespace.
+        // argv[1+] are not trimmed and not checked for whitespace — "  " is a valid argument
         var outcome = ExecApprovalV2InputValidator.Validate(
             Req("""{"command":["echo","  "]}"""));
 
         Assert.True(outcome.IsValid);
-        Assert.Equal(["echo", ""], outcome.Request!.Argv);
+        Assert.Equal(["echo", "  "], outcome.Request!.Argv);
     }
 
     [Fact]
     public void StringCommand_WhitespaceOnly_MissingCommand()
     {
-        // In string path, trim produces "" → TryParseArgv returns null → missing-command
+        // Whitespace-only string command → IsNullOrWhiteSpace → TryParseArgv returns null → missing-command
         var outcome = ExecApprovalV2InputValidator.Validate(
             Req("""{"command":"  "}"""));
 
@@ -435,8 +437,29 @@ public class ExecApprovalV2InputValidationTests
         Assert.Equal("malformed-command", outcome.Error!.Reason);
     }
 
+    [Fact]
+    public void SeparateArgs_NotAnArray_ValidationFailed()
+    {
+        // args present but not an array → protocol violation → malformed-command
+        var outcome = ExecApprovalV2InputValidator.Validate(
+            Req("""{"command":"echo","args":"hello"}"""));
+
+        Assert.False(outcome.IsValid);
+        Assert.Equal("malformed-command", outcome.Error!.Reason);
+    }
+
+    [Fact]
+    public void SeparateArgs_NotAnArray_ObjectValue_ValidationFailed()
+    {
+        var outcome = ExecApprovalV2InputValidator.Validate(
+            Req("""{"command":"echo","args":{"x":1}}"""));
+
+        Assert.False(outcome.IsValid);
+        Assert.Equal("malformed-command", outcome.Error!.Reason);
+    }
+
     // -------------------------------------------------------------------------
-    // 12. Timeout field precedence
+    // 12. Timeout field precedence and upper-bound deferral
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -459,6 +482,18 @@ public class ExecApprovalV2InputValidationTests
 
         Assert.False(outcome.IsValid);
         Assert.Equal("invalid-timeout", outcome.Error!.Reason);
+    }
+
+    [Fact]
+    public void LargeTimeout_PassesStructuralValidation()
+    {
+        // Upper-bound clamping (legacy safety limit) is enforced in the execution/policy phase.
+        // Structural validation accepts any positive integer.
+        var outcome = ExecApprovalV2InputValidator.Validate(
+            Req("""{"command":"echo","timeoutMs":86400000}"""));
+
+        Assert.True(outcome.IsValid);
+        Assert.Equal(86_400_000, outcome.Request!.TimeoutMs);
     }
 
     // -------------------------------------------------------------------------
@@ -589,7 +624,8 @@ public class ExecApprovalV2InputValidationTests
             Req("""{"command":[]}"""),                              // missing-command (empty array)
             Req("""{"command":"   "}"""),                           // missing-command (trims to empty)
             Req("""{"command":["echo",42]}"""),                     // malformed-command
-            Req("""{"command":"echo","args":[1]}"""),               // malformed-command
+            Req("""{"command":"echo","args":[1]}"""),               // malformed-command (non-string element)
+            Req("""{"command":"echo","args":"hello"}"""),           // malformed-command (args not an array)
             Req("""{"command":"echo","cwd":""}"""),                 // empty-cwd
             Req("""{"command":"echo","cwd":123}"""),                // malformed-cwd
             Req("""{"command":"echo","env":"bad"}"""),              // malformed-env
