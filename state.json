@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-05-01T01:17:47Z",
-  "run_id": "25197516078",
+  "last_run": "2026-05-01T02:00:00Z",
+  "run_id": "25214526019",
   "comments_made": {
     "246": "2026-05-01T01:17:47Z",
     "252": "2026-05-01T01:17:47Z",
@@ -12,6 +12,20 @@
     "99": "prior run"
   },
   "fix_attempts": {
+    "fix-execapproval-dangerous-wildcard-stem-2026-05-01": {
+      "pr_branch": "repo-assist/fix-execapproval-dangerous-wildcard-stem-2026-05-01",
+      "pr_number": "aw_pr3fix",
+      "status": "open",
+      "created": "2026-05-01T02:00:00Z",
+      "description": "Task3/security: stem+wildcard bypass in ValidateExecApprovalRules — 'rm*' passes 'rm ' contains-check but matches rm -rf /; fix checks stem+'*' and stem+'?' for each trailing-space dangerous fragment; +7 InlineData tests"
+    },
+    "improve-default-exec-rules-noarg-2026-05-01": {
+      "pr_branch": "repo-assist/improve-default-exec-rules-noarg-2026-05-01",
+      "pr_number": "aw_pr5imp",
+      "status": "open",
+      "created": "2026-05-01T02:00:00Z",
+      "description": "Task5: default exec approval patterns 'ipconfig *','ping *','dir *','cat *','type *' require at least one arg; changed to 'ipconfig*','ping*','dir*','cat*','type*' so no-arg usage also matches; +7 InlineData tests"
+    },
     "fix-execapproval-wildcard-bypass-2026-04-30": {
       "pr_branch": "repo-assist/fix-execapproval-wildcard-bypass-2026-04-30",
       "pr_number": 247,
@@ -69,10 +83,10 @@
     "231": "merged individually by shanselman",
     "232": "merged individually by shanselman"
   },
-  "notes": "Open Repo Assist PRs: #238 (McpHttpServer Linux fix), #243 (McpToolBridge perf), #245 (test coverage gaps), #247 (wildcard bypass security fix), #248 (battery event). #242 superseded by community PR #249 (commented to close). Community PRs: #249 (RBrid: device.status - supersedes #242), #250 (codemonkeychris: winnode CLI), #251 (AlexAlves87: tray refactor), #253 (RBrid: TTS - implements #252), #244 (AlexAlves87: system.run input validation), #241 (indierawk2k2: onboarding wizard), #120 (NichUK: voice mode). Issues to close: #191 (WebView2 bridge implemented), #235 (Dependabot bundle - individual PRs merged). Packaging issue #246 needs architecture-aware Updatum asset selector. Future: wire NodeService.cs BatteryStatusRequested to WinRT Battery.AggregateBattery; monitor packaging decision on #246.",
-  "monthly_activity_issue": "new May 2026 issue created this run",
+  "notes": "Open Repo Assist PRs: #238 (McpHttpServer Linux fix), #243 (McpToolBridge perf), #245 (test coverage gaps), #247 (all-wildcard bypass), aw_pr3fix (dangerous stem+wildcard bypass — complements #247), #248 (battery event), aw_pr5imp (default exec rules no-arg). #242 superseded by community PR #249 (commented to close). Community PRs: #249 (RBrid: device.status), #250 (codemonkeychris: winnode CLI), #251 (AlexAlves87: tray refactor), #253 (RBrid: TTS - implements #252), #244 (AlexAlves87: system.run input validation), #241 (indierawk2k2: onboarding wizard), #120 (NichUK: voice mode). Issues to close: #191 (WebView2 bridge implemented), #235 (Dependabot bundle merged). Future: wire NodeService.cs BatteryStatusRequested to WinRT Battery.AggregateBattery; monitor packaging decision on #246.",
+  "monthly_activity_issue": "issue #254 updated this run (2026-05-01 02:00 UTC)",
   "backlog_cursor": {
-    "issues": 253,
+    "issues": 254,
     "prs": 253
   }
 }
