@@ -7,182 +7,77 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="General" Style="{StaticResource TitleTextBlockStyle}"/>
-
-            <!-- 1. OpenClaw Active Card -->
+            <!-- ═══ Zone A: Companion Stage ═══ -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="20"
-                    AutomationProperties.AutomationId="ActiveCard">
-                <StackPanel Spacing="8">
-                    <ToggleSwitch x:Name="ActiveToggle" Header="OpenClaw Active" IsOn="False"/>
-                    <TextBlock x:Name="ConnectionModeText" Text="Disconnected"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock x:Name="GatewayUrlLabel" Text="ws://localhost:18789"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 2. Health Status Card -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16"
-                    AutomationProperties.AutomationId="HealthCard">
-                <Grid>
+                    AutomationProperties.AutomationId="CompanionStageCard">
+                <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Ellipse x:Name="HealthStatusDot" Width="12" Height="12" Fill="Gray"/>
-                        <TextBlock x:Name="HealthStatusText" Text="Unknown"
-                                   Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center"/>
+                    <!-- Molty mascot with status ring -->
+                    <Grid Grid.Column="0" Width="72" Height="72" VerticalAlignment="Center">
+                        <!-- Colored ring (Ellipse behind emoji) -->
+                        <Ellipse x:Name="MoltyRing" Width="68" Height="68"
+                                 StrokeThickness="3" Fill="Transparent"
+                                 Stroke="{ThemeResource TextFillColorDisabledBrush}"/>
+                        <!-- Animated ProgressRing for "working" state -->
+                        <ProgressRing x:Name="MoltyProgressRing" Width="72" Height="72"
+                                      IsActive="False" Visibility="Collapsed"/>
+                        <!-- Lobster emoji -->
+                        <TextBlock Text="🦞" FontSize="36"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Status text -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                        <TextBlock x:Name="StatusHeadline" Text="Not connected to gateway"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock x:Name="StatusSubtext" Text=""
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
                     </StackPanel>
 
-                    <TextBlock x:Name="HealthLastCheckText" Grid.Column="1" Text=""
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               VerticalAlignment="Center" Margin="16,0,0,0"/>
-
-                    <Button x:Name="HealthCheckButton" Grid.Column="2"
-                            Content="Run Health Check" VerticalAlignment="Center"
-                            AutomationProperties.AutomationId="HealthCheckButton"/>
+                    <!-- Connection details (right) -->
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2"
+                                HorizontalAlignment="Right">
+                        <TextBlock x:Name="GatewayUrlText" Text="—"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   IsTextSelectionEnabled="True" HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="GatewayVersionText" Text=""
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="GatewayUptimeText" Text=""
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Right"/>
+                        <HyperlinkButton x:Name="ScanButton" Content="Scan for gateways"
+                                         Padding="0" FontSize="12"
+                                         HorizontalAlignment="Right"
+                                         AutomationProperties.AutomationId="ScanButton"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- 3. Stats Row -->
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Sessions" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="SessionsCountText" Text="0" FontSize="28" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Nodes" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="NodesCountText" Text="0" FontSize="28" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Usage" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="UsageCostText" Text="$0.00" FontSize="28" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </Border>
+            <!-- ═══ Quick Actions Row ═══ -->
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="QuickActionsCard">
+                <Button x:Name="DashboardButton" Content="Open Dashboard"
+                        AutomationProperties.AutomationId="DashboardButton"/>
+                <Button x:Name="ChatButton" Content="Open Chat"
+                        AutomationProperties.AutomationId="ChatButton"/>
+                <Button x:Name="HealthCheckButton" Content="Health Check"
+                        AutomationProperties.AutomationId="HealthCheckButton"/>
             </StackPanel>
-
-            <!-- 4. Connected Nodes Card -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16"
-                    AutomationProperties.AutomationId="ConnectedNodesCard">
-                <StackPanel Spacing="8">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Connected Nodes" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <HyperlinkButton x:Name="ViewNodesButton" Grid.Column="1" Content="View All →"
-                                         AutomationProperties.AutomationId="ViewNodesButton"/>
-                    </Grid>
-                    <TextBlock x:Name="NoNodesText" Text="No nodes connected"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel x:Name="NodesMiniList" Spacing="6"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 5. Connection Details Card -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16"
-                    AutomationProperties.AutomationId="ConnectionDetailsCard">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Connection Details" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <Grid ColumnSpacing="12" RowSpacing="4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Gateway URL"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="GatewayUrlText" Grid.Row="0" Grid.Column="1"
-                                   Text="—" IsTextSelectionEnabled="True"/>
-
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Auth Mode"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="AuthModeText" Grid.Row="1" Grid.Column="1" Text="—"/>
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="SSH Tunnel"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="SshTunnelText" Grid.Row="2" Grid.Column="1" Text="—"/>
-
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Tailscale"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="TailscaleText" Grid.Row="3" Grid.Column="1" Text="Not configured"/>
-                    </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- 6. Gateway Discovery Card -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16"
-                    AutomationProperties.AutomationId="DiscoveryCard">
-                <StackPanel Spacing="8">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE966;" FontSize="16"/>
-                        <TextBlock Text="Gateway Discovery" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </StackPanel>
-                    <TextBlock x:Name="DiscoveryStatusText" Text="Click Scan to find gateways on your network"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel x:Name="DiscoveryList" Spacing="4"/>
-                    <Button x:Name="ScanButton" Content="Scan Network" Click="OnScanNetwork"
-                            AutomationProperties.AutomationId="ScanButton"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 7. Quick Actions Card -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16"
-                    AutomationProperties.AutomationId="QuickActionsCard">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Quick Actions" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="QuickSendButton" Content="Quick Send"
-                                AutomationProperties.AutomationId="QuickSendButton"/>
-                        <Button x:Name="DashboardButton" Content="Open Dashboard"
-                                AutomationProperties.AutomationId="DashboardButton"/>
-                        <Button x:Name="HealthCheckButton2" Content="Run Health Check"
-                                AutomationProperties.AutomationId="HealthCheckButton2"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
 
         </StackPanel>
     </ScrollViewer>

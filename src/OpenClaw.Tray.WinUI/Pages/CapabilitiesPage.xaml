@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.CapabilitiesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+
+            <TextBlock Text="🖥️ This Computer" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Name="HostnameText"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+            <TextBlock Text="Device capabilities provided to agents via the gateway. Toggle what this computer can do."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" MaxWidth="500" Margin="0,0,0,8"/>
+
+            <!-- Capability toggles -->
+            <ItemsRepeater x:Name="CapabilityRepeater">
+                <ItemsRepeater.Layout>
+                    <UniformGridLayout MinItemWidth="220" MinItemHeight="60"
+                                       MinColumnSpacing="12" MinRowSpacing="8"/>
+                </ItemsRepeater.Layout>
+            </ItemsRepeater>
+
+            <!-- Node status -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,8,0,0">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Node Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Ellipse x:Name="NodeStatusDot" Width="10" Height="10"
+                                 VerticalAlignment="Center" Fill="Gray"/>
+                        <TextBlock x:Name="NodeStatusText" Text="Node mode disabled"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="NodeDetailsText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

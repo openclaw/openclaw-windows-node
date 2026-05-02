@@ -1631,6 +1631,18 @@ public class ModelsListInfo
     public List<ModelInfo> Models { get; set; } = new();
 }
 
+// ── Agent Info ──
+
+public class AgentInfo
+{
+    public string Id { get; set; } = "";
+    public string? Name { get; set; }
+    public string? Emoji { get; set; }
+    public string? Workspace { get; set; }
+    public string? ModelPrimary { get; set; }
+    public string DisplayName => Name ?? Id;
+}
+
 // ── Presence (connected clients/instances) ──
 
 public class PresenceEntry

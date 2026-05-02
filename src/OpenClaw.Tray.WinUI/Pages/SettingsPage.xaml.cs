@@ -60,7 +60,6 @@ public sealed partial class SettingsPage : Page
         NotifyBuildCb.IsChecked = settings.NotifyBuild;
         NotifyStockCb.IsChecked = settings.NotifyStock;
         NotifyInfoCb.IsChecked = settings.NotifyInfo;
-        NodeModeToggle.IsOn = settings.EnableNodeMode;
 
         SshTunnelUserTextBox.Text = settings.SshTunnelUser;
         SshTunnelHostTextBox.Text = settings.SshTunnelHost;
@@ -120,7 +119,6 @@ public sealed partial class SettingsPage : Page
         s.NotifyBuild = NotifyBuildCb.IsChecked ?? true;
         s.NotifyStock = NotifyStockCb.IsChecked ?? true;
         s.NotifyInfo = NotifyInfoCb.IsChecked ?? true;
-        s.EnableNodeMode = NodeModeToggle.IsOn;
 
         s.SshTunnelUser = SshTunnelUserTextBox.Text.Trim();
         s.SshTunnelHost = SshTunnelHostTextBox.Text.Trim();

@@ -17,6 +17,8 @@ public sealed partial class AgentEventsPage : Page
     /// <summary>Set by HubWindow so Clear can also clear the central cache.</summary>
     public Action? ClearCentralCache { get; set; }
 
+    public int EventCount => _allEvents.Count;
+
     public AgentEventsPage()
     {
         InitializeComponent();

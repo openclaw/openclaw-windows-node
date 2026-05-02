@@ -124,12 +124,7 @@
                         <TextBlock Text="Advanced" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="8" Padding="4">
-                        <ToggleSwitch x:Name="NodeModeToggle" Header="Enable Node Mode"
-                                      AutomationProperties.AutomationId="SettingsPageNodeMode"/>
-                        <TextBlock Text="When enabled, this PC can receive commands from the agent (canvas, screenshots, etc.)"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
+                        <!-- Node Mode moved to Capabilities page -->
                     </StackPanel>
                 </Expander>
 

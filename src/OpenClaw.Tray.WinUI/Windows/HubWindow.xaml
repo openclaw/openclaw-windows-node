@@ -12,6 +12,9 @@
     </Window.SystemBackdrop>
 
     <Grid>
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="K" Modifiers="Control" Invoked="OnCommandPalette"/>
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
@@ -51,47 +54,70 @@
             SelectionChanged="NavView_SelectionChanged">
 
         <NavigationView.MenuItems>
-            <NavigationViewItem Tag="general" Content="General">
+            <NavigationViewItem Tag="home" Content="Home">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="chat" Content="Chat">
+            <NavigationViewItem Tag="conversations" Content="Conversations">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItemSeparator/>
+
+            <NavigationViewItemHeader Content="Gateway"/>
+            <!-- Agents parent — children built dynamically -->
+            <NavigationViewItem x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.MenuItems>
+                    <NavigationViewItem x:Name="DefaultAgentNavItem" Content="main" Tag="agent:main" IsExpanded="True">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.MenuItems>
+                            <NavigationViewItem Tag="agent:main:sessions" Content="Sessions">
+                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F2;"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                            <NavigationViewItem Tag="agent:main:agentevents" Content="Agent Events">
+                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                            <NavigationViewItem Tag="agent:main:skills" Content="Skills">
+                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE945;"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                            <NavigationViewItem Tag="agent:main:cron" Content="Cron">
+                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                            <NavigationViewItem Tag="agent:main:workspace" Content="Workspace">
+                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                        </NavigationViewItem.MenuItems>
+                    </NavigationViewItem>
+                </NavigationViewItem.MenuItems>
+            </NavigationViewItem>
             <NavigationViewItem Tag="channels" Content="Channels">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xEC05;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Tag="sessions" Content="Sessions">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F2;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Tag="instances" Content="Instances">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE968;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItemSeparator/>
-            <NavigationViewItem Tag="cron" Content="Cron">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Tag="skills" Content="Skills">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE945;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItemSeparator/>
-            <NavigationViewItem Tag="config" Content="Config">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Tag="permissions" Content="Permissions">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D7;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Tag="usage" Content="Usage">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem Tag="nodes" Content="Nodes">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE977;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Tag="instances" Content="Instances">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE968;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="config" Content="Config">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="usage" Content="Usage">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="bindings" Content="Bindings">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AD;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItemSeparator/>
+
+            <NavigationViewItemHeader Content="This Computer"/>
+            <NavigationViewItem Tag="capabilities" Content="Capabilities">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE964;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="permissions" Content="Permissions">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D7;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem Tag="activity" Content="Activity">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xEA95;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Tag="agentevents" Content="Agent Events">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
 

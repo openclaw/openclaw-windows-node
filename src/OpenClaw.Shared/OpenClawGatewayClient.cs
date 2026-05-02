@@ -67,6 +67,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _modelsListUnsupported;
     private bool _nodePairListUnsupported;
     private bool _devicePairListUnsupported;
+    private bool _agentsListUnsupported;
+    private bool _agentFilesListUnsupported;
+    private bool _agentFileGetUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private bool _authFailed;
@@ -97,6 +100,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
         _modelsListUnsupported = false;
         _nodePairListUnsupported = false;
         _devicePairListUnsupported = false;
+        _agentsListUnsupported = false;
+        _agentFilesListUnsupported = false;
+        _agentFileGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
     }
 
@@ -165,6 +171,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public event EventHandler<DevicePairingListInfo>? DevicePairListUpdated;
     public event EventHandler<ModelsListInfo>? ModelsListUpdated;
     public event EventHandler<PresenceEntry[]>? PresenceUpdated;
+    public event EventHandler<JsonElement>? AgentsListUpdated;
+    public event EventHandler<JsonElement>? AgentFilesListUpdated;
+    public event EventHandler<JsonElement>? AgentFileContentUpdated;
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
@@ -482,6 +491,26 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public Task<bool> PatchConfigAsync(object patch)
     {
         return TrySendTrackedRequestAsync("config.patch", new { patch });
+    }
+
+    // Agent methods
+
+    public async Task RequestAgentsListAsync()
+    {
+        if (_agentsListUnsupported) return;
+        await SendTrackedRequestAsync("agents.list");
+    }
+
+    public async Task RequestAgentFilesListAsync(string agentId = "main")
+    {
+        if (_agentFilesListUnsupported) return;
+        await SendTrackedRequestAsync("agents.files.list", new { agentId });
+    }
+
+    public async Task RequestAgentFileGetAsync(string agentId, string name)
+    {
+        if (_agentFileGetUnsupported) return;
+        await SendTrackedRequestAsync("agents.files.get", new { agentId, name });
     }
 
     // Models list
@@ -955,6 +984,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 await RequestSessionsAsync();
                 await RequestUsageAsync();
                 await RequestNodesAsync();
+                await RequestAgentsListAsync();
             });
         }
 
@@ -1046,6 +1076,15 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 return true;
             case "config.set":
             case "config.patch":
+                return true;
+            case "agents.list":
+                AgentsListUpdated?.Invoke(this, payload.Clone());
+                return true;
+            case "agents.files.list":
+                AgentFilesListUpdated?.Invoke(this, payload.Clone());
+                return true;
+            case "agents.files.get":
+                AgentFileContentUpdated?.Invoke(this, payload.Clone());
                 return true;
             case "models.list":
                 ParseModelsList(payload);
@@ -1167,6 +1206,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 case "device.pair.list":
                     _devicePairListUnsupported = true;
                     _logger.Warn("device.pair.list unsupported on gateway");
+                    return;
+                case "agents.list":
+                    _agentsListUnsupported = true;
+                    _logger.Warn("agents.list unsupported on gateway");
+                    return;
+                case "agents.files.list":
+                    _agentFilesListUnsupported = true;
+                    _logger.Warn("agents.files.list unsupported on gateway");
+                    return;
+                case "agents.files.get":
+                    _agentFileGetUnsupported = true;
+                    _logger.Warn("agents.files.get unsupported on gateway");
                     return;
             }
         }

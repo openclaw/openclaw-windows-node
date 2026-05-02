@@ -1048,6 +1048,9 @@ public partial class App : Application
         _gatewayClient.DevicePairListUpdated += OnDevicePairListUpdated;
         _gatewayClient.ModelsListUpdated += OnModelsListUpdated;
         _gatewayClient.PresenceUpdated += OnPresenceUpdated;
+        _gatewayClient.AgentsListUpdated += OnAgentsListUpdated;
+        _gatewayClient.AgentFilesListUpdated += OnAgentFilesListUpdated;
+        _gatewayClient.AgentFileContentUpdated += OnAgentFileContentUpdated;
         _ = _gatewayClient.ConnectAsync();
     }
 
@@ -1076,6 +1079,9 @@ public partial class App : Application
             _gatewayClient.DevicePairListUpdated -= OnDevicePairListUpdated;
             _gatewayClient.ModelsListUpdated -= OnModelsListUpdated;
             _gatewayClient.PresenceUpdated -= OnPresenceUpdated;
+            _gatewayClient.AgentsListUpdated -= OnAgentsListUpdated;
+            _gatewayClient.AgentFilesListUpdated -= OnAgentFilesListUpdated;
+            _gatewayClient.AgentFileContentUpdated -= OnAgentFileContentUpdated;
         }
     }
     
@@ -1550,6 +1556,21 @@ public partial class App : Application
         _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateConfig(data));
     }
 
+    private void OnAgentsListUpdated(object? sender, System.Text.Json.JsonElement data)
+    {
+        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentsList(data));
+    }
+
+    private void OnAgentFilesListUpdated(object? sender, System.Text.Json.JsonElement data)
+    {
+        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentFilesList(data));
+    }
+
+    private void OnAgentFileContentUpdated(object? sender, System.Text.Json.JsonElement data)
+    {
+        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentFileContent(data));
+    }
+
     private void OnAgentEventReceived(object? sender, AgentEventInfo evt)
     {
         _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentEvent(evt));
@@ -1795,6 +1816,7 @@ public partial class App : Application
             _hubWindow.GatewayClient = _gatewayClient;
             _hubWindow.CurrentStatus = _currentStatus;
             _hubWindow.OpenDashboardAction = OpenDashboard;
+            _hubWindow.QuickSendAction = () => ShowQuickSend();
             _hubWindow.ConnectAction = () =>
             {
                 InitializeGatewayClient();

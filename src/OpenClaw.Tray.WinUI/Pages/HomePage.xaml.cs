@@ -6,14 +6,16 @@ using OpenClaw.Shared;
 using OpenClawTray.Windows;
 using System;
 using System.Linq;
+using System.Text.Json;
 
 namespace OpenClawTray.Pages;
 
 public sealed partial class HomePage : Page
 {
     private HubWindow? _hub;
-    private bool _toggleWired;
     private bool _buttonsWired;
+    private ConnectionStatus _lastStatus = ConnectionStatus.Disconnected;
+    private SessionInfo[]? _lastSessions;
 
     public HomePage()
     {
@@ -24,191 +26,190 @@ public sealed partial class HomePage : Page
     {
         _hub = hub;
 
-        // Connection status
         UpdateConnectionStatus(hub.CurrentStatus, hub.Settings?.GetEffectiveGatewayUrl());
 
-        // Active toggle
-        ActiveToggle.IsOn = hub.CurrentStatus == ConnectionStatus.Connected
-                         || hub.CurrentStatus == ConnectionStatus.Connecting;
-        if (!_toggleWired)
-        {
-            ActiveToggle.Toggled += OnActiveToggled;
-            _toggleWired = true;
-        }
-
-        // Connection details from settings
         if (hub.Settings != null)
         {
-            var url = hub.Settings.GetEffectiveGatewayUrl();
-            GatewayUrlText.Text = url;
-            GatewayUrlLabel.Text = url;
-            SshTunnelText.Text = hub.Settings.UseSshTunnel ? "Enabled" : "Disabled";
-            AuthModeText.Text = hub.Settings.Token.Length > 0 ? "Token" : "None";
-            TailscaleText.Text = hub.Settings.UseSshTunnel ? "Via SSH tunnel" : "Not configured";
+            GatewayUrlText.Text = hub.Settings.GetEffectiveGatewayUrl();
         }
 
-        // Stats from cached data
-        SessionsCountText.Text = (hub.LastSessions?.Length ?? 0).ToString();
-        NodesCountText.Text = (hub.LastNodes?.Length ?? 0).ToString();
+        if (hub.LastSessions != null)
+            UpdateSessions(hub.LastSessions);
 
-        // Usage cost
-        if (hub.LastUsageCost != null)
-            UsageCostText.Text = $"${hub.LastUsageCost.Totals.TotalCost:F2}";
-
-        // Nodes mini list
-        if (hub.LastNodes != null && hub.LastNodes.Length > 0)
-            RenderNodesMini(hub.LastNodes);
-
-        // Quick action buttons (one-time wire)
         if (!_buttonsWired)
         {
-            QuickSendButton.Click += (s, e) => _hub?.NavigateTo("chat");
             DashboardButton.Click += (s, e) => _hub?.OpenDashboardAction?.Invoke(null);
+            ChatButton.Click += (s, e) => _hub?.NavigateTo("chat");
             HealthCheckButton.Click += async (s, e) =>
             {
                 if (_hub?.GatewayClient != null) await _hub.GatewayClient.CheckHealthAsync();
             };
-            HealthCheckButton2.Click += async (s, e) =>
-            {
-                if (_hub?.GatewayClient != null) await _hub.GatewayClient.CheckHealthAsync();
-            };
-            ViewNodesButton.Click += (s, e) => _hub?.NavigateTo("nodes");
+            ScanButton.Click += OnScanForGateways;
             _buttonsWired = true;
         }
     }
 
+    // ── Zone A: Companion Stage status updates ──
+
     public void UpdateConnectionStatus(ConnectionStatus status, string? gatewayUrl)
     {
+        _lastStatus = status;
         DispatcherQueue?.TryEnqueue(() =>
         {
-            // Active card
-            ConnectionModeText.Text = status switch
-            {
-                ConnectionStatus.Connected => gatewayUrl != null && !gatewayUrl.Contains("localhost")
-                    ? "Connected to remote"
-                    : "Running locally",
-                ConnectionStatus.Connecting => "Connecting...",
-                _ => "Disconnected"
-            };
             if (!string.IsNullOrEmpty(gatewayUrl))
-                GatewayUrlLabel.Text = gatewayUrl;
+                GatewayUrlText.Text = gatewayUrl;
 
-            // Health dot
-            HealthStatusDot.Fill = status switch
-            {
-                ConnectionStatus.Connected => new SolidColorBrush(Colors.LimeGreen),
-                ConnectionStatus.Connecting => new SolidColorBrush(Colors.Orange),
-                _ => new SolidColorBrush(Colors.Red)
-            };
-            HealthStatusText.Text = status switch
-            {
-                ConnectionStatus.Connected => "Healthy",
-                ConnectionStatus.Connecting => "Checking...",
-                _ => "Error"
-            };
-            HealthLastCheckText.Text = $"Last check: {DateTime.Now:HH:mm:ss}";
-
-            // Sync toggle without re-triggering handler
-            ActiveToggle.Toggled -= OnActiveToggled;
-            ActiveToggle.IsOn = status == ConnectionStatus.Connected
-                             || status == ConnectionStatus.Connecting;
-            ActiveToggle.Toggled += OnActiveToggled;
+            UpdateMoltyRing(status);
+            UpdateStatusText(status);
         });
     }
 
+    private void UpdateMoltyRing(ConnectionStatus status)
+    {
+        bool hasActiveSessions = _lastSessions?.Any(s =>
+            string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase)) ?? false;
+
+        if (status == ConnectionStatus.Connected && hasActiveSessions)
+        {
+            // Agent working — animated blue ring
+            MoltyRing.Visibility = Visibility.Collapsed;
+            MoltyProgressRing.IsActive = true;
+            MoltyProgressRing.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MoltyProgressRing.IsActive = false;
+            MoltyProgressRing.Visibility = Visibility.Collapsed;
+            MoltyRing.Visibility = Visibility.Visible;
+
+            MoltyRing.Stroke = status switch
+            {
+                ConnectionStatus.Connected => new SolidColorBrush(Colors.LimeGreen),
+                ConnectionStatus.Error => new SolidColorBrush(Colors.Red),
+                ConnectionStatus.Connecting => new SolidColorBrush(Colors.DodgerBlue),
+                _ => new SolidColorBrush(Colors.Gray)
+            };
+        }
+    }
+
+    private void UpdateStatusText(ConnectionStatus status)
+    {
+        int sessionCount = _lastSessions?.Length ?? 0;
+        int activeCount = _lastSessions?.Count(s =>
+            string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase)) ?? 0;
+        var channels = _lastSessions?
+            .Where(s => !string.IsNullOrEmpty(s.Channel))
+            .Select(s => s.Channel!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+
+        StatusHeadline.Text = status switch
+        {
+            ConnectionStatus.Connected when activeCount > 0 =>
+                $"Agent active — {activeCount} session{(activeCount != 1 ? "s" : "")}",
+            ConnectionStatus.Connected when sessionCount > 0 =>
+                $"All agents idle — watching {channels.Length} channel{(channels.Length != 1 ? "s" : "")}",
+            ConnectionStatus.Connected =>
+                "Connected — no sessions",
+            ConnectionStatus.Connecting => "Connecting to gateway…",
+            ConnectionStatus.Error => "Connection error",
+            _ => "Not connected to gateway"
+        };
+
+        StatusSubtext.Text = status switch
+        {
+            ConnectionStatus.Connected when activeCount > 0 && channels.Length > 0 =>
+                $"Active on {string.Join(", ", channels)}",
+            ConnectionStatus.Connected when channels.Length > 0 =>
+                $"Channels: {string.Join(", ", channels)}",
+            _ => ""
+        };
+    }
+
+    // ── Zone B: Agent Roster (removed — agents now in nav sidebar) ──
+
     public void UpdateSessionCount(int count)
     {
+        // Legacy compatibility — refresh from hub cache if available
+        if (_hub?.LastSessions != null)
+            UpdateSessions(_hub.LastSessions);
+    }
+
+    public void UpdateSessions(SessionInfo[] sessions)
+    {
+        _lastSessions = sessions;
         DispatcherQueue?.TryEnqueue(() =>
         {
-            SessionsCountText.Text = count.ToString();
+            UpdateMoltyRing(_lastStatus);
+            UpdateStatusText(_lastStatus);
         });
     }
 
     public void UpdateNodes(GatewayNodeInfo[] nodes)
     {
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            NodesCountText.Text = nodes.Length.ToString();
-            RenderNodesMini(nodes);
-        });
+        // Nodes are no longer displayed on HomePage; this method is kept
+        // so HubWindow callers don't break.
     }
 
-    private void RenderNodesMini(GatewayNodeInfo[] nodes)
-    {
-        NodesMiniList.Children.Clear();
-        if (nodes.Length == 0)
-        {
-            NoNodesText.Visibility = Visibility.Visible;
-            return;
-        }
-
-        NoNodesText.Visibility = Visibility.Collapsed;
-
-        foreach (var node in nodes.Take(5))
-        {
-            var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
-            {
-                Width = 8, Height = 8,
-                Fill = new SolidColorBrush(node.IsOnline ? Colors.LimeGreen : Colors.Gray),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 6, 0)
-            };
-
-            var name = new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(node.DisplayName) ? node.ShortId : node.DisplayName,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            var platform = new TextBlock
-            {
-                Text = node.Platform ?? "",
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0)
-            };
-
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-            row.Children.Add(dot);
-            row.Children.Add(name);
-            row.Children.Add(platform);
-            NodesMiniList.Children.Add(row);
-        }
-    }
-
-    private void OnActiveToggled(object sender, RoutedEventArgs e)
-    {
-        if (_hub == null) return;
-        if (ActiveToggle.IsOn)
-            _hub.ConnectAction?.Invoke();
-        else
-            _hub.DisconnectAction?.Invoke();
-    }
+    // ── Gateway Discovery (as dialog) ──
 
     private Services.GatewayDiscoveryService? _discoveryService;
 
-    private async void OnScanNetwork(object sender, RoutedEventArgs e)
+    private async void OnScanForGateways(object sender, RoutedEventArgs e)
     {
-        ScanButton.IsEnabled = false;
-        ScanButton.Content = "Scanning...";
-        DiscoveryStatusText.Text = "Searching for gateways on your network...";
-        DiscoveryList.Children.Clear();
-
         _discoveryService ??= new Services.GatewayDiscoveryService();
 
+        var dialog = new ContentDialog
+        {
+            Title = "Gateway Discovery",
+            CloseButtonText = "Close",
+            XamlRoot = this.XamlRoot,
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        var stack = new StackPanel { Spacing = 8, MinWidth = 360 };
+        var statusText = new TextBlock
+        {
+            Text = "Scanning for gateways on your network…",
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        };
+        var progress = new ProgressBar { IsIndeterminate = true };
+        var resultList = new StackPanel { Spacing = 4 };
+
+        stack.Children.Add(statusText);
+        stack.Children.Add(progress);
+        stack.Children.Add(resultList);
+        dialog.Content = stack;
+
+        // Start scan in background, then update dialog
+        _ = ScanAndPopulateAsync(statusText, progress, resultList, dialog);
+
+        await dialog.ShowAsync();
+    }
+
+    private async System.Threading.Tasks.Task ScanAndPopulateAsync(
+        TextBlock statusText, ProgressBar progress,
+        StackPanel resultList, ContentDialog dialog)
+    {
         try
         {
-            await _discoveryService.StartDiscoveryAsync();
+            await _discoveryService!.StartDiscoveryAsync();
             var gateways = _discoveryService.Gateways;
 
-            if (gateways.Count == 0)
+            DispatcherQueue?.TryEnqueue(() =>
             {
-                DiscoveryStatusText.Text = "No gateways found on your network";
-            }
-            else
-            {
-                DiscoveryStatusText.Text = $"Found {gateways.Count} gateway{(gateways.Count != 1 ? "s" : "")}";
+                progress.IsIndeterminate = false;
+                progress.Visibility = Visibility.Collapsed;
+
+                if (gateways.Count == 0)
+                {
+                    statusText.Text = "No gateways found on your network";
+                    return;
+                }
+
+                statusText.Text = $"Found {gateways.Count} gateway{(gateways.Count != 1 ? "s" : "")}";
+
                 foreach (var gw in gateways)
                 {
                     var currentUrl = _hub?.Settings?.GetEffectiveGatewayUrl() ?? "";
@@ -265,7 +266,8 @@ public sealed partial class HomePage : Page
                                 _hub.Settings.GatewayUrl = capturedGw.HttpUrl;
                                 _hub.Settings.Save();
                                 _hub.ConnectAction?.Invoke();
-                                GatewayUrlLabel.Text = capturedGw.HttpUrl;
+                                GatewayUrlText.Text = capturedGw.HttpUrl;
+                                dialog.Hide();
                             }
                         };
                         Grid.SetColumn(selectBtn, 1);
@@ -273,25 +275,37 @@ public sealed partial class HomePage : Page
                     }
                     else
                     {
-                        var check = new TextBlock { Text = "✓ Connected", VerticalAlignment = VerticalAlignment.Center,
-                            Foreground = new SolidColorBrush(Colors.Green) };
+                        var check = new TextBlock
+                        {
+                            Text = "✓ Connected",
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Foreground = new SolidColorBrush(Colors.Green)
+                        };
                         Grid.SetColumn(check, 1);
                         grid.Children.Add(check);
                     }
 
                     card.Child = grid;
-                    DiscoveryList.Children.Add(card);
+                    resultList.Children.Add(card);
                 }
-            }
+            });
         }
         catch (Exception ex)
         {
-            DiscoveryStatusText.Text = $"Discovery failed: {ex.Message}";
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                progress.IsIndeterminate = false;
+                progress.Visibility = Visibility.Collapsed;
+                statusText.Text = $"Discovery failed: {ex.Message}";
+            });
         }
-        finally
-        {
-            ScanButton.IsEnabled = true;
-            ScanButton.Content = "Scan Network";
-        }
+    }
+
+    // ── Agent List from agents.list ──
+
+    public void UpdateAgentsList(JsonElement data)
+    {
+        // Agent roster removed from home page — agents are now in the nav sidebar.
+        // Method kept for HubWindow compatibility.
     }
 }
