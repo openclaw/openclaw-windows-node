@@ -155,12 +155,14 @@ public class McpToolBridge
                     description = CommandDescriptions.TryGetValue(cmd, out var desc)
                         ? desc
                         : $"{cap.Category} capability: {cmd}",
-                    inputSchema = new
-                    {
-                        type = "object",
-                        additionalProperties = true,
-                        properties = new { },
-                    },
+                    inputSchema = CommandSchemas.TryGetValue(cmd, out var schema)
+                        ? (object)schema
+                        : new
+                        {
+                            type = "object",
+                            additionalProperties = true,
+                            properties = new { },
+                        },
                 });
             }
         }
@@ -173,6 +175,13 @@ public class McpToolBridge
     /// skill.md) can be drift-tested against the canonical capability surface.
     /// </summary>
     public static IReadOnlyCollection<string> KnownCommands => CommandDescriptions.Keys;
+
+    /// <summary>
+    /// Per-command JSON Schema objects advertised via <c>tools/list</c>.
+    /// Exposed so tests and documentation can verify schema coverage.
+    /// Commands not present in this dictionary receive a permissive schema.
+    /// </summary>
+    public static IReadOnlyDictionary<string, JsonElement> KnownSchemas => CommandSchemas;
 
     /// <summary>
     /// Per-command descriptions advertised via <c>tools/list</c>. Sourced from
@@ -239,7 +248,300 @@ public class McpToolBridge
         // tts.*
         ["tts.speak"] =
             "Speak text aloud on the Windows node. Args: text (string, required), provider ('windows'|'elevenlabs', optional), voiceId (string, optional), model (string, optional), interrupt (bool, default false). Returns { spoken, provider, contentType, durationMs }.",
+
+        // location.*
+        ["location.get"] =
+            "Get the current geographic location of the Windows node. Args: accuracy ('default'|'high'|'low', optional), maxAge (int ms, optional, default 30000), locationTimeout (int ms, optional, default 10000). Returns { latitude, longitude, altitude, accuracy, heading, speed, timestamp }.",
+
+        // device.*
+        ["device.info"] =
+            "Return static device information. No args. Returns { deviceName, modelIdentifier, systemName, systemVersion, appVersion, appBuild, locale }.",
+        ["device.status"] =
+            "Return live system health sections. Args: sections (string[], optional — any of 'os', 'cpu', 'memory', 'disk', 'battery'; omit for all). Returns an object keyed by section name.",
+
+        // browser.*
+        ["browser.proxy"] =
+            "Proxy an HTTP request to the OpenClaw gateway browser control endpoint. Args: path (string, required), method ('GET'|'POST'|'DELETE', default 'GET'), body (string, for POST), timeoutMs (int, default 10000). Returns { status, body }.",
     };
+
+    /// <summary>
+    /// Per-command JSON Schema objects advertised via <c>tools/list</c> <c>inputSchema</c> field.
+    /// Every key in <see cref="CommandDescriptions"/> has an entry here so MCP clients
+    /// (Cursor, Claude Desktop, etc.) receive accurate parameter types and required-field lists.
+    /// Commands absent from this dict fall back to a permissive schema (<c>additionalProperties:true</c>).
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, JsonElement> CommandSchemas = BuildCommandSchemas();
+
+    private static IReadOnlyDictionary<string, JsonElement> BuildCommandSchemas()
+    {
+        var d = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+
+        static void Add(Dictionary<string, JsonElement> dict, string cmd, string schemaJson)
+        {
+            using var doc = JsonDocument.Parse(schemaJson);
+            dict[cmd] = doc.RootElement.Clone();
+        }
+
+        // ── system.* ──────────────────────────────────────────────────────────────
+        Add(d, "system.notify", """
+            {
+              "type": "object",
+              "properties": {
+                "title":    { "type": "string" },
+                "body":     { "type": "string" },
+                "subtitle": { "type": "string" },
+                "sound":    { "type": "boolean" }
+              }
+            }
+            """);
+
+        const string RunSchema = """
+            {
+              "type": "object",
+              "properties": {
+                "command": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                "args":      { "type": "array",  "items": { "type": "string" } },
+                "shell":     { "type": "string" },
+                "cwd":       { "type": "string" },
+                "timeoutMs": { "type": "integer", "minimum": 1 },
+                "env":       { "type": "object",  "additionalProperties": { "type": "string" } }
+              },
+              "required": ["command"]
+            }
+            """;
+        Add(d, "system.run",         RunSchema);
+        Add(d, "system.run.prepare", RunSchema);
+
+        Add(d, "system.which", """
+            {
+              "type": "object",
+              "properties": {
+                "bins": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+              },
+              "required": ["bins"]
+            }
+            """);
+
+        Add(d, "system.execApprovals.get", """{ "type": "object", "properties": {} }""");
+
+        Add(d, "system.execApprovals.set", """
+            {
+              "type": "object",
+              "properties": {
+                "rules": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "pattern":     { "type": "string" },
+                      "action":      { "type": "string", "enum": ["allow", "deny", "prompt"] },
+                      "shells":      { "type": "array", "items": { "type": "string" } },
+                      "description": { "type": "string" },
+                      "enabled":     { "type": "boolean" }
+                    },
+                    "required": ["pattern", "action"]
+                  }
+                },
+                "defaultAction": { "type": "string", "enum": ["allow", "deny", "prompt"] }
+              },
+              "required": ["rules"]
+            }
+            """);
+
+        // ── canvas.* ──────────────────────────────────────────────────────────────
+        Add(d, "canvas.present", """
+            {
+              "type": "object",
+              "properties": {
+                "url":         { "type": "string" },
+                "html":        { "type": "string" },
+                "width":       { "type": "integer", "minimum": 1 },
+                "height":      { "type": "integer", "minimum": 1 },
+                "x":           { "type": "integer" },
+                "y":           { "type": "integer" },
+                "title":       { "type": "string" },
+                "alwaysOnTop": { "type": "boolean" }
+              }
+            }
+            """);
+
+        Add(d, "canvas.hide",    """{ "type": "object", "properties": {} }""");
+
+        Add(d, "canvas.navigate", """
+            {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string" }
+              },
+              "required": ["url"]
+            }
+            """);
+
+        Add(d, "canvas.eval", """
+            {
+              "type": "object",
+              "properties": {
+                "script":     { "type": "string" },
+                "javaScript": { "type": "string" },
+                "javascript": { "type": "string" }
+              }
+            }
+            """);
+
+        const string SnapshotSchema = """
+            {
+              "type": "object",
+              "properties": {
+                "format":   { "type": "string",  "enum": ["png", "jpeg"] },
+                "maxWidth": { "type": "integer", "minimum": 1 },
+                "quality":  { "type": "integer", "minimum": 1, "maximum": 100 }
+              }
+            }
+            """;
+        Add(d, "canvas.snapshot", SnapshotSchema);
+
+        Add(d, "canvas.a2ui.push", """
+            {
+              "type": "object",
+              "properties": {
+                "jsonl":     { "type": "string" },
+                "jsonlPath": { "type": "string" },
+                "props":     { "type": "object", "additionalProperties": true }
+              }
+            }
+            """);
+
+        Add(d, "canvas.a2ui.reset",    """{ "type": "object", "properties": {} }""");
+        Add(d, "canvas.a2ui.dump",     """{ "type": "object", "properties": {} }""");
+        Add(d, "canvas.caps",          """{ "type": "object", "properties": {} }""");
+
+        Add(d, "canvas.a2ui.pushJSONL", """
+            {
+              "type": "object",
+              "properties": {
+                "jsonlPath": { "type": "string" },
+                "props":     { "type": "object", "additionalProperties": true }
+              },
+              "required": ["jsonlPath"]
+            }
+            """);
+
+        // ── screen.* ──────────────────────────────────────────────────────────────
+        Add(d, "screen.snapshot", """
+            {
+              "type": "object",
+              "properties": {
+                "format":         { "type": "string",  "enum": ["png", "jpeg"] },
+                "maxWidth":       { "type": "integer", "minimum": 1 },
+                "quality":        { "type": "integer", "minimum": 1, "maximum": 100 },
+                "monitor":        { "type": "integer", "minimum": 0 },
+                "screenIndex":    { "type": "integer", "minimum": 0 },
+                "includePointer": { "type": "boolean" }
+              }
+            }
+            """);
+
+        Add(d, "screen.record", """
+            {
+              "type": "object",
+              "properties": {
+                "durationMs":  { "type": "integer", "minimum": 1, "maximum": 300000 },
+                "format":      { "type": "string",  "enum": ["mp4", "webm"] },
+                "monitor":     { "type": "integer", "minimum": 0 },
+                "screenIndex": { "type": "integer", "minimum": 0 },
+                "maxWidth":    { "type": "integer", "minimum": 1 },
+                "fps":         { "type": "integer", "minimum": 1, "maximum": 60 }
+              },
+              "required": ["durationMs"]
+            }
+            """);
+
+        // ── camera.* ──────────────────────────────────────────────────────────────
+        Add(d, "camera.list", """{ "type": "object", "properties": {} }""");
+
+        Add(d, "camera.snap", """
+            {
+              "type": "object",
+              "properties": {
+                "deviceId": { "type": "string" },
+                "format":   { "type": "string",  "enum": ["jpeg", "png"] },
+                "maxWidth": { "type": "integer", "minimum": 1 },
+                "quality":  { "type": "integer", "minimum": 1, "maximum": 100 }
+              }
+            }
+            """);
+
+        Add(d, "camera.clip", """
+            {
+              "type": "object",
+              "properties": {
+                "deviceId":   { "type": "string" },
+                "durationMs": { "type": "integer", "minimum": 1, "maximum": 60000 },
+                "format":     { "type": "string",  "enum": ["mp4", "webm"] },
+                "maxWidth":   { "type": "integer", "minimum": 1 }
+              },
+              "required": ["durationMs"]
+            }
+            """);
+
+        // ── tts.* ──────────────────────────────────────────────────────────────
+        Add(d, "tts.speak", """
+            {
+              "type": "object",
+              "properties": {
+                "text":      { "type": "string" },
+                "provider":  { "type": "string", "enum": ["windows", "elevenlabs"] },
+                "voiceId":   { "type": "string" },
+                "model":     { "type": "string" },
+                "interrupt": { "type": "boolean" }
+              },
+              "required": ["text"]
+            }
+            """);
+
+        // ── location.* ────────────────────────────────────────────────────────
+        Add(d, "location.get", """
+            {
+              "type": "object",
+              "properties": {
+                "accuracy":        { "type": "string", "enum": ["default", "high", "low"] },
+                "maxAge":          { "type": "integer", "minimum": 0 },
+                "locationTimeout": { "type": "integer", "minimum": 1 }
+              }
+            }
+            """);
+
+        // ── device.* ──────────────────────────────────────────────────────────
+        Add(d, "device.info",   """{ "type": "object", "properties": {} }""");
+
+        Add(d, "device.status", """
+            {
+              "type": "object",
+              "properties": {
+                "sections": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["os", "cpu", "memory", "disk", "battery"] }
+                }
+              }
+            }
+            """);
+
+        // ── browser.* ─────────────────────────────────────────────────────────
+        Add(d, "browser.proxy", """
+            {
+              "type": "object",
+              "properties": {
+                "path":      { "type": "string" },
+                "method":    { "type": "string", "enum": ["GET", "POST", "DELETE"] },
+                "body":      { "type": "string" },
+                "timeoutMs": { "type": "integer", "minimum": 1 }
+              },
+              "required": ["path"]
+            }
+            """);
+
+        return d;
+    }
 
     private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)
     {

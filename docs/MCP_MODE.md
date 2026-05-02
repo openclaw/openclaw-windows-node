@@ -226,7 +226,7 @@ curl -X POST http://127.0.0.1:8765/ -H "Authorization: Bearer <token>" -H "Conte
 
 These are reasonable next steps but explicitly out of scope for the initial implementation:
 
-1. **Per-tool input schemas.** Add an `IReadOnlyDictionary<string, JsonElement> InputSchemas` (or per-command descriptor) to `INodeCapability`. The MCP bridge's `HandleToolsList` picks them up automatically. Until then, MCP clients see permissive schemas and the agent has to figure out arg shapes from descriptions and trial-and-error.
+1. ~~**Per-tool input schemas.**~~ Implemented. `McpToolBridge.CommandSchemas` carries a full JSON Schema for every known command; `McpToolBridge.KnownSchemas` exposes it for tests and documentation. Unknown commands fall back to a permissive schema.
 2. ~~**Authentication.**~~ Implemented. See [Authentication](#authentication) below.
 3. **Streamable HTTP / SSE.** For long-running tools (`screen.record`, future `audio.transcribe`), MCP supports streaming progress. The bridge needs to learn about it and the HTTP server needs to optionally upgrade.
 4. **Resource and prompt support.** MCP has `resources/*` and `prompts/*` methods we currently no-op. Notifications, recent activity, channel state could be modeled as MCP resources.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -380,5 +381,124 @@ public class McpToolBridgeTests
         using var doc = JsonDocument.Parse(resp!);
         Assert.True(doc.RootElement.TryGetProperty("result", out var result));
         Assert.False(result.GetProperty("isError").GetBoolean());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Input schema coverage
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Returns the inputSchema element for a named tool from tools/list.</summary>
+    private static async Task<JsonElement> GetToolSchema(McpToolBridge bridge, string toolName)
+    {
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+        using var doc = JsonDocument.Parse(resp!);
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+        {
+            if (t.GetProperty("name").GetString() == toolName)
+                return t.GetProperty("inputSchema").Clone();
+        }
+        throw new InvalidOperationException($"Tool '{toolName}' not found in tools/list");
+    }
+
+    [Theory]
+    [InlineData("system.run",            "command")]
+    [InlineData("system.run.prepare",    "command")]
+    [InlineData("system.which",          "bins")]
+    [InlineData("system.execApprovals.set", "rules")]
+    [InlineData("screen.record",         "durationMs")]
+    [InlineData("camera.clip",           "durationMs")]
+    [InlineData("tts.speak",             "text")]
+    [InlineData("canvas.navigate",       "url")]
+    [InlineData("canvas.a2ui.pushJSONL", "jsonlPath")]
+    public async Task ToolsList_KnownCommands_SchemaIncludesRequiredField(string cmd, string requiredField)
+    {
+        var caps = new List<INodeCapability> { new FakeCapability("any", cmd) };
+        var schema = await GetToolSchema(CreateBridge(caps), cmd);
+
+        Assert.True(schema.TryGetProperty("required", out var req),
+            $"{cmd} should have a 'required' array");
+        var required = new List<string>();
+        foreach (var el in req.EnumerateArray())
+            required.Add(el.GetString()!);
+        Assert.Contains(requiredField, required);
+    }
+
+    [Fact]
+    public async Task ToolsList_UnknownCommand_GetsPermissiveSchema()
+    {
+        var caps = new List<INodeCapability> { new FakeCapability("custom", "custom.mystery") };
+        var schema = await GetToolSchema(CreateBridge(caps), "custom.mystery");
+
+        Assert.Equal("object", schema.GetProperty("type").GetString());
+        Assert.True(schema.GetProperty("additionalProperties").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ToolsList_KnownCommand_DoesNotHaveAdditionalPropertiesTrue()
+    {
+        // Known commands should have curated schemas without the broad permissive flag.
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("system", "system.run"),
+            new FakeCapability("tts", "tts.speak"),
+            new FakeCapability("screen", "screen.record"),
+        };
+        var bridge = CreateBridge(caps);
+        foreach (var cmd in new[] { "system.run", "tts.speak", "screen.record" })
+        {
+            var schema = await GetToolSchema(bridge, cmd);
+            Assert.False(
+                schema.TryGetProperty("additionalProperties", out var ap) && ap.ValueKind == JsonValueKind.True,
+                $"{cmd} should not have additionalProperties:true");
+        }
+    }
+
+    [Fact]
+    public void KnownSchemas_ContainsAllKnownCommands()
+    {
+        // Every command in KnownCommands must have a curated schema.
+        var missing = McpToolBridge.KnownCommands
+            .Except(McpToolBridge.KnownSchemas.Keys)
+            .ToList();
+        Assert.Empty(missing);
+    }
+
+    [Fact]
+    public void KnownSchemas_SystemRun_HasPropertiesForAllDocumentedArgs()
+    {
+        var schema = McpToolBridge.KnownSchemas["system.run"];
+        var props = schema.GetProperty("properties");
+        Assert.True(props.TryGetProperty("command",   out _));
+        Assert.True(props.TryGetProperty("shell",     out _));
+        Assert.True(props.TryGetProperty("cwd",       out _));
+        Assert.True(props.TryGetProperty("timeoutMs", out _));
+        Assert.True(props.TryGetProperty("env",       out _));
+    }
+
+    [Fact]
+    public void KnownSchemas_TtsSpeak_ProviderEnumMatchesDocumentation()
+    {
+        var schema = McpToolBridge.KnownSchemas["tts.speak"];
+        var providerEnum = schema.GetProperty("properties").GetProperty("provider").GetProperty("enum");
+        var values = new List<string>();
+        foreach (var v in providerEnum.EnumerateArray())
+            values.Add(v.GetString()!);
+        Assert.Contains("windows",      values);
+        Assert.Contains("elevenlabs",   values);
+    }
+
+    [Fact]
+    public void KnownSchemas_ExecApprovalsSet_RuleItemsHaveRequiredPatternAndAction()
+    {
+        var schema = McpToolBridge.KnownSchemas["system.execApprovals.set"];
+        var ruleItems = schema
+            .GetProperty("properties")
+            .GetProperty("rules")
+            .GetProperty("items");
+        var required = new List<string>();
+        foreach (var el in ruleItems.GetProperty("required").EnumerateArray())
+            required.Add(el.GetString()!);
+        Assert.Contains("pattern", required);
+        Assert.Contains("action",  required);
     }
 }
