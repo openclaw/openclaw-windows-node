@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-05-02T04:13:00Z",
-  "last_run_id": "25239901740",
+  "last_run": "2026-05-02T12:35:59Z",
+  "last_run_id": "25252011795",
   "monthly_summary_issue": 254,
   "monthly_summary_month": "2026-05",
   "backlog_cursor": {
@@ -8,7 +8,8 @@
     "prs": 261
   },
   "open_repo_assist_prs": [
-    {"number": "aw_pr7v2", "title": "feat: implement ExecApprovalV2PolicyHandler (PR7 coordinator)", "branch": "repo-assist/feat-exec-v2-policy-handler-2026-05-02"}
+    {"number": 261, "title": "[Repo Assist] feat: implement ExecApprovalV2PolicyHandler (PR7 coordinator)", "branch": "repo-assist/feat-exec-v2-policy-handler-2026-05-02-577afdafa278a1d6"},
+    {"number": "pending", "title": "[Repo Assist] feat(mcp): add per-command JSON Schema to tools/list", "branch": "repo-assist/feat-mcp-input-schemas-2026-05-02"}
   ],
   "comments_made": {
     "246": {"comment_id": "4408284034", "date": "2026-05-01"},
@@ -16,15 +17,26 @@
     "242": {"date": "2026-05-01"}
   },
   "fix_attempts": {
-    "exec-v2-policy-handler": {"status": "pr_created", "pr": "aw_pr7v2", "date": "2026-05-02"}
+    "exec-v2-policy-handler": {"status": "pr_created", "pr": 261, "date": "2026-05-02"},
+    "mcp-input-schemas": {"status": "pr_created", "pr": "pending", "branch": "repo-assist/feat-mcp-input-schemas-2026-05-02", "date": "2026-05-02"}
   },
   "notes": [
     "PR #260 (AlexAlves87) normalization step must land before ExecApprovalV2PolicyHandler can be wired to production",
+    "PR #261 (Repo Assist) ExecApprovalV2PolicyHandler — awaiting review",
     "Issue #235 (Dependabot bundle) still open; individual PRs merged; suggest closing",
     "Issue #246 packaging strategy still open and unresolved",
-    "Issue #191 WebView2 bridge: PR #259 implements CanvasWindow half; WebChatWindow half still open",
+    "Issue #191 WebView2 bridge: PR #259 closes the remaining CanvasWindow item; awaiting merge",
     "Pre-existing test failures: CanvasCapabilityTests.A2UIPush_WithJsonlPath_ReadsFile and A2UICapabilitySecurityTests.A2UIPush_FileJsonl_OverCap_ReturnsError - do not fix",
-    "Test baseline after this run: Shared 1165/1187 (2 pre-existing failures, 20 skipped), Tray 407"
+    "MCP input schemas PR: implements docs/MCP_MODE.md deferred item 1; 26 commands now have curated schemas; also added location.get, device.info, device.status, browser.proxy to CommandDescriptions",
+    "Next V2 exec approval step: wire ExecApprovalV2PolicyHandler in production once PR #260 AND PR #261 are merged"
   ],
-  "checked_off_by_maintainer": []
+  "checked_off_by_maintainer": [],
+  "test_baseline": {
+    "shared_passed": 1165,
+    "shared_failed": 2,
+    "shared_skipped": 20,
+    "shared_total": 1187,
+    "tray_passed": 407,
+    "note": "2 pre-existing failures in CanvasCapability/A2UI jsonl tests unrelated to our changes"
+  }
 }
