@@ -24,6 +24,18 @@
                            HorizontalAlignment="Center"/>
             </StackPanel>
 
+            <!-- Pairing Requests -->
+            <StackPanel x:Name="PairingSection" Spacing="8" Visibility="Collapsed">
+                <TextBlock Text="🔗 Pending Pairing Requests" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0"/>
+                <StackPanel x:Name="PairingList" Spacing="4"/>
+            </StackPanel>
+
+            <!-- Device Pairing Requests -->
+            <StackPanel x:Name="DevicePairingSection" Spacing="8" Visibility="Collapsed">
+                <TextBlock Text="📱 Pending Device Pairing" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0"/>
+                <StackPanel x:Name="DevicePairingList" Spacing="4"/>
+            </StackPanel>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

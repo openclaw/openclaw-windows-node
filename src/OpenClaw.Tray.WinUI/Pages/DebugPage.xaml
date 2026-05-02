@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="OpenClawTray.Pages.DebugPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+
+            <TextBlock Text="🐛 Debug" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
+
+            <!-- Log Viewer -->
+            <Expander x:Name="LogExpander" IsExpanded="True"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Expander.Header>
+                    <TextBlock Text="Log Viewer" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                </Expander.Header>
+                <StackPanel Spacing="8" Padding="4">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="⟳ Refresh" Click="OnRefreshLog"/>
+                        <Button Content="📋 Copy Log" Click="OnCopyLog"/>
+                    </StackPanel>
+                    <ScrollViewer x:Name="LogScrollViewer" MaxHeight="400"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                  BorderThickness="1" CornerRadius="4" Padding="8">
+                        <TextBlock x:Name="LogText" Text="Loading..."
+                                   FontFamily="Consolas" FontSize="11"
+                                   TextWrapping="NoWrap" IsTextSelectionEnabled="True"/>
+                    </ScrollViewer>
+                </StackPanel>
+            </Expander>
+
+            <!-- Connection Status -->
+            <Expander x:Name="ConnectionExpander"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Expander.Header>
+                    <TextBlock Text="Connection Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                </Expander.Header>
+                <StackPanel Spacing="8" Padding="4">
+                    <Grid ColumnSpacing="12" RowSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Operator Status"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="OperatorStatusText" Text="Unknown"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Gateway URL"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="GatewayUrlText" Text="—"
+                                   IsTextSelectionEnabled="True" FontFamily="Consolas" FontSize="12"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Node Mode"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="NodeModeText" Text="—"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <!-- Device Identity -->
+            <Expander x:Name="DeviceExpander"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Expander.Header>
+                    <TextBlock Text="Device Identity" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                </Expander.Header>
+                <StackPanel Spacing="8" Padding="4">
+                    <Grid ColumnSpacing="12" RowSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Device ID"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="DeviceIdText" Text="—"
+                                   FontFamily="Consolas" FontSize="12" IsTextSelectionEnabled="True"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Row="0" Grid.Column="2" Content="📋 Copy" Click="OnCopyDeviceId"
+                                Padding="6,3" MinWidth="0" VerticalAlignment="Center"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Public Key"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="PublicKeyText" Text="—"
+                                   FontFamily="Consolas" FontSize="11" IsTextSelectionEnabled="True"
+                                   TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Grid.ColumnSpan="2"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <!-- Debug Actions -->
+            <Expander x:Name="ActionsExpander"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Expander.Header>
+                    <TextBlock Text="Debug Actions" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                </Expander.Header>
+                <StackPanel Spacing="8" Padding="4">
+                    <Button Content="📄 Open Log File" Click="OnOpenLogFile" HorizontalAlignment="Stretch"/>
+                    <Button Content="📁 Open Config Folder" Click="OnOpenConfigFolder" HorizontalAlignment="Stretch"/>
+                    <Button Content="📁 Open Diagnostics Folder" Click="OnOpenDiagnosticsFolder" HorizontalAlignment="Stretch"/>
+                    <Button Content="📋 Copy Support Context" Click="OnCopySupportContext"
+                            Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Expander>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

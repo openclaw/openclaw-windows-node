@@ -1505,3 +1505,201 @@ internal static class ModelFormatting
     }
 }
 
+// ── Agent Events ──
+
+/// <summary>Raw agent event from gateway broadcast.</summary>
+public class AgentEventInfo
+{
+    public string RunId { get; set; } = "";
+    public int Seq { get; set; }
+    public string Stream { get; set; } = "";
+    public double Ts { get; set; }
+    public JsonElement Data { get; set; }
+    public string? SessionKey { get; set; }
+    public string? Summary { get; set; }
+
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)Ts).LocalDateTime;
+
+    public string FormattedTime => Timestamp.ToString("HH:mm:ss.fff");
+
+    public string StreamUpper => Stream.ToUpperInvariant();
+
+    public string DataJson
+    {
+        get
+        {
+            try
+            {
+                return JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch
+            {
+                return Data.ToString() ?? "{}";
+            }
+        }
+    }
+}
+
+// ── Node/Device Pairing ──
+
+public class PairingRequest
+{
+    public string RequestId { get; set; } = "";
+    public string NodeId { get; set; } = "";
+    public string? DisplayName { get; set; }
+    public string? Platform { get; set; }
+    public string? Version { get; set; }
+    public string? RemoteIp { get; set; }
+    public bool IsRepair { get; set; }
+    public double Ts { get; set; }
+
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)Ts).LocalDateTime;
+
+    public string Description
+    {
+        get
+        {
+            var lines = new List<string>();
+            lines.Add($"Node: {DisplayName ?? NodeId}");
+            if (!string.IsNullOrEmpty(Platform)) lines.Add($"Platform: {Platform}");
+            if (!string.IsNullOrEmpty(Version)) lines.Add($"Version: {Version}");
+            if (!string.IsNullOrEmpty(RemoteIp)) lines.Add($"IP: {RemoteIp}");
+            if (IsRepair) lines.Add("Repair: yes");
+            return string.Join("\n", lines);
+        }
+    }
+}
+
+public class DevicePairingRequest
+{
+    public string RequestId { get; set; } = "";
+    public string DeviceId { get; set; } = "";
+    public string? PublicKey { get; set; }
+    public string? DisplayName { get; set; }
+    public string? Platform { get; set; }
+    public string? ClientId { get; set; }
+    public string? ClientMode { get; set; }
+    public string? Role { get; set; }
+    public string[]? Scopes { get; set; }
+    public string? RemoteIp { get; set; }
+    public bool IsRepair { get; set; }
+    public double Ts { get; set; }
+
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)Ts).LocalDateTime;
+
+    public string Description
+    {
+        get
+        {
+            var lines = new List<string>();
+            lines.Add($"Device: {DisplayName ?? DeviceId}");
+            if (!string.IsNullOrEmpty(Platform)) lines.Add($"Platform: {Platform}");
+            if (!string.IsNullOrEmpty(Role)) lines.Add($"Role: {Role}");
+            if (Scopes is { Length: > 0 }) lines.Add($"Scopes: {string.Join(", ", Scopes)}");
+            if (!string.IsNullOrEmpty(RemoteIp)) lines.Add($"IP: {RemoteIp}");
+            if (IsRepair) lines.Add("Repair: yes");
+            return string.Join("\n", lines);
+        }
+    }
+}
+
+public class PairingListInfo
+{
+    public List<PairingRequest> Pending { get; set; } = new();
+}
+
+public class DevicePairingListInfo
+{
+    public List<DevicePairingRequest> Pending { get; set; } = new();
+}
+
+// ── Models List ──
+
+public class ModelInfo
+{
+    public string Id { get; set; } = "";
+    public string? Name { get; set; }
+    public string? Provider { get; set; }
+    public int? ContextWindow { get; set; }
+    public bool IsConfigured { get; set; }
+
+    public string DisplayName => Name ?? Id;
+}
+
+public class ModelsListInfo
+{
+    public List<ModelInfo> Models { get; set; } = new();
+}
+
+// ── Presence (connected clients/instances) ──
+
+public class PresenceEntry
+{
+    public string? Host { get; set; }
+    public string? Ip { get; set; }
+    public string? Version { get; set; }
+    public string? Platform { get; set; }
+    public string? DeviceFamily { get; set; }
+    public string? ModelIdentifier { get; set; }
+    public string? Mode { get; set; }
+    public int? LastInputSeconds { get; set; }
+    public string? Reason { get; set; }
+    public string[]? Tags { get; set; }
+    public string? Text { get; set; }
+    public long Ts { get; set; }
+    public string? DeviceId { get; set; }
+    public string[]? Roles { get; set; }
+    public string[]? Scopes { get; set; }
+    public string? InstanceId { get; set; }
+
+    public string DisplayName => Host ?? DeviceId ?? Ip ?? "Unknown";
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeSeconds(Ts).LocalDateTime;
+    public string PlatformLabel => Platform ?? "unknown";
+    public string ModeLabel => Mode ?? "unknown";
+
+    public string LastSeenText
+    {
+        get
+        {
+            if (LastInputSeconds is not { } secs) return "";
+            if (secs < 60) return $"{secs}s ago";
+            if (secs < 3600) return $"{secs / 60}m ago";
+            return $"{secs / 3600}h ago";
+        }
+    }
+}
+
+// ── Gateway Discovery ──
+
+public class DiscoveredGateway
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string? Host { get; set; }
+    public int Port { get; set; }
+    public string? LanHost { get; set; }
+    public string? TailnetDns { get; set; }
+    public bool TlsEnabled { get; set; }
+    public string? TlsFingerprint { get; set; }
+
+    public string ConnectionUrl
+    {
+        get
+        {
+            var scheme = TlsEnabled ? "wss" : "ws";
+            var host = Host ?? LanHost ?? "localhost";
+            return $"{scheme}://{host}:{Port}";
+        }
+    }
+
+    public string HttpUrl
+    {
+        get
+        {
+            var scheme = TlsEnabled ? "https" : "http";
+            var host = Host ?? LanHost ?? "localhost";
+            return $"{scheme}://{host}:{Port}";
+        }
+    }
+}
+

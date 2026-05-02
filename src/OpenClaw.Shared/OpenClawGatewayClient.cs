@@ -2,6 +2,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -63,6 +64,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _usageCostUnsupported;
     private bool _sessionPreviewUnsupported;
     private bool _nodeListUnsupported;
+    private bool _modelsListUnsupported;
+    private bool _nodePairListUnsupported;
+    private bool _devicePairListUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private bool _authFailed;
@@ -90,6 +94,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
         _usageCostUnsupported = false;
         _sessionPreviewUnsupported = false;
         _nodeListUnsupported = false;
+        _modelsListUnsupported = false;
+        _nodePairListUnsupported = false;
+        _devicePairListUnsupported = false;
         _operatorReadScopeUnavailable = false;
     }
 
@@ -151,6 +158,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
+
+    // New events for agent events, pairing, and models
+    public event EventHandler<AgentEventInfo>? AgentEventReceived;
+    public event EventHandler<PairingListInfo>? NodePairListUpdated;
+    public event EventHandler<DevicePairingListInfo>? DevicePairListUpdated;
+    public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+    public event EventHandler<PresenceEntry[]>? PresenceUpdated;
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
@@ -468,6 +482,48 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public Task<bool> PatchConfigAsync(object patch)
     {
         return TrySendTrackedRequestAsync("config.patch", new { patch });
+    }
+
+    // Models list
+
+    public async Task RequestModelsListAsync()
+    {
+        if (_modelsListUnsupported) return;
+        await SendTrackedRequestAsync("models.list", new { view = "configured" });
+    }
+
+    // Node/Device pairing
+
+    public async Task RequestNodePairListAsync()
+    {
+        if (_nodePairListUnsupported) return;
+        await SendTrackedRequestAsync("node.pair.list");
+    }
+
+    public Task<bool> NodePairApproveAsync(string requestId)
+    {
+        return TrySendTrackedRequestAsync("node.pair.approve", new { requestId });
+    }
+
+    public Task<bool> NodePairRejectAsync(string requestId)
+    {
+        return TrySendTrackedRequestAsync("node.pair.reject", new { requestId });
+    }
+
+    public async Task RequestDevicePairListAsync()
+    {
+        if (_devicePairListUnsupported) return;
+        await SendTrackedRequestAsync("device.pair.list");
+    }
+
+    public Task<bool> DevicePairApproveAsync(string requestId)
+    {
+        return TrySendTrackedRequestAsync("device.pair.approve", new { requestId });
+    }
+
+    public Task<bool> DevicePairRejectAsync(string requestId)
+    {
+        return TrySendTrackedRequestAsync("device.pair.reject", new { requestId });
     }
 
     /// <summary>Start a channel (telegram, whatsapp, etc).</summary>
@@ -885,6 +941,10 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 _logger.Info($"Granted operator scopes: {string.Join(", ", _grantedOperatorScopes)}");
             }
             _logger.Info($"Main session key: {_mainSessionKey}");
+
+            // Extract presence from snapshot
+            TryParsePresence(payload);
+
             RaiseStatusChanged(ConnectionStatus.Connected);
 
             // Request initial state after handshake
@@ -987,6 +1047,23 @@ public class OpenClawGatewayClient : WebSocketClientBase
             case "config.set":
             case "config.patch":
                 return true;
+            case "models.list":
+                ParseModelsList(payload);
+                return true;
+            case "node.pair.list":
+                ParseNodePairList(payload);
+                return true;
+            case "node.pair.approve":
+            case "node.pair.reject":
+                _ = RequestNodePairListAsync();
+                return true;
+            case "device.pair.list":
+                ParseDevicePairList(payload);
+                return true;
+            case "device.pair.approve":
+            case "device.pair.reject":
+                _ = RequestDevicePairListAsync();
+                return true;
             default:
                 return false;
         }
@@ -1078,6 +1155,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 case "node.list":
                     _nodeListUnsupported = true;
                     _logger.Warn("node.list unsupported on gateway");
+                    return;
+                case "models.list":
+                    _modelsListUnsupported = true;
+                    _logger.Warn("models.list unsupported on gateway");
+                    return;
+                case "node.pair.list":
+                    _nodePairListUnsupported = true;
+                    _logger.Warn("node.pair.list unsupported on gateway");
+                    return;
+                case "device.pair.list":
+                    _devicePairListUnsupported = true;
+                    _logger.Warn("device.pair.list unsupported on gateway");
                     return;
             }
         }
@@ -1357,6 +1446,21 @@ public class OpenClawGatewayClient : WebSocketClientBase
             case "session":
                 HandleSessionEvent(root);
                 break;
+            case "node.pair.requested":
+            case "node.pair.resolved":
+                // Refresh node pair list when pairing state changes
+                _ = RequestNodePairListAsync();
+                break;
+            case "device.pair.requested":
+            case "device.pair.resolved":
+                // Refresh device pair list when pairing state changes
+                _ = RequestDevicePairListAsync();
+                break;
+            case "presence":
+                // Presence snapshot broadcast when clients connect/disconnect
+                if (root.TryGetProperty("payload", out var presPayload))
+                    TryParsePresenceFromBroadcast(presPayload);
+                break;
         }
     }
 
@@ -1386,13 +1490,33 @@ public class OpenClawGatewayClient : WebSocketClientBase
     {
         if (!root.TryGetProperty("payload", out var payload)) return;
 
-        // Determine session
+        // sessionKey is inside payload, not root
         var sessionKey = "unknown";
-        if (root.TryGetProperty("sessionKey", out var sk))
+        if (payload.TryGetProperty("sessionKey", out var sk))
             sessionKey = sk.GetString() ?? "unknown";
         var isMain = sessionKey == "main" || sessionKey.Contains(":main:");
 
-        // Parse activity from stream field
+        // Emit raw agent event (cloned for thread safety)
+        try
+        {
+            var evt = new AgentEventInfo
+            {
+                RunId = payload.TryGetProperty("runId", out var rid) ? rid.GetString() ?? "" : "",
+                Seq = payload.TryGetProperty("seq", out var seqProp) && seqProp.ValueKind == JsonValueKind.Number ? seqProp.GetInt32() : 0,
+                Stream = payload.TryGetProperty("stream", out var streamProp2) ? streamProp2.GetString() ?? "" : "",
+                Ts = payload.TryGetProperty("ts", out var tsProp) && tsProp.ValueKind == JsonValueKind.Number ? tsProp.GetDouble() : 0,
+                Data = payload.TryGetProperty("data", out var dataProp) ? dataProp.Clone() : default,
+                SessionKey = sessionKey,
+                Summary = payload.TryGetProperty("summary", out var sumProp) ? sumProp.GetString() : null
+            };
+            AgentEventReceived?.Invoke(this, evt);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to emit agent event: {ex.Message}");
+        }
+
+        // Parse activity from stream field (existing behavior)
         if (payload.TryGetProperty("stream", out var streamProp))
         {
             var stream = streamProp.GetString();
@@ -1649,66 +1773,81 @@ public class OpenClawGatewayClient : WebSocketClientBase
             SessionInfo[] snapshot;
             lock (_sessionsLock)
             {
-                _sessions.Clear();
-            
-                // Handle both Array format and Object (dictionary) format
+                // Merge instead of clear — collect incoming keys, update/add, then remove absent
+                var incomingKeys = new HashSet<string>();
+
                 if (sessions.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var item in sessions.EnumerateArray())
                     {
-                        ParseSessionItem(item);
+                        var key = ParseSessionItem(item);
+                        if (key != null) incomingKeys.Add(key);
                     }
                 }
                 else if (sessions.ValueKind == JsonValueKind.Object)
                 {
-                    // Object format: keys are session IDs, values could be session info objects or simple strings
                     foreach (var prop in sessions.EnumerateObject())
                     {
                         var sessionKey = prop.Name;
-                    
-                        // Skip metadata fields that aren't actual sessions
+
                         if (sessionKey is "recent" or "count" or "path" or "defaults" or "ts")
                             continue;
-                    
-                        // Skip non-session keys (must look like a session key pattern)
+
                         if (!sessionKey.Equals("global", StringComparison.OrdinalIgnoreCase) &&
                             !sessionKey.Contains(':') &&
                             !sessionKey.Contains("agent") &&
                             !sessionKey.Contains("session"))
                             continue;
-                    
-                        var session = new SessionInfo { Key = sessionKey };
+
                         var item = prop.Value;
-                    
-                        // Detect main session from key pattern - "agent:main:main" ends with ":main"
+
+                        if (item.ValueKind == JsonValueKind.String)
+                        {
+                            var strVal = item.GetString() ?? "";
+                            if (strVal.StartsWith("/") || strVal.Contains("/."))
+                                continue;
+                        }
+                        else if (item.ValueKind == JsonValueKind.Number)
+                        {
+                            continue;
+                        }
+
+                        // Update or create session
+                        if (!_sessions.TryGetValue(sessionKey, out var session))
+                        {
+                            session = new SessionInfo { Key = sessionKey };
+                        }
+
                         var endsWithMain = sessionKey.EndsWith(":main");
                         session.IsMain = sessionKey == "main" || endsWithMain || sessionKey.Contains(":main:main");
-                        _logger.Debug($"Session key={sessionKey}, endsWithMain={endsWithMain}, IsMain={session.IsMain}");
-                    
-                        // Value might be an object with session details or just a string status
+
                         if (item.ValueKind == JsonValueKind.Object)
                         {
-                            // Only override IsMain if the JSON explicitly says true
                             if (item.TryGetProperty("isMain", out var isMain) && isMain.GetBoolean())
                                 session.IsMain = true;
                             PopulateSessionFromObject(session, item);
                         }
                         else if (item.ValueKind == JsonValueKind.String)
                         {
-                            // Simple string value - skip if it looks like a path (metadata)
-                            var strVal = item.GetString() ?? "";
-                            if (strVal.StartsWith("/") || strVal.Contains("/."))
-                                continue;
-                            session.Status = strVal;
+                            session.Status = item.GetString() ?? "";
                         }
-                        else if (item.ValueKind == JsonValueKind.Number)
-                        {
-                            // Skip numeric values (like count)
-                            continue;
-                        }
-                    
-                        _sessions[session.Key] = session;
+
+                        _sessions[sessionKey] = session;
+                        incomingKeys.Add(sessionKey);
                     }
+                }
+
+                // Remove sessions no longer present in the gateway response
+                if (incomingKeys.Count > 0)
+                {
+                    var staleKeys = new List<string>();
+                    foreach (var key in _sessions.Keys)
+                    {
+                        if (!incomingKeys.Contains(key))
+                            staleKeys.Add(key);
+                    }
+                    foreach (var key in staleKeys)
+                        _sessions.Remove(key);
                 }
 
                 snapshot = GetSessionListInternal();
@@ -1722,24 +1861,29 @@ public class OpenClawGatewayClient : WebSocketClientBase
         }
     }
     
-    private void ParseSessionItem(JsonElement item)
+    private string? ParseSessionItem(JsonElement item)
     {
-        var session = new SessionInfo();
+        var sessionKey = "unknown";
         if (item.TryGetProperty("key", out var key))
-            session.Key = key.GetString() ?? "unknown";
+            sessionKey = key.GetString() ?? "unknown";
+
+        // Update or create
+        if (!_sessions.TryGetValue(sessionKey, out var session))
+        {
+            session = new SessionInfo { Key = sessionKey };
+        }
+
+        session.IsMain = sessionKey == "main" || 
+                         sessionKey.EndsWith(":main") ||
+                         sessionKey.Contains(":main:main");
         
-        // Detect main from key pattern first
-        session.IsMain = session.Key == "main" || 
-                         session.Key.EndsWith(":main") ||
-                         session.Key.Contains(":main:main");
-        
-        // Only override if JSON explicitly says true
         if (item.TryGetProperty("isMain", out var isMain) && isMain.GetBoolean())
             session.IsMain = true;
             
         PopulateSessionFromObject(session, item);
 
         _sessions[session.Key] = session;
+        return session.Key;
     }
 
     private void PopulateSessionFromObject(SessionInfo session, JsonElement item)
@@ -2315,5 +2459,188 @@ public class OpenClawGatewayClient : WebSocketClientBase
         return parts.Length > 2
             ? $"…/{parts[^2]}/{parts[^1]}"
             : parts[^1];
+    }
+
+    // ── Parse methods for new features ──
+
+    private void ParseModelsList(JsonElement payload)
+    {
+        try
+        {
+            var info = new ModelsListInfo();
+            // Gateway returns { models: [...] } or just an array
+            var modelsArray = payload.ValueKind == JsonValueKind.Array
+                ? payload
+                : payload.TryGetProperty("models", out var m) ? m : default;
+
+            if (modelsArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in modelsArray.EnumerateArray())
+                {
+                    var model = new ModelInfo
+                    {
+                        Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                        Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
+                        Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
+                        ContextWindow = item.TryGetProperty("contextWindow", out var cw) && cw.ValueKind == JsonValueKind.Number ? cw.GetInt32() : null,
+                        IsConfigured = item.TryGetProperty("configured", out var cfg) && cfg.ValueKind == JsonValueKind.True
+                    };
+                    if (!string.IsNullOrEmpty(model.Id))
+                        info.Models.Add(model);
+                }
+            }
+            ModelsListUpdated?.Invoke(this, info);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to parse models.list: {ex.Message}");
+        }
+    }
+
+    private void ParseNodePairList(JsonElement payload)
+    {
+        try
+        {
+            var info = new PairingListInfo();
+            var pending = payload.TryGetProperty("pending", out var p) ? p : default;
+            if (pending.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in pending.EnumerateArray())
+                {
+                    info.Pending.Add(new PairingRequest
+                    {
+                        RequestId = item.TryGetProperty("requestId", out var rid) ? rid.GetString() ?? "" : "",
+                        NodeId = item.TryGetProperty("nodeId", out var nid) ? nid.GetString() ?? "" : "",
+                        DisplayName = item.TryGetProperty("displayName", out var dn) ? dn.GetString() : null,
+                        Platform = item.TryGetProperty("platform", out var plat) ? plat.GetString() : null,
+                        Version = item.TryGetProperty("version", out var ver) ? ver.GetString() : null,
+                        RemoteIp = item.TryGetProperty("remoteIp", out var ip) ? ip.GetString() : null,
+                        IsRepair = item.TryGetProperty("isRepair", out var rep) && rep.ValueKind == JsonValueKind.True,
+                        Ts = item.TryGetProperty("ts", out var ts) && ts.ValueKind == JsonValueKind.Number ? ts.GetDouble() : 0
+                    });
+                }
+            }
+            NodePairListUpdated?.Invoke(this, info);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to parse node.pair.list: {ex.Message}");
+        }
+    }
+
+    private void ParseDevicePairList(JsonElement payload)
+    {
+        try
+        {
+            var info = new DevicePairingListInfo();
+            var pending = payload.TryGetProperty("pending", out var p) ? p : default;
+            if (pending.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in pending.EnumerateArray())
+                {
+                    string[]? scopes = null;
+                    if (item.TryGetProperty("scopes", out var sc) && sc.ValueKind == JsonValueKind.Array)
+                    {
+                        var scopeList = new List<string>();
+                        foreach (var s in sc.EnumerateArray())
+                            if (s.GetString() is string sv) scopeList.Add(sv);
+                        scopes = scopeList.ToArray();
+                    }
+
+                    info.Pending.Add(new DevicePairingRequest
+                    {
+                        RequestId = item.TryGetProperty("requestId", out var rid) ? rid.GetString() ?? "" : "",
+                        DeviceId = item.TryGetProperty("deviceId", out var did) ? did.GetString() ?? "" : "",
+                        PublicKey = item.TryGetProperty("publicKey", out var pk) ? pk.GetString() : null,
+                        DisplayName = item.TryGetProperty("displayName", out var dn) ? dn.GetString() : null,
+                        Platform = item.TryGetProperty("platform", out var plat) ? plat.GetString() : null,
+                        ClientId = item.TryGetProperty("clientId", out var cid) ? cid.GetString() : null,
+                        ClientMode = item.TryGetProperty("clientMode", out var cm) ? cm.GetString() : null,
+                        Role = item.TryGetProperty("role", out var role) ? role.GetString() : null,
+                        Scopes = scopes,
+                        RemoteIp = item.TryGetProperty("remoteIp", out var ip) ? ip.GetString() : null,
+                        IsRepair = item.TryGetProperty("isRepair", out var rep) && rep.ValueKind == JsonValueKind.True,
+                        Ts = item.TryGetProperty("ts", out var ts) && ts.ValueKind == JsonValueKind.Number ? ts.GetDouble() : 0
+                    });
+                }
+            }
+            DevicePairListUpdated?.Invoke(this, info);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to parse device.pair.list: {ex.Message}");
+        }
+    }
+
+    private void TryParsePresence(JsonElement payload)
+    {
+        try
+        {
+            if (!payload.TryGetProperty("snapshot", out var snapshot)) return;
+            if (!snapshot.TryGetProperty("presence", out var presenceArray)) return;
+            if (presenceArray.ValueKind != JsonValueKind.Array) return;
+
+            var entries = ParsePresenceArray(presenceArray);
+            _logger.Info($"Parsed {entries.Length} presence entries from handshake");
+            PresenceUpdated?.Invoke(this, entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to parse presence from handshake: {ex.Message}");
+        }
+    }
+
+    private void TryParsePresenceFromBroadcast(JsonElement payload)
+    {
+        try
+        {
+            // Broadcast may contain presence array directly or nested
+            var presenceArray = payload.ValueKind == JsonValueKind.Array
+                ? payload
+                : payload.TryGetProperty("presence", out var p) ? p : default;
+
+            if (presenceArray.ValueKind != JsonValueKind.Array) return;
+
+            var entries = ParsePresenceArray(presenceArray);
+            PresenceUpdated?.Invoke(this, entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to parse presence broadcast: {ex.Message}");
+        }
+    }
+
+    private static PresenceEntry[] ParsePresenceArray(JsonElement array)
+    {
+        var list = new List<PresenceEntry>();
+        foreach (var item in array.EnumerateArray())
+        {
+            list.Add(new PresenceEntry
+            {
+                Host = item.TryGetProperty("host", out var h) ? h.GetString() : null,
+                Ip = item.TryGetProperty("ip", out var ip) ? ip.GetString() : null,
+                Version = item.TryGetProperty("version", out var v) ? v.GetString() : null,
+                Platform = item.TryGetProperty("platform", out var p) ? p.GetString() : null,
+                DeviceFamily = item.TryGetProperty("deviceFamily", out var df) ? df.GetString() : null,
+                ModelIdentifier = item.TryGetProperty("modelIdentifier", out var mi) ? mi.GetString() : null,
+                Mode = item.TryGetProperty("mode", out var m) ? m.GetString() : null,
+                LastInputSeconds = item.TryGetProperty("lastInputSeconds", out var lis) && lis.ValueKind == JsonValueKind.Number ? lis.GetInt32() : null,
+                Reason = item.TryGetProperty("reason", out var r) ? r.GetString() : null,
+                Tags = item.TryGetProperty("tags", out var t) && t.ValueKind == JsonValueKind.Array
+                    ? t.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
+                    : null,
+                Text = item.TryGetProperty("text", out var tx) ? tx.GetString() : null,
+                Ts = item.TryGetProperty("ts", out var ts) && ts.ValueKind == JsonValueKind.Number ? ts.GetInt64() : 0,
+                DeviceId = item.TryGetProperty("deviceId", out var did) ? did.GetString() : null,
+                Roles = item.TryGetProperty("roles", out var roles) && roles.ValueKind == JsonValueKind.Array
+                    ? roles.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
+                    : null,
+                Scopes = item.TryGetProperty("scopes", out var sc) && sc.ValueKind == JsonValueKind.Array
+                    ? sc.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
+                    : null,
+                InstanceId = item.TryGetProperty("instanceId", out var iid) ? iid.GetString() : null,
+            });
+        }
+        return list.ToArray();
     }
 }

@@ -80,7 +80,7 @@ public static class DeepLinkHandler
                 break;
 
             case "commandcenter":
-                actions.OpenHub?.Invoke("home");
+                actions.OpenHub?.Invoke("general");
                 break;
 
             case "setup":
@@ -188,7 +188,7 @@ public static class DeepLinkHandler
 
             case "status":
             case "command-center":
-                actions.OpenHub?.Invoke("home");
+                actions.OpenHub?.Invoke("general");
                 break;
 
             case "tray":

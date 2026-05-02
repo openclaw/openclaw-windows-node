@@ -460,6 +460,11 @@ public sealed partial class TrayMenuWindow : WindowEx
         _headerCount++;
     }
 
+    public void AddCustomElement(UIElement element)
+    {
+        MenuPanel.Children.Add(element);
+    }
+
     public void ClearItems()
     {
         HideActiveFlyout();

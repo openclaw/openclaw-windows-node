@@ -1,16 +1,11 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
@@ -19,7 +14,7 @@ public sealed partial class SettingsPage : Page
 {
     private HubWindow? _hub;
     private bool _initialized;
-    private List<ExecPolicyRule> _policyRules = new();
+
 
     public SettingsPage()
     {
@@ -73,8 +68,7 @@ public sealed partial class SettingsPage : Page
         SshTunnelLocalPortTextBox.Text = settings.SshTunnelLocalPort.ToString();
         SshTunnelDetailsPanel.Visibility = settings.UseSshTunnel ? Visibility.Visible : Visibility.Collapsed;
 
-        LoadExecPolicy();
-        LoadPermissions();
+
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -265,145 +259,6 @@ public sealed partial class SettingsPage : Page
         {
             ConnectionStatusLabel.Text = $"❌ {ex.Message}";
         }
-    }
-
-    private void LoadExecPolicy()
-    {
-        try
-        {
-            var policyPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "exec-policy.json");
-
-            if (File.Exists(policyPath))
-            {
-                var json = File.ReadAllText(policyPath);
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("defaultAction", out var da))
-                {
-                    var action = da.GetString() ?? "deny";
-                    for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
-                    {
-                        if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
-                        { DefaultActionCombo.SelectedIndex = i; break; }
-                    }
-                }
-
-                _policyRules.Clear();
-                if (root.TryGetProperty("rules", out var rules) && rules.ValueKind == System.Text.Json.JsonValueKind.Array)
-                {
-                    int idx = 0;
-                    foreach (var rule in rules.EnumerateArray())
-                    {
-                        _policyRules.Add(new ExecPolicyRule
-                        {
-                            Pattern = rule.TryGetProperty("pattern", out var p) ? p.GetString() ?? "" : "",
-                            Action = rule.TryGetProperty("action", out var a) ? a.GetString() ?? "deny" : "deny",
-                            Index = idx++
-                        });
-                    }
-                }
-
-                RefreshPolicyRulesList();
-            }
-            else
-            {
-                DefaultActionCombo.SelectedIndex = 0; // deny
-            }
-        }
-        catch { DefaultActionCombo.SelectedIndex = 0; }
-    }
-
-    private void RefreshPolicyRulesList()
-    {
-        for (int i = 0; i < _policyRules.Count; i++) _policyRules[i].Index = i;
-        PolicyRulesList.ItemsSource = null;
-        PolicyRulesList.ItemsSource = _policyRules.Select(r => new
-        {
-            r.Pattern,
-            r.Action,
-            r.Index,
-            ActionBrush = new SolidColorBrush(r.Action == "allow"
-                ? global::Windows.UI.Color.FromArgb(255, 34, 139, 34)
-                : global::Windows.UI.Color.FromArgb(255, 220, 53, 69))
-        }).ToList();
-    }
-
-    private void OnAddRule(object sender, RoutedEventArgs e)
-    {
-        var pattern = NewRulePattern.Text.Trim();
-        if (string.IsNullOrEmpty(pattern)) return;
-        var action = (NewRuleAction.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "deny";
-        _policyRules.Add(new ExecPolicyRule { Pattern = pattern, Action = action });
-        NewRulePattern.Text = "";
-        RefreshPolicyRulesList();
-    }
-
-    private void OnRemoveRule(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is int index && index < _policyRules.Count)
-        {
-            _policyRules.RemoveAt(index);
-            RefreshPolicyRulesList();
-        }
-    }
-
-    private void OnDefaultActionChanged(object sender, SelectionChangedEventArgs e) { }
-
-    private void OnSaveExecPolicy(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var policyPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "exec-policy.json");
-
-            var defaultAction = (DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "deny";
-            var policy = new
-            {
-                defaultAction,
-                rules = _policyRules.Select(r => new { r.Pattern, action = r.Action }).ToArray()
-            };
-
-            var json = System.Text.Json.JsonSerializer.Serialize(policy, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!);
-            File.WriteAllText(policyPath, json);
-
-            if (sender is Button btn)
-            {
-                btn.Content = "✓ Saved";
-                var timer = DispatcherQueue.CreateTimer();
-                timer.Interval = TimeSpan.FromSeconds(2);
-                timer.Tick += (t, a) => { btn.Content = "Save Exec Policy"; timer.Stop(); };
-                timer.Start();
-            }
-        }
-        catch (Exception ex)
-        {
-            ConnectionStatusLabel.Text = $"❌ {ex.Message}";
-        }
-    }
-
-    private void LoadPermissions()
-    {
-        ScreenPermStatus.Text = "✅ Available";
-        CameraPermStatus.Text = "ℹ️ Check Privacy Settings";
-        MicPermStatus.Text = "ℹ️ Check Privacy Settings";
-    }
-
-    private void OnOpenPrivacySettings(object sender, RoutedEventArgs e)
-    {
-        try { Process.Start(new ProcessStartInfo("ms-settings:privacy-webcam") { UseShellExecute = true }); }
-        catch { }
-    }
-
-    private class ExecPolicyRule
-    {
-        public string Pattern { get; set; } = "";
-        public string Action { get; set; } = "deny";
-        public int Index { get; set; }
     }
 
     private class SettingsTestLogger : IOpenClawLogger

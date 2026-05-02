@@ -133,4 +133,50 @@ public sealed partial class SessionsPage : Page
         public string VerboseBadge => !string.IsNullOrEmpty(VerboseLevel) ? $"📝 {VerboseLevel}" : "";
         public Visibility VerboseVisible => !string.IsNullOrEmpty(VerboseLevel) ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    public void UpdateModelsList(ModelsListInfo data)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            ModelsList.Children.Clear();
+            if (data.Models.Count == 0)
+            {
+                ModelsSection.Visibility = Visibility.Collapsed;
+                return;
+            }
+            ModelsSection.Visibility = Visibility.Visible;
+
+            foreach (var model in data.Models)
+            {
+                var card = new Border
+                {
+                    Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12, 8, 12, 8),
+                };
+
+                var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+                sp.Children.Add(new TextBlock { Text = model.DisplayName, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+                if (!string.IsNullOrEmpty(model.Provider))
+                    sp.Children.Add(new TextBlock
+                    {
+                        Text = model.Provider,
+                        Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                if (model.ContextWindow is > 0)
+                    sp.Children.Add(new TextBlock
+                    {
+                        Text = $"{model.ContextWindow / 1000}K ctx",
+                        Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
+                        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+
+                card.Child = sp;
+                ModelsList.Children.Add(card);
+            }
+        });
+    }
 }

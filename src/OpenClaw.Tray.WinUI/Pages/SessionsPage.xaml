@@ -79,6 +79,12 @@
             <Button x:Name="RefreshButton" Content="Refresh" HorizontalAlignment="Center"
                     Click="OnRefresh" Margin="0,8,0,0"/>
 
+            <!-- Available Models -->
+            <StackPanel x:Name="ModelsSection" Spacing="8" Visibility="Collapsed">
+                <TextBlock Text="🤖 Available Models" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,16,0,0"/>
+                <StackPanel x:Name="ModelsList" Spacing="4"/>
+            </StackPanel>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

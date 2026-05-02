@@ -252,4 +252,133 @@ public sealed partial class NodesPage : Page
         public string[] Capabilities { get; set; } = Array.Empty<string>();
         public string[] Commands { get; set; } = Array.Empty<string>();
     }
+
+    public void UpdatePairingRequests(PairingListInfo data)
+    {
+        PairingList.Children.Clear();
+        if (data.Pending.Count == 0)
+        {
+            PairingSection.Visibility = Visibility.Collapsed;
+            return;
+        }
+        PairingSection.Visibility = Visibility.Visible;
+
+        foreach (var req in data.Pending)
+        {
+            var card = new Border
+            {
+                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16),
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var info = new StackPanel { Spacing = 4 };
+            info.Children.Add(new TextBlock
+            {
+                Text = req.DisplayName ?? req.NodeId,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            });
+            info.Children.Add(new TextBlock
+            {
+                Text = $"{req.Platform ?? "unknown"} · {req.RemoteIp ?? ""}",
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]
+            });
+            if (req.IsRepair)
+            {
+                info.Children.Add(new TextBlock
+                {
+                    Text = "⚠️ Repair request",
+                    Foreground = (Brush)Application.Current.Resources["SystemFillColorCautionBrush"],
+                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]
+                });
+            }
+            Grid.SetColumn(info, 0);
+            grid.Children.Add(info);
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+            var approveBtn = new Button { Content = "Approve", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+            var rejectBtn = new Button { Content = "Reject" };
+            var capturedId = req.RequestId;
+            approveBtn.Click += async (s, e) => { if (_hub?.GatewayClient != null) await _hub.GatewayClient.NodePairApproveAsync(capturedId); };
+            rejectBtn.Click += async (s, e) => { if (_hub?.GatewayClient != null) await _hub.GatewayClient.NodePairRejectAsync(capturedId); };
+            buttons.Children.Add(approveBtn);
+            buttons.Children.Add(rejectBtn);
+            Grid.SetColumn(buttons, 1);
+            grid.Children.Add(buttons);
+
+            card.Child = grid;
+            PairingList.Children.Add(card);
+        }
+    }
+
+    public void UpdateDevicePairingRequests(DevicePairingListInfo data)
+    {
+        DevicePairingList.Children.Clear();
+        if (data.Pending.Count == 0)
+        {
+            DevicePairingSection.Visibility = Visibility.Collapsed;
+            return;
+        }
+        DevicePairingSection.Visibility = Visibility.Visible;
+
+        foreach (var req in data.Pending)
+        {
+            var card = new Border
+            {
+                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16),
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var info = new StackPanel { Spacing = 4 };
+            info.Children.Add(new TextBlock
+            {
+                Text = req.DisplayName ?? req.DeviceId,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            });
+            var detail = $"{req.Platform ?? "unknown"}";
+            if (!string.IsNullOrEmpty(req.Role)) detail += $" · {req.Role}";
+            if (!string.IsNullOrEmpty(req.RemoteIp)) detail += $" · {req.RemoteIp}";
+            info.Children.Add(new TextBlock
+            {
+                Text = detail,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]
+            });
+            if (req.Scopes is { Length: > 0 })
+            {
+                info.Children.Add(new TextBlock
+                {
+                    Text = $"Scopes: {string.Join(", ", req.Scopes)}",
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
+                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]
+                });
+            }
+            Grid.SetColumn(info, 0);
+            grid.Children.Add(info);
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+            var approveBtn = new Button { Content = "Approve", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+            var rejectBtn = new Button { Content = "Reject" };
+            var capturedId = req.RequestId;
+            approveBtn.Click += async (s, e) => { if (_hub?.GatewayClient != null) await _hub.GatewayClient.DevicePairApproveAsync(capturedId); };
+            rejectBtn.Click += async (s, e) => { if (_hub?.GatewayClient != null) await _hub.GatewayClient.DevicePairRejectAsync(capturedId); };
+            buttons.Children.Add(approveBtn);
+            buttons.Children.Add(rejectBtn);
+            Grid.SetColumn(buttons, 1);
+            grid.Children.Add(buttons);
+
+            card.Child = grid;
+            DevicePairingList.Children.Add(card);
+        }
+    }
 }

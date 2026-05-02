@@ -18,6 +18,8 @@ public sealed partial class HubWindow : WindowEx
     public OpenClawGatewayClient? GatewayClient { get; set; }
     public ConnectionStatus CurrentStatus { get; set; }
     public Action<string?>? OpenDashboardAction { get; set; }
+    public Action? ConnectAction { get; set; }
+    public Action? DisconnectAction { get; set; }
 
     // Cached gateway data — pages read these on navigation
     public SessionInfo[]? LastSessions { get; private set; }
@@ -38,6 +40,7 @@ public sealed partial class HubWindow : WindowEx
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         Closed += (s, e) => IsClosed = true;
 
         this.SetWindowSize(900, 650);
@@ -85,10 +88,51 @@ public sealed partial class HubWindow : WindowEx
             DispatcherQueue?.TryEnqueue(() =>
             {
                 if (IsClosed) return;
+                UpdateTitleBarStatus(status);
                 if (ContentFrame?.Content is HomePage homePage)
                 {
                     homePage.UpdateConnectionStatus(status, Settings?.GetEffectiveGatewayUrl());
                 }
+            });
+        }
+        catch { }
+    }
+
+    private void UpdateTitleBarStatus(ConnectionStatus status)
+    {
+        var (color, text) = status switch
+        {
+            ConnectionStatus.Connected => (Microsoft.UI.Colors.LimeGreen, "Connected"),
+            ConnectionStatus.Connecting => (Microsoft.UI.Colors.Orange, "Connecting…"),
+            ConnectionStatus.Error => (Microsoft.UI.Colors.Red, "Error"),
+            _ => (Microsoft.UI.Colors.Gray, "Disconnected")
+        };
+
+        TitleStatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
+        TitleStatusText.Text = text;
+
+        // Add gateway version if available
+        if (status == ConnectionStatus.Connected && GatewayClient != null)
+        {
+            var self = _lastGatewaySelf;
+            if (self != null && !string.IsNullOrEmpty(self.ServerVersion))
+                TitleStatusText.Text = $"Connected · v{self.ServerVersion}";
+            if (self?.PresenceCount is > 0)
+                TitleStatusText.Text += $" · {self.PresenceCount} clients";
+        }
+    }
+
+    private GatewaySelfInfo? _lastGatewaySelf;
+
+    public void UpdateGatewaySelf(GatewaySelfInfo self)
+    {
+        _lastGatewaySelf = self;
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                UpdateTitleBarStatus(CurrentStatus);
             });
         }
         catch { }
@@ -152,6 +196,7 @@ public sealed partial class HubWindow : WindowEx
         DispatcherQueue?.TryEnqueue(() =>
         {
             if (ContentFrame?.Content is NodesPage page) page.UpdateNodes(nodes);
+            if (ContentFrame?.Content is HomePage home) home.UpdateNodes(nodes);
         });
     }
 
@@ -191,6 +236,93 @@ public sealed partial class HubWindow : WindowEx
         catch { }
     }
 
+    // Agent events ring buffer (max 400, cached centrally)
+    private const int MaxAgentEvents = 400;
+    private readonly System.Collections.Generic.List<AgentEventInfo> _agentEvents = new();
+    public System.Collections.Generic.IReadOnlyList<AgentEventInfo> LastAgentEvents => _agentEvents;
+
+    public void ClearAgentEvents() => _agentEvents.Clear();
+
+    public void UpdateAgentEvent(AgentEventInfo evt)
+    {
+        _agentEvents.Insert(0, evt);
+        if (_agentEvents.Count > MaxAgentEvents)
+            _agentEvents.RemoveRange(MaxAgentEvents, _agentEvents.Count - MaxAgentEvents);
+
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is AgentEventsPage page) page.AddEvent(evt);
+            });
+        }
+        catch { }
+    }
+
+    // Pairing data
+    public PairingListInfo? LastNodePairList { get; private set; }
+    public DevicePairingListInfo? LastDevicePairList { get; private set; }
+    public ModelsListInfo? LastModelsList { get; private set; }
+
+    public void UpdateNodePairList(PairingListInfo data)
+    {
+        LastNodePairList = data;
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is NodesPage page) page.UpdatePairingRequests(data);
+            });
+        }
+        catch { }
+    }
+
+    public void UpdateDevicePairList(DevicePairingListInfo data)
+    {
+        LastDevicePairList = data;
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is NodesPage page) page.UpdateDevicePairingRequests(data);
+            });
+        }
+        catch { }
+    }
+
+    public void UpdateModelsList(ModelsListInfo data)
+    {
+        LastModelsList = data;
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is SessionsPage page) page.UpdateModelsList(data);
+            });
+        }
+        catch { }
+    }
+
+    public PresenceEntry[]? LastPresence { get; private set; }
+
+    public void UpdatePresence(PresenceEntry[] data)
+    {
+        LastPresence = data;
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is InstancesPage page) page.UpdatePresenceData(data);
+            });
+        }
+        catch { }
+    }
+
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is NavigationViewItem item)
@@ -211,35 +343,61 @@ public sealed partial class HubWindow : WindowEx
         {
             case HomePage home: home.Initialize(this); break;
             case ChatPage chat: chat.Initialize(this); break;
-            case SessionsPage sessions: sessions.Initialize(this); break;
+            case SessionsPage sessions:
+                sessions.Initialize(this);
+                if (LastModelsList != null) sessions.UpdateModelsList(LastModelsList);
+                break;
             case ChannelsPage channels: channels.Initialize(this); break;
             case UsagePage usage: usage.Initialize(this); break;
-            case NodesPage nodes: nodes.Initialize(this); break;
+            case NodesPage nodes:
+                nodes.Initialize(this);
+                if (LastNodePairList != null) nodes.UpdatePairingRequests(LastNodePairList);
+                if (LastDevicePairList != null) nodes.UpdateDevicePairingRequests(LastDevicePairList);
+                break;
             case CronPage cron: cron.Initialize(this); break;
             case SkillsPage skills: skills.Initialize(this); break;
             case ConfigPage config:
                 config.Initialize(this);
                 if (LastConfig.HasValue) config.UpdateConfig(LastConfig.Value);
                 break;
+            case InstancesPage instances:
+                instances.Initialize(this);
+                if (LastPresence != null) instances.UpdatePresenceData(LastPresence);
+                break;
+            case PermissionsPage permissions: permissions.Initialize(this); break;
             case ActivityPage activity: activity.Initialize(this); break;
+            case AgentEventsPage agentEvents:
+                agentEvents.ClearCentralCache = ClearAgentEvents;
+                // Hydrate from cached events (list is newest-first, add in reverse so oldest are added first)
+                for (int i = LastAgentEvents.Count - 1; i >= 0; i--)
+                    agentEvents.AddEvent(LastAgentEvents[i]);
+                break;
             case SettingsPage settings: settings.Initialize(this); break;
+            case DebugPage debug: debug.Initialize(this); break;
             case AboutPage about: about.Initialize(this); break;
         }
     }
 
     private static Type? TagToPageType(string? tag) => tag switch
     {
-        "home" => typeof(HomePage),
+        "general" => typeof(HomePage),
         "chat" => typeof(ChatPage),
-        "sessions" => typeof(SessionsPage),
         "channels" => typeof(ChannelsPage),
-        "usage" => typeof(UsagePage),
-        "nodes" => typeof(NodesPage),
+        "sessions" => typeof(SessionsPage),
+        "instances" => typeof(InstancesPage),
         "cron" => typeof(CronPage),
         "skills" => typeof(SkillsPage),
         "config" => typeof(ConfigPage),
+        "permissions" => typeof(PermissionsPage),
+        "usage" => typeof(UsagePage),
+        "nodes" => typeof(NodesPage),
         "activity" => typeof(ActivityPage),
+        "agentevents" => typeof(AgentEventsPage),
         "settings" => typeof(SettingsPage),
+        "debug" => typeof(DebugPage),
+        "info" => typeof(AboutPage),
+        // Legacy tags for deep link compatibility
+        "home" => typeof(HomePage),
         "about" => typeof(AboutPage),
         _ => null
     };
