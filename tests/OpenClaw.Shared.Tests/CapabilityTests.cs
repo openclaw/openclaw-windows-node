@@ -2257,3 +2257,230 @@ public class LocationCapabilityTests
         Assert.Contains("Unknown command", res.Error);
     }
 }
+
+public class SttCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void CanHandle_SttTranscribe()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        Assert.True(cap.CanHandle("stt.transcribe"));
+        Assert.False(cap.CanHandle("stt.stream"));
+        Assert.False(cap.CanHandle("tts.speak"));
+        Assert.Equal("stt", cap.Category);
+        Assert.Equal(SttCapability.TranscribeCommand, cap.Commands.Single());
+    }
+
+    [Fact]
+    public void ResolveLanguage_PrefersRequested()
+    {
+        Assert.Equal("ja-JP", SttCapability.ResolveLanguage("ja-JP", "en-GB"));
+        Assert.Equal("en-GB", SttCapability.ResolveLanguage(null, "en-GB"));
+        Assert.Equal("en-GB", SttCapability.ResolveLanguage("   ", "en-GB"));
+        Assert.Equal(SttCapability.DefaultLanguage, SttCapability.ResolveLanguage(null, null));
+    }
+
+    [Fact]
+    public void ResolveLanguage_RejectsNonsense()
+    {
+        Assert.Null(SttCapability.ResolveLanguage("not a tag", null));
+        Assert.Null(SttCapability.ResolveLanguage("english", null));
+        Assert.Null(SttCapability.ResolveLanguage("en_US", null));
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenMaxDurationMissing()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.TranscribeRequested += (_, _) => throw new InvalidOperationException("should not be called");
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt1",
+            Command = "stt.transcribe",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Missing required maxDurationMs", res.Error);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(-5000)]
+    public async Task Transcribe_ReturnsError_WhenMaxDurationNotPositive(int maxMs)
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt2",
+            Command = "stt.transcribe",
+            Args = Parse($$"""{"maxDurationMs":{{maxMs}}}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Missing required maxDurationMs", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenMaxDurationExceedsBound()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt3",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":60000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("exceeds 30000", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenLanguageInvalid()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt4",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000,"language":"english please"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Invalid language tag", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenHandlerNotWired()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt5",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_PassesArgsToHandler_AndReturnsPayload()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttTranscribeArgs? received = null;
+        cap.TranscribeRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttTranscribeResult
+            {
+                Transcribed = true,
+                Text = "hello",
+                DurationMs = 4200,
+                Language = a.Language ?? SttCapability.DefaultLanguage
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt6",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000,"language":"en-GB"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(5000, received!.MaxDurationMs);
+        Assert.Equal("en-GB", received.Language);
+
+        var payload = JsonSerializer.SerializeToElement(res.Payload);
+        Assert.True(payload.GetProperty("transcribed").GetBoolean());
+        Assert.Equal("hello", payload.GetProperty("text").GetString());
+        Assert.Equal(4200, payload.GetProperty("durationMs").GetInt32());
+        Assert.Equal("en-GB", payload.GetProperty("language").GetString());
+    }
+
+    [Fact]
+    public async Task Transcribe_DropsLanguage_WhenOmitted_LettingTrayUseSetting()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttTranscribeArgs? received = null;
+        cap.TranscribeRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttTranscribeResult { Transcribed = true, Text = "hi", DurationMs = 100, Language = "en-US" });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt7",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":1000}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Null(received!.Language);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReportsHandlerException()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.TranscribeRequested += (_, _) => throw new InvalidOperationException("Microphone unavailable.");
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt8",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":2000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Microphone unavailable", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsCanceled_WhenTokenFires()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.TranscribeRequested += async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return new SttTranscribeResult();
+        };
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var res = await cap.ExecuteAsync(
+            new NodeInvokeRequest { Id = "stt9", Command = "stt.transcribe", Args = Parse("""{"maxDurationMs":5000}""") },
+            cts.Token);
+
+        Assert.False(res.Ok);
+        Assert.Contains("canceled", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReturnsError_ForUnknownCommand()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt10",
+            Command = "stt.stream",
+            Args = Parse("""{}""")
+        });
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
+    }
+}

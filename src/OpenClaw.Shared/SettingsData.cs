@@ -34,6 +34,8 @@ public class SettingsData
     public bool NodeCameraEnabled { get; set; } = true;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    public bool NodeSttEnabled { get; set; } = false;
+    public string SttLanguage { get; set; } = "en-US";
     /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>

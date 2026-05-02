@@ -349,4 +349,28 @@ public class McpToolBridgeTests
         Assert.Equal(-32603, error.GetProperty("code").GetInt32());
         Assert.DoesNotContain("secret-internal-detail", error.GetProperty("message").GetString());
     }
+
+    [Fact]
+    public async Task ToolsList_SttTranscribe_HasCuratedDescription()
+    {
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("stt", "stt.transcribe"),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var description = doc.RootElement.GetProperty("result")
+            .GetProperty("tools")[0]
+            .GetProperty("description")
+            .GetString()!;
+
+        // Must mention the key surface area so MCP clients render something useful.
+        Assert.Contains("microphone", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("maxDurationMs", description);
+        Assert.Contains("text", description, System.StringComparison.OrdinalIgnoreCase);
+        // And explicitly NOT the generic stub.
+        Assert.DoesNotContain("stt capability:", description);
+    }
 }

@@ -36,6 +36,8 @@ public class SettingsRoundTripTests
             NodeCameraEnabled = false,
             NodeLocationEnabled = true,
             NodeBrowserProxyEnabled = false,
+            NodeSttEnabled = true,
+            SttLanguage = "en-GB",
             HasSeenActivityStreamTip = true,
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
@@ -76,6 +78,8 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NodeCameraEnabled, restored.NodeCameraEnabled);
         Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
         Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
+        Assert.Equal(original.NodeSttEnabled, restored.NodeSttEnabled);
+        Assert.Equal(original.SttLanguage, restored.SttLanguage);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
@@ -133,6 +137,8 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCameraEnabled);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeSttEnabled);
+        Assert.Equal("en-US", settings.SttLanguage);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
@@ -182,6 +188,8 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCameraEnabled);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeSttEnabled);
+        Assert.Equal("en-US", settings.SttLanguage);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);

@@ -64,6 +64,8 @@ public class SettingsManager
     public bool NodeCameraEnabled { get; set; } = true;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    public bool NodeSttEnabled { get; set; } = false;
+    public string SttLanguage { get; set; } = "en-US";
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>
@@ -117,6 +119,8 @@ public class SettingsManager
                     NodeCameraEnabled = loaded.NodeCameraEnabled;
                     NodeLocationEnabled = loaded.NodeLocationEnabled;
                     NodeBrowserProxyEnabled = loaded.NodeBrowserProxyEnabled;
+                    NodeSttEnabled = loaded.NodeSttEnabled;
+                    SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? SttLanguage : loaded.SttLanguage;
                     EnableMcpServer = loaded.EnableMcpServer;
                     A2UIImageHosts = loaded.A2UIImageHosts ?? new List<string>();
                     // Legacy McpOnlyMode migration:
@@ -185,6 +189,8 @@ public class SettingsManager
                 NodeCameraEnabled = NodeCameraEnabled,
                 NodeLocationEnabled = NodeLocationEnabled,
                 NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
+                NodeSttEnabled = NodeSttEnabled,
+                SttLanguage = SttLanguage,
                 EnableMcpServer = EnableMcpServer,
                 A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
                 // McpOnlyMode is legacy — never written; remains null in serialized output.

@@ -69,6 +69,8 @@ public sealed class NodeService : IDisposable
     private LocationCapability? _locationCapability;
     private DeviceCapability? _deviceCapability;
     private BrowserProxyCapability? _browserProxyCapability;
+    private SttCapability? _sttCapability;
+    private SpeechToText.SpeechToTextService? _speechToTextService;
     private readonly string _dataPath;
     private string? _token;
 
@@ -286,6 +288,14 @@ public sealed class NodeService : IDisposable
         _deviceCapability = new DeviceCapability(_logger);
         Register(_deviceCapability);
 
+        if (_settings?.NodeSttEnabled == true)
+        {
+            _speechToTextService ??= new SpeechToText.SpeechToTextService(_logger, _settings);
+            _sttCapability = new SttCapability(_logger);
+            _sttCapability.TranscribeRequested += OnSttTranscribeAsync;
+            Register(_sttCapability);
+        }
+
         // BrowserProxy needs a live gateway connection — only register when gateway is up.
         if (_nodeClient != null && _settings?.NodeBrowserProxyEnabled != false)
         {
@@ -447,6 +457,8 @@ public sealed class NodeService : IDisposable
             disabled.AddRange(CommandCenterCommandGroups.SafeCompanionCommands.Where(command => command.StartsWith("location.", StringComparison.OrdinalIgnoreCase)));
         if (_settings?.NodeBrowserProxyEnabled == false)
             disabled.Add("browser.proxy");
+        if (_settings?.NodeSttEnabled != true)
+            disabled.Add(SttCapability.TranscribeCommand);
         return disabled;
     }
 
@@ -1268,6 +1280,52 @@ public sealed class NodeService : IDisposable
     
     #endregion
     
+    #region STT Capability Handlers
+    
+    private Task<SttTranscribeResult> OnSttTranscribeAsync(SttTranscribeArgs args, CancellationToken cancellationToken)
+    {
+        if (_speechToTextService == null)
+            throw new InvalidOperationException("Speech-to-text service not available");
+
+        var tcs = new TaskCompletionSource<SttTranscribeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registration = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+
+        bool enqueued = _dispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                tcs.TrySetResult(await _speechToTextService.TranscribeAsync(args, cancellationToken));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                tcs.TrySetCanceled(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+            }
+        });
+
+        if (!enqueued)
+            tcs.TrySetException(new InvalidOperationException("Speech-to-text dispatcher unavailable"));
+
+        return AwaitWithRegistrationAsync(tcs.Task, registration);
+    }
+
+    private static async Task<T> AwaitWithRegistrationAsync<T>(Task<T> task, CancellationTokenRegistration registration)
+    {
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            await registration.DisposeAsync();
+        }
+    }
+    
+    #endregion
+    
     public void Dispose()
     {
         StopMcpServer();
@@ -1278,6 +1336,7 @@ public sealed class NodeService : IDisposable
 
         try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
         try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
+        try { _speechToTextService?.Dispose(); } catch { /* ignore */ }
         // MediaResolver owns SocketsHttpHandler + HttpClient (disposeHandler:true);
         // without disposal the connection pool survives node teardown/recreate.
         try { _mediaResolver?.Dispose(); } catch { /* ignore */ }

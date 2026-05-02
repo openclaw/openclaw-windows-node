@@ -1019,11 +1019,17 @@ public static class CommandCenterCommandGroups
     public static readonly FrozenSet<string> SafeCompanionCommandSet =
         SafeCompanionCommands.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    public static readonly string[] DangerousCommands =
+    public static readonly string[] CommonDangerousCommands =
     [
         "camera.snap",
         "camera.clip",
         "screen.record"
+    ];
+
+    public static readonly string[] DangerousCommands =
+    [
+        .. CommonDangerousCommands,
+        "stt.transcribe"
     ];
 
     public static readonly FrozenSet<string> DangerousCommandSet =
@@ -1046,7 +1052,7 @@ public static class CommandCenterCommandGroups
     public static readonly string[] MacNodeParityCommands =
     [
         .. SafeCompanionCommands,
-        .. DangerousCommands,
+        .. CommonDangerousCommands,
         "system.notify",
         "system.run",
         "system.which",
@@ -1232,7 +1238,7 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "allowlist",
                 Title = "Privacy-sensitive commands are currently blocked",
-                Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} declared but filtered by gateway policy. Leave blocked unless you explicitly want camera or screen recording access for this node.",
+                Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} declared but filtered by gateway policy. Leave blocked unless you explicitly want camera, microphone, or screen recording access for this node.",
                 RepairAction = "Copy opt-in guidance",
                 CopyText = BuildDangerousCommandOptInGuidance(node.MissingDangerousAllowlistCommands)
             });

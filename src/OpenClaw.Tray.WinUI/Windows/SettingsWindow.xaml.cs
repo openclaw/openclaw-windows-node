@@ -94,6 +94,8 @@ public sealed partial class SettingsWindow : WindowEx
         NodeCameraToggle.IsOn = _settings.NodeCameraEnabled;
         NodeLocationToggle.IsOn = _settings.NodeLocationEnabled;
         NodeBrowserProxyToggle.IsOn = _settings.NodeBrowserProxyEnabled;
+        NodeSttToggle.IsOn = _settings.NodeSttEnabled;
+        SttLanguageTextBox.Text = _settings.SttLanguage;
         UpdateSshTunnelPreviewText();
         McpServerToggle.IsOn = _settings.EnableMcpServer;
         McpUrlTextBox.Text = NodeService.McpServerUrl;
@@ -386,6 +388,10 @@ public sealed partial class SettingsWindow : WindowEx
         _settings.NodeCameraEnabled = NodeCameraToggle.IsOn;
         _settings.NodeLocationEnabled = NodeLocationToggle.IsOn;
         _settings.NodeBrowserProxyEnabled = NodeBrowserProxyToggle.IsOn;
+        _settings.NodeSttEnabled = NodeSttToggle.IsOn;
+        var sttLanguage = SttLanguageTextBox.Text?.Trim();
+        if (!string.IsNullOrEmpty(sttLanguage))
+            _settings.SttLanguage = sttLanguage;
         _settings.EnableMcpServer = McpServerToggle.IsOn;
 
         _settings.Save();

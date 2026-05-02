@@ -203,6 +203,33 @@
                         </StackPanel>
                     </Border>
 
+                    <Border AutomationProperties.AutomationId="SettingsNodeSttGroup"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            CornerRadius="8"
+                            Padding="12"
+                            Margin="0,8,0,0">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Speech-to-text (microphone)" FontWeight="SemiBold"/>
+                            <TextBlock Text="When enabled, this Windows node advertises stt.transcribe to capture short audio clips from the default microphone and return transcribed text. Default off. Exposes the microphone to both gateway callers (when Node Mode is on, subject to the gateway allowlist) and local MCP clients (when the local MCP server is on, subject to the bearer token). Requires Windows microphone access for desktop apps in Settings → Privacy &amp; security → Microphone (packaged MSIX installs additionally need per-app permission)."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                            <ToggleSwitch x:Name="NodeSttToggle" AutomationProperties.AutomationId="NodeSttToggle" Header="Enable speech-to-text"/>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Language tag" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" x:Name="SttLanguageTextBox" AutomationProperties.AutomationId="SttLanguageTextBox" PlaceholderText="en-US"/>
+                            </Grid>
+                            <TextBlock Text="BCP-47 tag (e.g. en-US, en-GB, ja-JP). The OS must have the speech recognition pack for this language installed."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock x:Uid="SettingsDeveloperModeHeader" Text="DEVELOPER MODE" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold" Margin="0,16,0,0"/>
                     <ToggleSwitch x:Name="McpServerToggle" x:Uid="SettingsMcpServerToggle" AutomationProperties.AutomationId="McpServerToggle" Header="Enable Local MCP Server" Margin="0,8,0,0"/>

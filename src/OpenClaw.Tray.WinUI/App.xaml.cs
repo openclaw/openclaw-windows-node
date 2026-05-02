@@ -1396,7 +1396,8 @@ public partial class App : Application
         if (string.Equals(command, "screen.record", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(command, "screen.snapshot", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(command, "camera.snap", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "camera.clip", StringComparison.OrdinalIgnoreCase))
+            string.Equals(command, "camera.clip", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(command, "stt.transcribe", StringComparison.OrdinalIgnoreCase))
         {
             return "privacy-sensitive";
         }

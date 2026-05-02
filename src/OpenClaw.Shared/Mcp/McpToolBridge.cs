@@ -229,6 +229,10 @@ public class McpToolBridge
             "Capture a still photo from a camera. Args: deviceId (string, optional — defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
         ["camera.clip"] =
             "Record a short clip from a camera. Args: deviceId (string, optional), durationMs (int, required, max 60000), format ('mp4'|'webm', default 'mp4'), maxWidth (int, default 1280). Returns { format, durationMs, base64 }.",
+
+        // stt.* — bounded microphone capture → text. Default-off privacy-sensitive.
+        ["stt.transcribe"] =
+            "Capture audio from the default microphone for a bounded duration and return the transcribed text. Args: maxDurationMs (int, required, > 0, max 30000), language (string, optional BCP-47 tag like 'en-US' — falls back to the configured SttLanguage setting). Uses Windows.Media.SpeechRecognition (local recognizer; OS may use online services for some configurations). Returns { transcribed, text, durationMs, language }. Requires NodeSttEnabled in tray Settings; when enabled, exposed to both gateway callers (subject to the gateway allowlist) and local MCP clients (subject to the MCP bearer token).",
     };
 
     private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)
