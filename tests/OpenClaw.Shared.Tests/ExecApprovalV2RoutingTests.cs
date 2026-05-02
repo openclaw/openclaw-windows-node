@@ -31,21 +31,23 @@ public class ExecApprovalV2RoutingTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void V2Result_AllSixCodesConstructible()
+    public void V2Result_AllCodesConstructible()
     {
         var r1 = ExecApprovalV2Result.Unavailable("test");
-        var r2 = ExecApprovalV2Result.SecurityDeny("test");
-        var r3 = ExecApprovalV2Result.AllowlistMiss("test");
-        var r4 = ExecApprovalV2Result.UserDenied("test");
-        var r5 = ExecApprovalV2Result.ValidationFailed("test");
-        var r6 = ExecApprovalV2Result.ResolutionFailed("test");
+        var r2 = ExecApprovalV2Result.Allowed("test");
+        var r3 = ExecApprovalV2Result.SecurityDeny("test");
+        var r4 = ExecApprovalV2Result.AllowlistMiss("test");
+        var r5 = ExecApprovalV2Result.UserDenied("test");
+        var r6 = ExecApprovalV2Result.ValidationFailed("test");
+        var r7 = ExecApprovalV2Result.ResolutionFailed("test");
 
         Assert.Equal(ExecApprovalV2Code.Unavailable, r1.Code);
-        Assert.Equal(ExecApprovalV2Code.SecurityDeny, r2.Code);
-        Assert.Equal(ExecApprovalV2Code.AllowlistMiss, r3.Code);
-        Assert.Equal(ExecApprovalV2Code.UserDenied, r4.Code);
-        Assert.Equal(ExecApprovalV2Code.ValidationFailed, r5.Code);
-        Assert.Equal(ExecApprovalV2Code.ResolutionFailed, r6.Code);
+        Assert.Equal(ExecApprovalV2Code.Allowed, r2.Code);
+        Assert.Equal(ExecApprovalV2Code.SecurityDeny, r3.Code);
+        Assert.Equal(ExecApprovalV2Code.AllowlistMiss, r4.Code);
+        Assert.Equal(ExecApprovalV2Code.UserDenied, r5.Code);
+        Assert.Equal(ExecApprovalV2Code.ValidationFailed, r6.Code);
+        Assert.Equal(ExecApprovalV2Code.ResolutionFailed, r7.Code);
     }
 
     [Fact]
@@ -369,13 +371,73 @@ public class ExecApprovalV2RoutingTests
         Assert.NotNull(repoRoot);
 
         var srcDir = Path.Combine(repoRoot, "src");
+        // Check for actual call-site invocations (dot-prefix + open-paren), not comments.
         var violations = Directory
             .GetFiles(srcDir, "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.EndsWith("SystemCapability.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(f => File.ReadAllText(f).Contains("SetV2Handler", StringComparison.Ordinal))
+            .Where(f => File.ReadAllText(f).Contains(".SetV2Handler(", StringComparison.Ordinal))
             .ToList();
 
         Assert.Empty(violations);
+    }
+
+    // -------------------------------------------------------------------------
+    // I-4. Allowed result causes command runner to be called (PR7)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task V2Path_AllowedResult_ExecutesCommandRunner()
+    {
+        var runner = new FakeRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allowed()));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(res.Ok, $"Expected Ok but got error: {res.Error}");
+        Assert.NotNull(runner.LastRequest); // command runner was called
+        // RunRequest() uses {"command":"echo hello"} string form → parsed as single argv element
+        Assert.Equal("echo hello", runner.LastRequest!.Command);
+    }
+
+    [Fact]
+    public async Task V2Path_AllowedResult_DoesNotReturnHandlerError()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(new FakeRunner());
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allowed()));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(res.Ok);
+        Assert.Null(res.Error);
+    }
+
+    [Fact]
+    public async Task V2Path_AllowedResult_LogsV2ApprovedExecuting()
+    {
+        var logger = new CapturingLogger();
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(new FakeRunner());
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allowed()));
+
+        await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(logger.HasInfoContaining("v2-approved"), "v2-approved not logged on allow path");
+    }
+
+    [Fact]
+    public async Task V2Path_AllowedResult_NullRunner_ReturnsError()
+    {
+        // V2 allowed but no runner configured — execution must fail gracefully.
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allowed()));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FindRepoRoot()

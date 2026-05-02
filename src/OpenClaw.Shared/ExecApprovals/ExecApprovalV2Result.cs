@@ -6,6 +6,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 public enum ExecApprovalV2Code
 {
     Unavailable,
+    Allowed,
     SecurityDeny,
     AllowlistMiss,
     UserDenied,
@@ -30,6 +31,9 @@ public sealed class ExecApprovalV2Result
 
     public static ExecApprovalV2Result Unavailable(string reason = "Handler not available")
         => new(ExecApprovalV2Code.Unavailable, reason);
+
+    public static ExecApprovalV2Result Allowed(string reason = "policy-allow")
+        => new(ExecApprovalV2Code.Allowed, reason);
 
     public static ExecApprovalV2Result SecurityDeny(string reason)
         => new(ExecApprovalV2Code.SecurityDeny, reason);

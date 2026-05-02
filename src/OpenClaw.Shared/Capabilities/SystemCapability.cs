@@ -275,9 +275,13 @@ public class SystemCapability : NodeCapabilityBase
             }
 
             Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
+            if (v2Result.Code == ExecApprovalV2Code.Allowed)
+            {
+                // V2 coordinator already evaluated policy — execute directly.
+                Logger.Info($"[system.run] corr={correlationId} v2-approved executing");
+                return await ExecuteRunRequestAsync(request, correlationId);
+            }
             // Rail 1: no silent fallback to legacy regardless of result code.
-            // In PR1 only ExecApprovalV2NullHandler exists (always unavailable); the real
-            // coordinator that can produce an allow decision is wired in PR7/PR8.
             return Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
         }
 
@@ -288,13 +292,83 @@ public class SystemCapability : NodeCapabilityBase
         {
             return Error("Command execution not available");
         }
-        
+
+        // Parse argv and parameters from raw request.
+        var legacyParsed = ParseRunRequest(request);
+        if (legacyParsed.Error != null)
+            return Error(legacyParsed.Error);
+
+        var (legacyCommand, legacyArgs, legacyShell, legacyCwd, legacyTimeoutMs, legacyEnv) = legacyParsed;
+
+        var fullCommand = legacyArgs != null
+            ? FormatExecCommand([legacyCommand!, ..legacyArgs])
+            : legacyCommand;
+
+        Logger.Info($"system.run: {fullCommand} (shell={legacyShell ?? "auto"}, timeout={legacyTimeoutMs}ms)");
+
+        // Check exec approval policy
+        if (_approvalPolicy != null)
+        {
+            var approval = _approvalPolicy.Evaluate(fullCommand!, legacyShell);
+            if (!await EnsureApprovedAsync(fullCommand!, legacyShell, approval))
+            {
+                Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
+                return Error($"Command denied by exec policy: {approval.Reason}");
+            }
+
+            var parseResult = ExecShellWrapperParser.Expand(fullCommand!, legacyShell);
+            if (!string.IsNullOrWhiteSpace(parseResult.Error))
+            {
+                Logger.Warn($"system.run DENIED: {fullCommand} ({parseResult.Error})");
+                return Error($"Command denied by exec policy: {parseResult.Error}");
+            }
+
+            foreach (var target in parseResult.Targets)
+            {
+                var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
+                if (!await EnsureApprovedAsync(target.Command, target.Shell, innerApproval))
+                {
+                    Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
+                    return Error($"Command denied by exec policy: {innerApproval.Reason}");
+                }
+            }
+        }
+
+        return await RunCommandAsync(legacyCommand!, legacyArgs, legacyShell, legacyCwd, legacyTimeoutMs, legacyEnv);
+    }
+
+    /// <summary>
+    /// Executes a V2-approved request without re-checking policy.
+    /// Called by the V2 routing path after the handler returns <see cref="ExecApprovalV2Code.Allowed"/>.
+    /// </summary>
+    private async Task<NodeInvokeResponse> ExecuteRunRequestAsync(NodeInvokeRequest request, string correlationId)
+    {
+        if (_commandRunner == null)
+            return Error("Command execution not available");
+
+        var parsed = ParseRunRequest(request);
+        if (parsed.Error != null)
+            return Error(parsed.Error);
+
+        var (command, args, shell, cwd, timeoutMs, env) = parsed;
+        var fullCommand = args != null ? FormatExecCommand([command!, ..args]) : command;
+        Logger.Info($"[system.run] corr={correlationId} v2-execute cmd={fullCommand} shell={shell ?? "auto"} timeout={timeoutMs}ms");
+
+        return await RunCommandAsync(command!, args, shell, cwd, timeoutMs, env);
+    }
+
+    /// <summary>
+    /// Parses the raw NodeInvokeRequest fields common to both the legacy and V2 execution paths.
+    /// Returns a <see cref="ParsedRunRequest"/> with <see cref="ParsedRunRequest.Error"/> set on failure.
+    /// </summary>
+    private ParsedRunRequest ParseRunRequest(NodeInvokeRequest request)
+    {
         // Per OpenClaw spec, "command" is an argv array (e.g. ["echo","Hello"]).
         // Also accept a plain string for backward compatibility.
         var argv = TryParseArgv(request.Args);
         string? command = argv?[0];
         string[]? args = argv?.Length > 1 ? argv[1..] : null;
-        
+
         // When command is a string, also check for separate "args" array
         if (argv?.Length == 1 && request.Args.TryGetProperty("args", out var argsEl) &&
             argsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -308,12 +382,10 @@ public class SystemCapability : NodeCapabilityBase
             if (list.Count > 0)
                 args = list.ToArray();
         }
-        
+
         if (string.IsNullOrWhiteSpace(command))
-        {
-            return Error("Missing command parameter");
-        }
-        
+            return ParsedRunRequest.Fail("Missing command parameter");
+
         var shell = GetStringArg(request.Args, "shell");
         var cwd = GetStringArg(request.Args, "cwd");
         var timeoutMs = GetIntArg(request.Args, "timeoutMs",
@@ -325,7 +397,7 @@ public class SystemCapability : NodeCapabilityBase
         // from accidentally outliving the tray.
         if (timeoutMs <= 0) timeoutMs = DefaultRunTimeoutMs;
         if (timeoutMs > MaxRunTimeoutMs) timeoutMs = MaxRunTimeoutMs;
-        
+
         // Parse env dict if present
         Dictionary<string, string>? env = null;
         if (request.Args.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
@@ -347,51 +419,24 @@ public class SystemCapability : NodeCapabilityBase
             Array.Sort(blockedNames, StringComparer.OrdinalIgnoreCase);
             var blockedList = string.Join(", ", blockedNames);
             Logger.Warn($"system.run DENIED: blocked environment overrides [{blockedList}]");
-            return Error($"Unsafe environment variable override blocked: {blockedList}");
+            return ParsedRunRequest.Fail($"Unsafe environment variable override blocked: {blockedList}");
         }
         env = envResult.Allowed;
-        
-        // Build the full command string for policy evaluation and logging.
-        // When command arrives as an argv array, we must evaluate the entire
-        // command line — not just argv[0] — so policy rules like "rm *" correctly
-        // match "rm -rf /".
-        var fullCommand = args != null
-            ? FormatExecCommand([command!, ..args])
-            : command;
-        
-        Logger.Info($"system.run: {fullCommand} (shell={shell ?? "auto"}, timeout={timeoutMs}ms)");
-        
-        // Check exec approval policy
-        if (_approvalPolicy != null)
-        {
-            var approval = _approvalPolicy.Evaluate(fullCommand, shell);
-            if (!await EnsureApprovedAsync(fullCommand, shell, approval))
-            {
-                Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
-                return Error($"Command denied by exec policy: {approval.Reason}");
-            }
 
-            var parseResult = ExecShellWrapperParser.Expand(fullCommand, shell);
-            if (!string.IsNullOrWhiteSpace(parseResult.Error))
-            {
-                Logger.Warn($"system.run DENIED: {fullCommand} ({parseResult.Error})");
-                return Error($"Command denied by exec policy: {parseResult.Error}");
-            }
+        return ParsedRunRequest.Ok(command!, args, shell, cwd, timeoutMs, env);
+    }
 
-            foreach (var target in parseResult.Targets)
-            {
-                var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
-                if (!await EnsureApprovedAsync(target.Command, target.Shell, innerApproval))
-                {
-                    Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
-                    return Error($"Command denied by exec policy: {innerApproval.Reason}");
-                }
-            }
-        }
-        
+    private async Task<NodeInvokeResponse> RunCommandAsync(
+        string command,
+        string[]? args,
+        string? shell,
+        string? cwd,
+        int timeoutMs,
+        Dictionary<string, string>? env)
+    {
         try
         {
-            var result = await _commandRunner.RunAsync(new CommandRequest
+            var result = await _commandRunner!.RunAsync(new CommandRequest
             {
                 Command = command,
                 Args = args,
@@ -400,7 +445,7 @@ public class SystemCapability : NodeCapabilityBase
                 TimeoutMs = timeoutMs,
                 Env = env
             });
-            
+
             return Success(new
             {
                 stdout = result.Stdout,
@@ -415,6 +460,35 @@ public class SystemCapability : NodeCapabilityBase
             Logger.Error("system.run failed", ex);
             return Error($"Execution failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Parsed, sanitized system.run parameters — shared between legacy and V2 execution paths.
+    /// </summary>
+    private sealed class ParsedRunRequest
+    {
+        public string? Command { get; private init; }
+        public string[]? Args { get; private init; }
+        public string? Shell { get; private init; }
+        public string? Cwd { get; private init; }
+        public int TimeoutMs { get; private init; }
+        public Dictionary<string, string>? Env { get; private init; }
+        public string? Error { get; private init; }
+
+        public void Deconstruct(
+            out string? command, out string[]? args, out string? shell,
+            out string? cwd, out int timeoutMs, out Dictionary<string, string>? env)
+        {
+            command = Command; args = Args; shell = Shell;
+            cwd = Cwd; timeoutMs = TimeoutMs; env = Env;
+        }
+
+        public static ParsedRunRequest Ok(
+            string command, string[]? args, string? shell,
+            string? cwd, int timeoutMs, Dictionary<string, string>? env)
+            => new() { Command = command, Args = args, Shell = shell, Cwd = cwd, TimeoutMs = timeoutMs, Env = env };
+
+        public static ParsedRunRequest Fail(string error) => new() { Error = error };
     }
 
     private async Task<bool> EnsureApprovedAsync(
