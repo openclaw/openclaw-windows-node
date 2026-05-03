@@ -427,37 +427,9 @@ public partial class App : Application
         // Don't close - just hide
     }
 
-    // Double-click detection for tray icon
-    private DateTime _lastTrayClickTime = DateTime.MinValue;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _singleClickTimer;
-
     private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
     {
-        var now = DateTime.UtcNow;
-        var elapsed = (now - _lastTrayClickTime).TotalMilliseconds;
-        _lastTrayClickTime = now;
-
-        if (elapsed < 400)
-        {
-            // Double-click: cancel pending single-click, open Hub
-            _singleClickTimer?.Stop();
-            ShowHub();
-        }
-        else
-        {
-            // Reuse or create the single-click timer
-            if (_singleClickTimer == null)
-            {
-                _singleClickTimer = _dispatcherQueue?.CreateTimer();
-                if (_singleClickTimer != null)
-                {
-                    _singleClickTimer.Interval = TimeSpan.FromMilliseconds(400);
-                    _singleClickTimer.IsRepeating = false;
-                    _singleClickTimer.Tick += (t, _) => { t.Stop(); ShowChatWindow(); };
-                }
-            }
-            _singleClickTimer?.Start();
-        }
+        ShowChatWindow();
     }
 
     private void ShowChatWindow()
@@ -467,7 +439,16 @@ public partial class App : Application
         {
             _chatWindow = new ChatWindow(_settings.GetEffectiveGatewayUrl(), _settings.Token);
         }
-        _chatWindow.Activate();
+
+        // Toggle: if visible, hide; if hidden, show near tray
+        if (_chatWindow.Visible)
+        {
+            _chatWindow.Hide();
+        }
+        else
+        {
+            _chatWindow.ShowNearTrayAnimated();
+        }
     }
 
     private void OnTrayContextMenu(TrayIcon sender, TrayIconEventArgs e)
@@ -817,6 +798,8 @@ public partial class App : Application
             var ver = _lastGatewaySelf.ServerVersion;
             if (!string.IsNullOrEmpty(ver)) subtitle += $" · v{ver}";
         }
+        if (_lastPresence != null && _lastPresence.Length > 0)
+            subtitle += $" · {_lastPresence.Length} client{(_lastPresence.Length != 1 ? "s" : "")}";
         leftStack.Children.Add(new TextBlock
         {
             Text = subtitle,
@@ -882,6 +865,8 @@ public partial class App : Application
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
             });
 
+            var secondaryBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+
             // Show token usage bars for active sessions
             foreach (var session in _lastSessions.Take(3))
             {
@@ -890,6 +875,7 @@ public partial class App : Application
 
                 var sessionLabel = session.DisplayName ?? session.Key;
                 string usageText;
+                TextBlock label;
                 if (usedTokens > 0)
                 {
                     var fraction = Math.Min(1.0, (double)usedTokens / contextTokens);
@@ -915,26 +901,47 @@ public partial class App : Application
                         RadiusX = 3, RadiusY = 3
                     });
 
-                    contextPanel.Children.Add(new TextBlock
+                    label = new TextBlock
                     {
                         Text = usageText,
                         Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                         FontSize = 10,
                         Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
-                    });
+                    };
+                    contextPanel.Children.Add(label);
                     contextPanel.Children.Add(barRow);
                 }
                 else
                 {
                     usageText = $"{sessionLabel}: {session.Status}";
-                    contextPanel.Children.Add(new TextBlock
+                    label = new TextBlock
                     {
                         Text = usageText,
                         Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                         FontSize = 10,
                         Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
-                    });
+                    };
+                    contextPanel.Children.Add(label);
                 }
+
+                // Rich tooltip with session details
+                var sessionTip = new StackPanel { Padding = new Thickness(8), Spacing = 4, MaxWidth = 300 };
+                sessionTip.Children.Add(new TextBlock { Text = session.Key, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                if (!string.IsNullOrEmpty(session.Model))
+                    sessionTip.Children.Add(new TextBlock { Text = $"Model: {session.Model}", FontSize = 11 });
+                if (!string.IsNullOrEmpty(session.Provider))
+                    sessionTip.Children.Add(new TextBlock { Text = $"Provider: {session.Provider}", FontSize = 11 });
+                if (!string.IsNullOrEmpty(session.Channel))
+                    sessionTip.Children.Add(new TextBlock { Text = $"Channel: {session.Channel}", FontSize = 11 });
+                if (!string.IsNullOrEmpty(session.ThinkingLevel))
+                    sessionTip.Children.Add(new TextBlock { Text = $"Thinking: {session.ThinkingLevel}", FontSize = 11 });
+                if (session.TotalTokens > 0)
+                    sessionTip.Children.Add(new TextBlock { Text = $"Tokens: {FormatTokenCount(session.InputTokens)} in / {FormatTokenCount(session.OutputTokens)} out / {FormatTokenCount(session.TotalTokens)} total", FontSize = 11 });
+                if (session.ContextTokens > 0)
+                    sessionTip.Children.Add(new TextBlock { Text = $"Context: {FormatTokenCount(session.ContextTokens)} window", FontSize = 11 });
+                sessionTip.Children.Add(new TextBlock { Text = $"Status: {session.Status}", FontSize = 11 });
+                sessionTip.Children.Add(new TextBlock { Text = session.AgeText, FontSize = 10, Foreground = secondaryBrush });
+                ToolTipService.SetToolTip(label, sessionTip);
             }
             menu.AddCustomElement(contextPanel);
         }
@@ -946,6 +953,67 @@ public partial class App : Application
         {
             var total = nodePendingCount + devicePendingCount;
             menu.AddMenuItem($"⚠️ Pairing approval pending ({total})", "🔗", "hub");
+        }
+
+        // ── Connected Devices ──
+        if (_lastNodes.Length > 0)
+        {
+            menu.AddSeparator();
+            menu.AddHeader("Devices");
+
+            foreach (var node in _lastNodes.Take(5))
+            {
+                var devicePanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(12, 4, 12, 4) };
+
+                var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
+                {
+                    Width = 8, Height = 8,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                        node.IsOnline ? Microsoft.UI.Colors.LimeGreen : Microsoft.UI.Colors.Gray)
+                };
+                devicePanel.Children.Add(dot);
+
+                var nameBlock = new TextBlock
+                {
+                    Text = !string.IsNullOrWhiteSpace(node.DisplayName) ? node.DisplayName : node.ShortId,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                devicePanel.Children.Add(nameBlock);
+
+                if (!string.IsNullOrEmpty(node.Platform))
+                {
+                    var badge = new Border
+                    {
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(4, 1, 4, 1),
+                        Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            Microsoft.UI.ColorHelper.FromArgb(255, 60, 60, 80)),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock
+                        {
+                            Text = node.Platform,
+                            FontSize = 10,
+                            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
+                        }
+                    };
+                    devicePanel.Children.Add(badge);
+                }
+
+                // Rich tooltip with device details
+                var tipPanel = new StackPanel { Padding = new Thickness(8), Spacing = 4, MaxWidth = 280 };
+                var tipName = !string.IsNullOrWhiteSpace(node.DisplayName) ? node.DisplayName : node.ShortId;
+                tipPanel.Children.Add(new TextBlock { Text = tipName, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                tipPanel.Children.Add(new TextBlock { Text = $"Platform: {node.Platform ?? "unknown"}", FontSize = 11 });
+                tipPanel.Children.Add(new TextBlock { Text = $"Status: {(node.IsOnline ? "Online" : "Offline")}", FontSize = 11 });
+                if (!string.IsNullOrEmpty(node.NodeId))
+                    tipPanel.Children.Add(new TextBlock { Text = $"ID: {node.ShortId}", FontSize = 10, FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas") });
+                if (node.CapabilityCount > 0)
+                    tipPanel.Children.Add(new TextBlock { Text = $"Capabilities: {node.CapabilityCount}", FontSize = 11 });
+                ToolTipService.SetToolTip(devicePanel, tipPanel);
+
+                menu.AddCustomElement(devicePanel);
+            }
         }
 
         // ── Permissions ──
