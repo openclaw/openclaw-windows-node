@@ -215,7 +215,7 @@ public class SettingsRoundTripTests
         Assert.Null(SettingsData.FromJson("not json at all"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void SettingsManager_ProtectsElevenLabsApiKeyForStorage()
     {
         var protectedValue = SettingsManager.ProtectSettingSecret("elevenlabs-key");
