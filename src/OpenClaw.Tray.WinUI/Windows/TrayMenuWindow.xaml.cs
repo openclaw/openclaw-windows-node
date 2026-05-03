@@ -371,13 +371,13 @@ public sealed partial class TrayMenuWindow : WindowEx
         _itemCount++;
     }
 
-    public void AddToggleItem(string text, string? icon, bool isOn, Action<bool> onToggled)
+    public void AddToggleItem(string text, string? icon, bool isOn, Action<bool> onToggled, bool indent = false)
     {
         var panel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Padding = new Thickness(12, 6, 12, 6)
+            Padding = new Thickness(indent ? 28 : 12, 6, 12, 6)
         };
 
         if (!string.IsNullOrEmpty(icon))
@@ -414,7 +414,10 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         // Hover effect on the row
         container.PointerEntered += (s, e) =>
+        {
+            HideActiveFlyout();
             container.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+        };
         container.PointerExited += (s, e) =>
             container.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
@@ -424,12 +427,14 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public void AddSeparator()
     {
-        MenuPanel.Children.Add(new Border
+        var sep = new Border
         {
             Height = 1,
             Margin = new Thickness(8, 6, 8, 6),
             Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"]
-        });
+        };
+        sep.PointerEntered += (s, e) => HideActiveFlyout();
+        MenuPanel.Children.Add(sep);
         _separatorCount++;
     }
 
@@ -462,18 +467,22 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public void AddHeader(string text)
     {
-        MenuPanel.Children.Add(new TextBlock
+        var tb = new TextBlock
         {
             Text = text,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Padding = new Thickness(12, 10, 12, 4),
             Opacity = 0.7
-        });
+        };
+        tb.PointerEntered += (s, e) => HideActiveFlyout();
+        MenuPanel.Children.Add(tb);
         _headerCount++;
     }
 
     public void AddCustomElement(UIElement element)
     {
+        if (element is FrameworkElement fe)
+            fe.PointerEntered += (s, e) => HideActiveFlyout();
         MenuPanel.Children.Add(element);
     }
 
@@ -691,11 +700,11 @@ public sealed partial class TrayMenuWindow : WindowEx
                 }
                 else if (string.IsNullOrEmpty(item.Action))
                 {
-                    // Non-interactive detail line
+                    // Non-interactive detail line — compact padding
                     flyoutWindow.AddCustomElement(new TextBlock
                     {
                         Text = item.Text,
-                        Padding = new Thickness(12, 3, 12, 3),
+                        Padding = new Thickness(12, 2, 12, 2),
                         Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                         Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                         TextWrapping = TextWrapping.Wrap

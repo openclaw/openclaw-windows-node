@@ -38,6 +38,7 @@ public sealed partial class HubWindow : WindowEx
     public GatewayNodeInfo[]? LastNodes { get; private set; }
 
     public System.Text.Json.JsonElement? LastConfig { get; private set; }
+    public System.Text.Json.JsonElement? LastConfigSchema { get; private set; }
 
     // Event for settings saved (App.xaml.cs subscribes)
     public event EventHandler? SettingsSaved;
@@ -259,6 +260,21 @@ public sealed partial class HubWindow : WindowEx
             if (ContentFrame?.Content is ConfigPage cp) cp.UpdateConfig(config);
             else if (ContentFrame?.Content is BindingsPage bp) bp.UpdateConfig(config);
         });
+    }
+
+    public void UpdateConfigSchema(System.Text.Json.JsonElement schema)
+    {
+        LastConfigSchema = schema;
+        if (IsClosed) return;
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is ConfigPage cp) cp.UpdateConfigSchema(schema);
+            });
+        }
+        catch { }
     }
 
     public void UpdateSkillsStatus(System.Text.Json.JsonElement data)
@@ -485,6 +501,7 @@ public sealed partial class HubWindow : WindowEx
             case SkillsPage skills: skills.Initialize(this); break;
             case ConfigPage config:
                 config.Initialize(this);
+                if (LastConfigSchema.HasValue) config.UpdateConfigSchema(LastConfigSchema.Value);
                 if (LastConfig.HasValue) config.UpdateConfig(LastConfig.Value);
                 break;
             case InstancesPage instances:

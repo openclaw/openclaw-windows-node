@@ -427,9 +427,25 @@ public partial class App : Application
         // Don't close - just hide
     }
 
+    private DateTime _lastTrayClickTime = DateTime.MinValue;
+
     private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
     {
-        ShowChatWindow();
+        var now = DateTime.UtcNow;
+        var elapsed = (now - _lastTrayClickTime).TotalMilliseconds;
+        _lastTrayClickTime = now;
+
+        if (elapsed < 400)
+        {
+            // Double-click: open Hub
+            _chatWindow?.Hide();
+            ShowHub();
+        }
+        else
+        {
+            // Single click: toggle chat panel
+            ShowChatWindow();
+        }
     }
 
     private void ShowChatWindow()
@@ -878,53 +894,56 @@ public partial class App : Application
             menu.AddMenuItem($"⚠️ Pairing approval pending ({total})", "🔗", "hub");
         }
 
-        // ── Connected Devices ──
+        // ── Connected Devices with inline permission toggles ──
         if (_lastNodes.Length > 0)
         {
             menu.AddSeparator();
 
-            // Section header: "Devices  2 online · 8 caps"
             var onlineCount = _lastNodes.Count(n => n.IsOnline);
             var totalCaps = _lastNodes.Sum(n => n.CapabilityCount);
             var deviceSummaryRight = $"{onlineCount} online · {totalCaps} caps";
             menu.AddCustomElement(BuildSectionHeader("Devices", deviceSummaryRight));
+
+            var currentHost = Environment.MachineName;
 
             foreach (var node in _lastNodes.Take(5))
             {
                 var card = BuildDeviceCard(node);
                 var flyoutItems = BuildDeviceFlyoutItems(node);
                 menu.AddFlyoutCustomItem(card, flyoutItems, action: "nodes");
+
+                // If this node is the local machine, show capability toggles underneath
+                bool isLocal = node.DisplayName?.Contains(currentHost, StringComparison.OrdinalIgnoreCase) == true
+                    || node.NodeId?.Contains(currentHost, StringComparison.OrdinalIgnoreCase) == true;
+                if (isLocal && _settings != null)
+                {
+                    // Dynamic toggles based on what capabilities this node has
+                    var capToggles = new Dictionary<string, (Func<bool> Get, Action<bool> Set)>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["browser"] = (() => _settings.NodeBrowserProxyEnabled, v => _settings.NodeBrowserProxyEnabled = v),
+                        ["camera"] = (() => _settings.NodeCameraEnabled, v => _settings.NodeCameraEnabled = v),
+                        ["canvas"] = (() => _settings.NodeCanvasEnabled, v => _settings.NodeCanvasEnabled = v),
+                        ["screen"] = (() => _settings.NodeScreenEnabled, v => _settings.NodeScreenEnabled = v),
+                        ["location"] = (() => _settings.NodeLocationEnabled, v => _settings.NodeLocationEnabled = v),
+                        ["tts"] = (() => _settings.NodeTtsEnabled, v => _settings.NodeTtsEnabled = v),
+                        ["system"] = (() => _settings.EnableNodeMode, v => _settings.EnableNodeMode = v),
+                    };
+
+                    foreach (var cap in node.Capabilities)
+                    {
+                        if (capToggles.TryGetValue(cap, out var capToggle))
+                        {
+                            var icon = CapabilityIcons.TryGetValue(cap, out var emoji) ? emoji : "▪";
+                            var label = char.ToUpper(cap[0]) + cap[1..];
+                            menu.AddToggleItem(label, icon, capToggle.Get(), (on) =>
+                            {
+                                capToggle.Set(on); _settings.Save(); OnSettingsSaved(this, EventArgs.Empty);
+                            }, indent: true);
+                        }
+                    }
+                }
             }
         }
-
-        // ── Permissions ──
-        menu.AddSeparator();
-        menu.AddHeader("Permissions");
-
-        menu.AddToggleItem("Browser Control", "🌐", _settings?.NodeBrowserProxyEnabled ?? true, (on) =>
-        {
-            if (_settings != null) { _settings.NodeBrowserProxyEnabled = on; _settings.Save(); OnSettingsSaved(this, EventArgs.Empty); }
-        });
-
-        menu.AddToggleItem("Allow Camera", "📷", _settings?.NodeCameraEnabled ?? true, (on) =>
-        {
-            if (_settings != null) { _settings.NodeCameraEnabled = on; _settings.Save(); OnSettingsSaved(this, EventArgs.Empty); }
-        });
-
-        menu.AddToggleItem("Exec Approvals", "🛡️", _settings?.EnableNodeMode ?? false, (on) =>
-        {
-            if (_settings != null) { _settings.EnableNodeMode = on; _settings.Save(); OnSettingsSaved(this, EventArgs.Empty); }
-        });
-
-        menu.AddToggleItem("Allow Canvas", "🎨", _settings?.NodeCanvasEnabled ?? true, (on) =>
-        {
-            if (_settings != null) { _settings.NodeCanvasEnabled = on; _settings.Save(); OnSettingsSaved(this, EventArgs.Empty); }
-        });
-
-        menu.AddToggleItem("Screen Capture", "🖥️", _settings?.NodeScreenEnabled ?? true, (on) =>
-        {
-            if (_settings != null) { _settings.NodeScreenEnabled = on; _settings.Save(); OnSettingsSaved(this, EventArgs.Empty); }
-        });
 
         // ── Actions ──
         menu.AddSeparator();
@@ -958,6 +977,7 @@ public partial class App : Application
         ["location"] = "📍",
         ["canvas"] = "🎨",
         ["system"] = "⚙",
+        ["device"] = "📱",
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     private static Grid BuildSectionHeader(string title, string summary)
@@ -1131,46 +1151,64 @@ public partial class App : Application
         var usedTokens = session.InputTokens + session.OutputTokens;
         var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;
         var pct = usedTokens > 0 ? (int)(Math.Min(1.0, (double)usedTokens / contextTokens) * 100) : 0;
-        var isActive = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase);
+        var statusIcon = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase) ? "🟢"
+            : string.Equals(session.Status, "done", StringComparison.OrdinalIgnoreCase) ? "✅" : "⚪";
 
         var items = new List<TrayMenuFlyoutItem>
         {
             new() { Text = session.DisplayName ?? session.Key, IsHeader = true },
         };
 
-        if (!string.IsNullOrEmpty(session.Model))
-            items.Add(new() { Text = session.Model });
-        // Provider and channel badges
-        var badges = new List<string>();
-        if (!string.IsNullOrEmpty(session.Provider)) badges.Add(session.Provider);
-        if (!string.IsNullOrEmpty(session.Channel)) badges.Add(session.Channel);
-        if (badges.Count > 0) items.Add(new() { Text = string.Join("  ·  ", badges) });
+        // Model + Provider on one line
+        var modelLine = new List<string>();
+        if (!string.IsNullOrEmpty(session.Model)) modelLine.Add(session.Model);
+        if (!string.IsNullOrEmpty(session.Provider)) modelLine.Add(session.Provider);
+        if (modelLine.Count > 0) items.Add(new() { Text = string.Join(" · ", modelLine) });
 
-        var statusLine = $"● {(isActive ? "Active" : session.Status)} · Updated {session.AgeText}";
-        items.Add(new() { Text = statusLine });
+        // Channel if set
+        if (!string.IsNullOrEmpty(session.Channel))
+            items.Add(new() { Text = $"📡 Channel: {session.Channel}" });
+
+        // Status + age
+        items.Add(new() { Text = $"{statusIcon} {session.Status} · {session.AgeText}" });
 
         // Token usage section
+        items.Add(new() { Text = "Token Usage", IsHeader = true });
         if (usedTokens > 0)
         {
-            items.Add(new() { Text = "Token Usage", IsHeader = true });
-            items.Add(new() { Text = $"▓ {pct}% used" });
-            items.Add(new() { Text = $"Input    {FormatTokenCount(session.InputTokens)}" });
-            items.Add(new() { Text = $"Output   {FormatTokenCount(session.OutputTokens)}" });
-            items.Add(new() { Text = $"Total    {FormatTokenCount(usedTokens)} / {FormatTokenCount(contextTokens)}" });
+            // Visual bar
+            var barFull = 20;
+            var barFilled = Math.Max(1, (int)(barFull * Math.Min(1.0, (double)usedTokens / contextTokens)));
+            var bar = new string('█', barFilled) + new string('░', barFull - barFilled);
+            items.Add(new() { Text = $"{bar} {pct}%" });
+            items.Add(new() { Text = $"Input     {FormatTokenCount(session.InputTokens)}" });
+            items.Add(new() { Text = $"Output    {FormatTokenCount(session.OutputTokens)}" });
+            items.Add(new() { Text = $"Total     {FormatTokenCount(usedTokens)} / {FormatTokenCount(contextTokens)}" });
         }
-
-        // Settings section
-        var settingsLines = new List<string>();
-        if (!string.IsNullOrEmpty(session.ThinkingLevel)) settingsLines.Add($"🧠 Thinking: {session.ThinkingLevel}");
-        if (!string.IsNullOrEmpty(session.VerboseLevel)) settingsLines.Add($"📝 Verbose: {session.VerboseLevel}");
-        if (settingsLines.Count > 0)
+        else
         {
-            foreach (var line in settingsLines)
-                items.Add(new() { Text = line });
+            items.Add(new() { Text = "No token usage yet" });
         }
 
-        // Session key at bottom
-        items.Add(new() { Text = session.Key });
+        // Context window
+        if (session.ContextTokens > 0)
+            items.Add(new() { Text = $"Context   {FormatTokenCount(session.ContextTokens)} window" });
+
+        // Thinking / Verbose
+        if (!string.IsNullOrEmpty(session.ThinkingLevel) || !string.IsNullOrEmpty(session.VerboseLevel))
+        {
+            items.Add(new() { Text = "Settings", IsHeader = true });
+            if (!string.IsNullOrEmpty(session.ThinkingLevel))
+                items.Add(new() { Text = $"🧠 Thinking: {session.ThinkingLevel}" });
+            if (!string.IsNullOrEmpty(session.VerboseLevel))
+                items.Add(new() { Text = $"📝 Verbose: {session.VerboseLevel}" });
+        }
+
+        // Subject / Room if set
+        if (!string.IsNullOrEmpty(session.Subject))
+            items.Add(new() { Text = $"Subject: {session.Subject}" });
+        if (!string.IsNullOrEmpty(session.Room))
+            items.Add(new() { Text = $"Room: {session.Room}" });
 
         return items;
     }
@@ -1284,19 +1322,20 @@ public partial class App : Application
     private static List<TrayMenuFlyoutItem> BuildDeviceFlyoutItems(GatewayNodeInfo node)
     {
         var nodeName = !string.IsNullOrWhiteSpace(node.DisplayName) ? node.DisplayName : node.ShortId;
-
         var items = new List<TrayMenuFlyoutItem>
         {
             new() { Text = nodeName, IsHeader = true },
         };
 
-        // Platform + mode badges
-        var badges = new List<string>();
-        if (!string.IsNullOrEmpty(node.Platform)) badges.Add(node.Platform);
-        if (!string.IsNullOrEmpty(node.Mode)) badges.Add(node.Mode);
-        if (badges.Count > 0) items.Add(new() { Text = string.Join("  ·  ", badges) });
+        // Status + platform + mode on one line
+        var statusIcon = node.IsOnline ? "🟢" : "⚪";
+        var statusText = node.IsOnline ? "Online" : "Offline";
+        var infoParts = new List<string> { $"{statusIcon} {statusText}" };
+        if (!string.IsNullOrEmpty(node.Platform)) infoParts.Add(node.Platform);
+        if (!string.IsNullOrEmpty(node.Mode)) infoParts.Add(node.Mode);
+        items.Add(new() { Text = string.Join(" · ", infoParts) });
 
-        var statusLine = node.IsOnline ? "● Online" : "● Offline";
+        // Last seen
         if (node.LastSeen.HasValue)
         {
             var age = DateTime.UtcNow - node.LastSeen.Value;
@@ -1304,38 +1343,43 @@ public partial class App : Application
                 : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}m ago"
                 : age.TotalDays < 1 ? $"{(int)age.TotalHours}h ago"
                 : $"{(int)age.TotalDays}d ago";
-            statusLine += $" · Last seen {seenText}";
+            items.Add(new() { Text = $"Last seen {seenText}" });
         }
-        items.Add(new() { Text = statusLine });
 
-        // Capabilities section
-        if (node.CapabilityCount > 0)
+        // Capabilities + Commands merged — capability as header, commands as details
+        if (node.Capabilities.Count > 0 || node.Commands.Count > 0)
         {
-            items.Add(new() { Text = "Capabilities", IsHeader = true });
-            if (node.Capabilities.Count > 0)
+            items.Add(new() { Text = $"Capabilities ({node.CapabilityCount}) · Commands ({node.CommandCount})", IsHeader = true });
+
+            var cmdGroups = node.Commands
+                .GroupBy(c => c.Contains('.') ? c[..c.IndexOf('.')] : c, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Select(c => c.Contains('.') ? c[(c.IndexOf('.') + 1)..] : c).ToList(), StringComparer.OrdinalIgnoreCase);
+
+            // Show each capability with its commands on separate lines
+            var shownGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var cap in node.Capabilities)
             {
-                // Show icons with labels in rows
-                var capLine = new System.Text.StringBuilder();
-                foreach (var cap in node.Capabilities)
+                var icon = CapabilityIcons.TryGetValue(cap, out var emoji) ? emoji : "▪";
+                if (cmdGroups.TryGetValue(cap, out var cmds) && cmds.Count > 0)
                 {
-                    var icon = CapabilityIcons.TryGetValue(cap, out var emoji) ? emoji : "▪";
-                    if (capLine.Length > 0) capLine.Append("  ");
-                    capLine.Append($"{icon} {cap}");
+                    items.Add(new() { Text = $"{icon} {cap}" });
+                    items.Add(new() { Text = $"    {string.Join(", ", cmds)}" });
+                    shownGroups.Add(cap);
                 }
-                items.Add(new() { Text = capLine.ToString() });
+                else
+                {
+                    items.Add(new() { Text = $"{icon} {cap}" });
+                    shownGroups.Add(cap);
+                }
+            }
+
+            // Show any command groups not covered by a capability
+            foreach (var group in cmdGroups.Where(g => !shownGroups.Contains(g.Key)).OrderBy(g => g.Key))
+            {
+                items.Add(new() { Text = $"▸ {group.Key}" });
+                items.Add(new() { Text = $"    {string.Join(", ", group.Value)}" });
             }
         }
-
-        // Counts summary
-        var countParts = new List<string>();
-        if (node.CommandCount > 0) countParts.Add($"{node.CommandCount} commands");
-        if (node.CapabilityCount > 0) countParts.Add($"{node.CapabilityCount} capabilities");
-        if (countParts.Count > 0)
-            items.Add(new() { Text = string.Join(" · ", countParts) });
-
-        // ID at bottom
-        if (!string.IsNullOrEmpty(node.NodeId))
-            items.Add(new() { Text = $"ID: {node.ShortId}" });
 
         return items;
     }
@@ -2266,6 +2310,13 @@ public partial class App : Application
         _currentStatus = ConnectionStatus.Disconnected;
         _hubWindow?.UpdateStatus(_currentStatus);
         UpdateTrayIcon();
+
+        // Reset chat window if gateway URL or token changed (pre-warmed window has stale URL)
+        if (_chatWindow != null)
+        {
+            _chatWindow.ForceClose();
+            _chatWindow = null;
+        }
         
         // Always reconnect operator client for UI data
         InitializeGatewayClient();

@@ -16,9 +16,13 @@ public sealed partial class ConfigPage : Page
 {
     private HubWindow? _hub;
     private JsonElement? _lastConfig;
+    private JsonElement? _lastSchema;
+    private string? _baseHash;
+
     private JsonElement? _selectedElement;
     private string _selectedPath = "";
     private readonly Dictionary<TreeViewNode, (string Path, JsonElement Element)> _nodeMap = new();
+    private readonly Dictionary<string, object?> _pendingChanges = new();
 
     public ConfigPage()
     {
@@ -30,14 +34,8 @@ public sealed partial class ConfigPage : Page
         _hub = hub;
         if (hub.GatewayClient != null)
         {
-            ConnectionWarning.Visibility = Visibility.Collapsed;
-            StatusText.Text = "Requesting configuration...";
+            _ = hub.GatewayClient.RequestConfigSchemaAsync();
             _ = hub.GatewayClient.RequestConfigAsync();
-        }
-        else
-        {
-            ConnectionWarning.Visibility = Visibility.Visible;
-            StatusText.Text = "Not connected";
         }
     }
 
@@ -46,25 +44,108 @@ public sealed partial class ConfigPage : Page
         DispatcherQueue?.TryEnqueue(() =>
         {
             _lastConfig = config;
-            _nodeMap.Clear();
-            ConfigTree.RootNodes.Clear();
+            if (config.TryGetProperty("baseHash", out var bh))
+                _baseHash = bh.GetString();
 
-            var configRoot = config;
-            if (config.TryGetProperty("path", out var pathEl))
-                ConfigPathText.Text = $"\U0001F4C4 {pathEl.GetString()}";
-            if (config.TryGetProperty("config", out var inner))
-                configRoot = inner;
-
-            BuildTreeNodes(ConfigTree.RootNodes, configRoot, "");
-
-            foreach (var node in ConfigTree.RootNodes)
-                node.IsExpanded = true;
-
-            StatusText.Text = $"Loaded {CountKeys(configRoot)} config keys";
+            RenderTree(config);
         });
     }
 
-    private void BuildTreeNodes(IList<TreeViewNode> parent, JsonElement element, string basePath)
+    public void UpdateConfigSchema(JsonElement schema)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            _lastSchema = schema;
+        });
+    }
+
+    private void RenderTree(JsonElement config)
+    {
+        _nodeMap.Clear();
+        ConfigTree.RootNodes.Clear();
+
+        var configRoot = config;
+        if (config.TryGetProperty("config", out var inner))
+            configRoot = inner;
+
+        BuildTreeNodes(ConfigTree.RootNodes, configRoot, "");
+
+        // Expand all nodes
+        ExpandAll(ConfigTree.RootNodes);
+    }
+
+    private static void ExpandAll(IList<TreeViewNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = true;
+            if (node.Children.Count > 0)
+                ExpandAll(node.Children);
+        }
+    }
+
+    private async void OnSave(object sender, RoutedEventArgs e)
+    {
+        // Merge changes from schema editor and pending changes
+        var changes = new Dictionary<string, object?>(_pendingChanges);
+        foreach (var kv in SchemaEditor.GetChanges())
+            changes[kv.Key] = kv.Value;
+
+        if (changes.Count == 0)
+        {
+            SaveStatus.Text = "No changes";
+            return;
+        }
+
+        if (_hub?.GatewayClient != null)
+        {
+            SaveButton.IsEnabled = false;
+            SaveStatus.Text = "Saving...";
+            var ok = await _hub.GatewayClient.PatchConfigAsync(changes);
+            SaveStatus.Text = ok ? "✓ Saved" : "✗ Save failed — changes preserved";
+            SaveButton.IsEnabled = true;
+
+            if (ok)
+            {
+                _pendingChanges.Clear();
+                _ = _hub.GatewayClient.RequestConfigAsync();
+            }
+        }
+    }
+
+    /// <summary>Walk the JSON Schema tree to find the sub-schema at a dot-separated path.</summary>
+    private static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
+    {
+        if (string.IsNullOrEmpty(path)) return schema;
+        var current = schema;
+        foreach (var segment in path.Split('.'))
+        {
+            if (current.TryGetProperty("properties", out var props) &&
+                props.TryGetProperty(segment, out var child))
+            {
+                current = child;
+            }
+            else
+            {
+                return null;
+            }
+        }
+        return current;
+    }
+
+    private void OnRefresh(object sender, RoutedEventArgs e)
+    {
+        if (_hub?.GatewayClient != null)
+        {
+            SaveStatus.Text = "";
+            _ = _hub.GatewayClient.RequestConfigSchemaAsync();
+            _ = _hub.GatewayClient.RequestConfigAsync();
+        }
+    }
+
+    // ── Fallback TreeView methods (used when schema is unavailable) ──
+
+    private void BuildTreeNodes(IList<TreeViewNode> parent, JsonElement element, string basePath, int depth = 0)
     {
         if (element.ValueKind != JsonValueKind.Object) return;
 
@@ -75,7 +156,6 @@ public sealed partial class ConfigPage : Page
 
             if (prop.Value.ValueKind == JsonValueKind.Object)
             {
-                // Skip shallow objects that only have leaf children — they'll show in parent detail
                 bool hasObjectOrArrayChild = false;
                 foreach (var child in prop.Value.EnumerateObject())
                 {
@@ -83,22 +163,15 @@ public sealed partial class ConfigPage : Page
                     { hasObjectOrArrayChild = true; break; }
                 }
 
-                if (!hasObjectOrArrayChild)
-                {
-                    // Shallow object (all leaves) — skip tree node, show in parent detail
-                    continue;
-                }
-
                 node.Content = $"📁 {prop.Name}";
-                node.IsExpanded = false;
+                node.IsExpanded = depth < 1;
                 _nodeMap[node] = (path, prop.Value);
-                BuildTreeNodes(node.Children, prop.Value, path);
+                BuildTreeNodes(node.Children, prop.Value, path, depth + 1);
             }
             else if (prop.Value.ValueKind == JsonValueKind.Array)
             {
                 node.Content = $"📋 {prop.Name} [{prop.Value.GetArrayLength()}]";
                 _nodeMap[node] = (path, prop.Value);
-                // Only add array item children if items are objects
                 int idx = 0;
                 foreach (var item in prop.Value.EnumerateArray())
                 {
@@ -116,7 +189,7 @@ public sealed partial class ConfigPage : Page
             }
             else
             {
-                continue; // Leaf values show in detail panel
+                continue;
             }
 
             parent.Add(node);
@@ -139,10 +212,52 @@ public sealed partial class ConfigPage : Page
         DetailPlaceholder.Visibility = Visibility.Collapsed;
         DetailPath.Text = path;
 
+        // Try to find schema for this path
+        JsonElement? nodeSchema = null;
+        if (_lastSchema.HasValue)
+        {
+            var schema = _lastSchema.Value;
+            var schemaRoot = schema.TryGetProperty("schema", out var sr) ? sr : schema;
+            nodeSchema = ResolveSchemaAtPath(schemaRoot, path);
+        }
+
+        // Show description from schema if available
+        if (nodeSchema.HasValue && nodeSchema.Value.TryGetProperty("description", out var desc))
+        {
+            DetailType.Text = desc.GetString() ?? "";
+        }
+        else
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object: DetailType.Text = $"Object · {element.EnumerateObject().Count()} properties"; break;
+                case JsonValueKind.Array: DetailType.Text = $"Array · {element.GetArrayLength()} items"; break;
+                default: DetailType.Text = element.ValueKind.ToString(); break;
+            }
+        }
+
+        // Use schema editor for this subtree if schema is available
+        if (nodeSchema.HasValue && element.ValueKind == JsonValueKind.Object)
+        {
+            var editor = new Controls.SchemaConfigEditor();
+            editor.LoadSchema(nodeSchema.Value, element);
+            editor.ConfigChanged += (s, changes) =>
+            {
+                // Prefix changes with the current path
+                foreach (var kv in changes)
+                {
+                    var fullPath = string.IsNullOrEmpty(kv.Key) ? path : $"{path}.{kv.Key}";
+                    _pendingChanges[fullPath] = kv.Value;
+                }
+            };
+            DetailPanel.Children.Add(editor);
+            return;
+        }
+
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                DetailType.Text = $"Object \u00B7 {element.EnumerateObject().Count()} properties";
+                DetailType.Text = $"Object · {element.EnumerateObject().Count()} properties";
                 foreach (var prop in element.EnumerateObject())
                 {
                     var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
@@ -177,7 +292,7 @@ public sealed partial class ConfigPage : Page
                 break;
 
             case JsonValueKind.Array:
-                DetailType.Text = $"Array \u00B7 {element.GetArrayLength()} items";
+                DetailType.Text = $"Array · {element.GetArrayLength()} items";
                 int idx = 0;
                 foreach (var item in element.EnumerateArray())
                 {
@@ -249,147 +364,6 @@ public sealed partial class ConfigPage : Page
         }
     }
 
-    private FrameworkElement CreateValueDisplay(JsonElement value)
-    {
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.True:
-            case JsonValueKind.False:
-                var boolText = value.GetBoolean() ? "true" : "false";
-                var boolColor = value.GetBoolean()
-                    ? global::Windows.UI.Color.FromArgb(255, 34, 139, 34)
-                    : global::Windows.UI.Color.FromArgb(255, 178, 34, 34);
-                return new Border
-                {
-                    Background = new SolidColorBrush(boolColor),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(8, 2, 8, 2),
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Child = new TextBlock { Text = boolText, Foreground = new SolidColorBrush(Colors.White), FontSize = 12, FontWeight = FontWeights.SemiBold }
-                };
-
-            case JsonValueKind.Number:
-                return new TextBlock
-                {
-                    Text = value.GetRawText(),
-                    FontFamily = new FontFamily("Consolas"),
-                    FontSize = 13,
-                    Foreground = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 86, 156, 214)),
-                    IsTextSelectionEnabled = true,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-
-            case JsonValueKind.Null:
-                return new TextBlock
-                {
-                    Text = "null",
-                    FontStyle = global::Windows.UI.Text.FontStyle.Italic,
-                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                    FontSize = 13,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-
-            case JsonValueKind.Object:
-                var objPanel = new StackPanel { Spacing = 2 };
-                foreach (var sub in value.EnumerateObject())
-                {
-                    var subRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-                    subRow.Children.Add(new TextBlock
-                    {
-                        Text = $"{sub.Name}:",
-                        FontSize = 12,
-                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-                    });
-                    subRow.Children.Add(new TextBlock
-                    {
-                        Text = FormatValue(sub.Value),
-                        FontFamily = new FontFamily("Consolas"),
-                        FontSize = 12
-                    });
-                    objPanel.Children.Add(subRow);
-                }
-                return objPanel;
-
-            case JsonValueKind.Array:
-                var length = value.GetArrayLength();
-                if (length == 0)
-                    return new TextBlock { Text = "[ empty ]", FontSize = 12, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
-
-                bool allStrings = true;
-                foreach (var item in value.EnumerateArray())
-                    if (item.ValueKind != JsonValueKind.String) { allStrings = false; break; }
-
-                if (allStrings && length <= 30)
-                {
-                    var tagsText = string.Join(", ", value.EnumerateArray().Select(v => v.GetString()));
-                    return new TextBlock
-                    {
-                        Text = tagsText,
-                        FontFamily = new FontFamily("Consolas"),
-                        FontSize = 12,
-                        TextWrapping = TextWrapping.Wrap,
-                        IsTextSelectionEnabled = true
-                    };
-                }
-
-                return new TextBlock
-                {
-                    Text = $"[ {length} items ]",
-                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                    FontSize = 12,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-
-            default: // String
-                var str = value.GetString() ?? "";
-                if (str.Length > 8 && (str.Contains("token") || str.Contains("key") || str.Contains("secret") || str.Contains("password")))
-                    str = str[..4] + "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" + str[^4..];
-                return new TextBlock
-                {
-                    Text = $"\"{str}\"",
-                    FontFamily = new FontFamily("Consolas"),
-                    FontSize = 13,
-                    Foreground = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 206, 145, 120)),
-                    IsTextSelectionEnabled = true,
-                    TextWrapping = TextWrapping.Wrap,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-        }
-    }
-
-    private static string? TryGetLabel(JsonElement obj)
-    {
-        foreach (var key in new[] { "name", "id", "displayName", "key", "title" })
-        {
-            if (obj.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.String)
-                return val.GetString();
-        }
-        return null;
-    }
-
-    private static string FormatValue(JsonElement value) => value.ValueKind switch
-    {
-        JsonValueKind.String => value.GetString() ?? "",
-        JsonValueKind.Number => value.GetRawText(),
-        JsonValueKind.True => "true",
-        JsonValueKind.False => "false",
-        JsonValueKind.Null => "null",
-        _ => value.GetRawText()
-    };
-
-    private static int CountKeys(JsonElement element)
-    {
-        if (element.ValueKind != JsonValueKind.Object) return 0;
-        int count = 0;
-        foreach (var prop in element.EnumerateObject())
-        {
-            count++;
-            if (prop.Value.ValueKind == JsonValueKind.Object)
-                count += CountKeys(prop.Value);
-        }
-        return count;
-    }
-
     private FrameworkElement CreateEditableControl(JsonElement value, string configPath)
     {
         switch (value.ValueKind)
@@ -409,7 +383,7 @@ public sealed partial class ConfigPage : Page
                 };
                 if (isSecret && str.Length > 8)
                 {
-                    textBox.Text = str[..4] + "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+                    textBox.Text = str[..4] + "••••••••";
                     textBox.IsReadOnly = true;
                     textBox.Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
                 }
@@ -514,10 +488,6 @@ public sealed partial class ConfigPage : Page
     {
         if (_hub?.GatewayClient == null) return;
 
-        // NOTE: config.set contract may differ from gateway expectations.
-        // This sends { path, value } — gateway may expect full config + baseHash.
-        // Edits are best-effort; refresh after to verify.
-        StatusText.Text = $"Saving {configPath}... (experimental)";
         _ = Task.Run(async () =>
         {
             try
@@ -525,27 +495,37 @@ public sealed partial class ConfigPage : Page
                 var success = await _hub.GatewayClient.SetConfigAsync(configPath, newValue);
                 DispatcherQueue?.TryEnqueue(() =>
                 {
-                    StatusText.Text = success 
-                        ? $"✅ Sent {configPath} — refresh to verify" 
+                    SaveStatus.Text = success
+                        ? $"✅ Sent {configPath}"
                         : $"❌ Failed to save {configPath}";
-                    // Auto-refresh after save attempt
                     if (success && _hub?.GatewayClient != null)
                         _ = _hub.GatewayClient.RequestConfigAsync();
                 });
             }
             catch (Exception ex)
             {
-                DispatcherQueue?.TryEnqueue(() => StatusText.Text = $"❌ {ex.Message}");
+                DispatcherQueue?.TryEnqueue(() => SaveStatus.Text = $"❌ {ex.Message}");
             }
         });
     }
 
-    private void OnRefresh(object sender, RoutedEventArgs e)
+    private static string? TryGetLabel(JsonElement obj)
     {
-        if (_hub?.GatewayClient != null)
+        foreach (var key in new[] { "name", "id", "displayName", "key", "title" })
         {
-            StatusText.Text = "Refreshing...";
-            _ = _hub.GatewayClient.RequestConfigAsync();
+            if (obj.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.String)
+                return val.GetString();
         }
+        return null;
     }
+
+    private static string FormatValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString() ?? "",
+        JsonValueKind.Number => value.GetRawText(),
+        JsonValueKind.True => "true",
+        JsonValueKind.False => "false",
+        JsonValueKind.Null => "null",
+        _ => value.GetRawText()
+    };
 }
