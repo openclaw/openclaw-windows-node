@@ -1,15 +1,16 @@
 {
-  "last_run": "2026-05-02T12:35:59Z",
-  "last_run_id": "25252011795",
+  "last_run": "2026-05-03T01:20:00Z",
+  "last_run_id": "25266415933",
   "monthly_summary_issue": 254,
   "monthly_summary_month": "2026-05",
   "backlog_cursor": {
     "issues": 254,
-    "prs": 261
+    "prs": 262
   },
   "open_repo_assist_prs": [
+    {"number": 262, "title": "[Repo Assist] feat(mcp): add per-command JSON Schema to tools/list", "branch": "repo-assist/feat-mcp-input-schemas-2026-05-02-c3518e3a54a6ee1b"},
     {"number": 261, "title": "[Repo Assist] feat: implement ExecApprovalV2PolicyHandler (PR7 coordinator)", "branch": "repo-assist/feat-exec-v2-policy-handler-2026-05-02-577afdafa278a1d6"},
-    {"number": "pending", "title": "[Repo Assist] feat(mcp): add per-command JSON Schema to tools/list", "branch": "repo-assist/feat-mcp-input-schemas-2026-05-02"}
+    {"number": "pending", "title": "[Repo Assist] test: expand TokenSanitizer coverage + refactor ExecApprovalPolicy.Save()", "branch": "repo-assist/improve-token-sanitizer-tests-2026-05-03"}
   ],
   "comments_made": {
     "246": {"comment_id": "4408284034", "date": "2026-05-01"},
@@ -18,25 +19,27 @@
   },
   "fix_attempts": {
     "exec-v2-policy-handler": {"status": "pr_created", "pr": 261, "date": "2026-05-02"},
-    "mcp-input-schemas": {"status": "pr_created", "pr": "pending", "branch": "repo-assist/feat-mcp-input-schemas-2026-05-02", "date": "2026-05-02"}
+    "mcp-input-schemas": {"status": "pr_created", "pr": 262, "date": "2026-05-02"},
+    "token-sanitizer-tests": {"status": "pr_created", "pr": "pending", "branch": "repo-assist/improve-token-sanitizer-tests-2026-05-03", "date": "2026-05-03"}
   },
   "notes": [
     "PR #260 (AlexAlves87) normalization step must land before ExecApprovalV2PolicyHandler can be wired to production",
     "PR #261 (Repo Assist) ExecApprovalV2PolicyHandler — awaiting review",
+    "PR #262 (Repo Assist) MCP input schemas — awaiting review",
     "Issue #235 (Dependabot bundle) still open; individual PRs merged; suggest closing",
     "Issue #246 packaging strategy still open and unresolved",
     "Issue #191 WebView2 bridge: PR #259 closes the remaining CanvasWindow item; awaiting merge",
     "Pre-existing test failures: CanvasCapabilityTests.A2UIPush_WithJsonlPath_ReadsFile and A2UICapabilitySecurityTests.A2UIPush_FileJsonl_OverCap_ReturnsError - do not fix",
-    "MCP input schemas PR: implements docs/MCP_MODE.md deferred item 1; 26 commands now have curated schemas; also added location.get, device.info, device.status, browser.proxy to CommandDescriptions",
+    "TokenSanitizer test coverage expanded from 3 to 24 tests; ExecApprovalPolicy.Save() refactored to reuse GetPolicyData()",
     "Next V2 exec approval step: wire ExecApprovalV2PolicyHandler in production once PR #260 AND PR #261 are merged"
   ],
   "checked_off_by_maintainer": [],
   "test_baseline": {
-    "shared_passed": 1165,
+    "shared_passed": 1189,
     "shared_failed": 2,
     "shared_skipped": 20,
-    "shared_total": 1187,
+    "shared_total": 1211,
     "tray_passed": 407,
-    "note": "2 pre-existing failures in CanvasCapability/A2UI jsonl tests unrelated to our changes"
+    "note": "2 pre-existing failures in CanvasCapability/A2UI jsonl tests unrelated to our changes; +24 new TokenSanitizer tests this run"
   }
 }
