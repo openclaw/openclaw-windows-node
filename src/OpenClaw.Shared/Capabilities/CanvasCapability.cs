@@ -404,8 +404,10 @@ public class CanvasCapability : NodeCapabilityBase
         }
 
         using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        // GetFinalPathFromHandle is a Windows-only guard (returns "" on non-Windows); skip the
+        // containment check when no resolved path is available — prior symlink resolution covers that case.
         var finalPath = GetFinalPathFromHandle(stream.SafeFileHandle);
-        if (!IsPathWithinRoot(finalPath, tempRoot))
+        if (!string.IsNullOrEmpty(finalPath) && !IsPathWithinRoot(finalPath, tempRoot))
         {
             Logger.Warn($"{command}: jsonlPath file handle resolves outside temp directory: {finalPath}");
             throw new InvalidOperationException("jsonlPath must resolve within the system temp directory");
