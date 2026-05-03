@@ -249,14 +249,8 @@ public class ExecApprovalPolicy
             var dir = Path.GetDirectoryName(_policyFilePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
-            
-            var data = new ExecPolicyData
-            {
-                DefaultAction = _defaultAction,
-                Rules = _rules
-            };
-            
-            var json = JsonSerializer.Serialize(data, _jsonOptions);
+
+            var json = JsonSerializer.Serialize(GetPolicyData(), _jsonOptions);
             File.WriteAllText(_policyFilePath, json);
         }
         catch (Exception ex)
