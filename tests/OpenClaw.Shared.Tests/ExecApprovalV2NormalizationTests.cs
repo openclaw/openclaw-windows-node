@@ -750,12 +750,50 @@ public class ExecApprovalV2NormalizationTests
     }
 
     [Fact]
-    public void ResolveForAllowlist_DirectPowerShellRegularCommand_NotFailClosed()
+    public void ResolveForAllowlist_WrapperPowerShellCommandPayload_NotFailClosed()
     {
-        // Direct powershell without -EncodedCommand must NOT be fail-closed.
+        // powershell -Command <payload> is a shell wrapper invocation (not direct exec).
+        // The wrapper path must not fail-closed when the payload contains no -EncodedCommand.
         var resolutions = ExecCommandResolver.ResolveForAllowlist(
             ["powershell", "-Command", "Get-Date"],
             evaluationRawCommand: null, cwd: null, env: null);
         Assert.Single(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPowerShellScriptFile_NotFailClosed()
+    {
+        // Direct exec path: ["powershell", "script.ps1"] — no inline flag, no -EncodedCommand.
+        // DirectExecUsesEncodedCommand must not trigger; must resolve as a single resolution.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["powershell", "script.ps1"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Single(resolutions);
+        Assert.Contains("powershell", resolutions[0].ExecutableName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPowerShellEncEqualsForm_ReturnsEmpty()
+    {
+        // -enc=payload (equals separator) — Hanselman listed this form explicitly.
+        // IsEncodedCommandFlag strips the =payload part before comparing.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["powershell", "-enc=dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_QuotedPathWithSpacesAndSuffix_SuffixPreserved()
+    {
+        // Hanselman's specific example: "C:\Program Files\Git\bin\git".exe
+        // Quoted path with spaces inside + bare suffix after the closing quote.
+        // ParseFirstToken must produce the full path with .exe appended.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["bash", "-c", "\"C:\\Program Files\\Git\\bin\\git\".exe --version"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Single(resolutions);
+        Assert.EndsWith(".exe", resolutions[0].RawExecutable, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Program Files", resolutions[0].RawExecutable, System.StringComparison.OrdinalIgnoreCase);
     }
 }

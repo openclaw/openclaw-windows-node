@@ -146,7 +146,7 @@ internal static class ExecCommandResolver
             var name = resolvedPath is not null ? Path.GetFileName(resolvedPath) : expanded;
             return new ExecCommandResolution(expanded, resolvedPath, name, cwd);
         }
-        catch { return null; } // hostile/odd argv must never throw out of resolution
+        catch { return null; } // fail-closed; intentionally broad — add diagnostic tracing here if needed
     }
 
     // ── Shell command chain splitting ────────────────────────────────────────
@@ -393,13 +393,16 @@ internal static class ExecCommandResolver
             if (string.IsNullOrEmpty(dir)) continue;
             var candidate = Path.Combine(dir, name);
             // PATHEXT extensions first — matches Windows CreateProcess resolution order.
-            // A no-extension shadow in PATH must not shadow e.g. cmd.exe via PATHEXT.
+            // A no-extension shadow in PATH must not shadow a PATHEXT binary of the same stem.
+            // Note: PATHEXT is probed even when `name` already carries an extension (git.exe →
+            // tries git.exe.exe, git.exe.cmd, …). This matches CreateProcess behavior — the extra
+            // File.Exists calls are harmless and avoiding them would require extension detection here.
             foreach (var ext in extensions)
             {
                 var withExt = candidate + ext;
                 if (File.Exists(withExt)) return TryNormalizePath(withExt);
             }
-            // Bare name only when it already carries an explicit extension (e.g. cmd.exe passed as-is).
+            // Bare name as final fallback (covers names that already have an explicit extension).
             if (File.Exists(candidate)) return TryNormalizePath(candidate);
         }
         return null;
