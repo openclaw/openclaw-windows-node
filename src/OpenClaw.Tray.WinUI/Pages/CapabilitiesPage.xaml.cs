@@ -1,9 +1,11 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClawTray.Pages;
 
@@ -22,6 +24,7 @@ public sealed partial class CapabilitiesPage : Page
         HostnameText.Text = Environment.MachineName;
 
         BuildCapabilityToggles(hub);
+        UpdateMcpStatus(hub);
         UpdateNodeStatus(hub);
     }
 
@@ -95,5 +98,63 @@ public sealed partial class CapabilitiesPage : Page
             NodeStatusText.Text = "Node mode enabled, not connected";
             NodeDetailsText.Text = "Connect to a gateway to start providing device capabilities.";
         }
+    }
+
+    private void UpdateMcpStatus(HubWindow hub)
+    {
+        var settings = hub.Settings;
+        if (settings == null) return;
+
+        McpToggle.IsOn = settings.EnableMcpServer;
+        McpDetailsPanel.Visibility = settings.EnableMcpServer ? Visibility.Visible : Visibility.Collapsed;
+        McpEndpointText.Text = NodeService.McpServerUrl;
+
+        if (settings.EnableMcpServer)
+        {
+            var tokenPath = NodeService.McpTokenPath;
+            var tokenExists = System.IO.File.Exists(tokenPath);
+            McpStatusText.Text = tokenExists ? "Server enabled — token ready" : "Server enabled — token will be created on next start";
+        }
+    }
+
+    private void OnMcpToggled(object sender, RoutedEventArgs e)
+    {
+        if (_hub?.Settings == null) return;
+        _hub.Settings.EnableMcpServer = McpToggle.IsOn;
+        _hub.Settings.Save();
+        _hub.RaiseSettingsSaved();
+        UpdateMcpStatus(_hub);
+    }
+
+    private void OnCopyMcpToken(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var tokenPath = NodeService.McpTokenPath;
+            if (System.IO.File.Exists(tokenPath))
+            {
+                var token = System.IO.File.ReadAllText(tokenPath).Trim();
+                var dp = new DataPackage();
+                dp.SetText(token);
+                Clipboard.SetContent(dp);
+                McpStatusText.Text = "Token copied to clipboard";
+            }
+            else
+            {
+                McpStatusText.Text = "Token file not found — start the MCP server first";
+            }
+        }
+        catch (Exception ex)
+        {
+            McpStatusText.Text = $"Failed to read token: {ex.Message}";
+        }
+    }
+
+    private void OnCopyMcpUrl(object sender, RoutedEventArgs e)
+    {
+        var dp = new DataPackage();
+        dp.SetText(NodeService.McpServerUrl);
+        Clipboard.SetContent(dp);
+        McpStatusText.Text = "URL copied to clipboard";
     }
 }

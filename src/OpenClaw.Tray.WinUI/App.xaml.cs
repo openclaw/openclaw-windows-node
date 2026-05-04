@@ -904,8 +904,8 @@ public partial class App : Application
             foreach (var session in _lastSessions.Take(5))
             {
                 var card = BuildSessionCard(session);
-                var flyoutItems = BuildSessionFlyoutItems(session);
-                menu.AddFlyoutCustomItem(card, flyoutItems, action: "agent:main:sessions");
+                var flyoutContent = BuildSessionFlyoutPanel(session);
+                menu.AddFlyoutCustomItem(card, flyoutContent, action: "agent:main:sessions");
             }
         }
 
@@ -1224,7 +1224,7 @@ public partial class App : Application
         return grid;
     }
 
-    private static List<TrayMenuFlyoutItem> BuildSessionFlyoutItems(SessionInfo session)
+    private static UIElement BuildSessionFlyoutPanel(SessionInfo session)
     {
         var usedTokens = session.InputTokens + session.OutputTokens;
         var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;
@@ -1232,63 +1232,181 @@ public partial class App : Application
         var statusIcon = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase) ? "🟢"
             : string.Equals(session.Status, "done", StringComparison.OrdinalIgnoreCase) ? "✅" : "⚪";
 
-        var items = new List<TrayMenuFlyoutItem>
+        var secondaryBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        var captionStyle = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+
+        var panel = new StackPanel { Padding = new Thickness(12, 8, 12, 8), Spacing = 4 };
+
+        // Session name header
+        panel.Children.Add(new TextBlock
         {
-            new() { Text = session.DisplayName ?? session.Key, IsHeader = true },
-        };
+            Text = session.DisplayName ?? session.Key,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap
+        });
 
-        // Model + Provider on one line
-        var modelLine = new List<string>();
-        if (!string.IsNullOrEmpty(session.Model)) modelLine.Add(session.Model);
-        if (!string.IsNullOrEmpty(session.Provider)) modelLine.Add(session.Provider);
-        if (modelLine.Count > 0) items.Add(new() { Text = string.Join(" · ", modelLine) });
+        // Model · Provider
+        var modelParts = new List<string>();
+        if (!string.IsNullOrEmpty(session.Model)) modelParts.Add(session.Model);
+        if (!string.IsNullOrEmpty(session.Provider)) modelParts.Add(session.Provider);
+        if (modelParts.Count > 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = string.Join(" · ", modelParts),
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+        }
 
-        // Channel if set
+        // Channel
         if (!string.IsNullOrEmpty(session.Channel))
-            items.Add(new() { Text = $"📡 Channel: {session.Channel}" });
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"📡 Channel: {session.Channel}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+        }
 
-        // Status + age
-        items.Add(new() { Text = $"{statusIcon} {session.Status} · {session.AgeText}" });
+        // Status · age
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{statusIcon} {session.Status} · {session.AgeText}",
+            Style = captionStyle,
+            Foreground = secondaryBrush
+        });
 
-        // Token usage section
-        items.Add(new() { Text = "Token Usage", IsHeader = true });
+        // Token Usage header
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Token Usage",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 12,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+
         if (usedTokens > 0)
         {
-            // Visual bar
-            var barFull = 20;
-            var barFilled = Math.Max(1, (int)(barFull * Math.Min(1.0, (double)usedTokens / contextTokens)));
-            var bar = new string('█', barFilled) + new string('░', barFull - barFilled);
-            items.Add(new() { Text = $"{bar} {pct}%" });
-            items.Add(new() { Text = $"Input     {FormatTokenCount(session.InputTokens)}" });
-            items.Add(new() { Text = $"Output    {FormatTokenCount(session.OutputTokens)}" });
-            items.Add(new() { Text = $"Total     {FormatTokenCount(usedTokens)} / {FormatTokenCount(contextTokens)}" });
+            // ProgressBar + percentage in a Grid
+            var barGrid = new Grid { ColumnSpacing = 8 };
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var progressColor = pct < 50
+                ? Microsoft.UI.Colors.LimeGreen
+                : pct <= 80
+                    ? Microsoft.UI.Colors.Orange
+                    : Microsoft.UI.Colors.Red;
+
+            var progressBar = new ProgressBar
+            {
+                Minimum = 0,
+                Maximum = 100,
+                Value = pct,
+                Height = 4,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(progressColor)
+            };
+            Grid.SetColumn(progressBar, 0);
+            barGrid.Children.Add(progressBar);
+
+            var pctText = new TextBlock
+            {
+                Text = $"{pct}%",
+                Style = captionStyle,
+                Foreground = secondaryBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(pctText, 1);
+            barGrid.Children.Add(pctText);
+
+            panel.Children.Add(barGrid);
+
+            // Token counts
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Input     {FormatTokenCount(session.InputTokens)}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Output    {FormatTokenCount(session.OutputTokens)}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Total     {FormatTokenCount(usedTokens)} / {FormatTokenCount(contextTokens)}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
         }
         else
         {
-            items.Add(new() { Text = "No token usage yet" });
+            panel.Children.Add(new TextBlock
+            {
+                Text = "No token usage yet",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
         }
 
         // Context window
         if (session.ContextTokens > 0)
-            items.Add(new() { Text = $"Context   {FormatTokenCount(session.ContextTokens)} window" });
-
-        // Thinking / Verbose
-        if (!string.IsNullOrEmpty(session.ThinkingLevel) || !string.IsNullOrEmpty(session.VerboseLevel))
         {
-            items.Add(new() { Text = "Settings", IsHeader = true });
-            if (!string.IsNullOrEmpty(session.ThinkingLevel))
-                items.Add(new() { Text = $"🧠 Thinking: {session.ThinkingLevel}" });
-            if (!string.IsNullOrEmpty(session.VerboseLevel))
-                items.Add(new() { Text = $"📝 Verbose: {session.VerboseLevel}" });
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Context   {FormatTokenCount(session.ContextTokens)} window",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
         }
 
-        // Subject / Room if set
-        if (!string.IsNullOrEmpty(session.Subject))
-            items.Add(new() { Text = $"Subject: {session.Subject}" });
-        if (!string.IsNullOrEmpty(session.Room))
-            items.Add(new() { Text = $"Room: {session.Room}" });
+        // Thinking / Verbose
+        if (!string.IsNullOrEmpty(session.ThinkingLevel))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"🧠 Thinking: {session.ThinkingLevel}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+        }
+        if (!string.IsNullOrEmpty(session.VerboseLevel))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"📝 Verbose: {session.VerboseLevel}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+        }
 
-        return items;
+        // Subject / Room
+        if (!string.IsNullOrEmpty(session.Subject))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Subject: {session.Subject}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+        }
+        if (!string.IsNullOrEmpty(session.Room))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Room: {session.Room}",
+                Style = captionStyle,
+                Foreground = secondaryBrush
+            });
+        }
+
+        return panel;
     }
 
     private static UIElement BuildDeviceCard(GatewayNodeInfo node)

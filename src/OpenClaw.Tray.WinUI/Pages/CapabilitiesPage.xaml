@@ -25,6 +25,39 @@
                 </ItemsRepeater.Layout>
             </ItemsRepeater>
 
+            <!-- MCP Server -->
+            <Border x:Name="McpCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,8,0,0">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Local MCP Server" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock Text="Expose capabilities via HTTP for CLI tools and local integrations."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <ToggleSwitch x:Name="McpToggle" Toggled="OnMcpToggled"/>
+                    <StackPanel x:Name="McpDetailsPanel" Spacing="6" Visibility="Collapsed">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Endpoint:" VerticalAlignment="Center"
+                                       Style="{StaticResource CaptionTextBlockStyle}"/>
+                            <TextBlock x:Name="McpEndpointText" Grid.Column="1" IsTextSelectionEnabled="True"
+                                       VerticalAlignment="Center" FontFamily="Consolas"
+                                       Style="{StaticResource CaptionTextBlockStyle}"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="CopyMcpTokenButton" Content="Copy Token" Click="OnCopyMcpToken"/>
+                            <Button x:Name="CopyMcpUrlButton" Content="Copy URL" Click="OnCopyMcpUrl"/>
+                        </StackPanel>
+                        <TextBlock x:Name="McpStatusText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Node status -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

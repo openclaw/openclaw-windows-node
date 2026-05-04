@@ -532,6 +532,49 @@ public sealed partial class TrayMenuWindow : WindowEx
         _itemCount++;
     }
 
+    /// <summary>
+    /// Adds a custom UIElement as a flyout-enabled menu item whose flyout content is a raw UIElement.
+    /// </summary>
+    public void AddFlyoutCustomItem(UIElement content, UIElement flyoutContent, string? action = null)
+    {
+        var button = new Button
+        {
+            Content = content,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(0),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(6)
+        };
+
+        button.PointerEntered += (s, e) =>
+        {
+            button.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            ShowCascadingFlyoutElement(button, flyoutContent);
+        };
+        button.PointerExited += (s, e) =>
+        {
+            button.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        };
+        button.Click += (s, e) =>
+        {
+            if (!string.IsNullOrEmpty(action))
+            {
+                HideActiveFlyout();
+                MenuItemClicked?.Invoke(this, action);
+                HideCascade();
+            }
+            else
+            {
+                ShowCascadingFlyoutElement(button, flyoutContent);
+            }
+        };
+
+        MenuPanel.Children.Add(button);
+        _itemCount++;
+    }
+
     public void ClearItems()
     {
         HideActiveFlyout();
@@ -719,6 +762,33 @@ public sealed partial class TrayMenuWindow : WindowEx
             flyoutWindow.SizeToContent();
             _activeFlyoutOwner = ownerButton;
             _activeFlyoutKey = flyoutKey;
+        }
+
+        flyoutWindow.ShowAdjacentTo(ownerButton);
+    }
+
+    private void ShowCascadingFlyoutElement(Button ownerButton, UIElement content)
+    {
+        var flyoutWindow = _activeFlyoutWindow;
+        if (flyoutWindow == null)
+        {
+            flyoutWindow = new TrayMenuWindow(this);
+            flyoutWindow.MenuItemClicked += (_, action) =>
+            {
+                MenuItemClicked?.Invoke(this, action);
+                HideCascade();
+            };
+
+            _activeFlyoutWindow = flyoutWindow;
+        }
+
+        if (!ReferenceEquals(_activeFlyoutOwner, ownerButton))
+        {
+            flyoutWindow.ClearItems();
+            flyoutWindow.AddCustomElement(content);
+            flyoutWindow.SizeToContent();
+            _activeFlyoutOwner = ownerButton;
+            _activeFlyoutKey = null;
         }
 
         flyoutWindow.ShowAdjacentTo(ownerButton);

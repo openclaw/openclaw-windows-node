@@ -597,9 +597,7 @@ public sealed partial class HubWindow : WindowEx
         return parts.Length >= 2 ? parts[1] : "main";
     }
 
-    // ── Command Palette (Ctrl+K / Ctrl+F) — inline overlay ──────────
-
-    private List<CommandItem>? _paletteCommands;
+    // ── Command Search (Ctrl+K / Ctrl+F) — title bar AutoSuggestBox ──
 
     private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -609,78 +607,41 @@ public sealed partial class HubWindow : WindowEx
         if (ctrl && (e.Key == global::Windows.System.VirtualKey.K || e.Key == global::Windows.System.VirtualKey.F))
         {
             e.Handled = true;
-            if (PaletteOverlay.Visibility == Visibility.Visible)
-                DismissPalette();
-            else
-                ShowPalette();
+            TitleSearchBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            TitleSearchBox.Text = "";
         }
     }
 
-    private void ShowPalette()
+    private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        _paletteCommands = BuildCommandList();
-        PaletteResults.ItemsSource = _paletteCommands.Take(10).ToList();
-        PaletteSearchBox.Text = "";
-        PaletteOverlay.Visibility = Visibility.Visible;
-        PaletteSearchBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
-    }
-
-    private void DismissPalette()
-    {
-        PaletteOverlay.Visibility = Visibility.Collapsed;
-    }
-
-    private void OnPaletteDismiss(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
-    {
-        DismissPalette();
-    }
-
-    private void OnPaletteOverlayKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key == global::Windows.System.VirtualKey.Escape)
-        {
-            e.Handled = true;
-            DismissPalette();
-        }
-    }
-
-    private void OnPaletteKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key == global::Windows.System.VirtualKey.Escape)
-        {
-            e.Handled = true;
-            DismissPalette();
-        }
-        else if (e.Key == global::Windows.System.VirtualKey.Enter)
-        {
-            e.Handled = true;
-            if (PaletteResults.ItemsSource is List<CommandItem> items && items.Count > 0)
-            {
-                DismissPalette();
-                ExecuteCommand(items[0]);
-            }
-        }
-    }
-
-    private void OnPaletteSearchTextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (_paletteCommands == null) return;
-        var query = PaletteSearchBox.Text?.Trim() ?? "";
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
+        var commands = BuildCommandList();
+        var query = sender.Text?.Trim() ?? "";
         var filtered = string.IsNullOrEmpty(query)
-            ? _paletteCommands.Take(10).ToList()
-            : _paletteCommands
-                .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase))
-                .Take(10)
-                .ToList();
-        PaletteResults.ItemsSource = filtered;
+            ? commands.Take(8).ToList()
+            : commands.Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
+                .Take(10).ToList();
+        sender.ItemsSource = filtered;
     }
 
-    private void OnPaletteResultClick(object sender, ItemClickEventArgs e)
+    private void OnSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
     {
-        if (e.ClickedItem is CommandItem item)
+        if (args.SelectedItem is CommandItem cmd)
         {
-            DismissPalette();
-            ExecuteCommand(item);
+            sender.Text = "";
+            sender.ItemsSource = null;
+            ExecuteCommand(cmd);
+        }
+    }
+
+    private void OnSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is CommandItem cmd)
+        {
+            sender.Text = "";
+            sender.ItemsSource = null;
+            ExecuteCommand(cmd);
         }
     }
 
