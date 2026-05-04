@@ -14,22 +14,19 @@ public class OpenClawGatewayClientTests
     {
         private readonly OpenClawGatewayClient _client;
 
-        public GatewayClientTestHelper(bool useBootstrapHandoffAuth = false)
+        public GatewayClientTestHelper(bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false)
         {
             _client = new OpenClawGatewayClient(
                 "ws://localhost:18789",
                 "test-token",
                 new TestLogger(),
-                useBootstrapHandoffAuth);
+                tokenIsBootstrapToken,
+                bootstrapPairAsNode);
         }
 
-        public GatewayClientTestHelper(IOpenClawLogger logger, bool useBootstrapHandoffAuth = false)
+        public GatewayClientTestHelper(IOpenClawLogger logger)
         {
-            _client = new OpenClawGatewayClient(
-                "ws://localhost:18789",
-                "test-token",
-                logger,
-                useBootstrapHandoffAuth);
+            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
         }
 
         public string ClassifyNotification(string text)
@@ -259,10 +256,43 @@ public class OpenClawGatewayClientTests
 
         public string[] GetRequestedOperatorScopes()
         {
+            var role = GetConnectRole();
             var method = typeof(OpenClawGatewayClient).GetMethod(
-                "GetRequestedOperatorScopes",
+                "GetRequestedScopes",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            return (string[])method!.Invoke(_client, null)!;
+            return (string[])method!.Invoke(_client, new object[] { role })!;
+        }
+
+        public string GetConnectRole()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "GetConnectRole",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (string)method!.Invoke(_client, null)!;
+        }
+
+        public string? TryGetHandshakeDeviceToken(string payloadJson, string? preferredRole = null)
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "TryGetHandshakeDeviceTokenCore",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
+                binder: null,
+                types: [typeof(JsonElement), typeof(string)],
+                modifiers: null);
+            return (string?)method!.Invoke(null, new object?[] { document.RootElement, preferredRole });
+        }
+
+        public string[]? TryGetHandshakeDeviceTokenScopes(string payloadJson, string? preferredRole = null)
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "TryGetHandshakeDeviceTokenScopesCore",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
+                binder: null,
+                types: [typeof(JsonElement), typeof(string)],
+                modifiers: null);
+            return (string[]?)method!.Invoke(null, new object?[] { document.RootElement, preferredRole });
         }
 
         public Dictionary<string, string> BuildAuthPayload()
@@ -273,7 +303,7 @@ public class OpenClawGatewayClientTests
             return (Dictionary<string, string>)method!.Invoke(_client, null)!;
         }
 
-        public void SetDeviceTokenForTest(string? token)
+        public void SetDeviceTokenForTest(string? token, string[]? scopes = null)
         {
             var identityField = typeof(OpenClawGatewayClient).GetField(
                 "_deviceIdentity",
@@ -283,6 +313,10 @@ public class OpenClawGatewayClientTests
                 "_deviceToken",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             tokenField!.SetValue(identity, token);
+            var scopesField = identity.GetType().GetField(
+                "_deviceTokenScopes",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            scopesField!.SetValue(identity, scopes);
             SetPrivateField("_connectAuthToken", token ?? "test-token");
         }
 
@@ -338,29 +372,9 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void OperatorConnect_FreshDevice_DefaultPathKeepsLegacyAuthShape()
+    public void OperatorConnect_FreshDevice_RequestsBootstrapHandoffScopes()
     {
-        var helper = new GatewayClientTestHelper();
-        helper.SetDeviceTokenForTest(null);
-
-        var scopes = helper.GetRequestedOperatorScopes();
-        var auth = helper.BuildAuthPayload();
-
-        Assert.Equal(
-            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
-            scopes);
-        Assert.Contains("operator.admin", scopes);
-        Assert.Contains("operator.pairing", scopes);
-        Assert.DoesNotContain("operator.talk.secrets", scopes);
-        Assert.Equal("test-token", auth["token"]);
-        Assert.False(auth.ContainsKey("bootstrapToken"));
-        Assert.False(auth.ContainsKey("deviceToken"));
-    }
-
-    [Fact]
-    public void OperatorConnect_SetupCodeBootstrapPath_RequestsBootstrapHandoffScopes()
-    {
-        var helper = new GatewayClientTestHelper(useBootstrapHandoffAuth: true);
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true);
         helper.SetDeviceTokenForTest(null);
 
         var scopes = helper.GetRequestedOperatorScopes();
@@ -372,28 +386,12 @@ public class OpenClawGatewayClientTests
         Assert.DoesNotContain("operator.admin", scopes);
         Assert.DoesNotContain("operator.pairing", scopes);
         Assert.Equal("test-token", auth["bootstrapToken"]);
+        Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("deviceToken"));
     }
 
     [Fact]
-    public void OperatorConnect_SetupCodeBootstrapPath_WithPairedDeviceUsesFullScopesAndDeviceToken()
-    {
-        var helper = new GatewayClientTestHelper(useBootstrapHandoffAuth: true);
-        helper.SetDeviceTokenForTest("paired-device-token");
-
-        var scopes = helper.GetRequestedOperatorScopes();
-        var auth = helper.BuildAuthPayload();
-
-        Assert.Equal(
-            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
-            scopes);
-        Assert.Equal("paired-device-token", auth["token"]);
-        Assert.Equal("paired-device-token", auth["deviceToken"]);
-        Assert.False(auth.ContainsKey("bootstrapToken"));
-    }
-
-    [Fact]
-    public void OperatorConnect_PairedDevice_DefaultPathKeepsLegacyAuthShape()
+    public void OperatorConnect_PairedDevice_RequestsFullOperatorScopes()
     {
         var helper = new GatewayClientTestHelper();
         helper.SetDeviceTokenForTest("paired-device-token");
@@ -401,15 +399,73 @@ public class OpenClawGatewayClientTests
         var scopes = helper.GetRequestedOperatorScopes();
         var auth = helper.BuildAuthPayload();
 
-        Assert.Equal(
-            ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
-            scopes);
         Assert.Contains("operator.admin", scopes);
         Assert.Contains("operator.pairing", scopes);
         Assert.DoesNotContain("operator.talk.secrets", scopes);
-        Assert.Equal("paired-device-token", auth["token"]);
-        Assert.False(auth.ContainsKey("deviceToken"));
+        Assert.Equal("paired-device-token", auth["deviceToken"]);
+        Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("bootstrapToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_PairedDeviceWithStoredScopes_RequestsStoredScopes()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.SetDeviceTokenForTest(
+            "paired-device-token",
+            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"]);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+
+        Assert.Equal(
+            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
+            scopes);
+    }
+
+    [Fact]
+    public void BootstrapNodeHandoff_FreshDevice_RequestsNodeRoleWithoutScopes()
+    {
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true, bootstrapPairAsNode: true);
+        helper.SetDeviceTokenForTest(null);
+
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Equal("node", helper.GetConnectRole());
+        Assert.Empty(helper.GetRequestedOperatorScopes());
+        Assert.Equal("test-token", auth["bootstrapToken"]);
+        Assert.False(auth.ContainsKey("token"));
+        Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void BootstrapNodeHandoff_PrefersOperatorTokenFromAdditionalDeviceTokens()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var payload =
+            """
+            {
+              "type": "hello-ok",
+              "auth": {
+                "deviceToken": "node-token",
+                "role": "node",
+                "scopes": [],
+                "deviceTokens": [
+                  {
+                    "deviceToken": "operator-token",
+                    "role": "operator",
+                    "scopes": ["operator.read"]
+                  }
+                ]
+              }
+            }
+            """;
+        var token = helper.TryGetHandshakeDeviceToken(payload, "operator");
+        var scopes = helper.TryGetHandshakeDeviceTokenScopes(payload, "operator");
+
+        Assert.Equal("operator-token", token);
+        Assert.NotNull(scopes);
+        Assert.Equal(["operator.read"], scopes!);
     }
 
     private class TestLogger : IOpenClawLogger

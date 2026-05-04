@@ -2,6 +2,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -66,7 +67,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private bool _authFailed;
-    private readonly bool _useBootstrapHandoffAuth;
+    private readonly bool _tokenIsBootstrapToken;
+    private readonly bool _bootstrapPairAsNode;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => _pairingRequiredAwaitingApproval;
@@ -74,6 +76,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
     /// <summary>True when the device signature was rejected in all supported modes.</summary>
     public bool IsAuthFailed => _authFailed;
 
+    /// <summary>The gateway auth token used for this connection.</summary>
+    public string ConnectAuthToken => _connectAuthToken;
     private IReadOnlyList<UserNotificationRule>? _userRules;
     private bool _preferStructuredCategories = true;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pendingWizardResponses = new();
@@ -150,21 +154,19 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
     public bool IsConnectedToGateway => IsConnected;
 
-    public OpenClawGatewayClient(
-        string gatewayUrl,
-        string token,
-        IOpenClawLogger? logger = null,
-        bool useBootstrapHandoffAuth = false)
+    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false)
         : base(gatewayUrl, token, logger)
     {
-        _useBootstrapHandoffAuth = useBootstrapHandoffAuth;
+        _tokenIsBootstrapToken = tokenIsBootstrapToken;
+        _bootstrapPairAsNode = bootstrapPairAsNode;
         var dataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
 
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
-        _connectAuthToken = _deviceIdentity.DeviceToken ?? _token;
+        _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
     }
 
     public async Task DisconnectAsync()
@@ -440,13 +442,14 @@ public class OpenClawGatewayClient : WebSocketClientBase
     {
         var requestId = Guid.NewGuid().ToString();
         TrackPendingRequest(requestId, "connect");
-        var requestedScopes = GetRequestedOperatorScopes();
+        var role = GetConnectRole();
+        var requestedScopes = GetRequestedScopes(role);
 
         var signedAt = _challengeTimestampMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var connectNonce = nonce ?? string.Empty;
         var signatureToken = _signatureTokenMode is SignatureTokenMode.V3EmptyToken or SignatureTokenMode.V2EmptyToken
             ? string.Empty
-            : _connectAuthToken;
+            : GetSignatureToken();
 
         var signature = _signatureTokenMode is SignatureTokenMode.V2AuthToken or SignatureTokenMode.V2EmptyToken
             ? _deviceIdentity.SignConnectPayloadV2(
@@ -454,7 +457,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 signedAt,
                 OperatorClientId,
                 OperatorClientMode,
-                OperatorRole,
+                role,
                 requestedScopes,
                 signatureToken)
             : _deviceIdentity.SignConnectPayloadV3(
@@ -462,7 +465,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 signedAt,
                 OperatorClientId,
                 OperatorClientMode,
-                OperatorRole,
+                role,
                 requestedScopes,
                 signatureToken,
                 OperatorPlatform,
@@ -486,7 +489,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
                     mode = OperatorClientMode,
                     displayName = OperatorClientDisplayName
                 },
-                role = OperatorRole,
+                role,
                 scopes = requestedScopes,
                 caps = Array.Empty<string>(),
                 commands = Array.Empty<string>(),
@@ -516,10 +519,25 @@ public class OpenClawGatewayClient : WebSocketClientBase
         }
     }
 
-    private string[] GetRequestedOperatorScopes() =>
-        _useBootstrapHandoffAuth && string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
-            ? s_operatorBootstrapScopes
+    private string GetConnectRole()
+    {
+        return _bootstrapPairAsNode && _tokenIsBootstrapToken && string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
+            ? "node"
+            : OperatorRole;
+    }
+
+    private string[] GetRequestedScopes(string role)
+    {
+        if (role == "node")
+            return [];
+
+        if (string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+            return s_operatorBootstrapScopes;
+
+        return _deviceIdentity.DeviceTokenScopes is { Count: > 0 } scopes
+            ? scopes.ToArray()
             : s_operatorScopes;
+    }
 
     /// <summary>
     /// Builds the auth payload for the connect handshake, matching the gateway's
@@ -529,25 +547,32 @@ public class OpenClawGatewayClient : WebSocketClientBase
     /// </summary>
     private Dictionary<string, string> BuildAuthPayload()
     {
-        var auth = new Dictionary<string, string> { ["token"] = _connectAuthToken };
-
-        if (!_useBootstrapHandoffAuth)
-        {
-            return auth;
-        }
+        var auth = new Dictionary<string, string>();
 
         if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
         {
-            // Paired device: send explicit device token for cleaner auth path
             auth["deviceToken"] = _deviceIdentity.DeviceToken;
+        }
+        else if (_tokenIsBootstrapToken)
+        {
+            // Fresh QR/setup-code device: do not also send auth.token, which upstream treats
+            // as an explicit gateway token and therefore suppresses bootstrap pairing.
+            auth["bootstrapToken"] = _token;
         }
         else
         {
-            // Fresh device: send bootstrap token for initial pairing
-            auth["bootstrapToken"] = _token;
+            auth["token"] = _connectAuthToken;
         }
 
         return auth;
+    }
+
+    private string GetSignatureToken()
+    {
+        if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+            return _deviceIdentity.DeviceToken;
+
+        return _tokenIsBootstrapToken ? _token : _connectAuthToken;
     }
 
     private async Task SendTrackedRequestAsync(string method, object? parameters = null)
@@ -751,7 +776,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
             else if (root.TryGetProperty("payload", out var wizPayload))
             {
                 // Log the payload kind for debugging
-                _logger.Info($"Wizard response payload kind={wizPayload.ValueKind}, raw={wizPayload.ToString()?.Substring(0, Math.Min(200, wizPayload.ToString()?.Length ?? 0))}");
+                var wizardPayloadText = TokenSanitizer.Sanitize(wizPayload.ToString());
+                _logger.Info($"Wizard response payload kind={wizPayload.ValueKind}, raw={wizardPayloadText[..Math.Min(200, wizardPayloadText.Length)]}");
                 wizardCompletion.TrySetResult(wizPayload.Clone());
             }
             else
@@ -785,10 +811,26 @@ public class OpenClawGatewayClient : WebSocketClientBase
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
             _mainSessionKey = TryGetHandshakeMainSessionKey(payload) ?? "main";
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
-            var newDeviceToken = TryGetHandshakeDeviceToken(payload);
+            if (_bootstrapPairAsNode)
+            {
+                var nodeDeviceToken = TryGetHandshakeDeviceTokenCore(payload, "node", allowDirectDeviceTokenFallback: true);
+                if (!string.IsNullOrWhiteSpace(nodeDeviceToken))
+                {
+                    var nodeDeviceTokenScopes = TryGetHandshakeDeviceTokenScopesCore(payload, "node", allowDirectDeviceTokenFallback: true);
+                    _deviceIdentity.StoreDeviceTokenForRole("node", nodeDeviceToken, nodeDeviceTokenScopes);
+                    _logger.Info("Node device token stored for Windows tray node reconnect");
+                }
+            }
+
+            var newDeviceToken = _bootstrapPairAsNode
+                ? TryGetHandshakeDeviceTokenCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false)
+                : TryGetHandshakeDeviceTokenCore(payload, preferredRole: null);
             if (!string.IsNullOrWhiteSpace(newDeviceToken))
             {
-                _deviceIdentity.StoreDeviceToken(newDeviceToken);
+                var deviceTokenScopes = _bootstrapPairAsNode
+                    ? TryGetHandshakeDeviceTokenScopesCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false)
+                    : TryGetHandshakeDeviceTokenScopesCore(payload, preferredRole: null);
+                _deviceIdentity.StoreDeviceTokenWithScopes(newDeviceToken, deviceTokenScopes);
                 _connectAuthToken = newDeviceToken;
                 _logger.Info("Operator device token stored for reconnect");
             }
@@ -1083,25 +1125,38 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private static string[] TryGetHandshakeScopes(JsonElement payload)
     {
+        if (payload.TryGetProperty("auth", out var authPayload) &&
+            authPayload.ValueKind == JsonValueKind.Object &&
+            authPayload.TryGetProperty("scopes", out var authScopes) &&
+            authScopes.ValueKind == JsonValueKind.Array)
+        {
+            return ReadStringArray(authScopes);
+        }
+
         if (payload.TryGetProperty("scopes", out var scopesProp) &&
             scopesProp.ValueKind == JsonValueKind.Array)
         {
-            var buffer = new string[scopesProp.GetArrayLength()];
-            var count = 0;
-            foreach (var scope in scopesProp.EnumerateArray())
-            {
-                if (scope.ValueKind == JsonValueKind.String)
-                {
-                    var value = scope.GetString();
-                    if (!string.IsNullOrWhiteSpace(value))
-                        buffer[count++] = value;
-                }
-            }
-
-            return buffer[..count];
+            return ReadStringArray(scopesProp);
         }
 
         return [];
+    }
+
+    private static string[] ReadStringArray(JsonElement array)
+    {
+        var buffer = new string[array.GetArrayLength()];
+        var count = 0;
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                var value = item.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                    buffer[count++] = value;
+            }
+        }
+
+        return buffer[..count];
     }
 
     private static string? TryGetHandshakeMainSessionKey(JsonElement payload)
@@ -1127,9 +1182,46 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     private static string? TryGetHandshakeDeviceToken(JsonElement payload)
     {
+        return TryGetHandshakeDeviceTokenCore(payload, preferredRole: null);
+    }
+
+    private static string? TryGetHandshakeDeviceTokenCore(JsonElement payload, string? preferredRole)
+    {
+        return TryGetHandshakeDeviceTokenCore(payload, preferredRole, allowDirectDeviceTokenFallback: true);
+    }
+
+    private static string? TryGetHandshakeDeviceTokenCore(JsonElement payload, string? preferredRole, bool allowDirectDeviceTokenFallback)
+    {
         if (!payload.TryGetProperty("auth", out var authPayload) || authPayload.ValueKind != JsonValueKind.Object)
         {
             return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(preferredRole) &&
+            authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
+            deviceTokens.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in deviceTokens.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                if (entry.TryGetProperty("role", out var role) &&
+                    role.ValueKind == JsonValueKind.String &&
+                    string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase) &&
+                    entry.TryGetProperty("deviceToken", out var roleToken) &&
+                    roleToken.ValueKind == JsonValueKind.String)
+                {
+                    var roleTokenValue = roleToken.GetString();
+                    if (!string.IsNullOrWhiteSpace(roleTokenValue))
+                        return roleTokenValue;
+                }
+            }
+
+            if (!allowDirectDeviceTokenFallback)
+            {
+                return null;
+            }
         }
 
         if (!authPayload.TryGetProperty("deviceToken", out var deviceToken) || deviceToken.ValueKind != JsonValueKind.String)
@@ -1139,6 +1231,54 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
         var value = deviceToken.GetString();
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string[]? TryGetHandshakeDeviceTokenScopesCore(JsonElement payload, string? preferredRole)
+    {
+        return TryGetHandshakeDeviceTokenScopesCore(payload, preferredRole, allowDirectDeviceTokenFallback: true);
+    }
+
+    private static string[]? TryGetHandshakeDeviceTokenScopesCore(JsonElement payload, string? preferredRole, bool allowDirectDeviceTokenFallback)
+    {
+        if (!payload.TryGetProperty("auth", out var authPayload) || authPayload.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(preferredRole) &&
+            authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
+            deviceTokens.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in deviceTokens.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                if (entry.TryGetProperty("role", out var role) &&
+                    role.ValueKind == JsonValueKind.String &&
+                    string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.TryGetProperty("scopes", out var roleScopes) && roleScopes.ValueKind == JsonValueKind.Array
+                        ? ReadStringArray(roleScopes)
+                        : [];
+                }
+            }
+
+            if (!allowDirectDeviceTokenFallback)
+            {
+                return null;
+            }
+        }
+
+        if (authPayload.TryGetProperty("deviceToken", out var deviceToken) &&
+            deviceToken.ValueKind == JsonValueKind.String &&
+            authPayload.TryGetProperty("scopes", out var scopes) &&
+            scopes.ValueKind == JsonValueKind.Array)
+        {
+            return ReadStringArray(scopes);
+        }
+
+        return null;
     }
 
     public string BuildMissingScopeFixCommands(string missingScope)
