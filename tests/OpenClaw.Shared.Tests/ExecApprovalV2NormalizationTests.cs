@@ -606,4 +606,87 @@ public class ExecApprovalV2NormalizationTests
         Assert.NotNull(res!.Value.ResolvedPath);
         Assert.Contains("System32", res.Value.ResolvedPath, System.StringComparison.OrdinalIgnoreCase);
     }
+
+    // ── Finding #1: -EncodedCommand detection (Hanselman review) ─────────────
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPowerShellEncodedCommand_ReturnsEmpty()
+    {
+        // Direct top-level ["powershell", "-EncodedCommand", "..."] — payload is opaque.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["powershell", "-EncodedCommand", "dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPwshEcAlias_ReturnsEmpty()
+    {
+        // -ec is an official alias for -EncodedCommand.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["pwsh", "-ec", "dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPowerShellEncAbbreviation_ReturnsEmpty()
+    {
+        // -enco is an unambiguous prefix abbreviation of -EncodedCommand.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["powershell", "-enco", "dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPowerShellExeEnc_ReturnsEmpty()
+    {
+        // powershell.exe (with .exe suffix) must also be caught.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["powershell.exe", "-enc", "dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_EnvTransparentPwshEnc_ReturnsEmpty()
+    {
+        // ["env", "pwsh", "-enc", "..."] — transparent env prefix, no modifiers, but inner
+        // command is powershell with -EncodedCommand → DirectExecUsesEncodedCommand catches it.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["env", "pwsh", "-enc", "dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_SegmentPowerShellQuotedEncFlag_ReturnsEmpty()
+    {
+        // bash -c 'powershell "-enc" base64' — quoted -enc in shell segment → fail-closed.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["bash", "-c", "powershell \"-enc\" dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_SegmentPowerShellColonForm_ReturnsEmpty()
+    {
+        // -EncodedCommand:payload (colon separator) — must be fail-closed.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["bash", "-c", "powershell -EncodedCommand:dABlAHMAdAA="],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_DirectPowerShellRegularCommand_NotFailClosed()
+    {
+        // Direct powershell without -EncodedCommand must NOT be fail-closed.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["powershell", "-Command", "Get-Date"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Single(resolutions);
+    }
 }

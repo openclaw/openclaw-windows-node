@@ -74,7 +74,10 @@ internal static class ExecCommandResolver
             return resolutions;
         }
 
-        // Direct exec: resolve via evaluationRawCommand first token, or via argv.
+        // Direct exec: fail-closed if powershell/pwsh invoked directly with -EncodedCommand.
+        // Covers top-level `["powershell", "-enc", ...]` and transparent `["env", "pwsh", "-enc", ...]`.
+        if (DirectExecUsesEncodedCommand(command)) return [];
+
         var single = ResolveSingle(command, evaluationRawCommand, cwd, env);
         return single is null ? [] : [single.Value];
     }
@@ -297,8 +300,8 @@ internal static class ExecCommandResolver
 
     // ── -EncodedCommand detection ─────────────────────────────────────────────
 
-    // Research doc 04 S1: if a chain segment invokes PowerShell with -EncodedCommand (or aliases
-    // -enc, -ec), the payload is opaque base64 — fail-closed for allowlist.
+    // Research doc 04 S1: if a chain segment invokes PowerShell with -EncodedCommand (or any
+    // alias / unambiguous prefix abbreviation), the payload is opaque base64 — fail-closed.
     // Only triggers when the first token IS a PowerShell binary AND the segment contains the flag.
     // `powershell -c 'Get-Date'` (no -enc) must NOT be fail-closed.
     private static bool SegmentUsesEncodedCommand(string segment, string firstToken)
@@ -306,24 +309,69 @@ internal static class ExecCommandResolver
         var b = ExecCommandToken.NormalizedBasename(firstToken);
         if (b is not ("powershell" or "pwsh")) return false;
 
-        // Quick scan of segment tokens for -enc/-ec/-EncodedCommand.
         var rest = segment.AsSpan();
         while (rest.Length > 0)
         {
-            // Skip whitespace.
             var i = 0;
             while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
             rest = rest[i..];
             if (rest.Length == 0) break;
 
-            // Extract next token (simple, unquoted scan sufficient for flag detection).
-            var end = 0;
-            while (end < rest.Length && !char.IsWhiteSpace(rest[end])) end++;
-            var token = rest[..end].ToString().ToLowerInvariant();
+            // Extract next token — quoted strings count as one unit so `"-enc"` is detected.
+            int end;
+            if (rest[0] is '"' or '\'')
+            {
+                var q = rest[0];
+                end = 1;
+                while (end < rest.Length && rest[end] != q) end++;
+                if (end < rest.Length) end++; // include closing quote
+            }
+            else
+            {
+                end = 0;
+                while (end < rest.Length && !char.IsWhiteSpace(rest[end])) end++;
+            }
+
+            var token = rest[..end].ToString();
             rest = rest[end..];
 
-            if (token is "-encodedcommand" or "-enc" or "-ec") return true;
-            if (token == "--") break; // end of options
+            if (IsEncodedCommandFlag(token)) return true;
+            if (token == "--") break;
+        }
+        return false;
+    }
+
+    // Returns true when a raw flag token (possibly quoted, possibly with colon/equals value suffix)
+    // represents -EncodedCommand or any of its unambiguous prefix abbreviations.
+    // Covers: "-EncodedCommand", "-enc", "-ec", `"-enc"`, `-enc:payload`, `-encod`, etc.
+    private static bool IsEncodedCommandFlag(string rawToken)
+    {
+        var t = rawToken;
+        if (t.Length >= 2 && t[0] is '"' or '\'' && t[^1] == t[0])
+            t = t[1..^1]; // strip matching outer quotes
+        if (t.Length == 0 || t[0] != '-') return false;
+        // Strip trailing :value or =value (e.g. -EncodedCommand:base64).
+        var sep = t.AsSpan(1).IndexOfAny('=', ':');
+        var flag = (sep >= 0 ? t[..(sep + 1)] : t).ToLowerInvariant();
+        if (flag is "-ec" or "-enc" or "-encodedcommand") return true;
+        // Any unambiguous prefix abbreviation of -encodedcommand longer than -enc.
+        const string full = "-encodedcommand";
+        return flag.Length > 4 && full.StartsWith(flag, StringComparison.Ordinal);
+    }
+
+    // True when direct exec (no shell wrapper) is a PowerShell invocation with -EncodedCommand.
+    // Unwraps transparent env prefixes so `["env", "pwsh", "-enc", ...]` is also caught.
+    private static bool DirectExecUsesEncodedCommand(IReadOnlyList<string> command)
+    {
+        var effective = ExecEnvInvocationUnwrapper.UnwrapForResolution(command);
+        if (effective.Count < 2) return false;
+        var b = ExecCommandToken.NormalizedBasename(effective[0].Trim());
+        if (b is not ("powershell" or "pwsh")) return false;
+        for (var i = 1; i < effective.Count; i++)
+        {
+            var t = effective[i].Trim();
+            if (t == "--") break;
+            if (IsEncodedCommandFlag(t)) return true;
         }
         return false;
     }
