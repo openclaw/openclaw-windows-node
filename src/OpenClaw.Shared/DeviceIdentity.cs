@@ -38,6 +38,7 @@ public class DeviceIdentity
 
     public static string? TryReadStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null)
     {
+        var tokenRole = ParseDeviceTokenRole(role);
         var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
         if (!File.Exists(keyPath))
         {
@@ -47,7 +48,7 @@ public class DeviceIdentity
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(keyPath));
-            var tokenPropertyName = string.Equals(role, "node", StringComparison.OrdinalIgnoreCase)
+            var tokenPropertyName = tokenRole == DeviceTokenRole.Node
                 ? nameof(DeviceKeyData.NodeDeviceToken)
                 : nameof(DeviceKeyData.DeviceToken);
 
@@ -338,7 +339,8 @@ public class DeviceIdentity
 
     public void StoreDeviceTokenForRole(string role, string token, IEnumerable<string>? scopes = null)
     {
-        if (string.Equals(role, "node", StringComparison.OrdinalIgnoreCase))
+        var tokenRole = ParseDeviceTokenRole(role);
+        if (tokenRole == DeviceTokenRole.Node)
         {
             StoreNodeDeviceTokenCore(token, NormalizeScopes(scopes));
             return;
@@ -346,6 +348,13 @@ public class DeviceIdentity
 
         StoreDeviceTokenCore(token, NormalizeScopes(scopes));
     }
+
+    private static DeviceTokenRole ParseDeviceTokenRole(string role) => role switch
+    {
+        "operator" => DeviceTokenRole.Operator,
+        "node" => DeviceTokenRole.Node,
+        _ => throw new ArgumentOutOfRangeException(nameof(role), "Device token role must be 'operator' or 'node'.")
+    };
 
     private void StoreDeviceTokenCore(string token, string[]? scopes)
     {
@@ -421,6 +430,12 @@ public class DeviceIdentity
             .TrimEnd('=');
     }
     
+    private enum DeviceTokenRole
+    {
+        Operator,
+        Node
+    }
+
     private class DeviceKeyData
     {
         public string? PrivateKeyBase64 { get; set; }

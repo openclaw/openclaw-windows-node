@@ -236,22 +236,55 @@ public class DeviceIdentityIntegrationTests
             var id1 = new DeviceIdentity(dir);
             id1.Initialize();
             id1.StoreDeviceTokenWithScopes("operator-token", ["operator.read"]);
-            id1.StoreDeviceTokenForRole("node", "node-token", []);
+            id1.StoreDeviceTokenForRole("node", "node-token", ["node.connect", "node.connect", "node.reconnect"]);
 
             Assert.Equal("operator-token", id1.DeviceToken);
             Assert.Equal(["operator.read"], id1.DeviceTokenScopes);
             Assert.Equal("node-token", id1.NodeDeviceToken);
-            Assert.Null(id1.NodeDeviceTokenScopes);
+            Assert.Equal(["node.connect", "node.reconnect"], id1.NodeDeviceTokenScopes);
 
             var id2 = new DeviceIdentity(dir);
             id2.Initialize();
             Assert.Equal("operator-token", id2.DeviceToken);
             Assert.Equal(["operator.read"], id2.DeviceTokenScopes);
             Assert.Equal("node-token", id2.NodeDeviceToken);
-            Assert.Null(id2.NodeDeviceTokenScopes);
+            Assert.Equal(["node.connect", "node.reconnect"], id2.NodeDeviceTokenScopes);
             Assert.Equal("operator-token", DeviceIdentity.TryReadStoredDeviceToken(dir));
             Assert.Equal("node-token", DeviceIdentity.TryReadStoredDeviceTokenForRole(dir, "node"));
             Assert.True(DeviceIdentity.HasStoredDeviceTokenForRole(dir, "node"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("OPERATOR")]
+    [InlineData("adminstrator")]
+    public void StoreDeviceTokenForRole_InvalidRole_Throws(string role)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var identity = new DeviceIdentity(dir);
+            identity.Initialize();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                identity.StoreDeviceTokenForRole(role, "token"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("OPERATOR")]
+    [InlineData("adminstrator")]
+    public void TryReadStoredDeviceTokenForRole_InvalidRole_Throws(string role)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                DeviceIdentity.TryReadStoredDeviceTokenForRole(dir, role));
         }
         finally { Directory.Delete(dir, true); }
     }
