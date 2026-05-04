@@ -100,7 +100,11 @@ public sealed record LocalGatewaySetupRuntimeConfiguration(
     {
         environment ??= new ProcessLocalGatewaySetupEnvironment();
         return new LocalGatewaySetupRuntimeConfiguration(
+#if DEBUG || OPENCLAW_TRAY_TESTS
             NullIfWhiteSpace(environment.GetVariable(DistroNameVariable)),
+#else
+            null,
+#endif
             NullIfWhiteSpace(environment.GetVariable(InstanceInstallLocationVariable)),
             IsTruthy(environment.GetVariable(AllowExistingDistroVariable)));
     }
@@ -1995,8 +1999,7 @@ public sealed record LocalGatewayLifecycleResult(
 public sealed record LocalGatewayRemoveRequest(
     bool ConfirmRemove,
     bool ClearLocalCredentials,
-    bool PreserveRelayRegistration = true,
-    bool PreserveWorkerData = true);
+    bool PreserveRelayRegistration = true);
 
 public interface ILocalGatewayLifecycleManager
 {
@@ -2071,8 +2074,6 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
 
         if (request.PreserveRelayRegistration)
             steps.Add("relay_registration_preserved");
-        if (request.PreserveWorkerData)
-            steps.Add("worker_data_preserved");
 
         return new LocalGatewayLifecycleResult(true, Steps: steps);
     }
@@ -2125,7 +2126,7 @@ public static class LocalGatewaySetupEngineFactory
         var options = new LocalGatewaySetupOptions
         {
             GatewayUrl = settings.GetEffectiveGatewayUrl(),
-            DistroName = string.IsNullOrWhiteSpace(distroName) ? runtime.DistroName ?? "OpenClawGateway" : distroName,
+            DistroName = ResolveDistroName(runtime, distroName),
             InstanceInstallLocation = string.IsNullOrWhiteSpace(instanceInstallLocation) ? runtime.InstanceInstallLocation : instanceInstallLocation,
             AllowExistingDistro = allowExistingDistro || runtime.AllowExistingDistro,
 #if OPENCLAW_TRAY_TESTS
@@ -2155,5 +2156,15 @@ public static class LocalGatewaySetupEngineFactory
             new SettingsOperatorPairingService(settingsAdapter, operatorConnector),
             new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector),
             logger);
+    }
+
+    private static string ResolveDistroName(LocalGatewaySetupRuntimeConfiguration runtime, string? explicitDistroName)
+    {
+#if DEBUG || OPENCLAW_TRAY_TESTS
+        // Test/dev seam only: shipping builds are locked to the Craig-approved OpenClawGateway instance name.
+        return string.IsNullOrWhiteSpace(explicitDistroName) ? runtime.DistroName ?? "OpenClawGateway" : explicitDistroName;
+#else
+        return "OpenClawGateway";
+#endif
     }
 }
