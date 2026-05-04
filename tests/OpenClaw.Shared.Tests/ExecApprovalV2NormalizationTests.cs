@@ -238,13 +238,14 @@ public class ExecApprovalV2NormalizationTests
     }
 
     [Fact]
-    public void ResolveForAllowlist_EnvFlagBeforeDirectExec_NotFailClosed()
+    public void ResolveForAllowlist_EnvFlagBeforeDirectExec_ReturnsEmpty()
     {
-        // env -u HOME echo hello → env modifies env but no shell wrapper → not the fail-closed case.
+        // env -u HOME echo hello — env has modifiers → fail-closed regardless of what follows.
+        // The allowlist cannot verify which executable runs under a modified environment.
         var resolutions = ExecCommandResolver.ResolveForAllowlist(
             ["env", "-u", "HOME", "echo", "hello"],
             evaluationRawCommand: null, cwd: null, env: null);
-        Assert.NotEmpty(resolutions);
+        Assert.Empty(resolutions);
     }
 
     // ── ExecApprovalV2Normalizer — full pipeline ──────────────────────────────
@@ -605,6 +606,30 @@ public class ExecApprovalV2NormalizationTests
         Assert.NotNull(res);
         Assert.NotNull(res!.Value.ResolvedPath);
         Assert.Contains("System32", res.Value.ResolvedPath, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── Finding #2: env modifiers fail-closed (Hanselman review) ─────────────
+
+    [Fact]
+    public void ResolveForAllowlist_EnvAssignmentBeforeDirectExec_ReturnsEmpty()
+    {
+        // env PATH=/evil wget — VAR=val modifier changes which executable resolves at runtime.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["env", "PATH=/evil", "wget"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_EnvUnknownFlagBeforeShellWrapper_ReturnsEmpty()
+    {
+        // env --bogus bash -c "..." — Hanselman called this out explicitly.
+        // Unknown flag → HasModifiers=true (starts with '-') → fail-closed.
+        // Must NOT degrade to "resolve env itself as the executable".
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["env", "--bogus", "bash", "-c", "echo hi"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
     }
 
     // ── Finding #1: -EncodedCommand detection (Hanselman review) ─────────────

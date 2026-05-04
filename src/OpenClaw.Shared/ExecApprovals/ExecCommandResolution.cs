@@ -48,10 +48,14 @@ internal static class ExecCommandResolver
         string? cwd,
         IReadOnlyDictionary<string, string>? env)
     {
-        // Fail-closed: env with flags or VAR=val before a shell wrapper is not a transparent
-        // dispatch. The allowlist cannot verify the effective command under an unknown env context.
-        // Mirrors macOS hasEnvManipulationBeforeShellWrapper condition (research doc 04, table S).
-        if (HasEnvManipulationBeforeShellWrapper(command)) return [];
+        // Fail-closed: any env invocation with modifiers (flags or VAR=val assignments).
+        // The allowlist cannot verify which executable will actually run under a modified env —
+        // the resolver uses the original env while execution uses the modified one.
+        // Subsumes the previous shell-wrapper-only check (Hanselman review finding #2).
+        if (command.Count > 0
+            && ExecCommandToken.IsEnv(command[0].Trim())
+            && ExecEnvInvocationUnwrapper.HasModifiers(command))
+            return [];
 
         var wrapper = ExecShellWrapperNormalizer.Extract(command);
         if (wrapper.IsWrapper)
@@ -96,18 +100,6 @@ internal static class ExecCommandResolver
     }
 
     // ── Resolution helpers ───────────────────────────────────────────────────
-
-    // True when first token is `env` with modifying options/assignments AND the effective
-    // command after stripping the env layer is a shell wrapper.
-    private static bool HasEnvManipulationBeforeShellWrapper(IReadOnlyList<string> command)
-    {
-        if (command.Count == 0) return false;
-        if (!ExecCommandToken.IsEnv(command[0].Trim())) return false;
-        if (!ExecEnvInvocationUnwrapper.HasModifiers(command)) return false;
-        var unwrapped = ExecEnvInvocationUnwrapper.Unwrap(command);
-        if (unwrapped is null || unwrapped.Count == 0) return false;
-        return ExecShellWrapperNormalizer.Extract(unwrapped).IsWrapper;
-    }
 
     private static ExecCommandResolution? ResolveSingle(
         IReadOnlyList<string> command,
