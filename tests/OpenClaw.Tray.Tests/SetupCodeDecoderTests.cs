@@ -69,6 +69,20 @@ public class SetupCodeDecoderTests
         Assert.Equal("abc123", result.Token);
     }
 
+    [Theory]
+    [InlineData("bootstrap_token")]
+    [InlineData("token")]
+    public void Decode_AlternateTokenPropertyNames_ReturnsToken(string propertyName)
+    {
+        var json = $$"""{"url":"ws://localhost:18789","{{propertyName}}":"abc123"}""";
+        var code = ToBase64Url(json);
+
+        var result = SetupCodeDecoder.Decode(code);
+
+        Assert.True(result.Success);
+        Assert.Equal("abc123", result.Token);
+    }
+
     [Fact]
     public void Decode_HttpUrl_AlsoValid()
     {
