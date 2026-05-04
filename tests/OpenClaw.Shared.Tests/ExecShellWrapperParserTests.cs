@@ -138,6 +138,89 @@ public class ExecShellWrapperParserTests
         Assert.Contains(result.Targets, t => t.Command.Contains("Remove-Item"));
     }
 
+    // All unique prefix abbreviations of -EncodedCommand beyond -enc/-ec
+    [Theory]
+    [InlineData("-en")]
+    [InlineData("-enco")]
+    [InlineData("-encod")]
+    [InlineData("-encode")]
+    [InlineData("-encoded")]
+    [InlineData("-encodedc")]
+    [InlineData("-encodedco")]
+    [InlineData("-encodedcom")]
+    [InlineData("-encodedcomm")]
+    [InlineData("-encodedcomma")]
+    [InlineData("-encodedcomman")]
+    [InlineData("-encodedcommand")]
+    public void Expand_Powershell_EncodedCommand_PrefixAbbreviation_Decodes(string flag)
+    {
+        var payload = "Get-ChildItem C:\\";
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(payload));
+        var result = Expand($"powershell {flag} {encoded}");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Get-ChildItem"));
+    }
+
+    // Inline separator forms: -enc:value and -enc=value
+    [Theory]
+    [InlineData("-enc")]
+    [InlineData("-EncodedCommand")]
+    [InlineData("-encodedcommand")]
+    public void Expand_Powershell_EncodedCommand_ColonSeparator_Decodes(string flagBase)
+    {
+        var payload = "Invoke-Something";
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(payload));
+        var result = Expand($"powershell {flagBase}:{encoded}");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Invoke-Something"));
+    }
+
+    [Theory]
+    [InlineData("-enc")]
+    [InlineData("-EncodedCommand")]
+    public void Expand_Powershell_EncodedCommand_EqualsSeparator_Decodes(string flagBase)
+    {
+        var payload = "Write-Host hi";
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(payload));
+        var result = Expand($"powershell {flagBase}={encoded}");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Write-Host"));
+    }
+
+    // -Command separator forms
+    [Theory]
+    [InlineData("-Command")]
+    [InlineData("-c")]
+    public void Expand_Powershell_Command_ColonSeparator_ExtractsPayload(string flagBase)
+    {
+        var result = Expand($"powershell {flagBase}:Get-Process");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Get-Process"));
+    }
+
+    [Theory]
+    [InlineData("-Command")]
+    [InlineData("-c")]
+    public void Expand_Powershell_Command_EqualsSeparator_ExtractsPayload(string flagBase)
+    {
+        var result = Expand($"powershell {flagBase}=Get-Date");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Get-Date"));
+    }
+
+    // Ambiguous -e alone must NOT be treated as -EncodedCommand
+    [Fact]
+    public void Expand_Powershell_SingleE_NotTreatedAsEncodedCommand()
+    {
+        // -e alone is ambiguous (-EncodedCommand vs -ExecutionPolicy); must not decode
+        var payload = "Get-ChildItem";
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(payload));
+        var result = Expand($"powershell -e {encoded}");
+        // Should not produce a decoded target from -e
+        Assert.True(result.Error != null || !result.Targets.Any(t => t.Command.Contains("Get-ChildItem")),
+            "Ambiguous -e flag must not be silently treated as -EncodedCommand");
+    }
+
     [Fact]
     public void Expand_Powershell_EncodedCommand_EmptyPayload_ReturnsError()
     {
