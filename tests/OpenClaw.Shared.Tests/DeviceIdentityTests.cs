@@ -192,11 +192,66 @@ public class DeviceIdentityIntegrationTests
 
             id1.StoreDeviceToken("secret-device-token");
             Assert.Equal("secret-device-token", id1.DeviceToken);
+            Assert.Null(id1.DeviceTokenScopes);
 
             // Reload
             var id2 = new DeviceIdentity(dir);
             id2.Initialize();
             Assert.Equal("secret-device-token", id2.DeviceToken);
+            Assert.Null(id2.DeviceTokenScopes);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [IntegrationFact]
+    public void StoreDeviceTokenWithScopes_PersistsScopesAcrossReload()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var id1 = new DeviceIdentity(dir);
+            id1.Initialize();
+
+            id1.StoreDeviceTokenWithScopes(
+                "secret-device-token",
+                ["operator.read", "operator.write", "operator.read"]);
+
+            Assert.Equal("secret-device-token", id1.DeviceToken);
+            Assert.Equal(["operator.read", "operator.write"], id1.DeviceTokenScopes);
+
+            var id2 = new DeviceIdentity(dir);
+            id2.Initialize();
+            Assert.Equal("secret-device-token", id2.DeviceToken);
+            Assert.Equal(["operator.read", "operator.write"], id2.DeviceTokenScopes);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [IntegrationFact]
+    public void StoreDeviceTokenForRole_Node_PreservesOperatorToken()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var id1 = new DeviceIdentity(dir);
+            id1.Initialize();
+            id1.StoreDeviceTokenWithScopes("operator-token", ["operator.read"]);
+            id1.StoreDeviceTokenForRole("node", "node-token", []);
+
+            Assert.Equal("operator-token", id1.DeviceToken);
+            Assert.Equal(["operator.read"], id1.DeviceTokenScopes);
+            Assert.Equal("node-token", id1.NodeDeviceToken);
+            Assert.Null(id1.NodeDeviceTokenScopes);
+
+            var id2 = new DeviceIdentity(dir);
+            id2.Initialize();
+            Assert.Equal("operator-token", id2.DeviceToken);
+            Assert.Equal(["operator.read"], id2.DeviceTokenScopes);
+            Assert.Equal("node-token", id2.NodeDeviceToken);
+            Assert.Null(id2.NodeDeviceTokenScopes);
+            Assert.Equal("operator-token", DeviceIdentity.TryReadStoredDeviceToken(dir));
+            Assert.Equal("node-token", DeviceIdentity.TryReadStoredDeviceTokenForRole(dir, "node"));
+            Assert.True(DeviceIdentity.HasStoredDeviceTokenForRole(dir, "node"));
         }
         finally { Directory.Delete(dir, true); }
     }
