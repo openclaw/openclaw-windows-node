@@ -41,31 +41,6 @@ public class WindowsNodeClientTests
         }
     }
 
-    [Fact]
-    public void Constructor_AllowsStoredDeviceTokenWithoutGatewayOrBootstrapToken()
-    {
-        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(dataPath);
-
-        try
-        {
-            var identity = new DeviceIdentity(dataPath);
-            identity.Initialize();
-            identity.StoreDeviceToken("stored-device-token");
-
-            using var client = new WindowsNodeClient("ws://localhost:18789", "", dataPath);
-
-            Assert.True(client.IsPaired);
-        }
-        finally
-        {
-            if (Directory.Exists(dataPath))
-            {
-                Directory.Delete(dataPath, true);
-            }
-        }
-    }
-
     /// <summary>
     /// Regression test: when hello-ok includes auth.deviceToken, PairingStatusChanged must
     /// fire exactly once — not twice (once from the token block and again from the DeviceToken
@@ -185,13 +160,13 @@ public class WindowsNodeClientTests
         {
             using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
 
-            // Pre-store a device token so the client is already paired
+            // Pre-store a node device token so the node client is already paired.
             var identityField = typeof(WindowsNodeClient).GetField(
                 "_deviceIdentity",
                 BindingFlags.NonPublic | BindingFlags.Instance);
             var identity = identityField!.GetValue(client)!;
-            var storeMethod = identity.GetType().GetMethod("StoreDeviceToken");
-            storeMethod!.Invoke(identity, ["stored-device-token-xyz"]);
+            var storeMethod = identity.GetType().GetMethod("StoreDeviceTokenForRole");
+            storeMethod!.Invoke(identity, ["node", "stored-device-token-xyz", null]);
 
             var pairingEvents = new List<PairingStatusEventArgs>();
             client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
@@ -733,8 +708,8 @@ public class WindowsNodeClientTests
                 "_deviceIdentity",
                 BindingFlags.NonPublic | BindingFlags.Instance);
             var identity = identityField!.GetValue(client)!;
-            var storeMethod = identity.GetType().GetMethod("StoreDeviceToken");
-            storeMethod!.Invoke(identity, ["my-device-token"]);
+            var storeMethod = identity.GetType().GetMethod("StoreDeviceTokenForRole");
+            storeMethod!.Invoke(identity, ["node", "my-device-token", null]);
 
             Assert.True(client.IsPaired);
         }
@@ -793,15 +768,16 @@ public class WindowsNodeClientTests
                 "_deviceIdentity",
                 BindingFlags.NonPublic | BindingFlags.Instance);
             var identity = identityField!.GetValue(client)!;
-            var storeMethod = identity.GetType().GetMethod("StoreDeviceToken");
-            storeMethod!.Invoke(identity, ["stored-device-token"]);
+            var storeMethod = identity.GetType().GetMethod("StoreDeviceTokenForRole");
+            storeMethod!.Invoke(identity, ["node", "stored-device-token", null]);
 
             var json = InvokeBuildNodeConnectMessage(client);
             using var doc = JsonDocument.Parse(json);
             var auth = doc.RootElement.GetProperty("params").GetProperty("auth");
             var (_, tokenForSignature) = InvokeBuildConnectAuth(client);
 
-            Assert.Equal("stored-device-token", auth.GetProperty("token").GetString());
+            Assert.Equal("stored-device-token", auth.GetProperty("deviceToken").GetString());
+            Assert.False(auth.TryGetProperty("token", out _));
             Assert.False(auth.TryGetProperty("bootstrapToken", out _));
             Assert.Equal("stored-device-token", tokenForSignature);
         }
