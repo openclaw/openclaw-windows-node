@@ -8,6 +8,7 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using OpenClawTray.Onboarding;
+using OpenClawTray.Services.LocalGatewaySetup;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -45,6 +46,22 @@ public partial class App : Application
     /// Used by the onboarding ConnectionPage when the user picks the SSH topology.
     /// </summary>
     public void EnsureSshTunnelStarted() => _sshTunnelService?.EnsureStarted(_settings);
+
+    /// <summary>
+    /// Creates the WSL local gateway setup engine using the current tray settings.
+    /// Onboarding pages (Phase 5) call this to drive the local-WSL setup flow;
+    /// the engine pairs the operator + Windows tray node into the gateway it
+    /// installs, so we eagerly materialize the NodeService when needed.
+    /// </summary>
+    public LocalGatewaySetupEngine CreateLocalGatewaySetupEngine()
+    {
+        var settings = _settings ?? new SettingsManager();
+        var nodeService = EnsureNodeServiceForLocalGatewaySetup(settings);
+        return LocalGatewaySetupEngineFactory.CreateLocalOnly(
+            settings,
+            new AppLogger(),
+            nodeService);
+    }
 
     /// <summary>
     /// Returns the HWND of the active onboarding window, or IntPtr.Zero if none.
@@ -135,6 +152,14 @@ public partial class App : Application
         ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenClawTray");
+    // Operator/node identity store (DeviceIdentity). Lives at %APPDATA%\OpenClawTray
+    // by convention so it follows the user across machines via roaming profile.
+    // OPENCLAW_TRAY_APPDATA_DIR isolates a test/E2E identity store the same way
+    // OPENCLAW_TRAY_DATA_DIR isolates the per-machine data directory.
+    private static readonly string IdentityDataPath = Path.Combine(
+        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "OpenClawTray");
     private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
     private static readonly string RunMarkerPath = Path.Combine(DataPath, "run.marker");
 
@@ -1054,7 +1079,7 @@ public partial class App : Application
         if (!enableNode && !enableMcp) return;
 
         // Gateway connection requires auth (operator token, bootstrap token, or stored device token); MCP doesn't.
-        var canRunGateway = StartupSetupState.CanStartNodeGateway(_settings, DataPath);
+        var canRunGateway = StartupSetupState.CanStartNodeGateway(_settings, IdentityDataPath);
 
         if (enableNode && !canRunGateway && !enableMcp)
         {
@@ -1077,7 +1102,8 @@ public partial class App : Application
                 DataPath,
                 () => _keepAliveWindow?.Content as FrameworkElement,
                 _settings,
-                enableMcpServer: enableMcp);
+                enableMcpServer: enableMcp,
+                identityDataPath: IdentityDataPath);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
@@ -1102,9 +1128,43 @@ public partial class App : Application
         }
     }
 
+    private NodeService? EnsureNodeServiceForLocalGatewaySetup(SettingsManager settings)
+    {
+        if (_nodeService != null)
+            return _nodeService;
+
+        if (_dispatcherQueue == null)
+            return null;
+
+        try
+        {
+            _nodeService = new NodeService(
+                new AppLogger(),
+                _dispatcherQueue,
+                DataPath,
+                () => _keepAliveWindow?.Content as FrameworkElement,
+                settings,
+                enableMcpServer: settings.EnableMcpServer,
+                identityDataPath: IdentityDataPath);
+            _nodeService.StatusChanged += OnNodeStatusChanged;
+            _nodeService.NotificationRequested += OnNodeNotificationRequested;
+            _nodeService.PairingStatusChanged += OnPairingStatusChanged;
+            _nodeService.ChannelHealthUpdated += OnChannelHealthUpdated;
+            _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
+            _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
+            return _nodeService;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to initialize node service for local gateway setup: {ex}");
+            _nodeService = null;
+            return null;
+        }
+    }
+
     private static bool RequiresSetup(SettingsManager settings)
     {
-        return StartupSetupState.RequiresSetup(settings, DataPath);
+        return StartupSetupState.RequiresSetup(settings, IdentityDataPath);
     }
     
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)

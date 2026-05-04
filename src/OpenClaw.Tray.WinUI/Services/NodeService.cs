@@ -73,6 +73,13 @@ public sealed class NodeService : IDisposable
     private TtsCapability? _ttsCapability;
     private TextToSpeechService? _textToSpeechService;
     private readonly string _dataPath;
+    // Identity store location for the role-aware DeviceIdentity. Defaults to
+    // _dataPath when no separate path is supplied (preserves existing test
+    // behavior that hands a single temp directory to NodeService). The Tray
+    // app supplies %APPDATA%\OpenClawTray here so node device tokens land in
+    // the same DeviceIdentity store as operator tokens (Phase 1 model:
+    // single shared location, role distinction inside).
+    private readonly string _identityDataPath;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -141,11 +148,13 @@ public sealed class NodeService : IDisposable
         string dataPath,
         Func<FrameworkElement?>? rootProvider = null,
         SettingsManager? settings = null,
-        bool enableMcpServer = false)
+        bool enableMcpServer = false,
+        string? identityDataPath = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
         _dataPath = dataPath;
+        _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
@@ -167,7 +176,7 @@ public sealed class NodeService : IDisposable
         _logger.Info($"Starting Windows Node connection to {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
         _token = token;
 
-        _nodeClient = new WindowsNodeClient(gatewayUrl, token, _dataPath, _logger, bootstrapToken);
+        _nodeClient = new WindowsNodeClient(gatewayUrl, token, _identityDataPath, _logger, bootstrapToken);
         _nodeClient.StatusChanged += OnNodeStatusChanged;
         _nodeClient.PairingStatusChanged += OnPairingStatusChanged;
         _nodeClient.HealthReceived += OnNodeHealthReceived;
