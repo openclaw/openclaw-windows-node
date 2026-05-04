@@ -121,37 +121,32 @@ internal static class ExecCommandResolver
         string? cwd,
         IReadOnlyDictionary<string, string>? env)
     {
-        var expanded = ExpandTilde(rawExecutable);
-        var hasSep = expanded.Contains('/') || expanded.Contains('\\');
-
-        string? resolvedPath;
-        if (hasSep)
+        try
         {
-            // Reject paths with ':' in non-volume-separator positions (ADS, non-standard forms).
-            if (HasNonStandardColon(expanded)) return null;
+            var expanded = ExpandTilde(rawExecutable);
+            var hasSep = expanded.Contains('/') || expanded.Contains('\\');
 
-            if (Path.IsPathFullyQualified(expanded))
+            string? resolvedPath;
+            if (hasSep)
             {
-                resolvedPath = Path.GetFullPath(expanded);
+                // Reject paths with ':' in non-volume-separator positions (ADS, non-standard forms).
+                if (HasNonStandardColon(expanded)) return null;
+
+                resolvedPath = Path.IsPathFullyQualified(expanded)
+                    ? Path.GetFullPath(expanded)
+                    : Path.GetFullPath(expanded, string.IsNullOrWhiteSpace(cwd)
+                        ? Directory.GetCurrentDirectory()
+                        : cwd.Trim());
             }
             else
             {
-                var effectiveCwd = string.IsNullOrWhiteSpace(cwd)
-                    ? Directory.GetCurrentDirectory()
-                    : cwd.Trim();
-                resolvedPath = Path.GetFullPath(expanded, effectiveCwd);
+                resolvedPath = FindInPath(expanded, GetSearchPaths(env), GetPathExtensions(env));
             }
-        }
-        else
-        {
-            resolvedPath = FindInPath(expanded, GetSearchPaths(env), GetPathExtensions(env));
-        }
 
-        var name = resolvedPath is not null
-            ? Path.GetFileName(resolvedPath)
-            : expanded;
-
-        return new ExecCommandResolution(expanded, resolvedPath, name, cwd);
+            var name = resolvedPath is not null ? Path.GetFileName(resolvedPath) : expanded;
+            return new ExecCommandResolution(expanded, resolvedPath, name, cwd);
+        }
+        catch { return null; } // hostile/odd argv must never throw out of resolution
     }
 
     // ── Shell command chain splitting ────────────────────────────────────────
@@ -242,8 +237,15 @@ internal static class ExecCommandResolver
         {
             var rest = trimmed.AsSpan(1);
             var end = rest.IndexOf(first);
-            var token = end >= 0 ? rest[..end].ToString() : rest.ToString();
-            return token.Length == 0 ? null : token;
+            if (end < 0) return null; // unclosed quote — fail-closed; do not guess the token
+            var inner = rest[..end].ToString();
+            if (inner.Length == 0) return null;
+            // Preserve any suffix after the closing quote up to the next whitespace.
+            // Handles `"git".exe` → "git.exe" and `"C:\Program Files\Git\bin\git".exe` → *.exe.
+            var afterClose = rest[(end + 1)..];
+            var suffixEnd = afterClose.IndexOfAny(' ', '\t');
+            var suffix = suffixEnd >= 0 ? afterClose[..suffixEnd].ToString() : afterClose.ToString();
+            return suffix.Length > 0 ? inner + suffix : inner;
         }
         var space = trimmed.AsSpan().IndexOfAny(' ', '\t');
         return space >= 0 ? trimmed[..space] : trimmed;
@@ -390,12 +392,15 @@ internal static class ExecCommandResolver
         {
             if (string.IsNullOrEmpty(dir)) continue;
             var candidate = Path.Combine(dir, name);
-            if (File.Exists(candidate)) return TryNormalizePath(candidate);
+            // PATHEXT extensions first — matches Windows CreateProcess resolution order.
+            // A no-extension shadow in PATH must not shadow e.g. cmd.exe via PATHEXT.
             foreach (var ext in extensions)
             {
                 var withExt = candidate + ext;
                 if (File.Exists(withExt)) return TryNormalizePath(withExt);
             }
+            // Bare name only when it already carries an explicit extension (e.g. cmd.exe passed as-is).
+            if (File.Exists(candidate)) return TryNormalizePath(candidate);
         }
         return null;
     }
@@ -464,12 +469,18 @@ internal static class ExecCommandResolver
     // Research doc 04 section 3 / S3.
     private static bool HasNonStandardColon(string path)
     {
-        // UNC paths (\\server\share) have no colon — fine.
-        // Drive-letter prefix: exactly one ':' at index 1 (e.g. C:\...) — fine.
-        // Anything else with ':' is rejected.
-        var colonIdx = path.IndexOf(':');
-        if (colonIdx < 0) return false;                    // no colon — fine
-        if (colonIdx == 1) return path.IndexOf(':', 2) >= 0; // C:\ — fine iff no second colon
+        // Extended-length prefix — strip it and evaluate the remainder (\\?\C:\ is valid).
+        var effective = path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..] : path;
+
+        // UNC paths (\\server\share) and extended UNC (\\?\UNC\...) have no drive colon — fine.
+        if (effective.StartsWith(@"\\", StringComparison.Ordinal)) return false;
+
+        var colonIdx = effective.IndexOf(':');
+        if (colonIdx < 0) return false; // no colon — fine
+        // Drive-letter form: single ASCII letter at index 0 followed by ':' — fine if no second colon.
+        // '1', '!' etc. at index 0 are not valid drive letters and must be rejected.
+        if (colonIdx == 1 && char.IsAsciiLetter(effective[0]))
+            return effective.IndexOf(':', 2) >= 0;
         return true;
     }
 
@@ -479,10 +490,8 @@ internal static class ExecCommandResolver
     private static string TryNormalizePath(string path)
     {
         // GetFullPath resolves . and .. but does not expand 8.3 short names.
-        // A best-effort attempt: if the path contains ~ in a segment (8.3 indicator),
-        // try to get the long-path form via the filesystem. We use Path.GetFullPath
-        // which on .NET already normalizes separators and relative components.
         // Full GetLongPathName P/Invoke is left as OQ-R1 in the research docs.
-        return Path.GetFullPath(path);
+        try { return Path.GetFullPath(path); }
+        catch { return path; } // hostile path must not throw out of resolution
     }
 }

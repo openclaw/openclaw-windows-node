@@ -608,6 +608,50 @@ public class ExecApprovalV2NormalizationTests
         Assert.Contains("System32", res.Value.ResolvedPath, System.StringComparison.OrdinalIgnoreCase);
     }
 
+    // ── Finding #3: path/token parsing hardening (Hanselman review) ──────────
+
+    [Fact]
+    public void Resolver_NonLetterDriveColon_ReturnsNull()
+    {
+        // '1' at the drive position is not an ASCII letter — HasNonStandardColon must reject it.
+        // Previously colonIdx==1 was accepted without checking char.IsAsciiLetter.
+        var res = ExecCommandResolver.Resolve([@"1:\tool.exe"], cwd: null, env: null);
+        Assert.Null(res);
+    }
+
+    [Fact]
+    public void Resolver_ExtendedLengthPath_NotRejectedByColonCheck()
+    {
+        // \\?\C:\... is a valid extended-length path; HasNonStandardColon must not reject it.
+        var sysDir = System.Environment.GetFolderPath(System.Environment.SpecialFolder.System);
+        var extended = @"\\?\" + System.IO.Path.Combine(sysDir, "cmd.exe");
+        var res = ExecCommandResolver.Resolve([extended], cwd: null, env: null);
+        Assert.NotNull(res); // colon check must not block \\?\C:\ paths
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_ParseFirstToken_UnclosedQuote_FailClosed()
+    {
+        // Unclosed quote in shell payload — ParseFirstToken must return null (fail-closed).
+        // Previously the old code returned rest.ToString() on end<0, silently swallowing the token.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["bash", "-c", "\"unclosed arg"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Empty(resolutions);
+    }
+
+    [Fact]
+    public void ResolveForAllowlist_QuotedTokenWithExtensionSuffix_SuffixPreserved()
+    {
+        // "git".exe in a shell segment — inner="git", suffix=".exe" → token="git.exe".
+        // Previously ParseFirstToken lost the suffix, producing RawExecutable="git" instead.
+        var resolutions = ExecCommandResolver.ResolveForAllowlist(
+            ["bash", "-c", "\"git\".exe --version"],
+            evaluationRawCommand: null, cwd: null, env: null);
+        Assert.Single(resolutions);
+        Assert.EndsWith(".exe", resolutions[0].RawExecutable, System.StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── Finding #2: env modifiers fail-closed (Hanselman review) ─────────────
 
     [Fact]
