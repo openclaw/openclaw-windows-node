@@ -762,7 +762,7 @@ public static class PermissionDiagnostics
             {
                 Name = "Microphone",
                 Status = "review",
-                Detail = "Required only for camera clips with audio or future voice features.",
+                Detail = "Required for camera clips with audio and for stt.transcribe speech-to-text capture.",
                 SettingsUri = "ms-settings:privacy-microphone"
             },
             new()

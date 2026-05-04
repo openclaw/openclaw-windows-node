@@ -200,28 +200,33 @@
                             <ToggleSwitch x:Name="NodeCameraToggle" AutomationProperties.AutomationId="NodeCameraToggle" Header="Camera list, snapshot, and clips"/>
                             <ToggleSwitch x:Name="NodeLocationToggle" AutomationProperties.AutomationId="NodeLocationToggle" Header="Location"/>
                             <ToggleSwitch x:Name="NodeBrowserProxyToggle" AutomationProperties.AutomationId="NodeBrowserProxyToggle" Header="Browser proxy bridge" Toggled="OnNodeBrowserProxyToggled"/>
-                            <ToggleSwitch x:Name="NodeTtsToggle" AutomationProperties.AutomationId="NodeTtsToggle" Header="Text-to-speech playback"/>
-                            <TextBlock Text="Text-to-speech exposes tts.speak. Gateway use still requires tts.speak in gateway.nodes.allowCommands."
+                            <ToggleSwitch x:Name="NodeTtsToggle" x:Uid="SettingsNodeTtsToggle" AutomationProperties.AutomationId="NodeTtsToggle" Header="Text-to-speech playback"/>
+                            <TextBlock x:Uid="SettingsNodeTtsDescription"
+                                       Text="Text-to-speech exposes tts.speak. Gateway use still requires tts.speak in gateway.nodes.allowCommands."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
                             <ComboBox x:Name="TtsProviderComboBox"
+                                      x:Uid="SettingsTtsProviderComboBox"
                                       AutomationProperties.AutomationId="TtsProviderComboBox"
                                       Header="TTS provider"
                                       SelectionChanged="OnTtsProviderSelectionChanged">
-                                <ComboBoxItem Content="Windows built-in speech" Tag="windows"/>
-                                <ComboBoxItem Content="ElevenLabs" Tag="elevenlabs"/>
+                                <ComboBoxItem x:Uid="SettingsTtsProviderWindowsItem" Content="Windows built-in speech" Tag="windows"/>
+                                <ComboBoxItem x:Uid="SettingsTtsProviderElevenLabsItem" Content="ElevenLabs" Tag="elevenlabs"/>
                             </ComboBox>
                             <StackPanel x:Name="TtsElevenLabsSettingsPanel"
                                         AutomationProperties.AutomationId="TtsElevenLabsSettingsPanel"
                                         Spacing="6">
                                 <PasswordBox x:Name="TtsElevenLabsApiKeyPasswordBox"
+                                             x:Uid="SettingsTtsElevenLabsApiKey"
                                              AutomationProperties.AutomationId="TtsElevenLabsApiKeyPasswordBox"
                                              Header="ElevenLabs API key"/>
                                 <TextBox x:Name="TtsElevenLabsVoiceIdTextBox"
+                                         x:Uid="SettingsTtsElevenLabsVoiceId"
                                          AutomationProperties.AutomationId="TtsElevenLabsVoiceIdTextBox"
                                          Header="ElevenLabs voice ID"/>
                                 <TextBox x:Name="TtsElevenLabsModelTextBox"
+                                         x:Uid="SettingsTtsElevenLabsModel"
                                          AutomationProperties.AutomationId="TtsElevenLabsModelTextBox"
                                          Header="ElevenLabs model"
                                          PlaceholderText="eleven_multilingual_v2"/>
@@ -235,21 +240,23 @@
                             Padding="12"
                             Margin="0,8,0,0">
                         <StackPanel Spacing="8">
-                            <TextBlock Text="Speech-to-text (microphone)" FontWeight="SemiBold"/>
-                            <TextBlock Text="When enabled, this Windows node advertises stt.transcribe to capture short audio clips from the default microphone and return transcribed text. Default off. Exposes the microphone to both gateway callers (when Node Mode is on, subject to the gateway allowlist) and local MCP clients (when the local MCP server is on, subject to the bearer token). Requires Windows microphone access for desktop apps in Settings → Privacy &amp; security → Microphone (packaged MSIX installs additionally need per-app permission)."
+                            <TextBlock x:Uid="SettingsNodeSttHeader" Text="Speech-to-text (microphone)" FontWeight="SemiBold"/>
+                            <TextBlock x:Uid="SettingsNodeSttDescription"
+                                       Text="When enabled, this Windows node advertises stt.transcribe to capture short audio clips from the default microphone and return transcribed text. Default off. Exposes the microphone to both gateway callers (when Node Mode is on, subject to the gateway allowlist) and local MCP clients (when the local MCP server is on, subject to the bearer token). Requires Windows microphone access for desktop apps in Settings → Privacy &amp; security → Microphone (packaged MSIX installs additionally need per-app permission)."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
-                            <ToggleSwitch x:Name="NodeSttToggle" AutomationProperties.AutomationId="NodeSttToggle" Header="Enable speech-to-text"/>
+                            <ToggleSwitch x:Name="NodeSttToggle" x:Uid="SettingsNodeSttToggle" AutomationProperties.AutomationId="NodeSttToggle" Header="Enable speech-to-text"/>
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Language tag" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" x:Name="SttLanguageTextBox" AutomationProperties.AutomationId="SttLanguageTextBox" PlaceholderText="en-US"/>
+                                <TextBlock Grid.Column="0" x:Uid="SettingsSttLanguageLabel" Text="Language tag" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" x:Name="SttLanguageTextBox" x:Uid="SettingsSttLanguageTextBox" AutomationProperties.AutomationId="SttLanguageTextBox" PlaceholderText="en-US"/>
                             </Grid>
-                            <TextBlock Text="BCP-47 tag (e.g. en-US, en-GB, ja-JP). The OS must have the speech recognition pack for this language installed."
+                            <TextBlock x:Uid="SettingsSttLanguageHelp"
+                                       Text="BCP-47 tag (e.g. en-US, en-GB, ja-JP). The OS must have the speech recognition pack for this language installed."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
@@ -260,7 +267,7 @@
                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="Bold" Margin="0,16,0,0"/>
                     <ToggleSwitch x:Name="McpServerToggle" x:Uid="SettingsMcpServerToggle" AutomationProperties.AutomationId="McpServerToggle" Header="Enable Local MCP Server" Margin="0,8,0,0"/>
                     <TextBlock x:Uid="SettingsMcpDescription"
-                               Text="Exposes the same node capabilities (system, screen, camera, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code)."
+                               Text="Exposes the same node capabilities (system, screen, camera, microphone, speakers, canvas) to local MCP clients (Claude Desktop, Cursor, Claude Code)."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"

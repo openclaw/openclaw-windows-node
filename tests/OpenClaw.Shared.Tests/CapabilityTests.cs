@@ -2899,6 +2899,46 @@ public class SttCapabilityTests
     }
 
     [Fact]
+    public async Task Transcribe_InvalidLanguageError_DoesNotEchoCallerInput()
+    {
+        // Privacy regression: caller-supplied language must not be echoed back
+        // in the error string, since failed-invoke errors land in recent
+        // activity / support bundles.
+        var cap = new SttCapability(NullLogger.Instance);
+        const string secretish = "ZZ-secret-tag-do-not-leak";
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt-priv-lang",
+            Command = "stt.transcribe",
+            Args = Parse($$"""{"maxDurationMs":5000,"language":"{{secretish}}"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(secretish, res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_HandlerException_DoesNotLeakExceptionMessageIntoError()
+    {
+        // Privacy regression: raw handler exception text could surface mic /
+        // audio-stack details. Response error must be a fixed sanitized
+        // string; full detail stays in logs.
+        var cap = new SttCapability(NullLogger.Instance);
+        const string sensitive = "secret-mic-device-path-or-stack-trace";
+        cap.TranscribeRequested += (_, _) => throw new InvalidOperationException(sensitive);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt-priv-ex",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(sensitive, res.Error);
+    }
+
+    [Fact]
     public async Task Transcribe_ReturnsError_WhenHandlerNotWired()
     {
         var cap = new SttCapability(NullLogger.Instance);
@@ -2985,7 +3025,10 @@ public class SttCapabilityTests
         });
 
         Assert.False(res.Ok);
-        Assert.Contains("Microphone unavailable", res.Error);
+        // Privacy: response surfaces a fixed sanitized error; raw exception
+        // text stays in the local log only. See
+        // Transcribe_HandlerException_DoesNotLeakExceptionMessageIntoError.
+        Assert.Equal("Transcribe failed", res.Error);
     }
 
     [Fact]

@@ -960,7 +960,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Activer le serveur MCP local</value>
   </data>
   <data name="SettingsMcpDescription.Text" xml:space="preserve">
-    <value>Expose les mêmes capacités du nœud (système, écran, caméra, canvas) aux clients MCP locaux (Claude Desktop, Cursor, Claude Code).</value>
+    <value>Expose les mêmes capacités du nœud (système, écran, caméra, microphone, haut-parleurs, canvas) aux clients MCP locaux (Claude Desktop, Cursor, Claude Code).</value>
   </data>
   <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
     <value>Point de terminaison :</value>
@@ -1411,6 +1411,53 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
     <value>Vous pouvez configurer la passerelle plus tard dans les paramètres.</value>
+  </data>
+
+  <!-- ==================== Paramètres TTS / STT (SettingsWindow) ==================== -->
+  <data name="SettingsNodeTtsToggle.Header" xml:space="preserve">
+    <value>Lecture de la synthèse vocale</value>
+  </data>
+  <data name="SettingsNodeTtsDescription.Text" xml:space="preserve">
+    <value>La synthèse vocale expose tts.speak. L'utilisation via la passerelle nécessite que tts.speak figure dans gateway.nodes.allowCommands.</value>
+  </data>
+  <data name="SettingsTtsProviderComboBox.Header" xml:space="preserve">
+    <value>Fournisseur TTS</value>
+  </data>
+  <data name="SettingsTtsProviderWindowsItem.Content" xml:space="preserve">
+    <value>Voix intégrée à Windows</value>
+  </data>
+  <data name="SettingsTtsProviderElevenLabsItem.Content" xml:space="preserve">
+    <value>ElevenLabs</value>
+  </data>
+  <data name="SettingsTtsElevenLabsApiKey.Header" xml:space="preserve">
+    <value>Clé API ElevenLabs</value>
+  </data>
+  <data name="SettingsTtsElevenLabsVoiceId.Header" xml:space="preserve">
+    <value>ID de voix ElevenLabs</value>
+  </data>
+  <data name="SettingsTtsElevenLabsModel.Header" xml:space="preserve">
+    <value>Modèle ElevenLabs</value>
+  </data>
+  <data name="SettingsTtsElevenLabsModel.PlaceholderText" xml:space="preserve">
+    <value>eleven_multilingual_v2</value>
+  </data>
+  <data name="SettingsNodeSttHeader.Text" xml:space="preserve">
+    <value>Reconnaissance vocale (microphone)</value>
+  </data>
+  <data name="SettingsNodeSttDescription.Text" xml:space="preserve">
+    <value>Lorsque cette option est activée, ce nœud Windows annonce stt.transcribe pour capturer de courts extraits audio depuis le microphone par défaut et renvoyer le texte transcrit. Désactivé par défaut. Expose le microphone aux appelants via la passerelle (lorsque le mode Nœud est activé, sous réserve de la liste d'autorisation de la passerelle) et aux clients MCP locaux (lorsque le serveur MCP local est activé, sous réserve du jeton porteur). Nécessite l'accès au microphone pour les applications de bureau dans Paramètres → Confidentialité et sécurité → Microphone (les installations MSIX empaquetées nécessitent en outre une autorisation par application).</value>
+  </data>
+  <data name="SettingsNodeSttToggle.Header" xml:space="preserve">
+    <value>Activer la reconnaissance vocale</value>
+  </data>
+  <data name="SettingsSttLanguageLabel.Text" xml:space="preserve">
+    <value>Étiquette de langue</value>
+  </data>
+  <data name="SettingsSttLanguageTextBox.PlaceholderText" xml:space="preserve">
+    <value>en-US</value>
+  </data>
+  <data name="SettingsSttLanguageHelp.Text" xml:space="preserve">
+    <value>Étiquette BCP-47 (par ex. en-US, en-GB, ja-JP). Le pack de reconnaissance vocale pour cette langue doit être installé sur le système d'exploitation.</value>
   </data>
 
 </root>

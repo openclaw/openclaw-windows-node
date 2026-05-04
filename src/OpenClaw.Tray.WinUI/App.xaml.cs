@@ -1199,10 +1199,8 @@ public partial class App : Application
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {
         var status = args.Ok ? "completed" : "failed";
-        var durationMs = Math.Max(0, (int)Math.Round(args.Duration.TotalMilliseconds));
-        var details = args.Ok
-            ? $"{GetNodeInvokePrivacyClass(args.Command)} · {durationMs} ms"
-            : $"{GetNodeInvokePrivacyClass(args.Command)} · {durationMs} ms · {args.Error ?? "unknown error"}";
+        var durationMs = (int)Math.Round(args.Duration.TotalMilliseconds);
+        var details = NodeInvokeActivityFormatter.BuildDetails(args.Command, args.Ok, durationMs, args.Error);
 
         AddRecentActivity(
             $"node.invoke {status}: {args.Command}",
@@ -1215,23 +1213,7 @@ public partial class App : Application
     }
 
     private static string GetNodeInvokePrivacyClass(string command)
-    {
-        if (string.Equals(command, "screen.record", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "screen.snapshot", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "camera.snap", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "camera.clip", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "stt.transcribe", StringComparison.OrdinalIgnoreCase))
-        {
-            return "privacy-sensitive";
-        }
-
-        if (command.StartsWith("system.run", StringComparison.OrdinalIgnoreCase))
-        {
-            return "exec";
-        }
-
-        return "metadata";
-    }
+        => NodeInvokeActivityFormatter.GetPrivacyClass(command);
 
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {

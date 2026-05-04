@@ -96,7 +96,7 @@ public sealed class SttCapability : NodeCapabilityBase
         {
             resolvedLanguage = NormalizeLanguageTag(requestedLanguage);
             if (resolvedLanguage == null)
-                return Error($"Invalid language tag '{requestedLanguage}'");
+                return Error("Invalid language tag");
         }
 
         if (TranscribeRequested == null)
@@ -127,9 +127,12 @@ public sealed class SttCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            // Exception message only — capability never sees the transcript.
+            // Privacy: never echo raw exception text into the response. The
+            // exception flows through the failed-invoke path and may be
+            // persisted to recent activity / support bundles. Full detail
+            // stays in the local log only.
             Logger.Error("STT transcribe failed", ex);
-            return Error($"Transcribe failed: {ex.Message}");
+            return Error("Transcribe failed");
         }
     }
 }

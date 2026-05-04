@@ -25,7 +25,7 @@ namespace OpenClawTray.Services.SpeechToText;
 ///
 /// Single-flight: a second concurrent caller fails fast with
 /// "STT already in progress" rather than tearing down the active session
-/// (per Phase 2 design — no <c>interrupt</c> arg).
+/// (the capability deliberately exposes no <c>interrupt</c> arg).
 ///
 /// **Privacy invariant:** transcript text is never passed to <see cref="_logger"/>.
 /// Logger sees outcome + duration only.

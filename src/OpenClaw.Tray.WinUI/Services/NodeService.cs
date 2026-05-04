@@ -248,7 +248,7 @@ public sealed class NodeService : IDisposable
         _systemCapability.SetPromptHandler(new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger));
         Register(_systemCapability);
 
-        if (_settings?.NodeCanvasEnabled != false)
+        if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
         {
             _canvasCapability = new CanvasCapability(_logger);
             _canvasCapability.PresentRequested += OnCanvasPresent;
@@ -263,7 +263,7 @@ public sealed class NodeService : IDisposable
             Register(_canvasCapability);
         }
 
-        if (_settings?.NodeScreenEnabled != false)
+        if (NodeCapabilityGating.ShouldRegisterScreen(_settings))
         {
             _screenCapability = new ScreenCapability(_logger);
             _screenCapability.CaptureRequested += OnScreenCapture;
@@ -271,7 +271,7 @@ public sealed class NodeService : IDisposable
             Register(_screenCapability);
         }
 
-        if (_settings?.NodeCameraEnabled != false)
+        if (NodeCapabilityGating.ShouldRegisterCamera(_settings))
         {
             _cameraCapability = new CameraCapability(_logger);
             _cameraCapability.ListRequested += OnCameraList;
@@ -280,14 +280,14 @@ public sealed class NodeService : IDisposable
             Register(_cameraCapability);
         }
 
-        if (_settings?.NodeLocationEnabled != false)
+        if (NodeCapabilityGating.ShouldRegisterLocation(_settings))
         {
             _locationCapability = new LocationCapability(_logger);
             _locationCapability.GetRequested += async (args) => await GetLocationAsync(args);
             Register(_locationCapability);
         }
 
-        if (_settings?.NodeTtsEnabled == true)
+        if (NodeCapabilityGating.ShouldRegisterTts(_settings))
         {
             _textToSpeechService ??= new TextToSpeechService(_logger, _settings);
             _ttsCapability = new TtsCapability(_logger);
@@ -302,7 +302,7 @@ public sealed class NodeService : IDisposable
         _deviceCapability = new DeviceCapability(_logger, _deviceStatusProvider);
         Register(_deviceCapability);
 
-        if (_settings?.NodeSttEnabled == true)
+        if (NodeCapabilityGating.ShouldRegisterStt(_settings))
         {
             _speechToTextService ??= new SpeechToText.SpeechToTextService(_logger, _settings);
             _sttCapability = new SttCapability(_logger);
@@ -311,7 +311,7 @@ public sealed class NodeService : IDisposable
         }
 
         // BrowserProxy needs a live gateway connection — only register when gateway is up.
-        if (_nodeClient != null && _settings?.NodeBrowserProxyEnabled != false)
+        if (_nodeClient != null && NodeCapabilityGating.ShouldRegisterBrowserProxy(_settings))
         {
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,

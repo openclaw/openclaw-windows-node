@@ -960,7 +960,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Lokale MCP-server inschakelen</value>
   </data>
   <data name="SettingsMcpDescription.Text" xml:space="preserve">
-    <value>Stelt dezelfde knooppuntmogelijkheden (systeem, scherm, camera, canvas) beschikbaar voor lokale MCP-clients (Claude Desktop, Cursor, Claude Code).</value>
+    <value>Stelt dezelfde knooppuntmogelijkheden (systeem, scherm, camera, microfoon, luidsprekers, canvas) beschikbaar voor lokale MCP-clients (Claude Desktop, Cursor, Claude Code).</value>
   </data>
   <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
     <value>Eindpunt:</value>
@@ -1412,6 +1412,53 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
     <value>U kunt de gateway later configureren in Instellingen.</value>
+  </data>
+
+  <!-- ==================== TTS / STT instellingen (SettingsWindow) ==================== -->
+  <data name="SettingsNodeTtsToggle.Header" xml:space="preserve">
+    <value>Tekst-naar-spraak afspelen</value>
+  </data>
+  <data name="SettingsNodeTtsDescription.Text" xml:space="preserve">
+    <value>Tekst-naar-spraak stelt tts.speak beschikbaar. Gebruik via de gateway vereist nog steeds dat tts.speak in gateway.nodes.allowCommands staat.</value>
+  </data>
+  <data name="SettingsTtsProviderComboBox.Header" xml:space="preserve">
+    <value>TTS-aanbieder</value>
+  </data>
+  <data name="SettingsTtsProviderWindowsItem.Content" xml:space="preserve">
+    <value>Ingebouwde Windows-spraak</value>
+  </data>
+  <data name="SettingsTtsProviderElevenLabsItem.Content" xml:space="preserve">
+    <value>ElevenLabs</value>
+  </data>
+  <data name="SettingsTtsElevenLabsApiKey.Header" xml:space="preserve">
+    <value>ElevenLabs API-sleutel</value>
+  </data>
+  <data name="SettingsTtsElevenLabsVoiceId.Header" xml:space="preserve">
+    <value>ElevenLabs stem-ID</value>
+  </data>
+  <data name="SettingsTtsElevenLabsModel.Header" xml:space="preserve">
+    <value>ElevenLabs-model</value>
+  </data>
+  <data name="SettingsTtsElevenLabsModel.PlaceholderText" xml:space="preserve">
+    <value>eleven_multilingual_v2</value>
+  </data>
+  <data name="SettingsNodeSttHeader.Text" xml:space="preserve">
+    <value>Spraak-naar-tekst (microfoon)</value>
+  </data>
+  <data name="SettingsNodeSttDescription.Text" xml:space="preserve">
+    <value>Wanneer ingeschakeld, kondigt deze Windows-node stt.transcribe aan om korte audiofragmenten van de standaardmicrofoon op te nemen en getranscribeerde tekst terug te geven. Standaard uit. Stelt de microfoon beschikbaar aan zowel gateway-aanroepers (wanneer Node Mode aan staat, onder voorbehoud van de gateway-toelatingslijst) als lokale MCP-clients (wanneer de lokale MCP-server aan staat, onder voorbehoud van het bearer-token). Vereist Windows-microfoontoegang voor desktop-apps in Instellingen → Privacy &amp; beveiliging → Microfoon (verpakte MSIX-installaties vereisen daarnaast app-specifieke toestemming).</value>
+  </data>
+  <data name="SettingsNodeSttToggle.Header" xml:space="preserve">
+    <value>Spraak-naar-tekst inschakelen</value>
+  </data>
+  <data name="SettingsSttLanguageLabel.Text" xml:space="preserve">
+    <value>Taalcode</value>
+  </data>
+  <data name="SettingsSttLanguageTextBox.PlaceholderText" xml:space="preserve">
+    <value>en-US</value>
+  </data>
+  <data name="SettingsSttLanguageHelp.Text" xml:space="preserve">
+    <value>BCP-47-tag (bijv. en-US, en-GB, ja-JP). Het besturingssysteem moet het spraakherkenningspakket voor deze taal hebben geïnstalleerd.</value>
   </data>
 
 </root>
