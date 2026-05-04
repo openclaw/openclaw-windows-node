@@ -16,7 +16,7 @@ public sealed class OnboardingState : IDisposable
     /// <summary>
     /// The currently displayed route. Updated by OnboardingApp on navigation.
     /// </summary>
-    public OnboardingRoute CurrentRoute { get; set; } = OnboardingRoute.Welcome;
+    public OnboardingRoute CurrentRoute { get; set; } = OnboardingRoute.SetupWarning;
 
     /// <summary>
     /// Raised when the current route changes to or from the Chat page.
@@ -30,6 +30,22 @@ public sealed class OnboardingState : IDisposable
     /// Selected gateway connection mode.
     /// </summary>
     public ConnectionMode Mode { get; set; } = ConnectionMode.Local;
+
+    /// <summary>
+    /// Forked-onboarding setup path (Phase 5). Null until the user picks a path
+    /// on <see cref="OnboardingRoute.SetupWarning"/>. While null, the nav-bar
+    /// "Next" button is disabled on the SetupWarning page.
+    /// </summary>
+    public SetupPath? SetupPath { get; set; }
+
+    /// <summary>
+    /// Raised by pages that want to advance the OnboardingApp programmatically
+    /// (e.g., the SetupWarning page's "Set up locally" / "Advanced setup" buttons,
+    /// the LocalSetupProgress page on auto-advance after success).
+    /// </summary>
+    public event EventHandler? AdvanceRequested;
+
+    public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
     /// Whether the onboarding chat page should be shown.
@@ -68,32 +84,42 @@ public sealed class OnboardingState : IDisposable
     }
 
     /// <summary>
-    /// Returns the page order based on the selected mode and chat preference,
-    /// matching the macOS onboarding flow.
+    /// Returns the page order for the forked Phase-5 onboarding flow.
+    /// SetupWarning is page 0 in every flow; the user's choice on that page
+    /// (<see cref="SetupPath"/>) determines whether page 1 is the local-setup
+    /// progress page or the legacy advanced Connection page.
     /// </summary>
     public OnboardingRoute[] GetPageOrder()
     {
-        // Node mode: skip Wizard and Chat — node clients can't use operator RPCs
+        // Treat null SetupPath as Local for page-count purposes; the nav-bar
+        // Next button is disabled on SetupWarning until the user picks a path.
+        var path = SetupPath ?? Onboarding.Services.SetupPath.Local;
+
+        // Node mode: skip Wizard and Chat — node clients can't use operator RPCs.
         if (Settings.EnableNodeMode)
         {
-            return Mode switch
-            {
-                ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Remote or ConnectionMode.Ssh =>
-                    [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
-                _ => // Later or unknown
-                    [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
-            };
+            return path == Onboarding.Services.SetupPath.Local
+                ? [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Permissions, OnboardingRoute.Ready]
+                : [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready];
         }
 
+        if (path == Onboarding.Services.SetupPath.Local)
+        {
+            // Local setup always runs the wizard locally after the gateway is up.
+            return ShowChat
+                ? [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready]
+                : [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready];
+        }
+
+        // Advanced path: keep the legacy ConnectionMode-aware ordering.
         return (Mode, ShowChat) switch
         {
-            // Local-style flows (Local, WSL, SSH tunnel) all run wizard locally
-            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
-            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
-            (ConnectionMode.Remote, true) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
-            (ConnectionMode.Remote, false) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
-            (ConnectionMode.Later, _) => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
-            _ => [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
+            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, true) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, false) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            (ConnectionMode.Remote, true) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+            (ConnectionMode.Remote, false) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            (ConnectionMode.Later, _) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Ready],
+            _ => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Ready],
         };
     }
 
@@ -130,10 +156,22 @@ public enum ConnectionMode
 
 public enum OnboardingRoute
 {
-    Welcome,
+    SetupWarning,
+    LocalSetupProgress,
     Connection,
     Wizard,
     Permissions,
     Chat,
     Ready,
+}
+
+/// <summary>
+/// Forked-onboarding setup path picked on <see cref="OnboardingRoute.SetupWarning"/>.
+/// </summary>
+public enum SetupPath
+{
+    /// <summary>User chose "Set up locally" — run the WSL gateway setup engine.</summary>
+    Local,
+    /// <summary>User chose "Advanced setup" — fall through to the legacy ConnectionPage.</summary>
+    Advanced,
 }

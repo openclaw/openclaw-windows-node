@@ -25,24 +25,56 @@ public class OnboardingStateTests
     #region GetPageOrder
 
     [Fact]
-    public void GetPageOrder_LocalMode_IncludesWizard()
+    public void GetPageOrder_LocalPath_IncludesLocalSetupProgressAndWizard()
     {
         var state = CreateState();
+        state.SetupPath = SetupPath.Local;
         state.Mode = ConnectionMode.Local;
         state.ShowChat = true;
 
         var pages = state.GetPageOrder();
 
         Assert.Equal(
-            [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Wizard,
+            [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard,
              OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
             pages);
     }
 
     [Fact]
-    public void GetPageOrder_RemoteMode_ExcludesWizard()
+    public void GetPageOrder_AdvancedPath_IncludesConnectionPage()
     {
         var state = CreateState();
+        state.SetupPath = SetupPath.Advanced;
+        state.Mode = ConnectionMode.Local;
+        state.ShowChat = true;
+
+        var pages = state.GetPageOrder();
+
+        Assert.Equal(
+            [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard,
+             OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+            pages);
+    }
+
+    [Fact]
+    public void GetPageOrder_NullSetupPath_DefaultsToLocalFlow()
+    {
+        var state = CreateState();
+        Assert.Null(state.SetupPath);
+        state.ShowChat = true;
+
+        var pages = state.GetPageOrder();
+
+        Assert.Contains(OnboardingRoute.SetupWarning, pages);
+        Assert.Contains(OnboardingRoute.LocalSetupProgress, pages);
+        Assert.DoesNotContain(OnboardingRoute.Connection, pages);
+    }
+
+    [Fact]
+    public void GetPageOrder_AdvancedPath_RemoteMode_ExcludesWizard()
+    {
+        var state = CreateState();
+        state.SetupPath = SetupPath.Advanced;
         state.Mode = ConnectionMode.Remote;
         state.ShowChat = true;
 
@@ -54,9 +86,10 @@ public class OnboardingStateTests
     }
 
     [Fact]
-    public void GetPageOrder_LaterMode_MinimalPages()
+    public void GetPageOrder_AdvancedPath_LaterMode_MinimalPages()
     {
         var state = CreateState();
+        state.SetupPath = SetupPath.Advanced;
         state.Mode = ConnectionMode.Later;
         state.ShowChat = true;
 
@@ -66,32 +99,48 @@ public class OnboardingStateTests
         Assert.DoesNotContain(OnboardingRoute.Permissions, pages);
         Assert.DoesNotContain(OnboardingRoute.Chat, pages);
         Assert.Equal(
-            [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Ready],
+            [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Ready],
             pages);
     }
 
     [Fact]
-    public void GetPageOrder_NodeMode_SkipsOperatorPages()
+    public void GetPageOrder_LocalPath_NodeMode_SkipsWizardAndChat()
     {
         var state = new OnboardingState(CreateSettings(enableNodeMode: true));
+        state.SetupPath = SetupPath.Local;
         state.Mode = ConnectionMode.Local;
         state.ShowChat = true;
 
         var pages = state.GetPageOrder();
 
         Assert.Equal(
-            [OnboardingRoute.Welcome, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            pages);
+    }
+
+    [Fact]
+    public void GetPageOrder_AdvancedPath_NodeMode_UsesConnectionPage()
+    {
+        var state = new OnboardingState(CreateSettings(enableNodeMode: true));
+        state.SetupPath = SetupPath.Advanced;
+        state.Mode = ConnectionMode.Local;
+        state.ShowChat = true;
+
+        var pages = state.GetPageOrder();
+
+        Assert.Equal(
+            [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
             pages);
     }
 
     [Theory]
-    [InlineData(ConnectionMode.Local)]
-    [InlineData(ConnectionMode.Remote)]
-    [InlineData(ConnectionMode.Later)]
-    public void GetPageOrder_NoChatMode_ExcludesChat(ConnectionMode mode)
+    [InlineData(SetupPath.Local)]
+    [InlineData(SetupPath.Advanced)]
+    public void GetPageOrder_NoChat_ExcludesChat(SetupPath path)
     {
         var state = CreateState();
-        state.Mode = mode;
+        state.SetupPath = path;
+        state.Mode = ConnectionMode.Local;
         state.ShowChat = false;
 
         var pages = state.GetPageOrder();
@@ -100,18 +149,85 @@ public class OnboardingStateTests
     }
 
     [Theory]
-    [InlineData(ConnectionMode.Local)]
-    [InlineData(ConnectionMode.Remote)]
-    [InlineData(ConnectionMode.Later)]
-    public void GetPageOrder_AlwaysStartsWithWelcomeAndEndsWithReady(ConnectionMode mode)
+    [InlineData(SetupPath.Local)]
+    [InlineData(SetupPath.Advanced)]
+    public void GetPageOrder_AlwaysStartsWithSetupWarningAndEndsWithReady(SetupPath path)
     {
         var state = CreateState();
-        state.Mode = mode;
+        state.SetupPath = path;
 
         var pages = state.GetPageOrder();
 
-        Assert.Equal(OnboardingRoute.Welcome, pages.First());
+        Assert.Equal(OnboardingRoute.SetupWarning, pages.First());
         Assert.Equal(OnboardingRoute.Ready, pages.Last());
+    }
+
+    [Fact]
+    public void GetPageOrder_NeverContainsRemovedWelcomeRoute()
+    {
+        // Welcome route was removed in Phase 5 and folded into SetupWarning.
+        var routes = Enum.GetValues<OnboardingRoute>().Select(r => r.ToString()).ToArray();
+        Assert.DoesNotContain("Welcome", routes);
+    }
+
+    #endregion
+
+    #region SetupPath
+
+    [Fact]
+    public void SetupPath_DefaultsToNull()
+    {
+        Assert.Null(CreateState().SetupPath);
+    }
+
+    [Fact]
+    public void SetupPath_CanBeSetToLocal()
+    {
+        var state = CreateState();
+        state.SetupPath = SetupPath.Local;
+        Assert.Equal(SetupPath.Local, state.SetupPath);
+    }
+
+    [Fact]
+    public void SetupPath_CanBeSetToAdvanced()
+    {
+        var state = CreateState();
+        state.SetupPath = SetupPath.Advanced;
+        Assert.Equal(SetupPath.Advanced, state.SetupPath);
+    }
+
+    #endregion
+
+    #region AdvanceRequested
+
+    [Fact]
+    public void RequestAdvance_FiresAdvanceRequestedEvent()
+    {
+        var state = CreateState();
+        var fired = false;
+        state.AdvanceRequested += (_, _) => fired = true;
+
+        state.RequestAdvance();
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void RequestAdvance_DoesNotThrow_WithoutHandler()
+    {
+        var state = CreateState();
+        var ex = Record.Exception(() => state.RequestAdvance());
+        Assert.Null(ex);
+    }
+
+    #endregion
+
+    #region CurrentRoute defaults
+
+    [Fact]
+    public void CurrentRoute_DefaultsToSetupWarning()
+    {
+        Assert.Equal(OnboardingRoute.SetupWarning, CreateState().CurrentRoute);
     }
 
     #endregion
