@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -1089,30 +1089,6 @@ On your gateway host (Mac/Linux), run:
   <data name="Onboarding_Finish" xml:space="preserve">
     <value>Finish</value>
   </data>
-  <data name="Onboarding_Welcome_Title" xml:space="preserve">
-    <value>Welcome to OpenClaw</value>
-  </data>
-  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
-    <value>Your AI assistant, right from the system tray</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
-    <value>Security Notice</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
-    <value>OpenClaw runs an AI agent that can execute commands, read and write files, and interact with your system on your behalf.</value>
-  </data>
-  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
-    <value>Your agent can:</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
-    <value>Run commands on your computer</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
-    <value>Read and write files</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
-    <value>Capture screenshots</value>
-  </data>
   <data name="Onboarding_Connection_Title" xml:space="preserve">
     <value>Choose your Gateway</value>
   </data>
@@ -1157,9 +1133,6 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
     <value>Make sure your remote gateway is running and accessible.</value>
-  </data>
-  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
-    <value>Let's get you connected in just a few steps.</value>
   </data>
   <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
     <value>Setup Code</value>

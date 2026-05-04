@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -266,7 +266,7 @@
 
   <!-- Header -->
   <data name="ActivityStreamTitle.Text" xml:space="preserve">
-    <value>&#x26A1; Activiteitenstroom</value>
+    <value>⚡ Activiteitenstroom</value>
   </data>
 
   <!-- Filter items -->
@@ -306,7 +306,7 @@
 
   <!-- Header -->
   <data name="NotificationHistoryTitle.Text" xml:space="preserve">
-    <value>&#x1F4CB; Meldingsgeschiedenis</value>
+    <value>📋 Meldingsgeschiedenis</value>
   </data>
 
   <!-- Empty state -->
@@ -326,19 +326,19 @@
 
   <!-- Window titles -->
   <data name="WindowTitle_Settings" xml:space="preserve">
-    <value>Instellingen &#x2014; OpenClaw Tray</value>
+    <value>Instellingen — OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>Status &#x2014; OpenClaw Tray</value>
+    <value>Status — OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
-    <value>Activiteitenstroom &#x2014; OpenClaw Tray</value>
+    <value>Activiteitenstroom — OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
-    <value>Meldingsgeschiedenis &#x2014; OpenClaw Tray</value>
+    <value>Meldingsgeschiedenis — OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_QuickSend" xml:space="preserve">
-    <value>Snel verzenden &#x2014; OpenClaw</value>
+    <value>Snel verzenden — OpenClaw</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw Chat</value>
@@ -355,15 +355,15 @@
     <value>Testen...</value>
   </data>
   <data name="Status_Connected" xml:space="preserve">
-    <value>&#x2705; Verbonden!</value>
+    <value>✅ Verbonden!</value>
   </data>
   <data name="Status_ConnectionFailed" xml:space="preserve">
-    <value>&#x274C; Verbinding mislukt</value>
+    <value>❌ Verbinding mislukt</value>
   </data>
 
   <!-- QuickSend dialog -->
   <data name="QuickSend_Header" xml:space="preserve">
-    <value>&#x1F4E4; Snel verzenden</value>
+    <value>📤 Snel verzenden</value>
   </data>
   <data name="QuickSend_Placeholder" xml:space="preserve">
     <value>Typ je bericht...</value>
@@ -378,7 +378,7 @@
     <value>Verzenden...</value>
   </data>
   <data name="QuickSend_Failed" xml:space="preserve">
-    <value>&#x274C; Mislukt</value>
+    <value>❌ Mislukt</value>
   </data>
   <data name="QuickSend_ToastTitle" xml:space="preserve">
     <value>Bericht verzonden</value>
@@ -398,13 +398,13 @@
     <value>Om te beginnen heb je het volgende nodig:</value>
   </data>
   <data name="Welcome_NeedGateway" xml:space="preserve">
-    <value>&#x2022; Een actieve OpenClaw-gateway</value>
+    <value>• Een actieve OpenClaw-gateway</value>
   </data>
   <data name="Welcome_NeedToken" xml:space="preserve">
-    <value>&#x2022; Je API-token van het dashboard</value>
+    <value>• Je API-token van het dashboard</value>
   </data>
   <data name="Welcome_ViewDocs" xml:space="preserve">
-    <value>&#x1F4DA; Documentatie bekijken</value>
+    <value>📚 Documentatie bekijken</value>
   </data>
   <data name="Welcome_LaterButton" xml:space="preserve">
     <value>Later</value>
@@ -415,7 +415,7 @@
 
   <!-- UpdateDialog -->
   <data name="Update_VersionAvailable" xml:space="preserve">
-    <value>&#x1F389; Versie {0} is beschikbaar!</value>
+    <value>🎉 Versie {0} is beschikbaar!</value>
   </data>
   <data name="Update_CurrentVersion" xml:space="preserve">
     <value>Huidige versie: {0}</value>
@@ -459,7 +459,7 @@
     <value>Automatisch starten</value>
   </data>
   <data name="Menu_AutoStartEnabled" xml:space="preserve">
-    <value>Automatisch starten &#x2713;</value>
+    <value>Automatisch starten ✓</value>
   </data>
   <data name="Menu_OpenLogFile" xml:space="preserve">
     <value>Logbestand openen</value>
@@ -542,25 +542,25 @@
     <value>Geen gebruiksgegevens</value>
   </data>
   <data name="Menu_ResetSession" xml:space="preserve">
-    <value>&#x21B3; Sessie resetten</value>
+    <value>↳ Sessie resetten</value>
   </data>
   <data name="Menu_CompactLog" xml:space="preserve">
-    <value>&#x21B3; Log comprimeren</value>
+    <value>↳ Log comprimeren</value>
   </data>
   <data name="Menu_DeleteSession" xml:space="preserve">
-    <value>&#x21B3; Sessie verwijderen</value>
+    <value>↳ Sessie verwijderen</value>
   </data>
   <data name="Menu_NodeWaitingApproval" xml:space="preserve">
-    <value>&#x23F3; Wachten op goedkeuring...</value>
+    <value>⏳ Wachten op goedkeuring...</value>
   </data>
   <data name="Menu_NodePairedConnected" xml:space="preserve">
-    <value>&#x2705; Gekoppeld en verbonden</value>
+    <value>✅ Gekoppeld en verbonden</value>
   </data>
   <data name="Menu_NodeConnecting" xml:space="preserve">
-    <value>&#x1F504; Verbinden...</value>
+    <value>🔄 Verbinden...</value>
   </data>
   <data name="Menu_NodeDisconnected" xml:space="preserve">
-    <value>&#x26AA; Niet verbonden</value>
+    <value>⚪ Niet verbonden</value>
   </data>
 
   <!-- Notification test -->
@@ -622,13 +622,13 @@
     <value>Canvas</value>
   </data>
   <data name="CanvasErrorTitle.Text" xml:space="preserve">
-    <value>&#x274C; Canvasfout</value>
+    <value>❌ Canvasfout</value>
   </data>
   <data name="CanvasRetryButton.Content" xml:space="preserve">
     <value>Opnieuw proberen</value>
   </data>
   <data name="Canvas_ReadyTitle" xml:space="preserve">
-    <value>&#x1F3A8; Canvas gereed</value>
+    <value>🎨 Canvas gereed</value>
   </data>
   <data name="Canvas_WaitingForContent" xml:space="preserve">
     <value>Wachten op inhoud...</value>
@@ -667,17 +667,17 @@
     <value>De gateway op {0} reageert niet.
 
 Om verbinding te maken:
-&#x2022; Zorg dat je OpenClaw-gateway actief is
-&#x2022; Als deze extern is, maak verbinding via VPN met je thuisnetwerk
-&#x2022; Of gebruik een SSH-tunnel: ssh -N -L 18789:localhost:18789 jouw-server</value>
+• Zorg dat je OpenClaw-gateway actief is
+• Als deze extern is, maak verbinding via VPN met je thuisnetwerk
+• Of gebruik een SSH-tunnel: ssh -N -L 18789:localhost:18789 jouw-server</value>
   </data>
   <data name="WebChat_CertError" xml:space="preserve">
     <value>Het HTTPS-certificaat van de gateway wordt niet vertrouwd.
 
 Om een beveiligde verbinding te maken:
-&#x2022; Gebruik een HTTPS-gateway-URL (bijvoorbeeld: https://host.tailnet.ts.net)
-&#x2022; Bij een zelfondertekend certificaat: importeer het in Vertrouwde basiscertificeringsinstanties van Windows
-&#x2022; Of gebruik een SSH-tunnel naar localhost en blijf localhost-URL's gebruiken</value>
+• Gebruik een HTTPS-gateway-URL (bijvoorbeeld: https://host.tailnet.ts.net)
+• Bij een zelfondertekend certificaat: importeer het in Vertrouwde basiscertificeringsinstanties van Windows
+• Of gebruik een SSH-tunnel naar localhost en blijf localhost-URL's gebruiken</value>
   </data>
   <data name="WebChat_InvalidUrl" xml:space="preserve">
     <value>Ongeldige gateway-URL: {0}</value>
@@ -688,9 +688,9 @@ Om een beveiligde verbinding te maken:
 Er is geen veilige omweg voor extern onbeveiligd HTTP: browsers en WebView dwingen dit af.
 
 Gebruik een van deze opties:
-&#x2022; Gebruik een vertrouwd HTTPS/WSS-eindpunt (Let's Encrypt, Tailscale Serve, Caddy)
-&#x2022; Bij een zelfondertekend certificaat: importeer je gateway-CA/certificaat in Vertrouwde basiscertificeringsinstanties van Windows (certmgr.msc)
-&#x2022; Of tunnel naar localhost: ssh -N -L 18789:localhost:18789 &lt;server&gt;</value>
+• Gebruik een vertrouwd HTTPS/WSS-eindpunt (Let's Encrypt, Tailscale Serve, Caddy)
+• Bij een zelfondertekend certificaat: importeer je gateway-CA/certificaat in Vertrouwde basiscertificeringsinstanties van Windows (certmgr.msc)
+• Of tunnel naar localhost: ssh -N -L 18789:localhost:18789 &lt;server&gt;</value>
   </data>
 
   <!-- ==================== TrayMenuWindow.xaml ==================== -->
@@ -702,13 +702,13 @@ Gebruik een van deze opties:
   <!-- ==================== Toast: Device / Node ==================== -->
 
   <data name="Toast_DeviceIdCopied" xml:space="preserve">
-    <value>&#x1F4CB; Apparaat-ID gekopieerd</value>
+    <value>📋 Apparaat-ID gekopieerd</value>
   </data>
   <data name="Toast_DeviceIdCopiedDetail" xml:space="preserve">
     <value>Voer uit: openclaw devices approve {0}...</value>
   </data>
   <data name="Toast_NodeSummaryCopied" xml:space="preserve">
-    <value>&#x1F4CB; Node-overzicht gekopieerd</value>
+    <value>📋 Node-overzicht gekopieerd</value>
   </data>
   <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
     <value>{0} node(s) gekopieerd naar klembord</value>
@@ -717,7 +717,7 @@ Gebruik een van deze opties:
   <!-- ==================== Toast: Session ==================== -->
 
   <data name="Toast_SessionActionFailed" xml:space="preserve">
-    <value>&#x274C; Sessieactie mislukt</value>
+    <value>❌ Sessieactie mislukt</value>
   </data>
   <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
     <value>Kan verzoek niet naar gateway verzenden.</value>
@@ -726,13 +726,13 @@ Gebruik een van deze opties:
   <!-- ==================== Toast: Node Mode ==================== -->
 
   <data name="Toast_NodeModeActive" xml:space="preserve">
-    <value>&#x1F50C; Node-modus actief</value>
+    <value>🔌 Node-modus actief</value>
   </data>
   <data name="Toast_NodeModeActiveDetail" xml:space="preserve">
     <value>Deze pc kan nu opdrachten ontvangen van de agent (canvas, schermafbeeldingen)</value>
   </data>
   <data name="Toast_PairingPending" xml:space="preserve">
-    <value>&#x23F3; Wachten op koppelingsgoedkeuring</value>
+    <value>⏳ Wachten op koppelingsgoedkeuring</value>
   </data>
   <data name="Toast_PairingPendingDetail" xml:space="preserve">
     <value>Voer uit op gateway: openclaw devices approve {0}...</value>
@@ -744,13 +744,13 @@ Gebruik een van deze opties:
     <value>Koppelingsopdracht gekopieerd</value>
   </data>
   <data name="Toast_NodePaired" xml:space="preserve">
-    <value>&#x2705; Node gekoppeld!</value>
+    <value>✅ Node gekoppeld!</value>
   </data>
   <data name="Toast_NodePairedDetail" xml:space="preserve">
     <value>Deze pc kan nu opdrachten ontvangen van de agent</value>
   </data>
   <data name="Toast_PairingRejected" xml:space="preserve">
-    <value>&#x274C; Koppeling geweigerd</value>
+    <value>❌ Koppeling geweigerd</value>
   </data>
   <data name="Toast_PairingRejectedDetail" xml:space="preserve">
     <value>De gateway heeft het koppelingsverzoek voor dit apparaat geweigerd.</value>
@@ -774,13 +774,13 @@ Gebruik een van deze opties:
   <!-- ==================== Toast: Screen / Camera ==================== -->
 
   <data name="Toast_ScreenCaptured" xml:space="preserve">
-    <value>&#x1F4F8; Schermafbeelding gemaakt</value>
+    <value>📸 Schermafbeelding gemaakt</value>
   </data>
   <data name="Toast_ScreenCapturedDetail" xml:space="preserve">
     <value>OpenClaw-agent heeft je scherm vastgelegd</value>
   </data>
   <data name="Toast_CameraBlocked" xml:space="preserve">
-    <value>&#x1F4F7; Cameratoegang geblokkeerd</value>
+    <value>📷 Cameratoegang geblokkeerd</value>
   </data>
   <data name="Toast_CameraBlockedDetail" xml:space="preserve">
     <value>Schakel cameratoegang in via Windows-privacyinstellingen voor OpenClaw Tray</value>
@@ -789,7 +789,7 @@ Gebruik een van deze opties:
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
 
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
-    <value>&#x26A1; Nieuw: Activiteitenstroom</value>
+    <value>⚡ Nieuw: Activiteitenstroom</value>
   </data>
   <data name="Toast_ActivityStreamTipDetail" xml:space="preserve">
     <value>Open het systeemvakmenu om live sessies, gebruik en node-activiteit in één overzicht te bekijken.</value>
@@ -1089,30 +1089,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Onboarding_Finish" xml:space="preserve">
     <value>Voltooien</value>
   </data>
-  <data name="Onboarding_Welcome_Title" xml:space="preserve">
-    <value>Welkom bij OpenClaw</value>
-  </data>
-  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
-    <value>Uw AI-assistent, direct vanuit het systeemvak</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
-    <value>Beveiligingsmelding</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
-    <value>OpenClaw draait een AI-agent die opdrachten kan uitvoeren, bestanden kan lezen en schrijven, en namens u met uw systeem kan communiceren.</value>
-  </data>
-  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
-    <value>Uw agent kan:</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
-    <value>Opdrachten uitvoeren op uw computer</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
-    <value>Bestanden lezen en schrijven</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
-    <value>Schermafbeeldingen maken</value>
-  </data>
   <data name="Onboarding_Connection_Title" xml:space="preserve">
     <value>Kies uw gateway</value>
   </data>
@@ -1157,9 +1133,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
     <value>Zorg ervoor dat uw externe gateway actief en bereikbaar is.</value>
-  </data>
-  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
-    <value>Laten we u in enkele stappen verbinden.</value>
   </data>
   <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
     <value>Configuratiecode</value>

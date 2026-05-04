@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -1088,30 +1088,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Onboarding_Finish" xml:space="preserve">
     <value>Terminer</value>
   </data>
-  <data name="Onboarding_Welcome_Title" xml:space="preserve">
-    <value>Bienvenue dans OpenClaw</value>
-  </data>
-  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
-    <value>Votre assistant IA, directement depuis la barre des tâches</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
-    <value>Avis de sécurité</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
-    <value>OpenClaw exécute un agent IA capable d'exécuter des commandes, de lire et écrire des fichiers, et d'interagir avec votre système en votre nom.</value>
-  </data>
-  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
-    <value>Votre agent peut :</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
-    <value>Exécuter des commandes sur votre ordinateur</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
-    <value>Lire et écrire des fichiers</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
-    <value>Capturer des captures d'écran</value>
-  </data>
   <data name="Onboarding_Connection_Title" xml:space="preserve">
     <value>Choisissez votre passerelle</value>
   </data>
@@ -1156,9 +1132,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
     <value>Assurez-vous que votre passerelle distante est en cours d'exécution et accessible.</value>
-  </data>
-  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
-    <value>Connectons-nous en quelques étapes.</value>
   </data>
   <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
     <value>Code de configuration</value>

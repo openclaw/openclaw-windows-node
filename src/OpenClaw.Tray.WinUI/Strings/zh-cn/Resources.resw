@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -1089,30 +1089,6 @@
   <data name="Onboarding_Finish" xml:space="preserve">
     <value>完成</value>
   </data>
-  <data name="Onboarding_Welcome_Title" xml:space="preserve">
-    <value>欢迎使用 OpenClaw</value>
-  </data>
-  <data name="Onboarding_Welcome_Subtitle" xml:space="preserve">
-    <value>您的 AI 助手，就在系统托盘中</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityTitle" xml:space="preserve">
-    <value>安全提示</value>
-  </data>
-  <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
-    <value>OpenClaw 运行的 AI 代理可以执行命令、读写文件，并代表您与系统进行交互。</value>
-  </data>
-  <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
-    <value>您的代理可以：</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Commands" xml:space="preserve">
-    <value>在您的计算机上运行命令</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Files" xml:space="preserve">
-    <value>读取和写入文件</value>
-  </data>
-  <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
-    <value>捕获屏幕截图</value>
-  </data>
   <data name="Onboarding_Connection_Title" xml:space="preserve">
     <value>选择网关</value>
   </data>
@@ -1157,9 +1133,6 @@
   </data>
   <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
     <value>请确保您的远程网关正在运行且可以访问。</value>
-  </data>
-  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
-    <value>只需几步即可完成连接。</value>
   </data>
   <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
     <value>配置码</value>

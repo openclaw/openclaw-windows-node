@@ -124,7 +124,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         var status = snapshot?.Status ?? LocalGatewaySetupStatus.Pending;
         var subtitle = !string.IsNullOrWhiteSpace(snapshot?.UserMessage)
             ? snapshot!.UserMessage!
-            : "Setting up your local OpenClaw gateway. This usually takes a few minutes.";
+            : "Setting up your local OpenClaw gateway.";
 
         var stageRows = s_visibleStages.Select(stage => RenderStage(stage.Label, stage.Phases, phase, status)).ToArray<Element?>();
 
