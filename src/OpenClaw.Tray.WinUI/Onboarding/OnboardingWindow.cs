@@ -76,7 +76,17 @@ public sealed class OnboardingWindow : WindowEx
         if (!string.IsNullOrWhiteSpace(startRoute) &&
             Enum.TryParse<OnboardingRoute>(startRoute, ignoreCase: true, out var parsed))
         {
+            // Ensure SetupPath is consistent with the requested route so GetPageOrder
+            // produces the expected step indicator. Defaults can be overridden below.
+            if (parsed == OnboardingRoute.LocalSetupProgress) _state.SetupPath = SetupPath.Local;
+            else if (parsed == OnboardingRoute.Connection) _state.SetupPath = SetupPath.Advanced;
             _state.CurrentRoute = parsed;
+        }
+        var startSetupPath = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_SETUP_PATH");
+        if (!string.IsNullOrWhiteSpace(startSetupPath) &&
+            Enum.TryParse<SetupPath>(startSetupPath, ignoreCase: true, out var parsedPath))
+        {
+            _state.SetupPath = parsedPath;
         }
         // Optional override for visual tests: pre-select a connection mode (Local/Wsl/Remote/Ssh/Later).
         var startMode = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_MODE");

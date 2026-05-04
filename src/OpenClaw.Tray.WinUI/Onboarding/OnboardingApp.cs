@@ -20,14 +20,14 @@ public sealed class OnboardingApp : Component<OnboardingState>
     public override Element Render()
     {
         // Seed navigation + page index from Props.CurrentRoute (used by visual tests via
-        // OPENCLAW_ONBOARDING_START_ROUTE; defaults to Welcome on normal launches).
+        // OPENCLAW_ONBOARDING_START_ROUTE; defaults to SetupWarning on normal launches).
         var pagesInit = Props.GetPageOrder();
         var initialIdx = Math.Max(0, Array.IndexOf(pagesInit, Props.CurrentRoute));
         var nav = UseNavigation(pagesInit[initialIdx]);
         var (pageIndex, setPageIndex) = UseState(initialIdx);
         var pages = Props.GetPageOrder();
 
-        // Clamp pageIndex if page order changed (e.g., node mode toggled)
+        // Clamp pageIndex if page order changed (e.g., node mode toggled, SetupPath changed).
         if (pageIndex >= pages.Length)
         {
             setPageIndex(pages.Length - 1);
@@ -35,12 +35,14 @@ public sealed class OnboardingApp : Component<OnboardingState>
 
         void GoNext()
         {
-            if (pageIndex < pages.Length - 1)
+            // Re-derive pages on each call so SetupPath changes (Local vs Advanced) take effect.
+            var current = Props.GetPageOrder();
+            if (pageIndex < current.Length - 1)
             {
                 setPageIndex(pageIndex + 1);
-                nav.Navigate(pages[pageIndex + 1]);
+                nav.Navigate(current[pageIndex + 1]);
                 Props.NotifyPageChanged();
-                Props.NotifyRouteChanged(pages[pageIndex + 1]);
+                Props.NotifyRouteChanged(current[pageIndex + 1]);
             }
         }
 
@@ -55,7 +57,19 @@ public sealed class OnboardingApp : Component<OnboardingState>
             }
         }
 
+        // Subscribe to programmatic advance requests (SetupWarningPage buttons,
+        // LocalSetupProgressPage auto-advance after success).
+        UseEffect(() =>
+        {
+            EventHandler handler = (_, _) => GoNext();
+            Props.AdvanceRequested += handler;
+            return () => Props.AdvanceRequested -= handler;
+        }, pageIndex);
+
         var isLastPage = pageIndex >= pages.Length - 1;
+        var currentRoute = pages[pageIndex];
+        // Requirement 8: nav-bar Next disabled on SetupWarning until path chosen.
+        var nextDisabled = currentRoute == OnboardingRoute.SetupWarning && Props.SetupPath == null;
 
         // VStack for functional UI content (icon + pages only).
         // The nav bar is rendered natively in OnboardingWindow for reliable bottom pinning.
@@ -67,7 +81,8 @@ public sealed class OnboardingApp : Component<OnboardingState>
             // Page content — fixed height prevents nav bar from jumping between pages
             (NavigationHost<OnboardingRoute>(nav, route => route switch
             {
-                OnboardingRoute.Welcome => Component<WelcomePage>(),
+                OnboardingRoute.SetupWarning => Component<SetupWarningPage, OnboardingState>(Props),
+                OnboardingRoute.LocalSetupProgress => Component<LocalSetupProgressPage, OnboardingState>(Props),
                 OnboardingRoute.Connection => Component<ConnectionPage, OnboardingState>(Props),
                 OnboardingRoute.Ready => Component<ReadyPage, OnboardingState>(Props),
                 OnboardingRoute.Wizard => Component<WizardPage, OnboardingState>(Props),
@@ -94,6 +109,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                         : Helpers.LocalizationHelper.GetString("Onboarding_Next"),
                     isLastPage ? Props.Complete : GoNext)
                     .Width(100)
+                    .Disabled(nextDisabled)
                     .Set(b =>
                     {
                         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingNext");
