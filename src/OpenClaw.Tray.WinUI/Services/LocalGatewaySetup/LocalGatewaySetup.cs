@@ -1667,48 +1667,164 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
     public async Task<PendingDeviceApprovalResult> ApproveLatestAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
     {
-        // Bug 1 residual fix (CLI v2026.5.3-1, commit 2eae30e): the upstream `devices approve`
-        // command guards `--url` overrides via `ensureExplicitGatewayAuth` (src/gateway/call.ts)
-        // and rejects them when explicit credentials are not present in the exact shape it expects,
-        // surfacing "gateway url override requires explicit credentials" and a non-zero exit.
+        // Bug 1 part 3 (CLI v2026.5.3-1): `openclaw devices approve --latest --json` is a
+        // PREVIEW/inspection-only operation on this CLI version. It returns a JSON payload
+        // (`{ "selected": {...}, "approvalState": {...}, "approveCommand": "openclaw devices
+        // approve <requestId> --json", "requiresAuthFlags": {...} }`) and exits 0 without
+        // ever invoking `device.pair.approve` or mutating `paired.json`. To actually
+        // approve, the CLI requires a follow-up call with the explicit requestId.
         //
-        // Drop `--url` entirely. The CLI runs INSIDE the OpenClawGateway distro where
-        // `/home/openclaw/.openclaw/openclaw.json` already pins `gateway.mode=local` and the
-        // loopback port (18789); the CLI's `buildGatewayConnectionDetails` resolves the URL
-        // from that config when no override is supplied, so:
-        //   1. `ensureExplicitGatewayAuth` early-returns (no urlOverride to validate), and
-        //   2. `shouldUseLocalPairingFallback` becomes available — if the WS hop trips for any
-        //      reason the CLI silently falls back to approving via local pairing files
-        //      (`approveDevicePairing`), which is exactly the right thing on a single-machine
-        //      local-loopback gateway.
-        // We still pass `--token` (read from the 0600 gateway-token file inside the shell so
-        // it never appears on `wsl.exe` argv) so the CLI authenticates if the WS path is taken.
-        var script = string.Join(" ", new[]
-        {
-            "set -euo pipefail;",
-            "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
-            "  echo 'gateway token file missing or empty' >&2; exit 64;",
-            "fi;",
-            "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
-            "exec",
-            ShellQuoteScalar(_commandName),
-            "devices",
-            "approve",
-            "--latest",
-            "--json",
-            "--token",
-            "\"$(cat /var/lib/openclaw/gateway-token)\""
-        });
-        var result = await _wsl.RunInDistroAsync(state.DistroName, ["bash", "-lc", script], cancellationToken);
-        if (!result.Success)
+        // Source: src/cli/devices-cli.ts (commit aef38de) — the `usingImplicitSelection`
+        // branch (set when `--latest` or no requestId is supplied) writes the preview JSON
+        // and `return`s before reaching `approvePairingWithFallback`. Only an explicit
+        // requestId argument bypasses the preview gate.
+        //
+        // We therefore run two stages in the same approver call:
+        //   Stage 1 — discover: `openclaw devices approve --latest --json --token "$TOKEN"`
+        //     parses `selected.requestId` from the preview JSON.
+        //   Stage 2 — commit:   `openclaw devices approve <requestId> --json --token "$TOKEN"`
+        //     actually calls `device.pair.approve` (or the local pairing fallback) and
+        //     mutates `paired.json`.
+        //
+        // We continue to drop `--url` (Bug 1 part 2 / CLI ensureExplicitGatewayAuth guard)
+        // and dereference the gateway token inside the shell so it never lands on argv.
+        var stage1 = await _wsl.RunInDistroAsync(
+            state.DistroName,
+            ["bash", "-lc", BuildPreviewScript()],
+            cancellationToken);
+        if (!stage1.Success)
         {
             return new PendingDeviceApprovalResult(
                 false,
                 "operator_pending_approval_failed",
-                "Local gateway pending pairing approval CLI failed.");
+                "Local gateway pending pairing approval CLI failed (preview stage).");
         }
 
-        return ParseApproveJson(result.StandardOutput);
+        var preview = ParsePreviewJson(stage1.StandardOutput);
+        if (!preview.Success)
+        {
+            return new PendingDeviceApprovalResult(false, preview.ErrorCode, preview.ErrorMessage);
+        }
+
+        var requestId = preview.RequestId!;
+        if (!IsSafeRequestId(requestId))
+        {
+            return new PendingDeviceApprovalResult(
+                false,
+                "operator_pending_approval_failed",
+                $"Local gateway preview returned an unsafe requestId: {requestId}");
+        }
+
+        var stage2 = await _wsl.RunInDistroAsync(
+            state.DistroName,
+            ["bash", "-lc", BuildCommitScript(requestId)],
+            cancellationToken);
+        if (!stage2.Success)
+        {
+            var stderr = string.IsNullOrWhiteSpace(stage2.StandardError)
+                ? "Local gateway pending pairing approval CLI failed (commit stage)."
+                : stage2.StandardError.Trim();
+            return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", stderr);
+        }
+
+        return ParseApproveJson(stage2.StandardOutput);
+    }
+
+    private string BuildPreviewScript() => string.Join(" ", new[]
+    {
+        "set -euo pipefail;",
+        "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
+        "  echo 'gateway token file missing or empty' >&2; exit 64;",
+        "fi;",
+        "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
+        "exec",
+        ShellQuoteScalar(_commandName),
+        "devices",
+        "approve",
+        "--latest",
+        "--json",
+        "--token",
+        "\"$(cat /var/lib/openclaw/gateway-token)\""
+    });
+
+    private string BuildCommitScript(string requestId) => string.Join(" ", new[]
+    {
+        "set -euo pipefail;",
+        "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
+        "  echo 'gateway token file missing or empty' >&2; exit 64;",
+        "fi;",
+        "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
+        "exec",
+        ShellQuoteScalar(_commandName),
+        "devices",
+        "approve",
+        ShellQuoteScalar(requestId),
+        "--json",
+        "--token",
+        "\"$(cat /var/lib/openclaw/gateway-token)\""
+    });
+
+    /// <summary>
+    /// Parse the v2026.5.3-1 `devices approve --latest --json` preview payload and extract
+    /// the pending requestId for the stage-2 commit call. Returns a structured failure with
+    /// <c>no_pending_entries</c> when the preview indicates nothing approvable.
+    /// </summary>
+    public static PreviewParseResult ParsePreviewJson(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return PreviewParseResult.Failure("no_pending_entries", "No pending device pairing requests to approve.");
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return PreviewParseResult.Failure("no_pending_entries", "Preview JSON was not an object.");
+            }
+
+            // Explicit `ok:false` legacy shape — surface as approval failure.
+            if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
+            {
+                var legacyMsg = root.TryGetProperty("error", out var legacyErr) && legacyErr.ValueKind == JsonValueKind.String
+                    ? legacyErr.GetString()
+                    : "Local gateway preview reported failure.";
+                return PreviewParseResult.Failure("operator_pending_approval_failed", legacyMsg);
+            }
+
+            // v2026.5.3-1 preview shape: { "selected": { "requestId": "...", ... }, ... }
+            if (root.TryGetProperty("selected", out var selected) && selected.ValueKind == JsonValueKind.Object
+                && selected.TryGetProperty("requestId", out var reqId) && reqId.ValueKind == JsonValueKind.String)
+            {
+                var id = reqId.GetString();
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    return PreviewParseResult.SuccessWith(id!);
+                }
+            }
+
+            // Tolerate an older flat shape some CLI builds may have used: { "requestId": "..." }.
+            if (root.TryGetProperty("requestId", out var rootReqId) && rootReqId.ValueKind == JsonValueKind.String)
+            {
+                var id = rootReqId.GetString();
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    return PreviewParseResult.SuccessWith(id!);
+                }
+            }
+
+            return PreviewParseResult.Failure("no_pending_entries", "Preview JSON had no selected.requestId.");
+        }
+        catch (JsonException)
+        {
+            // Plain-text non-JSON output (e.g. older CLI / "No pending device pairing
+            // requests to approve" on stderr-but-stdout-empty edge cases). Treat as no
+            // pending entries so the engine surfaces a structured failure rather than
+            // silently succeeding.
+            return PreviewParseResult.Failure("no_pending_entries", "Preview output was not JSON; assuming no pending entries.");
+        }
     }
 
     public static PendingDeviceApprovalResult ParseApproveJson(string output)
@@ -1739,7 +1855,25 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         }
     }
 
+    private static bool IsSafeRequestId(string value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length > 128) return false;
+        foreach (var c in value)
+        {
+            var ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                     || c == '-' || c == '_' || c == '.' || c == ':';
+            if (!ok) return false;
+        }
+        return true;
+    }
+
     private static string ShellQuoteScalar(string value) => "'" + value.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
+}
+
+public sealed record PreviewParseResult(bool Success, string? RequestId, string? ErrorCode, string? ErrorMessage)
+{
+    public static PreviewParseResult SuccessWith(string requestId) => new(true, requestId, null, null);
+    public static PreviewParseResult Failure(string code, string? message) => new(false, null, code, message);
 }
 
 public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisioner
