@@ -15,16 +15,6 @@ public sealed partial class SessionsPage : Page
     public SessionsPage()
     {
         InitializeComponent();
-
-        // Sample data for design-time preview
-        var samples = new List<SessionViewModel>
-        {
-            new() { Key = "agent:main", Preview = "Help me refactor the authentication module to use JWT tokens...", TimeAgo = "2m ago", ThinkingLevel = "medium", VerboseLevel = null, IsActive = true },
-            new() { Key = "agent:cron:daily-summary", Preview = "Generated daily summary for 3 channels with 47 messages.", TimeAgo = "1h ago", ThinkingLevel = null, VerboseLevel = "detailed", IsActive = false },
-            new() { Key = "telegram:user:12345", Preview = "Remind me to check the deployment status at 5pm today.", TimeAgo = "15m ago", ThinkingLevel = null, VerboseLevel = null, IsActive = true },
-        };
-        SessionListView.ItemsSource = samples;
-        EmptyState.Visibility = Visibility.Collapsed;
     }
 
     public void Initialize(HubWindow hub)

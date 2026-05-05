@@ -21,7 +21,7 @@
                     <TextBlock x:Uid="UsagePage_TextBlock_21" Text="Total Cost" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="TotalCostText" Text="$2.41" FontSize="28" FontWeight="SemiBold"
+                    <TextBlock x:Name="TotalCostText" Text="—" FontSize="28" FontWeight="SemiBold"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
@@ -34,7 +34,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_35" Text="Requests" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="RequestCountText" Text="142" FontSize="28" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="RequestCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
 
@@ -44,7 +44,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_45" Text="Tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Uid="TokenCountText" x:Name="TokenCountText" Text="284.5K" FontSize="28" FontWeight="SemiBold"/>
+                        <TextBlock x:Uid="TokenCountText" x:Name="TokenCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
 
@@ -54,7 +54,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_55" Text="Providers" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="ProviderCountText" Text="3" FontSize="28" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="ProviderCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
             </StackPanel>

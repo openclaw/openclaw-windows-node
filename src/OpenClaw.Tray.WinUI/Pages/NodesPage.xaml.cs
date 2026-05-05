@@ -19,26 +19,6 @@ public sealed partial class NodesPage : Page
     public NodesPage()
     {
         InitializeComponent();
-
-        // Sample data
-        var samples = new List<NodeViewModel>
-        {
-            new()
-            {
-                Name = "Desktop-PC", DeviceId = "a1b2c3d4e5f6g7h8i9j0",
-                Platform = "windows", IsOnline = true,
-                Capabilities = new[] { "canvas", "camera", "screen", "system", "clipboard", "browser" },
-                Commands = new[] { "screenshot", "open-url", "run-command", "read-clipboard", "write-clipboard" },
-            },
-            new()
-            {
-                Name = "MacBook-Pro", DeviceId = "z9y8x7w6v5u4t3s2r1q0",
-                Platform = "macos", IsOnline = false,
-                Capabilities = new[] { "canvas", "screen", "system" },
-                Commands = new[] { "screenshot", "open-url" },
-            },
-        };
-        RenderNodes(samples);
     }
 
     public void Initialize(HubWindow hub)

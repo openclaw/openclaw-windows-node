@@ -16,21 +16,6 @@ public sealed partial class UsagePage : Page
     public UsagePage()
     {
         InitializeComponent();
-
-        // Sample data
-        ProviderListView.ItemsSource = new List<ProviderRow>
-        {
-            new() { Name = "OpenAI", Requests = "87 req", Tokens = "182.3K tok", Cost = "$1.24" },
-            new() { Name = "Anthropic", Requests = "41 req", Tokens = "78.1K tok", Cost = "$0.89" },
-            new() { Name = "Google", Requests = "14 req", Tokens = "24.1K tok", Cost = "$0.28" },
-        };
-
-        var today = DateTime.Today;
-        DailyListView.ItemsSource = Enumerable.Range(0, 7).Select(i => new DailyRow
-        {
-            Date = today.AddDays(-i).ToString("ddd, MMM d"),
-            Cost = $"${(0.15 + i * 0.12 + (i % 3) * 0.18):F2}",
-        }).ToList();
     }
 
     public void Initialize(HubWindow hub)

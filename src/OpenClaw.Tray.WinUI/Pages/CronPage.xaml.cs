@@ -12,7 +12,6 @@ namespace OpenClawTray.Pages;
 public sealed partial class CronPage : Page
 {
     private HubWindow? _hub;
-    private bool _hasLiveData;
 
     public CronPage()
     {
@@ -24,57 +23,9 @@ public sealed partial class CronPage : Page
         _hub = hub;
         if (hub.GatewayClient != null)
         {
-            NotWiredInfoBar.IsOpen = false;
             _ = hub.GatewayClient.RequestCronListAsync();
             _ = hub.GatewayClient.RequestCronStatusAsync();
         }
-        LoadSampleJobs();
-    }
-
-    private void LoadSampleJobs()
-    {
-        if (_hasLiveData) return;
-
-        var jobs = new List<CronJobViewModel>
-        {
-            new()
-            {
-                Id = "sample-1",
-                Name = "Daily email summary",
-                Schedule = "0 9 * * *",
-                IsEnabled = true,
-                LastRunTime = DateTime.Now.AddHours(-3).ToString("yyyy-MM-dd HH:mm"),
-                LastResult = "success",
-                ResultBadgeBackground = new SolidColorBrush(Colors.Green),
-                NextRunTime = DateTime.Now.AddHours(21).ToString("yyyy-MM-dd HH:mm"),
-            },
-            new()
-            {
-                Id = "sample-2",
-                Name = "Backup config",
-                Schedule = "0 0 * * 0",
-                IsEnabled = true,
-                LastRunTime = DateTime.Now.AddDays(-3).ToString("yyyy-MM-dd HH:mm"),
-                LastResult = "success",
-                ResultBadgeBackground = new SolidColorBrush(Colors.Green),
-                NextRunTime = DateTime.Now.AddDays(4).ToString("yyyy-MM-dd HH:mm"),
-            },
-            new()
-            {
-                Id = "sample-3",
-                Name = "Health check",
-                Schedule = "*/15 * * * *",
-                IsEnabled = true,
-                LastRunTime = DateTime.Now.AddMinutes(-7).ToString("yyyy-MM-dd HH:mm"),
-                LastResult = "fail",
-                ResultBadgeBackground = new SolidColorBrush(Colors.Red),
-                NextRunTime = DateTime.Now.AddMinutes(8).ToString("yyyy-MM-dd HH:mm"),
-            },
-        };
-
-        JobsList.ItemsSource = jobs;
-        JobsList.Visibility = Visibility.Visible;
-        EmptyState.Visibility = Visibility.Collapsed;
     }
 
     private void OnRunNowClick(object sender, RoutedEventArgs e)
@@ -167,9 +118,6 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
-            _hasLiveData = true;
-            NotWiredInfoBar.IsOpen = false;
-
             if (jobs.Count > 0)
             {
                 JobsList.ItemsSource = jobs;
@@ -205,7 +153,6 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
-            NotWiredInfoBar.IsOpen = false;
             SchedulerToggle.IsOn = enabled;
             SchedulerStatusText.Text = enabled ? "Enabled" : "Disabled";
             SchedulerStatusIndicator.Fill = new SolidColorBrush(enabled ? Colors.LimeGreen : Colors.Gray);

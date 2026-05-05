@@ -15,13 +15,6 @@
                 <ComboBoxItem x:Uid="SkillsPage_ComboBoxItem_15" Content="All Agents" Tag="" IsSelected="True"/>
             </ComboBox>
 
-            <!-- Not-wired InfoBar -->
-            <InfoBar x:Uid="NotWiredInfoBar" x:Name="NotWiredInfoBar"
-                     IsOpen="True" IsClosable="False"
-                     Severity="Warning"
-                     Title="Skills API not yet wired"
-                     Message="Showing sample data. Skills management methods are not yet available in OpenClawGatewayClient."/>
-
             <!-- Skills List -->
             <ListView x:Name="SkillsList" SelectionMode="None">
                 <ListView.ItemTemplate>
