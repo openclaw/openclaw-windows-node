@@ -45,7 +45,13 @@ public sealed class OnboardingState : IDisposable
     /// </summary>
     public event EventHandler? AdvanceRequested;
 
-    public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestAdvance()
+    {
+        var subs = AdvanceRequested?.GetInvocationList().Length ?? 0;
+        OpenClawTray.Services.Logger.Info($"[OnboardingState] RequestAdvance invoked; subscriber count = {subs}");
+        AdvanceRequested?.Invoke(this, EventArgs.Empty);
+        OpenClawTray.Services.Logger.Info("[OnboardingState] AdvanceRequested invoked; returned");
+    }
 
     /// <summary>
     /// Per-page nav-bar Next button state override. Pages that want fine-grained

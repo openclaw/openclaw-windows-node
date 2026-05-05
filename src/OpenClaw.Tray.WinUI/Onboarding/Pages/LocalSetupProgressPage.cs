@@ -158,12 +158,27 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
                         // user can tap the (now visible+enabled) Next button to advance
                         // immediately; gate this timer on still being on LocalSetupProgress
                         // so an early tap doesn't over-advance a later page.
-                        Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(_ =>
-                            dispatcher.TryEnqueue(() =>
+                        const int delayMs = 1000;
+                        Logger.Info($"[LocalSetupProgress] Status=Complete observed; scheduling RequestAdvance after {delayMs}ms");
+                        Task.Delay(TimeSpan.FromMilliseconds(delayMs)).ContinueWith(_ =>
                             {
-                                if (advanceRef.CurrentRoute == OnboardingRoute.LocalSetupProgress)
-                                    advanceRef.RequestAdvance();
-                            }),
+                                Logger.Info("[LocalSetupProgress] Delay elapsed; dispatching RequestAdvance");
+                                var enqueued = dispatcher.TryEnqueue(() =>
+                                {
+                                    Logger.Info("[LocalSetupProgress] Dispatched lambda entered; checking guard");
+                                    if (advanceRef.CurrentRoute == OnboardingRoute.LocalSetupProgress)
+                                    {
+                                        Logger.Info("[LocalSetupProgress] Guard passed");
+                                        Logger.Info("[LocalSetupProgress] Calling state.RequestAdvance()");
+                                        advanceRef.RequestAdvance();
+                                    }
+                                    else
+                                    {
+                                        Logger.Info($"[LocalSetupProgress] Guard skipped: CurrentRoute={advanceRef.CurrentRoute}");
+                                    }
+                                });
+                                Logger.Info($"[LocalSetupProgress] TryEnqueue returned {enqueued}");
+                            },
                             TaskScheduler.Default);
                     }
                 });

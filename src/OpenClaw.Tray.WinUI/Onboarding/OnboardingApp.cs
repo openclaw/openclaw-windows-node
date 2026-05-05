@@ -4,6 +4,7 @@ using OpenClawTray.FunctionalUI.Navigation;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Onboarding.Pages;
 using OpenClawTray.Onboarding.Widgets;
+using OpenClawTray.Services;
 using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
@@ -39,10 +40,15 @@ public sealed class OnboardingApp : Component<OnboardingState>
             var current = Props.GetPageOrder();
             if (pageIndex < current.Length - 1)
             {
+                Logger.Info($"[OnboardingApp] Advancing pageIndex {pageIndex}\u2192{pageIndex + 1}, next route={current[pageIndex + 1]}");
                 setPageIndex(pageIndex + 1);
                 nav.Navigate(current[pageIndex + 1]);
                 Props.NotifyPageChanged();
                 Props.NotifyRouteChanged(current[pageIndex + 1]);
+            }
+            else
+            {
+                Logger.Info($"[OnboardingApp] AdvanceRequested no-op: at last page (pageIndex={pageIndex}, total={current.Length})");
             }
         }
 
@@ -61,7 +67,12 @@ public sealed class OnboardingApp : Component<OnboardingState>
         // LocalSetupProgressPage auto-advance after success).
         UseEffect(() =>
         {
-            EventHandler handler = (_, _) => GoNext();
+            EventHandler handler = (_, _) =>
+            {
+                var current = Props.GetPageOrder();
+                Logger.Info($"[OnboardingApp] AdvanceRequested handler entered; current Props.CurrentRoute={Props.CurrentRoute}, computed pageIndex={pageIndex}, total pages={current.Length}");
+                GoNext();
+            };
             Props.AdvanceRequested += handler;
             return () => Props.AdvanceRequested -= handler;
         }, pageIndex);

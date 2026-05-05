@@ -171,6 +171,11 @@ public sealed class WizardPage : Component<OnboardingState>
         {
             async void StartWizard()
             {
+                var appForLog = (App)Microsoft.UI.Xaml.Application.Current;
+                var clientForLog = appForLog.GatewayClient ?? Props.GatewayClient;
+                Logger.Info($"[Wizard] WizardPage constructed; gatewayClient={(clientForLog == null ? "null" : "present")}");
+                Logger.Info("[Wizard] Mount effect started; about to send wizard.start");
+
                 // If wizard already has a session, restore from saved payload
                 if (!string.IsNullOrEmpty(Props.WizardSessionId) && Props.WizardStepPayload.HasValue)
                 {
@@ -196,6 +201,7 @@ public sealed class WizardPage : Component<OnboardingState>
                 for (int wait = 0; wait < 30; wait++)
                 {
                     client = app.GatewayClient ?? Props.GatewayClient;
+                    Logger.Info($"[Wizard] Polling for gateway client; attempt {wait + 1}");
                     if (client?.IsConnectedToGateway == true) break;
                     await Task.Delay(1000);
                 }
@@ -209,6 +215,7 @@ public sealed class WizardPage : Component<OnboardingState>
 
                 try
                 {
+                    Logger.Info("[Wizard] Sending wizard.start frame");
                     var response = await client.SendWizardRequestAsync("wizard.start");
                     ApplyStep(response);
                 }

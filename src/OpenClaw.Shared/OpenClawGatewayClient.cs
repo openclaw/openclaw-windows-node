@@ -264,6 +264,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
 
+        _logger.Info($"[GatewayClient] Sending frame: {method}");
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingWizardResponses[requestId] = completion;
