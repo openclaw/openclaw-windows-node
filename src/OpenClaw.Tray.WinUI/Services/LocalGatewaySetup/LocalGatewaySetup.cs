@@ -1441,16 +1441,18 @@ public sealed class SettingsOperatorPairingService : IOperatorPairingService
 {
     private readonly ILocalGatewaySetupSettings _settings;
     private readonly IGatewayOperatorConnector? _connector;
+    private readonly IPendingDeviceApprover? _pendingApprover;
 
-    public SettingsOperatorPairingService(SettingsManager settings, IGatewayOperatorConnector? connector = null)
-        : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector)
+    public SettingsOperatorPairingService(SettingsManager settings, IGatewayOperatorConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
+        : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector, pendingApprover)
     {
     }
 
-    public SettingsOperatorPairingService(ILocalGatewaySetupSettings settings, IGatewayOperatorConnector? connector = null)
+    public SettingsOperatorPairingService(ILocalGatewaySetupSettings settings, IGatewayOperatorConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
     {
         _settings = settings;
         _connector = connector;
+        _pendingApprover = pendingApprover;
     }
 
     public async Task<ProvisioningResult> PairAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
@@ -1472,6 +1474,28 @@ public sealed class SettingsOperatorPairingService : IOperatorPairingService
             return new ProvisioningResult(true);
 
         var result = await _connector.ConnectAsync(state.GatewayUrl, credential.Value, credential.IsBootstrapToken, cancellationToken);
+
+        // Bug 1 fix: a fresh bootstrap-token connect creates a pending operator pairing request
+        // server-side but the connect itself is rejected with PairingRequired (operator-approval gate).
+        // On a local-loopback gateway the user driving the tray is also the approver, so we drive
+        // `openclaw devices approve --latest` via the gateway CLI and retry the bootstrap connect once.
+        if (result.Status == GatewayOperatorConnectionStatus.PairingRequired
+            && credential.IsBootstrapToken
+            && _pendingApprover != null
+            && LocalGatewayApprover.IsLocalGateway(state.GatewayUrl))
+        {
+            var approval = await _pendingApprover.ApproveLatestAsync(state, cancellationToken);
+            if (!approval.Success)
+            {
+                return new ProvisioningResult(
+                    false,
+                    approval.ErrorCode ?? "operator_pending_approval_failed",
+                    approval.ErrorMessage ?? "Local gateway pending pairing approval failed.");
+            }
+
+            result = await _connector.ConnectAsync(state.GatewayUrl, credential.Value, credential.IsBootstrapToken, cancellationToken);
+        }
+
         if (result.Status != GatewayOperatorConnectionStatus.Connected)
         {
             return result.Status switch
@@ -1616,6 +1640,95 @@ public sealed class WslGatewayCliBootstrapTokenProvider : IBootstrapTokenProvide
     }
 
     private static string ShellQuote(string value) => "'" + value.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
+}
+
+public sealed record PendingDeviceApprovalResult(bool Success, string? ErrorCode = null, string? ErrorMessage = null);
+
+/// <summary>
+/// Approves the most-recent pending device pairing request on a local-loopback gateway by
+/// invoking <c>openclaw devices approve --latest</c> via the gateway CLI inside WSL.
+/// Used during operator bootstrap pairing where the same user is both operator and approver.
+/// </summary>
+public interface IPendingDeviceApprover
+{
+    Task<PendingDeviceApprovalResult> ApproveLatestAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default);
+}
+
+public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
+{
+    private readonly IWslCommandRunner _wsl;
+    private readonly string _commandName;
+
+    public WslGatewayCliPendingDeviceApprover(IWslCommandRunner wsl, string commandName = "openclaw")
+    {
+        _wsl = wsl;
+        _commandName = commandName;
+    }
+
+    public async Task<PendingDeviceApprovalResult> ApproveLatestAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
+    {
+        // Authenticate to the loopback gateway using the locally-stored gateway-token (mode 0600,
+        // owned by the openclaw user) and approve the latest pending request. The gateway token
+        // is read inside the shell so it never appears on the wsl.exe argv or in process listings.
+        var script = string.Join(" ", new[]
+        {
+            "set -euo pipefail;",
+            "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
+            "  echo 'gateway token file missing or empty' >&2; exit 64;",
+            "fi;",
+            "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
+            "exec",
+            ShellQuoteScalar(_commandName),
+            "devices",
+            "approve",
+            "--latest",
+            "--json",
+            "--url",
+            ShellQuoteScalar(state.GatewayUrl),
+            "--token",
+            "\"$(cat /var/lib/openclaw/gateway-token)\""
+        });
+        var result = await _wsl.RunInDistroAsync(state.DistroName, ["bash", "-lc", script], cancellationToken);
+        if (!result.Success)
+        {
+            return new PendingDeviceApprovalResult(
+                false,
+                "operator_pending_approval_failed",
+                "Local gateway pending pairing approval CLI failed.");
+        }
+
+        return ParseApproveJson(result.StandardOutput);
+    }
+
+    public static PendingDeviceApprovalResult ParseApproveJson(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return new PendingDeviceApprovalResult(true);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("ok", out var ok)
+                && ok.ValueKind == JsonValueKind.False)
+            {
+                var msg = root.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String
+                    ? err.GetString()
+                    : "Local gateway approval reported failure.";
+                return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", msg);
+            }
+
+            return new PendingDeviceApprovalResult(true);
+        }
+        catch (JsonException)
+        {
+            // Plain-text success output from older CLI versions; treat exit-0 as success.
+            return new PendingDeviceApprovalResult(true);
+        }
+    }
+
+    private static string ShellQuoteScalar(string value) => "'" + value.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
 }
 
 public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisioner
@@ -2140,6 +2253,7 @@ public static class LocalGatewaySetupEngineFactory
         var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings);
         var operatorConnector = new OpenClawGatewayOperatorConnector(logger);
         var bootstrapTokenProvider = new WslGatewayCliBootstrapTokenProvider(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
+        var pendingDeviceApprover = new WslGatewayCliPendingDeviceApprover(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
 #if OPENCLAW_TRAY_TESTS
         IWindowsNodeConnector? windowsNodeConnector = null;
 #else
@@ -2153,7 +2267,7 @@ public static class LocalGatewaySetupEngineFactory
             wsl,
             new LocalGatewayHealthProbe(),
             new SettingsBootstrapTokenProvisioner(settingsAdapter, bootstrapTokenProvider),
-            new SettingsOperatorPairingService(settingsAdapter, operatorConnector),
+            new SettingsOperatorPairingService(settingsAdapter, operatorConnector, pendingDeviceApprover),
             new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector),
             logger);
     }
