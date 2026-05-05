@@ -1913,7 +1913,9 @@ public partial class App : Application
             }
 
             Logger.Info("Showing QuickSend dialog");
-            var dialog = new QuickSendDialog(_gatewayClient, prefillMessage);
+            // Bug #3: pass a Func that resolves the live _gatewayClient on
+            // every Send so post-pair / restart / reinit swaps are observed.
+            var dialog = new QuickSendDialog(() => _gatewayClient, prefillMessage);
             dialog.Closed += (s, e) =>
             {
                 if (ReferenceEquals(_quickSendDialog, dialog))
