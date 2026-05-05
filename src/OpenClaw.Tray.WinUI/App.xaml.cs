@@ -37,6 +37,13 @@ public partial class App : Application
 
     private TrayIcon? _trayIcon;
     private OpenClawGatewayClient? _gatewayClient;
+    /// <summary>
+    /// Cached reference to the most recently constructed local-setup engine. Used by
+    /// <see cref="OnPairingStatusChanged"/> to suppress the "copy pairing command" toast
+    /// during Phase 14 auto-pair (Bug #2, manual test 2026-05-05). Null when no local
+    /// setup has run in this app lifetime.
+    /// </summary>
+    private LocalGatewaySetupEngine? _localSetupEngine;
 
     /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
     public OpenClawGatewayClient? GatewayClient => _gatewayClient;
@@ -57,10 +64,14 @@ public partial class App : Application
     {
         var settings = _settings ?? new SettingsManager();
         var nodeService = EnsureNodeServiceForLocalGatewaySetup(settings);
-        return LocalGatewaySetupEngineFactory.CreateLocalOnly(
+        var engine = LocalGatewaySetupEngineFactory.CreateLocalOnly(
             settings,
             new AppLogger(),
             nodeService);
+        // Bug #2: cache so OnPairingStatusChanged can read engine.IsAutoPairingWindowsNode
+        // and suppress the "copy pairing command" toast during the Phase 14 blip.
+        _localSetupEngine = engine;
+        return engine;
     }
 
     /// <summary>
@@ -1201,6 +1212,19 @@ public partial class App : Application
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
+                // Bug #2 (manual test 2026-05-05): suppress the "copy pairing command"
+                // toast while the local-setup engine is mid-Phase-14 node-role PairAsync.
+                // The loopback gateway parks the role-upgrade as Pending for ~100ms before
+                // SettingsWindowsTrayNodeProvisioner's pending-approver auto-approves it;
+                // the user never needs to copy the command in that window. Manual
+                // ConnectionPage pairings call ShowPairingPendingNotification directly
+                // (bypassing this event handler), so the suppression scope is exactly
+                // the autopair window.
+                if (LocalGatewaySetupEngine.ShouldSuppressPairingPendingNotification(_localSetupEngine, args.Status))
+                {
+                    Logger.Info($"Suppressing pairing-pending toast: autopair Phase 14 in progress for {args.DeviceId}");
+                    return;
+                }
                 ShowPairingPendingNotification(args.DeviceId);
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)

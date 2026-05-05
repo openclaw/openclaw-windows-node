@@ -2229,6 +2229,34 @@ public sealed class LocalGatewaySetupEngine
 
     public event Action<LocalGatewaySetupState>? StateChanged;
 
+    /// <summary>
+    /// True only while the engine is executing Phase 14 (PairWindowsTrayNode) — i.e. the
+    /// node-role <see cref="IWindowsTrayNodeProvisioner.PairAsync"/> call against the
+    /// loopback gateway. Bug #2 (manual test 2026-05-05): the loopback gateway parks the
+    /// node-role connect as <c>PairingStatus.Pending</c> for ~100ms before
+    /// <see cref="SettingsWindowsTrayNodeProvisioner"/>'s pending-approver auto-approves
+    /// it. <see cref="App.OnPairingStatusChanged"/> consults this flag to suppress the
+    /// "copy pairing command" toast for that transient blip — manual ConnectionPage-driven
+    /// pairings call <c>App.ShowPairingPendingNotification</c> directly and bypass the
+    /// event path entirely, so the suppression scope is exactly the Phase 14 window.
+    /// </summary>
+    public bool IsAutoPairingWindowsNode => _isAutoPairingWindowsNode != 0;
+
+    private int _isAutoPairingWindowsNode; // 0 = false, 1 = true (Interlocked semantics)
+
+    /// <summary>
+    /// Pure decision helper for the App-level "copy pairing command" toast suppression.
+    /// Extracted for unit testability — App.OnPairingStatusChanged delegates here. Returns
+    /// true ONLY when the engine reports it is mid-Phase-14 AND the status is Pending; all
+    /// other status values (Paired, Rejected, etc.) and all states without an active
+    /// auto-pair window are not suppressed.
+    /// </summary>
+    public static bool ShouldSuppressPairingPendingNotification(
+        LocalGatewaySetupEngine? engine,
+        OpenClaw.Shared.PairingStatus status)
+        => status == OpenClaw.Shared.PairingStatus.Pending
+           && engine?.IsAutoPairingWindowsNode == true;
+
     public LocalGatewaySetupEngine(
         LocalGatewaySetupOptions options,
         ILocalGatewaySetupStateStore stateStore,
@@ -2398,7 +2426,25 @@ public sealed class LocalGatewaySetupEngine
         if (_options.EnableWindowsTrayNodeByDefault)
         {
             await RunProvisioningPhaseAsync(state, LocalGatewaySetupPhase.CheckWindowsNodeReadiness, "Checking Windows node readiness", () => _windowsTrayNode.CheckReadinessAsync(state, cancellationToken), cancellationToken);
-            await RunProvisioningPhaseAsync(state, LocalGatewaySetupPhase.PairWindowsTrayNode, "Pairing Windows tray node", () => _windowsTrayNode.PairAsync(state, cancellationToken), cancellationToken);
+            // Bug #2 (manual test 2026-05-05): bracket the Phase 14 node-role PairAsync
+            // exactly. The loopback gateway emits a transient PairingStatus.Pending event
+            // before our pending-approver auto-approves; App.OnPairingStatusChanged
+            // observes IsAutoPairingWindowsNode==true via this flag and suppresses the
+            // "copy pairing command" toast for that blip only. Scope is the await above
+            // the Pending event source (WindowsNodeClient → NodeService is synchronous on
+            // HandleRequestError), so try/finally around the await is race-safe.
+            await RunProvisioningPhaseAsync(state, LocalGatewaySetupPhase.PairWindowsTrayNode, "Pairing Windows tray node", async () =>
+            {
+                System.Threading.Interlocked.Exchange(ref _isAutoPairingWindowsNode, 1);
+                try
+                {
+                    return await _windowsTrayNode.PairAsync(state, cancellationToken);
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref _isAutoPairingWindowsNode, 0);
+                }
+            }, cancellationToken);
         }
 
         await RunPhaseAsync(state, LocalGatewaySetupPhase.VerifyEndToEnd, "Verifying local gateway", () => Task.FromResult(state.Status == LocalGatewaySetupStatus.Running), cancellationToken);

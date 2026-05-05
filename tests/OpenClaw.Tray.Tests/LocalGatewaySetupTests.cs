@@ -326,7 +326,7 @@ public class LocalGatewaySetupTests
         Assert.True(settings.SaveCalled);
     }
 
-    private sealed class FakeWslCommandRunner : IWslCommandRunner
+    internal sealed class FakeWslCommandRunner : IWslCommandRunner
     {
         public List<WslDistroInfo> Distros { get; set; } = [];
         public List<string> UnregisteredDistros { get; } = [];
@@ -386,14 +386,14 @@ public class LocalGatewaySetupTests
         public string? GetVariable(string name) => _values.TryGetValue(name, out var value) ? value : null;
     }
 
-    private sealed class FixedPortProbe : IPortProbe
+    internal sealed class FixedPortProbe : IPortProbe
     {
         private readonly bool _available;
         public FixedPortProbe(bool available) => _available = available;
         public bool IsPortAvailable(int port) => _available;
     }
 
-    private sealed class SuccessfulHealthProbe : ILocalGatewayHealthProbe
+    internal sealed class SuccessfulHealthProbe : ILocalGatewayHealthProbe
     {
         public Task<LocalGatewayHealthResult> WaitForHealthyAsync(string gatewayUrl, CancellationToken cancellationToken = default) =>
             Task.FromResult(new LocalGatewayHealthResult(true));
@@ -456,25 +456,25 @@ public class LocalGatewaySetupTests
         public void Save() => SaveCalled = true;
     }
 
-    private sealed class FakeWslInstanceConfigurator : IWslInstanceConfigurator
+    internal sealed class FakeWslInstanceConfigurator : IWslInstanceConfigurator
     {
         public Task<WslInstanceConfigurationResult> ConfigureAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default) =>
             Task.FromResult(new WslInstanceConfigurationResult(true));
     }
 
-    private sealed class FakeOpenClawLinuxInstaller : IOpenClawLinuxInstaller
+    internal sealed class FakeOpenClawLinuxInstaller : IOpenClawLinuxInstaller
     {
         public Task<OpenClawLinuxInstallResult> InstallAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default) =>
             Task.FromResult(new OpenClawLinuxInstallResult(true));
     }
 
-    private sealed class FakeGatewayConfigurationPreparer : IGatewayConfigurationPreparer
+    internal sealed class FakeGatewayConfigurationPreparer : IGatewayConfigurationPreparer
     {
         public Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default) =>
             Task.FromResult(new GatewayConfigurationResult(true));
     }
 
-    private sealed class FakeGatewayServiceManager : IGatewayServiceManager
+    internal sealed class FakeGatewayServiceManager : IGatewayServiceManager
     {
         public Task<GatewayServiceOperationResult> InstallAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default) =>
             Task.FromResult(new GatewayServiceOperationResult(true));
@@ -483,7 +483,7 @@ public class LocalGatewaySetupTests
             Task.FromResult(new GatewayServiceOperationResult(true));
     }
 
-    private sealed class TempDirectory : IDisposable
+    internal sealed class TempDirectory : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "openclaw-tests-" + Guid.NewGuid().ToString("N"));
         public TempDirectory() => Directory.CreateDirectory(Path);
