@@ -356,9 +356,9 @@ public partial class App : Application
         ShowSurfaceImprovementsTipIfNeeded();
 
         // Initialize connections — always create operator client for UI data,
-        // additionally create node service if node mode is enabled
+        // additionally create node service for gateway node mode or local MCP.
         InitializeGatewayClient();
-        if (_settings?.EnableNodeMode == true)
+        if (ShouldInitializeNodeService())
         {
             InitializeNodeService();
         }
@@ -869,7 +869,7 @@ public partial class App : Application
             if (on)
             {
                 InitializeGatewayClient();
-                if (_settings?.EnableNodeMode == true) InitializeNodeService();
+                if (ShouldInitializeNodeService()) InitializeNodeService();
             }
             else
             {
@@ -1774,7 +1774,12 @@ public partial class App : Application
     {
         return StartupSetupState.RequiresSetup(settings, DataPath);
     }
-    
+
+    private bool ShouldInitializeNodeService()
+    {
+        return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
+    }
+
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
     {
         Logger.Info($"Node status: {status}");
@@ -2499,7 +2504,7 @@ public partial class App : Application
             _hubWindow.ConnectAction = () =>
             {
                 InitializeGatewayClient();
-                if (_settings?.EnableNodeMode == true) InitializeNodeService();
+                if (ShouldInitializeNodeService()) InitializeNodeService();
             };
             _hubWindow.DisconnectAction = () =>
             {
@@ -2617,7 +2622,7 @@ public partial class App : Application
         InitializeGatewayClient();
         
         // Additionally reconnect node service if enabled
-        if (_settings?.EnableNodeMode == true)
+        if (ShouldInitializeNodeService())
         {
             InitializeNodeService();
         }
@@ -2670,7 +2675,7 @@ public partial class App : Application
         UpdateTrayIcon();
 
         InitializeGatewayClient();
-        if (_settings?.EnableNodeMode == true)
+        if (ShouldInitializeNodeService())
             InitializeNodeService();
 
         if (_hubWindow != null && !_hubWindow.IsClosed)
@@ -2691,7 +2696,7 @@ public partial class App : Application
         _nodeService = null;
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
 
-        if (_settings?.EnableNodeMode == true)
+        if (ShouldInitializeNodeService())
             InitializeNodeService();
     }
 
@@ -2795,7 +2800,11 @@ public partial class App : Application
             if (_settings.EnableNodeMode)
                 InitializeNodeService();
             else
+            {
                 InitializeGatewayClient();
+                if (_settings.EnableMcpServer)
+                    InitializeNodeService();
+            }
 
             UpdateStatusDetailWindow();
             ShowToast(new ToastContentBuilder()
@@ -3288,7 +3297,7 @@ public partial class App : Application
 
             // Always reconnect operator client for UI data
             InitializeGatewayClient();
-            if (_settings.EnableNodeMode)
+            if (ShouldInitializeNodeService())
                 InitializeNodeService();
 
             // Keep hub window in sync with new client
