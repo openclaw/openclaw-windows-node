@@ -1027,11 +1027,29 @@ public partial class App : Application
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_settings.Token))
+        // Bug #4 (Wizard hung at "Authenticating"): broaden credential resolution
+        // beyond settings.Token so a paired operator whose only credential is
+        // BootstrapToken or a stored DeviceIdentity DeviceToken still gets a
+        // client. Mirrors the prototype's resolver shape (openclaw-windows-node
+        // App.xaml.cs:1244-1298). Logic lives in GatewayCredentialResolver so
+        // Tray tests can cover all branches without booting WinUI.
+        var identityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
+        var credential = OpenClawTray.Services.GatewayCredentialResolver.Resolve(
+            _settings.Token,
+            _settings.BootstrapToken,
+            identityPath,
+            msg => Logger.Warn(msg));
+        if (credential == null)
         {
             Logger.Info("Gateway token not configured — skipping operator client initialization");
             return;
         }
+
+        // Caller's useBootstrapHandoffAuth hint is preserved as an OR so existing
+        // call sites that put a bootstrap value into settings.Token + pass true
+        // continue to send auth.bootstrapToken (OpenClawGatewayClient.cs:556-565).
+        var tokenIsBootstrapToken = credential.IsBootstrapToken || useBootstrapHandoffAuth;
+        Logger.Info($"Gateway credential resolved from {credential.Source} (bootstrap={tokenIsBootstrapToken})");
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
@@ -1039,9 +1057,9 @@ public partial class App : Application
 
         _gatewayClient = new OpenClawGatewayClient(
             gatewayUrl,
-            _settings.Token,
+            credential.Token,
             new AppLogger(),
-            useBootstrapHandoffAuth);
+            tokenIsBootstrapToken);
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
