@@ -11,7 +11,6 @@ namespace OpenClawTray.Pages;
 public sealed partial class SkillsPage : Page
 {
     private HubWindow? _hub;
-    private bool _hasLiveData;
 
     public SkillsPage()
     {
@@ -24,10 +23,8 @@ public sealed partial class SkillsPage : Page
         PopulateAgentFilter(hub);
         if (hub.GatewayClient != null)
         {
-            NotWiredInfoBar.IsOpen = false;
             _ = hub.GatewayClient.RequestSkillsStatusAsync(GetSelectedAgentId());
         }
-        LoadSampleSkills();
     }
 
     private void PopulateAgentFilter(HubWindow hub)
@@ -56,49 +53,6 @@ public sealed partial class SkillsPage : Page
         var client = _hub?.GatewayClient;
         if (client != null)
             _ = client.RequestSkillsStatusAsync(GetSelectedAgentId());
-    }
-
-    private void LoadSampleSkills()
-    {
-        if (_hasLiveData) return;
-
-        var skills = new List<SkillViewModel>
-        {
-            new()
-            {
-                Id = "github",
-                Name = "GitHub Integration",
-                Version = "v2.1",
-                Description = "Connect OpenClaw to GitHub for issue tracking, PR reviews, and repository management.",
-                StatusText = "Active",
-                StatusBackground = new SolidColorBrush(Colors.Green),
-                ActionLabel = "Update",
-            },
-            new()
-            {
-                Id = "email",
-                Name = "Email Digest",
-                Version = "v1.3",
-                Description = "Automatically summarize and send email digests of daily activity and session outcomes.",
-                StatusText = "Active",
-                StatusBackground = new SolidColorBrush(Colors.Green),
-                ActionLabel = "Update",
-            },
-            new()
-            {
-                Id = "calendar",
-                Name = "Calendar Sync",
-                Version = "v0.9",
-                Description = "Sync scheduled tasks and cron jobs with your calendar provider for visibility.",
-                StatusText = "Inactive",
-                StatusBackground = new SolidColorBrush(Colors.Gray),
-                ActionLabel = "Enable",
-            },
-        };
-
-        SkillsList.ItemsSource = skills;
-        SkillsList.Visibility = Visibility.Visible;
-        EmptyState.Visibility = Visibility.Collapsed;
     }
 
     private void OnSkillActionClick(object sender, RoutedEventArgs e)
@@ -165,9 +119,6 @@ public sealed partial class SkillsPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
-            _hasLiveData = true;
-            NotWiredInfoBar.IsOpen = false;
-
             if (skills.Count > 0)
             {
                 SkillsList.ItemsSource = skills;

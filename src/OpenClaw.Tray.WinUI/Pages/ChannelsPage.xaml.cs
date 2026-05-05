@@ -17,14 +17,6 @@ public sealed partial class ChannelsPage : Page
     public ChannelsPage()
     {
         InitializeComponent();
-
-        // Sample data for design-time preview
-        var samples = new List<ChannelViewModel>
-        {
-            new() { Name = "Telegram", Status = "connected", StatusColor = "Green", IsRunning = true, ProbeInfo = "Bot: @myclaw_bot · 45ms" },
-            new() { Name = "WhatsApp", Status = "disconnected", StatusColor = "Red", IsRunning = false, ProbeInfo = null },
-        };
-        RenderChannels(samples);
     }
 
     public void Initialize(HubWindow hub)

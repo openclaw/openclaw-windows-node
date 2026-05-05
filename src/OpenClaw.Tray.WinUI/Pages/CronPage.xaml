@@ -9,13 +9,6 @@
 
             <TextBlock x:Uid="CronPage_TextBlock_10" Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}"/>
 
-            <!-- Not-wired InfoBar -->
-            <InfoBar x:Uid="NotWiredInfoBar" x:Name="NotWiredInfoBar"
-                     IsOpen="True" IsClosable="False"
-                     Severity="Warning"
-                     Title="Cron API not yet wired"
-                     Message="Showing sample data. Cron management methods are not yet available in OpenClawGatewayClient."/>
-
             <!-- Scheduler Status Card -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -29,11 +22,11 @@
                         <TextBlock x:Uid="CronPage_TextBlock_29" Text="Scheduler Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse x:Name="SchedulerStatusIndicator" Width="10" Height="10"
-                                     Fill="LimeGreen" VerticalAlignment="Center"/>
-                            <TextBlock x:Uid="SchedulerStatusText" x:Name="SchedulerStatusText" Text="Enabled"
+                                     Fill="Gray" VerticalAlignment="Center"/>
+                            <TextBlock x:Uid="SchedulerStatusText" x:Name="SchedulerStatusText" Text="—"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
-                        <TextBlock x:Uid="StorePathText" x:Name="StorePathText" Text="Store: ~/.openclaw/cron.db"
+                        <TextBlock x:Uid="StorePathText" x:Name="StorePathText" Text="Store: —"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Uid="NextWakeText" x:Name="NextWakeText" Text="Next wake: —"
@@ -41,7 +34,7 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
                     <ToggleSwitch x:Name="SchedulerToggle" Grid.Column="1"
-                                   IsOn="True" VerticalAlignment="Center"
+                                   IsOn="False" VerticalAlignment="Center"
                                    IsEnabled="False"/>
                 </Grid>
             </Border>
@@ -116,7 +109,7 @@
             </ListView>
 
             <!-- Empty State -->
-            <StackPanel x:Name="EmptyState" Visibility="Collapsed"
+            <StackPanel x:Name="EmptyState" Visibility="Visible"
                         VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
                         Margin="0,32,0,0">
                 <TextBlock Text="⏱️" FontSize="48" HorizontalAlignment="Center"/>
