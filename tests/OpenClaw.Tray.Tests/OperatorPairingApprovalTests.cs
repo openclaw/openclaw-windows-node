@@ -828,7 +828,7 @@ public class OperatorPairingApprovalTests
             _fallback = results.Length > 0 ? results[^1] : new WslCommandResult(0, string.Empty, string.Empty);
         }
 
-        public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default)
+        public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null)
             => Task.FromResult(new WslCommandResult(0, string.Empty, string.Empty));
 
         public Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default)

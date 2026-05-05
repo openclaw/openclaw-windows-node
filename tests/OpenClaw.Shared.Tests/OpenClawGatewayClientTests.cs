@@ -409,6 +409,21 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void Bug6_SharedSettingsToken_LocalLoopbackFreshOperator_RequestsAdminScopesAndTokenAuth()
+    {
+        var helper = new GatewayClientTestHelper(gatewayUrl: "ws://localhost:18789", tokenIsBootstrapToken: false);
+        helper.SetDeviceTokenForTest(null);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
+        Assert.Equal("test-token", auth["token"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+    }
+
+    [Fact]
     public void OperatorConnect_FreshStandardRemoteDevice_RequestsBootstrapHandoffScopes()
     {
         var helper = new GatewayClientTestHelper(gatewayUrl: "ws://gateway.example.com:18789");

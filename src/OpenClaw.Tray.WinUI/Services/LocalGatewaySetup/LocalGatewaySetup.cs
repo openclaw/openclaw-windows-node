@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -246,7 +247,7 @@ public sealed record WslStatusInfo(int? DefaultVersion, string? WslVersion, stri
 
 public interface IWslCommandRunner
 {
-    Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default);
+    Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null);
     Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default);
     Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default);
     Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default);
@@ -270,8 +271,8 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         return result.Success ? ParseDistroList(result.StandardOutput) : [];
     }
 
-    public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default) =>
-        RunProcessAsync("wsl.exe", arguments, cancellationToken);
+    public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null) =>
+        RunProcessAsync("wsl.exe", arguments, cancellationToken, environment);
 
     public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default)
     {
@@ -347,7 +348,7 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         return new WslStatusInfo(defaultVersion, wslVersion, kernelVersion);
     }
 
-    private async Task<WslCommandResult> RunProcessAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<WslCommandResult> RunProcessAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment)
     {
         var psi = new ProcessStartInfo
         {
@@ -362,6 +363,8 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
 
         foreach (var argument in arguments)
             psi.ArgumentList.Add(argument);
+
+        ApplyEnvironment(psi, environment);
 
         _logger.Info($"[WSL] {fileName} {string.Join(" ", arguments.Select(RedactArgument))}");
 
@@ -402,6 +405,45 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             process.ExitCode,
             await SafeReadAsync(stdoutTask),
             await SafeReadAsync(stderrTask));
+    }
+
+    private static void ApplyEnvironment(ProcessStartInfo psi, IReadOnlyDictionary<string, string>? environment)
+    {
+        if (environment is null || environment.Count == 0)
+            return;
+
+        var inherited = psi.Environment.ToDictionary(pair => pair.Key, pair => pair.Value ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in BuildProcessEnvironment(inherited, environment))
+            psi.Environment[pair.Key] = pair.Value;
+    }
+
+    public static Dictionary<string, string> BuildProcessEnvironment(
+        IReadOnlyDictionary<string, string> inheritedEnvironment,
+        IReadOnlyDictionary<string, string>? environment)
+    {
+        var result = new Dictionary<string, string>(inheritedEnvironment, StringComparer.OrdinalIgnoreCase);
+        if (environment is null || environment.Count == 0)
+            return result;
+
+        foreach (var pair in environment)
+            result[pair.Key] = pair.Value;
+
+        if (environment.ContainsKey(SharedGatewayTokenEnvironment.VariableName))
+            AppendWslEnvPassthrough(result, SharedGatewayTokenEnvironment.VariableName + "/u");
+
+        return result;
+    }
+
+    private static void AppendWslEnvPassthrough(IDictionary<string, string> environment, string entry)
+    {
+        environment.TryGetValue("WSLENV", out var existing);
+        var parts = string.IsNullOrWhiteSpace(existing)
+            ? []
+            : existing.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Any(part => part.Equals(entry, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        environment["WSLENV"] = string.IsNullOrWhiteSpace(existing) ? entry : existing + ":" + entry;
     }
 
     private static async Task<string> SafeReadAsync(Task<string> task)
@@ -896,7 +938,7 @@ public sealed record GatewayConfigurationResult(
 
 public interface IGatewayConfigurationPreparer
 {
-    Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default);
+    Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, string sharedGatewayToken, CancellationToken cancellationToken = default);
 }
 
 public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurationPreparer
@@ -908,16 +950,15 @@ public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurat
         _wsl = wsl;
     }
 
-    public async Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default)
+    public async Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, string sharedGatewayToken, CancellationToken cancellationToken = default)
     {
         var openClaw = ShellQuote(options.OpenClawInstallPrefix + "/bin/openclaw");
         var script = string.Join("\n", new[]
         {
             "set -euo pipefail",
             "umask 077",
-            "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
-            "  od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]' >/var/lib/openclaw/gateway-token",
-            "fi",
+            ": \"${OPENCLAW_SHARED_GATEWAY_TOKEN:?missing shared gateway token}\"",
+            "printf '%s' \"$OPENCLAW_SHARED_GATEWAY_TOKEN\" >/var/lib/openclaw/gateway-token",
             openClaw + " config set gateway.mode local",
             openClaw + " config set gateway.port " + options.GatewayPort.ToString(CultureInfo.InvariantCulture) + " --strict-json",
             openClaw + " config set gateway.auth.mode token",
@@ -925,7 +966,11 @@ public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurat
             openClaw + " config validate"
         });
 
-        var result = await _wsl.RunAsync(["-d", options.DistroName, "-u", "openclaw", "--", "bash", "-lc", script], cancellationToken);
+        var environment = new Dictionary<string, string>
+        {
+            [SharedGatewayTokenEnvironment.VariableName] = sharedGatewayToken
+        };
+        var result = await _wsl.RunAsync(["-d", options.DistroName, "-u", "openclaw", "--", "bash", "-lc", script], cancellationToken, environment);
         return result.Success
             ? new GatewayConfigurationResult(true)
             : new GatewayConfigurationResult(false, "gateway_config_prepare_failed", "Failed to prepare upstream OpenClaw gateway configuration.", DiagnosticFormatter.Build("gateway_config_prepare", result));
@@ -1176,6 +1221,42 @@ public interface IBootstrapTokenProvisioner
 {
     Task<ProvisioningResult> MintAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default);
 }
+public enum SharedGatewayTokenSource
+{
+    Generated,
+    PreservedFromWsl
+}
+
+public sealed record SharedGatewayTokenResult(
+    bool Success,
+    string? Token = null,
+    SharedGatewayTokenSource? Source = null,
+    string? ErrorCode = null,
+    string? ErrorMessage = null);
+
+public sealed record SharedGatewayProvisioningResult(
+    bool Success,
+    string? Token = null,
+    SharedGatewayTokenSource? Source = null,
+    string? ErrorCode = null,
+    string? ErrorMessage = null,
+    string? Detail = null);
+
+public interface ISharedGatewayTokenProvider
+{
+    Task<SharedGatewayTokenResult> MintAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default);
+}
+
+public interface ISharedGatewayTokenProvisioner
+{
+    Task<SharedGatewayProvisioningResult> ProvisionAsync(LocalGatewaySetupState state, LocalGatewaySetupOptions options, CancellationToken cancellationToken = default);
+}
+
+public static class SharedGatewayTokenEnvironment
+{
+    public const string VariableName = "OPENCLAW_SHARED_GATEWAY_TOKEN";
+}
+
 
 public interface IWindowsTrayNodeProvisioner
 {
@@ -1406,6 +1487,76 @@ public sealed class OpenClawGatewayOperatorConnector : IGatewayOperatorConnector
     }
 }
 
+public sealed class WslGatewayCliSharedGatewayTokenProvider : ISharedGatewayTokenProvider
+{
+    private static readonly Regex s_safeHexTokenRegex = new("^[0-9a-f]{64}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private readonly IWslCommandRunner _wsl;
+
+    public WslGatewayCliSharedGatewayTokenProvider(IWslCommandRunner wsl)
+    {
+        _wsl = wsl;
+    }
+
+    public async Task<SharedGatewayTokenResult> MintAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
+    {
+        var read = await _wsl.RunAsync(
+            ["-d", state.DistroName, "--", "bash", "-lc", "cat /var/lib/openclaw/gateway-token 2>/dev/null"],
+            cancellationToken);
+        var existing = (read.StandardOutput ?? string.Empty).Trim();
+        if (read.Success && s_safeHexTokenRegex.IsMatch(existing))
+            return new SharedGatewayTokenResult(true, existing, SharedGatewayTokenSource.PreservedFromWsl);
+
+        var bytes = RandomNumberGenerator.GetBytes(32);
+        var token = Convert.ToHexString(bytes).ToLowerInvariant();
+        return new SharedGatewayTokenResult(true, token, SharedGatewayTokenSource.Generated);
+    }
+}
+
+public sealed class SettingsSharedGatewayTokenProvisioner : ISharedGatewayTokenProvisioner
+{
+    private readonly ILocalGatewaySetupSettings _settings;
+    private readonly ISharedGatewayTokenProvider _tokenProvider;
+    private readonly IGatewayConfigurationPreparer _gatewayConfigurationPreparer;
+
+    public SettingsSharedGatewayTokenProvisioner(
+        ILocalGatewaySetupSettings settings,
+        ISharedGatewayTokenProvider tokenProvider,
+        IGatewayConfigurationPreparer gatewayConfigurationPreparer)
+    {
+        _settings = settings;
+        _tokenProvider = tokenProvider;
+        _gatewayConfigurationPreparer = gatewayConfigurationPreparer;
+    }
+
+    public async Task<SharedGatewayProvisioningResult> ProvisionAsync(LocalGatewaySetupState state, LocalGatewaySetupOptions options, CancellationToken cancellationToken = default)
+    {
+        var minted = await _tokenProvider.MintAsync(state, cancellationToken);
+        if (!minted.Success || string.IsNullOrWhiteSpace(minted.Token))
+        {
+            return new SharedGatewayProvisioningResult(
+                false,
+                ErrorCode: minted.ErrorCode ?? "shared_gateway_token_missing",
+                ErrorMessage: minted.ErrorMessage ?? "Gateway shared token could not be prepared.");
+        }
+
+        var prepared = await _gatewayConfigurationPreparer.PrepareAsync(options, minted.Token!, cancellationToken);
+        if (!prepared.Success)
+        {
+            return new SharedGatewayProvisioningResult(
+                false,
+                minted.Token,
+                minted.Source,
+                prepared.ErrorCode ?? "gateway_config_prepare_failed",
+                prepared.ErrorMessage ?? "Failed to prepare OpenClaw Gateway configuration.",
+                prepared.Detail);
+        }
+
+        _settings.Token = minted.Token!;
+        _settings.Save();
+        return new SharedGatewayProvisioningResult(true, minted.Token, minted.Source);
+    }
+}
+
 public sealed class SettingsBootstrapTokenProvisioner : IBootstrapTokenProvisioner
 {
     private readonly ILocalGatewaySetupSettings _settings;
@@ -1419,7 +1570,7 @@ public sealed class SettingsBootstrapTokenProvisioner : IBootstrapTokenProvision
 
     public async Task<ProvisioningResult> MintAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
     {
-        if (!string.IsNullOrWhiteSpace(_settings.Token) || !string.IsNullOrWhiteSpace(_settings.BootstrapToken))
+        if (!string.IsNullOrWhiteSpace(_settings.BootstrapToken))
             return new ProvisioningResult(true);
 
         var minted = await _bootstrapTokenProvider.MintAsync(state, cancellationToken);
@@ -2254,6 +2405,7 @@ public sealed class LocalGatewaySetupEngine
     private readonly IWslInstanceConfigurator _wslInstanceConfigurator;
     private readonly IOpenClawLinuxInstaller _openClawLinuxInstaller;
     private readonly IGatewayConfigurationPreparer _gatewayConfigurationPreparer;
+    private readonly ISharedGatewayTokenProvisioner? _sharedGatewayTokenProvisioner;
     private readonly IGatewayServiceManager _gatewayServiceManager;
     private readonly ILocalGatewayHealthProbe _healthProbe;
     private readonly ILocalGatewayEndpointResolver _endpointResolver;
@@ -2307,7 +2459,8 @@ public sealed class LocalGatewaySetupEngine
         IOpenClawLinuxInstaller? openClawLinuxInstaller = null,
         IGatewayConfigurationPreparer? gatewayConfigurationPreparer = null,
         IGatewayServiceManager? gatewayServiceManager = null,
-        ILocalGatewayEndpointResolver? endpointResolver = null)
+        ILocalGatewayEndpointResolver? endpointResolver = null,
+        ISharedGatewayTokenProvisioner? sharedGatewayTokenProvisioner = null)
     {
         _options = options;
         _stateStore = stateStore;
@@ -2317,6 +2470,7 @@ public sealed class LocalGatewaySetupEngine
         _wslInstanceConfigurator = wslInstanceConfigurator ?? new WslFirstBootConfigurator(wsl);
         _openClawLinuxInstaller = openClawLinuxInstaller ?? new OpenClawInstallCliLinuxInstaller(wsl);
         _gatewayConfigurationPreparer = gatewayConfigurationPreparer ?? new OpenClawCliGatewayConfigurationPreparer(wsl);
+        _sharedGatewayTokenProvisioner = sharedGatewayTokenProvisioner;
         _gatewayServiceManager = gatewayServiceManager ?? new OpenClawCliGatewayServiceManager(wsl);
         _healthProbe = healthProbe;
         _endpointResolver = endpointResolver ?? new LocalGatewayEndpointResolver();
@@ -2414,7 +2568,17 @@ public sealed class LocalGatewaySetupEngine
 
         await RunPhaseAsync(state, LocalGatewaySetupPhase.PrepareGatewayConfig, "Preparing OpenClaw Gateway configuration", async () =>
         {
-            var result = await _gatewayConfigurationPreparer.PrepareAsync(_options, cancellationToken);
+            SharedGatewayProvisioningResult result;
+            if (_sharedGatewayTokenProvisioner is null)
+            {
+                var prepared = await _gatewayConfigurationPreparer.PrepareAsync(_options, string.Empty, cancellationToken);
+                result = new SharedGatewayProvisioningResult(prepared.Success, ErrorCode: prepared.ErrorCode, ErrorMessage: prepared.ErrorMessage, Detail: prepared.Detail);
+            }
+            else
+            {
+                result = await _sharedGatewayTokenProvisioner.ProvisionAsync(state, _options, cancellationToken);
+            }
+
             if (!result.Success)
             {
                 if (!string.IsNullOrWhiteSpace(result.Detail))
@@ -2744,6 +2908,8 @@ public static class LocalGatewaySetupEngineFactory
         var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings);
         var operatorConnector = new OpenClawGatewayOperatorConnector(logger);
         var bootstrapTokenProvider = new WslGatewayCliBootstrapTokenProvider(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
+        var sharedGatewayTokenProvider = new WslGatewayCliSharedGatewayTokenProvider(wsl);
+        var gatewayConfigurationPreparer = new OpenClawCliGatewayConfigurationPreparer(wsl);
         var pendingDeviceApprover = new WslGatewayCliPendingDeviceApprover(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
 #if OPENCLAW_TRAY_TESTS
         IWindowsNodeConnector? windowsNodeConnector = null;
@@ -2760,7 +2926,9 @@ public static class LocalGatewaySetupEngineFactory
             new SettingsBootstrapTokenProvisioner(settingsAdapter, bootstrapTokenProvider),
             new SettingsOperatorPairingService(settingsAdapter, operatorConnector, pendingDeviceApprover),
             new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector, pendingDeviceApprover),
-            logger);
+            logger,
+            gatewayConfigurationPreparer: gatewayConfigurationPreparer,
+            sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settingsAdapter, sharedGatewayTokenProvider, gatewayConfigurationPreparer));
     }
 
     private static string ResolveDistroName(LocalGatewaySetupRuntimeConfiguration runtime, string? explicitDistroName)

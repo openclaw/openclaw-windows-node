@@ -184,10 +184,12 @@ public class LocalGatewaySetupTests
         var wsl = new FakeWslCommandRunner();
         var preparer = new OpenClawCliGatewayConfigurationPreparer(wsl);
 
-        var result = await preparer.PrepareAsync(new LocalGatewaySetupOptions());
+        const string sharedToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        var result = await preparer.PrepareAsync(new LocalGatewaySetupOptions(), sharedToken);
 
         Assert.True(result.Success);
-        Assert.Contains(wsl.Commands, command =>
+        var command = Assert.Single(wsl.Commands, command =>
             command.Count == 8
             && command[7].Contains("config set gateway.mode local", StringComparison.Ordinal)
             && command[7].Contains("config set gateway.port 18789 --strict-json", StringComparison.Ordinal)
@@ -195,6 +197,12 @@ public class LocalGatewaySetupTests
             && command[7].Contains("config set gateway.auth.token", StringComparison.Ordinal)
             && !command[7].Contains("gateway.bind", StringComparison.Ordinal)
             && !command[7].Contains("lan", StringComparison.Ordinal));
+        Assert.Contains(": \"${OPENCLAW_SHARED_GATEWAY_TOKEN:?missing shared gateway token}\"", command[7]);
+        Assert.Contains("printf '%s' \"$OPENCLAW_SHARED_GATEWAY_TOKEN\" >/var/lib/openclaw/gateway-token", command[7]);
+        Assert.DoesNotContain("od -An -N32", command[7]);
+        Assert.DoesNotContain(sharedToken, string.Join(" ", command));
+        var environment = Assert.Single(wsl.Environments);
+        Assert.Equal(sharedToken, environment[SharedGatewayTokenEnvironment.VariableName]);
     }
 
     [Fact]
@@ -228,6 +236,135 @@ public class LocalGatewaySetupTests
         Assert.Equal("minted-token", result.BootstrapToken);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1893456000000), result.ExpiresAtUtc);
         Assert.Contains(runner.Commands, command => command.Count == 3 && command[2].Contains("'/opt/openclaw/bin/openclaw' qr --json --url 'ws://localhost:18789'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SharedGatewayTokenProvider_GeneratesFreshLowercaseHexToken_WhenWslTokenMissing()
+    {
+        var runner = new FakeWslCommandRunner();
+        var provider = new WslGatewayCliSharedGatewayTokenProvider(runner);
+
+        var first = await provider.MintAsync(new LocalGatewaySetupState { DistroName = "OpenClawGateway" });
+        var second = await provider.MintAsync(new LocalGatewaySetupState { DistroName = "OpenClawGateway" });
+
+        Assert.True(first.Success);
+        Assert.True(second.Success);
+        Assert.Equal(SharedGatewayTokenSource.Generated, first.Source);
+        Assert.Matches("^[0-9a-f]{64}$", first.Token!);
+        Assert.Matches("^[0-9a-f]{64}$", second.Token!);
+        Assert.NotEqual(first.Token, second.Token);
+    }
+
+    [Fact]
+    public async Task SharedGatewayTokenProvider_PreservesExistingSafeWslToken()
+    {
+        var existing = new string('a', 64);
+        var runner = new FakeWslCommandRunner
+        {
+            CommandOutputByContains = { ["cat /var/lib/openclaw/gateway-token"] = existing + "\n" }
+        };
+        var provider = new WslGatewayCliSharedGatewayTokenProvider(runner);
+
+        var result = await provider.MintAsync(new LocalGatewaySetupState { DistroName = "OpenClawGateway" });
+
+        Assert.True(result.Success);
+        Assert.Equal(existing, result.Token);
+        Assert.Equal(SharedGatewayTokenSource.PreservedFromWsl, result.Source);
+    }
+
+    [Fact]
+    public async Task SettingsSharedGatewayTokenProvisioner_PersistsTokenOnlyAfterGatewayConfigSucceeds()
+    {
+        var settings = new FakeSetupSettings();
+        var tokenProvider = new FakeSharedGatewayTokenProvider(new string('b', 64));
+        var preparer = new FakeGatewayConfigurationPreparer();
+        var provisioner = new SettingsSharedGatewayTokenProvisioner(settings, tokenProvider, preparer);
+
+        var result = await provisioner.ProvisionAsync(new LocalGatewaySetupState(), new LocalGatewaySetupOptions());
+
+        Assert.True(result.Success);
+        Assert.Equal(tokenProvider.Token, settings.Token);
+        Assert.Equal(1, settings.SaveCount);
+        Assert.Equal(tokenProvider.Token, preparer.LastSharedGatewayToken);
+    }
+
+    [Fact]
+    public async Task SettingsSharedGatewayTokenProvisioner_DoesNotPersistTokenWhenGatewayConfigFails()
+    {
+        var settings = new FakeSetupSettings();
+        var tokenProvider = new FakeSharedGatewayTokenProvider(new string('c', 64));
+        var preparer = new FakeGatewayConfigurationPreparer { Result = new GatewayConfigurationResult(false, "boom", "failed") };
+        var provisioner = new SettingsSharedGatewayTokenProvisioner(settings, tokenProvider, preparer);
+
+        var result = await provisioner.ProvisionAsync(new LocalGatewaySetupState(), new LocalGatewaySetupOptions());
+
+        Assert.False(result.Success);
+        Assert.Equal("", settings.Token);
+        Assert.Equal(0, settings.SaveCount);
+        Assert.Equal(tokenProvider.Token, preparer.LastSharedGatewayToken);
+    }
+
+    [Fact]
+    public async Task SettingsBootstrapTokenProvisioner_IgnoresSharedToken_WhenBootstrapTokenMissing()
+    {
+        var settings = new FakeSetupSettings { Token = "shared" };
+        var provider = new FakeBootstrapTokenProvider("bootstrap");
+        var provisioner = new SettingsBootstrapTokenProvisioner(settings, provider);
+
+        var result = await provisioner.MintAsync(new LocalGatewaySetupState());
+
+        Assert.True(result.Success);
+        Assert.Equal("bootstrap", settings.BootstrapToken);
+        Assert.Equal(1, provider.Calls);
+        Assert.Equal(1, settings.SaveCount);
+    }
+
+    [Fact]
+    public void WslEnvironmentPassthrough_AppendsSharedTokenToExistingWslenvWithoutLoggingValues()
+    {
+        const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        var environment = WslExeCommandRunner.BuildProcessEnvironment(
+            new Dictionary<string, string> { ["WSLENV"] = "EXISTING/u" },
+            new Dictionary<string, string> { [SharedGatewayTokenEnvironment.VariableName] = token });
+
+        Assert.Equal(token, environment[SharedGatewayTokenEnvironment.VariableName]);
+        Assert.Equal("EXISTING/u:OPENCLAW_SHARED_GATEWAY_TOKEN/u", environment["WSLENV"]);
+        Assert.DoesNotContain(token, "[WSL] wsl.exe -d OpenClawGateway -u openclaw -- bash -lc <redacted>");
+    }
+
+    [Fact]
+    public async Task Engine_SharedGatewayProvisioning_ClosesBug6NonBootstrapSetupPath()
+    {
+        using var temp = new TempDirectory();
+        var settings = new FakeSetupSettings();
+        var sharedToken = new string('d', 64);
+        var sharedProvider = new FakeSharedGatewayTokenProvider(sharedToken);
+        var gatewayPreparer = new FakeGatewayConfigurationPreparer();
+        var connector = new RecordingGatewayOperatorConnector();
+        var engine = new LocalGatewaySetupEngine(
+            new LocalGatewaySetupOptions { InstanceInstallLocation = System.IO.Path.Combine(temp.Path, "OpenClawGateway"), EnableWindowsTrayNodeByDefault = false },
+            new LocalGatewaySetupStateStore(System.IO.Path.Combine(temp.Path, "setup-state.json")),
+            new LocalGatewayPreflightProbe(new FakeWslCommandRunner(), new FixedPortProbe(available: true)),
+            new FakeWslCommandRunner(),
+            new SuccessfulHealthProbe(),
+            new SettingsBootstrapTokenProvisioner(settings, new FakeBootstrapTokenProvider("bootstrap")),
+            new SettingsOperatorPairingService(settings, connector),
+            new FakeProvisioner(),
+            wslInstanceInstaller: new WslStoreInstanceInstaller(new FakeWslCommandRunner(), createDirectory: _ => { }),
+            wslInstanceConfigurator: new FakeWslInstanceConfigurator(),
+            openClawLinuxInstaller: new FakeOpenClawLinuxInstaller(),
+            gatewayConfigurationPreparer: gatewayPreparer,
+            gatewayServiceManager: new FakeGatewayServiceManager(),
+            sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settings, sharedProvider, gatewayPreparer));
+
+        var state = await engine.RunLocalOnlyAsync();
+
+        Assert.Equal(LocalGatewaySetupStatus.Complete, state.Status);
+        Assert.Equal(sharedToken, settings.Token);
+        Assert.Equal(sharedToken, connector.LastToken);
+        Assert.False(connector.LastTokenIsBootstrap);
+        Assert.Equal(OpenClawTray.Services.GatewayCredentialResolver.SourceSettingsToken,
+            OpenClawTray.Services.GatewayCredentialResolver.Resolve(settings.Token, settings.BootstrapToken, null)!.Source);
     }
 
     [Fact]
@@ -331,15 +468,18 @@ public class LocalGatewaySetupTests
         public List<WslDistroInfo> Distros { get; set; } = [];
         public List<string> UnregisteredDistros { get; } = [];
         public List<IReadOnlyList<string>> Commands { get; } = [];
+        public List<IReadOnlyDictionary<string, string>> Environments { get; } = [];
         public int WslStatusExitCode { get; set; }
         public string WslStatusOutput { get; set; } = "";
         public string RunInDistroOutput { get; set; } = "";
         public int InstallExitCode { get; set; }
         public Dictionary<string, string> CommandOutputByContains { get; } = new();
 
-        public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default)
+        public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null)
         {
             Commands.Add(arguments);
+            if (environment is not null)
+                Environments.Add(new Dictionary<string, string>(environment));
             if (arguments.SequenceEqual(["--status"]))
                 return Task.FromResult(new WslCommandResult(WslStatusExitCode, WslStatusOutput, ""));
 
@@ -453,7 +593,12 @@ public class LocalGatewaySetupTests
         public bool UseSshTunnel { get; set; } = true;
         public bool EnableNodeMode { get; set; }
         public bool SaveCalled { get; private set; }
-        public void Save() => SaveCalled = true;
+        public int SaveCount { get; private set; }
+        public void Save()
+        {
+            SaveCalled = true;
+            SaveCount++;
+        }
     }
 
     internal sealed class FakeWslInstanceConfigurator : IWslInstanceConfigurator
@@ -468,10 +613,51 @@ public class LocalGatewaySetupTests
             Task.FromResult(new OpenClawLinuxInstallResult(true));
     }
 
+    private sealed class RecordingGatewayOperatorConnector : IGatewayOperatorConnector
+    {
+        public string? LastToken { get; private set; }
+        public bool LastTokenIsBootstrap { get; private set; }
+
+        public Task<GatewayOperatorConnectionResult> ConnectAsync(string gatewayUrl, string token, bool tokenIsBootstrapToken = false, CancellationToken cancellationToken = default)
+        {
+            LastToken = token;
+            LastTokenIsBootstrap = tokenIsBootstrapToken;
+            return Task.FromResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Connected));
+        }
+
+        public Task<GatewayOperatorConnectionResult> ConnectWithStoredDeviceTokenAsync(string gatewayUrl, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Connected));
+    }
+
+    private sealed class FakeBootstrapTokenProvider : IBootstrapTokenProvider
+    {
+        private readonly string _token;
+        public FakeBootstrapTokenProvider(string token) => _token = token;
+        public int Calls { get; private set; }
+        public Task<BootstrapTokenResult> MintAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new BootstrapTokenResult(true, _token));
+        }
+    }
+
+    private sealed class FakeSharedGatewayTokenProvider : ISharedGatewayTokenProvider
+    {
+        public FakeSharedGatewayTokenProvider(string token) => Token = token;
+        public string Token { get; }
+        public Task<SharedGatewayTokenResult> MintAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new SharedGatewayTokenResult(true, Token, SharedGatewayTokenSource.Generated));
+    }
+
     internal sealed class FakeGatewayConfigurationPreparer : IGatewayConfigurationPreparer
     {
-        public Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new GatewayConfigurationResult(true));
+        public GatewayConfigurationResult Result { get; set; } = new(true);
+        public string? LastSharedGatewayToken { get; private set; }
+        public Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, string sharedGatewayToken, CancellationToken cancellationToken = default)
+        {
+            LastSharedGatewayToken = sharedGatewayToken;
+            return Task.FromResult(Result);
+        }
     }
 
     internal sealed class FakeGatewayServiceManager : IGatewayServiceManager
