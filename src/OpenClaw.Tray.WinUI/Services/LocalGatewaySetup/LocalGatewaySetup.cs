@@ -1667,9 +1667,22 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
     public async Task<PendingDeviceApprovalResult> ApproveLatestAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
     {
-        // Authenticate to the loopback gateway using the locally-stored gateway-token (mode 0600,
-        // owned by the openclaw user) and approve the latest pending request. The gateway token
-        // is read inside the shell so it never appears on the wsl.exe argv or in process listings.
+        // Bug 1 residual fix (CLI v2026.5.3-1, commit 2eae30e): the upstream `devices approve`
+        // command guards `--url` overrides via `ensureExplicitGatewayAuth` (src/gateway/call.ts)
+        // and rejects them when explicit credentials are not present in the exact shape it expects,
+        // surfacing "gateway url override requires explicit credentials" and a non-zero exit.
+        //
+        // Drop `--url` entirely. The CLI runs INSIDE the OpenClawGateway distro where
+        // `/home/openclaw/.openclaw/openclaw.json` already pins `gateway.mode=local` and the
+        // loopback port (18789); the CLI's `buildGatewayConnectionDetails` resolves the URL
+        // from that config when no override is supplied, so:
+        //   1. `ensureExplicitGatewayAuth` early-returns (no urlOverride to validate), and
+        //   2. `shouldUseLocalPairingFallback` becomes available — if the WS hop trips for any
+        //      reason the CLI silently falls back to approving via local pairing files
+        //      (`approveDevicePairing`), which is exactly the right thing on a single-machine
+        //      local-loopback gateway.
+        // We still pass `--token` (read from the 0600 gateway-token file inside the shell so
+        // it never appears on `wsl.exe` argv) so the CLI authenticates if the WS path is taken.
         var script = string.Join(" ", new[]
         {
             "set -euo pipefail;",
@@ -1683,8 +1696,6 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
             "approve",
             "--latest",
             "--json",
-            "--url",
-            ShellQuoteScalar(state.GatewayUrl),
             "--token",
             "\"$(cat /var/lib/openclaw/gateway-token)\""
         });
