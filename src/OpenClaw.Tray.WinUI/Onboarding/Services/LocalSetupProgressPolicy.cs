@@ -26,8 +26,18 @@ public static class LocalSetupProgressPolicy
     /// on LocalSetupProgress because SetupWarning is page 0).
     /// </summary>
     public static OnboardingNextButtonState MapStatusToNextButtonState(LocalGatewaySetupState? snapshot, LocalGatewaySetupStatus status)
+        => MapStatusToNextButtonState(snapshot != null, status);
+
+    /// <summary>
+    /// Snapshot-free overload used by the page after Bug 2 (e2e drive 2026-05-04).
+    /// The page now stores an immutable RenderSnapshot record (value equality)
+    /// instead of holding the live <see cref="LocalGatewaySetupState"/> reference,
+    /// so it passes <c>hasSnapshot</c> + <c>status</c> directly. The original
+    /// reference-typed overload is preserved for back-compat with existing tests.
+    /// </summary>
+    public static OnboardingNextButtonState MapStatusToNextButtonState(bool hasSnapshot, LocalGatewaySetupStatus status)
     {
-        if (snapshot == null)
+        if (!hasSnapshot)
             return OnboardingNextButtonState.Hidden;
 
         return status switch

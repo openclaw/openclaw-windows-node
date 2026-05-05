@@ -43,20 +43,50 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
     private static Task<LocalGatewaySetupState>? s_runTask;
     private static bool s_advanceFiredForCompletion;
 
-    private static readonly (string LabelKey, LocalGatewaySetupPhase[] Phases)[] s_visibleStages = new[]
+    /// <summary>
+    /// Immutable snapshot captured per <see cref="LocalGatewaySetupEngine.StateChanged"/>
+    /// invocation. Records have value-equality, so storing a fresh snapshot in
+    /// <c>UseState</c> on every event reliably triggers a re-render — unlike the
+    /// previous code which stored the live <see cref="LocalGatewaySetupState"/>
+    /// reference (the engine mutates the same instance in place; reference-equal
+    /// previous/next values caused <c>UseState</c> to swallow every update past
+    /// the first, leaving the page stuck on stage 1 forever — Bug 2 / e2e drive).
+    /// </summary>
+    private sealed record RenderSnapshot(
+        LocalGatewaySetupPhase Phase,
+        LocalGatewaySetupStatus Status,
+        LocalGatewaySetupPhase LastRunningPhase,
+        string? UserMessage,
+        string? FailureCode);
+
+    private static RenderSnapshot Capture(LocalGatewaySetupState st)
     {
-        ("Onboarding_LocalSetup_Phase_Preflight",      new[] { LocalGatewaySetupPhase.Preflight, LocalGatewaySetupPhase.EnsureWslEnabled }),
-        ("Onboarding_LocalSetup_Phase_CreateInstance", new[] { LocalGatewaySetupPhase.CreateWslInstance }),
-        ("Onboarding_LocalSetup_Phase_Configure",      new[] { LocalGatewaySetupPhase.ConfigureWslInstance }),
-        ("Onboarding_LocalSetup_Phase_InstallCli",     new[] { LocalGatewaySetupPhase.InstallOpenClawCli }),
-        ("Onboarding_LocalSetup_Phase_PrepareConfig",  new[] { LocalGatewaySetupPhase.PrepareGatewayConfig, LocalGatewaySetupPhase.InstallGatewayService }),
-        ("Onboarding_LocalSetup_Phase_StartGateway",   new[] { LocalGatewaySetupPhase.StartGateway, LocalGatewaySetupPhase.WaitForGateway }),
-        ("Onboarding_LocalSetup_Phase_MintToken",      new[] { LocalGatewaySetupPhase.MintBootstrapToken }),
-    };
+        var lastRunning = LocalGatewaySetupPhase.NotStarted;
+        for (int i = st.History.Count - 1; i >= 0; i--)
+        {
+            var rec = st.History[i];
+            if (rec.Phase != LocalGatewaySetupPhase.Failed
+                && rec.Phase != LocalGatewaySetupPhase.Cancelled
+                && rec.Phase != LocalGatewaySetupPhase.NotStarted)
+            {
+                lastRunning = rec.Phase;
+                break;
+            }
+        }
+        // While running, the last-running phase IS the current phase.
+        if (st.Status == LocalGatewaySetupStatus.Running
+            && st.Phase != LocalGatewaySetupPhase.Failed
+            && st.Phase != LocalGatewaySetupPhase.Cancelled
+            && st.Phase != LocalGatewaySetupPhase.NotStarted)
+        {
+            lastRunning = st.Phase;
+        }
+        return new RenderSnapshot(st.Phase, st.Status, lastRunning, st.UserMessage, st.FailureCode);
+    }
 
     public override Element Render()
     {
-        var (snapshot, setSnapshot) = UseState<LocalGatewaySetupState?>(null);
+        var (snapshot, setSnapshot) = UseState<RenderSnapshot?>(null);
         var (retryCount, setRetryCount) = UseState(0);
         var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         var advanceRef = Props; // capture for closure
@@ -69,7 +99,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         {
             if (visualState != null)
             {
-                setSnapshot(visualState);
+                setSnapshot(Capture(visualState));
                 return () => { };
             }
 
@@ -84,18 +114,23 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
                 {
                     var failState = LocalGatewaySetupState.Create(new LocalGatewaySetupOptions());
                     failState.Block("engine_construct_failed", ex.Message, retryable: false, detail: ex.ToString());
-                    setSnapshot(failState);
+                    setSnapshot(Capture(failState));
                     return () => { };
                 }
             }
 
             void Handler(LocalGatewaySetupState st)
             {
+                // Capture an immutable RenderSnapshot OFF the dispatcher so the
+                // values reflect the engine's state at the moment of the event,
+                // not whatever the engine has further mutated to by the time the
+                // dispatcher dequeues us.
+                var snap = Capture(st);
                 dispatcher?.TryEnqueue(() =>
                 {
-                    setSnapshot(st);
+                    setSnapshot(snap);
 
-                    if (st.Status == LocalGatewaySetupStatus.Complete && !s_advanceFiredForCompletion)
+                    if (snap.Status == LocalGatewaySetupStatus.Complete && !s_advanceFiredForCompletion)
                     {
                         s_advanceFiredForCompletion = true;
                         // 1-second pause on success per Mike's decision. Tap-to-skip:
@@ -130,6 +165,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
 
         var phase = snapshot?.Phase ?? LocalGatewaySetupPhase.NotStarted;
         var status = snapshot?.Status ?? LocalGatewaySetupStatus.Pending;
+        var lastRunningPhase = snapshot?.LastRunningPhase ?? LocalGatewaySetupPhase.NotStarted;
         var subtitle = !string.IsNullOrWhiteSpace(snapshot?.UserMessage)
             ? snapshot!.UserMessage!
             : LocalizationHelper.GetString("Onboarding_LocalSetup_SubtitleIdle");
@@ -141,12 +177,14 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         //   FailedRetryable / FailedTerminal    → VisibleDisabled (in-page Try Again or Back-out)
         //   Cancelled                           → VisibleDisabled
         // Back is always enabled by the OnboardingApp default (pageIndex > 0).
-        Props.SetNextButtonState(LocalSetupProgressPolicy.MapStatusToNextButtonState(snapshot, status));
+        Props.SetNextButtonState(LocalSetupProgressPolicy.MapStatusToNextButtonState(snapshot != null, status));
 
-        var stageRows = s_visibleStages.Select(stage => RenderStage(LocalizationHelper.GetString(stage.LabelKey), stage.Phases, phase, status)).ToArray<Element?>();
+        var stageRows = LocalSetupProgressStageMap.VisibleStages
+            .Select(stage => RenderStage(LocalizationHelper.GetString(stage.LabelKey), stage.Phases, phase, status, lastRunningPhase))
+            .ToArray<Element?>();
 
-        var isFailed = status == LocalGatewaySetupStatus.FailedRetryable || status == LocalGatewaySetupStatus.FailedTerminal;
-        var canRetry = status == LocalGatewaySetupStatus.FailedRetryable;
+        var isFailed = LocalSetupProgressStageMap.ShouldShowErrorRow(status);
+        var canRetry = LocalSetupProgressStageMap.ShouldShowRetryButton(status);
 
         Element errorRow;
         if (isFailed)
@@ -221,30 +259,30 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         .Padding(0, 8, 0, 0);
     }
 
-    private static Element RenderStage(string label, LocalGatewaySetupPhase[] stagePhases, LocalGatewaySetupPhase currentPhase, LocalGatewaySetupStatus currentStatus)
+    private static Element RenderStage(string label, LocalGatewaySetupPhase[] stagePhases, LocalGatewaySetupPhase currentPhase, LocalGatewaySetupStatus currentStatus, LocalGatewaySetupPhase lastRunningPhase)
     {
-        var stageState = ComputeStageState(stagePhases, currentPhase, currentStatus);
+        var stageState = LocalSetupProgressStageMap.ComputeStageState(stagePhases, currentPhase, currentStatus, lastRunningPhase);
         string icon;
         Element trailing;
         double opacity;
         switch (stageState)
         {
-            case StageState.Complete:
+            case LocalSetupProgressStageMap.StageState.Complete:
                 icon = "✅";
                 trailing = TextBlock("").Width(20);
                 opacity = 1.0;
                 break;
-            case StageState.Active:
+            case LocalSetupProgressStageMap.StageState.Active:
                 icon = "•";
                 trailing = ProgressRing().Width(18).Height(18);
                 opacity = 1.0;
                 break;
-            case StageState.Failed:
+            case LocalSetupProgressStageMap.StageState.Failed:
                 icon = "❌";
                 trailing = TextBlock("").Width(20);
                 opacity = 1.0;
                 break;
-            case StageState.Pending:
+            case LocalSetupProgressStageMap.StageState.Pending:
             default:
                 icon = "○";
                 trailing = TextBlock("").Width(20);
@@ -257,7 +295,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
             .VAlign(VerticalAlignment.Center)
             .Grid(row: 0, column: 1);
 
-        if (stageState == StageState.Failed)
+        if (stageState == LocalSetupProgressStageMap.StageState.Failed)
             labelBlock = labelBlock.Set(t => t.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.IndianRed));
 
         return Grid(
@@ -277,8 +315,6 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         .Opacity(opacity)
         .Padding(4, 4, 4, 4);
     }
-
-    private enum StageState { Pending, Active, Complete, Failed }
 
     /// <summary>
     /// Visual-test hook: when OPENCLAW_VISUAL_TEST=1 and OPENCLAW_VISUAL_TEST_LOCAL_SETUP is set,
@@ -311,45 +347,17 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
                 state.CompletePhase(LocalGatewaySetupPhase.Complete, LocalizationHelper.GetString("Onboarding_LocalSetup_SubtitleSuccess"));
                 break;
             case "retryable":
+                // Walk the engine partway so RenderSnapshot.LastRunningPhase pins
+                // the failure marker on a stage instead of stage 0.
+                state.StartPhase(LocalGatewaySetupPhase.MintBootstrapToken, "");
                 state.Block("visual_test_retryable", string.IsNullOrWhiteSpace(arg) ? "Setup hit a snag." : arg, retryable: true);
                 break;
             case "terminal":
+                state.StartPhase(LocalGatewaySetupPhase.MintBootstrapToken, "");
                 state.Block("visual_test_terminal", string.IsNullOrWhiteSpace(arg) ? "Setup cannot continue." : arg, retryable: false);
                 break;
         }
         return state;
     }
-
-    private static StageState ComputeStageState(LocalGatewaySetupPhase[] stagePhases, LocalGatewaySetupPhase currentPhase, LocalGatewaySetupStatus currentStatus)
-    {
-        // Failure pins the *current* stage to Failed; later stages remain Pending; earlier stages keep Complete.
-        var stageOrdinals = stagePhases.Select(p => (int)p).ToArray();
-        var currentOrdinal = (int)currentPhase;
-
-        var maxOrdinalInStage = stageOrdinals.Max();
-        var minOrdinalInStage = stageOrdinals.Min();
-
-        if (currentStatus == LocalGatewaySetupStatus.Complete)
-            return StageState.Complete;
-
-        if (currentPhase == LocalGatewaySetupPhase.Failed || currentStatus == LocalGatewaySetupStatus.FailedRetryable || currentStatus == LocalGatewaySetupStatus.FailedTerminal)
-        {
-            // Find the most recent non-terminal phase from snapshot.History? We don't have history here.
-            // Conservative: mark stage failed if the current phase ordinal falls within the stage's range
-            // *or* if no later visible stage has started. Otherwise pending.
-            // Simpler: only the stage matching the LAST visible-or-hidden phase before Failed is Failed.
-            // Without history, treat all stages with maxOrdinalInStage <= last-running-ordinal as Complete,
-            // current as Failed, rest as Pending. Approximate by using Phase==Failed and treating stages
-            // whose ordinals are all <= some threshold as complete based on the user-message phase hint.
-            // Pragmatic fallback: mark first stage with currentOrdinal in range as Failed; stages after as Pending; stages before as Complete.
-            // Since on Failed the engine sets Phase=Failed (highest ordinal) we can't distinguish — so we just mark the LAST visible stage as Failed.
-            return maxOrdinalInStage == s_visibleStages.Last().Phases.Max(p => (int)p) ? StageState.Failed : StageState.Pending;
-        }
-
-        if (currentOrdinal > maxOrdinalInStage)
-            return StageState.Complete;
-        if (currentOrdinal >= minOrdinalInStage && currentOrdinal <= maxOrdinalInStage)
-            return StageState.Active;
-        return StageState.Pending;
-    }
 }
+
