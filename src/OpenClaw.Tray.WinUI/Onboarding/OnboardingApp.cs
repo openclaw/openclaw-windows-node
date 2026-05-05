@@ -66,10 +66,56 @@ public sealed class OnboardingApp : Component<OnboardingState>
             return () => Props.AdvanceRequested -= handler;
         }, pageIndex);
 
+        // Re-render when a page pushes a new nav-bar Next button state
+        // (LocalSetupProgressPage uses this to map engine status → button).
+        var (navBarTick, setNavBarTick) = UseState(0);
+        UseEffect(() =>
+        {
+            EventHandler handler = (_, _) => setNavBarTick(navBarTick + 1);
+            Props.NavBarStateChanged += handler;
+            return () => Props.NavBarStateChanged -= handler;
+        }, navBarTick);
+
         var isLastPage = pageIndex >= pages.Length - 1;
         var currentRoute = pages[pageIndex];
-        // Requirement 8: nav-bar Next disabled on SetupWarning until path chosen.
-        var nextDisabled = currentRoute == OnboardingRoute.SetupWarning && Props.SetupPath == null;
+        // Compute Next button visibility/disabled per page contract.
+        // - SetupWarning: visible, disabled until SetupPath chosen (legacy).
+        // - LocalSetupProgress: defer to Props.NextButtonState (set by the page in
+        //   response to engine state changes; see Phase 5 Next/Back-button policy).
+        // - All other routes: visible, enabled (legacy default).
+        bool nextHidden = false;
+        bool nextDisabled;
+        if (currentRoute == OnboardingRoute.SetupWarning)
+        {
+            nextDisabled = Props.SetupPath == null;
+        }
+        else if (currentRoute == OnboardingRoute.LocalSetupProgress)
+        {
+            switch (Props.NextButtonState)
+            {
+                case OnboardingNextButtonState.Hidden:
+                    nextHidden = true;
+                    nextDisabled = true;
+                    break;
+                case OnboardingNextButtonState.VisibleDisabled:
+                    nextDisabled = true;
+                    break;
+                case OnboardingNextButtonState.VisibleEnabled:
+                    nextDisabled = false;
+                    break;
+                case OnboardingNextButtonState.Default:
+                default:
+                    // Conservative default before the page has pushed a state:
+                    // visible+disabled (treat as Running/Idle equivalent — never
+                    // let the user advance past a not-yet-complete local setup).
+                    nextDisabled = true;
+                    break;
+            }
+        }
+        else
+        {
+            nextDisabled = false;
+        }
 
         // VStack for functional UI content (icon + pages only).
         // The nav bar is rendered natively in OnboardingWindow for reliable bottom pinning.
@@ -113,6 +159,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                     .Set(b =>
                     {
                         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "OnboardingNext");
+                        b.Visibility = nextHidden ? Visibility.Collapsed : Visibility.Visible;
                         b.Resources["ButtonBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                             Microsoft.UI.ColorHelper.FromArgb(255, 211, 47, 47)); // #D32F2F
                         b.Resources["ButtonBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(

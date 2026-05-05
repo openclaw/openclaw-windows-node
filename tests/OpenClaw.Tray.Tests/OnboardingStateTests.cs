@@ -380,4 +380,46 @@ public class OnboardingStateTests
     }
 
     #endregion
+
+    #region NextButtonState (Phase 5 final policy)
+
+    [Fact]
+    public void NextButtonState_DefaultsToDefault()
+    {
+        var state = CreateState();
+        Assert.Equal(OnboardingNextButtonState.Default, state.NextButtonState);
+    }
+
+    [Fact]
+    public void SetNextButtonState_RaisesNavBarStateChanged_WhenValueChanges()
+    {
+        var state = CreateState();
+        var fired = 0;
+        state.NavBarStateChanged += (_, _) => fired++;
+
+        state.SetNextButtonState(OnboardingNextButtonState.Hidden);
+        state.SetNextButtonState(OnboardingNextButtonState.VisibleDisabled);
+        state.SetNextButtonState(OnboardingNextButtonState.VisibleEnabled);
+
+        Assert.Equal(3, fired);
+        Assert.Equal(OnboardingNextButtonState.VisibleEnabled, state.NextButtonState);
+    }
+
+    [Fact]
+    public void SetNextButtonState_DoesNotRaise_WhenValueIsUnchanged()
+    {
+        var state = CreateState();
+        state.SetNextButtonState(OnboardingNextButtonState.VisibleDisabled);
+
+        var fired = 0;
+        state.NavBarStateChanged += (_, _) => fired++;
+
+        state.SetNextButtonState(OnboardingNextButtonState.VisibleDisabled);
+        state.SetNextButtonState(OnboardingNextButtonState.VisibleDisabled);
+
+        Assert.Equal(0, fired);
+        Assert.Equal(OnboardingNextButtonState.VisibleDisabled, state.NextButtonState);
+    }
+
+    #endregion
 }

@@ -48,6 +48,33 @@ public sealed class OnboardingState : IDisposable
     public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
+    /// Per-page nav-bar Next button state override. Pages that want fine-grained
+    /// control over the nav-bar Next button (Hidden / Visible+Disabled /
+    /// Visible+Enabled) push a value here and raise <see cref="NavBarStateChanged"/>;
+    /// <see cref="OnboardingApp"/> consults this for routes that opt in (currently
+    /// only <see cref="OnboardingRoute.LocalSetupProgress"/>) and falls back to its
+    /// legacy logic everywhere else.
+    /// </summary>
+    public OnboardingNextButtonState NextButtonState { get; private set; } = OnboardingNextButtonState.Default;
+
+    /// <summary>
+    /// Raised when <see cref="NextButtonState"/> changes so <see cref="OnboardingApp"/>
+    /// can re-render the nav bar.
+    /// </summary>
+    public event EventHandler? NavBarStateChanged;
+
+    /// <summary>
+    /// Sets <see cref="NextButtonState"/> and raises <see cref="NavBarStateChanged"/>
+    /// if the value actually changed.
+    /// </summary>
+    public void SetNextButtonState(OnboardingNextButtonState state)
+    {
+        if (NextButtonState == state) return;
+        NextButtonState = state;
+        NavBarStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
     /// Whether the onboarding chat page should be shown.
     /// </summary>
     public bool ShowChat { get; set; } = true;
@@ -174,4 +201,23 @@ public enum SetupPath
     Local,
     /// <summary>User chose "Advanced setup" — fall through to the legacy ConnectionPage.</summary>
     Advanced,
+}
+
+/// <summary>
+/// Per-page nav-bar Next button state override (Phase 5 final). Pages set this on
+/// <see cref="OnboardingState.SetNextButtonState"/> to opt out of the default
+/// "always visible+enabled (Disabled only on SetupWarning until path chosen)"
+/// behavior. <see cref="OnboardingApp"/> consults this for routes that opt in
+/// (currently only <see cref="OnboardingRoute.LocalSetupProgress"/>).
+/// </summary>
+public enum OnboardingNextButtonState
+{
+    /// <summary>Use legacy nav-bar logic — visible+enabled unless route-specific defaults apply.</summary>
+    Default,
+    /// <summary>Next button collapsed entirely (e.g., LocalSetupProgress Idle state).</summary>
+    Hidden,
+    /// <summary>Next button visible but disabled (e.g., LocalSetupProgress Running / FailedRetryable / FailedTerminal).</summary>
+    VisibleDisabled,
+    /// <summary>Next button visible and enabled (e.g., LocalSetupProgress Complete during the 1s pre-auto-advance window).</summary>
+    VisibleEnabled,
 }

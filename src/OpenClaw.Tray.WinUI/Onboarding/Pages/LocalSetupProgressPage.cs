@@ -98,9 +98,16 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
                     if (st.Status == LocalGatewaySetupStatus.Complete && !s_advanceFiredForCompletion)
                     {
                         s_advanceFiredForCompletion = true;
-                        // 1-second pause on success per Mike's decision.
+                        // 1-second pause on success per Mike's decision. Tap-to-skip:
+                        // user can tap the (now visible+enabled) Next button to advance
+                        // immediately; gate this timer on still being on LocalSetupProgress
+                        // so an early tap doesn't over-advance a later page.
                         Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(_ =>
-                            dispatcher.TryEnqueue(() => advanceRef.RequestAdvance()),
+                            dispatcher.TryEnqueue(() =>
+                            {
+                                if (advanceRef.CurrentRoute == OnboardingRoute.LocalSetupProgress)
+                                    advanceRef.RequestAdvance();
+                            }),
                             TaskScheduler.Default);
                     }
                 });
@@ -126,6 +133,15 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         var subtitle = !string.IsNullOrWhiteSpace(snapshot?.UserMessage)
             ? snapshot!.UserMessage!
             : LocalizationHelper.GetString("Onboarding_LocalSetup_SubtitleIdle");
+
+        // Push the nav-bar Next button state for this snapshot. Mapping (Phase 5 final policy):
+        //   Idle/Pending (engine not started)   → Hidden
+        //   Running / RequiresAdmin / RequiresRestart / Blocked → VisibleDisabled
+        //   Complete                            → VisibleEnabled (1s before auto-advance; tap to skip)
+        //   FailedRetryable / FailedTerminal    → VisibleDisabled (in-page Try Again or Back-out)
+        //   Cancelled                           → VisibleDisabled
+        // Back is always enabled by the OnboardingApp default (pageIndex > 0).
+        Props.SetNextButtonState(LocalSetupProgressPolicy.MapStatusToNextButtonState(snapshot, status));
 
         var stageRows = s_visibleStages.Select(stage => RenderStage(LocalizationHelper.GetString(stage.LabelKey), stage.Phases, phase, status)).ToArray<Element?>();
 
