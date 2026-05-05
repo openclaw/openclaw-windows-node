@@ -14,15 +14,15 @@
 
         <StackPanel Grid.Row="0" Spacing="4">
             <StackPanel Orientation="Horizontal" Spacing="12">
-                <TextBlock Text="⚙️ Config" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center"/>
+                <TextBlock x:Uid="ConfigPage_TextBlock_17" Text="⚙️ Config" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center"/>
                 <Button x:Name="RefreshButton" Click="OnRefresh" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock Text="Refresh"/>
+                        <TextBlock x:Uid="ConfigPage_TextBlock_21" Text="Refresh"/>
                     </StackPanel>
                 </Button>
             </StackPanel>
-            <TextBlock x:Name="ConfigSubtitle"
+            <TextBlock x:Uid="ConfigSubtitle" x:Name="ConfigSubtitle"
                        Text="Editing gateway configuration (openclaw.json) fetched from the connected gateway"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -31,7 +31,7 @@
         <!-- Tabs: Editor + Raw JSON -->
         <TabView Grid.Row="1" x:Name="ConfigTabs" IsAddTabButtonVisible="False"
                  TabWidthMode="SizeToContent" SelectionChanged="OnConfigTabChanged">
-            <TabViewItem Header="Editor" IsClosable="False">
+            <TabViewItem x:Uid="ConfigPage_TabViewItem_34" Header="Editor" IsClosable="False">
                 <Grid x:Name="SchemaTreeGrid">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="280"/>
@@ -61,7 +61,7 @@
                             <StackPanel Grid.Row="0" Padding="16,12" Spacing="4"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                         BorderThickness="0,0,0,1">
-                                <TextBlock x:Name="DetailPath" Text="Select a config section"
+                                <TextBlock x:Uid="DetailPath" x:Name="DetailPath" Text="Select a config section"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <TextBlock x:Name="DetailType" Text=""
                                            Style="{StaticResource CaptionTextBlockStyle}"
@@ -70,7 +70,7 @@
 
                             <ScrollViewer Grid.Row="1" Padding="16,8">
                                 <StackPanel x:Name="DetailPanel" Spacing="8">
-                                    <TextBlock x:Name="DetailPlaceholder"
+                                    <TextBlock x:Uid="DetailPlaceholder" x:Name="DetailPlaceholder"
                                                Text="Select a section from the tree to edit its settings."
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
@@ -79,7 +79,7 @@
                     </Border>
                 </Grid>
             </TabViewItem>
-            <TabViewItem Header="Raw JSON" IsClosable="False">
+            <TabViewItem x:Uid="ConfigPage_TabViewItem_82" Header="Raw JSON" IsClosable="False">
                 <ScrollViewer Padding="16">
                     <TextBlock x:Name="RawJsonText" FontFamily="Consolas" FontSize="12"
                                IsTextSelectionEnabled="True" TextWrapping="Wrap"
@@ -92,20 +92,20 @@
         <StackPanel x:Name="NoSchemaPanel" Grid.Row="1" Visibility="Collapsed"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
             <TextBlock Text="⚙️" FontSize="48" HorizontalAlignment="Center"/>
-            <TextBlock Text="Schema not available"
+            <TextBlock x:Uid="ConfigPage_TextBlock_95" Text="Schema not available"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock Text="The gateway configuration schema could not be loaded. Use the web dashboard to edit settings."
+            <TextBlock x:Uid="ConfigPage_TextBlock_98" Text="The gateway configuration schema could not be loaded. Use the web dashboard to edit settings."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
-            <Button x:Name="OpenDashboardButton" Content="Open Dashboard" Click="OnOpenDashboard"
+            <Button x:Uid="OpenDashboardButton" x:Name="OpenDashboardButton" Content="Open Dashboard" Click="OnOpenDashboard"
                     HorizontalAlignment="Center" Style="{ThemeResource AccentButtonStyle}"/>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Padding="0,8,0,0">
             <TextBlock x:Name="SaveStatus" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <Button x:Name="SaveButton" Content="Save Changes" Style="{ThemeResource AccentButtonStyle}" Click="OnSave"/>
+            <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save Changes" Style="{ThemeResource AccentButtonStyle}" Click="OnSave"/>
         </StackPanel>
     </Grid>
 </Page>

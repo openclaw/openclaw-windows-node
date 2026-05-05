@@ -9,20 +9,20 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="🖥️ Instances" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center"/>
-                <Button x:Name="RefreshButton" Grid.Column="1" Content="⟳ Refresh" Click="OnRefresh" VerticalAlignment="Center"/>
+                <TextBlock x:Uid="InstancesPage_TextBlock_12" Text="🖥️ Instances" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center"/>
+                <Button x:Uid="RefreshButton" x:Name="RefreshButton" Grid.Column="1" Content="⟳ Refresh" Click="OnRefresh" VerticalAlignment="Center"/>
             </Grid>
 
-            <InfoBar x:Name="ConnectionWarning" IsOpen="True" IsClosable="False"
+            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" IsOpen="True" IsClosable="False"
                      Severity="Warning" Title="Not connected"
                      Message="Connect to a gateway to see instance presence." Visibility="Collapsed"/>
 
             <StackPanel x:Name="EmptyState" Spacing="8" Visibility="Collapsed"
                         HorizontalAlignment="Center" Padding="0,32">
-                <TextBlock Text="🖥️ No other instances detected"
+                <TextBlock x:Uid="InstancesPage_TextBlock_22" Text="🖥️ No other instances detected"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <TextBlock Text="Other OpenClaw nodes connected to the same gateway will appear here."
+                <TextBlock x:Uid="InstancesPage_TextBlock_25" Text="Other OpenClaw nodes connected to the same gateway will appear here."
                            Style="{StaticResource CaptionTextBlockStyle}"
                            HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
             </StackPanel>

@@ -41,12 +41,17 @@ public static class SetupCodeDecoder
 
         try
         {
-            var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return new DecodeResult(false, Error: "Setup code JSON must be an object");
+
             string? url = null;
             string? token = null;
 
             if (doc.RootElement.TryGetProperty("url", out var urlProp))
             {
+                if (urlProp.ValueKind != JsonValueKind.String)
+                    return new DecodeResult(false, Error: "Invalid gateway URL in setup code");
                 var decoded = urlProp.GetString() ?? "";
                 if (!string.IsNullOrEmpty(decoded))
                 {
@@ -58,11 +63,17 @@ public static class SetupCodeDecoder
 
             if (doc.RootElement.TryGetProperty("bootstrapToken", out var tokenProp))
             {
+                if (tokenProp.ValueKind != JsonValueKind.String)
+                    return new DecodeResult(false, Error: "Invalid bootstrap token in setup code");
                 var decoded = tokenProp.GetString() ?? "";
-                if (decoded.Length <= 512)
+                if (decoded.Length > 512)
+                    return new DecodeResult(false, Error: "Bootstrap token exceeds 512 character limit");
+                if (!string.IsNullOrEmpty(decoded))
                     token = decoded;
-                // Token exceeding 512 chars is silently ignored (not set)
             }
+
+            if (url == null && token == null)
+                return new DecodeResult(false, Error: "Setup code must include a gateway URL or bootstrap token");
 
             return new DecodeResult(true, Url: url, Token: token);
         }

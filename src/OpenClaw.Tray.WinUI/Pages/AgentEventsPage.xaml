@@ -15,15 +15,15 @@
         <!-- Title -->
         <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="Agent Events" Style="{StaticResource TitleTextBlockStyle}"/>
+                <TextBlock x:Uid="AgentEventsPage_TextBlock_18" Text="Agent Events" Style="{StaticResource TitleTextBlockStyle}"/>
                 <TextBlock x:Name="CountText" Text="(0)" VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
             <!-- Agent Filter -->
-            <ComboBox x:Name="AgentFilterCombo" Header="Agent" MinWidth="200"
+            <ComboBox x:Uid="AgentFilterCombo" x:Name="AgentFilterCombo" Header="Agent" MinWidth="200"
                       SelectionChanged="OnAgentFilterComboChanged">
-                <ComboBoxItem Content="All Agents" Tag="" IsSelected="True"/>
+                <ComboBoxItem x:Uid="AgentEventsPage_ComboBoxItem_26" Content="All Agents" Tag="" IsSelected="True"/>
             </ComboBox>
         </StackPanel>
 
@@ -31,16 +31,16 @@
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
                       Margin="0,0,0,8">
             <StackPanel Orientation="Horizontal" Spacing="4">
-                <ToggleButton x:Name="FilterAllButton" Content="All" Tag="all" IsChecked="True"
+                <ToggleButton x:Uid="FilterAllButton" x:Name="FilterAllButton" Content="All" Tag="all" IsChecked="True"
                               Click="OnFilterClick"/>
-                <ToggleButton Content="Tool" Tag="tool" Click="OnFilterClick"/>
-                <ToggleButton Content="Assistant" Tag="assistant" Click="OnFilterClick"/>
-                <ToggleButton Content="Error" Tag="error" Click="OnFilterClick"/>
-                <ToggleButton Content="Lifecycle" Tag="lifecycle" Click="OnFilterClick"/>
-                <ToggleButton Content="Plan" Tag="plan" Click="OnFilterClick"/>
-                <ToggleButton Content="Approval" Tag="approval" Click="OnFilterClick"/>
-                <ToggleButton Content="Thinking" Tag="thinking" Click="OnFilterClick"/>
-                <ToggleButton Content="Patch" Tag="patch" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_36" Content="Tool" Tag="tool" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_37" Content="Assistant" Tag="assistant" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_38" Content="Error" Tag="error" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_39" Content="Lifecycle" Tag="lifecycle" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_40" Content="Plan" Tag="plan" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_41" Content="Approval" Tag="approval" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_42" Content="Thinking" Tag="thinking" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_43" Content="Patch" Tag="patch" Click="OnFilterClick"/>
             </StackPanel>
         </ScrollViewer>
 
@@ -93,10 +93,10 @@
         <StackPanel x:Name="EmptyState" Grid.Row="2"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
             <TextBlock Text="🤖" FontSize="48" HorizontalAlignment="Center"/>
-            <TextBlock Text="No agent events yet"
+            <TextBlock x:Uid="AgentEventsPage_TextBlock_96" Text="No agent events yet"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock Text="Real-time agent events (tool calls, responses, errors) will appear here as agents run."
+            <TextBlock x:Uid="AgentEventsPage_TextBlock_99" Text="Real-time agent events (tool calls, responses, errors) will appear here as agents run."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
@@ -107,7 +107,7 @@
             <TextBlock x:Name="StatusText" VerticalAlignment="Center"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <Button x:Name="ClearButton" Content="Clear" Click="OnClear"/>
+            <Button x:Uid="ClearButton" x:Name="ClearButton" Content="Clear" Click="OnClear"/>
         </StackPanel>
     </Grid>
 </Page>

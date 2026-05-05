@@ -7,7 +7,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="About" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="AboutPage_TextBlock_10" Text="About" Style="{StaticResource TitleTextBlockStyle}"/>
 
             <!-- App Info Card -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -16,11 +16,11 @@
                 <StackPanel Orientation="Horizontal" Spacing="16">
                     <TextBlock Text="🦞" FontSize="48" VerticalAlignment="Center"/>
                     <StackPanel Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Text="OpenClaw Hub" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                        <TextBlock x:Name="VersionText" Text="v0.1.0"
+                        <TextBlock x:Uid="AboutPage_TextBlock_19" Text="OpenClaw Hub" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                        <TextBlock x:Uid="VersionText" x:Name="VersionText" Text="v0.1.0"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Text=".NET 10 / WinUI 3 / WinAppSDK 1.8"
+                        <TextBlock x:Uid="AboutPage_TextBlock_23" Text=".NET 10 / WinUI 3 / WinAppSDK 1.8"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
@@ -32,7 +32,7 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Gateway Info" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="AboutPage_TextBlock_35" Text="Gateway Info" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <Grid ColumnSpacing="12" RowSpacing="4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -45,19 +45,19 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Version:"
+                        <TextBlock x:Uid="AboutPage_TextBlock_48" Grid.Row="0" Grid.Column="0" Text="Version:"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Name="GatewayVersionText" Grid.Row="0" Grid.Column="1" Text="—"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Model:"
+                        <TextBlock x:Uid="AboutPage_TextBlock_52" Grid.Row="1" Grid.Column="0" Text="Model:"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Name="GatewayModelText" Grid.Row="1" Grid.Column="1" Text="—"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Auth mode:"
+                        <TextBlock x:Uid="AboutPage_TextBlock_56" Grid.Row="2" Grid.Column="0" Text="Auth mode:"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Name="GatewayAuthText" Grid.Row="2" Grid.Column="1" Text="—"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Uptime:"
+                        <TextBlock x:Uid="AboutPage_TextBlock_60" Grid.Row="3" Grid.Column="0" Text="Uptime:"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Name="GatewayUptimeText" Grid.Row="3" Grid.Column="1" Text="—"/>
                     </Grid>
@@ -69,15 +69,15 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Debug" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="AboutPage_TextBlock_72" Text="Debug" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="OpenLogButton" Content="Open Log File"
+                        <Button x:Uid="OpenLogButton" x:Name="OpenLogButton" Content="Open Log File"
                                 Click="OnOpenLogClick"/>
-                        <Button x:Name="OpenConfigButton" Content="Open Config Folder"
+                        <Button x:Uid="OpenConfigButton" x:Name="OpenConfigButton" Content="Open Config Folder"
                                 Click="OnOpenConfigClick"/>
-                        <Button x:Name="CopySupportButton" Content="Copy Support Context"
+                        <Button x:Uid="CopySupportButton" x:Name="CopySupportButton" Content="Copy Support Context"
                                 Click="OnCopySupportClick"/>
-                        <Button x:Name="CheckUpdatesButton" Content="Check for Updates"
+                        <Button x:Uid="CheckUpdatesButton" x:Name="CheckUpdatesButton" Content="Check for Updates"
                                 Click="OnCheckUpdatesClick"/>
                     </StackPanel>
                 </StackPanel>
@@ -88,12 +88,12 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Links" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <HyperlinkButton Content="Documentation → openclaw.ai/docs"
+                    <TextBlock x:Uid="AboutPage_TextBlock_91" Text="Links" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <HyperlinkButton x:Uid="AboutPage_HyperlinkButton_92" Content="Documentation → openclaw.ai/docs"
                                      Click="OnDocumentationClick"/>
-                    <HyperlinkButton Content="GitHub → github.com/openclaw/openclaw-windows-node"
+                    <HyperlinkButton x:Uid="AboutPage_HyperlinkButton_94" Content="GitHub → github.com/openclaw/openclaw-windows-node"
                                      Click="OnGitHubClick"/>
-                    <HyperlinkButton Content="Dashboard → openclaw://dashboard"
+                    <HyperlinkButton x:Uid="AboutPage_HyperlinkButton_96" Content="Dashboard → openclaw://dashboard"
                                      Click="OnDashboardClick"/>
                 </StackPanel>
             </Border>

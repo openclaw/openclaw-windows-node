@@ -22,15 +22,17 @@ public sealed partial class AboutPage : Page
         TryLoadGatewayInfo();
     }
 
+    public void RefreshGatewayInfo() => TryLoadGatewayInfo();
+
     private void TryLoadGatewayInfo()
     {
-        // Attempt to read gateway info from hub state if available
-        if (_hub?.CurrentStatus == OpenClaw.Shared.ConnectionStatus.Connected)
+        var self = _hub?.LastGatewaySelf;
+        if (_hub?.CurrentStatus == OpenClaw.Shared.ConnectionStatus.Connected && self != null)
         {
-            GatewayVersionText.Text = "unknown";
-            GatewayModelText.Text = "unknown";
-            GatewayAuthText.Text = "unknown";
-            GatewayUptimeText.Text = "unknown";
+            GatewayVersionText.Text = self.VersionText;
+            GatewayModelText.Text = self.Protocol.HasValue ? $"protocol v{self.Protocol}" : "unknown";
+            GatewayAuthText.Text = string.IsNullOrWhiteSpace(self.AuthMode) ? "unknown" : self.AuthMode;
+            GatewayUptimeText.Text = self.UptimeText;
         }
         else
         {
@@ -93,7 +95,7 @@ public sealed partial class AboutPage : Page
 
     private void OnCheckUpdatesClick(object sender, RoutedEventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine("TODO: wire to update check");
+        _hub?.CheckForUpdatesAction?.Invoke();
     }
 
     private void OnDocumentationClick(object sender, RoutedEventArgs e)

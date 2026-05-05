@@ -26,6 +26,7 @@ public sealed partial class HubWindow : WindowEx
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
     public Action<string?>? OpenDashboardAction { get; set; }
+    public Action? CheckForUpdatesAction { get; set; }
     public Action? ConnectAction { get; set; }
     public Action? DisconnectAction { get; set; }
     public Action? ReconnectAction { get; set; }
@@ -70,7 +71,7 @@ public sealed partial class HubWindow : WindowEx
     }
 
     /// <summary>
-    /// Navigate to the default page (Conversations). Call after setting Settings/GatewayClient.
+    /// Navigate to the default page. Call after setting Settings/GatewayClient.
     /// </summary>
     public void NavigateToDefault()
     {
@@ -182,6 +183,8 @@ public sealed partial class HubWindow : WindowEx
             {
                 if (IsClosed) return;
                 UpdateTitleBarStatus(CurrentStatus);
+                if (ContentFrame?.Content is AboutPage about)
+                    about.RefreshGatewayInfo();
             });
         }
         catch { }
@@ -263,27 +266,31 @@ public sealed partial class HubWindow : WindowEx
         catch { }
     }
 
+    public void UpdateCronStatus(System.Text.Json.JsonElement data) => UpdateCronList(data);
+
     public void UpdateConfig(System.Text.Json.JsonElement config)
     {
-        LastConfig = config;
+        var snapshot = config.Clone();
+        LastConfig = snapshot;
         if (IsClosed) return;
         DispatcherQueue?.TryEnqueue(() =>
         {
-            if (ContentFrame?.Content is ConfigPage cp) cp.UpdateConfig(config);
-            else if (ContentFrame?.Content is BindingsPage bp) bp.UpdateConfig(config);
+            if (ContentFrame?.Content is ConfigPage cp) cp.UpdateConfig(snapshot);
+            else if (ContentFrame?.Content is BindingsPage bp) bp.UpdateConfig(snapshot);
         });
     }
 
     public void UpdateConfigSchema(System.Text.Json.JsonElement schema)
     {
-        LastConfigSchema = schema;
+        var snapshot = schema.Clone();
+        LastConfigSchema = snapshot;
         if (IsClosed) return;
         try
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
                 if (IsClosed) return;
-                if (ContentFrame?.Content is ConfigPage cp) cp.UpdateConfigSchema(schema);
+                if (ContentFrame?.Content is ConfigPage cp) cp.UpdateConfigSchema(snapshot);
             });
         }
         catch { }
@@ -342,16 +349,6 @@ public sealed partial class HubWindow : WindowEx
         }
     }
 
-    private static NavigationViewItem CreateAgentSubItem(string agentId, string page, string label, string glyph)
-    {
-        return new NavigationViewItem
-        {
-            Content = label,
-            Tag = $"agent:{agentId}:{page}",
-            Icon = new FontIcon { Glyph = glyph }
-        };
-    }
-
     /// <summary>Extract agent IDs from cached agents data.</summary>
     public List<string> GetAgentIds()
     {
@@ -378,7 +375,6 @@ public sealed partial class HubWindow : WindowEx
             {
                 if (IsClosed) return;
                 if (ContentFrame?.Content is WorkspacePage wp) wp.UpdateAgentFilesList(data);
-                if (ContentFrame?.Content is AgentsContainerPage agents) agents.ForwardUpdateAgentFilesList(data);
             });
         }
         catch { }
@@ -392,7 +388,6 @@ public sealed partial class HubWindow : WindowEx
             {
                 if (IsClosed) return;
                 if (ContentFrame?.Content is WorkspacePage wp) wp.UpdateAgentFileContent(data);
-                if (ContentFrame?.Content is AgentsContainerPage agents) agents.ForwardUpdateAgentFileContent(data);
             });
         }
         catch { }
@@ -419,7 +414,7 @@ public sealed partial class HubWindow : WindowEx
                 _agentEvents.Insert(0, evt);
                 if (_agentEvents.Count > MaxAgentEvents)
                     _agentEvents.RemoveRange(MaxAgentEvents, _agentEvents.Count - MaxAgentEvents);
-                if (ContentFrame?.Content is AgentsContainerPage agents) agents.ForwardAddAgentEvent(evt);
+                if (ContentFrame?.Content is AgentEventsPage agentEvents) agentEvents.AddEvent(evt);
             });
         }
         catch { }
@@ -528,9 +523,16 @@ public sealed partial class HubWindow : WindowEx
             case CronPage cron: cron.Initialize(this); break;
             case SkillsPage skills: skills.Initialize(this); break;
             case ConfigPage config:
-                config.Initialize(this);
-                if (LastConfigSchema.HasValue) config.UpdateConfigSchema(LastConfigSchema.Value);
-                if (LastConfig.HasValue) config.UpdateConfig(LastConfig.Value);
+                try
+                {
+                    config.Initialize(this);
+                    if (LastConfigSchema.HasValue) config.UpdateConfigSchema(LastConfigSchema.Value);
+                    if (LastConfig.HasValue) config.UpdateConfig(LastConfig.Value);
+                }
+                catch (Exception ex)
+                {
+                    OpenClawTray.Services.Logger.Error($"[HubWindow] ConfigPage seed failed: {ex}");
+                }
                 break;
             case InstancesPage instances:
                 instances.Initialize(this);
@@ -564,6 +566,16 @@ public sealed partial class HubWindow : WindowEx
         }
     }
 
+    public void SetActivityFilter(string? filter)
+    {
+        if (IsClosed) return;
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (ContentFrame?.Content is ActivityPage activity)
+                activity.SetFilter(filter);
+        });
+    }
+
     private static Type? TagToPageType(string? tag) => tag switch
     {
         "home" => typeof(HomePage),
@@ -583,6 +595,7 @@ public sealed partial class HubWindow : WindowEx
         "info" => typeof(AboutPage),
         // Legacy tags
         "general" => typeof(HomePage),
+        "conversations" => typeof(ConversationsPage),
         "sessions" => typeof(SessionsPage),
         "agentevents" => typeof(AgentEventsPage),
         "skills" => typeof(SkillsPage),

@@ -14,7 +14,7 @@
 
         <!-- Title -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
-            <TextBlock Text="Activity" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="ActivityPage_TextBlock_17" Text="Activity" Style="{StaticResource TitleTextBlockStyle}"/>
             <TextBlock x:Name="CountText" Text="(0)" VerticalAlignment="Center"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -22,19 +22,19 @@
 
         <!-- Filter bar -->
         <StackPanel x:Name="FilterPanel" Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,16">
-            <ToggleButton x:Name="FilterAllButton" Content="All" Tag="all" IsChecked="True"
+            <ToggleButton x:Uid="FilterAllButton" x:Name="FilterAllButton" Content="All" Tag="all" IsChecked="True"
                           Click="OnFilterClick"
                           AutomationProperties.AutomationId="FilterAllButton"/>
-            <ToggleButton x:Name="FilterSessionsButton" Content="Sessions" Tag="session"
+            <ToggleButton x:Uid="FilterSessionsButton" x:Name="FilterSessionsButton" Content="Sessions" Tag="session"
                           Click="OnFilterClick"
                           AutomationProperties.AutomationId="FilterSessionsButton"/>
-            <ToggleButton x:Name="FilterUsageButton" Content="Usage" Tag="usage"
+            <ToggleButton x:Uid="FilterUsageButton" x:Name="FilterUsageButton" Content="Usage" Tag="usage"
                           Click="OnFilterClick"
                           AutomationProperties.AutomationId="FilterUsageButton"/>
-            <ToggleButton x:Name="FilterNodesButton" Content="Nodes" Tag="node"
+            <ToggleButton x:Uid="FilterNodesButton" x:Name="FilterNodesButton" Content="Nodes" Tag="node"
                           Click="OnFilterClick"
                           AutomationProperties.AutomationId="FilterNodesButton"/>
-            <ToggleButton x:Name="FilterNotificationsButton" Content="Notifications" Tag="notification"
+            <ToggleButton x:Uid="FilterNotificationsButton" x:Name="FilterNotificationsButton" Content="Notifications" Tag="notification"
                           Click="OnFilterClick"
                           AutomationProperties.AutomationId="FilterNotificationsButton"/>
         </StackPanel>
@@ -83,10 +83,10 @@
         <StackPanel x:Name="EmptyState" Grid.Row="2"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
             <TextBlock Text="🧭" FontSize="48" HorizontalAlignment="Center"/>
-            <TextBlock Text="No activity yet"
+            <TextBlock x:Uid="ActivityPage_TextBlock_86" Text="No activity yet"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock Text="Activity from sessions, notifications, and node events will appear here."
+            <TextBlock x:Uid="ActivityPage_TextBlock_89" Text="Activity from sessions, notifications, and node events will appear here."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
@@ -94,7 +94,7 @@
 
         <!-- Footer -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Name="ClearAllButton" Content="Clear All" Click="OnClearAll"
+            <Button x:Uid="ClearAllButton" x:Name="ClearAllButton" Content="Clear All" Click="OnClearAll"
                     AutomationProperties.AutomationId="ClearAllButton"/>
         </StackPanel>
     </Grid>

@@ -73,7 +73,7 @@ public sealed class OnboardingApp : Component<OnboardingState>
                 OnboardingRoute.Wizard => Component<WizardPage, OnboardingState>(Props),
                 OnboardingRoute.Permissions => Component<PermissionsPage, OnboardingState>(Props),
                 OnboardingRoute.Chat => Component<ChatPage, OnboardingState>(Props),
-                _ => TextBlock("Unknown page"),
+                _ => TextBlock(Helpers.LocalizationHelper.GetString("Onboarding_UnknownPage")),
             }) with { Transition = NavigationTransition.SlideInOnly(
                 direction: SlideDirection.FromRight,
                 duration: TimeSpan.FromMilliseconds(400),

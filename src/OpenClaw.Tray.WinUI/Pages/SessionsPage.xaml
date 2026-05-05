@@ -7,9 +7,9 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="💬 Sessions" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="SessionsPage_TextBlock_10" Text="💬 Sessions" Style="{StaticResource TitleTextBlockStyle}"/>
 
-            <InfoBar x:Name="ConnectionWarning" Title="Not Connected"
+            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" Title="Not Connected"
                      Message="Connect to gateway to see live data"
                      Severity="Warning" IsOpen="True" IsClosable="False" Visibility="Collapsed"/>
 
@@ -54,11 +54,11 @@
 
                                 <!-- Action buttons -->
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Reset" Tag="{Binding Key}" Click="OnResetSession"
+                                    <Button x:Uid="SessionsPage_Button_57" Content="Reset" Tag="{Binding Key}" Click="OnResetSession"
                                             Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
-                                    <Button Content="Compact" Tag="{Binding Key}" Click="OnCompactSession"
+                                    <Button x:Uid="SessionsPage_Button_59" Content="Compact" Tag="{Binding Key}" Click="OnCompactSession"
                                             Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
-                                    <Button Content="Delete" Tag="{Binding Key}" Click="OnDeleteSession"
+                                    <Button x:Uid="SessionsPage_Button_61" Content="Delete" Tag="{Binding Key}" Click="OnDeleteSession"
                                             Foreground="IndianRed" Padding="8,4"/>
                                 </StackPanel>
                             </StackPanel>
@@ -70,18 +70,18 @@
             <!-- Empty state -->
             <StackPanel x:Name="EmptyState" Spacing="8" HorizontalAlignment="Center" Margin="0,32,0,0">
                 <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="No active sessions"
+                <TextBlock x:Uid="SessionsPage_TextBlock_73" Text="No active sessions"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
 
             <!-- Refresh -->
-            <Button x:Name="RefreshButton" Content="Refresh" HorizontalAlignment="Center"
+            <Button x:Uid="RefreshButton" x:Name="RefreshButton" Content="Refresh" HorizontalAlignment="Center"
                     Click="OnRefresh" Margin="0,8,0,0"/>
 
             <!-- Available Models -->
             <StackPanel x:Name="ModelsSection" Spacing="8" Visibility="Collapsed">
-                <TextBlock Text="🤖 Available Models" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,16,0,0"/>
+                <TextBlock x:Uid="SessionsPage_TextBlock_84" Text="🤖 Available Models" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,16,0,0"/>
                 <StackPanel x:Name="ModelsList" Spacing="4"/>
             </StackPanel>
 

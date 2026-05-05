@@ -36,6 +36,10 @@ public class SettingsData
     public bool NodeBrowserProxyEnabled { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;
     public string TtsProvider { get; set; } = "windows";
+    /// <summary>
+    /// ElevenLabs API key storage slot. When persisted by the Windows tray's
+    /// SettingsManager this is an opaque dpapi:-prefixed blob, not plaintext.
+    /// </summary>
     public string? TtsElevenLabsApiKey { get; set; }
     public string? TtsElevenLabsModel { get; set; }
     public string? TtsElevenLabsVoiceId { get; set; }

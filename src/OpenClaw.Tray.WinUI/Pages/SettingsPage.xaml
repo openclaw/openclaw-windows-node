@@ -13,8 +13,8 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,24,24,12">
             <StackPanel Spacing="12" HorizontalAlignment="Stretch">
 
-                <TextBlock Text="⚙️ Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
-                <TextBlock Text="Local app preferences for this computer."
+                <TextBlock x:Uid="SettingsPage_TextBlock_16" Text="⚙️ Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
+                <TextBlock x:Uid="SettingsPage_TextBlock_17" Text="Local app preferences for this computer."
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
 
@@ -23,12 +23,12 @@
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                           AutomationProperties.AutomationId="StartupExpander">
                     <Expander.Header>
-                        <TextBlock Text="Startup" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="SettingsPage_TextBlock_26" Text="Startup" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Padding="4">
-                        <ToggleSwitch x:Name="AutoStartToggle" Header="Start automatically with Windows"
+                        <ToggleSwitch x:Uid="AutoStartToggle" x:Name="AutoStartToggle" Header="Start automatically with Windows"
                                       AutomationProperties.AutomationId="SettingsPageAutoStart"/>
-                        <ToggleSwitch x:Name="GlobalHotkeyToggle" Header="Global hotkey (Ctrl+Alt+Shift+C → Quick Send)"
+                        <ToggleSwitch x:Uid="GlobalHotkeyToggle" x:Name="GlobalHotkeyToggle" Header="Global hotkey (Ctrl+Alt+Shift+C → Quick Send)"
                                       AutomationProperties.AutomationId="SettingsPageHotkey"/>
                     </StackPanel>
                 </Expander>
@@ -38,38 +38,38 @@
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                           AutomationProperties.AutomationId="NotificationsExpander">
                     <Expander.Header>
-                        <TextBlock Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="SettingsPage_TextBlock_41" Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Padding="4">
-                        <ToggleSwitch x:Name="NotificationsToggle" Header="Show notifications"
+                        <ToggleSwitch x:Uid="NotificationsToggle" x:Name="NotificationsToggle" Header="Show notifications"
                                       AutomationProperties.AutomationId="SettingsPageNotifications"/>
-                        <ComboBox x:Name="NotificationSoundComboBox" Header="Sound" Width="200"
+                        <ComboBox x:Uid="NotificationSoundComboBox" x:Name="NotificationSoundComboBox" Header="Sound" Width="200"
                                   AutomationProperties.AutomationId="SettingsPageSound">
-                            <ComboBoxItem Content="Default" Tag="Default"/>
-                            <ComboBoxItem Content="None" Tag="None"/>
-                            <ComboBoxItem Content="Subtle" Tag="Subtle"/>
+                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
+                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
+                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_50" Content="Subtle" Tag="Subtle"/>
                         </ComboBox>
-                        <TextBlock Text="Show notifications for:"
+                        <TextBlock x:Uid="SettingsPage_TextBlock_52" Text="Show notifications for:"
                                    Style="{StaticResource BodyTextBlockStyle}" Margin="0,4,0,0"/>
                         <StackPanel Spacing="4">
-                            <CheckBox x:Name="NotifyHealthCb" Content="Health alerts"
+                            <CheckBox x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb" Content="Health alerts"
                                       AutomationProperties.AutomationId="SettingsPageNotifyHealth"/>
-                            <CheckBox x:Name="NotifyUrgentCb" Content="Urgent messages"
+                            <CheckBox x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb" Content="Urgent messages"
                                       AutomationProperties.AutomationId="SettingsPageNotifyUrgent"/>
-                            <CheckBox x:Name="NotifyReminderCb" Content="Reminders"
+                            <CheckBox x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb" Content="Reminders"
                                       AutomationProperties.AutomationId="SettingsPageNotifyReminder"/>
-                            <CheckBox x:Name="NotifyEmailCb" Content="Email summaries"
+                            <CheckBox x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb" Content="Email summaries"
                                       AutomationProperties.AutomationId="SettingsPageNotifyEmail"/>
-                            <CheckBox x:Name="NotifyCalendarCb" Content="Calendar events"
+                            <CheckBox x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb" Content="Calendar events"
                                       AutomationProperties.AutomationId="SettingsPageNotifyCalendar"/>
-                            <CheckBox x:Name="NotifyBuildCb" Content="Build notifications"
+                            <CheckBox x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb" Content="Build notifications"
                                       AutomationProperties.AutomationId="SettingsPageNotifyBuild"/>
-                            <CheckBox x:Name="NotifyStockCb" Content="Stock alerts"
+                            <CheckBox x:Uid="NotifyStockCb" x:Name="NotifyStockCb" Content="Stock alerts"
                                       AutomationProperties.AutomationId="SettingsPageNotifyStock"/>
-                            <CheckBox x:Name="NotifyInfoCb" Content="Info messages"
+                            <CheckBox x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb" Content="Info messages"
                                       AutomationProperties.AutomationId="SettingsPageNotifyInfo"/>
                         </StackPanel>
-                        <Button x:Name="TestNotificationButton" Content="Send Test Notification" Click="OnTestNotification"/>
+                        <Button x:Uid="TestNotificationButton" x:Name="TestNotificationButton" Content="Send Test Notification" Click="OnTestNotification"/>
                     </StackPanel>
                 </Expander>
 
@@ -82,9 +82,9 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0" Padding="24,16">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                <Button x:Name="CancelButton" Content="Cancel" Width="80" Click="OnCancel"
+                <Button x:Uid="CancelButton" x:Name="CancelButton" Content="Cancel" Width="80" Click="OnCancel"
                         AutomationProperties.AutomationId="SettingsPageCancel"/>
-                <Button x:Name="SaveButton" Content="Save" Width="80" Click="OnSave"
+                <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save" Width="80" Click="OnSave"
                         Style="{ThemeResource AccentButtonStyle}"
                         AutomationProperties.AutomationId="SettingsPageSave"/>
             </StackPanel>

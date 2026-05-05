@@ -66,34 +66,6 @@ public sealed class ConnectionPage : Component<OnboardingState>
         return DefaultLocalUrl;
     }
 
-    /// <summary>
-    /// Probes common local gateway ports and returns the first reachable URL.
-    /// Checks the default port (18789) first, then the dev port (19001).
-    /// Uses a very short timeout for responsiveness.
-    /// </summary>
-    private static async Task<string> DetectLocalGatewayUrlAsync()
-    {
-        foreach (var candidate in new[] { DefaultLocalUrl, DevLocalUrl })
-        {
-            try
-            {
-                var uri = new Uri(candidate.Replace("ws://", "http://"));
-                using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
-                var response = await client.GetAsync($"{uri.GetLeftPart(UriPartial.Authority)}/health");
-                if (response.IsSuccessStatusCode)
-                {
-                    Logger.Info($"[Connection] Detected local gateway at {candidate}");
-                    return candidate;
-                }
-            }
-            catch
-            {
-                // Port not reachable, try next
-            }
-        }
-        return DefaultLocalUrl; // Fallback to default
-    }
-
     private static string GetVisualTestPairingDeviceId() =>
         Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_PAIRING") == "1"
             ? VisualTestPairingDeviceId
@@ -798,31 +770,5 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 .MaxWidth(460)
                 .Padding(0, 12, 0, 12)
         );
-    }
-
-    /// <summary>
-    /// Lightweight logger that captures the first and last error/warning for UI display.
-    /// Preserves the first error so reconnect noise doesn't overwrite the real cause.
-    /// </summary>
-    private sealed class ConnectionTestLogger : IOpenClawLogger
-    {
-        /// <summary>The first error captured — preserves the original cause.</summary>
-        public string? FirstError { get; private set; }
-        public string? LastError { get; private set; }
-        public string? LastWarn { get; private set; }
-
-        public void Info(string message) { }
-        public void Debug(string message) { }
-        public void Warn(string message)
-        {
-            LastWarn = message;
-            FirstError ??= message;
-            LastError ??= message;
-        }
-        public void Error(string message, Exception? ex = null)
-        {
-            FirstError ??= message;
-            LastError = message;
-        }
     }
 }

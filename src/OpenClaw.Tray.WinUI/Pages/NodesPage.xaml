@@ -7,9 +7,9 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="🖥️ Nodes" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="NodesPage_TextBlock_10" Text="🖥️ Nodes" Style="{StaticResource TitleTextBlockStyle}"/>
 
-            <InfoBar x:Name="ConnectionWarning" Title="Not Connected"
+            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" Title="Not Connected"
                      Message="Connect to gateway to see live data"
                      Severity="Warning" IsOpen="True" IsClosable="False" Visibility="Collapsed"/>
 
@@ -19,26 +19,26 @@
             <!-- Empty state -->
             <StackPanel x:Name="EmptyState" Spacing="8" HorizontalAlignment="Center" Margin="0,32,0,0">
                 <TextBlock Text="🖥️" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="No nodes connected"
+                <TextBlock x:Uid="NodesPage_TextBlock_22" Text="No nodes connected"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
 
             <!-- Pairing Requests -->
             <StackPanel x:Name="PairingSection" Spacing="8" Visibility="Collapsed">
-                <TextBlock Text="🔗 Pending Pairing Requests" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0"/>
+                <TextBlock x:Uid="NodesPage_TextBlock_29" Text="🔗 Pending Pairing Requests" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0"/>
                 <StackPanel x:Name="PairingList" Spacing="4"/>
             </StackPanel>
 
             <!-- Device Pairing Requests -->
             <StackPanel x:Name="DevicePairingSection" Spacing="8" Visibility="Collapsed">
-                <TextBlock Text="📱 Pending Device Pairing" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0"/>
+                <TextBlock x:Uid="NodesPage_TextBlock_35" Text="📱 Pending Device Pairing" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0"/>
                 <StackPanel x:Name="DevicePairingList" Spacing="4"/>
             </StackPanel>
 
             <!-- Connected Clients (presence data) -->
             <StackPanel x:Name="PresenceSection" Spacing="8" Visibility="Collapsed">
-                <TextBlock Text="🌐 Connected Clients" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,16,0,0"/>
+                <TextBlock x:Uid="NodesPage_TextBlock_41" Text="🌐 Connected Clients" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,16,0,0"/>
                 <StackPanel x:Name="PresenceList" Spacing="4"/>
             </StackPanel>
 

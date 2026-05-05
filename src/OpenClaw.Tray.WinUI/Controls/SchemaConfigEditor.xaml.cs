@@ -49,10 +49,37 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     public Dictionary<string, object?> GetChanges() => new(_changes);
 
+    /// <summary>
+    /// JSON Schema's "type" keyword may be either a string ("object") or an
+    /// array of strings (["string","null"]). Returns the first non-null type
+    /// when an array is encountered, or null if "type" is missing/unsupported.
+    /// </summary>
+    private static string? ExtractSchemaType(JsonElement schemaNode)
+    {
+        if (!schemaNode.TryGetProperty("type", out var typeEl)) return null;
+        if (typeEl.ValueKind == JsonValueKind.String) return typeEl.GetString();
+        if (typeEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in typeEl.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String) continue;
+                var s = item.GetString();
+                if (!string.IsNullOrEmpty(s) && s != "null") return s;
+            }
+        }
+        return null;
+    }
+
+    private static string? SafeGetString(JsonElement parent, string propName)
+    {
+        if (!parent.TryGetProperty(propName, out var el)) return null;
+        return el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+    }
+
     private void RenderSchemaNode(string path, JsonElement schema, JsonElement config,
         StackPanel parent, int depth)
     {
-        if (schema.TryGetProperty("type", out var typeEl) && typeEl.GetString() == "object"
+        if (ExtractSchemaType(schema) == "object"
             && schema.TryGetProperty("properties", out var props))
         {
             foreach (var prop in props.EnumerateObject())
@@ -64,7 +91,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                     : default;
                 var childSchema = prop.Value;
 
-                var childType = childSchema.TryGetProperty("type", out var ct) ? ct.GetString() : null;
+                var childType = ExtractSchemaType(childSchema);
 
                 if (childType == "object" && childSchema.TryGetProperty("properties", out _))
                 {
@@ -82,7 +109,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         JsonElement config, StackPanel parent, int depth)
     {
         var title = GetLabel(path, name);
-        var description = schema.TryGetProperty("description", out var d) ? d.GetString() : null;
+        var description = SafeGetString(schema, "description");
 
         var expander = new Expander
         {
@@ -121,8 +148,8 @@ public sealed partial class SchemaConfigEditor : UserControl
         JsonElement config, StackPanel parent)
     {
         var label = GetLabel(path, name);
-        var description = schema.TryGetProperty("description", out var d) ? d.GetString() : null;
-        var type = schema.TryGetProperty("type", out var t) ? t.GetString() : "string";
+        var description = SafeGetString(schema, "description");
+        var type = ExtractSchemaType(schema) ?? "string";
         var isSensitive = IsSensitive(path);
 
         // Resolve default value if config is missing

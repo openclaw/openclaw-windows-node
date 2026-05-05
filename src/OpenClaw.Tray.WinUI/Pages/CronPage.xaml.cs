@@ -77,14 +77,6 @@ public sealed partial class CronPage : Page
         EmptyState.Visibility = Visibility.Collapsed;
     }
 
-    private void OnSchedulerToggled(object sender, RoutedEventArgs e)
-    {
-        var isOn = SchedulerToggle.IsOn;
-        SchedulerStatusText.Text = isOn ? "Enabled" : "Disabled";
-        SchedulerStatusIndicator.Fill = new SolidColorBrush(isOn ? Colors.LimeGreen : Colors.Gray);
-        System.Diagnostics.Debug.WriteLine($"TODO: wire to cron.setEnabled({isOn})");
-    }
-
     private void OnRunNowClick(object sender, RoutedEventArgs e)
     {
         var jobId = (sender as Button)?.Tag as string;
@@ -100,11 +92,6 @@ public sealed partial class CronPage : Page
         {
             DispatcherQueue?.TryEnqueue(() => _hub.GatewayClient.RequestCronListAsync());
         });
-    }
-
-    private void OnAddJobClick(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Debug.WriteLine("TODO: wire to cron.add — coming soon");
     }
 
     public void UpdateFromGateway(JsonElement data)

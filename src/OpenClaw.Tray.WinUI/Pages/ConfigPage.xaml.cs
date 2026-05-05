@@ -34,6 +34,7 @@ public sealed partial class ConfigPage : Page
     public void Initialize(HubWindow hub)
     {
         _hub = hub;
+        OpenClawTray.Services.Logger.Info("[ConfigPage] Initialize");
         if (hub.GatewayClient != null)
         {
             _ = hub.GatewayClient.RequestConfigSchemaAsync();
@@ -43,49 +44,68 @@ public sealed partial class ConfigPage : Page
 
     public void UpdateConfig(JsonElement config)
     {
+        var configSnapshot = config.Clone();
         DispatcherQueue?.TryEnqueue(() =>
         {
-            _lastConfig = config;
+            try
+            {
+                OpenClawTray.Services.Logger.Info("[ConfigPage] UpdateConfig received");
+                _lastConfig = configSnapshot;
 
-            // Get baseHash from the config.get response
-            // The gateway returns a 'hash' field which is SHA256 of the raw file content
-            if (config.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
-            {
-                _baseHash = bh.GetString();
-            }
-            else if (config.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
-            {
-                _baseHash = hashEl.GetString();
-            }
-            else if (config.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
-            {
-                // Fallback: compute from raw content
-                var rawContent = rawEl.GetString();
-                if (rawContent != null)
+                // Get baseHash from the config.get response
+                // The gateway returns a 'hash' field which is SHA256 of the raw file content
+                if (configSnapshot.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
                 {
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
-                    var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-                    _baseHash = Convert.ToHexStringLower(hash);
+                    _baseHash = bh.GetString();
                 }
+                else if (configSnapshot.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
+                {
+                    _baseHash = hashEl.GetString();
+                }
+                else if (configSnapshot.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
+                {
+                    // Fallback: compute from raw content
+                    var rawContent = rawEl.GetString();
+                    if (rawContent != null)
+                    {
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
+                        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+                        _baseHash = Convert.ToHexStringLower(hash);
+                    }
+                }
+
+                // Show file path in subtitle if available
+                if (configSnapshot.TryGetProperty("path", out var pathEl))
+                    ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-driven form";
+
+                RenderTree();
+                UpdateRawJson();
             }
-
-            // Show file path in subtitle if available
-            if (config.TryGetProperty("path", out var pathEl))
-                ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-driven form";
-
-            RenderTree();
-            UpdateRawJson();
+            catch (Exception ex)
+            {
+                OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config: {ex}");
+                ShowConfigRenderError();
+            }
         });
     }
 
     public void UpdateConfigSchema(JsonElement schema)
     {
+        var schemaSnapshot = schema.Clone();
         DispatcherQueue?.TryEnqueue(() =>
         {
-            _lastSchema = schema;
-            // Re-render tree if config is already loaded
-            if (_lastConfig.HasValue)
-                RenderTree();
+            try
+            {
+                _lastSchema = schemaSnapshot;
+                // Re-render tree if config is already loaded
+                if (_lastConfig.HasValue)
+                    RenderTree();
+            }
+            catch (Exception ex)
+            {
+                OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
+                ShowConfigRenderError();
+            }
         });
     }
 
@@ -102,9 +122,7 @@ public sealed partial class ConfigPage : Page
 
             var schema = _lastSchema.Value;
             var schemaRoot = schema.TryGetProperty("schema", out var sr) ? sr : schema;
-            var configRoot = _lastConfig.HasValue
-                ? (_lastConfig.Value.TryGetProperty("config", out var cr) ? cr : _lastConfig.Value)
-                : (JsonElement?)null;
+            var configRoot = _lastConfig.HasValue ? ExtractConfigRoot(_lastConfig.Value) : (JsonElement?)null;
 
             BuildSchemaTreeNodes(ConfigTree.RootNodes, schemaRoot, configRoot, "");
             ExpandAll(ConfigTree.RootNodes);
@@ -122,6 +140,44 @@ public sealed partial class ConfigPage : Page
         }
     }
 
+    private static JsonElement ExtractConfigRoot(JsonElement configResponse)
+    {
+        if (configResponse.TryGetProperty("parsed", out var parsed))
+            return parsed;
+        if (configResponse.TryGetProperty("config", out var config))
+            return config;
+        return configResponse;
+    }
+
+    /// <summary>
+    /// JSON Schema's "type" keyword may be either a string ("object") or an
+    /// array of strings (["string","null"]). Returns the first non-null type
+    /// when an array is encountered, or null if "type" is missing/unsupported.
+    /// </summary>
+    private static string? ExtractSchemaType(JsonElement schemaNode)
+    {
+        if (!schemaNode.TryGetProperty("type", out var typeEl)) return null;
+        if (typeEl.ValueKind == JsonValueKind.String) return typeEl.GetString();
+        if (typeEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in typeEl.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String) continue;
+                var s = item.GetString();
+                if (!string.IsNullOrEmpty(s) && s != "null") return s;
+            }
+        }
+        return null;
+    }
+
+    private void ShowConfigRenderError()
+    {
+        SchemaTreeGrid.Visibility = Visibility.Collapsed;
+        NoSchemaPanel.Visibility = Visibility.Visible;
+        SaveButton.IsEnabled = false;
+        SaveStatus.Text = "Config unavailable";
+    }
+
     private void BuildSchemaTreeNodes(IList<TreeViewNode> parent, JsonElement schema, JsonElement? config, string basePath)
     {
         if (!schema.TryGetProperty("properties", out var properties) ||
@@ -132,10 +188,11 @@ public sealed partial class ConfigPage : Page
             var path = string.IsNullOrEmpty(basePath) ? prop.Name : $"{basePath}.{prop.Name}";
             var node = new TreeViewNode();
 
-            var desc = prop.Value.TryGetProperty("description", out var descEl) ? descEl.GetString() : null;
+            var desc = prop.Value.TryGetProperty("description", out var descEl) && descEl.ValueKind == JsonValueKind.String
+                ? descEl.GetString() : null;
             var label = string.IsNullOrEmpty(desc) ? prop.Name : $"{prop.Name} — {desc}";
 
-            var propType = prop.Value.TryGetProperty("type", out var typeEl) ? typeEl.GetString() : null;
+            var propType = ExtractSchemaType(prop.Value);
             var configValue = config.HasValue && config.Value.TryGetProperty(prop.Name, out var cv) ? (JsonElement?)cv : null;
 
             if (propType == "object" || (prop.Value.TryGetProperty("properties", out _)))
@@ -287,6 +344,13 @@ public sealed partial class ConfigPage : Page
 
     private void UpdateRawJson()
     {
+        // RawJsonText lives inside the second TabViewItem, whose content WinUI
+        // does not realize until the tab is first selected. Until then the
+        // x:Name field is null and touching .Text would NRE on the dispatcher
+        // queue — silently tearing down the app. OnConfigTabChanged calls us
+        // again once the tab is realized, so deferring here is safe.
+        if (RawJsonText is null) return;
+
         if (_lastConfig.HasValue)
         {
             try
@@ -393,7 +457,8 @@ public sealed partial class ConfigPage : Page
         }
 
         // Show description from schema if available
-        if (nodeSchema.HasValue && nodeSchema.Value.TryGetProperty("description", out var desc))
+        if (nodeSchema.HasValue && nodeSchema.Value.TryGetProperty("description", out var desc)
+            && desc.ValueKind == JsonValueKind.String)
         {
             DetailType.Text = desc.GetString() ?? "";
         }

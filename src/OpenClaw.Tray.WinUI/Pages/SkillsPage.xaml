@@ -7,16 +7,16 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="🧩 Skills" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="SkillsPage_TextBlock_10" Text="🧩 Skills" Style="{StaticResource TitleTextBlockStyle}"/>
 
             <!-- Agent Filter -->
-            <ComboBox x:Name="AgentFilterCombo" Header="Agent" MinWidth="200"
+            <ComboBox x:Uid="AgentFilterCombo" x:Name="AgentFilterCombo" Header="Agent" MinWidth="200"
                       SelectionChanged="OnAgentFilterChanged">
-                <ComboBoxItem Content="All Agents" Tag="" IsSelected="True"/>
+                <ComboBoxItem x:Uid="SkillsPage_ComboBoxItem_15" Content="All Agents" Tag="" IsSelected="True"/>
             </ComboBox>
 
             <!-- Not-wired InfoBar -->
-            <InfoBar x:Name="NotWiredInfoBar"
+            <InfoBar x:Uid="NotWiredInfoBar" x:Name="NotWiredInfoBar"
                      IsOpen="True" IsClosable="False"
                      Severity="Warning"
                      Title="Skills API not yet wired"
@@ -78,14 +78,14 @@
                         VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
                         Margin="0,32,0,0">
                 <TextBlock Text="🧩" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="No skills installed"
+                <TextBlock x:Uid="SkillsPage_TextBlock_81" Text="No skills installed"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
 
             <!-- Marketplace Link -->
-            <HyperlinkButton x:Name="MarketplaceLink" Content="Browse Skills Marketplace →"
-                             Click="OnMarketplaceClick"/>
+            <HyperlinkButton x:Uid="MarketplaceLink" x:Name="MarketplaceLink" Content="Browse Skills Marketplace →"
+                             Visibility="Collapsed"/>
 
         </StackPanel>
     </ScrollViewer>

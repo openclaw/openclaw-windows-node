@@ -241,7 +241,7 @@ In Settings, show read-only detected topology near gateway URL/tunnel settings: 
 
 ### 4.5 Future Mission Control pages
 
-Keep StatusDetailWindow as the first Command Center, but plan for tabs/sections:
+Keep `HubWindow` as the Command Center host, with pages/sections for:
 
 1. Overview
 2. Gateway topology
@@ -341,8 +341,8 @@ Files:
 - `src/OpenClaw.Shared/SettingsData.cs` if optional declared kind is persisted
 - `src/OpenClaw.Tray.WinUI/App.xaml.cs`
 - `src/OpenClaw.Tray.WinUI/Services/SshTunnelService.cs`
-- `src/OpenClaw.Tray.WinUI/Windows/StatusDetailWindow.xaml`
-- `src/OpenClaw.Tray.WinUI/Windows/StatusDetailWindow.xaml.cs`
+- `src/OpenClaw.Tray.WinUI/Windows/HubWindow.xaml`
+- `src/OpenClaw.Tray.WinUI/Windows/HubWindow.xaml.cs`
 - `tests/OpenClaw.Shared.Tests/ModelsTests.cs`
 - `tests/OpenClaw.Tray.Tests/SettingsRoundTripTests.cs` if settings change
 

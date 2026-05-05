@@ -35,7 +35,7 @@
 
                     <!-- Status text -->
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                        <TextBlock x:Name="StatusHeadline" Text="Not connected to gateway"
+                        <TextBlock x:Uid="StatusHeadline" x:Name="StatusHeadline" Text="Not connected to gateway"
                                    Style="{StaticResource SubtitleTextBlockStyle}"
                                    TextWrapping="Wrap"/>
                         <TextBlock x:Name="StatusSubtext" Text=""
@@ -59,7 +59,7 @@
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                    HorizontalAlignment="Right"/>
-                        <HyperlinkButton x:Name="ScanButton" Content="Scan for gateways"
+                        <HyperlinkButton x:Uid="ScanButton" x:Name="ScanButton" Content="Scan for gateways"
                                          Padding="0" FontSize="12"
                                          HorizontalAlignment="Right"
                                          AutomationProperties.AutomationId="ScanButton"/>
@@ -71,11 +71,11 @@
             <StackPanel Orientation="Horizontal" Spacing="8"
                         HorizontalAlignment="Left"
                         AutomationProperties.AutomationId="QuickActionsCard">
-                <Button x:Name="DashboardButton" Content="Open Dashboard"
+                <Button x:Uid="DashboardButton" x:Name="DashboardButton" Content="Open Dashboard"
                         AutomationProperties.AutomationId="DashboardButton"/>
-                <Button x:Name="ChatButton" Content="Open Chat"
+                <Button x:Uid="ChatButton" x:Name="ChatButton" Content="Open Chat"
                         AutomationProperties.AutomationId="ChatButton"/>
-                <Button x:Name="HealthCheckButton" Content="Health Check"
+                <Button x:Uid="HealthCheckButton" x:Name="HealthCheckButton" Content="Health Check"
                         AutomationProperties.AutomationId="HealthCheckButton"/>
             </StackPanel>
 

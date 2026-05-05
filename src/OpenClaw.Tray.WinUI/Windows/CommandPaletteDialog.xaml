@@ -9,7 +9,7 @@
     Opened="OnOpened">
 
     <StackPanel Width="500" Spacing="8">
-        <AutoSuggestBox x:Name="SearchBox"
+        <AutoSuggestBox x:Uid="SearchBox" x:Name="SearchBox"
                         PlaceholderText="Type a command..."
                         QueryIcon="Find"
                         TextChanged="OnSearchTextChanged"

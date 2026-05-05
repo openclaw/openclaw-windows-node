@@ -159,13 +159,14 @@ public sealed class GatewayDiscoveryService : IDisposable
         return results;
     }
 
-    private static DiscoveredGateway? ParseHost(IZeroconfHost host)
+    internal static DiscoveredGateway? ParseHost(IZeroconfHost host)
     {
         // Use resolved SRV record for routing (not TXT hints)
         var service = host.Services.Values.FirstOrDefault();
         if (service == null) return null;
 
-        var resolvedHost = !string.IsNullOrEmpty(host.DisplayName) ? host.DisplayName : host.IPAddress;
+        var resolvedHost = !string.IsNullOrWhiteSpace(host.IPAddress) ? host.IPAddress : host.DisplayName;
+        if (string.IsNullOrWhiteSpace(resolvedHost)) return null;
         var resolvedPort = service.Port;
 
         // Parse TXT records for display metadata only

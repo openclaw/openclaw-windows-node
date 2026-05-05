@@ -1,17 +1,17 @@
 # Test Coverage Summary
 
-**914 tests total** (652 shared + 262 tray) — all passing ✅
+**1570 tests total** (1182 shared + 388 tray) — all passing ✅
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 914 |
-| Passing | 914 (100%) |
+| Total Tests | 1570 |
+| Passing | 1570 (100%) |
 | Failing | 0 |
 | Framework | xUnit 2.9.3 / .NET 10.0 |
 
 ## Test Projects
 
-### OpenClaw.Shared.Tests — 652 tests
+### OpenClaw.Shared.Tests — 1182 tests
 
 #### ModelsTests
 - **AgentActivityTests** (~15) — glyph mapping for all ActivityKind values, display text formatting
@@ -71,7 +71,7 @@
 
 ---
 
-### OpenClaw.Tray.Tests — 262 tests
+### OpenClaw.Tray.Tests — 388 tests
 
 #### Core Tray Tests
 
@@ -83,14 +83,14 @@
 #### Onboarding Tests
 
 - **OnboardingStateTests** (19) — Page order, mode logic, route changes, wizard state persistence, completion, disposal
-- **WizardStepPropsTests** (4) — Enum values, record defaults, callback verification
 - **GatewayChatHelperTests** (11) — URL scheme conversion, token encoding, localhost checks, session keys
 - **LocalGatewayApproverTests** (13) — IsLocalGateway for localhost/remote/edge cases
 - **SetupCodeDecoderTests** (14) — Base64url decode, size limits, JSON validation, URL/token extraction
 - **GatewayHealthCheckTests** (6) — Health URI building, scheme conversion, port preservation
 - **SecurityValidationTests** (16) — Locale whitelist, port range, path traversal, URI scheme validation
 - **WizardStepParsingTests** (12) — JSON step parsing, options, completion, sensitive fields
-- **LocalizationValidationTests** (6) — 5-locale key parity, onboarding key presence, no duplicates
+- **GatewayDiscoveryServiceTests** — mDNS host selection and connection URL regression coverage
+- **LocalizationValidationTests** — locale key parity, onboarding key presence, duplicate detection, and all-or-none translation consistency
 
 ---
 
@@ -124,6 +124,6 @@ dotnet test --logger "console;verbosity=detailed"
 
 ---
 
-**Last Updated**: 2026-04-26
+**Last Updated**: 2026-05-04
 **Framework**: xUnit 2.9.3 / .NET 10.0
-**Status**: ✅ 914 tests passing
+**Status**: ✅ 1570 tests passing

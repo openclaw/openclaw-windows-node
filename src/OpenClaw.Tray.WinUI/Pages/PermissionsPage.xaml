@@ -5,27 +5,27 @@
     <ScrollViewer Padding="24">
         <StackPanel Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="🔐 Permissions" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
+            <TextBlock x:Uid="PermissionsPage_TextBlock_8" Text="🔐 Permissions" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
 
             <!-- Exec Policy -->
             <Expander x:Name="ExecPolicyExpander" IsExpanded="True"
                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <Expander.Header>
-                    <TextBlock Text="Exec Policy" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_14" Text="Exec Policy" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                 </Expander.Header>
                 <StackPanel Spacing="12" Padding="4">
-                    <TextBlock Text="Controls which commands the agent can execute on this node. Rules are matched against the full command line."
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_17" Text="Controls which commands the agent can execute on this node. Rules are matched against the full command line."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
 
-                    <ComboBox x:Name="DefaultActionCombo" Header="Default Action" Width="200"
+                    <ComboBox x:Uid="DefaultActionCombo" x:Name="DefaultActionCombo" Header="Default Action" Width="200"
                               SelectionChanged="OnDefaultActionChanged">
-                        <ComboBoxItem Content="Deny" Tag="deny"/>
-                        <ComboBoxItem Content="Allow" Tag="allow"/>
-                        <ComboBoxItem Content="Ask" Tag="ask"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_23" Content="Deny" Tag="deny"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_24" Content="Allow" Tag="allow"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="ask"/>
                     </ComboBox>
 
-                    <TextBlock Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0"/>
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0"/>
 
                     <ListView x:Name="PolicyRulesList" SelectionMode="None" MaxHeight="300">
                         <ListView.ItemTemplate>
@@ -49,15 +49,15 @@
                     </ListView>
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBox x:Name="NewRulePattern" PlaceholderText="Command pattern (e.g. echo *)" Width="250"/>
+                        <TextBox x:Uid="NewRulePattern" x:Name="NewRulePattern" PlaceholderText="Command pattern (e.g. echo *)" Width="250"/>
                         <ComboBox x:Name="NewRuleAction" Width="100" SelectedIndex="0">
-                            <ComboBoxItem Content="allow"/>
-                            <ComboBoxItem Content="deny"/>
+                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="allow"/>
+                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="deny"/>
                         </ComboBox>
-                        <Button Content="Add Rule" Click="OnAddRule"/>
+                        <Button x:Uid="PermissionsPage_Button_57" Content="Add Rule" Click="OnAddRule"/>
                     </StackPanel>
 
-                    <Button x:Name="SaveExecPolicyButton" Content="Save Exec Policy" Click="OnSaveExecPolicy"
+                    <Button x:Uid="SaveExecPolicyButton" x:Name="SaveExecPolicyButton" Content="Save Exec Policy" Click="OnSaveExecPolicy"
                             Style="{ThemeResource AccentButtonStyle}"/>
                 </StackPanel>
             </Expander>
@@ -66,14 +66,14 @@
             <Expander x:Name="AllowlistExpander" IsExpanded="True"
                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <Expander.Header>
-                    <TextBlock Text="Node Allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_69" Text="Node Allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                 </Expander.Header>
                 <StackPanel Spacing="12" Padding="4">
-                    <TextBlock Text="Commands allowed by the gateway for connected nodes. This list is read-only — edit via the Config page."
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_72" Text="Commands allowed by the gateway for connected nodes. This list is read-only — edit via the Config page."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
 
-                    <TextBlock x:Name="AllowlistEmpty" Text="No allowlist data available. Connect to a gateway first."
+                    <TextBlock x:Uid="AllowlistEmpty" x:Name="AllowlistEmpty" Text="No allowlist data available. Connect to a gateway first."
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                Style="{StaticResource CaptionTextBlockStyle}"/>
 
@@ -89,10 +89,10 @@
             <Expander x:Name="PermissionsExpander" IsExpanded="True"
                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <Expander.Header>
-                    <TextBlock Text="System Permissions" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_92" Text="System Permissions" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                 </Expander.Header>
                 <StackPanel Spacing="12" Padding="4">
-                    <TextBlock Text="System permissions for camera, microphone, and screen capture. These are managed by Windows Privacy settings."
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_95" Text="System permissions for camera, microphone, and screen capture. These are managed by Windows Privacy settings."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
 
@@ -107,20 +107,20 @@
                             <RowDefinition/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="📷 Camera" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="CameraPermStatus" Text="Unknown"
+                        <TextBlock x:Uid="PermissionsPage_TextBlock_110" Grid.Row="0" Grid.Column="0" Text="📷 Camera" VerticalAlignment="Center"/>
+                        <TextBlock x:Uid="CameraPermStatus" Grid.Row="0" Grid.Column="1" x:Name="CameraPermStatus" Text="Unknown"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="🎤 Microphone" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="MicPermStatus" Text="Unknown"
+                        <TextBlock x:Uid="PermissionsPage_TextBlock_114" Grid.Row="1" Grid.Column="0" Text="🎤 Microphone" VerticalAlignment="Center"/>
+                        <TextBlock x:Uid="MicPermStatus" Grid.Row="1" Grid.Column="1" x:Name="MicPermStatus" Text="Unknown"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="🖥️ Screen Capture" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ScreenPermStatus" Text="Available"
+                        <TextBlock x:Uid="PermissionsPage_TextBlock_118" Grid.Row="2" Grid.Column="0" Text="🖥️ Screen Capture" VerticalAlignment="Center"/>
+                        <TextBlock x:Uid="ScreenPermStatus" Grid.Row="2" Grid.Column="1" x:Name="ScreenPermStatus" Text="Available"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Grid>
 
-                    <Button Content="Open Windows Privacy Settings" Click="OnOpenPrivacySettings"/>
+                    <Button x:Uid="PermissionsPage_Button_123" Content="Open Windows Privacy Settings" Click="OnOpenPrivacySettings"/>
                 </StackPanel>
             </Expander>
 

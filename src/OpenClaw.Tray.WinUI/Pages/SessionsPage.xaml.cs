@@ -38,6 +38,7 @@ public sealed partial class SessionsPage : Page
             else
                 SessionListView.ItemsSource = null;
             _ = hub.GatewayClient.RequestSessionsAsync();
+            _ = hub.GatewayClient.RequestModelsListAsync();
         }
         else
         {

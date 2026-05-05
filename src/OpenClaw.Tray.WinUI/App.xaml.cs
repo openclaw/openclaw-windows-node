@@ -1526,6 +1526,7 @@ public partial class App : Application
         _gatewayClient.SessionCommandCompleted += OnSessionCommandCompleted;
         _gatewayClient.GatewaySelfUpdated += OnGatewaySelfUpdated;
         _gatewayClient.CronListUpdated += OnCronListUpdated;
+        _gatewayClient.CronStatusUpdated += OnCronStatusUpdated;
         _gatewayClient.ConfigUpdated += OnConfigUpdated;
         _gatewayClient.ConfigSchemaUpdated += OnConfigSchemaUpdated;
         _gatewayClient.SkillsStatusUpdated += OnSkillsStatusUpdated;
@@ -1558,6 +1559,7 @@ public partial class App : Application
             _gatewayClient.SessionCommandCompleted -= OnSessionCommandCompleted;
             _gatewayClient.GatewaySelfUpdated -= OnGatewaySelfUpdated;
             _gatewayClient.CronListUpdated -= OnCronListUpdated;
+            _gatewayClient.CronStatusUpdated -= OnCronStatusUpdated;
             _gatewayClient.ConfigUpdated -= OnConfigUpdated;
             _gatewayClient.ConfigSchemaUpdated -= OnConfigSchemaUpdated;
             _gatewayClient.SkillsStatusUpdated -= OnSkillsStatusUpdated;
@@ -2209,6 +2211,11 @@ public partial class App : Application
         _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronList(data));
     }
 
+    private void OnCronStatusUpdated(object? sender, System.Text.Json.JsonElement data)
+    {
+        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronStatus(data));
+    }
+
     private void OnSkillsStatusUpdated(object? sender, System.Text.Json.JsonElement data)
     {
         _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateSkillsStatus(data));
@@ -2487,6 +2494,7 @@ public partial class App : Application
             _hubWindow.GatewayClient = _gatewayClient;
             _hubWindow.CurrentStatus = _currentStatus;
             _hubWindow.OpenDashboardAction = OpenDashboard;
+            _hubWindow.CheckForUpdatesAction = () => _ = CheckForUpdatesUserInitiatedAsync();
             _hubWindow.QuickSendAction = () => ShowQuickSend();
             _hubWindow.ConnectAction = () =>
             {
@@ -3233,12 +3241,13 @@ public partial class App : Application
 
     private void ShowNotificationHistory()
     {
-        ShowHub("activity");
+        ShowActivityStream("notification");
     }
 
     private void ShowActivityStream(string? filter = null)
     {
         ShowHub("activity");
+        _hubWindow?.SetActivityFilter(filter);
     }
 
     private OnboardingWindow? _onboardingWindow;

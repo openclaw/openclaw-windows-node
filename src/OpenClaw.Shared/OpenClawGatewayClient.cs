@@ -160,7 +160,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
-    public event EventHandler<JsonElement>? CronRunsUpdated;
     public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -432,11 +431,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
         await SendTrackedRequestAsync("cron.status");
     }
 
-    public async Task RequestCronRunsAsync(string jobId, int limit = 200)
-    {
-        await SendTrackedRequestAsync("cron.runs", new { jobId, limit });
-    }
-
     public Task<bool> RunCronJobAsync(string jobId, bool force = true)
     {
         return TrySendTrackedRequestAsync("cron.run", new { jobId, force });
@@ -445,16 +439,6 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public Task<bool> RemoveCronJobAsync(string jobId)
     {
         return TrySendTrackedRequestAsync("cron.remove", new { id = jobId });
-    }
-
-    public Task<bool> UpdateCronJobAsync(string jobId, object updates)
-    {
-        return TrySendTrackedRequestAsync("cron.update", new { id = jobId, updates });
-    }
-
-    public Task<bool> AddCronJobAsync(string name, string schedule, string command)
-    {
-        return TrySendTrackedRequestAsync("cron.add", new { name, schedule, command });
     }
 
     // Skills/plugin management
@@ -1067,13 +1051,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
             case "cron.status":
                 CronStatusUpdated?.Invoke(this, payload.Clone());
                 return true;
-            case "cron.runs":
-                CronRunsUpdated?.Invoke(this, payload.Clone());
-                return true;
             case "cron.run":
             case "cron.remove":
-            case "cron.update":
-            case "cron.add":
                 return true;
             case "skills.status":
                 SkillsStatusUpdated?.Invoke(this, payload.Clone());

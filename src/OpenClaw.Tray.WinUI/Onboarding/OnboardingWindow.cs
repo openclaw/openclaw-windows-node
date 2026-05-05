@@ -425,7 +425,7 @@ public sealed class OnboardingWindow : WindowEx
         {
             _chatRetryButton = new Button
             {
-                Content = "Retry",
+                Content = LocalizationHelper.GetString("Onboarding_Retry"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 40, 0, 0)

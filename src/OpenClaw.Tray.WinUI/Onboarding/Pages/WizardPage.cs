@@ -47,9 +47,9 @@ public sealed class WizardPage : Component<OnboardingState>
             // Guard against default/undefined JsonElement
             if (payload.ValueKind == JsonValueKind.Undefined || payload.ValueKind == JsonValueKind.Null)
             {
-                setErrorMsg("Empty response from gateway");
+                setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyGatewayResponse"));
                 setWizardState("error");
-                SaveState("error", "Empty response from gateway");
+                SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyGatewayResponse"));
                 return;
             }
 
@@ -261,9 +261,9 @@ public sealed class WizardPage : Component<OnboardingState>
 
             if (!client.IsConnectedToGateway)
             {
-                setErrorMsg("Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.");
+                setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnectedDetail"));
                 setWizardState("error");
-                SaveState("error", "Gateway disconnected");
+                SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnected"));
                 return;
             }
 
@@ -299,9 +299,9 @@ public sealed class WizardPage : Component<OnboardingState>
                 // Validate response before applying
                 if (response.ValueKind == JsonValueKind.Undefined || response.ValueKind == JsonValueKind.Null)
                 {
-                    setErrorMsg("Gateway returned empty response for wizard.next");
+                    setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyNextResponse"));
                     setWizardState("error");
-                    SaveState("error", "Empty wizard.next response");
+                    SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyNextResponse"));
                 }
                 else
                 {
@@ -333,9 +333,9 @@ public sealed class WizardPage : Component<OnboardingState>
 
             if (!client.IsConnectedToGateway)
             {
-                setErrorMsg("Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.");
+                setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnectedDetail"));
                 setWizardState("error");
-                SaveState("error", "Gateway disconnected");
+                SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnected"));
                 return;
             }
 
@@ -464,21 +464,21 @@ public sealed class WizardPage : Component<OnboardingState>
                     }
                     else
                     {
-                        inputArea = TextBlock("No options available").FontSize(12).Opacity(0.5);
+                        inputArea = TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_NoOptionsAvailable")).FontSize(12).Opacity(0.5);
                         showButtons = false; // Don't allow submit with no valid selection
                     }
                 }
                 else if (stepType == "confirm")
                 {
-                    buttonLabel1 = "Yes";
-                    buttonLabel2 = "No / Skip";
+                    buttonLabel1 = LocalizationHelper.GetString("Onboarding_Wizard_Yes");
+                    buttonLabel2 = LocalizationHelper.GetString("Onboarding_Wizard_NoSkip");
                 }
                 else if (stepType == "progress")
                 {
                     // Show spinner while gateway polls for auth completion
                     inputArea = HStack(8,
                         ProgressRing().Width(24).Height(24),
-                        TextBlock("Waiting...").FontSize(13).Opacity(0.7)
+                        TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_Waiting")).FontSize(13).Opacity(0.7)
                             .VAlign(VerticalAlignment.Center)
                     );
                     showButtons = false; // Gateway auto-advances on completion
@@ -488,23 +488,23 @@ public sealed class WizardPage : Component<OnboardingState>
 
             case "complete":
                 displayTitle = $"✅ {LocalizationHelper.GetString("Onboarding_Wizard_Complete")}";
-                displayMessage = "Click Next to continue.";
+                displayMessage = LocalizationHelper.GetString("Onboarding_Wizard_ClickNextToContinue");
                 break;
 
             case "error":
-                displayTitle = "❌ Wizard error";
+                displayTitle = $"❌ {LocalizationHelper.GetString("Onboarding_Wizard_ErrorTitle")}";
                 displayMessage = errorMsg;
                 showButtons = true;
-                buttonLabel1 = "Retry";
-                buttonLabel2 = "Skip Wizard";
+                buttonLabel1 = LocalizationHelper.GetString("Onboarding_Retry");
+                buttonLabel2 = LocalizationHelper.GetString("Onboarding_Wizard_SkipWizard");
                 break;
 
             case "loading":
                 displayTitle = $"🔄 {LocalizationHelper.GetString("Onboarding_Connection_StatusAuthenticating")}";
-                displayMessage = "Connecting to gateway...";
+                displayMessage = LocalizationHelper.GetString("Onboarding_Wizard_ConnectingToGateway");
                 inputArea = HStack(8,
                     ProgressRing().Width(24).Height(24),
-                    TextBlock("Please wait while the connection is established...")
+                    TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_ConnectionWaitDetail"))
                         .FontSize(13).Opacity(0.7)
                         .VAlign(VerticalAlignment.Center)
                 );
@@ -512,7 +512,7 @@ public sealed class WizardPage : Component<OnboardingState>
 
             default:
                 displayTitle = $"🔌  {LocalizationHelper.GetString("Onboarding_Wizard_Offline")}";
-                displayMessage = $"{LocalizationHelper.GetString("Onboarding_Wizard_OfflineMessage")}\n\nClick Next to continue.";
+                displayMessage = $"{LocalizationHelper.GetString("Onboarding_Wizard_OfflineMessage")}\n\n{LocalizationHelper.GetString("Onboarding_Wizard_ClickNextToContinue")}";
                 break;
         }
 

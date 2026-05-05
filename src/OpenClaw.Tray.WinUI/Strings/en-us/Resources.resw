@@ -1414,4 +1414,928 @@ On your gateway host (Mac/Linux), run:
     <value>You can configure the gateway later in Settings.</value>
   </data>
 
+  <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
+    <value>OpenClaw Hub</value>
+  </data>
+  <data name="VersionText.Text" xml:space="preserve">
+    <value>v0.1.0</value>
+  </data>
+  <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
+    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+  </data>
+  <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
+    <value>Gateway Info</value>
+  </data>
+  <data name="AboutPage_TextBlock_48.Text" xml:space="preserve">
+    <value>Version:</value>
+  </data>
+  <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
+    <value>Model:</value>
+  </data>
+  <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
+    <value>Auth mode:</value>
+  </data>
+  <data name="AboutPage_TextBlock_60.Text" xml:space="preserve">
+    <value>Uptime:</value>
+  </data>
+  <data name="AboutPage_TextBlock_72.Text" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="OpenLogButton.Content" xml:space="preserve">
+    <value>Open Log File</value>
+  </data>
+  <data name="OpenConfigButton.Content" xml:space="preserve">
+    <value>Open Config Folder</value>
+  </data>
+  <data name="CopySupportButton.Content" xml:space="preserve">
+    <value>Copy Support Context</value>
+  </data>
+  <data name="CheckUpdatesButton.Content" xml:space="preserve">
+    <value>Check for Updates</value>
+  </data>
+  <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
+    <value>Links</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
+    <value>Documentation → openclaw.ai/docs</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
+    <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_96.Content" xml:space="preserve">
+    <value>Dashboard → openclaw://dashboard</value>
+  </data>
+  <data name="ActivityPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Activity</value>
+  </data>
+  <data name="FilterAllButton.Content" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="FilterSessionsButton.Content" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="FilterUsageButton.Content" xml:space="preserve">
+    <value>Usage</value>
+  </data>
+  <data name="FilterNodesButton.Content" xml:space="preserve">
+    <value>Nodes</value>
+  </data>
+  <data name="FilterNotificationsButton.Content" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="ActivityPage_TextBlock_86.Text" xml:space="preserve">
+    <value>No activity yet</value>
+  </data>
+  <data name="ActivityPage_TextBlock_89.Text" xml:space="preserve">
+    <value>Activity from sessions, notifications, and node events will appear here.</value>
+  </data>
+  <data name="ClearAllButton.Content" xml:space="preserve">
+    <value>Clear All</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
+    <value>Agent Events</value>
+  </data>
+  <data name="AgentFilterCombo.Header" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
+    <value>All Agents</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+    <value>Tool</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+    <value>Assistant</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+    <value>Lifecycle</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+    <value>Plan</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+    <value>Approval</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+    <value>Thinking</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+    <value>Patch</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
+    <value>No agent events yet</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
+    <value>Real-time agent events (tool calls, responses, errors) will appear here as agents run.</value>
+  </data>
+  <data name="ClearButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+<data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>🔀 Bindings</value>
+  </data>
+  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Message routing rules</value>
+  </data>
+  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🖥️ This Computer</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_15.Text" xml:space="preserve">
+    <value>Device capabilities provided to agents via the gateway. Toggle what this computer can do.</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_33.Text" xml:space="preserve">
+    <value>Local MCP Server</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_34.Text" xml:space="preserve">
+    <value>Expose capabilities via HTTP for CLI tools and local integrations.</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_44.Text" xml:space="preserve">
+    <value>Endpoint:</value>
+  </data>
+  <data name="CopyMcpTokenButton.Content" xml:space="preserve">
+    <value>Copy Token</value>
+  </data>
+  <data name="CopyMcpUrlButton.Content" xml:space="preserve">
+    <value>Copy URL</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_66.Text" xml:space="preserve">
+    <value>Node Status</value>
+  </data>
+  <data name="NodeStatusText.Text" xml:space="preserve">
+    <value>Node mode disabled</value>
+  </data>
+  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>📡 Channels</value>
+  </data>
+  <data name="ConnectionWarning.Title" xml:space="preserve">
+    <value>Not Connected</value>
+  </data>
+  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
+    <value>No channels configured</value>
+  </data>
+  <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
+    <value>Connect to gateway to start chatting</value>
+  </data>
+  <data name="ChatPage_TextBlock_56.Text" xml:space="preserve">
+    <value>WebView2 chat will load here once a gateway connection is established.</value>
+  </data>
+  <data name="ChatPage_TextBlock_65.Text" xml:space="preserve">
+    <value>Web Chat Unavailable</value>
+  </data>
+  <data name="ChatPage_Button_69.Content" xml:space="preserve">
+    <value>Open in Browser Instead</value>
+  </data>
+  <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
+    <value>⚙️ Config</value>
+  </data>
+  <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ConfigPage_TabViewItem_34.Header" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="DetailPath.Text" xml:space="preserve">
+    <value>Select a config section</value>
+  </data>
+  <data name="ConfigPage_TabViewItem_82.Header" xml:space="preserve">
+    <value>Raw JSON</value>
+  </data>
+  <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
+    <value>Schema not available</value>
+  </data>
+  <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
+    <value>The gateway configuration schema could not be loaded. Use the web dashboard to edit settings.</value>
+  </data>
+  <data name="OpenDashboardButton.Content" xml:space="preserve">
+    <value>Open Dashboard</value>
+  </data>
+  <data name="SaveButton.Content" xml:space="preserve">
+    <value>Save Changes</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🔗 Connection</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
+    <value>Gateway endpoint used by both the operator client and node service.</value>
+  </data>
+  <data name="AuthErrorBar.Title" xml:space="preserve">
+    <value>Connection Error</value>
+  </data>
+  <data name="StatusText.Text" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="ReconnectButton.Content" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="OperatorStatusText.Text" xml:space="preserve">
+    <value>Operator: —</value>
+  </data>
+  <data name="ConnectToggle.Header" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_76.Text" xml:space="preserve">
+    <value>📡 Available Gateways</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_84.Text" xml:space="preserve">
+    <value>Scan</value>
+  </data>
+  <data name="TokenPromptText.Text" xml:space="preserve">
+    <value>This gateway requires a token to connect.</value>
+  </data>
+  <data name="ConnectionPage_Button_105.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="TokenPromptConnectBtn.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_111.Text" xml:space="preserve">
+    <value>Run &apos;openclaw qr&apos; on the gateway host for a setup code, or find the token in the gateway&apos;s config.</value>
+  </data>
+  <data name="GatewayEmptyText.Text" xml:space="preserve">
+    <value>No gateways found. Click Scan to search.</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_128.Text" xml:space="preserve">
+    <value>🔑 Setup Code</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_129.Text" xml:space="preserve">
+    <value>Paste a setup code from openclaw qr</value>
+  </data>
+  <data name="ApplySetupCodeButton.Content" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_152.Text" xml:space="preserve">
+    <value>Advanced Connection Settings</value>
+  </data>
+  <data name="GatewayUrlTextBox.Header" xml:space="preserve">
+    <value>Gateway URL</value>
+  </data>
+  <data name="TokenTextBox.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="TestButton.Content" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="SshToggle.Header" xml:space="preserve">
+    <value>SSH Tunnel</value>
+  </data>
+  <data name="SshUserBox.Header" xml:space="preserve">
+    <value>SSH User</value>
+  </data>
+  <data name="SshUserBox.PlaceholderText" xml:space="preserve">
+    <value>user</value>
+  </data>
+  <data name="SshHostBox.Header" xml:space="preserve">
+    <value>SSH Host</value>
+  </data>
+  <data name="SshHostBox.PlaceholderText" xml:space="preserve">
+    <value>machine-name</value>
+  </data>
+  <data name="SshRemotePortBox.Header" xml:space="preserve">
+    <value>Remote Port</value>
+  </data>
+  <data name="SshLocalPortBox.Header" xml:space="preserve">
+    <value>Local Port</value>
+  </data>
+  <data name="ConnectionPage_Button_190.Content" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_200.Text" xml:space="preserve">
+    <value>🪪 This Device</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_207.Text" xml:space="preserve">
+    <value>Device ID:</value>
+  </data>
+  <data name="CopyDeviceIdButton.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_219.Text" xml:space="preserve">
+    <value>Run this command on the gateway host to approve:</value>
+  </data>
+  <data name="CopyApprovalButton.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_243.Text" xml:space="preserve">
+    <value>📋 Connection Log</value>
+  </data>
+  <data name="ConnectionLogEmpty.Text" xml:space="preserve">
+    <value>No recent connection events.</value>
+  </data>
+  <data name="ConversationsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>Conversations</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_29.Content" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_30.Content" xml:space="preserve">
+    <value>By Channel</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_31.Content" xml:space="preserve">
+    <value>By Status</value>
+  </data>
+  <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
+    <value>⏱️ Cron Jobs</value>
+  </data>
+  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
+    <value>Scheduler Status</value>
+  </data>
+  <data name="SchedulerStatusText.Text" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="StorePathText.Text" xml:space="preserve">
+    <value>Store: ~/.openclaw/cron.db</value>
+  </data>
+  <data name="NextWakeText.Text" xml:space="preserve">
+    <value>Next wake: —</value>
+  </data>
+  <data name="CronPage_Button_80.Content" xml:space="preserve">
+    <value>Run Now</value>
+  </data>
+  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
+    <value>Last run:</value>
+  </data>
+  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
+    <value>Next run:</value>
+  </data>
+  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
+    <value>No cron jobs configured</value>
+  </data>
+<data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
+    <value>🐛 Debug</value>
+  </data>
+  <data name="DebugPage_TextBlock_14.Text" xml:space="preserve">
+    <value>Log Viewer</value>
+  </data>
+  <data name="DebugPage_Button_18.Content" xml:space="preserve">
+    <value>⟳ Refresh</value>
+  </data>
+  <data name="DebugPage_Button_19.Content" xml:space="preserve">
+    <value>📋 Copy Log</value>
+  </data>
+  <data name="LogText.Text" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="DebugPage_TextBlock_38.Text" xml:space="preserve">
+    <value>Connection Status</value>
+  </data>
+  <data name="DebugPage_TextBlock_52.Text" xml:space="preserve">
+    <value>Operator Status</value>
+  </data>
+  <data name="DebugPage_TextBlock_56.Text" xml:space="preserve">
+    <value>Gateway URL</value>
+  </data>
+  <data name="DebugPage_TextBlock_61.Text" xml:space="preserve">
+    <value>Node Mode</value>
+  </data>
+  <data name="DebugPage_TextBlock_72.Text" xml:space="preserve">
+    <value>Device Identity</value>
+  </data>
+  <data name="DebugPage_TextBlock_86.Text" xml:space="preserve">
+    <value>Device ID</value>
+  </data>
+  <data name="DebugPage_Button_91.Content" xml:space="preserve">
+    <value>📋 Copy</value>
+  </data>
+  <data name="DebugPage_TextBlock_94.Text" xml:space="preserve">
+    <value>Public Key</value>
+  </data>
+  <data name="DebugPage_TextBlock_108.Text" xml:space="preserve">
+    <value>Debug Actions</value>
+  </data>
+  <data name="DebugPage_Button_111.Content" xml:space="preserve">
+    <value>📄 Open Log File</value>
+  </data>
+  <data name="DebugPage_Button_112.Content" xml:space="preserve">
+    <value>📁 Open Config Folder</value>
+  </data>
+  <data name="DebugPage_Button_113.Content" xml:space="preserve">
+    <value>📁 Open Diagnostics Folder</value>
+  </data>
+  <data name="DebugPage_Button_114.Content" xml:space="preserve">
+    <value>📋 Copy Support Context</value>
+  </data>
+<data name="StatusHeadline.Text" xml:space="preserve">
+    <value>Not connected to gateway</value>
+  </data>
+  <data name="ScanButton.Content" xml:space="preserve">
+    <value>Scan for gateways</value>
+  </data>
+  <data name="DashboardButton.Content" xml:space="preserve">
+    <value>Open Dashboard</value>
+  </data>
+  <data name="ChatButton.Content" xml:space="preserve">
+    <value>Open Chat</value>
+  </data>
+  <data name="HealthCheckButton.Content" xml:space="preserve">
+    <value>Health Check</value>
+  </data>
+  <data name="InstancesPage_TextBlock_12.Text" xml:space="preserve">
+    <value>🖥️ Instances</value>
+  </data>
+  <data name="RefreshButton.Content" xml:space="preserve">
+    <value>⟳ Refresh</value>
+  </data>
+  <data name="InstancesPage_TextBlock_22.Text" xml:space="preserve">
+    <value>🖥️ No other instances detected</value>
+  </data>
+  <data name="InstancesPage_TextBlock_25.Text" xml:space="preserve">
+    <value>Other OpenClaw nodes connected to the same gateway will appear here.</value>
+  </data>
+  <data name="NodesPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🖥️ Nodes</value>
+  </data>
+  <data name="NodesPage_TextBlock_22.Text" xml:space="preserve">
+    <value>No nodes connected</value>
+  </data>
+  <data name="NodesPage_TextBlock_29.Text" xml:space="preserve">
+    <value>🔗 Pending Pairing Requests</value>
+  </data>
+  <data name="NodesPage_TextBlock_35.Text" xml:space="preserve">
+    <value>📱 Pending Device Pairing</value>
+  </data>
+  <data name="NodesPage_TextBlock_41.Text" xml:space="preserve">
+    <value>🌐 Connected Clients</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_8.Text" xml:space="preserve">
+    <value>🔐 Permissions</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_14.Text" xml:space="preserve">
+    <value>Exec Policy</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Controls which commands the agent can execute on this node. Rules are matched against the full command line.</value>
+  </data>
+  <data name="DefaultActionCombo.Header" xml:space="preserve">
+    <value>Default Action</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_23.Content" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_24.Content" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_25.Content" xml:space="preserve">
+    <value>Ask</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
+    <value>Rules</value>
+  </data>
+  <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
+    <value>Command pattern (e.g. echo *)</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
+    <value>allow</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
+    <value>deny</value>
+  </data>
+  <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
+    <value>Add Rule</value>
+  </data>
+  <data name="SaveExecPolicyButton.Content" xml:space="preserve">
+    <value>Save Exec Policy</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
+    <value>Node Allowlist</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
+    <value>Commands allowed by the gateway for connected nodes. This list is read-only — edit via the Config page.</value>
+  </data>
+  <data name="AllowlistEmpty.Text" xml:space="preserve">
+    <value>No allowlist data available. Connect to a gateway first.</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_92.Text" xml:space="preserve">
+    <value>System Permissions</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_95.Text" xml:space="preserve">
+    <value>System permissions for camera, microphone, and screen capture. These are managed by Windows Privacy settings.</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_110.Text" xml:space="preserve">
+    <value>📷 Camera</value>
+  </data>
+  <data name="CameraPermStatus.Text" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_114.Text" xml:space="preserve">
+    <value>🎤 Microphone</value>
+  </data>
+  <data name="MicPermStatus.Text" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_118.Text" xml:space="preserve">
+    <value>🖥️ Screen Capture</value>
+  </data>
+  <data name="ScreenPermStatus.Text" xml:space="preserve">
+    <value>Available</value>
+  </data>
+  <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
+    <value>Open Windows Privacy Settings</value>
+  </data>
+  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>💬 Sessions</value>
+  </data>
+  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
+    <value>No active sessions</value>
+  </data>
+  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
+    <value>🤖 Available Models</value>
+  </data>
+  <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>⚙️ Settings</value>
+  </data>
+  <data name="SettingsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Local app preferences for this computer.</value>
+  </data>
+  <data name="SettingsPage_TextBlock_26.Text" xml:space="preserve">
+    <value>Startup</value>
+  </data>
+  <data name="AutoStartToggle.Header" xml:space="preserve">
+    <value>Start automatically with Windows</value>
+  </data>
+  <data name="GlobalHotkeyToggle.Header" xml:space="preserve">
+    <value>Global hotkey (Ctrl+Alt+Shift+C → Quick Send)</value>
+  </data>
+  <data name="SettingsPage_TextBlock_41.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="NotificationsToggle.Header" xml:space="preserve">
+    <value>Show notifications</value>
+  </data>
+  <data name="NotificationSoundComboBox.Header" xml:space="preserve">
+    <value>Sound</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_48.Content" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_49.Content" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_50.Content" xml:space="preserve">
+    <value>Subtle</value>
+  </data>
+  <data name="SettingsPage_TextBlock_52.Text" xml:space="preserve">
+    <value>Show notifications for:</value>
+  </data>
+  <data name="NotifyHealthCb.Content" xml:space="preserve">
+    <value>Health alerts</value>
+  </data>
+  <data name="NotifyUrgentCb.Content" xml:space="preserve">
+    <value>Urgent messages</value>
+  </data>
+  <data name="NotifyReminderCb.Content" xml:space="preserve">
+    <value>Reminders</value>
+  </data>
+  <data name="NotifyEmailCb.Content" xml:space="preserve">
+    <value>Email summaries</value>
+  </data>
+  <data name="NotifyCalendarCb.Content" xml:space="preserve">
+    <value>Calendar events</value>
+  </data>
+  <data name="NotifyBuildCb.Content" xml:space="preserve">
+    <value>Build notifications</value>
+  </data>
+  <data name="NotifyStockCb.Content" xml:space="preserve">
+    <value>Stock alerts</value>
+  </data>
+  <data name="NotifyInfoCb.Content" xml:space="preserve">
+    <value>Info messages</value>
+  </data>
+  <data name="TestNotificationButton.Content" xml:space="preserve">
+    <value>Send Test Notification</value>
+  </data>
+  <data name="CancelButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🧩 Skills</value>
+  </data>
+  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
+    <value>All Agents</value>
+  </data>
+  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
+    <value>No skills installed</value>
+  </data>
+  <data name="MarketplaceLink.Content" xml:space="preserve">
+    <value>Browse Skills Marketplace →</value>
+  </data>
+  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
+    <value>Total Cost</value>
+  </data>
+  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
+    <value>Requests</value>
+  </data>
+  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
+    <value>Tokens</value>
+  </data>
+  <data name="TokenCountText.Text" xml:space="preserve">
+    <value>284.5K</value>
+  </data>
+  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
+    <value>Providers</value>
+  </data>
+  <data name="Period7DaysButton.Content" xml:space="preserve">
+    <value>7 Days</value>
+  </data>
+  <data name="Period30DaysButton.Content" xml:space="preserve">
+    <value>30 Days</value>
+  </data>
+  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
+    <value>Provider Breakdown</value>
+  </data>
+  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
+    <value>Daily Cost</value>
+  </data>
+  <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
+    <value>📂 Workspace</value>
+  </data>
+  <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
+    <value>Chat</value>
+  </data>
+  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
+    <value>Connect to gateway to start chatting</value>
+  </data>
+  <data name="ChatWindow_TextBlock_67.Text" xml:space="preserve">
+    <value>Chat Unavailable</value>
+  </data>
+  <data name="ChatWindow_Button_71.Content" xml:space="preserve">
+    <value>Open in Browser Instead</value>
+  </data>
+  <data name="TitleText.Text" xml:space="preserve">
+    <value>OpenClaw Windows Companion</value>
+  </data>
+  <data name="TitleStatusText.Text" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_79.Content" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_82.Content" xml:space="preserve">
+    <value>Chat</value>
+  </data>
+  <data name="HubWindow_NavigationViewItemHeader_87.Content" xml:space="preserve">
+    <value>Gateway</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_88.Content" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_91.Content" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="ConversationsNavItem.Content" xml:space="preserve">
+    <value>Conversations</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
+    <value>Agent Events</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
+    <value>Skills</value>
+  </data>
+  <data name="AgentsNavItem.Content" xml:space="preserve">
+    <value>Agents</value>
+  </data>
+  <data name="DefaultAgentNavItem.Content" xml:space="preserve">
+    <value>main</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
+    <value>Channels</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
+    <value>Nodes</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
+    <value>Bindings</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
+    <value>Config</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_121.Content" xml:space="preserve">
+    <value>Usage</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
+    <value>This Computer</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
+    <value>Capabilities</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
+    <value>Permissions</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_139.Content" xml:space="preserve">
+    <value>Activity</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="Onboarding_UnknownPage" xml:space="preserve">
+    <value>Unknown page</value>
+  </data>
+  <data name="Onboarding_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Onboarding_Ready_NodeModeActive" xml:space="preserve">
+    <value>🔌 Node Mode Active</value>
+  </data>
+  <data name="Onboarding_Ready_NodeModeActiveDetail" xml:space="preserve">
+    <value>This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine.</value>
+  </data>
+  <data name="Onboarding_Ready_Node_ScreenCapture" xml:space="preserve">
+    <value>Screen Capture</value>
+  </data>
+  <data name="Onboarding_Ready_Node_ScreenCapture_Sub" xml:space="preserve">
+    <value>Remote screen access</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Camera" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Camera_Sub" xml:space="preserve">
+    <value>Remote camera access</value>
+  </data>
+  <data name="Onboarding_Ready_Node_SystemCmd" xml:space="preserve">
+    <value>System Commands</value>
+  </data>
+  <data name="Onboarding_Ready_Node_SystemCmd_Sub" xml:space="preserve">
+    <value>Remote command execution</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Canvas" xml:space="preserve">
+    <value>Canvas Rendering</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Canvas_Sub" xml:space="preserve">
+    <value>Visual workspace output</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Notify" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Notify_Sub" xml:space="preserve">
+    <value>System notifications</value>
+  </data>
+  <data name="Onboarding_Wizard_Processing" xml:space="preserve">
+    <value>⏳ Processing…</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorEmptyGatewayResponse" xml:space="preserve">
+    <value>Empty response from gateway</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
+    <value>Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorEmptyNextResponse" xml:space="preserve">
+    <value>Gateway returned empty response for wizard.next</value>
+  </data>
+  <data name="Onboarding_Wizard_NoOptionsAvailable" xml:space="preserve">
+    <value>No options available</value>
+  </data>
+  <data name="Onboarding_Wizard_Yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Onboarding_Wizard_NoSkip" xml:space="preserve">
+    <value>No / Skip</value>
+  </data>
+  <data name="Onboarding_Wizard_Waiting" xml:space="preserve">
+    <value>Waiting...</value>
+  </data>
+  <data name="Onboarding_Wizard_ClickNextToContinue" xml:space="preserve">
+    <value>Click Next to continue.</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorTitle" xml:space="preserve">
+    <value>Wizard error</value>
+  </data>
+  <data name="Onboarding_Wizard_SkipWizard" xml:space="preserve">
+    <value>Skip Wizard</value>
+  </data>
+  <data name="Onboarding_Wizard_ConnectingToGateway" xml:space="preserve">
+    <value>Connecting to gateway...</value>
+  </data>
+  <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
+    <value>Please wait while the connection is established...</value>
+  </data>
+  <data name="PriorityInfoBar.Title" xml:space="preserve">
+    <value>Routing priority</value>
+  </data>
+  <data name="PriorityInfoBar.Message" xml:space="preserve">
+    <value>Bindings control which agent handles messages from each channel. Priority: peer &gt; account &gt; channel &gt; default.</value>
+  </data>
+  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
+    <value>Single-agent mode</value>
+  </data>
+  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
+    <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
+  </data>
+  <data name="ConfigSubtitle.Text" xml:space="preserve">
+    <value>Editing gateway configuration (openclaw.json) fetched from the connected gateway</value>
+  </data>
+  <data name="DetailPlaceholder.Text" xml:space="preserve">
+    <value>Select a section from the tree to edit its settings.</value>
+  </data>
+  <data name="TokenPromptBox.PlaceholderText" xml:space="preserve">
+    <value>Gateway token</value>
+  </data>
+  <data name="TokenPromptBox.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="SetupCodeTextBox.PlaceholderText" xml:space="preserve">
+    <value>Paste setup code here…</value>
+  </data>
+  <data name="ConnectionWarning.Message" xml:space="preserve">
+    <value>Connect to a gateway to view conversations.</value>
+  </data>
+  <data name="EmptyState.Text" xml:space="preserve">
+    <value>No sessions found</value>
+  </data>
+  <data name="NotWiredInfoBar.Title" xml:space="preserve">
+    <value>Cron API not yet wired</value>
+  </data>
+  <data name="NotWiredInfoBar.Message" xml:space="preserve">
+    <value>Showing sample data. Cron management methods are not yet available in OpenClawGatewayClient.</value>
+  </data>
+  <data name="FallbackInfoBar.Title" xml:space="preserve">
+    <value>Workspace files</value>
+  </data>
+  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Chat</value>
+  </data>
+  <data name="SearchBox.PlaceholderText" xml:space="preserve">
+    <value>Type a command...</value>
+  </data>
+  <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw</value>
+  </data>
+  <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
+    <value>Search… (Ctrl+E)</value>
+  </data>
+  <data name="CanvasWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Canvas</value>
+  </data>
+  <data name="CanvasWindow_TextBlock_31.Text" xml:space="preserve">
+    <value>OpenClaw Canvas</value>
+  </data>
+  <data name="CanvasWindowReloadToolTip.Content" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Menu</value>
+  </data>
+  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
+    <value>📊 Usage &amp; Cost</value>
+  </data>
+  <data name="ChatWindowHomeToolTip.Content" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="ChatWindowRefreshToolTip.Content" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
+    <value>Open in Browser</value>
+  </data>
+  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="ChatPageRefreshToolTip.Content" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
+    <value>Open in Browser</value>
+  </data>
+  <data name="ChatPageDeveloperToolsToolTip.Content" xml:space="preserve">
+    <value>Developer Tools</value>
+  </data>
+  <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
+    <value>Remove job</value>
+  </data>
 </root>

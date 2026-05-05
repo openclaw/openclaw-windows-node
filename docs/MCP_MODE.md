@@ -242,7 +242,7 @@ These are reasonable next steps but explicitly out of scope for the initial impl
 | `src/OpenClaw.Shared/Mcp/McpHttpServer.cs` | `HttpListener`-based loopback HTTP transport. |
 | `src/OpenClaw.Tray.WinUI/Services/NodeService.cs` | Owns the capability list. Hosts the MCP server when enabled. |
 | `src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs` | In-memory settings model + load/save. Migrates legacy `McpOnlyMode`. |
-| `src/OpenClaw.Tray.WinUI/Windows/SettingsWindow.xaml(.cs)` | UI toggle, endpoint URL, and live status. |
+| `src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml(.cs)` | Settings UI surface hosted by `HubWindow`. |
 | `src/OpenClaw.Tray.WinUI/App.xaml.cs` | Bootstraps `NodeService` based on the new mode matrix. |
 | `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | 9 unit tests for the bridge. |
 

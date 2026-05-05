@@ -102,7 +102,6 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     private int _menuHeight = 400;
     private int _itemCount = 0;
-    private int _toggleCount = 0;
     private int _separatorCount = 0;
     private int _headerCount = 0;
     private bool _styleApplied = false;
@@ -393,60 +392,6 @@ public sealed partial class TrayMenuWindow : WindowEx
         _itemCount++;
     }
 
-    public void AddToggleItem(string text, string? icon, bool isOn, Action<bool> onToggled, bool indent = false)
-    {
-        var panel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Padding = new Thickness(indent ? 28 : 12, 6, 12, 6)
-        };
-
-        if (!string.IsNullOrEmpty(icon))
-        {
-            panel.Children.Add(new TextBlock { Text = icon, VerticalAlignment = VerticalAlignment.Center });
-        }
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = text,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-
-        var toggle = new ToggleSwitch
-        {
-            IsOn = isOn,
-            MinWidth = 0,
-            OnContent = "",
-            OffContent = "",
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0)
-        };
-
-        toggle.Toggled += (s, e) => onToggled(toggle.IsOn);
-
-        var container = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
-        container.Children.Add(panel);
-        container.Children.Add(new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { toggle }
-        });
-
-        // Hover effect on the row
-        container.PointerEntered += (s, e) =>
-        {
-            HideActiveFlyout();
-            container.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
-        };
-        container.PointerExited += (s, e) =>
-            container.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-
-        MenuPanel.Children.Add(container);
-        _toggleCount++;
-    }
-
     public void AddSeparator()
     {
         var sep = new Border
@@ -562,7 +507,6 @@ public sealed partial class TrayMenuWindow : WindowEx
         HideActiveFlyout();
         MenuPanel.Children.Clear();
         _itemCount = 0;
-        _toggleCount = 0;
         _separatorCount = 0;
         _headerCount = 0;
     }

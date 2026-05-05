@@ -61,6 +61,31 @@ public sealed partial class ActivityPage : Page
         ActivityList.ItemsSource = items.Select(MapToViewModel).ToList();
     }
 
+    public void SetFilter(string? filter)
+    {
+        var normalized = NormalizeFilter(filter);
+        foreach (var child in FilterPanel.Children.OfType<ToggleButton>())
+            child.IsChecked = string.Equals(child.Tag?.ToString(), normalized, StringComparison.Ordinal);
+
+        _currentFilter = normalized;
+        LoadActivity();
+    }
+
+    private static string NormalizeFilter(string? filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return "all";
+
+        var normalized = filter.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "sessions" => "session",
+            "nodes" => "node",
+            "notifications" or "history" => "notification",
+            "usage" or "session" or "node" or "notification" => normalized,
+            _ => "all"
+        };
+    }
+
     private static ActivityViewModel MapToViewModel(ActivityStreamItem item)
     {
         var details = new List<string>();

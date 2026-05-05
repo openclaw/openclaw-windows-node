@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <PackageReference Include="Zeroconf" Version="3.6.11" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,13 +27,13 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDiscoveryService.cs" Link="Services\GatewayDiscoveryService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\AgentMessageFormatter.cs" Link="A2UI\Actions\AgentMessageFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\GatewayActionTransport.cs" Link="A2UI\Actions\GatewayActionTransport.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\IActionSink.cs" Link="A2UI\Actions\IActionSink.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Protocol\A2UIProtocol.cs" Link="A2UI\Protocol\A2UIProtocol.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Rendering\SecretRedactor.cs" Link="A2UI\Rendering\SecretRedactor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\OnboardingState.cs" Link="Imported\OnboardingState.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Widgets\WizardStepModels.cs" Link="Imported\WizardStepModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalGatewayApprover.cs" Link="Imported\LocalGatewayApprover.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\SetupCodeDecoder.cs" Link="Imported\SetupCodeDecoder.cs" />

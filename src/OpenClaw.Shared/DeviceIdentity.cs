@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using OpenClaw.Shared.Mcp;
 using NSec.Cryptography;
 
 namespace OpenClaw.Shared;
@@ -146,8 +147,11 @@ public class DeviceIdentity
         {
             Directory.CreateDirectory(dir);
         }
+        if (!string.IsNullOrEmpty(dir))
+            McpAuthToken.TryRestrictDataDirectoryAcl(dir);
         
         File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+        McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
         _logger.Info($"Generated new Ed25519 device identity: {_deviceId}");
     }
     
@@ -307,6 +311,9 @@ public class DeviceIdentity
     /// </summary>
     public void StoreDeviceToken(string token)
     {
+        if (string.IsNullOrWhiteSpace(token))
+            throw new ArgumentException("Device token cannot be empty.", nameof(token));
+
         _deviceToken = token;
         
         // Update the key file with the token
@@ -320,6 +327,7 @@ public class DeviceIdentity
                 {
                     data.DeviceToken = token;
                     File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+                    McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
                     _logger.Info("Device token stored");
                 }
             }

@@ -13,7 +13,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <TextBlock Grid.Row="0" Text="Conversations"
+        <TextBlock x:Uid="ConversationsPage_TextBlock_16" Grid.Row="0" Text="Conversations"
                    Style="{StaticResource TitleTextBlockStyle}"/>
 
         <!-- Toolbar: filter + refresh -->
@@ -26,28 +26,28 @@
 
             <ComboBox x:Name="FilterCombo" Grid.Column="0"
                       MinWidth="160" SelectionChanged="FilterCombo_SelectionChanged">
-                <ComboBoxItem Content="All" Tag="all" IsSelected="True"/>
-                <ComboBoxItem Content="By Channel" Tag="channel"/>
-                <ComboBoxItem Content="By Status" Tag="status"/>
+                <ComboBoxItem x:Uid="ConversationsPage_ComboBoxItem_29" Content="All" Tag="all" IsSelected="True"/>
+                <ComboBoxItem x:Uid="ConversationsPage_ComboBoxItem_30" Content="By Channel" Tag="channel"/>
+                <ComboBoxItem x:Uid="ConversationsPage_ComboBoxItem_31" Content="By Status" Tag="status"/>
             </ComboBox>
 
             <Button Grid.Column="2" Click="OnRefresh">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                    <TextBlock Text="Refresh"/>
+                    <TextBlock x:Uid="ConversationsPage_TextBlock_37" Text="Refresh"/>
                 </StackPanel>
             </Button>
         </Grid>
 
         <!-- Not-connected warning -->
-        <InfoBar x:Name="ConnectionWarning" Grid.Row="2"
+        <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" Grid.Row="2"
                  Title="Not connected"
                  Message="Connect to a gateway to view conversations."
                  Severity="Warning" IsOpen="False" IsClosable="False"
                  VerticalAlignment="Top"/>
 
         <!-- Empty state -->
-        <TextBlock x:Name="EmptyState" Grid.Row="2"
+        <TextBlock x:Uid="EmptyState" x:Name="EmptyState" Grid.Row="2"
                    Text="No sessions found"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"

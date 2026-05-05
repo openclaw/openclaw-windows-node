@@ -72,11 +72,11 @@ public static class DeepLinkHandler
                 break;
 
             case "activity":
-                actions.OpenHub?.Invoke("activity");
+                actions.OpenActivityStream?.Invoke(result.Parameters.GetValueOrDefault("filter"));
                 break;
 
             case "history":
-                actions.OpenHub?.Invoke("activity");
+                actions.OpenActivityStream?.Invoke("notification");
                 break;
 
             case "commandcenter":

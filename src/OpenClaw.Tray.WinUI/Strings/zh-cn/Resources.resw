@@ -17,9 +17,7 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
-
   <!-- ==================== SettingsWindow.xaml ==================== -->
-
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>连接</value>
@@ -33,7 +31,6 @@
   <data name="SettingsAdvancedHeader.Text" xml:space="preserve">
     <value>高级（实验性）</value>
   </data>
-
   <!-- TextBox headers and placeholders -->
   <data name="SettingsGatewayUrlTextBox.Header" xml:space="preserve">
     <value>网关地址</value>
@@ -47,7 +44,6 @@
   <data name="SettingsTokenTextBox.PlaceholderText" xml:space="preserve">
     <value>您的 API 令牌</value>
   </data>
-
   <!-- Toggle headers -->
   <data name="SettingsAutoStartToggle.Header" xml:space="preserve">
     <value>随 Windows 自动启动</value>
@@ -61,7 +57,6 @@
   <data name="SettingsNodeModeToggle.Header" xml:space="preserve">
     <value>启用节点模式</value>
   </data>
-
   <!-- ComboBox -->
   <data name="SettingsSoundComboBox.Header" xml:space="preserve">
     <value>提示音</value>
@@ -75,7 +70,6 @@
   <data name="SettingsSoundSubtle.Content" xml:space="preserve">
     <value>柔和</value>
   </data>
-
   <!-- Notification filter labels -->
   <data name="SettingsNotifyForLabel.Text" xml:space="preserve">
     <value>显示以下类型通知:</value>
@@ -83,7 +77,6 @@
   <data name="SettingsNotifyFilterHint.Text" xml:space="preserve">
     <value>按消息中的关键词过滤（例如"邮件"、"提醒"）</value>
   </data>
-
   <!-- Notification filter checkboxes -->
   <data name="SettingsNotifyHealthCb.Content" xml:space="preserve">
     <value>健康警报</value>
@@ -109,7 +102,6 @@
   <data name="SettingsNotifyInfoCb.Content" xml:space="preserve">
     <value>常规信息</value>
   </data>
-
   <!-- Buttons -->
   <data name="SettingsTestConnectionButton.Content" xml:space="preserve">
     <value>测试</value>
@@ -123,14 +115,11 @@
   <data name="SettingsCancelButton.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-
   <!-- Node mode description -->
   <data name="SettingsNodeModeDescription.Text" xml:space="preserve">
     <value>启用后，此电脑可以接收来自代理的命令（画布、截图等）</value>
   </data>
-
   <!-- ==================== StatusDetailWindow.xaml ==================== -->
-
   <!-- Section headers -->
   <data name="StatusUsageHeader.Text" xml:space="preserve">
     <value>用量</value>
@@ -165,7 +154,6 @@
   <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
     <value>最近活动</value>
   </data>
-
   <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
     <value>费用（窗口期）:</value>
@@ -176,7 +164,6 @@
   <data name="StatusProvidersLabel.Text" xml:space="preserve">
     <value>提供者:</value>
   </data>
-
   <!-- Default values -->
   <data name="StatusConnectedText.Text" xml:space="preserve">
     <value>已连接</value>
@@ -211,7 +198,6 @@
   <data name="StatusCronDescription.Text" xml:space="preserve">
     <value>当连接的网关支持时，打开计划自动化控件。</value>
   </data>
-
   <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>刷新</value>
@@ -261,14 +247,11 @@
   <data name="StatusOpenStreamButton.Content" xml:space="preserve">
     <value>打开流</value>
   </data>
-
   <!-- ==================== ActivityStreamWindow.xaml ==================== -->
-
   <!-- Header -->
   <data name="ActivityStreamTitle.Text" xml:space="preserve">
     <value>⚡ 活动流</value>
   </data>
-
   <!-- Filter items -->
   <data name="ActivityFilterAll.Content" xml:space="preserve">
     <value>全部活动</value>
@@ -285,12 +268,10 @@
   <data name="ActivityFilterNotifications.Content" xml:space="preserve">
     <value>通知</value>
   </data>
-
   <!-- Empty state -->
   <data name="ActivityEmptyText.Text" xml:space="preserve">
     <value>暂无活动</value>
   </data>
-
   <!-- Buttons -->
   <data name="ActivityOpenDashboardButton.Content" xml:space="preserve">
     <value>打开仪表板</value>
@@ -301,19 +282,15 @@
   <data name="ActivityCloseButton.Content" xml:space="preserve">
     <value>关闭</value>
   </data>
-
   <!-- ==================== NotificationHistoryWindow.xaml ==================== -->
-
   <!-- Header -->
   <data name="NotificationHistoryTitle.Text" xml:space="preserve">
     <value>📋 通知历史</value>
   </data>
-
   <!-- Empty state -->
   <data name="NotificationEmptyText.Text" xml:space="preserve">
     <value>暂无通知</value>
   </data>
-
   <!-- Buttons -->
   <data name="NotificationClearAllButton.Content" xml:space="preserve">
     <value>全部清除</value>
@@ -321,9 +298,7 @@
   <data name="NotificationCloseButton.Content" xml:space="preserve">
     <value>关闭</value>
   </data>
-
   <!-- ==================== Runtime strings (C# code) ==================== -->
-
   <!-- Window titles -->
   <data name="WindowTitle_Settings" xml:space="preserve">
     <value>设置 — OpenClaw 托盘</value>
@@ -349,7 +324,6 @@
   <data name="WindowTitle_Update" xml:space="preserve">
     <value>OpenClaw 更新</value>
   </data>
-
   <!-- Settings runtime status -->
   <data name="Status_Testing" xml:space="preserve">
     <value>测试中...</value>
@@ -360,7 +334,6 @@
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ 连接失败</value>
   </data>
-
   <!-- QuickSend dialog -->
   <data name="QuickSend_Header" xml:space="preserve">
     <value>📤 快速发送</value>
@@ -386,7 +359,6 @@
   <data name="QuickSend_ToastBody" xml:space="preserve">
     <value>您的消息已发送至 OpenClaw。</value>
   </data>
-
   <!-- WelcomeDialog -->
   <data name="Welcome_Title" xml:space="preserve">
     <value>欢迎使用 OpenClaw！</value>
@@ -412,7 +384,6 @@
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>打开设置</value>
   </data>
-
   <!-- UpdateDialog -->
   <data name="Update_VersionAvailable" xml:space="preserve">
     <value>🎉 版本 {0} 已可用！</value>
@@ -432,7 +403,6 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>下载并安装</value>
   </data>
-
   <!-- Tray menu items -->
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>打开仪表板</value>
@@ -524,7 +494,6 @@
   <data name="Menu_RestartSshTunnel" xml:space="preserve">
     <value>重启 SSH 隧道</value>
   </data>
-
   <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
     <value>状态: {0}</value>
@@ -562,7 +531,6 @@
   <data name="Menu_NodeDisconnected" xml:space="preserve">
     <value>⚪ 已断开</value>
   </data>
-
   <!-- Notification test -->
   <data name="TestNotification_Title" xml:space="preserve">
     <value>测试通知</value>
@@ -570,12 +538,10 @@
   <data name="TestNotification_Body" xml:space="preserve">
     <value>这是来自 OpenClaw 托盘的测试通知。</value>
   </data>
-
   <!-- Status detail runtime -->
   <data name="Status_LastCheckFormat" xml:space="preserve">
     <value>上次检查: {0}</value>
   </data>
-
   <!-- Time ago strings -->
   <data name="TimeAgo_JustNow" xml:space="preserve">
     <value>刚刚</value>
@@ -586,16 +552,13 @@
   <data name="TimeAgo_HoursFormat" xml:space="preserve">
     <value>{0}小时前</value>
   </data>
-
   <!-- Activity stream runtime -->
   <data name="Activity_ClickToOpen" xml:space="preserve">
     <value>点击在仪表板中打开</value>
   </data>
-
   <data name="TimeAgo_DaysFormat" xml:space="preserve">
     <value>{0}天前</value>
   </data>
-
   <!-- Status display text (plain, no emoji) -->
   <data name="StatusDisplay_Connected" xml:space="preserve">
     <value>已连接</value>
@@ -615,9 +578,7 @@
   <data name="Status_NotAvailable" xml:space="preserve">
     <value>无</value>
   </data>
-
   <!-- ==================== CanvasWindow.xaml ==================== -->
-
   <data name="WindowTitle_Canvas" xml:space="preserve">
     <value>画布</value>
   </data>
@@ -651,9 +612,7 @@
   <data name="A2UI_UnsupportedComponent" xml:space="preserve">
     <value>不支持的组件: {0}</value>
   </data>
-
   <!-- ==================== WebChatWindow.xaml ==================== -->
-
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>网页聊天不可用</value>
   </data>
@@ -692,15 +651,11 @@
 • 如果是自签名证书，请将网关 CA/证书导入 Windows 受信任的根证书（certmgr.msc）
 • 或通过隧道连接到 localhost：ssh -N -L 18789:localhost:18789 &lt;服务器&gt;</value>
   </data>
-
   <!-- ==================== TrayMenuWindow.xaml ==================== -->
-
   <data name="WindowTitle_TrayMenu" xml:space="preserve">
     <value>OpenClaw 菜单</value>
   </data>
-
   <!-- ==================== Toast: Device / Node ==================== -->
-
   <data name="Toast_DeviceIdCopied" xml:space="preserve">
     <value>📋 设备 ID 已复制</value>
   </data>
@@ -713,18 +668,14 @@
   <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
     <value>已复制 {0} 个节点到剪贴板</value>
   </data>
-
   <!-- ==================== Toast: Session ==================== -->
-
   <data name="Toast_SessionActionFailed" xml:space="preserve">
     <value>❌ 会话操作失败</value>
   </data>
   <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
     <value>无法向网关发送请求。</value>
   </data>
-
   <!-- ==================== Toast: Node Mode ==================== -->
-
   <data name="Toast_NodeModeActive" xml:space="preserve">
     <value>🔌 节点模式已激活</value>
   </data>
@@ -755,9 +706,7 @@
   <data name="Toast_PairingRejectedDetail" xml:space="preserve">
     <value>网关拒绝了此设备的配对请求。</value>
   </data>
-
   <!-- ==================== Toast: Health Check ==================== -->
-
   <data name="Toast_HealthCheck" xml:space="preserve">
     <value>健康检查</value>
   </data>
@@ -770,9 +719,7 @@
   <data name="Toast_HealthCheckFailed" xml:space="preserve">
     <value>健康检查失败</value>
   </data>
-
   <!-- ==================== Toast: Screen / Camera ==================== -->
-
   <data name="Toast_ScreenCaptured" xml:space="preserve">
     <value>📸 屏幕已捕获</value>
   </data>
@@ -785,9 +732,7 @@
   <data name="Toast_CameraBlockedDetail" xml:space="preserve">
     <value>请在 Windows 隐私设置中为 OpenClaw Tray 启用相机访问</value>
   </data>
-
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
-
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ 新功能: 活动流</value>
   </data>
@@ -797,9 +742,7 @@
   <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
     <value>打开活动流</value>
   </data>
-
   <!-- ==================== SetupWizardWindow (C# code) ==================== -->
-
   <data name="Setup_Title" xml:space="preserve">
     <value>OpenClaw 设置</value>
   </data>
@@ -950,9 +893,7 @@
   <data name="Setup_StepDone" xml:space="preserve">
     <value>第 3 步（共 3 步）— 完成</value>
   </data>
-
   <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
-
   <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
     <value>开发者模式</value>
   </data>
@@ -986,9 +927,7 @@
   <data name="Mcp_Status_FailedToStart" xml:space="preserve">
     <value>启动失败：</value>
   </data>
-
   <!-- ==================== MCP token (SettingsWindow) ==================== -->
-
   <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
     <value>Bearer 令牌：</value>
   </data>
@@ -1037,18 +976,14 @@
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>取消</value>
   </data>
-
   <!-- ==================== DownloadProgressDialog ==================== -->
-
   <data name="WindowTitle_Downloading" xml:space="preserve">
     <value>正在下载更新...</value>
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>正在下载更新...</value>
   </data>
-
   <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
-
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — 批准 URL</value>
   </data>
@@ -1076,7 +1011,6 @@
   <data name="UrlApproval_NoHint" xml:space="preserve">
     <value>否 — 阻止该请求。</value>
   </data>
-
   <data name="Onboarding_Title" xml:space="preserve">
     <value>OpenClaw 设置</value>
   </data>
@@ -1099,7 +1033,7 @@
     <value>安全提示</value>
   </data>
   <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
-    <value>OpenClaw 运行的 AI 代理可以执行命令、读写文件，并代表您与系统进行交互。</value>
+    <value>OpenClaw 运行一个 AI 代理，它可以代表你执行命令、读取和写入文件，并与你的系统交互。</value>
   </data>
   <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
     <value>您的代理可以：</value>
@@ -1132,7 +1066,7 @@
     <value>一切就绪！</value>
   </data>
   <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
-    <value>OpenClaw 已准备就绪。以下是一些您可以尝试的功能：</value>
+    <value>OpenClaw 已准备就绪。可以尝试以下操作：</value>
   </data>
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>打开菜单栏面板</value>
@@ -1168,7 +1102,7 @@
     <value>点击粘贴配置码</value>
   </data>
   <data name="Onboarding_Connection_GatewayUrl" xml:space="preserve">
-    <value>网关 URL</value>
+    <value>网关地址</value>
   </data>
   <data name="Onboarding_Connection_Token" xml:space="preserve">
     <value>Token</value>
@@ -1177,7 +1111,7 @@
     <value>粘贴引导 Token</value>
   </data>
   <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
-    <value>Node Mode</value>
+    <value>节点模式</value>
   </data>
   <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
     <value>测试连接</value>
@@ -1213,7 +1147,7 @@
     <value>授予权限</value>
   </data>
   <data name="Onboarding_Permissions_Description" xml:space="preserve">
-    <value>当 OpenClaw 能够发送通知、访问摄像头和麦克风、捕获屏幕及获取位置信息时，它的表现最佳。请在下方授予权限。</value>
+    <value>当 OpenClaw 可以发送通知、访问摄像头和麦克风、捕获屏幕并了解你的位置时效果最佳。请在下方授予权限。</value>
   </data>
   <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
     <value>刷新状态</value>
@@ -1252,7 +1186,7 @@
     <value>通知</value>
   </data>
   <data name="Onboarding_Perm_Camera" xml:space="preserve">
-    <value>相机</value>
+    <value>摄像头</value>
   </data>
   <data name="Onboarding_Perm_Microphone" xml:space="preserve">
     <value>麦克风</value>
@@ -1369,13 +1303,13 @@
     <value>WSL 网关</value>
   </data>
   <data name="Onboarding_Connection_Ssh" xml:space="preserve">
-    <value>SSH 隧道</value>
+    <value>SSH ΘÜºΘüô</value>
   </data>
   <data name="Onboarding_Connection_PasteSetup" xml:space="preserve">
     <value>粘贴</value>
   </data>
   <data name="Onboarding_Connection_QrButton" xml:space="preserve">
-    <value>二维码</value>
+    <value>QR</value>
   </data>
   <data name="Onboarding_Connection_QrFilePickerTitle" xml:space="preserve">
     <value>导入二维码图像</value>
@@ -1384,13 +1318,13 @@
     <value>无法从此图像解码安装代码</value>
   </data>
   <data name="Onboarding_Connection_SshHint" xml:space="preserve">
-    <value>OpenClaw 将创建一个托管的 SSH 隧道，以将网关端口从远程主机转发到此电脑。</value>
+    <value>OpenClaw 将创建托管 SSH 隧道，把远程主机上的网关端口转发到此电脑。</value>
   </data>
   <data name="Onboarding_Connection_SshUser" xml:space="preserve">
-    <value>SSH 用户</value>
+    <value>SSH τö¿µê╖</value>
   </data>
   <data name="Onboarding_Connection_SshHost" xml:space="preserve">
-    <value>SSH 主机</value>
+    <value>SSH Σ╕╗µ£║</value>
   </data>
   <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
     <value>远程网关端口</value>
@@ -1413,5 +1347,928 @@
   <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
     <value>您可以稍后在“设置”中配置网关。</value>
   </data>
-
+  <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
+    <value>OpenClaw Hub</value>
+  </data>
+  <data name="VersionText.Text" xml:space="preserve">
+    <value>v0.1.0</value>
+  </data>
+  <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
+    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+  </data>
+  <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
+    <value>网关信息</value>
+  </data>
+  <data name="AboutPage_TextBlock_48.Text" xml:space="preserve">
+    <value>版本：</value>
+  </data>
+  <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
+    <value>模型：</value>
+  </data>
+  <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
+    <value>身份验证模式：</value>
+  </data>
+  <data name="AboutPage_TextBlock_60.Text" xml:space="preserve">
+    <value>运行时间：</value>
+  </data>
+  <data name="AboutPage_TextBlock_72.Text" xml:space="preserve">
+    <value>调试</value>
+  </data>
+  <data name="OpenLogButton.Content" xml:space="preserve">
+    <value>打开日志文件</value>
+  </data>
+  <data name="OpenConfigButton.Content" xml:space="preserve">
+    <value>打开配置文件夹</value>
+  </data>
+  <data name="CopySupportButton.Content" xml:space="preserve">
+    <value>复制支持上下文</value>
+  </data>
+  <data name="CheckUpdatesButton.Content" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
+    <value>链接</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
+    <value>Documentation → openclaw.ai/docs</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
+    <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_96.Content" xml:space="preserve">
+    <value>Dashboard → openclaw://dashboard</value>
+  </data>
+  <data name="ActivityPage_TextBlock_17.Text" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="FilterAllButton.Content" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="FilterSessionsButton.Content" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="FilterUsageButton.Content" xml:space="preserve">
+    <value>用量</value>
+  </data>
+  <data name="FilterNodesButton.Content" xml:space="preserve">
+    <value>节点</value>
+  </data>
+  <data name="FilterNotificationsButton.Content" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="ActivityPage_TextBlock_86.Text" xml:space="preserve">
+    <value>暂无活动</value>
+  </data>
+  <data name="ActivityPage_TextBlock_89.Text" xml:space="preserve">
+    <value>来自会话、通知和节点事件的活动将显示在此处。</value>
+  </data>
+  <data name="ClearAllButton.Content" xml:space="preserve">
+    <value>全部清除</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
+    <value>代理事件</value>
+  </data>
+  <data name="AgentFilterCombo.Header" xml:space="preserve">
+    <value>代理</value>
+  </data>
+  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
+    <value>所有代理</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+    <value>工具</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+    <value>助手</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+    <value>生命周期</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+    <value>计划</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+    <value>批准</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+    <value>思考中</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+    <value>补丁</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
+    <value>还没有代理事件</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
+    <value>代理运行时，实时代理事件（工具调用、响应、错误）将显示在此处。</value>
+  </data>
+  <data name="ClearButton.Content" xml:space="preserve">
+    <value>清除</value>
+  </data>
+<data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>🔀 绑定</value>
+  </data>
+  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>消息路由规则</value>
+  </data>
+  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🖥️ 此计算机</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_15.Text" xml:space="preserve">
+    <value>通过网关提供给代理的设备功能。切换此计算机可以执行的操作。</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_33.Text" xml:space="preserve">
+    <value>本地 MCP 服务器</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_34.Text" xml:space="preserve">
+    <value>通过 HTTP 向 CLI 工具和本地集成公开功能。</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_44.Text" xml:space="preserve">
+    <value>终结点：</value>
+  </data>
+  <data name="CopyMcpTokenButton.Content" xml:space="preserve">
+    <value>复制令牌</value>
+  </data>
+  <data name="CopyMcpUrlButton.Content" xml:space="preserve">
+    <value>复制 URL</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_66.Text" xml:space="preserve">
+    <value>节点状态</value>
+  </data>
+  <data name="NodeStatusText.Text" xml:space="preserve">
+    <value>节点模式已禁用</value>
+  </data>
+  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>📡 频道</value>
+  </data>
+  <data name="ConnectionWarning.Title" xml:space="preserve">
+    <value>未连接</value>
+  </data>
+  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
+    <value>未配置频道</value>
+  </data>
+  <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
+    <value>连接到网关以开始聊天</value>
+  </data>
+  <data name="ChatPage_TextBlock_56.Text" xml:space="preserve">
+    <value>建立网关连接后，WebView2 聊天将在此处加载。</value>
+  </data>
+  <data name="ChatPage_TextBlock_65.Text" xml:space="preserve">
+    <value>网页聊天不可用</value>
+  </data>
+  <data name="ChatPage_Button_69.Content" xml:space="preserve">
+    <value>改在浏览器中打开</value>
+  </data>
+  <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
+    <value>⚙️ 配置</value>
+  </data>
+  <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="ConfigPage_TabViewItem_34.Header" xml:space="preserve">
+    <value>编辑器</value>
+  </data>
+  <data name="DetailPath.Text" xml:space="preserve">
+    <value>选择配置部分</value>
+  </data>
+  <data name="ConfigPage_TabViewItem_82.Header" xml:space="preserve">
+    <value>原始 JSON</value>
+  </data>
+  <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
+    <value>架构不可用</value>
+  </data>
+  <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
+    <value>无法加载网关配置架构。请使用 Web 仪表板编辑设置。</value>
+  </data>
+  <data name="OpenDashboardButton.Content" xml:space="preserve">
+    <value>打开仪表板</value>
+  </data>
+  <data name="SaveButton.Content" xml:space="preserve">
+    <value>保存更改</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🔗 连接</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
+    <value>操作员客户端和节点服务共同使用的网关终结点。</value>
+  </data>
+  <data name="AuthErrorBar.Title" xml:space="preserve">
+    <value>连接错误</value>
+  </data>
+  <data name="StatusText.Text" xml:space="preserve">
+    <value>已断开连接</value>
+  </data>
+  <data name="ReconnectButton.Content" xml:space="preserve">
+    <value>重新连接</value>
+  </data>
+  <data name="OperatorStatusText.Text" xml:space="preserve">
+    <value>操作员：—</value>
+  </data>
+  <data name="ConnectToggle.Header" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_76.Text" xml:space="preserve">
+    <value>📡 可用网关</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_84.Text" xml:space="preserve">
+    <value>扫描</value>
+  </data>
+  <data name="TokenPromptText.Text" xml:space="preserve">
+    <value>此网关需要令牌才能连接。</value>
+  </data>
+  <data name="ConnectionPage_Button_105.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="TokenPromptConnectBtn.Content" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_111.Text" xml:space="preserve">
+    <value>在网关主机上运行 'openclaw qr' 获取设置代码，或在网关配置中查找令牌。</value>
+  </data>
+  <data name="GatewayEmptyText.Text" xml:space="preserve">
+    <value>未找到网关。单击“扫描”进行搜索。</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_128.Text" xml:space="preserve">
+    <value>🔑 设置代码</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_129.Text" xml:space="preserve">
+    <value>粘贴来自 openclaw qr 的设置代码</value>
+  </data>
+  <data name="ApplySetupCodeButton.Content" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_152.Text" xml:space="preserve">
+    <value>高级连接设置</value>
+  </data>
+  <data name="GatewayUrlTextBox.Header" xml:space="preserve">
+    <value>网关地址</value>
+  </data>
+  <data name="TokenTextBox.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="TestButton.Content" xml:space="preserve">
+    <value>测试</value>
+  </data>
+  <data name="SshToggle.Header" xml:space="preserve">
+    <value>SSH ΘÜºΘüô</value>
+  </data>
+  <data name="SshUserBox.Header" xml:space="preserve">
+    <value>SSH τö¿µê╖</value>
+  </data>
+  <data name="SshUserBox.PlaceholderText" xml:space="preserve">
+    <value>user</value>
+  </data>
+  <data name="SshHostBox.Header" xml:space="preserve">
+    <value>SSH Σ╕╗µ£║</value>
+  </data>
+  <data name="SshHostBox.PlaceholderText" xml:space="preserve">
+    <value>machine-name</value>
+  </data>
+  <data name="SshRemotePortBox.Header" xml:space="preserve">
+    <value>远程端口</value>
+  </data>
+  <data name="SshLocalPortBox.Header" xml:space="preserve">
+    <value>本地端口</value>
+  </data>
+  <data name="ConnectionPage_Button_190.Content" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_200.Text" xml:space="preserve">
+    <value>🪪 此设备</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_207.Text" xml:space="preserve">
+    <value>设备 ID：</value>
+  </data>
+  <data name="CopyDeviceIdButton.Content" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_219.Text" xml:space="preserve">
+    <value>在网关主机上运行此命令以批准：</value>
+  </data>
+  <data name="CopyApprovalButton.Content" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_243.Text" xml:space="preserve">
+    <value>📋 连接日志</value>
+  </data>
+  <data name="ConnectionLogEmpty.Text" xml:space="preserve">
+    <value>没有最近的连接事件。</value>
+  </data>
+  <data name="ConversationsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>对话</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_29.Content" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_30.Content" xml:space="preserve">
+    <value>按频道</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_31.Content" xml:space="preserve">
+    <value>按状态</value>
+  </data>
+  <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
+    <value>⏱️ Cron 作业</value>
+  </data>
+  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
+    <value>计划程序状态</value>
+  </data>
+  <data name="SchedulerStatusText.Text" xml:space="preserve">
+    <value>已启用</value>
+  </data>
+  <data name="StorePathText.Text" xml:space="preserve">
+    <value>Store: ~/.openclaw/cron.db</value>
+  </data>
+  <data name="NextWakeText.Text" xml:space="preserve">
+    <value>下次唤醒：—</value>
+  </data>
+  <data name="CronPage_Button_80.Content" xml:space="preserve">
+    <value>立即运行</value>
+  </data>
+  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
+    <value>上次运行：</value>
+  </data>
+  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
+    <value>下次运行：</value>
+  </data>
+  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
+    <value>未配置 Cron 作业</value>
+  </data>
+<data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
+    <value>🐛 调试</value>
+  </data>
+  <data name="DebugPage_TextBlock_14.Text" xml:space="preserve">
+    <value>日志查看器</value>
+  </data>
+  <data name="DebugPage_Button_18.Content" xml:space="preserve">
+    <value>⟳ 刷新</value>
+  </data>
+  <data name="DebugPage_Button_19.Content" xml:space="preserve">
+    <value>📋 复制日志</value>
+  </data>
+  <data name="LogText.Text" xml:space="preserve">
+    <value>正在加载...</value>
+  </data>
+  <data name="DebugPage_TextBlock_38.Text" xml:space="preserve">
+    <value>连接状态</value>
+  </data>
+  <data name="DebugPage_TextBlock_52.Text" xml:space="preserve">
+    <value>操作员状态</value>
+  </data>
+  <data name="DebugPage_TextBlock_56.Text" xml:space="preserve">
+    <value>网关地址</value>
+  </data>
+  <data name="DebugPage_TextBlock_61.Text" xml:space="preserve">
+    <value>节点模式</value>
+  </data>
+  <data name="DebugPage_TextBlock_72.Text" xml:space="preserve">
+    <value>设备标识</value>
+  </data>
+  <data name="DebugPage_TextBlock_86.Text" xml:space="preserve">
+    <value>设备 ID</value>
+  </data>
+  <data name="DebugPage_Button_91.Content" xml:space="preserve">
+    <value>📋 复制</value>
+  </data>
+  <data name="DebugPage_TextBlock_94.Text" xml:space="preserve">
+    <value>公钥</value>
+  </data>
+  <data name="DebugPage_TextBlock_108.Text" xml:space="preserve">
+    <value>调试操作</value>
+  </data>
+  <data name="DebugPage_Button_111.Content" xml:space="preserve">
+    <value>📄 打开日志文件</value>
+  </data>
+  <data name="DebugPage_Button_112.Content" xml:space="preserve">
+    <value>📁 打开配置文件夹</value>
+  </data>
+  <data name="DebugPage_Button_113.Content" xml:space="preserve">
+    <value>📁 打开诊断文件夹</value>
+  </data>
+  <data name="DebugPage_Button_114.Content" xml:space="preserve">
+    <value>📋 复制支持上下文</value>
+  </data>
+<data name="StatusHeadline.Text" xml:space="preserve">
+    <value>未连接到网关</value>
+  </data>
+  <data name="ScanButton.Content" xml:space="preserve">
+    <value>扫描网关</value>
+  </data>
+  <data name="DashboardButton.Content" xml:space="preserve">
+    <value>打开仪表板</value>
+  </data>
+  <data name="ChatButton.Content" xml:space="preserve">
+    <value>打开聊天</value>
+  </data>
+  <data name="HealthCheckButton.Content" xml:space="preserve">
+    <value>健康检查</value>
+  </data>
+  <data name="InstancesPage_TextBlock_12.Text" xml:space="preserve">
+    <value>🖥️ 实例</value>
+  </data>
+  <data name="RefreshButton.Content" xml:space="preserve">
+    <value>⟳ 刷新</value>
+  </data>
+  <data name="InstancesPage_TextBlock_22.Text" xml:space="preserve">
+    <value>🖥️ 未检测到其他实例</value>
+  </data>
+  <data name="InstancesPage_TextBlock_25.Text" xml:space="preserve">
+    <value>连接到同一网关的其他 OpenClaw 节点将显示在此处。</value>
+  </data>
+  <data name="NodesPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🖥️ 节点</value>
+  </data>
+  <data name="NodesPage_TextBlock_22.Text" xml:space="preserve">
+    <value>没有已连接的节点</value>
+  </data>
+  <data name="NodesPage_TextBlock_29.Text" xml:space="preserve">
+    <value>🔗 待处理配对请求</value>
+  </data>
+  <data name="NodesPage_TextBlock_35.Text" xml:space="preserve">
+    <value>📱 待处理设备配对</value>
+  </data>
+  <data name="NodesPage_TextBlock_41.Text" xml:space="preserve">
+    <value>🌐 已连接的客户端</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_8.Text" xml:space="preserve">
+    <value>🔐 权限</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_14.Text" xml:space="preserve">
+    <value>执行策略</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>控制代理可在此节点上执行哪些命令。规则会匹配完整命令行。</value>
+  </data>
+  <data name="DefaultActionCombo.Header" xml:space="preserve">
+    <value>默认操作</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_23.Content" xml:space="preserve">
+    <value>拒绝</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_24.Content" xml:space="preserve">
+    <value>允许</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_25.Content" xml:space="preserve">
+    <value>询问</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
+    <value>规则</value>
+  </data>
+  <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
+    <value>命令模式（例如 echo *）</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
+    <value>允许</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
+    <value>拒绝</value>
+  </data>
+  <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
+    <value>添加规则</value>
+  </data>
+  <data name="SaveExecPolicyButton.Content" xml:space="preserve">
+    <value>保存执行策略</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
+    <value>节点允许列表</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
+    <value>网关允许连接节点执行的命令。此列表为只读 — 请通过“配置”页面编辑。</value>
+  </data>
+  <data name="AllowlistEmpty.Text" xml:space="preserve">
+    <value>没有可用的允许列表数据。请先连接到网关。</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_92.Text" xml:space="preserve">
+    <value>系统权限</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_95.Text" xml:space="preserve">
+    <value>摄像头、麦克风和屏幕捕获的系统权限。这些由 Windows 隐私设置管理。</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_110.Text" xml:space="preserve">
+    <value>📷 摄像头</value>
+  </data>
+  <data name="CameraPermStatus.Text" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_114.Text" xml:space="preserve">
+    <value>🎤 麦克风</value>
+  </data>
+  <data name="MicPermStatus.Text" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_118.Text" xml:space="preserve">
+    <value>🖥️ 屏幕捕获</value>
+  </data>
+  <data name="ScreenPermStatus.Text" xml:space="preserve">
+    <value>可用</value>
+  </data>
+  <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
+    <value>打开 Windows 隐私设置</value>
+  </data>
+  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>💬 会话</value>
+  </data>
+  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
+    <value>重置</value>
+  </data>
+  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
+    <value>压缩</value>
+  </data>
+  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
+    <value>无活跃会话</value>
+  </data>
+  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
+    <value>🤖 可用模型</value>
+  </data>
+  <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>⚙️ 设置</value>
+  </data>
+  <data name="SettingsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>此计算机的本地应用首选项。</value>
+  </data>
+  <data name="SettingsPage_TextBlock_26.Text" xml:space="preserve">
+    <value>启动</value>
+  </data>
+  <data name="AutoStartToggle.Header" xml:space="preserve">
+    <value>随 Windows 自动启动</value>
+  </data>
+  <data name="GlobalHotkeyToggle.Header" xml:space="preserve">
+    <value>全局热键（Ctrl+Alt+Shift+C → 快速发送）</value>
+  </data>
+  <data name="SettingsPage_TextBlock_41.Text" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="NotificationsToggle.Header" xml:space="preserve">
+    <value>显示通知</value>
+  </data>
+  <data name="NotificationSoundComboBox.Header" xml:space="preserve">
+    <value>提示音</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_48.Content" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_49.Content" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_50.Content" xml:space="preserve">
+    <value>柔和</value>
+  </data>
+  <data name="SettingsPage_TextBlock_52.Text" xml:space="preserve">
+    <value>显示以下类型通知:</value>
+  </data>
+  <data name="NotifyHealthCb.Content" xml:space="preserve">
+    <value>健康警报</value>
+  </data>
+  <data name="NotifyUrgentCb.Content" xml:space="preserve">
+    <value>紧急消息</value>
+  </data>
+  <data name="NotifyReminderCb.Content" xml:space="preserve">
+    <value>提醒</value>
+  </data>
+  <data name="NotifyEmailCb.Content" xml:space="preserve">
+    <value>邮件摘要</value>
+  </data>
+  <data name="NotifyCalendarCb.Content" xml:space="preserve">
+    <value>日历事件</value>
+  </data>
+  <data name="NotifyBuildCb.Content" xml:space="preserve">
+    <value>构建通知</value>
+  </data>
+  <data name="NotifyStockCb.Content" xml:space="preserve">
+    <value>股票提醒</value>
+  </data>
+  <data name="NotifyInfoCb.Content" xml:space="preserve">
+    <value>常规信息</value>
+  </data>
+  <data name="TestNotificationButton.Content" xml:space="preserve">
+    <value>发送测试通知</value>
+  </data>
+  <data name="CancelButton.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🧩 技能</value>
+  </data>
+  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
+    <value>所有代理</value>
+  </data>
+  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
+    <value>未安装技能</value>
+  </data>
+  <data name="MarketplaceLink.Content" xml:space="preserve">
+    <value>浏览技能市场 →</value>
+  </data>
+  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
+    <value>总成本</value>
+  </data>
+  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
+    <value>请求</value>
+  </data>
+  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
+    <value>令牌</value>
+  </data>
+  <data name="TokenCountText.Text" xml:space="preserve">
+    <value>284.5K</value>
+  </data>
+  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
+    <value>提供程序</value>
+  </data>
+  <data name="Period7DaysButton.Content" xml:space="preserve">
+    <value>7 天</value>
+  </data>
+  <data name="Period30DaysButton.Content" xml:space="preserve">
+    <value>30 天</value>
+  </data>
+  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
+    <value>提供程序明细</value>
+  </data>
+  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
+    <value>每日成本</value>
+  </data>
+  <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
+    <value>📂 工作区</value>
+  </data>
+  <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
+    <value>聊天</value>
+  </data>
+  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
+    <value>连接到网关以开始聊天</value>
+  </data>
+  <data name="ChatWindow_TextBlock_67.Text" xml:space="preserve">
+    <value>聊天不可用</value>
+  </data>
+  <data name="ChatWindow_Button_71.Content" xml:space="preserve">
+    <value>改在浏览器中打开</value>
+  </data>
+  <data name="TitleText.Text" xml:space="preserve">
+    <value>OpenClaw Windows Companion</value>
+  </data>
+  <data name="TitleStatusText.Text" xml:space="preserve">
+    <value>已断开连接</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_79.Content" xml:space="preserve">
+    <value>主页</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_82.Content" xml:space="preserve">
+    <value>聊天</value>
+  </data>
+  <data name="HubWindow_NavigationViewItemHeader_87.Content" xml:space="preserve">
+    <value>网关</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_88.Content" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_91.Content" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="ConversationsNavItem.Content" xml:space="preserve">
+    <value>对话</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
+    <value>代理事件</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
+    <value>技能</value>
+  </data>
+  <data name="AgentsNavItem.Content" xml:space="preserve">
+    <value>代理</value>
+  </data>
+  <data name="DefaultAgentNavItem.Content" xml:space="preserve">
+    <value>main</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
+    <value>频道</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
+    <value>节点</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
+    <value>绑定</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
+    <value>配置</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_121.Content" xml:space="preserve">
+    <value>用量</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
+    <value>此计算机</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
+    <value>功能</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
+    <value>权限</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_139.Content" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
+    <value>调试</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
+    <value>信息</value>
+  </data>
+  <data name="Onboarding_UnknownPage" xml:space="preserve">
+    <value>未知页面</value>
+  </data>
+  <data name="Onboarding_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Onboarding_Ready_NodeModeActive" xml:space="preserve">
+    <value>🔌 节点模式已启用</value>
+  </data>
+  <data name="Onboarding_Ready_NodeModeActiveDetail" xml:space="preserve">
+    <value>此电脑将作为远程计算节点运行。网关可以在此计算机上调用屏幕捕获、摄像头和系统命令。</value>
+  </data>
+  <data name="Onboarding_Ready_Node_ScreenCapture" xml:space="preserve">
+    <value>屏幕捕获</value>
+  </data>
+  <data name="Onboarding_Ready_Node_ScreenCapture_Sub" xml:space="preserve">
+    <value>远程屏幕访问</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Camera" xml:space="preserve">
+    <value>摄像头</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Camera_Sub" xml:space="preserve">
+    <value>远程摄像头访问</value>
+  </data>
+  <data name="Onboarding_Ready_Node_SystemCmd" xml:space="preserve">
+    <value>系统命令</value>
+  </data>
+  <data name="Onboarding_Ready_Node_SystemCmd_Sub" xml:space="preserve">
+    <value>远程命令执行</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Canvas" xml:space="preserve">
+    <value>Canvas 渲染</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Canvas_Sub" xml:space="preserve">
+    <value>可视工作区输出</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Notify" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Notify_Sub" xml:space="preserve">
+    <value>系统通知</value>
+  </data>
+  <data name="Onboarding_Wizard_Processing" xml:space="preserve">
+    <value>⏳ 正在处理…</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorEmptyGatewayResponse" xml:space="preserve">
+    <value>网关返回空响应</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
+    <value>网关已断开连接</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
+    <value>与网关的连接已丢失。单击“下一步”跳过向导，或等待重新连接。</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorEmptyNextResponse" xml:space="preserve">
+    <value>网关对 wizard.next 返回了空响应</value>
+  </data>
+  <data name="Onboarding_Wizard_NoOptionsAvailable" xml:space="preserve">
+    <value>没有可用选项</value>
+  </data>
+  <data name="Onboarding_Wizard_Yes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="Onboarding_Wizard_NoSkip" xml:space="preserve">
+    <value>否 / 跳过</value>
+  </data>
+  <data name="Onboarding_Wizard_Waiting" xml:space="preserve">
+    <value>正在等待...</value>
+  </data>
+  <data name="Onboarding_Wizard_ClickNextToContinue" xml:space="preserve">
+    <value>单击“下一步”继续。</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorTitle" xml:space="preserve">
+    <value>向导错误</value>
+  </data>
+  <data name="Onboarding_Wizard_SkipWizard" xml:space="preserve">
+    <value>跳过向导</value>
+  </data>
+  <data name="Onboarding_Wizard_ConnectingToGateway" xml:space="preserve">
+    <value>正在连接到网关...</value>
+  </data>
+  <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
+    <value>请等待连接建立...</value>
+  </data>
+  <data name="PriorityInfoBar.Title" xml:space="preserve">
+    <value>路由优先级</value>
+  </data>
+  <data name="PriorityInfoBar.Message" xml:space="preserve">
+    <value>绑定控制哪个代理处理每个频道的消息。优先级：对等 &gt; 帐户 &gt; 频道 &gt; 默认。</value>
+  </data>
+  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
+    <value>单代理模式</value>
+  </data>
+  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
+    <value>所有消息都会路由到默认代理。添加绑定以进行多代理路由。</value>
+  </data>
+  <data name="ConfigSubtitle.Text" xml:space="preserve">
+    <value>正在编辑从已连接网关获取的网关配置 (openclaw.json)</value>
+  </data>
+  <data name="DetailPlaceholder.Text" xml:space="preserve">
+    <value>从树中选择一个部分以编辑其设置。</value>
+  </data>
+  <data name="TokenPromptBox.PlaceholderText" xml:space="preserve">
+    <value>网关令牌</value>
+  </data>
+  <data name="TokenPromptBox.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="SetupCodeTextBox.PlaceholderText" xml:space="preserve">
+    <value>在此处粘贴设置代码…</value>
+  </data>
+  <data name="ConnectionWarning.Message" xml:space="preserve">
+    <value>连接到网关以查看对话。</value>
+  </data>
+  <data name="EmptyState.Text" xml:space="preserve">
+    <value>未找到会话</value>
+  </data>
+  <data name="NotWiredInfoBar.Title" xml:space="preserve">
+    <value>Cron API 尚未接入</value>
+  </data>
+  <data name="NotWiredInfoBar.Message" xml:space="preserve">
+    <value>正在显示示例数据。OpenClawGatewayClient 中尚不提供 Cron 管理方法。</value>
+  </data>
+  <data name="FallbackInfoBar.Title" xml:space="preserve">
+    <value>工作区文件</value>
+  </data>
+  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Chat</value>
+  </data>
+  <data name="SearchBox.PlaceholderText" xml:space="preserve">
+    <value>键入命令...</value>
+  </data>
+  <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw</value>
+  </data>
+  <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
+    <value>搜索… (Ctrl+E)</value>
+  </data>
+  <data name="CanvasWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Canvas</value>
+  </data>
+  <data name="CanvasWindow_TextBlock_31.Text" xml:space="preserve">
+    <value>OpenClaw Canvas</value>
+  </data>
+  <data name="CanvasWindowReloadToolTip.Content" xml:space="preserve">
+    <value>重新加载</value>
+  </data>
+  <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Menu</value>
+  </data>
+  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
+    <value>📊 使用量和成本</value>
+  </data>
+  <data name="ChatWindowHomeToolTip.Content" xml:space="preserve">
+    <value>主页</value>
+  </data>
+  <data name="ChatWindowRefreshToolTip.Content" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
+    <value>在浏览器中打开</value>
+  </data>
+  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
+    <value>主页</value>
+  </data>
+  <data name="ChatPageRefreshToolTip.Content" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
+    <value>在浏览器中打开</value>
+  </data>
+  <data name="ChatPageDeveloperToolsToolTip.Content" xml:space="preserve">
+    <value>开发人员工具</value>
+  </data>
+  <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
+    <value>删除任务</value>
+  </data>
 </root>

@@ -274,6 +274,15 @@ public class DeviceIdentityIntegrationTests
 public class DeviceIdentityUnitTests
 {
     [Fact]
+    public void StoreDeviceToken_RejectsEmptyToken()
+    {
+        var identity = new DeviceIdentity(Path.GetTempPath());
+
+        Assert.Throws<ArgumentException>(() => identity.StoreDeviceToken(""));
+        Assert.Throws<ArgumentException>(() => identity.StoreDeviceToken("   "));
+    }
+
+    [Fact]
     public void PairingStatusEventArgs_HasCorrectProperties()
     {
         var args = new PairingStatusEventArgs(PairingStatus.Paired, "abc123", "Approved");

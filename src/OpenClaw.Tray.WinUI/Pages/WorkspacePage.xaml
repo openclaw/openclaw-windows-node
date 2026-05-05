@@ -19,7 +19,7 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="📂 Workspace" Style="{StaticResource TitleTextBlockStyle}"
+            <TextBlock x:Uid="WorkspacePage_TextBlock_22" Grid.Column="0" Text="📂 Workspace" Style="{StaticResource TitleTextBlockStyle}"
                        VerticalAlignment="Center" Margin="0,0,16,0"/>
 
             <TextBlock x:Name="WorkspacePathText" Grid.Column="1"
@@ -31,7 +31,7 @@
                     VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                    <TextBlock Text="Refresh"/>
+                    <TextBlock x:Uid="WorkspacePage_TextBlock_34" Text="Refresh"/>
                 </StackPanel>
             </Button>
         </Grid>
@@ -40,7 +40,7 @@
         <StackPanel Grid.Row="1" Padding="24,0">
             <ProgressRing x:Name="LoadingRing" IsActive="False" Width="32" Height="32"
                           HorizontalAlignment="Center"/>
-            <InfoBar x:Name="FallbackInfoBar"
+            <InfoBar x:Uid="FallbackInfoBar" x:Name="FallbackInfoBar"
                      IsOpen="False" IsClosable="False"
                      Severity="Informational"
                      Title="Workspace files"/>

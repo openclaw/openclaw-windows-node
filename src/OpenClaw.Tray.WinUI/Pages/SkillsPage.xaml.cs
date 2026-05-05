@@ -118,11 +118,6 @@ public sealed partial class SkillsPage : Page
         }
     }
 
-    private void OnMarketplaceClick(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Debug.WriteLine("TODO: open skills marketplace — coming soon");
-    }
-
     public void UpdateFromGateway(JsonElement data)
     {
         OpenClawTray.Services.Logger.Info("[SkillsPage] Received gateway skills data");

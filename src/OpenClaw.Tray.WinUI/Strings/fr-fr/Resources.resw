@@ -17,9 +17,7 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
-
   <!-- ==================== SettingsWindow.xaml ==================== -->
-
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>CONNEXION</value>
@@ -28,12 +26,11 @@
     <value>DÉMARRAGE</value>
   </data>
   <data name="SettingsNotificationsHeader.Text" xml:space="preserve">
-    <value>NOTIFICATIONS</value>
+    <value>Alertes</value>
   </data>
   <data name="SettingsAdvancedHeader.Text" xml:space="preserve">
     <value>AVANCÉ (EXPERIMENTAL)</value>
   </data>
-
   <!-- TextBox headers and placeholders -->
   <data name="SettingsGatewayUrlTextBox.Header" xml:space="preserve">
     <value>URL de la passerelle</value>
@@ -42,12 +39,11 @@
     <value>ws://localhost:18789 ou https://host.tailnet.ts.net</value>
   </data>
   <data name="SettingsTokenTextBox.Header" xml:space="preserve">
-    <value>Token</value>
+    <value>Jeton</value>
   </data>
   <data name="SettingsTokenTextBox.PlaceholderText" xml:space="preserve">
     <value>Votre API Token</value>
   </data>
-
   <!-- Toggle headers -->
   <data name="SettingsAutoStartToggle.Header" xml:space="preserve">
     <value>Démarrage automatique avec Windows</value>
@@ -61,7 +57,6 @@
   <data name="SettingsNodeModeToggle.Header" xml:space="preserve">
     <value>Activer le mode Node</value>
   </data>
-
   <!-- ComboBox -->
   <data name="SettingsSoundComboBox.Header" xml:space="preserve">
     <value>Son</value>
@@ -75,7 +70,6 @@
   <data name="SettingsSoundSubtle.Content" xml:space="preserve">
     <value>Subtil</value>
   </data>
-
   <!-- Notification filter labels -->
   <data name="SettingsNotifyForLabel.Text" xml:space="preserve">
     <value>Afficher les notifications pour:</value>
@@ -83,7 +77,6 @@
   <data name="SettingsNotifyFilterHint.Text" xml:space="preserve">
     <value>Filtrer par mots clés dans le message (Ex : 'email', 'rappel')</value>
   </data>
-
   <!-- Notification filter checkboxes -->
   <data name="SettingsNotifyHealthCb.Content" xml:space="preserve">
     <value>Alertes de santé</value>
@@ -109,10 +102,9 @@
   <data name="SettingsNotifyInfoCb.Content" xml:space="preserve">
     <value>Messages d'informations</value>
   </data>
-
   <!-- Buttons -->
   <data name="SettingsTestConnectionButton.Content" xml:space="preserve">
-    <value>Test</value>
+    <value>Tester</value>
   </data>
   <data name="SettingsTestNotificationButton.Content" xml:space="preserve">
     <value>Envoyer une notification de test</value>
@@ -123,14 +115,11 @@
   <data name="SettingsCancelButton.Content" xml:space="preserve">
     <value>Annuler</value>
   </data>
-
   <!-- Node mode description -->
   <data name="SettingsNodeModeDescription.Text" xml:space="preserve">
     <value>Lorsqu'il est activé, ce PC peut recevoir des commandes de l'agent (canvas, captures d'écran, etc.)</value>
   </data>
-
   <!-- ==================== StatusDetailWindow.xaml ==================== -->
-
   <!-- Section headers -->
   <data name="StatusUsageHeader.Text" xml:space="preserve">
     <value>UTILISATION</value>
@@ -165,7 +154,6 @@
   <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
     <value>ACTIVITÉ RÉCENTE</value>
   </data>
-
   <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
     <value>Coûts (période):</value>
@@ -176,7 +164,6 @@
   <data name="StatusProvidersLabel.Text" xml:space="preserve">
     <value>Fournisseurs :</value>
   </data>
-
   <!-- Default values -->
   <data name="StatusConnectedText.Text" xml:space="preserve">
     <value>Connecté</value>
@@ -211,7 +198,6 @@
   <data name="StatusCronDescription.Text" xml:space="preserve">
     <value>Ouvrir les contrôles d'automatisation planifiée quand la passerelle connectée les prend en charge.</value>
   </data>
-
   <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>Rafraîchir</value>
@@ -261,20 +247,17 @@
   <data name="StatusOpenStreamButton.Content" xml:space="preserve">
     <value>Ouvrir le flux</value>
   </data>
-
   <!-- ==================== ActivityStreamWindow.xaml ==================== -->
-
   <!-- Header -->
   <data name="ActivityStreamTitle.Text" xml:space="preserve">
     <value>⚡ Flux d'activité</value>
   </data>
-
   <!-- Filter items -->
   <data name="ActivityFilterAll.Content" xml:space="preserve">
     <value>Toute l'activité</value>
   </data>
   <data name="ActivityFilterSessions.Content" xml:space="preserve">
-    <value>Sessions</value>
+    <value>Séances</value>
   </data>
   <data name="ActivityFilterUsage.Content" xml:space="preserve">
     <value>Utilisations</value>
@@ -283,14 +266,12 @@
     <value>Nœuds</value>
   </data>
   <data name="ActivityFilterNotifications.Content" xml:space="preserve">
-    <value>Notifications</value>
+    <value>Alertes</value>
   </data>
-
   <!-- Empty state -->
   <data name="ActivityEmptyText.Text" xml:space="preserve">
     <value>Aucune activité pour le moment</value>
   </data>
-
   <!-- Buttons -->
   <data name="ActivityOpenDashboardButton.Content" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
@@ -301,19 +282,15 @@
   <data name="ActivityCloseButton.Content" xml:space="preserve">
     <value>Fermer</value>
   </data>
-
   <!-- ==================== NotificationHistoryWindow.xaml ==================== -->
-
   <!-- Header -->
   <data name="NotificationHistoryTitle.Text" xml:space="preserve">
     <value>📋 Historique de notifications</value>
   </data>
-
   <!-- Empty state -->
   <data name="NotificationEmptyText.Text" xml:space="preserve">
     <value>Aucune notification disponible</value>
   </data>
-
   <!-- Buttons -->
   <data name="NotificationClearAllButton.Content" xml:space="preserve">
     <value>Tout effacer</value>
@@ -321,15 +298,13 @@
   <data name="NotificationCloseButton.Content" xml:space="preserve">
     <value>Fermer</value>
   </data>
-
   <!-- ==================== Runtime strings (C# code) ==================== -->
-
   <!-- Window titles -->
   <data name="WindowTitle_Settings" xml:space="preserve">
     <value>Paramètres — OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>Status — OpenClaw Tray</value>
+    <value>État — OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
     <value>Flux d'activités — OpenClaw Tray</value>
@@ -341,7 +316,7 @@
     <value>Envoi rapide — OpenClaw</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
-    <value>OpenClaw Chat</value>
+    <value>Discussion OpenClaw</value>
   </data>
   <data name="WindowTitle_Welcome" xml:space="preserve">
     <value>Bienvenue sur OpenClaw</value>
@@ -349,7 +324,6 @@
   <data name="WindowTitle_Update" xml:space="preserve">
     <value>Mettre à jour OpenClaw</value>
   </data>
-
   <!-- Settings runtime status -->
   <data name="Status_Testing" xml:space="preserve">
     <value>Test en cours...</value>
@@ -360,7 +334,6 @@
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ Problème de connexion</value>
   </data>
-
   <!-- QuickSend dialog -->
   <data name="QuickSend_Header" xml:space="preserve">
     <value>📤 Envoi rapide</value>
@@ -386,7 +359,6 @@
   <data name="QuickSend_ToastBody" xml:space="preserve">
     <value>Votre message a été envoyé à OpenClaw.</value>
   </data>
-
   <!-- WelcomeDialog -->
   <data name="Welcome_Title" xml:space="preserve">
     <value>Bienvenue sur OpenClaw!</value>
@@ -412,7 +384,6 @@
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>Ouvrir les paramètres</value>
   </data>
-
   <!-- UpdateDialog -->
   <data name="Update_VersionAvailable" xml:space="preserve">
     <value>🎉 La version {0} est disponible !</value>
@@ -432,7 +403,6 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>Télécharger &amp; Installer</value>
   </data>
-
   <!-- Tray menu items -->
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
@@ -524,13 +494,12 @@
   <data name="Menu_RestartSshTunnel" xml:space="preserve">
     <value>Redémarrer le tunnel SSH</value>
   </data>
-
   <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
-    <value>Status: {0}</value>
+    <value>État : {0}</value>
   </data>
   <data name="Menu_SessionsFormat" xml:space="preserve">
-    <value>Sessions ({0})</value>
+    <value>Séances ({0})</value>
   </data>
   <data name="Menu_NodesFormat" xml:space="preserve">
     <value>Nœuds ({0})</value>
@@ -562,7 +531,6 @@
   <data name="Menu_NodeDisconnected" xml:space="preserve">
     <value>⚪ Déconnecté</value>
   </data>
-
   <!-- Notification test -->
   <data name="TestNotification_Title" xml:space="preserve">
     <value>Test de notifications</value>
@@ -570,12 +538,10 @@
   <data name="TestNotification_Body" xml:space="preserve">
     <value>Ceci est une notifications de test provenant de OpenClaw Tray.</value>
   </data>
-
   <!-- Status detail runtime -->
   <data name="Status_LastCheckFormat" xml:space="preserve">
     <value>Dernière vérification : {0}</value>
   </data>
-
   <!-- Time ago strings -->
   <data name="TimeAgo_JustNow" xml:space="preserve">
     <value>Maintenant</value>
@@ -586,16 +552,13 @@
   <data name="TimeAgo_HoursFormat" xml:space="preserve">
     <value>Il y a {0}h</value>
   </data>
-
   <!-- Activity stream runtime -->
   <data name="Activity_ClickToOpen" xml:space="preserve">
     <value>Cliquez pour ouvrir le tableau de bord</value>
   </data>
-
   <data name="TimeAgo_DaysFormat" xml:space="preserve">
     <value>Il y a {0}j</value>
   </data>
-
   <!-- Status display text (plain, no emoji) -->
   <data name="StatusDisplay_Connected" xml:space="preserve">
     <value>Connecté</value>
@@ -615,11 +578,9 @@
   <data name="Status_NotAvailable" xml:space="preserve">
     <value>Indisponible</value>
   </data>
-
   <!-- ==================== CanvasWindow.xaml ==================== -->
-
   <data name="WindowTitle_Canvas" xml:space="preserve">
-    <value>Canvas</value>
+    <value>Canevas</value>
   </data>
   <data name="CanvasErrorTitle.Text" xml:space="preserve">
     <value>❌ Erreur du Canvas</value>
@@ -634,7 +595,7 @@
     <value>En attente de contenu...</value>
   </data>
   <data name="A2UI_CanvasTitle" xml:space="preserve">
-    <value>Canvas</value>
+    <value>Canevas</value>
   </data>
   <data name="A2UI_UnsupportedComponent" xml:space="preserve">
     <value>Composant non pris en charge : {0}</value>
@@ -651,9 +612,7 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Sélectionner...</value>
   </data>
-
   <!-- ==================== WebChatWindow.xaml ==================== -->
-
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Chat indisponible</value>
   </data>
@@ -692,15 +651,11 @@ Utilisez l'une de ces options :
 • S'il est auto-signé, importez l'AC/le certificat de votre passerelle dans les Autorités de certification racines de confiance de Windows (certmgr.msc)
 • Ou utilisez un tunnel vers localhost : ssh -N -L 18789:localhost:18789 &lt;serveur&gt;</value>
   </data>
-
   <!-- ==================== TrayMenuWindow.xaml ==================== -->
-
   <data name="WindowTitle_TrayMenu" xml:space="preserve">
     <value>Menu OpenClaw</value>
   </data>
-
   <!-- ==================== Toast: Device / Node ==================== -->
-
   <data name="Toast_DeviceIdCopied" xml:space="preserve">
     <value>📋 Identifiant de la machine copié</value>
   </data>
@@ -713,18 +668,14 @@ Utilisez l'une de ces options :
   <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
     <value>{0} nœud(s) copiés dans le presse papier</value>
   </data>
-
   <!-- ==================== Toast: Session ==================== -->
-
   <data name="Toast_SessionActionFailed" xml:space="preserve">
     <value>❌ Action de session échouée</value>
   </data>
   <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
     <value>Impossible d'envoyer une requête vers la passerelle.</value>
   </data>
-
   <!-- ==================== Toast: Node Mode ==================== -->
-
   <data name="Toast_NodeModeActive" xml:space="preserve">
     <value>🔌 Mode de noeud actif</value>
   </data>
@@ -755,9 +706,7 @@ Utilisez l'une de ces options :
   <data name="Toast_PairingRejectedDetail" xml:space="preserve">
     <value>La passerelle a rejeté la demande d'appairage de cet appareil.</value>
   </data>
-
   <!-- ==================== Toast: Health Check ==================== -->
-
   <data name="Toast_HealthCheck" xml:space="preserve">
     <value>Vérification de l'état</value>
   </data>
@@ -770,9 +719,7 @@ Utilisez l'une de ces options :
   <data name="Toast_HealthCheckFailed" xml:space="preserve">
     <value>Vérification de l'état échouée</value>
   </data>
-
   <!-- ==================== Toast: Screen / Camera ==================== -->
-
   <data name="Toast_ScreenCaptured" xml:space="preserve">
     <value>📸 Capture d'écran effectuée</value>
   </data>
@@ -785,9 +732,7 @@ Utilisez l'une de ces options :
   <data name="Toast_CameraBlockedDetail" xml:space="preserve">
     <value>Activez l'accès à la caméra dans les paramètres de confidentialité de Windows pour OpenClaw Tray</value>
   </data>
-
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
-
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nouveau: Fil d'activité</value>
   </data>
@@ -797,9 +742,7 @@ Utilisez l'une de ces options :
   <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
     <value>Créer un nouveau flux d'activités</value>
   </data>
-
   <!-- ==================== SetupWizardWindow (C# code) ==================== -->
-
   <data name="Setup_Title" xml:space="preserve">
     <value>Configuration d'OpenClaw</value>
   </data>
@@ -950,9 +893,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Setup_StepDone" xml:space="preserve">
     <value>Étape 3 sur 3 — Terminé</value>
   </data>
-
   <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
-
   <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
     <value>MODE DÉVELOPPEUR</value>
   </data>
@@ -986,9 +927,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Mcp_Status_FailedToStart" xml:space="preserve">
     <value>Échec du démarrage : </value>
   </data>
-
   <!-- ==================== MCP token (SettingsWindow) ==================== -->
-
   <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
     <value>Jeton porteur :</value>
   </data>
@@ -1037,18 +976,14 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>Annuler</value>
   </data>
-
   <!-- ==================== DownloadProgressDialog ==================== -->
-
   <data name="WindowTitle_Downloading" xml:space="preserve">
     <value>Téléchargement en cours...</value>
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>Téléchargement en cours...</value>
   </data>
-
   <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
-
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — Approuver l'URL</value>
   </data>
@@ -1077,7 +1012,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Non — la bloquer.</value>
   </data>
   <data name="Onboarding_Title" xml:space="preserve">
-    <value>Configuration d'OpenClaw</value>
+    <value>Configuration d’OpenClaw</value>
   </data>
   <data name="Onboarding_Back" xml:space="preserve">
     <value>Retour</value>
@@ -1098,7 +1033,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Avis de sécurité</value>
   </data>
   <data name="Onboarding_Welcome_SecurityBody" xml:space="preserve">
-    <value>OpenClaw exécute un agent IA capable d'exécuter des commandes, de lire et écrire des fichiers, et d'interagir avec votre système en votre nom.</value>
+    <value>OpenClaw exécute un agent IA qui peut exécuter des commandes, lire et écrire des fichiers, et interagir avec votre système en votre nom.</value>
   </data>
   <data name="Onboarding_Welcome_TrustTitle" xml:space="preserve">
     <value>Votre agent peut :</value>
@@ -1131,7 +1066,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Tout est prêt !</value>
   </data>
   <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
-    <value>OpenClaw est prêt. Voici quelques fonctionnalités à essayer :</value>
+    <value>OpenClaw est prêt. Voici quelques actions à essayer :</value>
   </data>
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>Ouvrir le panneau de la barre de menus</value>
@@ -1176,7 +1111,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Collez le token d'amorçage</value>
   </data>
   <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
-    <value>Node Mode</value>
+    <value>Mode nœud</value>
   </data>
   <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
     <value>Tester la connexion</value>
@@ -1212,7 +1147,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Accorder les autorisations</value>
   </data>
   <data name="Onboarding_Permissions_Description" xml:space="preserve">
-    <value>OpenClaw fonctionne mieux lorsqu'il peut envoyer des notifications, accéder à votre caméra et microphone, capturer votre écran et connaître votre position. Accordez les autorisations ci-dessous.</value>
+    <value>OpenClaw fonctionne mieux lorsqu’il peut envoyer des notifications, accéder à votre caméra et microphone, capturer votre écran et connaître votre position. Accordez les autorisations ci-dessous.</value>
   </data>
   <data name="Onboarding_Permissions_Refresh" xml:space="preserve">
     <value>Actualiser le statut</value>
@@ -1248,13 +1183,13 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>La passerelle fournit des étapes de configuration dynamiques. Celles-ci s'exécuteront une fois la connexion établie.</value>
   </data>
   <data name="Onboarding_Perm_Notifications" xml:space="preserve">
-    <value>Notifications</value>
+    <value>Alertes</value>
   </data>
   <data name="Onboarding_Perm_Camera" xml:space="preserve">
     <value>Caméra</value>
   </data>
   <data name="Onboarding_Perm_Microphone" xml:space="preserve">
-    <value>Microphone</value>
+    <value>Micro</value>
   </data>
   <data name="Onboarding_Perm_ScreenCapture" xml:space="preserve">
     <value>Capture d'écran</value>
@@ -1383,13 +1318,13 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Impossible de décoder le code de configuration de cette image</value>
   </data>
   <data name="Onboarding_Connection_SshHint" xml:space="preserve">
-    <value>OpenClaw créera un tunnel SSH géré pour transférer le port de la passerelle depuis l'hôte distant vers ce PC.</value>
+    <value>OpenClaw créera un tunnel SSH géré pour transférer le port de la passerelle de l’hôte distant vers ce PC.</value>
   </data>
   <data name="Onboarding_Connection_SshUser" xml:space="preserve">
     <value>Utilisateur SSH</value>
   </data>
   <data name="Onboarding_Connection_SshHost" xml:space="preserve">
-    <value>Hôte SSH</value>
+    <value>H├┤te SSH</value>
   </data>
   <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
     <value>Port de la passerelle distante</value>
@@ -1412,5 +1347,928 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
     <value>Vous pouvez configurer la passerelle plus tard dans les paramètres.</value>
   </data>
-
+  <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
+    <value>À propos</value>
+  </data>
+  <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
+    <value>OpenClaw Hub</value>
+  </data>
+  <data name="VersionText.Text" xml:space="preserve">
+    <value>v0.1.0</value>
+  </data>
+  <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
+    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+  </data>
+  <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
+    <value>Infos passerelle</value>
+  </data>
+  <data name="AboutPage_TextBlock_48.Text" xml:space="preserve">
+    <value>Version :</value>
+  </data>
+  <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
+    <value>Modèle :</value>
+  </data>
+  <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
+    <value>Mode d’authentification :</value>
+  </data>
+  <data name="AboutPage_TextBlock_60.Text" xml:space="preserve">
+    <value>Temps de fonctionnement :</value>
+  </data>
+  <data name="AboutPage_TextBlock_72.Text" xml:space="preserve">
+    <value>Débogage</value>
+  </data>
+  <data name="OpenLogButton.Content" xml:space="preserve">
+    <value>Ouvrir le fichier journal</value>
+  </data>
+  <data name="OpenConfigButton.Content" xml:space="preserve">
+    <value>Ouvrir le dossier de configuration</value>
+  </data>
+  <data name="CopySupportButton.Content" xml:space="preserve">
+    <value>Copier le contexte de support</value>
+  </data>
+  <data name="CheckUpdatesButton.Content" xml:space="preserve">
+    <value>Rechercher des mises à jour</value>
+  </data>
+  <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
+    <value>Liens</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
+    <value>Documentation → openclaw.ai/docs</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
+    <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
+  </data>
+  <data name="AboutPage_HyperlinkButton_96.Content" xml:space="preserve">
+    <value>Dashboard → openclaw://dashboard</value>
+  </data>
+  <data name="ActivityPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Activité</value>
+  </data>
+  <data name="FilterAllButton.Content" xml:space="preserve">
+    <value>Tout</value>
+  </data>
+  <data name="FilterSessionsButton.Content" xml:space="preserve">
+    <value>Séances</value>
+  </data>
+  <data name="FilterUsageButton.Content" xml:space="preserve">
+    <value>Utilisations</value>
+  </data>
+  <data name="FilterNodesButton.Content" xml:space="preserve">
+    <value>Nœuds</value>
+  </data>
+  <data name="FilterNotificationsButton.Content" xml:space="preserve">
+    <value>Alertes</value>
+  </data>
+  <data name="ActivityPage_TextBlock_86.Text" xml:space="preserve">
+    <value>Aucune activité pour le moment</value>
+  </data>
+  <data name="ActivityPage_TextBlock_89.Text" xml:space="preserve">
+    <value>L’activité des sessions, notifications et événements de nœud apparaîtra ici.</value>
+  </data>
+  <data name="ClearAllButton.Content" xml:space="preserve">
+    <value>Tout effacer</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
+    <value>Événements d’agent</value>
+  </data>
+  <data name="AgentFilterCombo.Header" xml:space="preserve">
+    <value>Agent logiciel</value>
+  </data>
+  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
+    <value>Tous les agents</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+    <value>Outil</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+    <value>Assistant virtuel</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+    <value>Erreur</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+    <value>Cycle de vie</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+    <value>Planification</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+    <value>Approbation</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+    <value>Réflexion</value>
+  </data>
+  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+    <value>Correctif</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
+    <value>Aucun événement d’agent pour le moment</value>
+  </data>
+  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
+    <value>Les événements d’agent en temps réel (appels d’outils, réponses, erreurs) apparaîtront ici pendant l’exécution des agents.</value>
+  </data>
+  <data name="ClearButton.Content" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+<data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>🔀 Liaisons</value>
+  </data>
+  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Règles de routage des messages</value>
+  </data>
+  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🖥️ Cet ordinateur</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_15.Text" xml:space="preserve">
+    <value>Fonctionnalités de l’appareil fournies aux agents via la passerelle. Activez ce que cet ordinateur peut faire.</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_33.Text" xml:space="preserve">
+    <value>Serveur MCP local</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_34.Text" xml:space="preserve">
+    <value>Exposez les fonctionnalités via HTTP pour les outils CLI et les intégrations locales.</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_44.Text" xml:space="preserve">
+    <value>Point de terminaison :</value>
+  </data>
+  <data name="CopyMcpTokenButton.Content" xml:space="preserve">
+    <value>Copier le jeton</value>
+  </data>
+  <data name="CopyMcpUrlButton.Content" xml:space="preserve">
+    <value>Copier l’URL</value>
+  </data>
+  <data name="CapabilitiesPage_TextBlock_66.Text" xml:space="preserve">
+    <value>État du nœud</value>
+  </data>
+  <data name="NodeStatusText.Text" xml:space="preserve">
+    <value>Mode nœud désactivé</value>
+  </data>
+  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>📡 Canaux</value>
+  </data>
+  <data name="ConnectionWarning.Title" xml:space="preserve">
+    <value>Non connecté</value>
+  </data>
+  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
+    <value>Aucun canal configuré</value>
+  </data>
+  <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
+    <value>Connectez-vous à la passerelle pour commencer la discussion</value>
+  </data>
+  <data name="ChatPage_TextBlock_56.Text" xml:space="preserve">
+    <value>La discussion WebView2 se chargera ici une fois la connexion à la passerelle établie.</value>
+  </data>
+  <data name="ChatPage_TextBlock_65.Text" xml:space="preserve">
+    <value>Chat indisponible</value>
+  </data>
+  <data name="ChatPage_Button_69.Content" xml:space="preserve">
+    <value>Ouvrir plutôt dans le navigateur</value>
+  </data>
+  <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
+    <value>⚙️ Configuration</value>
+  </data>
+  <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="ConfigPage_TabViewItem_34.Header" xml:space="preserve">
+    <value>Éditeur</value>
+  </data>
+  <data name="DetailPath.Text" xml:space="preserve">
+    <value>Sélectionnez une section de configuration</value>
+  </data>
+  <data name="ConfigPage_TabViewItem_82.Header" xml:space="preserve">
+    <value>JSON brut</value>
+  </data>
+  <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
+    <value>Schéma non disponible</value>
+  </data>
+  <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
+    <value>Le schéma de configuration de la passerelle n’a pas pu être chargé. Utilisez le tableau de bord web pour modifier les paramètres.</value>
+  </data>
+  <data name="OpenDashboardButton.Content" xml:space="preserve">
+    <value>Ouvrir le tableau de bord</value>
+  </data>
+  <data name="SaveButton.Content" xml:space="preserve">
+    <value>Enregistrer les modifications</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🔗 Connexion</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
+    <value>Point de terminaison de passerelle utilisé par le client opérateur et le service de nœud.</value>
+  </data>
+  <data name="AuthErrorBar.Title" xml:space="preserve">
+    <value>Erreur de connexion</value>
+  </data>
+  <data name="StatusText.Text" xml:space="preserve">
+    <value>Déconnecté</value>
+  </data>
+  <data name="ReconnectButton.Content" xml:space="preserve">
+    <value>Reconnecter</value>
+  </data>
+  <data name="OperatorStatusText.Text" xml:space="preserve">
+    <value>Opérateur : —</value>
+  </data>
+  <data name="ConnectToggle.Header" xml:space="preserve">
+    <value>Connexion</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_76.Text" xml:space="preserve">
+    <value>📡 Passerelles disponibles</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_84.Text" xml:space="preserve">
+    <value>Analyser</value>
+  </data>
+  <data name="TokenPromptText.Text" xml:space="preserve">
+    <value>Cette passerelle nécessite un jeton pour se connecter.</value>
+  </data>
+  <data name="ConnectionPage_Button_105.Content" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="TokenPromptConnectBtn.Content" xml:space="preserve">
+    <value>Connecter</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_111.Text" xml:space="preserve">
+    <value>Exécutez 'openclaw qr' sur l’hôte de passerelle pour obtenir un code de configuration, ou trouvez le jeton dans la configuration de la passerelle.</value>
+  </data>
+  <data name="GatewayEmptyText.Text" xml:space="preserve">
+    <value>Aucune passerelle trouvée. Cliquez sur Analyser pour rechercher.</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_128.Text" xml:space="preserve">
+    <value>🔑 Code de configuration</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_129.Text" xml:space="preserve">
+    <value>Collez un code de configuration depuis openclaw qr</value>
+  </data>
+  <data name="ApplySetupCodeButton.Content" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_152.Text" xml:space="preserve">
+    <value>Paramètres de connexion avancés</value>
+  </data>
+  <data name="GatewayUrlTextBox.Header" xml:space="preserve">
+    <value>URL de la passerelle</value>
+  </data>
+  <data name="TokenTextBox.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="TestButton.Content" xml:space="preserve">
+    <value>Tester</value>
+  </data>
+  <data name="SshToggle.Header" xml:space="preserve">
+    <value>Tunnel SSH</value>
+  </data>
+  <data name="SshUserBox.Header" xml:space="preserve">
+    <value>Utilisateur SSH</value>
+  </data>
+  <data name="SshUserBox.PlaceholderText" xml:space="preserve">
+    <value>user</value>
+  </data>
+  <data name="SshHostBox.Header" xml:space="preserve">
+    <value>H├┤te SSH</value>
+  </data>
+  <data name="SshHostBox.PlaceholderText" xml:space="preserve">
+    <value>machine-name</value>
+  </data>
+  <data name="SshRemotePortBox.Header" xml:space="preserve">
+    <value>Port distant</value>
+  </data>
+  <data name="SshLocalPortBox.Header" xml:space="preserve">
+    <value>Port local</value>
+  </data>
+  <data name="ConnectionPage_Button_190.Content" xml:space="preserve">
+    <value>Sauvegarder</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_200.Text" xml:space="preserve">
+    <value>🪪 Cet appareil</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_207.Text" xml:space="preserve">
+    <value>ID de l’appareil :</value>
+  </data>
+  <data name="CopyDeviceIdButton.Content" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_219.Text" xml:space="preserve">
+    <value>Exécutez cette commande sur l’hôte de passerelle pour approuver :</value>
+  </data>
+  <data name="CopyApprovalButton.Content" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="ConnectionPage_TextBlock_243.Text" xml:space="preserve">
+    <value>📋 Journal de connexion</value>
+  </data>
+  <data name="ConnectionLogEmpty.Text" xml:space="preserve">
+    <value>Aucun événement de connexion récent.</value>
+  </data>
+  <data name="ConversationsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>Discussions</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_29.Content" xml:space="preserve">
+    <value>Tout</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_30.Content" xml:space="preserve">
+    <value>Par canal</value>
+  </data>
+  <data name="ConversationsPage_ComboBoxItem_31.Content" xml:space="preserve">
+    <value>Par état</value>
+  </data>
+  <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
+    <value>⏱️ Tâches cron</value>
+  </data>
+  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
+    <value>État du planificateur</value>
+  </data>
+  <data name="SchedulerStatusText.Text" xml:space="preserve">
+    <value>Activé</value>
+  </data>
+  <data name="StorePathText.Text" xml:space="preserve">
+    <value>Store: ~/.openclaw/cron.db</value>
+  </data>
+  <data name="NextWakeText.Text" xml:space="preserve">
+    <value>Prochain réveil : —</value>
+  </data>
+  <data name="CronPage_Button_80.Content" xml:space="preserve">
+    <value>Exécuter maintenant</value>
+  </data>
+  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
+    <value>Dernière exécution :</value>
+  </data>
+  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
+    <value>Prochaine exécution :</value>
+  </data>
+  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
+    <value>Aucune tâche cron configurée</value>
+  </data>
+<data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
+    <value>🐛 Débogage</value>
+  </data>
+  <data name="DebugPage_TextBlock_14.Text" xml:space="preserve">
+    <value>Visionneuse de journal</value>
+  </data>
+  <data name="DebugPage_Button_18.Content" xml:space="preserve">
+    <value>⟳ Actualiser</value>
+  </data>
+  <data name="DebugPage_Button_19.Content" xml:space="preserve">
+    <value>📋 Copier le journal</value>
+  </data>
+  <data name="LogText.Text" xml:space="preserve">
+    <value>Chargement...</value>
+  </data>
+  <data name="DebugPage_TextBlock_38.Text" xml:space="preserve">
+    <value>État de la connexion</value>
+  </data>
+  <data name="DebugPage_TextBlock_52.Text" xml:space="preserve">
+    <value>État de l’opérateur</value>
+  </data>
+  <data name="DebugPage_TextBlock_56.Text" xml:space="preserve">
+    <value>URL de la passerelle</value>
+  </data>
+  <data name="DebugPage_TextBlock_61.Text" xml:space="preserve">
+    <value>Mode nœud</value>
+  </data>
+  <data name="DebugPage_TextBlock_72.Text" xml:space="preserve">
+    <value>Identité de l’appareil</value>
+  </data>
+  <data name="DebugPage_TextBlock_86.Text" xml:space="preserve">
+    <value>ID de l’appareil</value>
+  </data>
+  <data name="DebugPage_Button_91.Content" xml:space="preserve">
+    <value>📋 Copier</value>
+  </data>
+  <data name="DebugPage_TextBlock_94.Text" xml:space="preserve">
+    <value>Clé publique</value>
+  </data>
+  <data name="DebugPage_TextBlock_108.Text" xml:space="preserve">
+    <value>Actions de débogage</value>
+  </data>
+  <data name="DebugPage_Button_111.Content" xml:space="preserve">
+    <value>📄 Ouvrir le fichier journal</value>
+  </data>
+  <data name="DebugPage_Button_112.Content" xml:space="preserve">
+    <value>📁 Ouvrir le dossier de configuration</value>
+  </data>
+  <data name="DebugPage_Button_113.Content" xml:space="preserve">
+    <value>📁 Ouvrir le dossier de diagnostics</value>
+  </data>
+  <data name="DebugPage_Button_114.Content" xml:space="preserve">
+    <value>📋 Copier le contexte de support</value>
+  </data>
+<data name="StatusHeadline.Text" xml:space="preserve">
+    <value>Non connecté à la passerelle</value>
+  </data>
+  <data name="ScanButton.Content" xml:space="preserve">
+    <value>Rechercher des passerelles</value>
+  </data>
+  <data name="DashboardButton.Content" xml:space="preserve">
+    <value>Ouvrir le tableau de bord</value>
+  </data>
+  <data name="ChatButton.Content" xml:space="preserve">
+    <value>Ouvrir la discussion</value>
+  </data>
+  <data name="HealthCheckButton.Content" xml:space="preserve">
+    <value>Vérification de l'état</value>
+  </data>
+  <data name="InstancesPage_TextBlock_12.Text" xml:space="preserve">
+    <value>🖥️ Occurrences</value>
+  </data>
+  <data name="RefreshButton.Content" xml:space="preserve">
+    <value>⟳ Actualiser</value>
+  </data>
+  <data name="InstancesPage_TextBlock_22.Text" xml:space="preserve">
+    <value>🖥️ Aucune autre instance détectée</value>
+  </data>
+  <data name="InstancesPage_TextBlock_25.Text" xml:space="preserve">
+    <value>Les autres nœuds OpenClaw connectés à la même passerelle apparaîtront ici.</value>
+  </data>
+  <data name="NodesPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🖥️ Nœuds</value>
+  </data>
+  <data name="NodesPage_TextBlock_22.Text" xml:space="preserve">
+    <value>Aucun nœud connecté</value>
+  </data>
+  <data name="NodesPage_TextBlock_29.Text" xml:space="preserve">
+    <value>🔗 Demandes d’appairage en attente</value>
+  </data>
+  <data name="NodesPage_TextBlock_35.Text" xml:space="preserve">
+    <value>📱 Appairages d’appareils en attente</value>
+  </data>
+  <data name="NodesPage_TextBlock_41.Text" xml:space="preserve">
+    <value>🌐 Clients connectés</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_8.Text" xml:space="preserve">
+    <value>🔐 Autorisations</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_14.Text" xml:space="preserve">
+    <value>Stratégie d’exécution</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Contrôle les commandes que l’agent peut exécuter sur ce nœud. Les règles sont comparées à la ligne de commande complète.</value>
+  </data>
+  <data name="DefaultActionCombo.Header" xml:space="preserve">
+    <value>Action par défaut</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_23.Content" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_24.Content" xml:space="preserve">
+    <value>Autoriser</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_25.Content" xml:space="preserve">
+    <value>Demander</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
+    <value>Règles</value>
+  </data>
+  <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
+    <value>Modèle de commande (par ex. echo *)</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
+    <value>Autoriser</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+  <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
+    <value>Ajouter une règle</value>
+  </data>
+  <data name="SaveExecPolicyButton.Content" xml:space="preserve">
+    <value>Enregistrer la stratégie d’exécution</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
+    <value>Liste d’autorisation des nœuds</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
+    <value>Commandes autorisées par la passerelle pour les nœuds connectés. Cette liste est en lecture seule — modifiez-la depuis la page Configuration.</value>
+  </data>
+  <data name="AllowlistEmpty.Text" xml:space="preserve">
+    <value>Aucune donnée de liste d’autorisation disponible. Connectez-vous d’abord à une passerelle.</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_92.Text" xml:space="preserve">
+    <value>Autorisations système</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_95.Text" xml:space="preserve">
+    <value>Autorisations système pour la caméra, le microphone et la capture d’écran. Elles sont gérées par les paramètres de confidentialité Windows.</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_110.Text" xml:space="preserve">
+    <value>📷 Caméra</value>
+  </data>
+  <data name="CameraPermStatus.Text" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_114.Text" xml:space="preserve">
+    <value>🎤 Micro</value>
+  </data>
+  <data name="MicPermStatus.Text" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="PermissionsPage_TextBlock_118.Text" xml:space="preserve">
+    <value>🖥️ Capture d’écran</value>
+  </data>
+  <data name="ScreenPermStatus.Text" xml:space="preserve">
+    <value>Disponible</value>
+  </data>
+  <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
+    <value>Ouvrir les paramètres de confidentialité Windows</value>
+  </data>
+  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>💬 Séances</value>
+  </data>
+  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
+    <value>Compacter</value>
+  </data>
+  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
+    <value>Aucune session active</value>
+  </data>
+  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
+    <value>🤖 Modèles disponibles</value>
+  </data>
+  <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
+    <value>⚙️ Paramètres</value>
+  </data>
+  <data name="SettingsPage_TextBlock_17.Text" xml:space="preserve">
+    <value>Préférences locales de l’application pour cet ordinateur.</value>
+  </data>
+  <data name="SettingsPage_TextBlock_26.Text" xml:space="preserve">
+    <value>Démarrage</value>
+  </data>
+  <data name="AutoStartToggle.Header" xml:space="preserve">
+    <value>Démarrage automatique avec Windows</value>
+  </data>
+  <data name="GlobalHotkeyToggle.Header" xml:space="preserve">
+    <value>Raccourci global (Ctrl+Alt+Shift+C → Envoi rapide)</value>
+  </data>
+  <data name="SettingsPage_TextBlock_41.Text" xml:space="preserve">
+    <value>Alertes</value>
+  </data>
+  <data name="NotificationsToggle.Header" xml:space="preserve">
+    <value>Afficher les notifications</value>
+  </data>
+  <data name="NotificationSoundComboBox.Header" xml:space="preserve">
+    <value>Son</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_48.Content" xml:space="preserve">
+    <value>Défaut</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_49.Content" xml:space="preserve">
+    <value>Aucun</value>
+  </data>
+  <data name="SettingsPage_ComboBoxItem_50.Content" xml:space="preserve">
+    <value>Subtil</value>
+  </data>
+  <data name="SettingsPage_TextBlock_52.Text" xml:space="preserve">
+    <value>Afficher les notifications pour:</value>
+  </data>
+  <data name="NotifyHealthCb.Content" xml:space="preserve">
+    <value>Alertes de santé</value>
+  </data>
+  <data name="NotifyUrgentCb.Content" xml:space="preserve">
+    <value>Messages importants</value>
+  </data>
+  <data name="NotifyReminderCb.Content" xml:space="preserve">
+    <value>Rappels</value>
+  </data>
+  <data name="NotifyEmailCb.Content" xml:space="preserve">
+    <value>Résumé de l'email</value>
+  </data>
+  <data name="NotifyCalendarCb.Content" xml:space="preserve">
+    <value>Évènements du calendrier</value>
+  </data>
+  <data name="NotifyBuildCb.Content" xml:space="preserve">
+    <value>Notifications de build</value>
+  </data>
+  <data name="NotifyStockCb.Content" xml:space="preserve">
+    <value>Notifications de stocks</value>
+  </data>
+  <data name="NotifyInfoCb.Content" xml:space="preserve">
+    <value>Messages d'informations</value>
+  </data>
+  <data name="TestNotificationButton.Content" xml:space="preserve">
+    <value>Envoyer une notification de test</value>
+  </data>
+  <data name="CancelButton.Content" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>🧩 Compétences</value>
+  </data>
+  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
+    <value>Tous les agents</value>
+  </data>
+  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
+    <value>Aucune compétence installée</value>
+  </data>
+  <data name="MarketplaceLink.Content" xml:space="preserve">
+    <value>Parcourir la place de marché des compétences →</value>
+  </data>
+  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
+    <value>Coût total</value>
+  </data>
+  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
+    <value>Requêtes</value>
+  </data>
+  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
+    <value>Jetons</value>
+  </data>
+  <data name="TokenCountText.Text" xml:space="preserve">
+    <value>284.5K</value>
+  </data>
+  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
+    <value>Fournisseurs</value>
+  </data>
+  <data name="Period7DaysButton.Content" xml:space="preserve">
+    <value>7 jours</value>
+  </data>
+  <data name="Period30DaysButton.Content" xml:space="preserve">
+    <value>30 jours</value>
+  </data>
+  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
+    <value>Répartition par fournisseur</value>
+  </data>
+  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
+    <value>Coût quotidien</value>
+  </data>
+  <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
+    <value>📂 Espace de travail</value>
+  </data>
+  <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
+    <value>Discussion</value>
+  </data>
+  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
+    <value>Connectez-vous à la passerelle pour commencer la discussion</value>
+  </data>
+  <data name="ChatWindow_TextBlock_67.Text" xml:space="preserve">
+    <value>Discussion indisponible</value>
+  </data>
+  <data name="ChatWindow_Button_71.Content" xml:space="preserve">
+    <value>Ouvrir plutôt dans le navigateur</value>
+  </data>
+  <data name="TitleText.Text" xml:space="preserve">
+    <value>OpenClaw Windows Companion</value>
+  </data>
+  <data name="TitleStatusText.Text" xml:space="preserve">
+    <value>Déconnecté</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_79.Content" xml:space="preserve">
+    <value>Accueil</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_82.Content" xml:space="preserve">
+    <value>Discussion</value>
+  </data>
+  <data name="HubWindow_NavigationViewItemHeader_87.Content" xml:space="preserve">
+    <value>Passerelle</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_88.Content" xml:space="preserve">
+    <value>Connexion</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_91.Content" xml:space="preserve">
+    <value>Séances</value>
+  </data>
+  <data name="ConversationsNavItem.Content" xml:space="preserve">
+    <value>Discussions</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
+    <value>Événements d’agent</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
+    <value>Compétences</value>
+  </data>
+  <data name="AgentsNavItem.Content" xml:space="preserve">
+    <value>Agents logiciels</value>
+  </data>
+  <data name="DefaultAgentNavItem.Content" xml:space="preserve">
+    <value>main</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
+    <value>Canaux</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
+    <value>Nœuds</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
+    <value>Liaisons</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
+    <value>Configuration</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_121.Content" xml:space="preserve">
+    <value>Utilisations</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
+    <value>Cet ordinateur</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
+    <value>Fonctionnalités</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
+    <value>Autorisations</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_139.Content" xml:space="preserve">
+    <value>Activité</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
+    <value>Débogage</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
+    <value>Informations</value>
+  </data>
+  <data name="Onboarding_UnknownPage" xml:space="preserve">
+    <value>Page inconnue</value>
+  </data>
+  <data name="Onboarding_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Onboarding_Ready_NodeModeActive" xml:space="preserve">
+    <value>🔌 Mode nœud actif</value>
+  </data>
+  <data name="Onboarding_Ready_NodeModeActiveDetail" xml:space="preserve">
+    <value>Ce PC fonctionnera comme nœud de calcul distant. La passerelle peut appeler la capture d’écran, la caméra et des commandes système sur cette machine.</value>
+  </data>
+  <data name="Onboarding_Ready_Node_ScreenCapture" xml:space="preserve">
+    <value>Capture d’écran</value>
+  </data>
+  <data name="Onboarding_Ready_Node_ScreenCapture_Sub" xml:space="preserve">
+    <value>Accès à distance à l’écran</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Camera" xml:space="preserve">
+    <value>Caméra</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Camera_Sub" xml:space="preserve">
+    <value>Accès à distance à la caméra</value>
+  </data>
+  <data name="Onboarding_Ready_Node_SystemCmd" xml:space="preserve">
+    <value>Commandes système</value>
+  </data>
+  <data name="Onboarding_Ready_Node_SystemCmd_Sub" xml:space="preserve">
+    <value>Exécution de commandes à distance</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Canvas" xml:space="preserve">
+    <value>Rendu Canvas</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Canvas_Sub" xml:space="preserve">
+    <value>Sortie visuelle de l’espace de travail</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Notify" xml:space="preserve">
+    <value>Alertes</value>
+  </data>
+  <data name="Onboarding_Ready_Node_Notify_Sub" xml:space="preserve">
+    <value>Notifications système</value>
+  </data>
+  <data name="Onboarding_Wizard_Processing" xml:space="preserve">
+    <value>⏳ Traitement…</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorEmptyGatewayResponse" xml:space="preserve">
+    <value>Réponse vide de la passerelle</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
+    <value>Passerelle déconnectée</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
+    <value>Connexion à la passerelle perdue. Cliquez sur Suivant pour ignorer l’assistant, ou attendez la reconnexion.</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorEmptyNextResponse" xml:space="preserve">
+    <value>La passerelle a renvoyé une réponse vide pour wizard.next</value>
+  </data>
+  <data name="Onboarding_Wizard_NoOptionsAvailable" xml:space="preserve">
+    <value>Aucune option disponible</value>
+  </data>
+  <data name="Onboarding_Wizard_Yes" xml:space="preserve">
+    <value>Oui</value>
+  </data>
+  <data name="Onboarding_Wizard_NoSkip" xml:space="preserve">
+    <value>Non / Ignorer</value>
+  </data>
+  <data name="Onboarding_Wizard_Waiting" xml:space="preserve">
+    <value>En attente...</value>
+  </data>
+  <data name="Onboarding_Wizard_ClickNextToContinue" xml:space="preserve">
+    <value>Cliquez sur Suivant pour continuer.</value>
+  </data>
+  <data name="Onboarding_Wizard_ErrorTitle" xml:space="preserve">
+    <value>Erreur de l’assistant</value>
+  </data>
+  <data name="Onboarding_Wizard_SkipWizard" xml:space="preserve">
+    <value>Ignorer l’assistant</value>
+  </data>
+  <data name="Onboarding_Wizard_ConnectingToGateway" xml:space="preserve">
+    <value>Connexion à la passerelle...</value>
+  </data>
+  <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
+    <value>Veuillez patienter pendant l’établissement de la connexion...</value>
+  </data>
+  <data name="PriorityInfoBar.Title" xml:space="preserve">
+    <value>Priorité de routage</value>
+  </data>
+  <data name="PriorityInfoBar.Message" xml:space="preserve">
+    <value>Les liaisons contrôlent quel agent traite les messages de chaque canal. Priorité : pair &gt; compte &gt; canal &gt; défaut.</value>
+  </data>
+  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
+    <value>Mode agent unique</value>
+  </data>
+  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
+    <value>Tous les messages sont acheminés vers l’agent par défaut. Ajoutez des liaisons pour le routage multi-agent.</value>
+  </data>
+  <data name="ConfigSubtitle.Text" xml:space="preserve">
+    <value>Modification de la configuration de la passerelle (openclaw.json) récupérée depuis la passerelle connectée</value>
+  </data>
+  <data name="DetailPlaceholder.Text" xml:space="preserve">
+    <value>Sélectionnez une section dans l’arborescence pour modifier ses paramètres.</value>
+  </data>
+  <data name="TokenPromptBox.PlaceholderText" xml:space="preserve">
+    <value>Jeton de passerelle</value>
+  </data>
+  <data name="TokenPromptBox.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="SetupCodeTextBox.PlaceholderText" xml:space="preserve">
+    <value>Collez le code de configuration ici…</value>
+  </data>
+  <data name="ConnectionWarning.Message" xml:space="preserve">
+    <value>Connectez-vous à une passerelle pour afficher les conversations.</value>
+  </data>
+  <data name="EmptyState.Text" xml:space="preserve">
+    <value>Aucune session trouvée</value>
+  </data>
+  <data name="NotWiredInfoBar.Title" xml:space="preserve">
+    <value>L’API cron n’est pas encore connectée</value>
+  </data>
+  <data name="NotWiredInfoBar.Message" xml:space="preserve">
+    <value>Affichage de données d’exemple. Les méthodes de gestion cron ne sont pas encore disponibles dans OpenClawGatewayClient.</value>
+  </data>
+  <data name="FallbackInfoBar.Title" xml:space="preserve">
+    <value>Fichiers de l’espace de travail</value>
+  </data>
+  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Chat</value>
+  </data>
+  <data name="SearchBox.PlaceholderText" xml:space="preserve">
+    <value>Tapez une commande...</value>
+  </data>
+  <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw</value>
+  </data>
+  <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
+    <value>Rechercher… (Ctrl+E)</value>
+  </data>
+  <data name="CanvasWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Canvas</value>
+  </data>
+  <data name="CanvasWindow_TextBlock_31.Text" xml:space="preserve">
+    <value>OpenClaw Canvas</value>
+  </data>
+  <data name="CanvasWindowReloadToolTip.Content" xml:space="preserve">
+    <value>Recharger</value>
+  </data>
+  <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>OpenClaw Menu</value>
+  </data>
+  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
+    <value>📊 Utilisation et coût</value>
+  </data>
+  <data name="ChatWindowHomeToolTip.Content" xml:space="preserve">
+    <value>Accueil</value>
+  </data>
+  <data name="ChatWindowRefreshToolTip.Content" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
+    <value>Ouvrir dans le navigateur</value>
+  </data>
+  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+  <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
+    <value>Accueil</value>
+  </data>
+  <data name="ChatPageRefreshToolTip.Content" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
+    <value>Ouvrir dans le navigateur</value>
+  </data>
+  <data name="ChatPageDeveloperToolsToolTip.Content" xml:space="preserve">
+    <value>Outils de développement</value>
+  </data>
+  <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
+    <value>Supprimer la tâche</value>
+  </data>
 </root>

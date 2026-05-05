@@ -231,7 +231,7 @@ public class DeepLinkParserTests
     [InlineData("openclaw://setup", nameof(DeepLinkActions.OpenSetup))]
     [InlineData("openclaw://chat", nameof(DeepLinkActions.OpenHub))]
     [InlineData("openclaw://commandcenter", nameof(DeepLinkActions.OpenHub))]
-    [InlineData("openclaw://history", nameof(DeepLinkActions.OpenHub))]
+    [InlineData("openclaw://history", nameof(DeepLinkActions.OpenActivityStream))]
     [InlineData("openclaw://logs", nameof(DeepLinkActions.OpenLogFile))]
     [InlineData("openclaw://log-folder", nameof(DeepLinkActions.OpenLogFolder))]
     [InlineData("openclaw://config", nameof(DeepLinkActions.OpenConfigFolder))]
@@ -267,6 +267,7 @@ public class DeepLinkParserTests
             CopyChannelSummary = () => invoked = nameof(DeepLinkActions.CopyChannelSummary),
             CopyActivitySummary = () => invoked = nameof(DeepLinkActions.CopyActivitySummary),
             CopyExtensibilitySummary = () => invoked = nameof(DeepLinkActions.CopyExtensibilitySummary),
+            OpenActivityStream = _ => invoked = nameof(DeepLinkActions.OpenActivityStream),
             CheckForUpdates = () =>
             {
                 invoked = nameof(DeepLinkActions.CheckForUpdates);
@@ -297,15 +298,15 @@ public class DeepLinkParserTests
     [Fact]
     public void Handle_Activity_PassesFilter()
     {
-        string? hubPage = null;
+        string? filter = null;
         var actions = new DeepLinkActions
         {
-            OpenHub = value => hubPage = value
+            OpenActivityStream = value => filter = value
         };
 
         DeepLinkHandler.Handle("openclaw://activity?filter=nodes", actions);
 
-        Assert.Equal("activity", hubPage);
+        Assert.Equal("nodes", filter);
     }
 
     [Fact]

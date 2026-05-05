@@ -128,13 +128,6 @@ public sealed partial class HomePage : Page
 
     // ── Zone B: Agent Roster (removed — agents now in nav sidebar) ──
 
-    public void UpdateSessionCount(int count)
-    {
-        // Legacy compatibility — refresh from hub cache if available
-        if (_hub?.LastSessions != null)
-            UpdateSessions(_hub.LastSessions);
-    }
-
     public void UpdateSessions(SessionInfo[] sessions)
     {
         _lastSessions = sessions;

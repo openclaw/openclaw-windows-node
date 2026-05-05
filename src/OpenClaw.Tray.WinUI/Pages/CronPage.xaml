@@ -7,10 +7,10 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="CronPage_TextBlock_10" Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}"/>
 
             <!-- Not-wired InfoBar -->
-            <InfoBar x:Name="NotWiredInfoBar"
+            <InfoBar x:Uid="NotWiredInfoBar" x:Name="NotWiredInfoBar"
                      IsOpen="True" IsClosable="False"
                      Severity="Warning"
                      Title="Cron API not yet wired"
@@ -26,23 +26,23 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="4">
-                        <TextBlock Text="Scheduler Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="CronPage_TextBlock_29" Text="Scheduler Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse x:Name="SchedulerStatusIndicator" Width="10" Height="10"
                                      Fill="LimeGreen" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="SchedulerStatusText" Text="Enabled"
+                            <TextBlock x:Uid="SchedulerStatusText" x:Name="SchedulerStatusText" Text="Enabled"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
-                        <TextBlock x:Name="StorePathText" Text="Store: ~/.openclaw/cron.db"
+                        <TextBlock x:Uid="StorePathText" x:Name="StorePathText" Text="Store: ~/.openclaw/cron.db"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="NextWakeText" Text="Next wake: —"
+                        <TextBlock x:Uid="NextWakeText" x:Name="NextWakeText" Text="Next wake: —"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
                     <ToggleSwitch x:Name="SchedulerToggle" Grid.Column="1"
-                                  IsOn="True" VerticalAlignment="Center"
-                                  Toggled="OnSchedulerToggled"/>
+                                   IsOn="True" VerticalAlignment="Center"
+                                   IsEnabled="False"/>
                 </Grid>
             </Border>
 
@@ -77,17 +77,20 @@
 
                                 <!-- Row 0: Action buttons -->
                                 <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                                    <Button Content="Run Now" Tag="{Binding Id}" Click="OnRunNowClick"/>
+                                    <Button x:Uid="CronPage_Button_80" Content="Run Now" Tag="{Binding Id}" Click="OnRunNowClick"/>
                                     <ToggleSwitch IsOn="{Binding IsEnabled}" MinWidth="0"
                                                   OnContent="" OffContent=""/>
-                                    <Button Content="✕" Tag="{Binding Id}" Click="OnRemoveClick"
-                                            ToolTipService.ToolTip="Remove job"/>
+                                    <Button Content="✕" Tag="{Binding Id}" Click="OnRemoveClick">
+                                        <ToolTipService.ToolTip>
+                                            <ToolTip x:Uid="CronPageRemoveJobToolTip" Content="Remove job"/>
+                                        </ToolTipService.ToolTip>
+                                    </Button>
                                 </StackPanel>
 
                                 <!-- Row 1: Last run -->
                                 <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
                                             Margin="0,4,0,0">
-                                    <TextBlock Text="Last run:" Style="{StaticResource CaptionTextBlockStyle}"
+                                    <TextBlock x:Uid="CronPage_TextBlock_90" Text="Last run:" Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                     <TextBlock Text="{Binding LastRunTime}" Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -101,7 +104,7 @@
                                 <!-- Row 2: Next run -->
                                 <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
                                             Margin="0,2,0,0">
-                                    <TextBlock Text="Next run:" Style="{StaticResource CaptionTextBlockStyle}"
+                                    <TextBlock x:Uid="CronPage_TextBlock_104" Text="Next run:" Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                     <TextBlock Text="{Binding NextRunTime}" Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -117,14 +120,10 @@
                         VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
                         Margin="0,32,0,0">
                 <TextBlock Text="⏱️" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="No cron jobs configured"
+                <TextBlock x:Uid="CronPage_TextBlock_120" Text="No cron jobs configured"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
-
-            <!-- Add Job Button -->
-            <Button x:Name="AddJobButton" Content="+ Add Job" Click="OnAddJobClick"
-                    HorizontalAlignment="Left"/>
 
         </StackPanel>
     </ScrollViewer>

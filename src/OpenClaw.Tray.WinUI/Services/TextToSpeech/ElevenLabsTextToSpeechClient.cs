@@ -98,14 +98,8 @@ public sealed class ElevenLabsTextToSpeechClient : IDisposable
 
     internal static string BuildFailureMessage(HttpStatusCode statusCode, byte[] bodyBytes)
     {
-        var body = Encoding.UTF8.GetString(bodyBytes);
-        if (body.Length > 300)
-            body = body[..300];
-        body = body.Trim();
-
-        return string.IsNullOrEmpty(body)
-            ? $"ElevenLabs TTS failed with HTTP {(int)statusCode} ({statusCode})."
-            : $"ElevenLabs TTS failed with HTTP {(int)statusCode} ({statusCode}): {body}";
+        var bodyNote = bodyBytes.Length > 0 ? " Provider returned an error body; see provider logs for details." : "";
+        return $"ElevenLabs TTS failed with HTTP {(int)statusCode} ({statusCode}).{bodyNote}";
     }
 
     public void Dispose()

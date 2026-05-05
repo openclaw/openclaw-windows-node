@@ -13,8 +13,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Spacing="4">
-                    <TextBlock Text="🔀 Bindings" Style="{StaticResource TitleTextBlockStyle}"/>
-                    <TextBlock Text="Message routing rules"
+                    <TextBlock x:Uid="BindingsPage_TextBlock_16" Text="🔀 Bindings" Style="{StaticResource TitleTextBlockStyle}"/>
+                    <TextBlock x:Uid="BindingsPage_TextBlock_17" Text="Message routing rules"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Style="{StaticResource CaptionTextBlockStyle}"/>
                 </StackPanel>
@@ -22,18 +22,18 @@
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock Text="Refresh"/>
+                        <TextBlock x:Uid="BindingsPage_TextBlock_25" Text="Refresh"/>
                     </StackPanel>
                 </Button>
             </Grid>
 
-            <InfoBar x:Name="PriorityInfoBar"
+            <InfoBar x:Uid="PriorityInfoBar" x:Name="PriorityInfoBar"
                      IsOpen="True" IsClosable="True"
                      Severity="Informational"
                      Title="Routing priority"
                      Message="Bindings control which agent handles messages from each channel. Priority: peer > account > channel > default."/>
 
-            <InfoBar x:Name="SingleAgentInfoBar"
+            <InfoBar x:Uid="SingleAgentInfoBar" x:Name="SingleAgentInfoBar"
                      IsOpen="False" IsClosable="False"
                      Severity="Informational"
                      Title="Single-agent mode"

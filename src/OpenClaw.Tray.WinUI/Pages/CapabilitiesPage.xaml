@@ -7,12 +7,12 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="🖥️ This Computer" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="CapabilitiesPage_TextBlock_10" Text="🖥️ This Computer" Style="{StaticResource TitleTextBlockStyle}"/>
             <TextBlock x:Name="HostnameText"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-            <TextBlock Text="Device capabilities provided to agents via the gateway. Toggle what this computer can do."
+            <TextBlock x:Uid="CapabilitiesPage_TextBlock_15" Text="Device capabilities provided to agents via the gateway. Toggle what this computer can do."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap" MaxWidth="500" Margin="0,0,0,8"/>
@@ -30,8 +30,8 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,8,0,0">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Local MCP Server" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock Text="Expose capabilities via HTTP for CLI tools and local integrations."
+                    <TextBlock x:Uid="CapabilitiesPage_TextBlock_33" Text="Local MCP Server" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="CapabilitiesPage_TextBlock_34" Text="Expose capabilities via HTTP for CLI tools and local integrations."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                     <ToggleSwitch x:Name="McpToggle" Toggled="OnMcpToggled"/>
@@ -41,15 +41,15 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Endpoint:" VerticalAlignment="Center"
+                            <TextBlock x:Uid="CapabilitiesPage_TextBlock_44" Grid.Column="0" Text="Endpoint:" VerticalAlignment="Center"
                                        Style="{StaticResource CaptionTextBlockStyle}"/>
                             <TextBlock x:Name="McpEndpointText" Grid.Column="1" IsTextSelectionEnabled="True"
                                        VerticalAlignment="Center" FontFamily="Consolas"
                                        Style="{StaticResource CaptionTextBlockStyle}"/>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="CopyMcpTokenButton" Content="Copy Token" Click="OnCopyMcpToken"/>
-                            <Button x:Name="CopyMcpUrlButton" Content="Copy URL" Click="OnCopyMcpUrl"/>
+                            <Button x:Uid="CopyMcpTokenButton" x:Name="CopyMcpTokenButton" Content="Copy Token" Click="OnCopyMcpToken"/>
+                            <Button x:Uid="CopyMcpUrlButton" x:Name="CopyMcpUrlButton" Content="Copy URL" Click="OnCopyMcpUrl"/>
                         </StackPanel>
                         <TextBlock x:Name="McpStatusText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
@@ -63,11 +63,11 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,8,0,0">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Node Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="CapabilitiesPage_TextBlock_66" Text="Node Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Ellipse x:Name="NodeStatusDot" Width="10" Height="10"
                                  VerticalAlignment="Center" Fill="Gray"/>
-                        <TextBlock x:Name="NodeStatusText" Text="Node mode disabled"
+                        <TextBlock x:Uid="NodeStatusText" x:Name="NodeStatusText" Text="Node mode disabled"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock x:Name="NodeDetailsText"

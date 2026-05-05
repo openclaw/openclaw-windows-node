@@ -262,7 +262,7 @@ fake `WindowsNodeClient`).
 | Per-surface theme scope | `Hosting/SurfaceHost.cs ApplyThemeToScope` | multi-surface tab views don't bleed themes |
 | `IA2UITelemetry` seam | `Telemetry/IA2UITelemetry.cs` | structured events instead of log scraping |
 | Single-handler `Func` events on `CanvasCapability` | reviewed in commit `5b9c468` | catches accidental multi-subscribe instead of silent `Delegate.Combine` |
-| MCP bearer token in Settings UI | `SettingsWindow.xaml.cs` | quality-of-life for MCP setup, kept out of action payloads |
+| MCP bearer token in Settings UI | `SettingsPage.xaml.cs` | quality-of-life for MCP setup, kept out of action payloads |
 
 ---
 
