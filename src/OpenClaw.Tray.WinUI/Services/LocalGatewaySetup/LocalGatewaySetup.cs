@@ -2107,16 +2107,18 @@ public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisi
 {
     private readonly ILocalGatewaySetupSettings _settings;
     private readonly IWindowsNodeConnector? _connector;
+    private readonly IPendingDeviceApprover? _pendingApprover;
 
-    public SettingsWindowsTrayNodeProvisioner(SettingsManager settings, IWindowsNodeConnector? connector = null)
-        : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector)
+    public SettingsWindowsTrayNodeProvisioner(SettingsManager settings, IWindowsNodeConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
+        : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector, pendingApprover)
     {
     }
 
-    public SettingsWindowsTrayNodeProvisioner(ILocalGatewaySetupSettings settings, IWindowsNodeConnector? connector = null)
+    public SettingsWindowsTrayNodeProvisioner(ILocalGatewaySetupSettings settings, IWindowsNodeConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
     {
         _settings = settings;
         _connector = connector;
+        _pendingApprover = pendingApprover;
     }
 
     public Task<ProvisioningResult> CheckReadinessAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
@@ -2153,7 +2155,43 @@ public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisi
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return new ProvisioningResult(false, "windows_node_pairing_failed", ex.Message);
+                // Bug 3 (2026-05-05): on a fresh local-loopback gateway, the Phase 14
+                // node-role connect arrives at the gateway as `reason=role-upgrade`
+                // (the device is approved as `operator` from Phase 12 but is now asking
+                // for the additional `node` role). The gateway parks the request on the
+                // pending-pairing list and the connect attempt times out with
+                // `windows_node_pairing_failed`. There is no auto-approve handler on
+                // this path upstream — the canonical mechanism is the same
+                // `openclaw devices approve` flow Phase 12 uses for the operator
+                // pending. On loopback the tray user IS the approver, so we drive the
+                // approval automatically via the same approver wired in for Phase 12,
+                // then retry the connect once. Bostick-11 Round-5 evidence:
+                // `bostick-bug1-reverify.md` "## Path B re-drive — Round 5",
+                // requestId `a80b5dbe-9ad2-4a32-baa9-d7d93aeb50dc`, isRepair=true.
+                if (_pendingApprover != null && LocalGatewayApprover.IsLocalGateway(state.GatewayUrl))
+                {
+                    var approval = await _pendingApprover.ApproveLatestAsync(state, cancellationToken);
+                    if (!approval.Success)
+                    {
+                        return new ProvisioningResult(
+                            false,
+                            approval.ErrorCode ?? "windows_node_pending_approval_failed",
+                            approval.ErrorMessage ?? "Local gateway pending role-upgrade approval failed.");
+                    }
+
+                    try
+                    {
+                        await _connector.ConnectAsync(state.GatewayUrl, _settings.Token, _settings.BootstrapToken, cancellationToken);
+                    }
+                    catch (Exception retryEx) when (retryEx is not OperationCanceledException)
+                    {
+                        return new ProvisioningResult(false, "windows_node_pairing_failed", retryEx.Message);
+                    }
+                }
+                else
+                {
+                    return new ProvisioningResult(false, "windows_node_pairing_failed", ex.Message);
+                }
             }
         }
 
@@ -2640,7 +2678,7 @@ public static class LocalGatewaySetupEngineFactory
             new LocalGatewayHealthProbe(),
             new SettingsBootstrapTokenProvisioner(settingsAdapter, bootstrapTokenProvider),
             new SettingsOperatorPairingService(settingsAdapter, operatorConnector, pendingDeviceApprover),
-            new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector),
+            new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector, pendingDeviceApprover),
             logger);
     }
 
