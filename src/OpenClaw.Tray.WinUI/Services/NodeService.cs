@@ -137,7 +137,12 @@ public sealed class NodeService : IDisposable
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
+    public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     
+    public bool IsScreenRecording { get; private set; }
+    public bool IsCameraRecording { get; private set; }
+    public bool IsAnyRecording => IsScreenRecording || IsCameraRecording;
+
     public bool IsConnected => _nodeClient?.IsConnected ?? false;
     public string? NodeId => _nodeClient?.NodeId;
     public bool IsPendingApproval => _nodeClient?.IsPendingApproval ?? false;
@@ -1223,14 +1228,23 @@ public sealed class NodeService : IDisposable
         return await _screenCaptureService.CaptureAsync(args);
     }
 
-    private Task<ScreenRecordResult> OnScreenRecord(ScreenRecordArgs args)
+    private async Task<ScreenRecordResult> OnScreenRecord(ScreenRecordArgs args)
     {
         if (_screenRecordingService == null)
         {
             throw new InvalidOperationException("Screen recording service not available");
         }
 
-        return _screenRecordingService.RecordAsync(args);
+        SetRecordingState(RecordingType.Screen, true, args.DurationMs);
+        try
+        {
+            var result = await _screenRecordingService.RecordAsync(args);
+            return result;
+        }
+        finally
+        {
+            SetRecordingState(RecordingType.Screen, false);
+        }
     }
     
     #endregion
@@ -1282,6 +1296,7 @@ public sealed class NodeService : IDisposable
             throw new InvalidOperationException("Camera capture service not available");
         }
         
+        SetRecordingState(RecordingType.Camera, true, args.DurationMs);
         try
         {
             return await _cameraCaptureService.ClipAsync(args);
@@ -1300,6 +1315,10 @@ public sealed class NodeService : IDisposable
             throw new InvalidOperationException(
                 "Camera access blocked. Enable camera access for desktop apps in Windows Privacy settings.",
                 ex);
+        }
+        finally
+        {
+            SetRecordingState(RecordingType.Camera, false);
         }
     }
     
@@ -1437,6 +1456,26 @@ public sealed class NodeService : IDisposable
     }
     
     #endregion
+
+    #region Recording State
+
+    private void SetRecordingState(RecordingType type, bool isActive, int durationMs = 0)
+    {
+        switch (type)
+        {
+            case RecordingType.Screen: IsScreenRecording = isActive; break;
+            case RecordingType.Camera: IsCameraRecording = isActive; break;
+        }
+
+        RecordingStateChanged?.Invoke(this, new RecordingStateEventArgs
+        {
+            Type = type,
+            IsActive = isActive,
+            DurationMs = durationMs
+        });
+    }
+
+    #endregion
     
     public void Dispose()
     {
@@ -1477,4 +1516,17 @@ public sealed class NodeService : IDisposable
             _dispatcherQueue.TryEnqueue(() => { try { window?.Close(); } catch { } });
         }
     }
+}
+
+public enum RecordingType
+{
+    Screen,
+    Camera
+}
+
+public sealed class RecordingStateEventArgs : EventArgs
+{
+    public RecordingType Type { get; init; }
+    public bool IsActive { get; init; }
+    public int DurationMs { get; init; }
 }
