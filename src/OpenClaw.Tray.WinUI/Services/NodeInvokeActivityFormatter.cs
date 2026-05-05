@@ -25,11 +25,22 @@ internal static class NodeInvokeActivityFormatter
     {
         if (string.IsNullOrEmpty(command)) return Metadata;
 
+        // Microphone capture (stt.listen / stt.transcribe) and the metadata
+        // probe stt.status all share the privacy-sensitive class so the
+        // activity-stream formatter scrubs error text uniformly. stt.status
+        // doesn't capture audio itself, but it can still surface engine
+        // internals (model paths, error reasons) that should not land in
+        // support bundles. Treating the whole namespace the same way avoids
+        // accidental leaks if we add new stt.* commands later.
+        if (command.StartsWith("stt.", StringComparison.OrdinalIgnoreCase))
+        {
+            return PrivacySensitive;
+        }
+
         if (string.Equals(command, "screen.record", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(command, "screen.snapshot", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(command, "camera.snap", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "camera.clip", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(command, "stt.transcribe", StringComparison.OrdinalIgnoreCase))
+            string.Equals(command, "camera.clip", StringComparison.OrdinalIgnoreCase))
         {
             return PrivacySensitive;
         }

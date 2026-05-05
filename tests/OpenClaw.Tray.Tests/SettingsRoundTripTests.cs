@@ -38,7 +38,12 @@ public class SettingsRoundTripTests
             NodeLocationEnabled = true,
             NodeBrowserProxyEnabled = false,
             NodeSttEnabled = true,
+            SttEngine = "winrt",
             SttLanguage = "en-GB",
+            SttModelName = "tiny",
+            SttSilenceTimeout = 2.5f,
+            VoiceTtsEnabled = false,
+            VoiceAudioFeedback = false,
             NodeTtsEnabled = true,
             TtsProvider = "elevenlabs",
             TtsElevenLabsApiKey = "elevenlabs-key",
@@ -85,7 +90,12 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
         Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
         Assert.Equal(original.NodeSttEnabled, restored.NodeSttEnabled);
+        Assert.Equal(original.SttEngine, restored.SttEngine);
         Assert.Equal(original.SttLanguage, restored.SttLanguage);
+        Assert.Equal(original.SttModelName, restored.SttModelName);
+        Assert.Equal(original.SttSilenceTimeout, restored.SttSilenceTimeout);
+        Assert.Equal(original.VoiceTtsEnabled, restored.VoiceTtsEnabled);
+        Assert.Equal(original.VoiceAudioFeedback, restored.VoiceAudioFeedback);
         Assert.Equal(original.NodeTtsEnabled, restored.NodeTtsEnabled);
         Assert.Equal(original.TtsProvider, restored.TtsProvider);
         Assert.Equal(original.TtsElevenLabsApiKey, restored.TtsElevenLabsApiKey);

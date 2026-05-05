@@ -24,6 +24,8 @@ public sealed class NodeInvokeActivityFormatterTests : IDisposable
 
     [Theory]
     [InlineData("stt.transcribe")]
+    [InlineData("stt.listen")]
+    [InlineData("stt.status")]
     [InlineData("camera.snap")]
     [InlineData("camera.clip")]
     [InlineData("screen.snapshot")]
@@ -104,6 +106,10 @@ public sealed class NodeInvokeActivityFormatterTests : IDisposable
     [Theory]
     [InlineData("stt.transcribe", "privacy-sensitive")]
     [InlineData("STT.Transcribe", "privacy-sensitive")]
+    [InlineData("stt.listen", "privacy-sensitive")]
+    [InlineData("Stt.Listen", "privacy-sensitive")]
+    [InlineData("stt.status", "privacy-sensitive")]
+    [InlineData("stt.future-command", "privacy-sensitive")] // any new stt.* defaults privacy-sensitive
     [InlineData("camera.snap", "privacy-sensitive")]
     [InlineData("camera.clip", "privacy-sensitive")]
     [InlineData("screen.snapshot", "privacy-sensitive")]
