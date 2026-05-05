@@ -174,13 +174,25 @@ public sealed partial class ChatWindow : WindowEx
             {
                 LoadingRing.IsActive = false;
                 LoadingRing.Visibility = Visibility.Collapsed;
-                if (!e.IsSuccess && (e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
-                                      e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionReset ||
-                                      e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable))
+                if (!e.IsSuccess)
                 {
                     WebView.Visibility = Visibility.Collapsed;
                     ErrorPanel.Visibility = Visibility.Visible;
-                    ErrorText.Text = $"Cannot connect to gateway at {_gatewayUrl}";
+                    ErrorText.Text = e.WebErrorStatus switch
+                    {
+                        CoreWebView2WebErrorStatus.CannotConnect or
+                        CoreWebView2WebErrorStatus.ConnectionReset or
+                        CoreWebView2WebErrorStatus.ServerUnreachable or
+                        CoreWebView2WebErrorStatus.Timeout =>
+                            "The gateway is not reachable. Check that it is running and try again.",
+                        _ => $"Unable to load chat. Please try again. ({e.WebErrorStatus})"
+                    };
+                }
+                else
+                {
+                    // Successful navigation — ensure we're in the right visual state (e.g. after retry)
+                    ErrorPanel.Visibility = Visibility.Collapsed;
+                    WebView.Visibility = Visibility.Visible;
                 }
             };
 
@@ -218,6 +230,16 @@ public sealed partial class ChatWindow : WindowEx
     private void OnRefresh(object sender, RoutedEventArgs e)
     {
         if (_webViewInitialized) WebView.CoreWebView2?.Reload();
+    }
+
+    private void OnRetry(object sender, RoutedEventArgs e)
+    {
+        if (!_webViewInitialized || string.IsNullOrEmpty(_chatUrl)) return;
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        LoadingRing.IsActive = true;
+        LoadingRing.Visibility = Visibility.Visible;
+        WebView.Visibility = Visibility.Visible;
+        WebView.CoreWebView2?.Navigate(_chatUrl);
     }
 
     private void OnPopout(object sender, RoutedEventArgs e)

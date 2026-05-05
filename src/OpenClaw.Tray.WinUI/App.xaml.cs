@@ -1035,9 +1035,6 @@ public partial class App : Application
         // ── Exit ──
         menu.AddSeparator();
         menu.AddMenuItem(LocalizationHelper.GetString("Menu_Exit"), "❌", "exit");
-
-        // Bottom padding
-        menu.AddCustomElement(new Border { Height = 4 });
     }
 
     private static string FormatTokenCount(long n)

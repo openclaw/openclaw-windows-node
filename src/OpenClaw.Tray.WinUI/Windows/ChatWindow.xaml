@@ -74,12 +74,17 @@
 
         <!-- Error -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
-            <StackPanel Spacing="12">
+            <StackPanel Spacing="12" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="😔" FontSize="48" HorizontalAlignment="Center"/>
                 <TextBlock x:Uid="ChatWindow_TextBlock_67" Text="Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"
-                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
-                <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                           FontFamily="Consolas" Style="{StaticResource CaptionTextBlockStyle}"/>
-                <Button x:Uid="ChatWindow_Button_71" Content="Open in Browser Instead" Click="OnPopout"/>
+                           HorizontalAlignment="Center"/>
+                <TextBlock x:Name="ErrorText" TextWrapping="Wrap" HorizontalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                    <Button x:Uid="ChatWindow_RetryButton" Content="Retry" Click="OnRetry" Style="{StaticResource AccentButtonStyle}"/>
+                    <Button x:Uid="ChatWindow_Button_71" Content="Open in Browser Instead" Click="OnPopout"/>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

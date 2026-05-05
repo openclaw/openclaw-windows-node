@@ -527,8 +527,8 @@ public sealed partial class TrayMenuWindow : WindowEx
         MenuPanel.Measure(new global::Windows.Foundation.Size(320, double.PositiveInfinity));
         var desiredHeight = MenuPanel.DesiredSize.Height;
         
-        // Add border padding (top+bottom from StackPanel Padding=6,8 + Border chrome)
-        var contentHeight = (int)Math.Ceiling(desiredHeight) + 24;
+        // Add border chrome (1px border top+bottom = 2px, plus small rounding buffer)
+        var contentHeight = (int)Math.Ceiling(desiredHeight) + 4;
         _menuHeight = Math.Max(contentHeight, 100);
 
         if (TryGetCurrentMonitorMetrics(out var workAreaHeightPx, out var dpi))
