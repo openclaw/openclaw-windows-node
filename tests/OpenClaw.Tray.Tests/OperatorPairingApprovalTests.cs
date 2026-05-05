@@ -87,11 +87,8 @@ public class OperatorPairingApprovalTests
     }
 
     [Fact]
-    public async Task PairAsync_NonBootstrapToken_PairingRequired_DoesNotApprove()
+    public async Task PairAsync_NonBootstrapToken_PairingRequiredWithoutRequestId_DoesNotApprove()
     {
-        // A previously-paired device whose deviceToken got revoked should NOT trigger an
-        // auto-approval — that path indicates a deeper problem and re-approving here would
-        // mask it.
         var settings = new FakePairingSettings { Token = "redacted-explicit-gateway-token" };
         var connector = new ScriptedConnector(
             new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.PairingRequired, "pairing required"));
@@ -103,6 +100,43 @@ public class OperatorPairingApprovalTests
         Assert.False(result.Success);
         Assert.Equal("operator_pairing_required", result.ErrorCode);
         Assert.Equal(0, approver.ApproveCalls);
+        Assert.Equal(0, approver.ApproveExplicitCalls);
+    }
+
+    [Fact]
+    public async Task PairAsync_LocalLoopback_NonBootstrapToken_WithRequestId_ApprovesExplicitAndRetries()
+    {
+        var settings = new FakePairingSettings { Token = "redacted-explicit-gateway-token" };
+        var connector = new ScriptedConnector(
+            new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.PairingRequired, "pairing required", "abc-123"),
+            new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Connected));
+        var approver = new RecordingApprover(new PendingDeviceApprovalResult(true));
+        var service = new SettingsOperatorPairingService(settings, connector, approver);
+
+        var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = "ws://127.0.0.1:18789", DistroName = "OpenClawGateway" });
+
+        Assert.True(result.Success);
+        Assert.Equal(2, connector.ConnectCalls);
+        Assert.Equal(0, approver.ApproveCalls);
+        Assert.Equal(1, approver.ApproveExplicitCalls);
+        Assert.Equal("abc-123", approver.LastExplicitRequestId);
+    }
+
+    [Fact]
+    public async Task PairAsync_RemoteGateway_NonBootstrapToken_WithRequestId_DoesNotApprove()
+    {
+        var settings = new FakePairingSettings { Token = "redacted-explicit-gateway-token" };
+        var connector = new ScriptedConnector(
+            new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.PairingRequired, "pairing required", "abc-123"));
+        var approver = new RecordingApprover(new PendingDeviceApprovalResult(true));
+        var service = new SettingsOperatorPairingService(settings, connector, approver);
+
+        var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = "ws://gateway.example.com:18789", DistroName = "OpenClawGateway" });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pairing_required", result.ErrorCode);
+        Assert.Equal(0, approver.ApproveCalls);
+        Assert.Equal(0, approver.ApproveExplicitCalls);
     }
 
     [Fact]
@@ -206,6 +240,27 @@ public class OperatorPairingApprovalTests
             // Token is interpolated as a single-quoted literal.
             Assert.Contains("'test-token-abcdef'", script);
         }
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_ApproveExplicitAsync_CommitsRequestIdWithoutLatestPreview()
+    {
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "test-token-abcdef\n", string.Empty),
+            new WslCommandResult(0, "{\"requestId\":\"abc-123\",\"device\":{}}", string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
+        var state = new LocalGatewaySetupState { GatewayUrl = "ws://127.0.0.1:18789", DistroName = "OpenClawGateway" };
+
+        var result = await approver.ApproveExplicitAsync(state, "abc-123");
+
+        Assert.True(result.Success);
+        Assert.Equal(2, runner.RunInDistroCommands.Count);
+        var tokenReadCmd = string.Join(" ", runner.RunInDistroCommands[0]);
+        Assert.Contains("cat /var/lib/openclaw/gateway-token", tokenReadCmd);
+        var commit = string.Join(" ", runner.RunInDistroCommands[1]);
+        Assert.Contains("devices approve 'abc-123' --json --token 'test-token-abcdef'", commit);
+        Assert.DoesNotContain("--latest", commit);
+        Assert.DoesNotContain("--url", commit);
     }
 
     [Fact]
@@ -837,8 +892,10 @@ public class OperatorPairingApprovalTests
     {
         private readonly PendingDeviceApprovalResult _result;
         public int ApproveCalls { get; private set; }
+        public int ApproveExplicitCalls { get; private set; }
         public string? LastGatewayUrl { get; private set; }
         public string? LastDistroName { get; private set; }
+        public string? LastExplicitRequestId { get; private set; }
 
         public RecordingApprover(PendingDeviceApprovalResult result) => _result = result;
 
@@ -847,6 +904,15 @@ public class OperatorPairingApprovalTests
             ApproveCalls++;
             LastGatewayUrl = state.GatewayUrl;
             LastDistroName = state.DistroName;
+            return Task.FromResult(_result);
+        }
+
+        public Task<PendingDeviceApprovalResult> ApproveExplicitAsync(LocalGatewaySetupState state, string requestId, CancellationToken cancellationToken = default)
+        {
+            ApproveExplicitCalls++;
+            LastGatewayUrl = state.GatewayUrl;
+            LastDistroName = state.DistroName;
+            LastExplicitRequestId = requestId;
             return Task.FromResult(_result);
         }
     }

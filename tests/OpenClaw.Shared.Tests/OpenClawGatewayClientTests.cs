@@ -14,10 +14,10 @@ public class OpenClawGatewayClientTests
     {
         private readonly OpenClawGatewayClient _client;
 
-        public GatewayClientTestHelper(bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false)
+        public GatewayClientTestHelper(bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string gatewayUrl = "ws://localhost:18789")
         {
             _client = new OpenClawGatewayClient(
-                "ws://localhost:18789",
+                gatewayUrl,
                 "test-token",
                 new TestLogger(),
                 tokenIsBootstrapToken,
@@ -342,6 +342,8 @@ public class OpenClawGatewayClientTests
         public bool GetPairingRequiredFlag() =>
             GetPrivateField<bool>("_pairingRequiredAwaitingApproval");
 
+        public string? GetPairingRequiredRequestId() => _client.PairingRequiredRequestId;
+
         public string GetSignatureTokenMode()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -388,6 +390,37 @@ public class OpenClawGatewayClientTests
         Assert.Equal("test-token", auth["bootstrapToken"]);
         Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_FreshStandardLocalLoopbackDevice_RequestsFullOperatorScopes()
+    {
+        var helper = new GatewayClientTestHelper(gatewayUrl: "ws://127.0.0.1:18789");
+        helper.SetDeviceTokenForTest(null);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+        var auth = helper.BuildAuthPayload();
+
+        Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
+        Assert.Equal("test-token", auth["token"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+        Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_FreshStandardRemoteDevice_RequestsBootstrapHandoffScopes()
+    {
+        var helper = new GatewayClientTestHelper(gatewayUrl: "ws://gateway.example.com:18789");
+        helper.SetDeviceTokenForTest(null);
+
+        var scopes = helper.GetRequestedOperatorScopes();
+
+        Assert.Equal(
+            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
+            scopes);
+        Assert.DoesNotContain("operator.admin", scopes);
+        Assert.DoesNotContain("operator.pairing", scopes);
     }
 
     [Fact]
@@ -1666,6 +1699,59 @@ public class OpenClawGatewayClientTests
         """);
 
         Assert.Contains(ConnectionStatus.Error, statusChanges);
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_StructuredCodeWithoutTextMatch_SetsRequestId()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-structured", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-structured",
+            "ok": false,
+            "error": {
+                "message": "approval is needed for this device",
+                "details": {
+                    "code": "PAIRING_REQUIRED",
+                    "requestId": "abc-123"
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+        Assert.Equal("abc-123", helper.GetPairingRequiredRequestId());
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"code\":\"PAIRING_REQUIRED\"}")]
+    [InlineData("{\"code\":\"PAIRING_REQUIRED\",\"requestId\":\"\"}")]
+    [InlineData("{\"code\":\"PAIRING_REQUIRED\",\"requestId\":\"  \"}")]
+    [InlineData("{\"code\":\"PAIRING_REQUIRED\",\"requestId\":\"-bad\"}")]
+    [InlineData("{\"code\":\"PAIRING_REQUIRED\",\"requestId\":\"bad/id\"}")]
+    public void HandleRequestError_PairingRequired_MissingOrMalformedRequestId_FailsClosedWithNullRequestId(string detailsJson)
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-malformed", "connect");
+
+        helper.ProcessRawMessage($$"""
+        {
+            "type": "res",
+            "id": "req-pairing-malformed",
+            "ok": false,
+            "error": {
+                "message": "pairing required for this device",
+                "details": {{detailsJson}}
+            }
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+        Assert.Null(helper.GetPairingRequiredRequestId());
     }
 
     // --- HandleRequestError: device signature invalid ---

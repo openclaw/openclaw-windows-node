@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +19,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private const string OperatorRole = "operator";
     private const string OperatorPlatform = "windows";
     private const string OperatorDeviceFamily = "desktop";
+    private static readonly Regex s_pairingRequestIdRegex = new("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled);
     private static readonly string[] s_operatorScopes =
     [
         "operator.admin",
@@ -53,6 +55,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private readonly object _pendingChatSendLock = new();
     private readonly object _sessionsLock = new();
     private readonly DeviceIdentity _deviceIdentity;
+    private readonly string _currentGatewayUrl;
     private string _mainSessionKey = "main";
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
@@ -66,12 +69,16 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private bool _nodeListUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
+    private string? _pairingRequiredRequestId;
     private bool _authFailed;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => _pairingRequiredAwaitingApproval;
+
+    /// <summary>Safe requestId returned in structured pairing-required details, when present.</summary>
+    public string? PairingRequiredRequestId => _pairingRequiredRequestId;
 
     /// <summary>True when the device signature was rejected in all supported modes.</summary>
     public bool IsAuthFailed => _authFailed;
@@ -159,6 +166,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     {
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
         _bootstrapPairAsNode = bootstrapPairAsNode;
+        _currentGatewayUrl = gatewayUrl;
         var dataPath = Path.Combine(
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -533,7 +541,17 @@ public class OpenClawGatewayClient : WebSocketClientBase
             return [];
 
         if (string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+        {
+            // Fresh-device ordering is intentional:
+            // 1. QR/setup-code bootstrap keeps bounded handoff scopes.
+            // 2. Standard token auth against the local loopback gateway we installed requests
+            //    full operator scopes, including operator.admin, for the easy-button setup flow.
+            // 3. Remote/non-loopback fresh standard devices remain bounded and require manual approval.
+            if (!_tokenIsBootstrapToken && LocalGatewayUrlClassifier.IsLocalGatewayUrl(_currentGatewayUrl))
+                return s_operatorScopes;
+
             return s_operatorBootstrapScopes;
+        }
 
         return _deviceIdentity.DeviceTokenScopes is { Count: > 0 } scopes
             ? scopes.ToArray()
@@ -806,6 +824,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
             _pairingRequiredAwaitingApproval = false;
+            _pairingRequiredRequestId = null;
             _authFailed = false;
             ResetReconnectAttempts();
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
@@ -960,10 +979,12 @@ public class OpenClawGatewayClient : WebSocketClientBase
             return;
         }
 
+        var pairingDetails = TryGetPairingConnectErrorDetails(root);
         if (method == "connect" &&
-            message.Contains("pairing required", StringComparison.OrdinalIgnoreCase))
+            (pairingDetails.IsPairingRequired || message.Contains("pairing required", StringComparison.OrdinalIgnoreCase)))
         {
             _pairingRequiredAwaitingApproval = true;
+            _pairingRequiredRequestId = pairingDetails.RequestId;
             _logger.Warn("Pairing approval required for this device; auto-reconnect paused until manual reconnect or app restart");
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
@@ -1072,6 +1093,48 @@ public class OpenClawGatewayClient : WebSocketClientBase
             return message.GetString();
         return null;
     }
+
+    private static PairingConnectErrorDetails TryGetPairingConnectErrorDetails(JsonElement root)
+    {
+        if (!root.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
+            return default;
+
+        if (!TryGetPairingDetailsElement(error, out var details) || details.ValueKind != JsonValueKind.Object)
+            return default;
+
+        var isPairingRequired = details.TryGetProperty("code", out var code)
+            && code.ValueKind == JsonValueKind.String
+            && string.Equals(code.GetString(), "PAIRING_REQUIRED", StringComparison.Ordinal);
+        var requestId = TryGetSafePairingRequestId(details);
+        return new PairingConnectErrorDetails(isPairingRequired, requestId);
+    }
+
+    private static bool TryGetPairingDetailsElement(JsonElement error, out JsonElement details)
+    {
+        if (error.TryGetProperty("details", out details))
+            return true;
+
+        if (error.TryGetProperty("data", out var data)
+            && data.ValueKind == JsonValueKind.Object
+            && data.TryGetProperty("details", out details))
+        {
+            return true;
+        }
+
+        details = default;
+        return false;
+    }
+
+    private static string? TryGetSafePairingRequestId(JsonElement details)
+    {
+        if (!details.TryGetProperty("requestId", out var requestId) || requestId.ValueKind != JsonValueKind.String)
+            return null;
+
+        var value = requestId.GetString()?.Trim();
+        return value is not null && s_pairingRequestIdRegex.IsMatch(value) ? value : null;
+    }
+
+    private readonly record struct PairingConnectErrorDetails(bool IsPairingRequired, string? RequestId);
 
     private static bool IsUnknownMethodError(string errorMessage)
     {

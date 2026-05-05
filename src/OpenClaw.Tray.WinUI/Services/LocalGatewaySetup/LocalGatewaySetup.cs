@@ -1331,7 +1331,7 @@ public enum GatewayOperatorConnectionStatus
     Failed
 }
 
-public sealed record GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus Status, string? ErrorMessage = null);
+public sealed record GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus Status, string? ErrorMessage = null, string? PairingRequestId = null);
 
 public interface IGatewayOperatorConnector
 {
@@ -1362,7 +1362,7 @@ public sealed class OpenClawGatewayOperatorConnector : IGatewayOperatorConnector
             else if (status == ConnectionStatus.Error)
             {
                 if (client.IsPairingRequired)
-                    completion.TrySetResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.PairingRequired, "Gateway requires pairing approval."));
+                    completion.TrySetResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.PairingRequired, "Gateway requires pairing approval.", client.PairingRequiredRequestId));
                 else if (client.IsAuthFailed)
                     completion.TrySetResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.AuthFailed, "Gateway rejected operator authentication."));
             }
@@ -1475,16 +1475,18 @@ public sealed class SettingsOperatorPairingService : IOperatorPairingService
 
         var result = await _connector.ConnectAsync(state.GatewayUrl, credential.Value, credential.IsBootstrapToken, cancellationToken);
 
-        // Bug 1 fix: a fresh bootstrap-token connect creates a pending operator pairing request
-        // server-side but the connect itself is rejected with PairingRequired (operator-approval gate).
-        // On a local-loopback gateway the user driving the tray is also the approver, so we drive
-        // `openclaw devices approve --latest` via the gateway CLI and retry the bootstrap connect once.
+        // Fresh bootstrap-token connects keep the historical --latest approval path.
+        // Fresh standard local-loopback connects may request operator.admin, so they must approve
+        // the exact structured requestId returned by the failed connect. Missing/malformed requestId
+        // fails closed by skipping auto-approval and surfacing PairingRequired below.
         if (result.Status == GatewayOperatorConnectionStatus.PairingRequired
-            && credential.IsBootstrapToken
             && _pendingApprover != null
-            && LocalGatewayApprover.IsLocalGateway(state.GatewayUrl))
+            && LocalGatewayApprover.IsLocalGateway(state.GatewayUrl)
+            && (credential.IsBootstrapToken || result.PairingRequestId is not null))
         {
-            var approval = await _pendingApprover.ApproveLatestAsync(state, cancellationToken);
+            var approval = credential.IsBootstrapToken
+                ? await _pendingApprover.ApproveLatestAsync(state, cancellationToken)
+                : await _pendingApprover.ApproveExplicitAsync(state, result.PairingRequestId!, cancellationToken);
             if (!approval.Success)
             {
                 return new ProvisioningResult(
@@ -1652,6 +1654,7 @@ public sealed record PendingDeviceApprovalResult(bool Success, string? ErrorCode
 public interface IPendingDeviceApprover
 {
     Task<PendingDeviceApprovalResult> ApproveLatestAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default);
+    Task<PendingDeviceApprovalResult> ApproveExplicitAsync(LocalGatewaySetupState state, string requestId, CancellationToken cancellationToken = default);
 }
 
 public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
@@ -1777,6 +1780,34 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         var stage2 = await _wsl.RunInDistroAsync(
             state.DistroName,
             ["bash", "-lc", BuildCommitScript(requestId, token)],
+            cancellationToken);
+        if (!stage2.Success)
+        {
+            return BuildStage2Failure(stage2);
+        }
+
+        return ParseApproveJson(stage2.StandardOutput);
+    }
+
+    public async Task<PendingDeviceApprovalResult> ApproveExplicitAsync(LocalGatewaySetupState state, string requestId, CancellationToken cancellationToken = default)
+    {
+        if (!IsSafeRequestId(requestId))
+        {
+            return new PendingDeviceApprovalResult(
+                false,
+                "operator_pending_approval_failed",
+                $"Local gateway pairing requestId was unsafe: {requestId}");
+        }
+
+        var tokenResult = await ReadGatewayTokenAsync(state, cancellationToken);
+        if (!tokenResult.Success)
+        {
+            return new PendingDeviceApprovalResult(false, tokenResult.ErrorCode, tokenResult.ErrorMessage);
+        }
+
+        var stage2 = await _wsl.RunInDistroAsync(
+            state.DistroName,
+            ["bash", "-lc", BuildCommitScript(requestId, tokenResult.Token!)],
             cancellationToken);
         if (!stage2.Success)
         {
@@ -2085,6 +2116,10 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
     private static bool IsSafeRequestId(string value)
     {
         if (string.IsNullOrEmpty(value) || value.Length > 128) return false;
+        var first = value[0];
+        if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || (first >= '0' && first <= '9')))
+            return false;
+
         foreach (var c in value)
         {
             var ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')

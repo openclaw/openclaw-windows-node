@@ -36,9 +36,28 @@ public class WindowsTrayNodePairingApprovalTests
         Assert.Null(result.ErrorCode);
         Assert.Equal(2, connector.ConnectCalls);
         Assert.Equal(1, approver.ApproveCalls);
+        Assert.Equal(0, approver.ApproveExplicitCalls);
         Assert.Equal(LocalGatewayUrl, approver.LastGatewayUrl);
         Assert.Equal("OpenClawGateway", approver.LastDistroName);
         Assert.True(settings.EnableNodeMode);
+    }
+
+    [Fact]
+    public async Task PairAsync_LocalLoopback_RoleUpgradePending_UsesLatestApprovalPathNotExplicitRequestId()
+    {
+        var settings = new FakeNodeSettings { Token = "redacted-device-token", BootstrapToken = "" };
+        var connector = new ScriptedNodeConnector(
+            new TimeoutException("Timed out waiting for the Windows tray node to pair with the gateway."),
+            null);
+        var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+
+        var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
+
+        Assert.True(result.Success);
+        Assert.Equal(1, approver.ApproveCalls);
+        Assert.Equal(0, approver.ApproveExplicitCalls);
+        Assert.Null(approver.LastExplicitRequestId);
     }
 
     [Fact]
@@ -200,8 +219,10 @@ public class WindowsTrayNodePairingApprovalTests
     {
         private readonly PendingDeviceApprovalResult _result;
         public int ApproveCalls { get; private set; }
+        public int ApproveExplicitCalls { get; private set; }
         public string? LastGatewayUrl { get; private set; }
         public string? LastDistroName { get; private set; }
+        public string? LastExplicitRequestId { get; private set; }
 
         public RecordingNodeApprover(PendingDeviceApprovalResult result) => _result = result;
 
@@ -210,6 +231,15 @@ public class WindowsTrayNodePairingApprovalTests
             ApproveCalls++;
             LastGatewayUrl = state.GatewayUrl;
             LastDistroName = state.DistroName;
+            return Task.FromResult(_result);
+        }
+
+        public Task<PendingDeviceApprovalResult> ApproveExplicitAsync(LocalGatewaySetupState state, string requestId, CancellationToken cancellationToken = default)
+        {
+            ApproveExplicitCalls++;
+            LastGatewayUrl = state.GatewayUrl;
+            LastDistroName = state.DistroName;
+            LastExplicitRequestId = requestId;
             return Task.FromResult(_result);
         }
     }
