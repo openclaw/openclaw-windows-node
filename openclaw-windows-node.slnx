@@ -27,6 +27,7 @@
     <Project Path="tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj" />
     <Project Path="tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj" />
+    <Project Path="tests/OpenClawTray.FunctionalUI.Tests/OpenClawTray.FunctionalUI.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.IntegrationTests/OpenClaw.Tray.IntegrationTests.csproj" />
     <Project Path="tests/OpenClaw.Tray.UITests/OpenClaw.Tray.UITests.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />

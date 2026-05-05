@@ -133,7 +133,7 @@ internal sealed class ValueHookState<T>(T value, bool threadSafe) : IHookState
 
 internal sealed class EffectHookState : IHookState
 {
-    public object[] Dependencies = [];
+    public object[]? Dependencies;
     public Action? Cleanup;
 }
 
@@ -218,7 +218,7 @@ public sealed class RenderContext
         var hook = _hooks[_hookIndex++] as EffectHookState
             ?? throw new InvalidOperationException("Hooks must be called in the same order every render.");
 
-        if (!DependenciesChanged(hook.Dependencies, dependencies))
+        if (hook.Dependencies is not null && !DependenciesChanged(hook.Dependencies, dependencies))
             return;
 
         var oldCleanup = hook.Cleanup;
