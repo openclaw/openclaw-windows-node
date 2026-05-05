@@ -54,6 +54,15 @@ public sealed class OnboardingWindow : WindowEx
               ?? Path.Combine(Path.GetTempPath(), "openclaw-visual-test"))
             : null;
 
+        // Optional override for visual tests: render the onboarding UI in a specific locale
+        // (e.g. "fr-FR", "zh-CN") regardless of system language. Must be set BEFORE the first
+        // LocalizationHelper.GetString call so the resource context picks it up.
+        var testLocale = Environment.GetEnvironmentVariable("OPENCLAW_TEST_LOCALE");
+        if (!string.IsNullOrWhiteSpace(testLocale))
+        {
+            LocalizationHelper.SetLanguageOverride(testLocale);
+        }
+
         Title = LocalizationHelper.GetString("Onboarding_Title");
         this.SetWindowSize(720, 900);
         this.CenterOnScreen();

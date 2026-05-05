@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
+using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Services.LocalGatewaySetup;
 using static OpenClawTray.FunctionalUI.Factories;
@@ -42,15 +43,15 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
     private static Task<LocalGatewaySetupState>? s_runTask;
     private static bool s_advanceFiredForCompletion;
 
-    private static readonly (string Label, LocalGatewaySetupPhase[] Phases)[] s_visibleStages = new[]
+    private static readonly (string LabelKey, LocalGatewaySetupPhase[] Phases)[] s_visibleStages = new[]
     {
-        ("Checking system",        new[] { LocalGatewaySetupPhase.Preflight, LocalGatewaySetupPhase.EnsureWslEnabled }),
-        ("Installing Ubuntu",      new[] { LocalGatewaySetupPhase.CreateWslInstance }),
-        ("Configuring instance",   new[] { LocalGatewaySetupPhase.ConfigureWslInstance }),
-        ("Installing OpenClaw",    new[] { LocalGatewaySetupPhase.InstallOpenClawCli }),
-        ("Preparing gateway",      new[] { LocalGatewaySetupPhase.PrepareGatewayConfig, LocalGatewaySetupPhase.InstallGatewayService }),
-        ("Starting gateway",       new[] { LocalGatewaySetupPhase.StartGateway, LocalGatewaySetupPhase.WaitForGateway }),
-        ("Generating setup code",  new[] { LocalGatewaySetupPhase.MintBootstrapToken }),
+        ("Onboarding_LocalSetup_Phase_Preflight",      new[] { LocalGatewaySetupPhase.Preflight, LocalGatewaySetupPhase.EnsureWslEnabled }),
+        ("Onboarding_LocalSetup_Phase_CreateInstance", new[] { LocalGatewaySetupPhase.CreateWslInstance }),
+        ("Onboarding_LocalSetup_Phase_Configure",      new[] { LocalGatewaySetupPhase.ConfigureWslInstance }),
+        ("Onboarding_LocalSetup_Phase_InstallCli",     new[] { LocalGatewaySetupPhase.InstallOpenClawCli }),
+        ("Onboarding_LocalSetup_Phase_PrepareConfig",  new[] { LocalGatewaySetupPhase.PrepareGatewayConfig, LocalGatewaySetupPhase.InstallGatewayService }),
+        ("Onboarding_LocalSetup_Phase_StartGateway",   new[] { LocalGatewaySetupPhase.StartGateway, LocalGatewaySetupPhase.WaitForGateway }),
+        ("Onboarding_LocalSetup_Phase_MintToken",      new[] { LocalGatewaySetupPhase.MintBootstrapToken }),
     };
 
     public override Element Render()
@@ -124,9 +125,9 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         var status = snapshot?.Status ?? LocalGatewaySetupStatus.Pending;
         var subtitle = !string.IsNullOrWhiteSpace(snapshot?.UserMessage)
             ? snapshot!.UserMessage!
-            : "Setting up your local OpenClaw gateway.";
+            : LocalizationHelper.GetString("Onboarding_LocalSetup_SubtitleIdle");
 
-        var stageRows = s_visibleStages.Select(stage => RenderStage(stage.Label, stage.Phases, phase, status)).ToArray<Element?>();
+        var stageRows = s_visibleStages.Select(stage => RenderStage(LocalizationHelper.GetString(stage.LabelKey), stage.Phases, phase, status)).ToArray<Element?>();
 
         var isFailed = status == LocalGatewaySetupStatus.FailedRetryable || status == LocalGatewaySetupStatus.FailedTerminal;
         var canRetry = status == LocalGatewaySetupStatus.FailedRetryable;
@@ -134,9 +135,9 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
         Element errorRow;
         if (isFailed)
         {
-            var msg = snapshot?.UserMessage ?? "Setup did not complete.";
+            var msg = snapshot?.UserMessage ?? LocalizationHelper.GetString("Onboarding_LocalSetup_TerminalFailure");
             if (status == LocalGatewaySetupStatus.FailedTerminal)
-                msg += "\nDiagnostics: aka.ms/wsllogs";
+                msg += "\n" + LocalizationHelper.GetString("Onboarding_LocalSetup_DiagnosticsHint");
 
             var children = new System.Collections.Generic.List<Element?>
             {
@@ -150,7 +151,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
             if (canRetry)
             {
                 children.Add(
-                    Button("Try again", () => setRetryCount(retryCount + 1))
+                    Button(LocalizationHelper.GetString("Onboarding_LocalSetup_Retry"), () => setRetryCount(retryCount + 1))
                         .MinWidth(120)
                         .HAlign(HorizontalAlignment.Right)
                         .VAlign(VerticalAlignment.Center)
@@ -175,7 +176,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
             columns: ["1*"],
             rows: ["Auto", "Auto", "1*", "Auto"],
 
-            TextBlock("Setting up locally")
+            TextBlock(LocalizationHelper.GetString("Onboarding_LocalSetup_Title"))
                 .FontSize(22)
                 .FontWeight(new global::Windows.UI.Text.FontWeight(700))
                 .HAlign(HorizontalAlignment.Center)
@@ -287,11 +288,11 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
             case "active":
                 if (Enum.TryParse<LocalGatewaySetupPhase>(arg, ignoreCase: true, out var p))
                 {
-                    state.StartPhase(p, "Setting up your local OpenClaw gateway.");
+                    state.StartPhase(p, LocalizationHelper.GetString("Onboarding_LocalSetup_SubtitleIdle"));
                 }
                 break;
             case "complete":
-                state.CompletePhase(LocalGatewaySetupPhase.Complete, "Local gateway is ready.");
+                state.CompletePhase(LocalGatewaySetupPhase.Complete, LocalizationHelper.GetString("Onboarding_LocalSetup_SubtitleSuccess"));
                 break;
             case "retryable":
                 state.Block("visual_test_retryable", string.IsNullOrWhiteSpace(arg) ? "Setup hit a snag." : arg, retryable: true);

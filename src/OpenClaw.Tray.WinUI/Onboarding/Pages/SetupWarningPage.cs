@@ -1,5 +1,6 @@
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
+using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
 using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
@@ -30,13 +31,9 @@ public sealed class SetupWarningPage : Component<OnboardingState>
 {
     public override Element Render()
     {
-        const string TitleText = "Set up OpenClaw";
+        string TitleText = LocalizationHelper.GetString("Onboarding_SetupWarning_Title");
         // Body folds in the ⚠️ security notice (Mike's decision — WelcomePage removed).
-        const string BodyText =
-            "OpenClaw lets agents run commands, read and write files, and capture screenshots " +
-            "on this PC. Only set it up on a computer you trust.\n\n" +
-            "⚠️ The local setup installs a small WSL Linux instance dedicated to OpenClaw. " +
-            "If you'd rather connect to an existing or remote gateway, choose Advanced setup.";
+        string BodyText = LocalizationHelper.GetString("Onboarding_SetupWarning_Body");
 
         void ChooseLocal()
         {
@@ -71,7 +68,7 @@ public sealed class SetupWarningPage : Component<OnboardingState>
                 .Margin(0, 12, 0, 12)
                 .Grid(row: 1, column: 0),
 
-            Button("Set up locally", ChooseLocal)
+            Button(LocalizationHelper.GetString("Onboarding_SetupWarning_SetupLocally"), ChooseLocal)
                 .MinWidth(200)
                 .Height(44)
                 .HAlign(HorizontalAlignment.Center)
@@ -82,7 +79,7 @@ public sealed class SetupWarningPage : Component<OnboardingState>
                 })
                 .Grid(row: 2, column: 0),
 
-            Button("Advanced setup", ChooseAdvanced)
+            Button(LocalizationHelper.GetString("Onboarding_SetupWarning_Advanced"), ChooseAdvanced)
                 .HAlign(HorizontalAlignment.Center)
                 .Margin(0, 8, 0, 0)
                 .Set(b =>
