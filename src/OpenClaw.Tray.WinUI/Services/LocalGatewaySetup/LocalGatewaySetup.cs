@@ -1656,13 +1656,32 @@ public interface IPendingDeviceApprover
 
 public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 {
+    // Bug 1 part 4 (CLI v2026.5.3-1): the engine's first `--token`-authenticated call into
+    // the in-distro CLI triggers an internal Linux-operator auto-bootstrap inside the
+    // gateway. The bootstrap completes successfully (the linux operator entry IS persisted
+    // to `paired.json`) but the CLI process that drove it exits non-zero — it can't recover
+    // its own current invocation. A fresh process invocation made ~hundreds of ms later
+    // succeeds because the internal operator is now pre-paired. We retry stage 1 ONCE with
+    // a small backoff to ride out that race. See Bostick-11 Round-2 Path B drive
+    // (`bostick-bug1-reverify.md` "Path B re-drive — Round 2") for the deterministic
+    // reproduction and gateway journal evidence.
+    public const int MaxStderrSurfaceLength = 1024;
+    private static readonly TimeSpan DefaultStage1RetryDelay = TimeSpan.FromMilliseconds(750);
+
     private readonly IWslCommandRunner _wsl;
     private readonly string _commandName;
+    private readonly TimeSpan _stage1RetryDelay;
 
     public WslGatewayCliPendingDeviceApprover(IWslCommandRunner wsl, string commandName = "openclaw")
+        : this(wsl, commandName, DefaultStage1RetryDelay)
+    {
+    }
+
+    public WslGatewayCliPendingDeviceApprover(IWslCommandRunner wsl, string commandName, TimeSpan stage1RetryDelay)
     {
         _wsl = wsl;
         _commandName = commandName;
+        _stage1RetryDelay = stage1RetryDelay;
     }
 
     public async Task<PendingDeviceApprovalResult> ApproveLatestAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
@@ -1686,21 +1705,19 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         //     actually calls `device.pair.approve` (or the local pairing fallback) and
         //     mutates `paired.json`.
         //
+        // Stage 1 is retried ONCE on first failure (Bug 1 part 4 race — see class-level
+        // comment) with a small backoff so the second attempt benefits from any internal
+        // operator pairing the failed first attempt provoked as a side effect.
+        //
         // We continue to drop `--url` (Bug 1 part 2 / CLI ensureExplicitGatewayAuth guard)
         // and dereference the gateway token inside the shell so it never lands on argv.
-        var stage1 = await _wsl.RunInDistroAsync(
-            state.DistroName,
-            ["bash", "-lc", BuildPreviewScript()],
-            cancellationToken);
-        if (!stage1.Success)
+        var stage1 = await RunStage1WithRetryAsync(state, cancellationToken);
+        if (!stage1.Result.Success)
         {
-            return new PendingDeviceApprovalResult(
-                false,
-                "operator_pending_approval_failed",
-                "Local gateway pending pairing approval CLI failed (preview stage).");
+            return BuildStage1Failure(stage1.FirstStderr, stage1.Result.StandardError);
         }
 
-        var preview = ParsePreviewJson(stage1.StandardOutput);
+        var preview = ParsePreviewJson(stage1.Result.StandardOutput);
         if (!preview.Success)
         {
             return new PendingDeviceApprovalResult(false, preview.ErrorCode, preview.ErrorMessage);
@@ -1729,6 +1746,70 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
         return ParseApproveJson(stage2.StandardOutput);
     }
+
+    private async Task<Stage1Outcome> RunStage1WithRetryAsync(LocalGatewaySetupState state, CancellationToken cancellationToken)
+    {
+        var first = await _wsl.RunInDistroAsync(
+            state.DistroName,
+            ["bash", "-lc", BuildPreviewScript()],
+            cancellationToken);
+        if (first.Success)
+        {
+            return new Stage1Outcome(first, FirstStderr: null);
+        }
+
+        // Bug 1 part 4: the failed first call may itself have caused the gateway to
+        // auto-pair the in-distro internal Linux operator as a side effect. A second
+        // invocation made shortly after typically succeeds. Wait briefly, then retry once.
+        if (_stage1RetryDelay > TimeSpan.Zero)
+        {
+            try
+            {
+                await Task.Delay(_stage1RetryDelay, cancellationToken);
+            }
+            catch (TaskCanceledException)
+            {
+                return new Stage1Outcome(first, FirstStderr: first.StandardError);
+            }
+        }
+
+        var second = await _wsl.RunInDistroAsync(
+            state.DistroName,
+            ["bash", "-lc", BuildPreviewScript()],
+            cancellationToken);
+        return new Stage1Outcome(second, FirstStderr: first.StandardError);
+    }
+
+    private static PendingDeviceApprovalResult BuildStage1Failure(string? firstStderr, string? lastStderr)
+    {
+        // Bug 1 part 4 diagnosability: surface the captured stderr from BOTH attempts so
+        // future regressions in this race-prone area do not require digging into tray.log.
+        const string baseMessage = "Local gateway pending pairing approval CLI failed (preview stage).";
+        var first = TruncateStderr(firstStderr);
+        var last = TruncateStderr(lastStderr);
+
+        var sb = new StringBuilder(baseMessage);
+        if (!string.IsNullOrEmpty(first))
+        {
+            sb.Append(" stage1.attempt1.stderr=").Append(first);
+        }
+        if (!string.IsNullOrEmpty(last) && !string.Equals(last, first, StringComparison.Ordinal))
+        {
+            sb.Append(" stage1.attempt2.stderr=").Append(last);
+        }
+
+        return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", sb.ToString());
+    }
+
+    public static string? TruncateStderr(string? stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stderr)) return null;
+        var trimmed = stderr.Trim();
+        if (trimmed.Length <= MaxStderrSurfaceLength) return trimmed;
+        return trimmed.Substring(0, MaxStderrSurfaceLength) + "…[truncated]";
+    }
+
+    private readonly record struct Stage1Outcome(WslCommandResult Result, string? FirstStderr);
 
     private string BuildPreviewScript() => string.Join(" ", new[]
     {

@@ -201,7 +201,7 @@ public class OperatorPairingApprovalTests
                      + "Fix: pass --token *** --password *** gatewayToken in tools).\n"
                      + "    at ensureExplicitGatewayAuth (.../call-BCpe65RR.js:148:8)";
         var runner = new RecordingWslRunner(new WslCommandResult(1, string.Empty, stderr));
-        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
 
         var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
         {
@@ -211,7 +211,13 @@ public class OperatorPairingApprovalTests
 
         Assert.False(result.Success);
         Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
-        Assert.Equal("Local gateway pending pairing approval CLI failed (preview stage).", result.ErrorMessage);
+        // Bug 1 part 4: stage-1 stderr is now surfaced for diagnosability, AND stage 1 is
+        // retried once on first failure. With the same stderr returned on both attempts,
+        // we surface the prefix + attempt-1 stderr only (attempt-2 is suppressed when equal).
+        Assert.NotNull(result.ErrorMessage);
+        Assert.StartsWith("Local gateway pending pairing approval CLI failed (preview stage).", result.ErrorMessage);
+        Assert.Contains("stage1.attempt1.stderr=", result.ErrorMessage!);
+        Assert.Contains("ensureExplicitGatewayAuth", result.ErrorMessage!);
     }
 
     // --- Bug 1 part 3 (two-stage approve, CLI v2026.5.3-1) regression tests ---
@@ -347,6 +353,81 @@ public class OperatorPairingApprovalTests
         Assert.False(result.Success);
         Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
         Assert.Equal("boom", result.ErrorMessage);
+    }
+
+    // --- Bug 1 part 4 (first-call race retry + stderr surfacing) regression tests ---
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_TwoStage_Stage1FailsThenSucceeds_OverallSuccess()
+    {
+        // Bug 1 part 4 race: the engine's first --token call into the in-distro CLI
+        // triggers an internal Linux-operator auto-bootstrap that exits the CLI process
+        // non-zero. A second invocation made shortly after succeeds because the internal
+        // operator is now pre-paired. Approver retries stage 1 once on first failure.
+        var previewJson = "{\"selected\":{\"requestId\":\"81ff1b4c-ff71-4432-99c2-54b6b214982d\"}}";
+        var commitJson = "{\"requestId\":\"81ff1b4c-ff71-4432-99c2-54b6b214982d\",\"device\":{}}";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(1, string.Empty, "auto-bootstrap pairing in progress"),
+            new WslCommandResult(0, previewJson, string.Empty),
+            new WslCommandResult(0, commitJson, string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+        // Both stage-1 attempts must use --latest; stage 2 must contain the requestId.
+        Assert.Contains("--latest", string.Join(" ", runner.RunInDistroCommands[0]));
+        Assert.Contains("--latest", string.Join(" ", runner.RunInDistroCommands[1]));
+        Assert.Contains("'81ff1b4c-ff71-4432-99c2-54b6b214982d'", string.Join(" ", runner.RunInDistroCommands[2]));
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_TwoStage_Stage1FailsTwice_SurfacesBothStderrs()
+    {
+        var firstStderr = "first attempt: bootstrap pairing in progress";
+        var secondStderr = "second attempt: gateway returned 500";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(1, string.Empty, firstStderr),
+            new WslCommandResult(2, string.Empty, secondStderr));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.StartsWith("Local gateway pending pairing approval CLI failed (preview stage).", result.ErrorMessage);
+        Assert.Contains("stage1.attempt1.stderr=" + firstStderr, result.ErrorMessage!);
+        Assert.Contains("stage1.attempt2.stderr=" + secondStderr, result.ErrorMessage!);
+        // Stage 1 ran twice; stage 2 must NOT have run.
+        Assert.Equal(2, runner.RunInDistroCommands.Count);
+    }
+
+    [Fact]
+    public void TruncateStderr_RespectsCap_AndAppendsTruncationMarker()
+    {
+        var huge = new string('x', WslGatewayCliPendingDeviceApprover.MaxStderrSurfaceLength + 200);
+
+        var truncated = WslGatewayCliPendingDeviceApprover.TruncateStderr(huge);
+
+        Assert.NotNull(truncated);
+        Assert.True(truncated!.Length <= WslGatewayCliPendingDeviceApprover.MaxStderrSurfaceLength + "…[truncated]".Length);
+        Assert.EndsWith("…[truncated]", truncated);
+
+        var small = WslGatewayCliPendingDeviceApprover.TruncateStderr("short");
+        Assert.Equal("short", small);
+
+        Assert.Null(WslGatewayCliPendingDeviceApprover.TruncateStderr(null));
+        Assert.Null(WslGatewayCliPendingDeviceApprover.TruncateStderr("   \r\n  "));
     }
 
     private sealed class RecordingWslRunner : IWslCommandRunner
