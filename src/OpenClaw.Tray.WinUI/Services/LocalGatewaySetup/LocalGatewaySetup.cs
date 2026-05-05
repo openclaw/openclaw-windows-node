@@ -1656,16 +1656,35 @@ public interface IPendingDeviceApprover
 
 public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 {
-    // Bug 1 part 4 (CLI v2026.5.3-1): the engine's first `--token`-authenticated call into
-    // the in-distro CLI triggers an internal Linux-operator auto-bootstrap inside the
-    // gateway. The bootstrap completes successfully (the linux operator entry IS persisted
-    // to `paired.json`) but the CLI process that drove it exits non-zero — it can't recover
-    // its own current invocation. A fresh process invocation made ~hundreds of ms later
-    // succeeds because the internal operator is now pre-paired. We retry stage 1 ONCE with
-    // a small backoff to ride out that race. See Bostick-11 Round-2 Path B drive
-    // (`bostick-bug1-reverify.md` "Path B re-drive — Round 2") for the deterministic
-    // reproduction and gateway journal evidence.
+    // Bug 1 part 5 (CLI v2026.5.3-1): Bostick-11 Round-3 verification (commit 05f7be0)
+    // proved the retry from part 4 IS firing but BOTH attempts of stage 1 still exit
+    // non-zero with EMPTY stderr. The same script, when invoked manually via
+    // `wsl -- bash -lc <script>` from PowerShell against the engine's exact post-failure
+    // gateway state, returns exit 0 with valid preview JSON. So the failure is in the
+    // engine's invocation context, not the script.
+    //
+    // Leading hypothesis: the embedded `"$(cat /var/lib/openclaw/gateway-token)"` shell
+    // substitution gets mangled when .NET's `ProcessStartInfo.ArgumentList` quoting
+    // forwards the script through `wsl.exe` to `bash -lc` — the embedded double-quotes
+    // around the substitution interact badly with .NET's MSVCRT-style escaping and/or
+    // wsl.exe's own argv re-encoding, leaving bash with an empty/malformed `--token`
+    // argument and causing the CLI to silently exit non-zero. Manual PowerShell
+    // invocations don't reproduce because PowerShell's own tokenization differs.
+    //
+    // Fix: read the gateway token via a SEPARATE `wsl ... cat` call (no embedded quotes,
+    // no shell substitution), then interpolate it into the approve script as a
+    // single-quoted shell literal. The approve script body now contains:
+    //   - NO `$(...)` shell substitution
+    //   - NO `"` characters at all
+    // so there's nothing for .NET / wsl.exe argv encoding to mangle.
+    //
+    // Also surfaces STDOUT (in addition to stderr) for both stage-1 attempts and stage 2,
+    // so if some other invocation-context issue is still at play the next regression is
+    // diagnosable from `setup-state.json` alone.
+    //
+    // See Bostick-11 Round-3 (`bostick-bug1-reverify.md` "Path B re-drive — Round 3").
     public const int MaxStderrSurfaceLength = 1024;
+    public const int MaxStdoutSurfaceLength = 1024;
     private static readonly TimeSpan DefaultStage1RetryDelay = TimeSpan.FromMilliseconds(750);
 
     private readonly IWslCommandRunner _wsl;
@@ -1699,22 +1718,34 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         // requestId argument bypasses the preview gate.
         //
         // We therefore run two stages in the same approver call:
-        //   Stage 1 — discover: `openclaw devices approve --latest --json --token "$TOKEN"`
+        //   Stage 1 — discover: `openclaw devices approve --latest --json --token '<TOK>'`
         //     parses `selected.requestId` from the preview JSON.
-        //   Stage 2 — commit:   `openclaw devices approve <requestId> --json --token "$TOKEN"`
+        //   Stage 2 — commit:   `openclaw devices approve <requestId> --json --token '<TOK>'`
         //     actually calls `device.pair.approve` (or the local pairing fallback) and
         //     mutates `paired.json`.
         //
-        // Stage 1 is retried ONCE on first failure (Bug 1 part 4 race — see class-level
-        // comment) with a small backoff so the second attempt benefits from any internal
-        // operator pairing the failed first attempt provoked as a side effect.
+        // Bug 1 part 5: the gateway token is read via a SEPARATE `cat` invocation (so it
+        // never lands as a `$(...)` shell substitution in the approve script body) and
+        // interpolated into the script as a single-quoted shell literal. This eliminates
+        // the embedded `"` characters that .NET ArgumentList / wsl.exe argv encoding
+        // appears to mangle in the engine's invocation context (see class comment).
         //
-        // We continue to drop `--url` (Bug 1 part 2 / CLI ensureExplicitGatewayAuth guard)
-        // and dereference the gateway token inside the shell so it never lands on argv.
-        var stage1 = await RunStage1WithRetryAsync(state, cancellationToken);
+        // Stage 1 is retried ONCE on first failure (Bug 1 part 4 race) with a small
+        // backoff so the second attempt benefits from any internal operator pairing the
+        // failed first attempt provoked as a side effect.
+        //
+        // We continue to drop `--url` (Bug 1 part 2 / CLI ensureExplicitGatewayAuth guard).
+        var tokenResult = await ReadGatewayTokenAsync(state, cancellationToken);
+        if (!tokenResult.Success)
+        {
+            return new PendingDeviceApprovalResult(false, tokenResult.ErrorCode, tokenResult.ErrorMessage);
+        }
+        var token = tokenResult.Token!;
+
+        var stage1 = await RunStage1WithRetryAsync(state, token, cancellationToken);
         if (!stage1.Result.Success)
         {
-            return BuildStage1Failure(stage1.FirstStderr, stage1.Result.StandardError);
+            return BuildStage1Failure(stage1.FirstResult, stage1.Result);
         }
 
         var preview = ParsePreviewJson(stage1.Result.StandardOutput);
@@ -1734,28 +1765,25 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
         var stage2 = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildCommitScript(requestId)],
+            ["bash", "-lc", BuildCommitScript(requestId, token)],
             cancellationToken);
         if (!stage2.Success)
         {
-            var stderr = string.IsNullOrWhiteSpace(stage2.StandardError)
-                ? "Local gateway pending pairing approval CLI failed (commit stage)."
-                : stage2.StandardError.Trim();
-            return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", stderr);
+            return BuildStage2Failure(stage2);
         }
 
         return ParseApproveJson(stage2.StandardOutput);
     }
 
-    private async Task<Stage1Outcome> RunStage1WithRetryAsync(LocalGatewaySetupState state, CancellationToken cancellationToken)
+    private async Task<Stage1Outcome> RunStage1WithRetryAsync(LocalGatewaySetupState state, string token, CancellationToken cancellationToken)
     {
         var first = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildPreviewScript()],
+            ["bash", "-lc", BuildPreviewScript(token)],
             cancellationToken);
         if (first.Success)
         {
-            return new Stage1Outcome(first, FirstStderr: null);
+            return new Stage1Outcome(first, FirstResult: null);
         }
 
         // Bug 1 part 4: the failed first call may itself have caused the gateway to
@@ -1769,54 +1797,159 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
             }
             catch (TaskCanceledException)
             {
-                return new Stage1Outcome(first, FirstStderr: first.StandardError);
+                return new Stage1Outcome(first, FirstResult: first);
             }
         }
 
         var second = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildPreviewScript()],
+            ["bash", "-lc", BuildPreviewScript(token)],
             cancellationToken);
-        return new Stage1Outcome(second, FirstStderr: first.StandardError);
+        return new Stage1Outcome(second, FirstResult: first);
     }
 
-    private static PendingDeviceApprovalResult BuildStage1Failure(string? firstStderr, string? lastStderr)
+    /// <summary>
+    /// Bug 1 part 5: read the gateway token via a separate, simple <c>cat</c>
+    /// invocation. Returns <c>operator_pending_approval_failed</c> with diagnostics
+    /// when the file is missing/empty/unreadable, or when the token contains shell
+    /// metacharacters that are unsafe to interpolate into the approve script.
+    /// </summary>
+    internal async Task<TokenReadResult> ReadGatewayTokenAsync(LocalGatewaySetupState state, CancellationToken cancellationToken)
     {
-        // Bug 1 part 4 diagnosability: surface the captured stderr from BOTH attempts so
-        // future regressions in this race-prone area do not require digging into tray.log.
-        const string baseMessage = "Local gateway pending pairing approval CLI failed (preview stage).";
-        var first = TruncateStderr(firstStderr);
-        var last = TruncateStderr(lastStderr);
-
-        var sb = new StringBuilder(baseMessage);
-        if (!string.IsNullOrEmpty(first))
+        var read = await _wsl.RunInDistroAsync(
+            state.DistroName,
+            ["bash", "-lc", "cat /var/lib/openclaw/gateway-token"],
+            cancellationToken);
+        if (!read.Success)
         {
-            sb.Append(" stage1.attempt1.stderr=").Append(first);
+            var stderr = TruncateStderr(read.StandardError) ?? "(no stderr)";
+            return TokenReadResult.Failure(
+                "operator_pending_approval_failed",
+                "Local gateway pending pairing approval CLI failed (token-read stage). "
+                + $"exit={read.ExitCode} stderr={stderr}");
         }
-        if (!string.IsNullOrEmpty(last) && !string.Equals(last, first, StringComparison.Ordinal))
+        var token = (read.StandardOutput ?? string.Empty).Trim();
+        if (token.Length == 0)
         {
-            sb.Append(" stage1.attempt2.stderr=").Append(last);
+            return TokenReadResult.Failure(
+                "operator_pending_approval_failed",
+                "Local gateway pending pairing approval CLI failed (token-read stage): token file empty.");
+        }
+        if (!IsSafeTokenForSingleQuoteInterpolation(token))
+        {
+            return TokenReadResult.Failure(
+                "operator_pending_approval_failed",
+                "Local gateway pending pairing approval CLI failed (token-read stage): token contains unsafe characters.");
+        }
+        return TokenReadResult.Ok(token);
+    }
+
+    private static PendingDeviceApprovalResult BuildStage1Failure(WslCommandResult? firstAttempt, WslCommandResult lastAttempt)
+    {
+        // Bug 1 part 4/5 diagnosability: surface BOTH stderr AND stdout from BOTH attempts
+        // so future regressions in this race-prone area do not require digging into tray.log.
+        // Each stream is independently truncated to 1 KB. Suffixes are only appended when
+        // their content is non-empty AND distinct from attempt 1 (no duplication).
+        const string baseMessage = "Local gateway pending pairing approval CLI failed (preview stage).";
+        var sb = new StringBuilder(baseMessage);
+
+        var firstErr = TruncateStderr(firstAttempt?.StandardError);
+        var firstOut = TruncateStdout(firstAttempt?.StandardOutput);
+        var lastErr = TruncateStderr(lastAttempt.StandardError);
+        var lastOut = TruncateStdout(lastAttempt.StandardOutput);
+
+        if (firstAttempt != null)
+        {
+            sb.Append(" stage1.attempt1.exit=").Append(firstAttempt.ExitCode);
+        }
+        if (!string.IsNullOrEmpty(firstErr))
+        {
+            sb.Append(" stage1.attempt1.stderr=").Append(firstErr);
+        }
+        if (!string.IsNullOrEmpty(firstOut))
+        {
+            sb.Append(" stage1.attempt1.stdout=").Append(firstOut);
+        }
+
+        sb.Append(" stage1.attempt2.exit=").Append(lastAttempt.ExitCode);
+        if (!string.IsNullOrEmpty(lastErr) && !string.Equals(lastErr, firstErr, StringComparison.Ordinal))
+        {
+            sb.Append(" stage1.attempt2.stderr=").Append(lastErr);
+        }
+        if (!string.IsNullOrEmpty(lastOut) && !string.Equals(lastOut, firstOut, StringComparison.Ordinal))
+        {
+            sb.Append(" stage1.attempt2.stdout=").Append(lastOut);
         }
 
         return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", sb.ToString());
     }
 
-    public static string? TruncateStderr(string? stderr)
+    private static PendingDeviceApprovalResult BuildStage2Failure(WslCommandResult result)
     {
-        if (string.IsNullOrWhiteSpace(stderr)) return null;
-        var trimmed = stderr.Trim();
-        if (trimmed.Length <= MaxStderrSurfaceLength) return trimmed;
-        return trimmed.Substring(0, MaxStderrSurfaceLength) + "…[truncated]";
+        // Bug 1 part 5: also surface stdout for stage-2 failure so a CLI that writes
+        // structured JSON errors to stdout in `--json` mode is observable.
+        var stderr = TruncateStderr(result.StandardError);
+        var stdout = TruncateStdout(result.StandardOutput);
+        if (string.IsNullOrEmpty(stderr) && string.IsNullOrEmpty(stdout))
+        {
+            return new PendingDeviceApprovalResult(
+                false,
+                "operator_pending_approval_failed",
+                $"Local gateway pending pairing approval CLI failed (commit stage). stage2.exit={result.ExitCode}");
+        }
+        var sb = new StringBuilder("Local gateway pending pairing approval CLI failed (commit stage).");
+        sb.Append(" stage2.exit=").Append(result.ExitCode);
+        if (!string.IsNullOrEmpty(stderr)) sb.Append(" stage2.stderr=").Append(stderr);
+        if (!string.IsNullOrEmpty(stdout)) sb.Append(" stage2.stdout=").Append(stdout);
+        // Backwards-compatible shape: when only stderr is present, also keep the bare
+        // stderr in ErrorMessage so the existing failure-shape consumers continue to read it.
+        if (!string.IsNullOrEmpty(stderr) && string.IsNullOrEmpty(stdout))
+        {
+            return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", stderr);
+        }
+        return new PendingDeviceApprovalResult(false, "operator_pending_approval_failed", sb.ToString());
     }
 
-    private readonly record struct Stage1Outcome(WslCommandResult Result, string? FirstStderr);
+    public static string? TruncateStderr(string? stderr) => TruncateStream(stderr, MaxStderrSurfaceLength);
+    public static string? TruncateStdout(string? stdout) => TruncateStream(stdout, MaxStdoutSurfaceLength);
 
-    private string BuildPreviewScript() => string.Join(" ", new[]
+    private static string? TruncateStream(string? value, int cap)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        if (trimmed.Length <= cap) return trimmed;
+        return trimmed.Substring(0, cap) + "…[truncated]";
+    }
+
+    /// <summary>
+    /// Reject tokens whose contents could break out of single-quoted shell interpolation
+    /// or otherwise produce surprising behavior when embedded into a `bash -lc` script.
+    /// Single quotes are unsafe (they would close the literal). Newlines / carriage returns
+    /// are unsafe (would split the script across lines). Control characters are unsafe.
+    /// The on-disk token is base64-url style in practice — none of these conditions apply.
+    /// </summary>
+    internal static bool IsSafeTokenForSingleQuoteInterpolation(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return false;
+        foreach (var c in token)
+        {
+            if (c == '\'' || c == '\r' || c == '\n' || c == '\0') return false;
+            if (c < 0x20 || c == 0x7f) return false;
+        }
+        return true;
+    }
+
+    internal readonly record struct Stage1Outcome(WslCommandResult Result, WslCommandResult? FirstResult);
+
+    internal readonly record struct TokenReadResult(bool Success, string? Token, string? ErrorCode, string? ErrorMessage)
+    {
+        public static TokenReadResult Ok(string token) => new(true, token, null, null);
+        public static TokenReadResult Failure(string code, string message) => new(false, null, code, message);
+    }
+
+    internal string BuildPreviewScript(string token) => string.Join(" ", new[]
     {
         "set -euo pipefail;",
-        "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
-        "  echo 'gateway token file missing or empty' >&2; exit 64;",
-        "fi;",
         "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
         "exec",
         ShellQuoteScalar(_commandName),
@@ -1825,15 +1958,12 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         "--latest",
         "--json",
         "--token",
-        "\"$(cat /var/lib/openclaw/gateway-token)\""
+        ShellQuoteScalar(token)
     });
 
-    private string BuildCommitScript(string requestId) => string.Join(" ", new[]
+    internal string BuildCommitScript(string requestId, string token) => string.Join(" ", new[]
     {
         "set -euo pipefail;",
-        "if [ ! -s /var/lib/openclaw/gateway-token ]; then",
-        "  echo 'gateway token file missing or empty' >&2; exit 64;",
-        "fi;",
         "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
         "exec",
         ShellQuoteScalar(_commandName),
@@ -1842,7 +1972,7 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         ShellQuoteScalar(requestId),
         "--json",
         "--token",
-        "\"$(cat /var/lib/openclaw/gateway-token)\""
+        ShellQuoteScalar(token)
     });
 
     /// <summary>

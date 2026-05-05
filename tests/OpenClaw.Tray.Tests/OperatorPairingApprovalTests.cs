@@ -168,7 +168,10 @@ public class OperatorPairingApprovalTests
         // from the in-distro `openclaw.json` (gateway.mode=local) instead.
         //
         // Bug 1 part 3: with the two-stage approve, BOTH stages must omit `--url`.
+        // Bug 1 part 5: the gateway token is read via a separate `cat` call (cmd[0])
+        // so it never lands as `$(...)` shell substitution in the approve script body.
         var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "test-token-abcdef\n", string.Empty),
             new WslCommandResult(0, "{\"selected\":{\"requestId\":\"abc-123\"},\"approveCommand\":\"openclaw devices approve abc-123 --json\"}", string.Empty),
             new WslCommandResult(0, "{\"requestId\":\"abc-123\",\"device\":{}}", string.Empty));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
@@ -177,19 +180,31 @@ public class OperatorPairingApprovalTests
         var result = await approver.ApproveLatestAsync(state);
 
         Assert.True(result.Success);
-        Assert.Equal(2, runner.RunInDistroCommands.Count);
-        foreach (var cmd in runner.RunInDistroCommands)
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+        // cmd[0] = token-read (separate cat invocation, NOT the approve script).
+        var tokenReadCmd = string.Join(" ", runner.RunInDistroCommands[0]);
+        Assert.Contains("cat /var/lib/openclaw/gateway-token", tokenReadCmd);
+        Assert.DoesNotContain("devices", tokenReadCmd);
+        Assert.DoesNotContain("approve", tokenReadCmd);
+        // cmd[1..] = approve scripts. They must satisfy --url=null and (NEW) must not
+        // contain ANY embedded `$(...)` shell substitution or `"` characters — both of
+        // which can be mangled by .NET ArgumentList / wsl.exe argv encoding (Bug 1 part 5).
+        for (var i = 1; i < runner.RunInDistroCommands.Count; i++)
         {
+            var script = string.Join(" ", runner.RunInDistroCommands[i]);
             Assert.Equal("OpenClawGateway", runner.LastDistroName);
-            var script = string.Join(" ", cmd);
             Assert.DoesNotContain("--url", script);
             Assert.DoesNotContain("ws://127.0.0.1:18789", script);
             Assert.Contains("devices", script);
             Assert.Contains("approve", script);
             Assert.Contains("--json", script);
             Assert.Contains("--token", script);
-            // Token value is dereferenced inside the shell so it never appears on argv.
-            Assert.Contains("$(cat /var/lib/openclaw/gateway-token)", script);
+            // Bug 1 part 5: NO embedded shell substitution and NO double-quotes anywhere
+            // in the script body. Previous embedded `"$(cat ...)"` is gone.
+            Assert.DoesNotContain("$(", script);
+            Assert.DoesNotContain("\"", script);
+            // Token is interpolated as a single-quoted literal.
+            Assert.Contains("'test-token-abcdef'", script);
         }
     }
 
@@ -200,7 +215,9 @@ public class OperatorPairingApprovalTests
         var stderr = "[openclaw] Failed to start CLI: Error: gateway url override requires explicit credentials\n"
                      + "Fix: pass --token *** --password *** gatewayToken in tools).\n"
                      + "    at ensureExplicitGatewayAuth (.../call-BCpe65RR.js:148:8)";
-        var runner = new RecordingWslRunner(new WslCommandResult(1, string.Empty, stderr));
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(1, string.Empty, stderr));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
 
         var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
@@ -234,6 +251,7 @@ public class OperatorPairingApprovalTests
                           + "\"requiresAuthFlags\":{\"token\":false,\"password\":false}}";
         var commitJson = "{\"requestId\":\"57ccdbad-24a7-4750-8e5d-e92c5c497da0\",\"device\":{\"deviceId\":\"c5979c9c\"}}";
         var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
             new WslCommandResult(0, previewJson, string.Empty),
             new WslCommandResult(0, commitJson, string.Empty));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
@@ -245,15 +263,15 @@ public class OperatorPairingApprovalTests
         });
 
         Assert.True(result.Success);
-        Assert.Equal(2, runner.RunInDistroCommands.Count);
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
 
-        // Stage 1: preview (--latest, no requestId argv).
-        var stage1 = string.Join(" ", runner.RunInDistroCommands[0]);
+        // cmd[1] = Stage 1 preview (--latest, no requestId argv).
+        var stage1 = string.Join(" ", runner.RunInDistroCommands[1]);
         Assert.Contains("--latest", stage1);
         Assert.DoesNotContain("57ccdbad-24a7-4750-8e5d-e92c5c497da0", stage1);
 
-        // Stage 2: commit (explicit requestId, no --latest).
-        var stage2 = string.Join(" ", runner.RunInDistroCommands[1]);
+        // cmd[2] = Stage 2 commit (explicit requestId, no --latest).
+        var stage2 = string.Join(" ", runner.RunInDistroCommands[2]);
         Assert.DoesNotContain("--latest", stage2);
         Assert.Contains("'57ccdbad-24a7-4750-8e5d-e92c5c497da0'", stage2);
         Assert.Contains("--json", stage2);
@@ -268,7 +286,9 @@ public class OperatorPairingApprovalTests
         // stderr and exits — we observed exit-0 in the wild on v2026.5.3-1). Engine must
         // see a distinct error code so it does not treat it as success and does not
         // infinite-loop retrying the WS connect.
-        var runner = new RecordingWslRunner(new WslCommandResult(0, string.Empty, "No pending device pairing requests to approve"));
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(0, string.Empty, "No pending device pairing requests to approve"));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
 
         var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
@@ -279,7 +299,8 @@ public class OperatorPairingApprovalTests
 
         Assert.False(result.Success);
         Assert.Equal("no_pending_entries", result.ErrorCode);
-        Assert.Single(runner.RunInDistroCommands); // stage 2 must NOT have run.
+        // 2 calls: token-read + stage-1. Stage 2 must NOT have run.
+        Assert.Equal(2, runner.RunInDistroCommands.Count);
     }
 
     [Fact]
@@ -288,6 +309,7 @@ public class OperatorPairingApprovalTests
         var previewJson = "{\"selected\":{\"requestId\":\"abc-123\"},"
                           + "\"approveCommand\":\"openclaw devices approve abc-123 --json\"}";
         var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
             new WslCommandResult(0, previewJson, string.Empty),
             new WslCommandResult(1, string.Empty, "unknown requestId"));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
@@ -300,8 +322,9 @@ public class OperatorPairingApprovalTests
 
         Assert.False(result.Success);
         Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        // Backwards-compat: when stage-2 has stderr-only (no stdout), surface bare stderr.
         Assert.Equal("unknown requestId", result.ErrorMessage);
-        Assert.Equal(2, runner.RunInDistroCommands.Count);
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
     }
 
     [Fact]
@@ -310,7 +333,9 @@ public class OperatorPairingApprovalTests
         // Defense-in-depth: if the CLI ever returns a requestId containing shell
         // metacharacters, refuse to interpolate it into a `bash -lc` script.
         var previewJson = "{\"selected\":{\"requestId\":\"abc; rm -rf /\"}}";
-        var runner = new RecordingWslRunner(new WslCommandResult(0, previewJson, string.Empty));
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(0, previewJson, string.Empty));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
 
         var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
@@ -321,7 +346,8 @@ public class OperatorPairingApprovalTests
 
         Assert.False(result.Success);
         Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
-        Assert.Single(runner.RunInDistroCommands);
+        // 2 calls: token-read + stage-1 preview. Stage 2 must not run.
+        Assert.Equal(2, runner.RunInDistroCommands.Count);
     }
 
     [Fact]
@@ -367,6 +393,7 @@ public class OperatorPairingApprovalTests
         var previewJson = "{\"selected\":{\"requestId\":\"81ff1b4c-ff71-4432-99c2-54b6b214982d\"}}";
         var commitJson = "{\"requestId\":\"81ff1b4c-ff71-4432-99c2-54b6b214982d\",\"device\":{}}";
         var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
             new WslCommandResult(1, string.Empty, "auto-bootstrap pairing in progress"),
             new WslCommandResult(0, previewJson, string.Empty),
             new WslCommandResult(0, commitJson, string.Empty));
@@ -379,11 +406,12 @@ public class OperatorPairingApprovalTests
         });
 
         Assert.True(result.Success);
-        Assert.Equal(3, runner.RunInDistroCommands.Count);
-        // Both stage-1 attempts must use --latest; stage 2 must contain the requestId.
-        Assert.Contains("--latest", string.Join(" ", runner.RunInDistroCommands[0]));
+        // 4 calls: token-read + stage-1 attempt 1 + stage-1 attempt 2 + stage-2.
+        Assert.Equal(4, runner.RunInDistroCommands.Count);
+        // Both stage-1 attempts (cmd[1], cmd[2]) must use --latest; stage 2 contains the requestId.
         Assert.Contains("--latest", string.Join(" ", runner.RunInDistroCommands[1]));
-        Assert.Contains("'81ff1b4c-ff71-4432-99c2-54b6b214982d'", string.Join(" ", runner.RunInDistroCommands[2]));
+        Assert.Contains("--latest", string.Join(" ", runner.RunInDistroCommands[2]));
+        Assert.Contains("'81ff1b4c-ff71-4432-99c2-54b6b214982d'", string.Join(" ", runner.RunInDistroCommands[3]));
     }
 
     [Fact]
@@ -392,6 +420,7 @@ public class OperatorPairingApprovalTests
         var firstStderr = "first attempt: bootstrap pairing in progress";
         var secondStderr = "second attempt: gateway returned 500";
         var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
             new WslCommandResult(1, string.Empty, firstStderr),
             new WslCommandResult(2, string.Empty, secondStderr));
         var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
@@ -408,8 +437,10 @@ public class OperatorPairingApprovalTests
         Assert.StartsWith("Local gateway pending pairing approval CLI failed (preview stage).", result.ErrorMessage);
         Assert.Contains("stage1.attempt1.stderr=" + firstStderr, result.ErrorMessage!);
         Assert.Contains("stage1.attempt2.stderr=" + secondStderr, result.ErrorMessage!);
-        // Stage 1 ran twice; stage 2 must NOT have run.
-        Assert.Equal(2, runner.RunInDistroCommands.Count);
+        Assert.Contains("stage1.attempt1.exit=1", result.ErrorMessage!);
+        Assert.Contains("stage1.attempt2.exit=2", result.ErrorMessage!);
+        // 3 calls: token-read + 2 stage-1 attempts. Stage 2 must NOT have run.
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
     }
 
     [Fact]
@@ -428,6 +459,157 @@ public class OperatorPairingApprovalTests
 
         Assert.Null(WslGatewayCliPendingDeviceApprover.TruncateStderr(null));
         Assert.Null(WslGatewayCliPendingDeviceApprover.TruncateStderr("   \r\n  "));
+    }
+
+    // --- Bug 1 part 5 (token-read in C# + stdout surfacing) regression tests ---
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_PreviewScript_HasNoEmbeddedShellSubstitutionOrDoubleQuotes()
+    {
+        // The leading hypothesis for Bostick-11 Round-3's "exit non-zero + EMPTY stderr"
+        // failure is that .NET ArgumentList / wsl.exe argv encoding mangles the embedded
+        // `"$(cat /var/lib/openclaw/gateway-token)"` substitution. Bug 1 part 5 reads the
+        // token in C# and interpolates it as a single-quoted shell literal so the script
+        // body contains NO `$(...)` substitution and NO `"` characters at all.
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "TOKEN-VALUE-XYZ\n", string.Empty),
+            new WslCommandResult(0, "{\"selected\":{\"requestId\":\"abc-123\"}}", string.Empty),
+            new WslCommandResult(0, "{\"requestId\":\"abc-123\"}", string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw");
+
+        await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+        for (var i = 1; i < runner.RunInDistroCommands.Count; i++)
+        {
+            var script = string.Join(" ", runner.RunInDistroCommands[i]);
+            Assert.DoesNotContain("$(", script);
+            Assert.DoesNotContain("\"", script);
+            Assert.DoesNotContain("cat /var/lib/openclaw/gateway-token", script);
+            Assert.Contains("'TOKEN-VALUE-XYZ'", script);
+        }
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_TokenReadFails_SurfacesStructuredFailure_NoApproveScriptRuns()
+    {
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(1, string.Empty, "cat: /var/lib/openclaw/gateway-token: No such file or directory"));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.Contains("token-read stage", result.ErrorMessage!);
+        Assert.Contains("No such file", result.ErrorMessage!);
+        Assert.Single(runner.RunInDistroCommands);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_TokenReadEmpty_SurfacesStructuredFailure()
+    {
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "   \n", string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.Contains("token file empty", result.ErrorMessage!);
+        Assert.Single(runner.RunInDistroCommands);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_TokenWithUnsafeCharacters_RejectedBeforeApprove()
+    {
+        // A token containing a single quote would break out of the single-quoted shell
+        // literal. Reject before constructing any script. Same for newlines / control chars.
+        var unsafeTokens = new[] { "tok'evil", "tok\nnewline", "tok\rcr", "tok\0null", "tok\x01ctl" };
+        foreach (var bad in unsafeTokens)
+        {
+            var runner = new RecordingWslRunner(new WslCommandResult(0, bad, string.Empty));
+            var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+            var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+            {
+                GatewayUrl = "ws://127.0.0.1:18789",
+                DistroName = "OpenClawGateway",
+            });
+
+            Assert.False(result.Success);
+            Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+            Assert.Contains("unsafe characters", result.ErrorMessage!);
+            // No approve script should have run.
+            Assert.Single(runner.RunInDistroCommands);
+        }
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage1FailureWithStdoutOnly_SurfacesStdout()
+    {
+        // Bug 1 part 5: stdout is now surfaced too (some CLI failure paths write the
+        // structured error to stdout in `--json` mode, with empty stderr — exactly what
+        // Bostick-11 Round-3 observed).
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(1, "{\"ok\":false,\"error\":\"json-mode error on stdout\"}", string.Empty),
+            new WslCommandResult(2, "{\"ok\":false,\"error\":\"second attempt stdout error\"}", string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.Contains("stage1.attempt1.stdout=", result.ErrorMessage!);
+        Assert.Contains("json-mode error on stdout", result.ErrorMessage!);
+        Assert.Contains("stage1.attempt2.stdout=", result.ErrorMessage!);
+        Assert.Contains("second attempt stdout error", result.ErrorMessage!);
+        Assert.Contains("stage1.attempt1.exit=1", result.ErrorMessage!);
+        Assert.Contains("stage1.attempt2.exit=2", result.ErrorMessage!);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage2FailureWithStdoutOnly_SurfacesStdout()
+    {
+        var previewJson = "{\"selected\":{\"requestId\":\"abc-123\"}}";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(0, previewJson, string.Empty),
+            new WslCommandResult(1, "{\"ok\":false,\"error\":\"stage2 stdout-only error\"}", string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.Contains("commit stage", result.ErrorMessage!);
+        Assert.Contains("stage2.exit=1", result.ErrorMessage!);
+        Assert.Contains("stage2.stdout=", result.ErrorMessage!);
+        Assert.Contains("stage2 stdout-only error", result.ErrorMessage!);
     }
 
     private sealed class RecordingWslRunner : IWslCommandRunner
