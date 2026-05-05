@@ -104,8 +104,12 @@ public class OnboardingStateTests
     }
 
     [Fact]
-    public void GetPageOrder_LocalPath_NodeMode_SkipsWizardAndChat()
+    public void GetPageOrder_LocalPath_NodeMode_KeepsWizardAndChat()
     {
+        // Bug #1 (manual test 2026-05-05): on the Local easy-setup path, PairAsync flips
+        // EnableNodeMode=true mid-onboarding (LocalGatewaySetup.cs:2147), but the tray
+        // also has operator credentials from Phase 12, so the Wizard hop must remain.
+        // Only explicit Advanced + node-mode flows skip Wizard.
         var state = new OnboardingState(CreateSettings(enableNodeMode: true));
         state.SetupPath = SetupPath.Local;
         state.Mode = ConnectionMode.Local;
@@ -114,8 +118,49 @@ public class OnboardingStateTests
         var pages = state.GetPageOrder();
 
         Assert.Equal(
-            [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard,
+             OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
             pages);
+    }
+
+    [Fact]
+    public void GetPageOrder_LocalPath_NodeMode_NoChat_KeepsWizard()
+    {
+        // Bug #1 sister case: ShowChat=false must still keep Wizard between
+        // LocalSetupProgress and Permissions for Local + node-mode.
+        var state = new OnboardingState(CreateSettings(enableNodeMode: true));
+        state.SetupPath = SetupPath.Local;
+        state.Mode = ConnectionMode.Local;
+        state.ShowChat = false;
+
+        var pages = state.GetPageOrder();
+
+        Assert.Equal(
+            [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard,
+             OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            pages);
+    }
+
+    [Fact]
+    public void NextRouteAfterLocalSetupProgress_LocalNodeMode_IsWizard()
+    {
+        // Bug #1 integration assertion (RubberDucky's specific ask): the auto-advance
+        // after Phase 16 fires from LocalSetupProgressPage.s_advanceFiredForCompletion ⇒
+        // OnboardingState.RequestAdvance ⇒ OnboardingApp.GoNext, which indexes into
+        // Props.GetPageOrder() and navigates to pages[currentIndex + 1]. This test
+        // simulates that exact pageIndex+1 lookup and proves the destination is Wizard,
+        // not Permissions (the original Bug #1 symptom Mike reported).
+        var state = new OnboardingState(CreateSettings(enableNodeMode: true));
+        state.SetupPath = SetupPath.Local;
+        state.Mode = ConnectionMode.Local;
+        state.ShowChat = true;
+
+        var pages = state.GetPageOrder();
+        var currentIdx = Array.IndexOf(pages, OnboardingRoute.LocalSetupProgress);
+
+        Assert.True(currentIdx >= 0, "LocalSetupProgress must be in the route");
+        Assert.True(currentIdx + 1 < pages.Length, "must have a next route after LocalSetupProgress");
+        Assert.Equal(OnboardingRoute.Wizard, pages[currentIdx + 1]);
     }
 
     [Fact]

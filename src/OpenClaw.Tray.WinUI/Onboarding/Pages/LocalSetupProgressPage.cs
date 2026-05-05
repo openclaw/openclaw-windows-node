@@ -6,6 +6,7 @@ using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
+using OpenClawTray.Services;
 using OpenClawTray.Services.LocalGatewaySetup;
 using static OpenClawTray.FunctionalUI.Factories;
 
@@ -133,6 +134,26 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
                     if (snap.Status == LocalGatewaySetupStatus.Complete && !s_advanceFiredForCompletion)
                     {
                         s_advanceFiredForCompletion = true;
+                        // Bug #1 (manual test 2026-05-05) sister fix: the next route in the
+                        // Local easy-setup flow is Wizard, which calls wizard.start RPC over
+                        // App.GatewayClient ?? Props.GatewayClient. App startup only initializes
+                        // the operator GatewayClient when EnableNodeMode==false (App.xaml.cs:385);
+                        // PairAsync flips it to true mid-onboarding, so without an explicit
+                        // re-init here the WizardPage will sit in "loading" for 30s then save
+                        // an "offline" state. Eagerly (re)initialize the gateway client now —
+                        // operator credentials saved by Phase 12 (_settings.Token) drive auth.
+                        try
+                        {
+                            var appForSeed = (App)Application.Current;
+                            if (appForSeed.GatewayClient == null || !appForSeed.GatewayClient.IsConnectedToGateway)
+                                appForSeed.ReinitializeGatewayClient();
+                            advanceRef.GatewayClient = appForSeed.GatewayClient;
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warn($"[LocalSetupProgress] Seeding GatewayClient before advance failed: {ex.Message}");
+                        }
+
                         // 1-second pause on success per Mike's decision. Tap-to-skip:
                         // user can tap the (now visible+enabled) Next button to advance
                         // immediately; gate this timer on still being on LocalSetupProgress

@@ -122,12 +122,16 @@ public sealed class OnboardingState : IDisposable
         // Next button is disabled on SetupWarning until the user picks a path.
         var path = SetupPath ?? Onboarding.Services.SetupPath.Local;
 
-        // Node mode: skip Wizard and Chat — node clients can't use operator RPCs.
-        if (Settings.EnableNodeMode)
+        // Node mode: skip Wizard and Chat — remote-node clients can't use operator RPCs.
+        // Exception (Bug #1, manual test 2026-05-05): Local easy-setup pairs the tray
+        // as BOTH operator (Phase 12) AND node (Phase 14) on the loopback gateway it
+        // just stood up. Even though PairAsync flips EnableNodeMode=true mid-onboarding
+        // (LocalGatewaySetup.cs:2147), the tray still has operator credentials and the
+        // Wizard hop's wizard.start RPC works. Only skip Wizard for explicit Advanced
+        // remote-node deployments.
+        if (Settings.EnableNodeMode && path != Onboarding.Services.SetupPath.Local)
         {
-            return path == Onboarding.Services.SetupPath.Local
-                ? [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Permissions, OnboardingRoute.Ready]
-                : [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready];
+            return [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready];
         }
 
         if (path == Onboarding.Services.SetupPath.Local)
