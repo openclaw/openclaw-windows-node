@@ -1743,14 +1743,25 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         var token = tokenResult.Token!;
 
         var stage1 = await RunStage1WithRetryAsync(state, token, cancellationToken);
-        if (!stage1.Result.Success)
-        {
-            return BuildStage1Failure(stage1.FirstResult, stage1.Result);
-        }
 
+        // Bug 1 part 6 (CLI v2026.5.3-1): `devices approve --latest --json` returns
+        // exit code 1 DETERMINISTICALLY in preview mode even on the happy path. The
+        // CLI uses exit-1 to signal "preview only, no actual approve performed"; the
+        // valid preview JSON on stdout (with `selected.requestId`, `approveCommand`,
+        // `requiresAuthFlags`) IS the success signal. Confirmed by Bostick-11 Round-4
+        // smoking-gun capture + manual stage-2 reproduction (`bostick-bug1-reverify.md`,
+        // "Path B re-drive — Round 4"). We therefore parse the stdout JSON FIRST and
+        // only fall through to a structured stage-1 failure when no usable preview
+        // shape can be extracted. Exit code remains the secondary signal: it gates the
+        // failure branch (stderr-vs-no-pending-entries discrimination) only after the
+        // primary parseable-preview check has failed.
         var preview = ParsePreviewJson(stage1.Result.StandardOutput);
         if (!preview.Success)
         {
+            if (!stage1.Result.Success)
+            {
+                return BuildStage1Failure(stage1.FirstResult, stage1.Result);
+            }
             return new PendingDeviceApprovalResult(false, preview.ErrorCode, preview.ErrorMessage);
         }
 
@@ -1781,7 +1792,12 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
             state.DistroName,
             ["bash", "-lc", BuildPreviewScript(token)],
             cancellationToken);
-        if (first.Success)
+        // Bug 1 part 6: treat exit-0 OR a parseable preview JSON as stage-1 success.
+        // CLI v2026.5.3-1 returns exit 1 from `--latest --json` on the happy preview
+        // path (deterministic — see ApproveLatestAsync comment), so a non-zero exit
+        // alone is no longer sufficient to trigger the retry. Without this check, the
+        // common success path would always burn the 750ms retry delay before advancing.
+        if (first.Success || ParsePreviewJson(first.StandardOutput).Success)
         {
             return new Stage1Outcome(first, FirstResult: null);
         }

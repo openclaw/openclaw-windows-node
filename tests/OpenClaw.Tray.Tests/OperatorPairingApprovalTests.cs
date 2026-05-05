@@ -612,6 +612,153 @@ public class OperatorPairingApprovalTests
         Assert.Contains("stage2 stdout-only error", result.ErrorMessage!);
     }
 
+    // --- Bug 1 part 6 (gate inversion: valid preview JSON IS the success signal,
+    // regardless of CLI exit code). CLI v2026.5.3-1 returns exit 1 deterministically
+    // from `devices approve --latest --json` even on the happy preview path; the JSON
+    // payload on stdout is the contract the engine must read. See bostick-bug1-reverify.md
+    // "Path B re-drive — Round 4" for the smoking-gun stdout capture + manual repro.
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage1ExitOneWithValidPreviewJson_ProceedsToStage2_Succeeds()
+    {
+        // The exact shape Bostick-11 captured: exit=1, valid preview JSON on stdout,
+        // empty stderr. Engine must treat this as stage-1 success, advance to stage 2,
+        // and NOT trigger the 750ms retry (that would waste two seconds on every run).
+        var previewJson = "{\"selected\":{\"requestId\":\"89cccfff-bd88-4b4a-b7f5-12d881842de2\","
+                          + "\"deviceId\":\"ced3225394ce9c51b5798cbc051aae3f85c090ec2a34da3b9e7150a1f9298ec2\"},"
+                          + "\"approveCommand\":\"openclaw devices approve 89cccfff-bd88-4b4a-b7f5-12d881842de2 --json\","
+                          + "\"requiresAuthFlags\":{\"token\":true,\"password\":false}}";
+        var commitJson = "{\"requestId\":\"89cccfff-bd88-4b4a-b7f5-12d881842de2\",\"device\":{\"deviceId\":\"ced3225394ce\"}}";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(1, previewJson, string.Empty),
+            new WslCommandResult(0, commitJson, string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.True(result.Success);
+        // 3 calls: token-read + stage-1 (single attempt — JSON parses, no retry) + stage-2.
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+        var stage1 = string.Join(" ", runner.RunInDistroCommands[1]);
+        Assert.Contains("--latest", stage1);
+        var stage2 = string.Join(" ", runner.RunInDistroCommands[2]);
+        Assert.Contains("'89cccfff-bd88-4b4a-b7f5-12d881842de2'", stage2);
+        Assert.DoesNotContain("--latest", stage2);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage1ExitZeroWithValidPreviewJson_ProceedsToStage2_Succeeds()
+    {
+        // Compatibility check: should the CLI ever start returning exit-0 for the
+        // happy preview path, the gate must still advance to stage 2.
+        var previewJson = "{\"selected\":{\"requestId\":\"57ccdbad-24a7-4750-8e5d-e92c5c497da0\"}}";
+        var commitJson = "{\"requestId\":\"57ccdbad-24a7-4750-8e5d-e92c5c497da0\"}";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(0, previewJson, string.Empty),
+            new WslCommandResult(0, commitJson, string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage1ExitOneWithEmptyStdout_FailsWithDiagnostics()
+    {
+        // Gate must still reject malformed responses: exit-non-zero + empty stdout
+        // means the CLI failed before producing the preview payload (e.g. wrong url
+        // override, missing token, gateway unreachable). Both attempts run; both
+        // exit codes + any stderr must be surfaced.
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(1, string.Empty, "could not reach gateway"),
+            new WslCommandResult(1, string.Empty, "could not reach gateway"));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.StartsWith("Local gateway pending pairing approval CLI failed (preview stage).", result.ErrorMessage);
+        Assert.Contains("stage1.attempt1.exit=1", result.ErrorMessage!);
+        Assert.Contains("stage1.attempt2.exit=1", result.ErrorMessage!);
+        Assert.Contains("could not reach gateway", result.ErrorMessage!);
+        // 3 calls: token-read + 2 stage-1 attempts. No stage-2.
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage1ExitOneWithMalformedJson_FailsWithDiagnostics()
+    {
+        // exit-non-zero + unparseable garbage on stdout — gate must still reject and
+        // surface the captured stdout for diagnostics. Both attempts must run because
+        // unparseable stdout does NOT count as a success signal.
+        var garbage = "not-json{ broken (";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(1, garbage, string.Empty),
+            new WslCommandResult(1, garbage, string.Empty));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.StartsWith("Local gateway pending pairing approval CLI failed (preview stage).", result.ErrorMessage);
+        Assert.Contains("stage1.attempt1.stdout=", result.ErrorMessage!);
+        Assert.Contains("not-json", result.ErrorMessage!);
+        // 3 calls: token-read + 2 stage-1 attempts. No stage-2.
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_Stage1ExitOneWithValidPreviewJson_DoesNotRetry()
+    {
+        // Belt-and-suspenders: when stage-1 attempt 1 returns parseable JSON, the
+        // 750ms retry path must NOT fire even though exit code is non-zero. This
+        // avoids a 1.5s+ regression on every successful pair on this CLI version.
+        var previewJson = "{\"selected\":{\"requestId\":\"r1\"}}";
+        var commitJson = "{\"requestId\":\"r1\"}";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, "tok\n", string.Empty),
+            new WslCommandResult(1, previewJson, string.Empty),
+            new WslCommandResult(0, commitJson, string.Empty));
+        // Use a deliberately large delay; if the test hangs, retry was triggered.
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.FromMinutes(1));
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.True(result.Success);
+        // Exactly 3 calls — token-read, single stage-1, stage-2. No retry attempt.
+        Assert.Equal(3, runner.RunInDistroCommands.Count);
+    }
+
     private sealed class RecordingWslRunner : IWslCommandRunner
     {
         private readonly Queue<WslCommandResult> _results;
