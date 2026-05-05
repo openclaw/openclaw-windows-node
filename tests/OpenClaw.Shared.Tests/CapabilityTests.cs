@@ -889,6 +889,111 @@ public class BrowserProxyCapabilityTests
         Assert.Contains("ssh -N -L 28791:127.0.0.1:18791", res.Error);
     }
 
+    [Fact]
+    public async Task BrowserProxy_EmptyPath_ReturnsError()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "token",
+            new CapturingHandler("""{"ok":true}"""));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "bp-empty-path",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":""}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("path required", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_SlashlessPrependedPath_NormalizesWithLeadingSlash()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "token",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "bp-no-leading-slash",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"snapshot"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(handler.LastRequest);
+        Assert.StartsWith("/snapshot", handler.LastRequest!.RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_DoubleSlashPath_ReturnsError()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "token",
+            new CapturingHandler("""{"ok":true}"""));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "bp-double-slash",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"//evil.com/inject"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("local control path", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_GatewayPortAbove65533_ReturnsError()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:65534",   // control port would be 65536 — out of range
+            "token",
+            new CapturingHandler("""{"ok":true}"""));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "bp-port-overflow",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("port", res.Error);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_QueryAndProfileAppendedToUri()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "token",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "bp-query-profile",
+            Command = "browser.proxy",
+            Args = Parse("""{"path":"/tabs","query":{"active":"true"},"profile":"work"}""")
+        });
+
+        Assert.True(res.Ok);
+        var requestUri = handler.LastRequest!.RequestUri!.ToString();
+        Assert.Contains("active=true", requestUri);
+        Assert.Contains("profile=work", requestUri);
+    }
+
     private sealed class CapturingHandler : HttpMessageHandler
     {
         private readonly string _response;
