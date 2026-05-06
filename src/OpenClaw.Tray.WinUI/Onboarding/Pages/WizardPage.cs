@@ -83,13 +83,15 @@ public sealed class WizardPage : Component<OnboardingState>
                 var typeStr = step.TryGetProperty("type", out var tp) ? tp.ToString() : "note";
                 var newTitle = step.TryGetProperty("title", out var t) ? t.ToString() : "";
                 var newMessage = step.TryGetProperty("message", out var m) ? m.ToString() : "";
+                var newStepId = step.TryGetProperty("id", out var id) ? id.ToString() : "";
+                Logger.Info($"[WizardDiag] ApplyStep: stepId={newStepId} type={typeStr} title={newTitle}");
                 // If no title, use the type as a fallback label
                 if (string.IsNullOrEmpty(newTitle) && !string.IsNullOrEmpty(newMessage))
                     newTitle = typeStr switch { "confirm" => "Confirm", "select" => "Select", "text" => "Input", _ => "Setup" };
                 setStepTitle(newTitle);
                 setStepMessage(newMessage);
                 setStepType(typeStr);
-                setStepId(step.TryGetProperty("id", out var id) ? id.ToString() : "");
+                setStepId(newStepId);
                 setPlaceholder(step.TryGetProperty("placeholder", out var ph) ? ph.ToString() : "");
                 var iv = step.TryGetProperty("initialValue", out var ivp) ? ivp.ToString() : "";
                 setStepInput(iv);
@@ -275,15 +277,19 @@ public sealed class WizardPage : Component<OnboardingState>
                 requestContext,
                 async () =>
                 {
+                    var previousSessionId = Props.WizardSessionId ?? "(none)";
+                    Logger.Warn($"[WizardDiag] Recovery enter: method=wizard.start params={{allowRestore:false}} sessionId={previousSessionId} ex={ex.GetType().Name} connected={client?.IsConnectedToGateway}");
                     ClearWizardSessionState();
                     setWizardState("loading");
                     setErrorMsg("");
                     var started = await StartWizardAsync(allowRestore: false);
                     if (!started || !Props.WizardStepPayload.HasValue)
                     {
+                        Logger.Warn($"[WizardDiag] Recovery exit: method=wizard.start result=failed sessionId={previousSessionId} newSessionId={Props.WizardSessionId ?? "(none)"}");
                         throw new InvalidOperationException("wizard.start recovery failed");
                     }
 
+                    Logger.Info($"[WizardDiag] Recovery exit: method=wizard.start result=recovered sessionId={previousSessionId} newSessionId={Props.WizardSessionId ?? "(none)"}");
                     return Props.WizardStepPayload.Value;
                 });
 

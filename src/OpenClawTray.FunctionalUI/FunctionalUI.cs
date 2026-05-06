@@ -3,8 +3,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using System.Runtime.CompilerServices;
 using Windows.UI;
 using Windows.UI.Text;
+using OpenClawTray.Services;
 using WinGrid = Microsoft.UI.Xaml.Controls.Grid;
 
 namespace OpenClawTray.FunctionalUI.Core
@@ -679,7 +681,12 @@ internal sealed class UiRenderer(Action requestRender)
     {
         control.SelectionChanged -= RadioButtonsSelectionChanged;
         control.Tag = element;
+        var sameRef = ReferenceEquals(control.ItemsSource, element.Items);
+        var itemsHash = RuntimeHelpers.GetHashCode(element.Items);
+        var idxBefore = control.SelectedIndex;
+        Logger.Debug($"[WizardDiag] ConfigureRadioButtons before: itemsHash={itemsHash} sameRef={sameRef} reqIdx={element.SelectedIndex} idxBefore={idxBefore}");
         control.ItemsSource = element.Items;
+        var idxAfterSet = control.SelectedIndex;
         if (element.SelectedIndex >= 0 && element.SelectedIndex < element.Items.Length)
         {
             control.SelectedIndex = element.SelectedIndex;
@@ -690,6 +697,7 @@ internal sealed class UiRenderer(Action requestRender)
             control.SelectedIndex = -1;
             control.SelectedItem = null;
         }
+        Logger.Debug($"[WizardDiag] ConfigureRadioButtons after: itemsHash={itemsHash} idxAfterSet={idxAfterSet} idxFinal={control.SelectedIndex}");
         control.SelectionChanged += RadioButtonsSelectionChanged;
         ApplyModifiers(control, element);
         ApplySetters(control, element);
@@ -976,7 +984,10 @@ internal sealed class UiRenderer(Action requestRender)
     private static void RadioButtonsSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is RadioButtons { Tag: RadioButtonsElement element } rb)
+        {
+            Logger.Debug($"[WizardDiag] RadioButtons.SelectionChanged: idx={rb.SelectedIndex} itemCount={rb.Items?.Count ?? 0}");
             element.OnSelectionChanged?.Invoke(rb.SelectedIndex);
+        }
     }
 
     private static void CheckBoxChanged(object sender, RoutedEventArgs e)

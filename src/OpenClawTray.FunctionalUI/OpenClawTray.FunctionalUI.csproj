@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>OpenClawTray.FunctionalUI.Tests</_Parameter1>
     </AssemblyAttribute>
