@@ -77,6 +77,7 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         new object[] { "CapabilitiesPage_TtsCardHeader",        new[] { ".Text" } },
         new object[] { "CapabilitiesPage_TtsCardDescription",   new[] { ".Text" } },
         new object[] { "CapabilitiesPage_TtsProviderComboBox",  new[] { ".Header" } },
+        new object[] { "CapabilitiesPage_TtsProviderPiper",     new[] { ".Content" } },
         new object[] { "CapabilitiesPage_TtsProviderWindows",   new[] { ".Content" } },
         new object[] { "CapabilitiesPage_TtsProviderElevenLabs",new[] { ".Content" } },
         new object[] { "CapabilitiesPage_TtsElevenLabsApiKey",  new[] { ".Header" } },

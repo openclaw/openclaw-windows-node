@@ -79,6 +79,7 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                     <ComboBox x:Name="TtsProviderComboBox" x:Uid="CapabilitiesPage_TtsProviderComboBox" Header="Provider"
                               SelectionChanged="OnTtsProviderSelectionChanged">
+                        <ComboBoxItem x:Uid="CapabilitiesPage_TtsProviderPiper" Content="Piper (local ML, recommended)" Tag="piper"/>
                         <ComboBoxItem x:Uid="CapabilitiesPage_TtsProviderWindows" Content="Windows built-in speech" Tag="windows"/>
                         <ComboBoxItem x:Uid="CapabilitiesPage_TtsProviderElevenLabs" Content="ElevenLabs" Tag="elevenlabs"/>
                     </ComboBox>

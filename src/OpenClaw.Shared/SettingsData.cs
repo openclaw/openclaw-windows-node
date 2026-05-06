@@ -54,6 +54,8 @@ public class SettingsData
     public string? TtsElevenLabsApiKey { get; set; }
     public string? TtsElevenLabsModel { get; set; }
     public string? TtsElevenLabsVoiceId { get; set; }
+    /// <summary>Piper voice identifier, e.g. "en_US-amy-low". Voice file is downloaded on first use.</summary>
+    public string TtsPiperVoiceId { get; set; } = "en_US-amy-low";
     /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>

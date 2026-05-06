@@ -2317,6 +2317,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="CapabilitiesPage_TtsProviderElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs</value>
   </data>
+  <data name="CapabilitiesPage_TtsProviderPiper.Content" xml:space="preserve">
+    <value>Piper (ML local, recommandé)</value>
+  </data>
   <data name="CapabilitiesPage_TtsProviderWindows.Content" xml:space="preserve">
     <value>Voix intégrée à Windows</value>
   </data>

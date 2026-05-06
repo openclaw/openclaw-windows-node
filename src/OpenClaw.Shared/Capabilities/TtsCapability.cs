@@ -10,6 +10,11 @@ public sealed class TtsCapability : NodeCapabilityBase
     public const string SpeakCommand = "tts.speak";
     public const string WindowsProvider = "windows";
     public const string ElevenLabsProvider = "elevenlabs";
+    /// <summary>
+    /// Local neural TTS via Sherpa-ONNX wrapping Piper voices. No network
+    /// egress; voice models download once to %LOCALAPPDATA%.
+    /// </summary>
+    public const string PiperProvider = "piper";
     public const int MaxTextLength = 5000;
 
     private static readonly string[] _commands = [SpeakCommand];

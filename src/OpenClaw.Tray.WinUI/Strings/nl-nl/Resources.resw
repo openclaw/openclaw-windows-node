@@ -2317,6 +2317,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CapabilitiesPage_TtsProviderElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs</value>
   </data>
+  <data name="CapabilitiesPage_TtsProviderPiper.Content" xml:space="preserve">
+    <value>Piper (lokale ML, aanbevolen)</value>
+  </data>
   <data name="CapabilitiesPage_TtsProviderWindows.Content" xml:space="preserve">
     <value>Ingebouwde Windows-spraak</value>
   </data>

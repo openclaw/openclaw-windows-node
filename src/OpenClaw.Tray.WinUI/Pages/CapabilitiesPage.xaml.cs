@@ -184,10 +184,13 @@ public sealed partial class CapabilitiesPage : Page
         var settings = hub.Settings;
 
         _suppressTtsProviderChange = true;
-        TtsProviderComboBox.SelectedIndex =
-            string.Equals(settings.TtsProvider, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase)
-                ? 1
-                : 0;
+        // ComboBox order: 0=Piper, 1=Windows, 2=ElevenLabs.
+        TtsProviderComboBox.SelectedIndex = settings.TtsProvider switch
+        {
+            var p when string.Equals(p, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase) => 2,
+            var p when string.Equals(p, TtsCapability.WindowsProvider, StringComparison.OrdinalIgnoreCase)    => 1,
+            _ => 0  // default to Piper for unknown / null / whitespace
+        };
         _suppressTtsProviderChange = false;
 
         // PasswordBox shows a masked sentinel when we already have a saved

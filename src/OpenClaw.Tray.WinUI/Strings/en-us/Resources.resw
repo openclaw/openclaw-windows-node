@@ -2384,6 +2384,9 @@ On your gateway host (Mac/Linux), run:
   <data name="CapabilitiesPage_TtsProviderElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs</value>
   </data>
+  <data name="CapabilitiesPage_TtsProviderPiper.Content" xml:space="preserve">
+    <value>Piper (local ML, recommended)</value>
+  </data>
   <data name="CapabilitiesPage_TtsProviderWindows.Content" xml:space="preserve">
     <value>Windows built-in speech</value>
   </data>
