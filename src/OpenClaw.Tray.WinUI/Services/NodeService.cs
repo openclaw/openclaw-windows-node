@@ -1215,14 +1215,7 @@ public sealed class NodeService : IDisposable
         if ((now - _lastScreenCaptureNotification).TotalSeconds > 10)
         {
             _lastScreenCaptureNotification = now;
-            try
-            {
-                new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_ScreenCaptured"))
-                    .AddText(LocalizationHelper.GetString("Toast_ScreenCapturedDetail"))
-                    .Show();
-            }
-            catch { /* ignore notification errors */ }
+            ShowToast("Toast_ScreenCaptured", "Toast_ScreenCapturedDetail");
         }
         
         return await _screenCaptureService.CaptureAsync(args);
@@ -1238,8 +1231,15 @@ public sealed class NodeService : IDisposable
         SetRecordingState(RecordingType.Screen, true, args.DurationMs);
         try
         {
+            ShowToast("Toast_ScreenRecordingStarted", "Toast_ScreenRecordingStartedDetail");
             var result = await _screenRecordingService.RecordAsync(args);
+            ShowToast("Toast_ScreenRecordingComplete", "Toast_ScreenRecordingCompleteDetail");
             return result;
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            ShowToast("Toast_ScreenRecordingFailed", "Toast_ScreenRecordingFailedDetail");
+            throw;
         }
         finally
         {
@@ -1299,7 +1299,10 @@ public sealed class NodeService : IDisposable
         SetRecordingState(RecordingType.Camera, true, args.DurationMs);
         try
         {
-            return await _cameraCaptureService.ClipAsync(args);
+            ShowToast("Toast_CameraRecordingStarted", "Toast_CameraRecordingStartedDetail");
+            var result = await _cameraCaptureService.ClipAsync(args);
+            ShowToast("Toast_CameraRecordingComplete", "Toast_CameraRecordingCompleteDetail");
+            return result;
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -1473,6 +1476,18 @@ public sealed class NodeService : IDisposable
             IsActive = isActive,
             DurationMs = durationMs
         });
+    }
+
+    private static void ShowToast(string titleKey, string detailKey)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText(LocalizationHelper.GetString(titleKey))
+                .AddText(LocalizationHelper.GetString(detailKey))
+                .Show();
+        }
+        catch { /* ignore notification errors */ }
     }
 
     #endregion
