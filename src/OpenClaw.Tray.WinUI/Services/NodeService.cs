@@ -125,6 +125,7 @@ public sealed class NodeService : IDisposable
     public bool IsMcpRunning => _mcpServer != null;
     public AppCapability? AppCapability => _appCapability;
     public VoiceService? VoiceService => _voiceService;
+    public TextToSpeechService? TextToSpeech => _textToSpeechService;
     public string McpEndpoint => McpServerUrl;
     /// <summary>Last MCP server startup error, or null if it started cleanly. Surfaced by Settings UI.</summary>
     public string? McpStartupError => _mcpStartupError;

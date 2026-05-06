@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
@@ -15,6 +17,12 @@ public sealed class WhisperModelManager
 {
     private readonly string _modelsDirectory;
     private readonly IOpenClawLogger _logger;
+    // Per-model single-flight gate: a manual auto-download (VoiceService
+    // EnsureInitializedAsync) and a UI-triggered download for the same
+    // model would otherwise both write the same .tmp file. Static so an
+    // additional manager instance constructed elsewhere (e.g. the Settings
+    // page's status-only check) doesn't bypass the lock.
+    private static readonly ConcurrentDictionary<string, Task> InFlightDownloads = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Known Whisper model definitions.</summary>
     public static readonly WhisperModelInfo[] AvailableModels =
@@ -55,8 +63,10 @@ public sealed class WhisperModelManager
     /// <summary>
     /// Download a model from HuggingFace if not already present.
     /// Reports progress as bytes downloaded / total bytes.
+    /// Per-model single-flight: concurrent calls for the same model await
+    /// the in-flight download instead of racing on the same .tmp file.
     /// </summary>
-    public async Task DownloadModelAsync(
+    public Task DownloadModelAsync(
         string modelName,
         IProgress<(long downloaded, long total)>? progress = null,
         CancellationToken cancellationToken = default)
@@ -67,10 +77,41 @@ public sealed class WhisperModelManager
         if (File.Exists(destPath))
         {
             _logger.Info($"Model '{modelName}' already exists at {destPath}");
-            return;
+            return Task.CompletedTask;
         }
 
-        _logger.Info($"Downloading model '{modelName}' from {info.DownloadUrl}");
+        // Use the canonical key (FileName) so two callers that pass "base"
+        // and "ggml-base.bin" still coalesce.
+        var key = info.FileName;
+        var task = InFlightDownloads.GetOrAdd(key, _ => DownloadModelCoreAsync(info, destPath, progress, cancellationToken));
+        // Whichever caller created the task is also responsible for clearing
+        // the slot. Subsequent callers just await the same Task; if it faults
+        // they all see the same exception. Cancellation linkage is honored
+        // by the Core method via the token captured in the GetOrAdd factory.
+        return AwaitAndCleanup(key, task);
+    }
+
+    private async Task AwaitAndCleanup(string key, Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        finally
+        {
+            // Only remove if still the same task (so a fresh start after
+            // failure isn't blocked by the old completed entry).
+            InFlightDownloads.TryRemove(new KeyValuePair<string, Task>(key, task));
+        }
+    }
+
+    private async Task DownloadModelCoreAsync(
+        WhisperModelInfo info,
+        string destPath,
+        IProgress<(long downloaded, long total)>? progress,
+        CancellationToken cancellationToken)
+    {
+        _logger.Info($"Downloading model '{info.Name}' from {info.DownloadUrl}");
         var tempPath = destPath + ".tmp";
 
         try
@@ -99,7 +140,7 @@ public sealed class WhisperModelManager
             fileStream.Close();
 
             File.Move(tempPath, destPath, overwrite: true);
-            _logger.Info($"Model '{modelName}' downloaded successfully ({downloadedBytes:N0} bytes)");
+            _logger.Info($"Model '{info.Name}' downloaded successfully ({downloadedBytes:N0} bytes)");
         }
         catch
         {

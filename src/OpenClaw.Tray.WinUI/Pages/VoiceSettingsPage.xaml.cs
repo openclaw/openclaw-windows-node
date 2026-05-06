@@ -15,7 +15,10 @@ public sealed partial class VoiceSettingsPage : Page
     private HubWindow? _hub;
     private VoiceService? _voiceService;
     private bool _suppressEvents;
-    private CancellationTokenSource? _downloadCts;
+    // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
+    // download (and vice versa). Each download type owns its own token.
+    private CancellationTokenSource? _whisperDownloadCts;
+    private CancellationTokenSource? _piperDownloadCts;
 
     public VoiceSettingsPage()
     {
@@ -177,9 +180,10 @@ public sealed partial class VoiceSettingsPage : Page
     {
         if (_voiceService == null || _hub?.Settings == null) return;
 
-        // Cancel any in-progress download
-        _downloadCts?.Cancel();
-        _downloadCts = new CancellationTokenSource();
+        // Cancel any in-progress Whisper download (only). Piper downloads are
+        // independent and keep running.
+        _whisperDownloadCts?.Cancel();
+        _whisperDownloadCts = new CancellationTokenSource();
 
         DownloadButton.IsEnabled = false;
         DownloadProgress.Visibility = Visibility.Visible;
@@ -204,7 +208,7 @@ public sealed partial class VoiceSettingsPage : Page
             await _voiceService.DownloadModelAsync(
                 _hub.Settings.SttModelName,
                 progress,
-                _downloadCts.Token);
+                _whisperDownloadCts.Token);
 
             ModelStatusText.Text = "✅ Model ready";
             DownloadButtonText.Text = "Re-download";
@@ -325,10 +329,11 @@ public sealed partial class VoiceSettingsPage : Page
         if (_hub?.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
 
-        // Cancel any prior download (Whisper or Piper) before starting.
-        try { _downloadCts?.Cancel(); } catch { /* swallow */ }
-        _downloadCts = new CancellationTokenSource();
-        var ct = _downloadCts.Token;
+        // Cancel any prior Piper download (only). Whisper downloads are
+        // independent and continue running.
+        try { _piperDownloadCts?.Cancel(); } catch { /* swallow */ }
+        _piperDownloadCts = new CancellationTokenSource();
+        var ct = _piperDownloadCts.Token;
 
         PiperDownloadButton.IsEnabled = false;
         PiperDownloadButtonText.Text = "Downloading…";
@@ -441,9 +446,9 @@ public sealed partial class VoiceSettingsPage : Page
                 WindowsVoiceCombo.Items.Add(item);
 
                 // Match current setting
-                if (!string.IsNullOrEmpty(settings.TtsElevenLabsVoiceId) &&
-                    (string.Equals(voice.Id, settings.TtsElevenLabsVoiceId, StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(voice.DisplayName, settings.TtsElevenLabsVoiceId, StringComparison.OrdinalIgnoreCase)))
+                if (!string.IsNullOrEmpty(settings.TtsWindowsVoiceId) &&
+                    (string.Equals(voice.Id, settings.TtsWindowsVoiceId, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(voice.DisplayName, settings.TtsWindowsVoiceId, StringComparison.OrdinalIgnoreCase)))
                 {
                     selectedIdx = WindowsVoiceCombo.Items.Count - 1;
                 }
@@ -488,9 +493,7 @@ public sealed partial class VoiceSettingsPage : Page
 
         if (WindowsVoiceCombo.SelectedItem is ComboBoxItem item && item.Tag is string voiceId)
         {
-            // Store the selected Windows voice in TtsElevenLabsVoiceId field
-            // (reused for Windows voice selection when provider is "windows")
-            _hub.Settings.TtsElevenLabsVoiceId = voiceId;
+            _hub.Settings.TtsWindowsVoiceId = voiceId;
             _hub.Settings.Save();
         }
     }

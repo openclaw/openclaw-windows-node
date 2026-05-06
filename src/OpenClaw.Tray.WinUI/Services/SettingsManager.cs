@@ -82,6 +82,7 @@ public class SettingsManager
     public string TtsElevenLabsApiKey { get; set; } = "";
     public string TtsElevenLabsModel { get; set; } = "";
     public string TtsElevenLabsVoiceId { get; set; } = "";
+    public string TtsWindowsVoiceId { get; set; } = "";
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low".</summary>
     public string TtsPiperVoiceId { get; set; } = "en_US-amy-low";
     // Local MCP HTTP server (independent of EnableNodeMode)
@@ -167,6 +168,7 @@ public class SettingsManager
                     TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? TtsElevenLabsApiKey;
                     TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? TtsElevenLabsModel;
                     TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? TtsElevenLabsVoiceId;
+                    TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? TtsWindowsVoiceId;
                     TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? TtsPiperVoiceId : loaded.TtsPiperVoiceId;
                     EnableMcpServer = loaded.EnableMcpServer;
                     A2UIImageHosts = loaded.A2UIImageHosts ?? new List<string>();
@@ -248,6 +250,7 @@ public class SettingsManager
                 TtsElevenLabsApiKey = ProtectSettingSecret(TtsElevenLabsApiKey),
                 TtsElevenLabsModel = string.IsNullOrWhiteSpace(TtsElevenLabsModel) ? null : TtsElevenLabsModel,
                 TtsElevenLabsVoiceId = string.IsNullOrWhiteSpace(TtsElevenLabsVoiceId) ? null : TtsElevenLabsVoiceId,
+                TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
                 TtsPiperVoiceId = TtsPiperVoiceId,
                 EnableMcpServer = EnableMcpServer,
                 A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),

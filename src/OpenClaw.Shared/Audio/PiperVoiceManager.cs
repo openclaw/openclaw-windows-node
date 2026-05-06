@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -34,6 +35,11 @@ public sealed class PiperVoiceManager
 {
     private readonly string _voicesDirectory;
     private readonly IOpenClawLogger _logger;
+    // Per-voice single-flight gate: prevents racing the same voice download
+    // from two callers (e.g. UI and a programmatic caller). Static so two
+    // PiperVoiceManager instances over the same data directory still
+    // coalesce against the same in-flight task.
+    private static readonly ConcurrentDictionary<string, Task> InFlightDownloads = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Curated catalog of Piper voices we offer in the UI. Each entry is
@@ -108,21 +114,50 @@ public sealed class PiperVoiceManager
     /// Download and extract a Piper voice from the sherpa-onnx release.
     /// Reports progress as bytes downloaded / total bytes (extraction
     /// progress is not reported separately).
+    /// Per-voice single-flight: concurrent calls for the same voice await
+    /// the in-flight download instead of racing on the same temp tarball.
     /// </summary>
-    public async Task DownloadVoiceAsync(
+    public Task DownloadVoiceAsync(
         string voiceId,
         IProgress<(long downloaded, long total)>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var info = FindVoice(voiceId);
-        var voiceDir = Path.Combine(_voicesDirectory, info.VoiceId);
-
         if (IsVoiceDownloaded(info.VoiceId))
         {
-            _logger.Info($"Piper voice '{info.VoiceId}' already downloaded at {voiceDir}");
-            return;
+            _logger.Info($"Piper voice '{info.VoiceId}' already downloaded");
+            return Task.CompletedTask;
         }
 
+        // Preflight: bail out before downloading 50-150 MB if the OS isn't
+        // capable of extracting the .tar.bz2 we'd produce. tar.exe ships with
+        // Windows 10 1803+; older systems would fail at the extract step
+        // after a long, wasted download.
+        EnsureExtractorAvailable();
+
+        var key = info.VoiceId;
+        var task = InFlightDownloads.GetOrAdd(key, _ => DownloadVoiceCoreAsync(info, progress, cancellationToken));
+        return AwaitAndCleanup(key, task);
+    }
+
+    private async Task AwaitAndCleanup(string key, Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        finally
+        {
+            InFlightDownloads.TryRemove(new KeyValuePair<string, Task>(key, task));
+        }
+    }
+
+    private async Task DownloadVoiceCoreAsync(
+        PiperVoiceInfo info,
+        IProgress<(long downloaded, long total)>? progress,
+        CancellationToken cancellationToken)
+    {
+        var voiceDir = Path.Combine(_voicesDirectory, info.VoiceId);
         Directory.CreateDirectory(voiceDir);
         var tarballPath = Path.Combine(voiceDir, $"{info.VoiceId}.tar.bz2.tmp");
         _logger.Info($"Downloading Piper voice '{info.VoiceId}' from {info.DownloadUrl}");
@@ -199,6 +234,48 @@ public sealed class PiperVoiceManager
             try { total += new FileInfo(f).Length; } catch { /* skip */ }
         }
         return total;
+    }
+
+    /// <summary>
+    /// Probe the bundled OS tar.exe used by <see cref="ExtractTarBz2"/>.
+    /// Throws a clear error before any network I/O happens so users on
+    /// downlevel Windows aren't left with a half-downloaded tarball.
+    /// </summary>
+    private static void EnsureExtractorAvailable()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "tar",
+                ArgumentList = { "--version" },
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc == null)
+            {
+                throw new InvalidOperationException("tar.exe not found on PATH.");
+            }
+            proc.WaitForExit(2000);
+            if (!proc.HasExited)
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { /* swallow */ }
+                throw new InvalidOperationException("tar.exe didn't respond to --version.");
+            }
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"tar.exe --version returned exit code {proc.ExitCode}.");
+            }
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            throw new InvalidOperationException(
+                "Piper voices need bundled tar (Windows 10 1803+). " +
+                "Your system doesn't have tar on PATH; please update Windows or install a tar utility.", ex);
+        }
     }
 
     /// <summary>

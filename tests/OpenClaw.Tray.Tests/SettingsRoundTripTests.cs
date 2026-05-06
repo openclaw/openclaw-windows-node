@@ -48,6 +48,7 @@ public class SettingsRoundTripTests
             TtsElevenLabsApiKey = "elevenlabs-key",
             TtsElevenLabsModel = "eleven_multilingual_v2",
             TtsElevenLabsVoiceId = "voice-123",
+            TtsWindowsVoiceId = "Microsoft Zira Desktop",
             TtsPiperVoiceId = "fr_FR-siwis-low",
             HasSeenActivityStreamTip = true,
             SkippedUpdateTag = "v1.2.3",
@@ -100,6 +101,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.TtsElevenLabsApiKey, restored.TtsElevenLabsApiKey);
         Assert.Equal(original.TtsElevenLabsModel, restored.TtsElevenLabsModel);
         Assert.Equal(original.TtsElevenLabsVoiceId, restored.TtsElevenLabsVoiceId);
+        Assert.Equal(original.TtsWindowsVoiceId, restored.TtsWindowsVoiceId);
         Assert.Equal(original.TtsPiperVoiceId, restored.TtsPiperVoiceId);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);

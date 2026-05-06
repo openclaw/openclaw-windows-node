@@ -41,8 +41,17 @@ public sealed class AudioPipeline : IAsyncDisposable
     private AudioPipelineState _state = AudioPipelineState.Stopped;
     private CancellationTokenSource? _cts;
 
-    /// <summary>Fired when a speech segment has been transcribed.</summary>
+    /// <summary>Fired when a single Whisper segment has been transcribed.
+    /// Multiple of these may fire per silence-bounded utterance — useful
+    /// for streaming bubble updates. Consumers that want a complete
+    /// utterance (chat submission, stt.listen result) should listen on
+    /// <see cref="UtteranceTranscribed"/> instead.</summary>
     public event Action<TranscriptionResult>? TranscriptionReady;
+
+    /// <summary>Fired exactly once per silence-bounded utterance, after
+    /// all Whisper segments for that utterance have been emitted. Carries
+    /// an immutable snapshot of every segment plus the concatenated text.</summary>
+    public event Action<UtteranceResult>? UtteranceTranscribed;
 
     /// <summary>Fired when VAD detects speech start/end.</summary>
     public event Action<VadEvent>? VoiceActivityChanged;
@@ -328,6 +337,26 @@ public sealed class AudioPipeline : IAsyncDisposable
                 try { TranscriptionReady?.Invoke(result); } catch (Exception ex)
                 {
                     _logger.Error("TranscriptionReady handler failed", ex);
+                }
+            }
+
+            // Emit a single completed-utterance event so consumers that care
+            // about "the full thing the user just said" (chat submission,
+            // stt.listen) don't fire on every fragment.
+            if (results.Count > 0)
+            {
+                var snapshot = results.ToArray();
+                var aggregate = new UtteranceResult
+                {
+                    Text = string.Join(" ", snapshot.Select(r => r.Text)).Trim(),
+                    Language = snapshot[0].Language,
+                    Start = snapshot[0].Start,
+                    End = snapshot[^1].End,
+                    Segments = snapshot
+                };
+                try { UtteranceTranscribed?.Invoke(aggregate); } catch (Exception ex)
+                {
+                    _logger.Error("UtteranceTranscribed handler failed", ex);
                 }
             }
         }

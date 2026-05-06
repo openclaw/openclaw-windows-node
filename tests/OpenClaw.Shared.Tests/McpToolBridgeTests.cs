@@ -413,8 +413,8 @@ public class McpToolBridgeTests
             .GetString()!;
 
         Assert.Contains("readiness", description, System.StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferredEngine", description);
-        Assert.Contains("effectiveEngine", description);
+        Assert.Contains("engine", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("whisper", description, System.StringComparison.OrdinalIgnoreCase);
         // Privacy invariant in the description itself: no PII.
         Assert.Contains("no PII", description, System.StringComparison.OrdinalIgnoreCase);
     }

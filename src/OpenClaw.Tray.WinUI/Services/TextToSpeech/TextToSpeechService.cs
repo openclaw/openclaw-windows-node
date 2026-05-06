@@ -84,9 +84,12 @@ public sealed class TextToSpeechService : IDisposable
     private async Task SpeakWithWindowsAsync(TtsSpeakArgs args, CancellationToken cancellationToken)
     {
         using var synthesizer = new SpeechSynthesizer();
-        if (!string.IsNullOrWhiteSpace(args.VoiceId))
+        var requestedVoice = string.IsNullOrWhiteSpace(args.VoiceId)
+            ? _settings.TtsWindowsVoiceId
+            : args.VoiceId;
+        if (!string.IsNullOrWhiteSpace(requestedVoice))
         {
-            var requestedVoice = args.VoiceId.Trim();
+            requestedVoice = requestedVoice.Trim();
             var voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v =>
                 string.Equals(v.Id, requestedVoice, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(v.DisplayName, requestedVoice, StringComparison.OrdinalIgnoreCase));

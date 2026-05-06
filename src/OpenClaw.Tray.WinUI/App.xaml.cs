@@ -3927,9 +3927,10 @@ public partial class App : Application
     private async Task SpeakResponseAsync(string text)
     {
         var voiceService = _nodeService?.VoiceService;
+        var ttsService = _nodeService?.TextToSpeech;
         try
         {
-            if (voiceService == null || _settings == null) return;
+            if (voiceService == null || _settings == null || ttsService == null) return;
 
             // Increment mute counter — multiple concurrent TTS won't unmute prematurely
             Interlocked.Increment(ref _ttsMuteCount);
@@ -3937,23 +3938,18 @@ public partial class App : Application
 
             var speakText = text.Length > 500 ? text[..500] + "..." : text;
 
+            // Don't pass VoiceId here. The shared TextToSpeechService picks
+            // the right per-provider voice from settings (TtsPiperVoiceId,
+            // TtsWindowsVoiceId, TtsElevenLabsVoiceId). Cross-provider
+            // voice IDs would otherwise leak across providers.
             var speakArgs = new OpenClaw.Shared.Capabilities.TtsSpeakArgs
             {
                 Text = speakText,
                 Provider = _settings.TtsProvider ?? TtsCapability.PiperProvider,
-                VoiceId = _settings.TtsElevenLabsVoiceId,
                 Interrupt = true
             };
 
-            var tts = new TextToSpeechService(new AppLogger(), _settings);
-            try
-            {
-                await tts.SpeakAsync(speakArgs);
-            }
-            finally
-            {
-                tts.Dispose();
-            }
+            await ttsService.SpeakAsync(speakArgs);
         }
         catch (Exception ex)
         {

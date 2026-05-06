@@ -47,6 +47,8 @@ public class SettingsData
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;
     public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.PiperProvider;
+    /// <summary>Optional Windows TTS voice id (or display name). Empty = system default.</summary>
+    public string? TtsWindowsVoiceId { get; set; }
     /// <summary>
     /// ElevenLabs API key storage slot. When persisted by the Windows tray's
     /// SettingsManager this is an opaque dpapi:-prefixed blob, not plaintext.

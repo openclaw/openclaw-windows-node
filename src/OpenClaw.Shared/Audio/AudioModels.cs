@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace OpenClaw.Shared.Audio;
 
@@ -9,6 +10,27 @@ public sealed class TranscriptionResult
     public TimeSpan Start { get; init; }
     public TimeSpan End { get; init; }
     public string Language { get; init; } = "en";
+}
+
+/// <summary>
+/// Aggregated result of a single silence-bounded utterance — i.e. all the
+/// Whisper segments produced from one VAD-bounded speech burst, combined.
+/// Consumers that need "what the user said" (chat submission, stt.listen)
+/// should listen for this event instead of per-segment TranscriptionResult
+/// to avoid sending partial text.
+/// </summary>
+public sealed class UtteranceResult
+{
+    /// <summary>Concatenated text across all segments, single-spaced.</summary>
+    public string Text { get; init; } = "";
+    /// <summary>Language detected on the first segment, or null if no segments.</summary>
+    public string? Language { get; init; }
+    /// <summary>Start of the first segment relative to capture start.</summary>
+    public TimeSpan Start { get; init; }
+    /// <summary>End of the last segment relative to capture start.</summary>
+    public TimeSpan End { get; init; }
+    /// <summary>Immutable snapshot of the per-segment results.</summary>
+    public IReadOnlyList<TranscriptionResult> Segments { get; init; } = Array.Empty<TranscriptionResult>();
 }
 
 /// <summary>Voice-activity detection event.</summary>

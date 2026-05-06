@@ -41,6 +41,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
         SetTitleBar(AppTitleBar);
 
         _voiceService.TranscriptionReceived += OnTranscriptionReceived;
+        _voiceService.UtteranceCompleted += OnUtteranceCompleted;
         _voiceService.SpeakingChanged += OnSpeakingChanged;
         _voiceService.AudioLevelChanged += OnAudioLevelChanged;
         _voiceService.ModeChanged += OnModeChanged;
@@ -58,8 +59,9 @@ public sealed partial class VoiceOverlayWindow : WindowEx
     {
         _dispatcherQueue.TryEnqueue(() =>
         {
-            // Consolidate: if the last bubble was a user bubble within 5 seconds,
-            // append to it instead of creating a new one.
+            // Per-segment bubble update (visual streaming). Consolidate into
+            // the last user bubble when fragments arrive within 5 seconds so
+            // a multi-segment utterance reads as one bubble in the transcript.
             var elapsed = DateTime.UtcNow - _lastUserBubbleTime;
             if (_lastUserTextBlock != null && elapsed.TotalSeconds < 5)
             {
@@ -76,7 +78,21 @@ public sealed partial class VoiceOverlayWindow : WindowEx
             {
                 AddTranscriptBubble(text, isUser: true);
             }
-            TextSubmitted?.Invoke(text);
+            // NOTE: chat submission moved to OnUtteranceCompleted so the
+            // gateway receives one message per spoken utterance, not one per
+            // Whisper segment.
+        });
+    }
+
+    private void OnUtteranceCompleted(OpenClaw.Shared.Audio.UtteranceResult utterance)
+    {
+        // Fire once per silence-bounded utterance. The visual bubble already
+        // shows the streamed text; here we just hand the complete sentence
+        // to the gateway exactly once.
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (!string.IsNullOrWhiteSpace(utterance.Text))
+                TextSubmitted?.Invoke(utterance.Text);
         });
     }
 
@@ -305,6 +321,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
     private void WindowClosed(object sender, WindowEventArgs args)
     {
         _voiceService.TranscriptionReceived -= OnTranscriptionReceived;
+        _voiceService.UtteranceCompleted -= OnUtteranceCompleted;
         _voiceService.SpeakingChanged -= OnSpeakingChanged;
         _voiceService.AudioLevelChanged -= OnAudioLevelChanged;
         _voiceService.ModeChanged -= OnModeChanged;

@@ -66,8 +66,14 @@ public sealed class VoiceService : IAsyncDisposable
     private volatile bool _modelDownloadInProgress;
     private volatile float _modelDownloadProgress;
 
-    /// <summary>Fired when a speech segment is transcribed.</summary>
+    /// <summary>Fired when a single Whisper segment is transcribed (per-fragment;
+    /// useful for streaming UI updates). For "the full thing the user said",
+    /// listen on <see cref="UtteranceCompleted"/> instead.</summary>
     public event Action<string>? TranscriptionReceived;
+
+    /// <summary>Fired exactly once per silence-bounded utterance. Carries the
+    /// concatenated text and an immutable snapshot of every segment.</summary>
+    public event Action<UtteranceResult>? UtteranceCompleted;
 
     /// <summary>Fired when voice mode changes.</summary>
     public event Action<VoiceMode>? ModeChanged;
@@ -259,7 +265,9 @@ public sealed class VoiceService : IAsyncDisposable
 
     /// <summary>
     /// Handle an agent-initiated stt.listen request:
-    /// start the mic, wait for speech + silence, return transcription.
+    /// start the mic, wait for one complete silence-bounded utterance,
+    /// return the transcription. Multi-segment utterances are concatenated
+    /// before returning so callers never receive a partial first-segment.
     /// </summary>
     public async Task<SttListenResult> ListenOnceAsync(SttListenArgs args, CancellationToken cancellationToken)
     {
@@ -271,26 +279,28 @@ public sealed class VoiceService : IAsyncDisposable
         var pipeline = new AudioPipeline(_logger, _stt, _vad);
         var tcs = new TaskCompletionSource<SttListenResult>();
         var sw = Stopwatch.StartNew();
-        var allSegments = new List<SttSegment>();
-        var allText = new List<string>();
 
-        pipeline.TranscriptionReady += result =>
+        pipeline.UtteranceTranscribed += utterance =>
         {
-            allText.Add(result.Text);
-            allSegments.Add(new SttSegment
+            // Snapshot already immutable (UtteranceResult.Segments is a fresh
+            // array). Map to the wire-shape SttSegment.
+            var segments = new List<SttSegment>(utterance.Segments.Count);
+            foreach (var s in utterance.Segments)
             {
-                Text = result.Text,
-                StartMs = (int)result.Start.TotalMilliseconds,
-                EndMs = (int)result.End.TotalMilliseconds
-            });
+                segments.Add(new SttSegment
+                {
+                    Text = s.Text,
+                    StartMs = (int)s.Start.TotalMilliseconds,
+                    EndMs = (int)s.End.TotalMilliseconds
+                });
+            }
 
-            // Complete on first transcription result
             tcs.TrySetResult(new SttListenResult
             {
-                Text = string.Join(" ", allText),
-                Language = result.Language,
+                Text = utterance.Text,
+                Language = utterance.Language ?? "",
                 DurationMs = (int)sw.ElapsedMilliseconds,
-                Segments = allSegments
+                Segments = segments
             });
         };
 
@@ -307,19 +317,8 @@ public sealed class VoiceService : IAsyncDisposable
 
             using var reg = linkedCts.Token.Register(() =>
             {
-                if (allText.Count > 0)
-                {
-                    tcs.TrySetResult(new SttListenResult
-                    {
-                        Text = string.Join(" ", allText),
-                        DurationMs = (int)sw.ElapsedMilliseconds,
-                        Segments = allSegments
-                    });
-                }
-                else
-                {
-                    tcs.TrySetException(new TimeoutException("No speech detected within timeout"));
-                }
+                // Timeout / external cancellation with no completed utterance.
+                tcs.TrySetException(new TimeoutException("No speech detected within timeout"));
             });
 
             return await tcs.Task;
@@ -390,6 +389,11 @@ public sealed class VoiceService : IAsyncDisposable
         pipeline.TranscriptionReady += result =>
         {
             TranscriptionReceived?.Invoke(result.Text);
+        };
+
+        pipeline.UtteranceTranscribed += utterance =>
+        {
+            UtteranceCompleted?.Invoke(utterance);
         };
 
         pipeline.VoiceActivityChanged += vad =>
