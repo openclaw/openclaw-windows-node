@@ -760,6 +760,7 @@ public partial class App : Application
     private void AddRecentActivity(
         string line,
         string category = "general",
+        string? icon = null,
         string? dashboardPath = null,
         string? details = null,
         string? sessionKey = null,
@@ -768,6 +769,7 @@ public partial class App : Application
         ActivityStreamService.Add(
             category: category,
             title: line,
+            icon: icon,
             details: details,
             dashboardPath: dashboardPath,
             sessionKey: sessionKey,
@@ -1670,6 +1672,7 @@ public partial class App : Application
             _nodeService.ChannelHealthUpdated += OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
             _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
+            _nodeService.RecordingStateChanged += OnRecordingStateChanged;
 
             if (canRunGateway)
             {
@@ -1866,6 +1869,24 @@ public partial class App : Application
         }
     }
     
+    private void OnRecordingStateChanged(object? sender, RecordingStateEventArgs args)
+    {
+        var source = args.Type == RecordingType.Screen ? "Screen" : "Camera";
+        if (args.IsActive)
+        {
+            var duration = args.DurationMs > 0 ? $" ({args.DurationMs / 1000.0:0.#}s)" : "";
+            AddRecentActivity($"{source} recording started{duration}", category: "node",
+                icon: "🔴",
+                details: $"{source} recording requested by agent");
+        }
+        else
+        {
+            AddRecentActivity($"{source} recording complete", category: "node",
+                icon: "✅",
+                details: $"{source} recording sent to agent");
+        }
+    }
+
     private void OnPairingStatusChanged(object? sender, OpenClaw.Shared.PairingStatusEventArgs args)
     {
         Logger.Info($"Pairing status: {args.Status}");

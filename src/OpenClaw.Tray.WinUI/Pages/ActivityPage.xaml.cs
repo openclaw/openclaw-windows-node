@@ -96,6 +96,8 @@ public sealed partial class ActivityPage : Page
         return new ActivityViewModel
         {
             Title = item.Title,
+            Icon = item.Icon,
+            IconVisibility = string.IsNullOrWhiteSpace(item.Icon) ? Visibility.Collapsed : Visibility.Visible,
             Category = item.Category,
             TimeAgo = GetTimeAgo(item.Timestamp),
             DetailText = detailText,
@@ -135,6 +137,8 @@ public sealed partial class ActivityPage : Page
     private class ActivityViewModel
     {
         public string Title { get; set; } = "";
+        public string Icon { get; set; } = "";
+        public Visibility IconVisibility { get; set; }
         public string Category { get; set; } = "";
         public string TimeAgo { get; set; } = "";
         public string DetailText { get; set; } = "";
