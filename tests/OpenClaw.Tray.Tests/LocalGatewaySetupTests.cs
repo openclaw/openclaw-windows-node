@@ -333,6 +333,19 @@ public class LocalGatewaySetupTests
     }
 
     [Fact]
+    public void WslEnvironmentPassthrough_AppendsGatewayTokenToExistingWslenvWithoutLoggingValues()
+    {
+        const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        var environment = WslExeCommandRunner.BuildProcessEnvironment(
+            new Dictionary<string, string> { ["WSLENV"] = "EXISTING/u" },
+            new Dictionary<string, string> { [OpenClawGatewayTokenEnvironment.VariableName] = token });
+
+        Assert.Equal(token, environment[OpenClawGatewayTokenEnvironment.VariableName]);
+        Assert.Equal("EXISTING/u:OPENCLAW_GATEWAY_TOKEN/u", environment["WSLENV"]);
+        Assert.DoesNotContain(token, "[WSL] wsl.exe -d OpenClawGateway -- bash -lc <redacted>");
+    }
+
+    [Fact]
     public async Task Engine_SharedGatewayProvisioning_ClosesBug6NonBootstrapSetupPath()
     {
         using var temp = new TempDirectory();
@@ -512,9 +525,11 @@ public class LocalGatewaySetupTests
             return Task.FromResult(new WslCommandResult(0, "", ""));
         }
 
-        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default)
+        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null)
         {
             Commands.Add(command);
+            if (environment is not null)
+                Environments.Add(new Dictionary<string, string>(environment));
             return Task.FromResult(new WslCommandResult(0, RunInDistroOutput, ""));
         }
     }

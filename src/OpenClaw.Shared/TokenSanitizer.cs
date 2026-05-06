@@ -12,6 +12,10 @@ public static class TokenSanitizer
         @"""(?<key>[^""]*(?:token|secret|bearer|authorization)[^""]*)""\s*:\s*""(?<value>[^""]+)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+    private static readonly Regex BareGatewayHexTokenPattern = new(
+        @"(?<![0-9A-Fa-f])[0-9a-f]{64}(?![0-9A-Fa-f])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex LongBase64UrlPattern = new(
         @"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -25,6 +29,7 @@ public static class TokenSanitizer
         sanitized = JsonSecretFieldPattern.Replace(
             sanitized,
             match => $"\"{match.Groups["key"].Value}\":\"[REDACTED]\"");
+        sanitized = BareGatewayHexTokenPattern.Replace(sanitized, "[REDACTED_TOKEN]");
         return LongBase64UrlPattern.Replace(sanitized, "[REDACTED_TOKEN]");
     }
 }

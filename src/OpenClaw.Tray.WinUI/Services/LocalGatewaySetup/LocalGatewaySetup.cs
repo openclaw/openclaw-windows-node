@@ -251,7 +251,7 @@ public interface IWslCommandRunner
     Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default);
     Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default);
     Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default);
-    Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default);
+    Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null);
 }
 
 public sealed class WslExeCommandRunner : IWslCommandRunner
@@ -274,11 +274,11 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
     public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null) =>
         RunProcessAsync("wsl.exe", arguments, cancellationToken, environment);
 
-    public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default)
+    public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null)
     {
         var args = new List<string> { "-d", name, "--" };
         args.AddRange(command);
-        return RunAsync(args, cancellationToken);
+        return RunAsync(args, cancellationToken, environment);
     }
 
     public Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default) =>
@@ -430,6 +430,8 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
 
         if (environment.ContainsKey(SharedGatewayTokenEnvironment.VariableName))
             AppendWslEnvPassthrough(result, SharedGatewayTokenEnvironment.VariableName + "/u");
+        if (environment.ContainsKey(OpenClawGatewayTokenEnvironment.VariableName))
+            AppendWslEnvPassthrough(result, OpenClawGatewayTokenEnvironment.VariableName + "/u");
 
         return result;
     }
@@ -602,6 +604,7 @@ public sealed class LocalGatewayPreflightProbe : ILocalGatewayPreflightProbe
         {
             "set -euo pipefail",
             "if [ -s /var/lib/openclaw/gateway-token ]; then",
+            // TODO(aaron-token-argv-backlog): move this status probe to env auth so gateway tokens never reach argv.
             "  xargs -r " + ShellQuote(options.OpenClawInstallPrefix + "/bin/openclaw") + " gateway status --json --require-rpc --url " + ShellQuote(LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(options)) + " --token </var/lib/openclaw/gateway-token",
             "else",
             "  " + ShellQuote(options.OpenClawInstallPrefix + "/bin/openclaw") + " gateway status --json --require-rpc --url " + ShellQuote(LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(options)),
@@ -1053,6 +1056,7 @@ public sealed class OpenClawCliGatewayServiceManager : IGatewayServiceManager
         var script = string.Join("\n", new[]
         {
             "set -euo pipefail",
+            // TODO(aaron-token-argv-backlog): move this status probe to env auth so gateway tokens never reach argv.
             "xargs -r " + ShellQuote(options.OpenClawInstallPrefix + "/bin/openclaw")
                 + " gateway status --json --require-rpc --url "
                 + ShellQuote(LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(options))
@@ -1257,6 +1261,10 @@ public static class SharedGatewayTokenEnvironment
     public const string VariableName = "OPENCLAW_SHARED_GATEWAY_TOKEN";
 }
 
+public static class OpenClawGatewayTokenEnvironment
+{
+    public const string VariableName = "OPENCLAW_GATEWAY_TOKEN";
+}
 
 public interface IWindowsTrayNodeProvisioner
 {
@@ -1878,11 +1886,9 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         //     actually calls `device.pair.approve` (or the local pairing fallback) and
         //     mutates `paired.json`.
         //
-        // Bug 1 part 5: the gateway token is read via a SEPARATE `cat` invocation (so it
-        // never lands as a `$(...)` shell substitution in the approve script body) and
-        // interpolated into the script as a single-quoted shell literal. This eliminates
-        // the embedded `"` characters that .NET ArgumentList / wsl.exe argv encoding
-        // appears to mangle in the engine's invocation context (see class comment).
+        // Bug 1 part 5: the gateway token is read via a SEPARATE `cat` invocation and
+        // passed to approve through OPENCLAW_GATEWAY_TOKEN, so it never lands in the
+        // `bash -lc` script literal or the child openclaw argv.
         //
         // Stage 1 is retried ONCE on first failure (Bug 1 part 4 race) with a small
         // backoff so the second attempt benefits from any internal operator pairing the
@@ -1895,8 +1901,9 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
             return new PendingDeviceApprovalResult(false, tokenResult.ErrorCode, tokenResult.ErrorMessage);
         }
         var token = tokenResult.Token!;
+        var tokenEnvironment = BuildGatewayTokenEnvironment(token);
 
-        var stage1 = await RunStage1WithRetryAsync(state, token, cancellationToken);
+        var stage1 = await RunStage1WithRetryAsync(state, tokenEnvironment, cancellationToken);
 
         // Bug 1 part 6 (CLI v2026.5.3-1): `devices approve --latest --json` returns
         // exit code 1 DETERMINISTICALLY in preview mode even on the happy path. The
@@ -1930,8 +1937,9 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
         var stage2 = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildCommitScript(requestId, token)],
-            cancellationToken);
+            ["bash", "-lc", BuildCommitScript(requestId)],
+            cancellationToken,
+            tokenEnvironment);
         if (!stage2.Success)
         {
             return BuildStage2Failure(stage2);
@@ -1958,8 +1966,9 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
         var stage2 = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildCommitScript(requestId, tokenResult.Token!)],
-            cancellationToken);
+            ["bash", "-lc", BuildCommitScript(requestId)],
+            cancellationToken,
+            BuildGatewayTokenEnvironment(tokenResult.Token!));
         if (!stage2.Success)
         {
             return BuildStage2Failure(stage2);
@@ -1968,12 +1977,13 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         return ParseApproveJson(stage2.StandardOutput);
     }
 
-    private async Task<Stage1Outcome> RunStage1WithRetryAsync(LocalGatewaySetupState state, string token, CancellationToken cancellationToken)
+    private async Task<Stage1Outcome> RunStage1WithRetryAsync(LocalGatewaySetupState state, IReadOnlyDictionary<string, string> tokenEnvironment, CancellationToken cancellationToken)
     {
         var first = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildPreviewScript(token)],
-            cancellationToken);
+            ["bash", "-lc", BuildPreviewScript()],
+            cancellationToken,
+            tokenEnvironment);
         // Bug 1 part 6: treat exit-0 OR a parseable preview JSON as stage-1 success.
         // CLI v2026.5.3-1 returns exit 1 from `--latest --json` on the happy preview
         // path (deterministic — see ApproveLatestAsync comment), so a non-zero exit
@@ -2001,16 +2011,16 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
 
         var second = await _wsl.RunInDistroAsync(
             state.DistroName,
-            ["bash", "-lc", BuildPreviewScript(token)],
-            cancellationToken);
+            ["bash", "-lc", BuildPreviewScript()],
+            cancellationToken,
+            tokenEnvironment);
         return new Stage1Outcome(second, FirstResult: first);
     }
 
     /// <summary>
     /// Bug 1 part 5: read the gateway token via a separate, simple <c>cat</c>
     /// invocation. Returns <c>operator_pending_approval_failed</c> with diagnostics
-    /// when the file is missing/empty/unreadable, or when the token contains shell
-    /// metacharacters that are unsafe to interpolate into the approve script.
+    /// when the file is missing, empty, unreadable, or non-canonical.
     /// </summary>
     internal async Task<TokenReadResult> ReadGatewayTokenAsync(LocalGatewaySetupState state, CancellationToken cancellationToken)
     {
@@ -2033,14 +2043,21 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
                 "operator_pending_approval_failed",
                 "Local gateway pending pairing approval CLI failed (token-read stage): token file empty.");
         }
-        if (!IsSafeTokenForSingleQuoteInterpolation(token))
+        // RD review item #4: only canonical 64-char lowercase hex gateway tokens may reach
+        // OPENCLAW_GATEWAY_TOKEN, matching the sanitizer's bare-token redaction shape.
+        if (!IsCanonicalGatewayToken(token))
         {
             return TokenReadResult.Failure(
                 "operator_pending_approval_failed",
-                "Local gateway pending pairing approval CLI failed (token-read stage): token contains unsafe characters.");
+                "Local gateway pending pairing approval CLI failed (token-read stage): token is not canonical 64-character lowercase hex.");
         }
         return TokenReadResult.Ok(token);
     }
+
+    private static IReadOnlyDictionary<string, string> BuildGatewayTokenEnvironment(string token) => new Dictionary<string, string>
+    {
+        [OpenClawGatewayTokenEnvironment.VariableName] = token
+    };
 
     private static PendingDeviceApprovalResult BuildStage1Failure(WslCommandResult? firstAttempt, WslCommandResult lastAttempt)
     {
@@ -2114,28 +2131,13 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
     private static string? TruncateStream(string? value, int cap)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
-        var trimmed = value.Trim();
-        if (trimmed.Length <= cap) return trimmed;
-        return trimmed.Substring(0, cap) + "…[truncated]";
+        var sanitized = TokenSanitizer.Sanitize(SecretRedactor.Redact(value.Trim()));
+        if (sanitized.Length <= cap) return sanitized;
+        return sanitized.Substring(0, cap) + "…[truncated]";
     }
 
-    /// <summary>
-    /// Reject tokens whose contents could break out of single-quoted shell interpolation
-    /// or otherwise produce surprising behavior when embedded into a `bash -lc` script.
-    /// Single quotes are unsafe (they would close the literal). Newlines / carriage returns
-    /// are unsafe (would split the script across lines). Control characters are unsafe.
-    /// The on-disk token is base64-url style in practice — none of these conditions apply.
-    /// </summary>
-    internal static bool IsSafeTokenForSingleQuoteInterpolation(string token)
-    {
-        if (string.IsNullOrEmpty(token)) return false;
-        foreach (var c in token)
-        {
-            if (c == '\'' || c == '\r' || c == '\n' || c == '\0') return false;
-            if (c < 0x20 || c == 0x7f) return false;
-        }
-        return true;
-    }
+    internal static bool IsCanonicalGatewayToken(string token) =>
+        Regex.IsMatch(token, "^[0-9a-f]{64}$", RegexOptions.CultureInvariant);
 
     internal readonly record struct Stage1Outcome(WslCommandResult Result, WslCommandResult? FirstResult);
 
@@ -2145,32 +2147,30 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
         public static TokenReadResult Failure(string code, string message) => new(false, null, code, message);
     }
 
-    internal string BuildPreviewScript(string token) => string.Join(" ", new[]
+    internal string BuildPreviewScript() => string.Join(" ", new[]
     {
         "set -euo pipefail;",
         "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
+        @": ""${OPENCLAW_GATEWAY_TOKEN:?missing gateway token}"";",
         "exec",
         ShellQuoteScalar(_commandName),
         "devices",
         "approve",
         "--latest",
-        "--json",
-        "--token",
-        ShellQuoteScalar(token)
+        "--json"
     });
 
-    internal string BuildCommitScript(string requestId, string token) => string.Join(" ", new[]
+    internal string BuildCommitScript(string requestId) => string.Join(" ", new[]
     {
         "set -euo pipefail;",
         "if [ -f /var/lib/openclaw/gateway.env ]; then set -a; . /var/lib/openclaw/gateway.env; set +a; fi;",
+        @": ""${OPENCLAW_GATEWAY_TOKEN:?missing gateway token}"";",
         "exec",
         ShellQuoteScalar(_commandName),
         "devices",
         "approve",
         ShellQuoteScalar(requestId),
-        "--json",
-        "--token",
-        ShellQuoteScalar(token)
+        "--json"
     });
 
     /// <summary>

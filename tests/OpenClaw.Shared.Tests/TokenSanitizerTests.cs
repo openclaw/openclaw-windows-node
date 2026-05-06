@@ -31,4 +31,25 @@ public class TokenSanitizerTests
         Assert.DoesNotContain(token, sanitized);
         Assert.Contains("[REDACTED_TOKEN]", sanitized);
     }
+
+    [Fact]
+    public void Sanitize_RedactsBareGatewayHexTokenShape()
+    {
+        const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        var sanitized = TokenSanitizer.Sanitize($"argv: openclaw devices approve --token {token}");
+
+        Assert.DoesNotContain(token, sanitized);
+        Assert.Contains("[REDACTED_TOKEN]", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_DoesNotRedactGatewayHexTokenAdjacentToHexCharacters()
+    {
+        const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        var sanitized = TokenSanitizer.Sanitize($"x{token}f");
+
+        Assert.Equal($"x{token}f", sanitized);
+    }
 }
