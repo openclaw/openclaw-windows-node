@@ -472,13 +472,15 @@ public sealed class VoiceService : IAsyncDisposable
         return null;
     }
 
-    private const string VadDownloadUrl =
-        "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx";
+    private const string VadDownloadUrl = SileroVadModelManifest.DownloadUrl;
 
-    /// <summary>Download the Silero VAD ONNX model if not already present.</summary>
+    /// <summary>Download the Silero VAD ONNX model if not already present.
+    /// SHA-256 is verified before the atomic rename so a tampered or
+    /// truncated file never lands at the canonical path. See
+    /// <see cref="SileroVadModelManifest"/>.</summary>
     private async Task<string?> DownloadVadModelAsync(CancellationToken cancellationToken)
     {
-        var destPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "models", "silero_vad.onnx");
+        var destPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "models", SileroVadModelManifest.FileName);
         if (File.Exists(destPath))
             return destPath;
 
@@ -491,11 +493,27 @@ public sealed class VoiceService : IAsyncDisposable
             http.Timeout = TimeSpan.FromMinutes(5);
             using var response = await http.GetAsync(VadDownloadUrl, cancellationToken);
             response.EnsureSuccessStatusCode();
-            using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await response.Content.CopyToAsync(fs, cancellationToken);
-            fs.Close();
+            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await response.Content.CopyToAsync(fs, cancellationToken);
+            }
+
+            // SECURITY: verify SHA-256 BEFORE the atomic rename so a
+            // tampered file never reaches ONNX Runtime.
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            using (var verifyStream = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true))
+            {
+                var actual = await sha.ComputeHashAsync(verifyStream, cancellationToken);
+                var actualHex = Convert.ToHexString(actual).ToLowerInvariant();
+                if (!string.Equals(actualHex, SileroVadModelManifest.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new System.Security.SecurityException(
+                        "Silero VAD model failed integrity check. The downloaded file does not match the pinned SHA-256.");
+                }
+            }
+
             File.Move(tempPath, destPath, overwrite: true);
-            _logger.Info($"Silero VAD model downloaded ({new FileInfo(destPath).Length:N0} bytes)");
+            _logger.Info($"Silero VAD model downloaded and verified ({new FileInfo(destPath).Length:N0} bytes)");
             _vadModelPath = destPath;
             return destPath;
         }

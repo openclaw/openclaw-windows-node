@@ -58,4 +58,13 @@ public class AssetHashPinningTests
             Assert.StartsWith("https://", v.DownloadUrl);
         }
     }
+
+    [Fact]
+    public void SileroVadModel_HasPinnedSha256()
+    {
+        Assert.False(string.IsNullOrWhiteSpace(SileroVadModelManifest.Sha256),
+            "Silero VAD model is missing a pinned SHA-256 hash. Add one to SileroVadModelManifest.");
+        Assert.Matches(Sha256Hex, SileroVadModelManifest.Sha256);
+        Assert.StartsWith("https://", SileroVadModelManifest.DownloadUrl);
+    }
 }
