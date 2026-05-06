@@ -160,6 +160,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
+    public event EventHandler<JsonElement>? CronRunsUpdated;
     public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -421,9 +422,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     // Cron job management
 
-    public async Task RequestCronListAsync()
+    public async Task RequestCronListAsync(bool includeDisabled = true)
     {
-        await SendTrackedRequestAsync("cron.list");
+        await SendTrackedRequestAsync("cron.list", new { includeDisabled });
     }
 
     public async Task RequestCronStatusAsync()
@@ -439,6 +440,21 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public Task<bool> RemoveCronJobAsync(string jobId)
     {
         return TrySendTrackedRequestAsync("cron.remove", new { id = jobId });
+    }
+
+    public Task<bool> AddCronJobAsync(object jobDefinition)
+    {
+        return TrySendTrackedRequestAsync("cron.add", jobDefinition);
+    }
+
+    public Task<bool> UpdateCronJobAsync(object jobDefinition)
+    {
+        return TrySendTrackedRequestAsync("cron.update", jobDefinition);
+    }
+
+    public async Task RequestCronRunsAsync(string? jobId = null, int limit = 50, int offset = 0)
+    {
+        await SendTrackedRequestAsync("cron.runs", new { jobId, limit, offset });
     }
 
     // Skills/plugin management
@@ -1053,6 +1069,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 return true;
             case "cron.run":
             case "cron.remove":
+            case "cron.add":
+            case "cron.update":
+                // After add/update/remove, refresh the list
+                _ = RequestCronListAsync();
+                return true;
+            case "cron.runs":
+                CronRunsUpdated?.Invoke(this, payload.Clone());
                 return true;
             case "skills.status":
                 SkillsStatusUpdated?.Invoke(this, payload.Clone());
@@ -1503,6 +1526,11 @@ public class OpenClawGatewayClient : WebSocketClientBase
                 // Presence snapshot broadcast when clients connect/disconnect
                 if (root.TryGetProperty("payload", out var presPayload))
                     TryParsePresenceFromBroadcast(presPayload);
+                break;
+            case "cron":
+                // Gateway pushes cron events when jobs run/change — refresh the list
+                _ = RequestCronListAsync();
+                _ = RequestCronStatusAsync();
                 break;
         }
     }
