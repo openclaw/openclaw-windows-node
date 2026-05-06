@@ -179,7 +179,6 @@ public sealed class WizardPage : Component<OnboardingState>
         void SetRecoveryFailureError()
         {
             ClearWizardSessionState();
-            recoveryGuard.ResetForManualRestart();
             setErrorPrimaryAction("restart");
             setErrorMsg(WizardFlowController.RecoveryFailureMessage);
             setWizardState("error");

@@ -118,6 +118,38 @@ public class WizardFlowControllerTests
     }
 
     [Fact]
+    public async Task RecoveryFailureFollowedByStaleClosure_DoesNotStartAgain_BeforeUserRestart()
+    {
+        var gateway = new FakeWizardGateway();
+        var guard = new WizardRecoveryGuardState();
+        var context = WizardFlowController.CaptureRequestContext(guard);
+        var starts = 0;
+        string? sessionId = "lost-session";
+        JsonElement? stepPayload = Payload("lost-session");
+
+        var first = await WizardFlowController.TryRecoverAsync(new OperationCanceledException("lost-a"), gateway, guard, context, () =>
+        {
+            starts++;
+            throw new InvalidOperationException("gateway unhealthy");
+        });
+
+        Assert.Equal(WizardRecoveryKind.Failed, first.Kind);
+        sessionId = null;
+        stepPayload = null;
+
+        var second = await WizardFlowController.TryRecoverAsync(new OperationCanceledException("lost-b"), gateway, guard, context, () =>
+        {
+            starts++;
+            return Task.FromResult(Payload("unexpected-second-start"));
+        });
+
+        Assert.Null(sessionId);
+        Assert.Null(stepPayload);
+        Assert.Equal(WizardRecoveryKind.AlreadyAttempted, second.Kind);
+        Assert.Equal(1, starts);
+    }
+
+    [Fact]
     public async Task MissingScopeError_DoesNotTriggerRecovery()
     {
         var gateway = new FakeWizardGateway();
