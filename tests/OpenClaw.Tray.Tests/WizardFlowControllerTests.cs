@@ -366,4 +366,68 @@ public class WizardFlowControllerTests
         Assert.False(nextCalled);
         Assert.True(startCalled);
     }
+
+    // ── WaitForConnectionAsync tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task WaitForConnectionAsync_WhenAlreadyConnected_ReturnsTrueImmediately()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = true };
+        var pollCount = 0;
+
+        var result = await WizardFlowController.WaitForConnectionAsync(
+            gateway, maxPollCount: 30, delayAsync: () => { pollCount++; return Task.CompletedTask; });
+
+        Assert.True(result);
+        Assert.Equal(0, pollCount); // no polling needed
+    }
+
+    [Fact]
+    public async Task WaitForConnectionAsync_WhenReconnectsAfterTwoPolls_ReturnsTrueAndCallsNextNotStart()
+    {
+        // Simulates: disconnected → reconnects after 2 polls → TryResumeWithSessionAsync calls wizard.next
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = false };
+        var pollCount = 0;
+        var nextCalled = false;
+        var startCalled = false;
+
+        using var doc = JsonDocument.Parse("{\"done\":false,\"step\":{\"id\":\"ch-step\",\"type\":\"select\"}}");
+        var channelsPayload = doc.RootElement.Clone();
+        var startPayload = Payload("new-session");
+
+        var result = await WizardFlowController.WaitForConnectionAsync(
+            gateway, maxPollCount: 30, delayAsync: () =>
+            {
+                pollCount++;
+                if (pollCount >= 2) gateway.IsConnectedToGateway = true; // reconnect after 2 polls
+                return Task.CompletedTask;
+            });
+
+        Assert.True(result);
+        Assert.Equal(2, pollCount);
+
+        // After wait, TryResumeWithSessionAsync should now see connected=True and call wizard.next
+        var (resumed, _) = await WizardFlowController.TryResumeWithSessionAsync(
+            "session-alive",
+            gateway,
+            async sid => { nextCalled = true; return channelsPayload; },
+            async () => { startCalled = true; return startPayload; });
+
+        Assert.True(resumed);
+        Assert.True(nextCalled);
+        Assert.False(startCalled);
+    }
+
+    [Fact]
+    public async Task WaitForConnectionAsync_WhenTimesOut_ReturnsFalse()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = false };
+        var pollCount = 0;
+
+        var result = await WizardFlowController.WaitForConnectionAsync(
+            gateway, maxPollCount: 5, delayAsync: () => { pollCount++; return Task.CompletedTask; });
+
+        Assert.False(result);
+        Assert.Equal(5, pollCount);
+    }
 }

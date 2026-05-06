@@ -155,8 +155,26 @@ public static class WizardFlowController
     }
 
     /// <summary>
+    /// Waits up to <paramref name="maxPollCount"/> poll intervals for the gateway to
+    /// (re-)connect. Returns true if connected at exit, false on timeout. The
+    /// <paramref name="delayAsync"/> delegate is injected so unit tests can run instantly.
+    /// </summary>
+    public static async Task<bool> WaitForConnectionAsync(
+        IWizardGateway? client,
+        int maxPollCount = 30,
+        Func<Task>? delayAsync = null)
+    {
+        delayAsync ??= () => Task.Delay(1000);
+        for (int poll = 0; poll < maxPollCount && client?.IsConnectedToGateway != true; poll++)
+            await delayAsync();
+        return client?.IsConnectedToGateway == true;
+    }
+
+    /// <summary>
     /// Attempts to resume a live wizard session via wizard.next (no answer) before
     /// falling back to wizard.start. Caller must NOT clear WizardSessionId before calling.
+    /// Call <see cref="WaitForConnectionAsync"/> first so IsConnectedToGateway is true
+    /// when this method runs.
     /// </summary>
     public static async Task<(bool Resumed, JsonElement Payload)> TryResumeWithSessionAsync(
         string? sessionId,

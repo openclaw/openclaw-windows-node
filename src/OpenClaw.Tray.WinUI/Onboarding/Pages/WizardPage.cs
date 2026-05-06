@@ -288,6 +288,13 @@ public sealed class WizardPage : Component<OnboardingState>
                     setWizardState("loading");
                     setErrorMsg("");
 
+                    // Wait up to 30 s for the gateway to reconnect before attempting wizard.next.
+                    // TryResumeWithSessionAsync requires IsConnectedToGateway == true; without this
+                    // wait it would see connected=False (recovery fires right after disconnect) and
+                    // fall through directly to wizard.start, creating a new session at step 0.
+                    var reconnected = await WizardFlowController.WaitForConnectionAsync(wizardGateway);
+                    Logger.Info($"[WizardDiag] Recovery reconnect-wait done: connected={reconnected}");
+
                     var (resumed, payload) = await WizardFlowController.TryResumeWithSessionAsync(
                         previousSessionId,
                         wizardGateway,
