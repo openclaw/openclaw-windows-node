@@ -473,14 +473,14 @@ public sealed partial class ConnectionPage : Page
         _pendingGatewayUrl = gw.ConnectionUrl;
         _pendingGatewayId = gw.Id;
         TokenPromptText.Text = $"Connect to gateway at {gw.Host}:{gw.Port}";
-        TokenPromptBox.Password = _hub.Settings.Token ?? "";
+        TokenPromptBox.Text = _hub.Settings.Token ?? "";
         TokenPromptPanel.Visibility = Visibility.Visible;
         TokenPromptBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
     }
 
     private void OnConnectWithToken(object sender, RoutedEventArgs e)
     {
-        var token = TokenPromptBox.Password?.Trim();
+        var token = TokenPromptBox.Text?.Trim();
         if (string.IsNullOrEmpty(token) || _hub?.Settings == null || string.IsNullOrEmpty(_pendingGatewayUrl))
             return;
 
@@ -535,10 +535,9 @@ public sealed partial class ConnectionPage : Page
             settings.GatewayUrl = result.Url;
         if (!string.IsNullOrEmpty(result.Token))
         {
+            // Bootstrap token goes to BootstrapToken only — it's single-use for pairing.
+            // Don't save it as Settings.Token, which would cause reconnect storms on restart.
             settings.BootstrapToken = result.Token;
-            // Also set as the operator token so InitializeGatewayClient can connect
-            if (string.IsNullOrWhiteSpace(settings.Token))
-                settings.Token = result.Token;
         }
 
         settings.Save();

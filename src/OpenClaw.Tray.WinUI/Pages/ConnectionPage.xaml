@@ -100,7 +100,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <PasswordBox x:Uid="TokenPromptBox" x:Name="TokenPromptBox" Grid.Column="0"
+                                <TextBox x:Uid="TokenPromptBox" x:Name="TokenPromptBox" Grid.Column="0"
                                              PlaceholderText="Gateway token" Header="Token"/>
                                 <Button x:Uid="ConnectionPage_Button_105" Grid.Column="1" Content="Cancel"
                                         VerticalAlignment="Bottom" Click="OnCancelTokenPrompt"/>

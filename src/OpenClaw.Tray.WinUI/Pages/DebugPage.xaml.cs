@@ -196,4 +196,9 @@ public sealed partial class DebugPage : Page
             timer.Start();
         }
     }
+
+    private void OnRelaunchOnboarding(object sender, RoutedEventArgs e)
+    {
+        _hub?.OpenSetupAction?.Invoke();
+    }
 }

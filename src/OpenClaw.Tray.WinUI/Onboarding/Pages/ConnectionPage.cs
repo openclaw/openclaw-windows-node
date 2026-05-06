@@ -136,14 +136,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         void OnSetupCodeChanged(string code)
         {
-            setSetupCode(code);
             if (string.IsNullOrWhiteSpace(code)) return;
 
             var result = SetupCodeDecoder.Decode(code);
 
             if (!result.Success)
             {
-                // Not a valid setup code — user might be still typing
+                // Not a valid setup code — user might be still typing.
+                // Don't call setSetupCode here to avoid re-render that steals focus.
                 if (code.Length > 2048)
                     Logger.Warn("[Connection] Setup code rejected: exceeds 2048 character limit");
                 else
@@ -151,6 +151,8 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 return;
             }
 
+            // Valid setup code decoded — now update state (will re-render)
+            setSetupCode(code);
             if (result.Url != null)
             {
                 setUrl(result.Url);
@@ -159,7 +161,8 @@ public sealed class ConnectionPage : Component<OnboardingState>
             if (result.Token != null)
             {
                 setToken(result.Token);
-                Props.Settings.Token = result.Token;
+                // Bootstrap token goes to BootstrapToken only — it's single-use for pairing.
+                // Don't save as Settings.Token (causes reconnect storms on restart).
                 Props.Settings.BootstrapToken = result.Token;
             }
             setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
@@ -205,7 +208,13 @@ public sealed class ConnectionPage : Component<OnboardingState>
         async void TestConnection()
         {
             Props.Settings.GatewayUrl = url;
-            Props.Settings.Token = token;
+            // Only save to Settings.Token if the user entered a manual token,
+            // not a decoded bootstrap token (which belongs in BootstrapToken only).
+            if (string.IsNullOrWhiteSpace(Props.Settings.BootstrapToken) ||
+                !string.Equals(token, Props.Settings.BootstrapToken, StringComparison.Ordinal))
+            {
+                Props.Settings.Token = token;
+            }
 
             // When SSH mode, start the managed tunnel before health-checking the local URL.
             if (mode == ConnectionMode.Ssh)
@@ -473,40 +482,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 catch { /* clipboard unavailable — ignore */ }
             }
 
-            // Setup code row: TextField + Paste + QR buttons (Grid keeps the field expanding)
+            // Setup code row: TextField + Paste + QR buttons
             cardChildren.Add(
                 Grid(["1*", "Auto", "Auto"], ["Auto"],
                     TextField(setupCode, OnSetupCodeChanged,
                         placeholder: LocalizationHelper.GetString("Onboarding_Connection_SetupCodePlaceholder"),
                         header: LocalizationHelper.GetString("Onboarding_Connection_SetupCode"))
-                        .OnGotFocus((sender, _) =>
-                        {
-                            if (sender is Microsoft.UI.Xaml.Controls.TextBox tb && string.IsNullOrEmpty(tb.Text))
-                            {
-                                try
-                                {
-                                    var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                                    if (content.Contains(global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
-                                    {
-                                        var task = content.GetTextAsync();
-                                        task.Completed = (op, status) =>
-                                        {
-                                            if (status == global::Windows.Foundation.AsyncStatus.Completed)
-                                            {
-                                                var text = op.GetResults();
-                                                tb.DispatcherQueue.TryEnqueue(() =>
-                                                {
-                                                    tb.Text = text;
-                                                    OnSetupCodeChanged(text);
-                                                });
-                                            }
-                                        };
-                                    }
-                                }
-                                catch { }
-                            }
-                        })
-                        .Grid(row: 0, column: 0),
+                        .Grid(row: 0, column: 0)
+                        .Set(tb => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingSetupCode")),
                     Button(LocalizationHelper.GetString("Onboarding_Connection_PasteSetup"), PasteSetupCode)
                         .VAlign(VerticalAlignment.Bottom)
                         .Margin(6, 0, 0, 0)

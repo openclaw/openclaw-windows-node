@@ -30,6 +30,7 @@ public sealed partial class HubWindow : WindowEx
     public Action? ConnectAction { get; set; }
     public Action? DisconnectAction { get; set; }
     public Action? ReconnectAction { get; set; }
+    public Action? OpenSetupAction { get; set; }
 
     // Node service state (set by App.xaml.cs in ShowHub)
     public bool NodeIsConnected { get; set; }

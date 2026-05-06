@@ -1491,19 +1491,30 @@ public partial class App : Application
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_settings.Token))
+        // Need either a regular token or a bootstrap token to connect
+        var effectiveToken = _settings.Token;
+        if (string.IsNullOrWhiteSpace(effectiveToken))
         {
-            Logger.Info("Gateway token not configured — skipping operator client initialization");
-            return;
+            if (useBootstrapHandoffAuth && !string.IsNullOrWhiteSpace(_settings.BootstrapToken))
+            {
+                // Bootstrap-only flow (setup code / QR): use bootstrap token for initial pairing
+                effectiveToken = _settings.BootstrapToken;
+            }
+            else
+            {
+                Logger.Info("Gateway token not configured — skipping operator client initialization");
+                return;
+            }
         }
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
+        _gatewayClient?.Dispose();
         _lastGatewaySelf = null;
 
         _gatewayClient = new OpenClawGatewayClient(
             gatewayUrl,
-            _settings.Token,
+            effectiveToken,
             new AppLogger(),
             useBootstrapHandoffAuth);
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
@@ -1944,6 +1955,19 @@ public partial class App : Application
             if (_hubWindow != null && !_hubWindow.IsClosed)
                 _hubWindow.LastAuthError = null;
         }
+
+        // Clear stale data when disconnected so tray menu doesn't show old sessions/nodes
+        if (status == ConnectionStatus.Disconnected || status == ConnectionStatus.Error)
+        {
+            _lastSessions = Array.Empty<SessionInfo>();
+            _lastChannels = Array.Empty<ChannelHealth>();
+            _lastNodes = Array.Empty<GatewayNodeInfo>();
+            _lastNodePairList = null;
+            _lastDevicePairList = null;
+            _lastModelsList = null;
+            _lastGatewaySelf = null;
+        }
+
         UpdateTrayIcon();
         _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
         
@@ -2497,6 +2521,7 @@ public partial class App : Application
             _hubWindow.OpenDashboardAction = OpenDashboard;
             _hubWindow.CheckForUpdatesAction = () => _ = CheckForUpdatesUserInitiatedAsync();
             _hubWindow.QuickSendAction = () => ShowQuickSend();
+            _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.ConnectAction = () =>
             {
                 InitializeGatewayClient();
