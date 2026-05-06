@@ -180,12 +180,12 @@ public sealed partial class AgentEventsPage : Page
             }
         }
 
-        // Row 2: detail panel — only for non-assistant events
+        // Row 2: detail panel — only for streams that still need raw JSON
         if (grid.Children.Count > 2 && grid.Children[2] is Grid detailGrid)
         {
-            if (evt.IsAssistantStream)
+            if (!evt.ShowDataJson)
             {
-                // Assistant events show full text via uncapped summary; no detail panel needed
+                // Assistant/error/lifecycle events show enough context in the summary row.
                 detailGrid.Visibility = Visibility.Collapsed;
             }
             else
@@ -211,13 +211,18 @@ public sealed partial class AgentEventsPage : Page
                     && headerGrid.Children.Count > 2 && headerGrid.Children[2] is FontIcon chevron)
                     chevron.Glyph = evt.IsExpanded ? "\uE70E" : "\uE70D";
 
-                // Update summary MaxLines
+                // Update summary text and MaxLines
                 if (grid.Children.Count > 1 && grid.Children[1] is TextBlock summaryBlock)
+                {
+                    summaryBlock.Text = evt.IsAssistantStream && evt.IsExpanded
+                        ? (evt.FullAssistantText ?? evt.SummaryLine)
+                        : evt.SummaryLine;
                     summaryBlock.MaxLines = evt.IsExpanded ? 0 : 3;
+                }
 
-                // Toggle detail panel (not for assistant — summary handles it)
+                // Toggle detail panel only for streams where raw JSON is still useful.
                 if (grid.Children.Count > 2 && grid.Children[2] is Grid detailGrid)
-                    detailGrid.Visibility = (evt.IsExpanded && !evt.IsAssistantStream)
+                    detailGrid.Visibility = (evt.IsExpanded && evt.ShowDataJson)
                         ? Visibility.Visible : Visibility.Collapsed;
             }
         }
