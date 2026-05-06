@@ -73,6 +73,33 @@ public class OpenClawGatewayClientTests
             return completion.Task;
         }
 
+        public Task<JsonElement> RegisterPendingWizardResponse(string requestId)
+        {
+            var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var field = typeof(OpenClawGatewayClient).GetField(
+                "_pendingWizardResponses",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var pending = (System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>>)field!.GetValue(_client)!;
+            pending[requestId] = completion;
+            return completion.Task;
+        }
+
+        public void ClearPendingRequests()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ClearPendingRequests",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method!.Invoke(_client, Array.Empty<object>());
+        }
+
+        public void OnDisconnected()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "OnDisconnected",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method!.Invoke(_client, Array.Empty<object>());
+        }
+
         public void ProcessRawMessage(string json)
         {
             var method = typeof(OpenClawGatewayClient).GetMethod(
@@ -697,6 +724,31 @@ public class OpenClawGatewayClientTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
         Assert.Contains("operator.write", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PendingWizardResponse_ClearPendingRequests_FailsWithOperationCanceledException()
+    {
+        var helper = new GatewayClientTestHelper();
+        var task = helper.RegisterPendingWizardResponse("wizard-1");
+
+        helper.ClearPendingRequests();
+
+        var ex = await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
+        Assert.Contains("wizard response", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PendingWizardNext_OnDisconnected_CompletesImmediatelyWithOperationCanceledException()
+    {
+        var helper = new GatewayClientTestHelper();
+        var task = helper.RegisterPendingWizardResponse("wizard-2");
+
+        helper.OnDisconnected();
+
+        var completed = await Task.WhenAny(task, Task.Delay(250));
+        Assert.Same(task, completed);
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
     }
 
         [Fact]

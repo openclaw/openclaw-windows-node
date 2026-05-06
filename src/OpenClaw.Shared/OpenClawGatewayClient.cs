@@ -689,6 +689,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
             _pendingChatSendRequests.Clear();
         }
+
+        foreach (var completion in _pendingWizardResponses.Values)
+        {
+            completion.TrySetException(new OperationCanceledException("Gateway connection lost while waiting for wizard response"));
+        }
+
+        _pendingWizardResponses.Clear();
     }
 
     private void TrackPendingChatSend(string requestId, TaskCompletionSource<bool> completion)
