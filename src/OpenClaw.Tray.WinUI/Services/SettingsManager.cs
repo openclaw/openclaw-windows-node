@@ -14,16 +14,13 @@ public class SettingsManager
 {
     // OPENCLAW_TRAY_DATA_DIR overrides both this and App.DataPath so an isolated test
     // instance can run alongside the user's real tray without clobbering settings.
-    private static readonly string DefaultSettingsDirectory = GetDefaultSettingsDirectory();
-    private static readonly string DefaultSettingsFilePath = Path.Combine(DefaultSettingsDirectory, "settings.json");
-
     private readonly string _settingsDirectory;
     private readonly string _settingsFilePath;
     private const string ProtectedSecretPrefix = "dpapi:";
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
 
-    public static string SettingsDirectoryPath => DefaultSettingsDirectory;
-    public static string SettingsPath => DefaultSettingsFilePath;
+    public static string SettingsDirectoryPath => GetDefaultSettingsDirectory();
+    public static string SettingsPath => Path.Combine(SettingsDirectoryPath, "settings.json");
 
     // Connection
     public string GatewayUrl { get; set; } = "ws://localhost:18789";
@@ -82,7 +79,7 @@ public class SettingsManager
     public bool HasSeenActivityStreamTip { get; set; } = false;
     public string SkippedUpdateTag { get; set; } = "";
 
-    public SettingsManager() : this(DefaultSettingsDirectory)
+    public SettingsManager() : this(GetDefaultSettingsDirectory())
     {
     }
 

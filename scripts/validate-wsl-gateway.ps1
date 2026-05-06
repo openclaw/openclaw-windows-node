@@ -71,7 +71,7 @@ $cliProject = Join-Path $repoRoot "src\OpenClaw.Cli\OpenClaw.Cli.csproj"
 $validationAppDataRoot = if ($Scenario -eq "PreflightOnly") { $env:APPDATA } else { Join-Path $runRoot "isolated\appdata" }
 $validationLocalAppDataRoot = if ($Scenario -eq "PreflightOnly") { $env:LOCALAPPDATA } else { Join-Path $runRoot "isolated\localappdata" }
 $setupStatePath = Join-Path $validationLocalAppDataRoot "OpenClawTray\setup-state.json"
-$settingsPath = Join-Path $validationAppDataRoot "OpenClawTray\settings.json"
+$settingsPath = Join-Path $validationAppDataRoot "settings.json"
 $wslInstallLocation = Join-Path $runRoot "wsl\$DistroName"
 
 $script:summary = [ordered]@{
@@ -332,6 +332,7 @@ function Save-DiagnosticsSnapshot {
 
 function Get-ValidationAppEnvironment {
     return @{
+        OPENCLAW_TRAY_DATA_DIR = $validationAppDataRoot
         OPENCLAW_TRAY_APPDATA_DIR = $validationAppDataRoot
         OPENCLAW_TRAY_LOCALAPPDATA_DIR = $validationLocalAppDataRoot
     }
@@ -448,6 +449,7 @@ function Start-TrayForLocalSetup {
         OPENCLAW_WSL_DISTRO_NAME = $DistroName
         OPENCLAW_WSL_INSTALL_LOCATION = $wslInstallLocation
         OPENCLAW_WSL_ALLOW_EXISTING_DISTRO = if ($Scenario -eq "UpstreamInstall") { "1" } else { "0" }
+        OPENCLAW_TRAY_DATA_DIR = $validationAppDataRoot
         OPENCLAW_TRAY_APPDATA_DIR = $validationAppDataRoot
         OPENCLAW_TRAY_LOCALAPPDATA_DIR = $validationLocalAppDataRoot
         OPENCLAW_VISUAL_TEST = "1"

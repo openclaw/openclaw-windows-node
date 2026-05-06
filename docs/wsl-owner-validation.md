@@ -315,6 +315,15 @@ declared). No WSL-internal worker is paired by the Windows tray in this PR.
 `scripts/validate-wsl-gateway.ps1` provides four scenarios. Each writes a
 JSON+markdown summary under `artifacts/validate-wsl-gateway/<run-id>/`.
 
+Validation AppData isolation uses this canonical contract:
+
+- `OPENCLAW_TRAY_DATA_DIR` is the settings/logs/run-marker root consumed by
+  `SettingsManager`, `App.DataPath`, `Logger`, and token path resolution.
+- `OPENCLAW_TRAY_APPDATA_DIR` is the roaming identity-store root consumed by
+  `DeviceIdentity`/pairing paths. Validation sets it alongside
+  `OPENCLAW_TRAY_DATA_DIR` for backward compatibility and identity isolation.
+- `OPENCLAW_TRAY_LOCALAPPDATA_DIR` is the local setup-state/WSL-install root.
+
 | Scenario | What it does | When to use | Destructive |
 |---|---|---|---|
 | `PreflightOnly` | Repo-layout sanity, WSL host status (`wsl --status`, `wsl --list --verbose`), relay-prototype probe (NotAvailable when no probe URI). No build, no install, no WSL state mutation. | Cheap CI / local sanity check. Safe on dev box. | No |
