@@ -130,28 +130,6 @@ public sealed class WizardPage : Component<OnboardingState>
                     setOptionHints(Array.Empty<string>());
                 }
 
-                // For select: default to first option's value if no initialValue
-                var typeStr2 = step.TryGetProperty("type", out var tp3) ? tp3.ToString() : "";
-                if (string.IsNullOrEmpty(iv) && typeStr2 == "select")
-                {
-                    // Re-read first option value directly
-                    if (step.TryGetProperty("options", out var opts2) && opts2.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var o in opts2.EnumerateArray())
-                        {
-                            if (o.ValueKind == JsonValueKind.Object && o.TryGetProperty("value", out var fv))
-                            {
-                                setStepInput(fv.ToString());
-                                break;
-                            }
-                            else
-                            {
-                                setStepInput(o.ToString());
-                                break;
-                            }
-                        }
-                    }
-                }
             }
 
             if (payload.TryGetProperty("stepIndex", out var si))
@@ -393,9 +371,15 @@ public sealed class WizardPage : Component<OnboardingState>
             var requestContext = WizardFlowController.CaptureRequestContext(recoveryGuard);
             try
             {
-                // All step types need an answer to advance.
-                // For note/confirm: send "true". For text/select: send user input.
-                var answerValue = string.IsNullOrEmpty(stepInput) ? "true" : stepInput;
+                var optionValuesForSubmit = Props.WizardStepPayload.HasValue
+                    ? WizardStepParser.Parse(Props.WizardStepPayload.Value).OptionValues
+                    : Array.Empty<string>();
+                if (!WizardStepSelection.TryBuildAnswerValue(stepType, stepInput, optionValuesForSubmit, out var answerValue))
+                {
+                    setErrorMsg("Choose an option to continue.");
+                    setSubmitting(false);
+                    return;
+                }
 
                 // Smart timeout: 5min for auth-related steps (device code polling), 30s for everything else
                 var isAuthStep = !string.IsNullOrEmpty(stepMessage) && 
@@ -512,11 +496,13 @@ public sealed class WizardPage : Component<OnboardingState>
         string buttonLabel1 = LocalizationHelper.GetString("Onboarding_Wizard_Continue");
         string buttonLabel2 = LocalizationHelper.GetString("Onboarding_Wizard_Skip");
         bool showButtons = false;
+        bool disablePrimaryButton = false;
 
         switch (wizardState)
         {
             case "active":
                 displayTitle = stepTitle;
+                // TODO: Empty note messages are an upstream gateway content issue; do not synthesize tray copy here.
                 displayMessage = stepMessage;
                 showButtons = true;
 
@@ -574,10 +560,11 @@ public sealed class WizardPage : Component<OnboardingState>
 
                     if (labels.Count > 0)
                     {
-                        var selIdx = values.IndexOf(stepInput);
                         var labelsArr = labels.ToArray();
                         var valuesArr = values.ToArray();
-                        inputArea = RadioButtons(labelsArr, selIdx >= 0 ? selIdx : 0,
+                        var selIdx = WizardStepSelection.SelectedIndex(stepInput, valuesArr);
+                        disablePrimaryButton = WizardStepSelection.ShouldDisableContinue(stepType, stepInput, valuesArr);
+                        inputArea = RadioButtons(labelsArr, selIdx >= 0 ? selIdx : -1,
                             idx =>
                             {
                                 if (idx >= 0 && idx < valuesArr.Length)
@@ -749,7 +736,7 @@ public sealed class WizardPage : Component<OnboardingState>
 
             showButtons
                 ? HStack(8,
-                    Button(buttonLabel1, PrimaryButtonAction).Disabled(submitting),
+                    Button(buttonLabel1, PrimaryButtonAction).Disabled(submitting || disablePrimaryButton),
                     Button(buttonLabel2, SkipStep).Disabled(submitting))
                 : TextBlock(""),
 
