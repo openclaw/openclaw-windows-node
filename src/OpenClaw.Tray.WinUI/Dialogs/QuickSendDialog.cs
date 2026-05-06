@@ -25,6 +25,8 @@ public sealed class QuickSendDialog : WindowEx
     private readonly Button _sendButton;
     private bool _isSending;
 
+    private const string TitleIcon = "🦞";
+    private const double WindowControlsReservedWidth = 140;
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -124,11 +126,11 @@ public sealed class QuickSendDialog : WindowEx
         outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TitleBarHeight) });
         outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var titleBar = new Grid { Padding = new Thickness(16, 0, 140, 0) };
+        var titleBar = new Grid { Padding = new Thickness(16, 0, WindowControlsReservedWidth, 0) };
         var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
         titleStack.Children.Add(new TextBlock
         {
-            Text = "🦞",
+            Text = TitleIcon,
             FontSize = 20,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0)
@@ -179,6 +181,11 @@ public sealed class QuickSendDialog : WindowEx
     {
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
+            if (_isSending)
+            {
+                return;
+            }
+
             Close();
             return;
         }
