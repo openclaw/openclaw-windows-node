@@ -42,6 +42,9 @@ public sealed class QuickSendDialog : WindowEx
         uint uFlags);
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly Regex MissingScopePattern = new(
+        @"missing\s+scope\s*:\s*([A-Za-z0-9._-]+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const int SW_SHOWNORMAL = 1;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
@@ -280,7 +283,7 @@ public sealed class QuickSendDialog : WindowEx
             return false;
         }
 
-        var match = Regex.Match(message, @"missing\s+scope\s*:\s*([A-Za-z0-9._-]+)", RegexOptions.IgnoreCase);
+        var match = MissingScopePattern.Match(message);
         if (!match.Success)
         {
             return false;
