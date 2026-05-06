@@ -399,9 +399,34 @@ public sealed partial class HubWindow : WindowEx
     private readonly System.Collections.Generic.List<AgentEventInfo> _agentEvents = new();
     public System.Collections.Generic.IReadOnlyList<AgentEventInfo> LastAgentEvents => _agentEvents;
 
+    /// <summary>Called by App to also clear its own agent event cache when Clear is invoked.</summary>
+    public Action? ClearAppAgentEventsCache { get; set; }
+
     public void ClearAgentEvents()
     {
-        DispatcherQueue?.TryEnqueue(() => _agentEvents.Clear());
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            _agentEvents.Clear();
+            ClearAppAgentEventsCache?.Invoke();
+        });
+    }
+
+    /// <summary>Seed the hub's agent event cache from App-level cache (deduplicates by RunId+Seq).</summary>
+    public void SeedAgentEvents(IReadOnlyList<AgentEventInfo> appCache)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            var existingKeys = new System.Collections.Generic.HashSet<(string, int)>(
+                _agentEvents.Select(e => (e.RunId, e.Seq)));
+            foreach (var evt in appCache)
+            {
+                if (!existingKeys.Contains((evt.RunId, evt.Seq)))
+                {
+                    _agentEvents.Add(evt);
+                    if (_agentEvents.Count >= MaxAgentEvents) break;
+                }
+            }
+        });
     }
 
     public void UpdateAgentEvent(AgentEventInfo evt)

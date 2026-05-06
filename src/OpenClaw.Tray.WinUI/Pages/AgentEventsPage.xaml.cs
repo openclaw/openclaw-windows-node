@@ -60,6 +60,19 @@ public sealed partial class AgentEventsPage : Page
 
     public void AddEvent(AgentEventInfo evt)
     {
+        // Deduplicate by RunId + Seq
+        if (_allEvents.Any(e => e.RunId == evt.RunId && e.Seq == evt.Seq))
+            return;
+
+        // For assistant events, replace earlier streaming chunks with the latest one
+        // (each chunk contains the full accumulated text, so only the latest matters)
+        if (evt.Stream.Equals("assistant", StringComparison.OrdinalIgnoreCase))
+        {
+            _allEvents.RemoveAll(e =>
+                e.Stream.Equals("assistant", StringComparison.OrdinalIgnoreCase) &&
+                e.RunId == evt.RunId && e.Seq < evt.Seq);
+        }
+
         _allEvents.Insert(0, evt);
         if (_allEvents.Count > MaxEvents)
             _allEvents.RemoveRange(MaxEvents, _allEvents.Count - MaxEvents);
@@ -100,9 +113,9 @@ public sealed partial class AgentEventsPage : Page
             filtered = filtered.Where(e => e.SessionKey != null &&
                 e.SessionKey.StartsWith($"agent:{_agentIdFilter}:", StringComparison.OrdinalIgnoreCase));
 
-        // Filter by stream type
+        // Filter by stream type (use ResolvedStream so "item" events with kind:"tool" match the Tool filter)
         if (_activeFilter != "all")
-            filtered = filtered.Where(e => e.Stream.Equals(_activeFilter, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(e => e.ResolvedStream.Equals(_activeFilter, StringComparison.OrdinalIgnoreCase));
 
         var list = filtered.ToList();
         EventsList.ItemsSource = list;
@@ -121,30 +134,91 @@ public sealed partial class AgentEventsPage : Page
 
     private void EventsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (args.Item is AgentEventInfo evt && args.ItemContainer?.ContentTemplateRoot is Grid grid)
+        if (args.Item is not AgentEventInfo evt || args.ItemContainer?.ContentTemplateRoot is not Grid grid)
+            return;
+
+        // Row 0: header Grid with badge (col 0), timestamp (col 1), chevron (col 3)
+        if (grid.Children[0] is Grid headerGrid && headerGrid.Children[0] is Border badge)
         {
-            // Find the first Border in the first StackPanel (the badge)
-            if (grid.Children[0] is StackPanel headerPanel && headerPanel.Children[0] is Border badge)
+            var hex = evt.BadgeColorHex;
+            try
             {
-                var hex = evt.BadgeColorHex;
-                try
-                {
-                    var a = Convert.ToByte(hex[1..3], 16);
-                    var r = Convert.ToByte(hex[3..5], 16);
-                    var g = Convert.ToByte(hex[5..7], 16);
-                    var b = Convert.ToByte(hex[7..9], 16);
-                    badge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                        Microsoft.UI.ColorHelper.FromArgb(a, r, g, b));
-                }
-                catch
-                {
-                    badge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
-                }
+                var r = Convert.ToByte(hex[3..5], 16);
+                var g = Convert.ToByte(hex[5..7], 16);
+                var b = Convert.ToByte(hex[7..9], 16);
+                var color = Microsoft.UI.ColorHelper.FromArgb(255, r, g, b);
+                badge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    Microsoft.UI.ColorHelper.FromArgb(40, r, g, b));
+                if (badge.Child is TextBlock badgeText)
+                    badgeText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
             }
-            // Hide summary row if empty
-            if (grid.Children.Count > 1 && grid.Children[1] is TextBlock summaryBlock)
+            catch
             {
-                summaryBlock.Visibility = evt.HasSummary ? Visibility.Visible : Visibility.Collapsed;
+                badge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    Microsoft.UI.ColorHelper.FromArgb(40, 100, 100, 100));
+            }
+
+            // Update chevron glyph based on model state
+            if (headerGrid.Children.Count > 2 && headerGrid.Children[2] is FontIcon chevron)
+                chevron.Glyph = evt.IsExpanded ? "\uE70E" : "\uE70D";
+        }
+
+        // Row 1: summary
+        if (grid.Children.Count > 1 && grid.Children[1] is TextBlock summaryBlock)
+        {
+            summaryBlock.Visibility = evt.HasSummary ? Visibility.Visible : Visibility.Collapsed;
+            if (evt.IsAssistantStream)
+            {
+                // Swap between truncated summary and full text
+                summaryBlock.Text = evt.IsExpanded ? (evt.FullAssistantText ?? evt.SummaryLine) : evt.SummaryLine;
+                summaryBlock.MaxLines = evt.IsExpanded ? 0 : 3;
+            }
+            else
+            {
+                summaryBlock.Text = evt.SummaryLine;
+                summaryBlock.MaxLines = evt.IsExpanded ? 0 : 3;
+            }
+        }
+
+        // Row 2: detail panel — only for non-assistant events
+        if (grid.Children.Count > 2 && grid.Children[2] is Grid detailGrid)
+        {
+            if (evt.IsAssistantStream)
+            {
+                // Assistant events show full text via uncapped summary; no detail panel needed
+                detailGrid.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                detailGrid.Visibility = evt.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+    }
+
+    private void EventsList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not AgentEventInfo evt) return;
+        evt.IsExpanded = !evt.IsExpanded;
+
+        // Update the visual container
+        if (sender is ListView listView)
+        {
+            var container = listView.ContainerFromItem(e.ClickedItem) as ListViewItem;
+            if (container?.ContentTemplateRoot is Grid grid)
+            {
+                // Update chevron
+                if (grid.Children[0] is Grid headerGrid
+                    && headerGrid.Children.Count > 2 && headerGrid.Children[2] is FontIcon chevron)
+                    chevron.Glyph = evt.IsExpanded ? "\uE70E" : "\uE70D";
+
+                // Update summary MaxLines
+                if (grid.Children.Count > 1 && grid.Children[1] is TextBlock summaryBlock)
+                    summaryBlock.MaxLines = evt.IsExpanded ? 0 : 3;
+
+                // Toggle detail panel (not for assistant — summary handles it)
+                if (grid.Children.Count > 2 && grid.Children[2] is Grid detailGrid)
+                    detailGrid.Visibility = (evt.IsExpanded && !evt.IsAssistantStream)
+                        ? Visibility.Visible : Visibility.Collapsed;
             }
         }
     }

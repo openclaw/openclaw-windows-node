@@ -48,10 +48,19 @@
         <ListView x:Name="EventsList" Grid.Row="2"
                   SelectionMode="None"
                   Visibility="Collapsed"
+                  IsItemClickEnabled="True"
+                  ItemClick="EventsList_ItemClick"
                   ContainerContentChanging="EventsList_ContainerContentChanging">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="0,1"/>
+                    <Setter Property="Margin" Value="0"/>
+                </Style>
+            </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Grid Padding="12,8" Margin="0,1" CornerRadius="4"
+                    <Grid Padding="16,10,16,12" Margin="0,2" CornerRadius="6"
                           Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -59,31 +68,47 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Row 0: stream badge + timestamp + session -->
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
-                            <Border CornerRadius="4" Padding="6,2">
-                                <TextBlock Text="{Binding StreamUpper}" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="White"/>
+                        <!-- Row 0: badge + timestamp + chevron -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" CornerRadius="4" Padding="8,2,8,4" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding StreamUpper}" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="White" VerticalAlignment="Center"/>
                             </Border>
-                            <TextBlock Text="{Binding FormattedTime}" VerticalAlignment="Center"
-                                       FontSize="11" FontFamily="Consolas"
+                            <TextBlock Grid.Column="1" Text="{Binding FormattedTime}" VerticalAlignment="Center"
+                                       FontSize="11" FontFamily="Consolas" Margin="8,0,0,0"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                            <TextBlock Text="{Binding RunId}" VerticalAlignment="Center"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                       MaxWidth="120" TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
+                            <FontIcon Grid.Column="3" Glyph="&#xE70D;" FontSize="10" VerticalAlignment="Center"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        </Grid>
 
                         <!-- Row 1: Summary line -->
                         <TextBlock Grid.Row="1" Text="{Binding SummaryLine}" 
-                                   FontWeight="SemiBold" FontSize="12"
-                                   Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                                   FontSize="13" TextWrapping="Wrap" MaxLines="3"
+                                   Margin="0,6,0,0"/>
 
-                        <!-- Row 2: Data JSON (collapsed by default, expandable) -->
-                        <TextBlock Grid.Row="2" Text="{Binding DataJson}" TextWrapping="Wrap"
-                                   MaxLines="6" FontFamily="Consolas" FontSize="11"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Margin="0,4,0,0" IsTextSelectionEnabled="True"/>
+                        <!-- Row 2: Expandable detail (hidden by default) -->
+                        <Grid Grid.Row="2" Visibility="Collapsed" Margin="0,8,0,0">
+                            <!-- Assistant: full text, same formatting as summary -->
+                            <TextBlock TextWrapping="Wrap" FontSize="13"
+                                       IsTextSelectionEnabled="True" Visibility="Collapsed"/>
+
+                            <!-- Non-assistant: RunId + JSON -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding RunId}"
+                                           FontSize="11" FontFamily="Consolas"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Text="{Binding DataJson}" TextWrapping="Wrap"
+                                           FontFamily="Consolas" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           IsTextSelectionEnabled="True"/>
+                            </StackPanel>
+                        </Grid>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
