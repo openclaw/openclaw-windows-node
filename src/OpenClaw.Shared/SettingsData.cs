@@ -32,6 +32,8 @@ public class SettingsData
     public bool NodeCanvasEnabled { get; set; } = true;
     public bool NodeScreenEnabled { get; set; } = true;
     public bool NodeCameraEnabled { get; set; } = true;
+    public bool ScreenRecordingConsentGiven { get; set; } = false;
+    public bool CameraRecordingConsentGiven { get; set; } = false;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
     public bool NodeSttEnabled { get; set; } = false;

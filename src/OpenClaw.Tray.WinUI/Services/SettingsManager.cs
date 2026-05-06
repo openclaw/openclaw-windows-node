@@ -64,6 +64,8 @@ public class SettingsManager
     public bool NodeCanvasEnabled { get; set; } = true;
     public bool NodeScreenEnabled { get; set; } = true;
     public bool NodeCameraEnabled { get; set; } = true;
+    public bool ScreenRecordingConsentGiven { get; set; } = false;
+    public bool CameraRecordingConsentGiven { get; set; } = false;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
     public bool NodeSttEnabled { get; set; } = false;
@@ -157,6 +159,8 @@ public class SettingsManager
                     NodeCanvasEnabled = loaded.NodeCanvasEnabled;
                     NodeScreenEnabled = loaded.NodeScreenEnabled;
                     NodeCameraEnabled = loaded.NodeCameraEnabled;
+                    ScreenRecordingConsentGiven = loaded.ScreenRecordingConsentGiven;
+                    CameraRecordingConsentGiven = loaded.CameraRecordingConsentGiven;
                     NodeLocationEnabled = loaded.NodeLocationEnabled;
                     NodeBrowserProxyEnabled = loaded.NodeBrowserProxyEnabled;
                     NodeSttEnabled = loaded.NodeSttEnabled;
@@ -240,6 +244,8 @@ public class SettingsManager
                 NodeCanvasEnabled = NodeCanvasEnabled,
                 NodeScreenEnabled = NodeScreenEnabled,
                 NodeCameraEnabled = NodeCameraEnabled,
+                ScreenRecordingConsentGiven = ScreenRecordingConsentGiven,
+                CameraRecordingConsentGiven = CameraRecordingConsentGiven,
                 NodeLocationEnabled = NodeLocationEnabled,
                 NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
                 NodeSttEnabled = NodeSttEnabled,

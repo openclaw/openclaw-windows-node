@@ -722,6 +722,33 @@
     <value>攝影機錄製片段已傳送給代理</value>
   </data>
 
+  <!-- ==================== Recording Consent Dialog ==================== -->
+
+  <data name="RecordingConsent_WindowTitle" xml:space="preserve">
+    <value>OpenClaw · 權限請求</value>
+  </data>
+  <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
+    <value>允許螢幕錄製？</value>
+  </data>
+  <data name="RecordingConsent_CameraTitle" xml:space="preserve">
+    <value>允許攝影機錄製？</value>
+  </data>
+  <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
+    <value>代理正在請求錄製您的螢幕。這將從您的顯示器擷取視訊並傳送給代理。</value>
+  </data>
+  <data name="RecordingConsent_CameraDescription" xml:space="preserve">
+    <value>代理正在請求從您的攝影機錄製。這將從您的網路攝影機擷取視訊並傳送給代理。</value>
+  </data>
+  <data name="RecordingConsent_Privacy" xml:space="preserve">
+    <value>您可以稍後在設定中變更此項。</value>
+  </data>
+  <data name="RecordingConsent_Allow" xml:space="preserve">
+    <value>允許錄製</value>
+  </data>
+  <data name="RecordingConsent_Deny" xml:space="preserve">
+    <value>拒絕</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ 新功能: 串流活動</value>

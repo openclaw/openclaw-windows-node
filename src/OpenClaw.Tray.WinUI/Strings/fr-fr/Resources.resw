@@ -722,6 +722,33 @@ Utilisez l'une de ces options :
     <value>Le clip caméra a été envoyé à l'agent</value>
   </data>
 
+  <!-- ==================== Recording Consent Dialog ==================== -->
+
+  <data name="RecordingConsent_WindowTitle" xml:space="preserve">
+    <value>OpenClaw · Demande d'autorisation</value>
+  </data>
+  <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
+    <value>Autoriser l'enregistrement d'écran ?</value>
+  </data>
+  <data name="RecordingConsent_CameraTitle" xml:space="preserve">
+    <value>Autoriser l'enregistrement de la caméra ?</value>
+  </data>
+  <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
+    <value>Un agent demande d'enregistrer votre écran. Cela capturera la vidéo de votre affichage et l'enverra à l'agent.</value>
+  </data>
+  <data name="RecordingConsent_CameraDescription" xml:space="preserve">
+    <value>Un agent demande d'enregistrer depuis votre caméra. Cela capturera la vidéo de votre webcam et l'enverra à l'agent.</value>
+  </data>
+  <data name="RecordingConsent_Privacy" xml:space="preserve">
+    <value>Vous pouvez modifier cela ultérieurement dans les Paramètres.</value>
+  </data>
+  <data name="RecordingConsent_Allow" xml:space="preserve">
+    <value>Autoriser l'enregistrement</value>
+  </data>
+  <data name="RecordingConsent_Deny" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nouveau: Fil d'activité</value>

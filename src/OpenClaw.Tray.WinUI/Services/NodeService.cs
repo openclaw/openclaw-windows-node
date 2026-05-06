@@ -1228,6 +1228,8 @@ public sealed class NodeService : IDisposable
             throw new InvalidOperationException("Screen recording service not available");
         }
 
+        await EnsureRecordingConsentAsync(RecordingType.Screen);
+
         SetRecordingState(RecordingType.Screen, true, args.DurationMs);
         try
         {
@@ -1295,7 +1297,9 @@ public sealed class NodeService : IDisposable
         {
             throw new InvalidOperationException("Camera capture service not available");
         }
-        
+
+        await EnsureRecordingConsentAsync(RecordingType.Camera);
+
         SetRecordingState(RecordingType.Camera, true, args.DurationMs);
         try
         {
@@ -1476,6 +1480,50 @@ public sealed class NodeService : IDisposable
             IsActive = isActive,
             DurationMs = durationMs
         });
+    }
+
+    private async Task EnsureRecordingConsentAsync(RecordingType type)
+    {
+        var hasConsent = type == RecordingType.Screen
+            ? _settings?.ScreenRecordingConsentGiven == true
+            : _settings?.CameraRecordingConsentGiven == true;
+        if (hasConsent) return;
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!_dispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                var dialog = new Dialogs.RecordingConsentDialog(type);
+                var consented = await dialog.ShowAsync();
+
+                if (consented && _settings != null)
+                {
+                    if (type == RecordingType.Screen)
+                        _settings.ScreenRecordingConsentGiven = true;
+                    else
+                        _settings.CameraRecordingConsentGiven = true;
+                    _settings.Save();
+                }
+
+                tcs.TrySetResult(consented);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"[RecordingConsent] Dialog error: {ex.Message}");
+                tcs.TrySetResult(false);
+            }
+        }))
+        {
+            throw new InvalidOperationException("Recording denied: unable to show consent prompt");
+        }
+
+        var consented = await tcs.Task;
+        if (!consented)
+        {
+            throw new InvalidOperationException("Recording denied: user has not given consent");
+        }
     }
 
     private static void ShowToast(string titleKey, string detailKey)

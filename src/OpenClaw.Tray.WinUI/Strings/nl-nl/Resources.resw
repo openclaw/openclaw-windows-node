@@ -722,6 +722,33 @@ Gebruik een van deze opties:
     <value>Cameraclip is naar de agent verzonden</value>
   </data>
 
+  <!-- ==================== Recording Consent Dialog ==================== -->
+
+  <data name="RecordingConsent_WindowTitle" xml:space="preserve">
+    <value>OpenClaw · Toestemmingsverzoek</value>
+  </data>
+  <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
+    <value>Schermopname toestaan?</value>
+  </data>
+  <data name="RecordingConsent_CameraTitle" xml:space="preserve">
+    <value>Camera-opname toestaan?</value>
+  </data>
+  <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
+    <value>Een agent vraagt om uw scherm op te nemen. Dit zal video van uw beeldscherm vastleggen en naar de agent sturen.</value>
+  </data>
+  <data name="RecordingConsent_CameraDescription" xml:space="preserve">
+    <value>Een agent vraagt om op te nemen vanaf uw camera. Dit zal video van uw webcam vastleggen en naar de agent sturen.</value>
+  </data>
+  <data name="RecordingConsent_Privacy" xml:space="preserve">
+    <value>U kunt dit later wijzigen in Instellingen.</value>
+  </data>
+  <data name="RecordingConsent_Allow" xml:space="preserve">
+    <value>Opname toestaan</value>
+  </data>
+  <data name="RecordingConsent_Deny" xml:space="preserve">
+    <value>Weigeren</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nieuw: Activiteitenstroom</value>

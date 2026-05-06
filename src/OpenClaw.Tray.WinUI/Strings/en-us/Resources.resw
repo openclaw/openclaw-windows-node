@@ -722,6 +722,33 @@ Use one of these options:
     <value>Camera clip has been sent to the agent</value>
   </data>
 
+  <!-- ==================== Recording Consent Dialog ==================== -->
+
+  <data name="RecordingConsent_WindowTitle" xml:space="preserve">
+    <value>OpenClaw · Permission Request</value>
+  </data>
+  <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
+    <value>Allow screen recording?</value>
+  </data>
+  <data name="RecordingConsent_CameraTitle" xml:space="preserve">
+    <value>Allow camera recording?</value>
+  </data>
+  <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
+    <value>An agent is requesting to record your screen. This will capture video from your display and send it to the agent.</value>
+  </data>
+  <data name="RecordingConsent_CameraDescription" xml:space="preserve">
+    <value>An agent is requesting to record from your camera. This will capture video from your webcam and send it to the agent.</value>
+  </data>
+  <data name="RecordingConsent_Privacy" xml:space="preserve">
+    <value>You can change this later in Settings.</value>
+  </data>
+  <data name="RecordingConsent_Allow" xml:space="preserve">
+    <value>Allow recording</value>
+  </data>
+  <data name="RecordingConsent_Deny" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ New: Activity Stream</value>
