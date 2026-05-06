@@ -1874,16 +1874,22 @@ public partial class App : Application
         var source = args.Type == RecordingType.Screen ? "Screen" : "Camera";
         if (args.IsActive)
         {
+            var title = args.Type == RecordingType.Screen
+                ? LocalizationHelper.GetString("Activity_ScreenRecordingStarted")
+                : LocalizationHelper.GetString("Activity_CameraRecordingStarted");
             var duration = args.DurationMs > 0 ? $" ({args.DurationMs / 1000.0:0.#}s)" : "";
-            AddRecentActivity($"{source} recording started{duration}", category: "node",
+            AddRecentActivity($"{title}{duration}", category: "node",
                 icon: "🔴",
-                details: $"{source} recording requested by agent");
+                details: string.Format(LocalizationHelper.GetString("Activity_RecordingRequestedByAgent"), source));
         }
         else
         {
-            AddRecentActivity($"{source} recording complete", category: "node",
+            var title = args.Type == RecordingType.Screen
+                ? LocalizationHelper.GetString("Activity_ScreenRecordingComplete")
+                : LocalizationHelper.GetString("Activity_CameraRecordingComplete");
+            AddRecentActivity(title, category: "node",
                 icon: "✅",
-                details: $"{source} recording sent to agent");
+                details: string.Format(LocalizationHelper.GetString("Activity_RecordingSentToAgent"), source));
         }
     }
 

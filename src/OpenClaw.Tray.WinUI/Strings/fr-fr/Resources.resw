@@ -749,6 +749,54 @@ Utilisez l'une de ces options :
     <value>Refuser</value>
   </data>
 
+  <!-- ==================== Settings: Privacy ==================== -->
+
+  <data name="Settings_PrivacyHeader" xml:space="preserve">
+    <value>Confidentialité</value>
+  </data>
+  <data name="Settings_PrivacyDescription" xml:space="preserve">
+    <value>Contrôlez quelles fonctionnalités les agents peuvent utiliser sur cet appareil.</value>
+  </data>
+  <data name="Settings_AllowScreenRecording" xml:space="preserve">
+    <value>Autoriser l'enregistrement d'écran</value>
+  </data>
+  <data name="Settings_AllowCameraRecording" xml:space="preserve">
+    <value>Autoriser l'enregistrement caméra</value>
+  </data>
+  <data name="SettingsPrivacyHeader.Text" xml:space="preserve">
+    <value>Confidentialité</value>
+  </data>
+  <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
+    <value>Contrôlez quelles fonctionnalités les agents peuvent utiliser sur cet appareil.</value>
+  </data>
+  <data name="ScreenRecordingToggle.Header" xml:space="preserve">
+    <value>Autoriser l'enregistrement d'écran</value>
+  </data>
+  <data name="CameraRecordingToggle.Header" xml:space="preserve">
+    <value>Autoriser l'enregistrement caméra</value>
+  </data>
+
+  <!-- ==================== Activity Stream: Recording ==================== -->
+
+  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
+    <value>Enregistrement d'écran démarré</value>
+  </data>
+  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
+    <value>Enregistrement d'écran terminé</value>
+  </data>
+  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
+    <value>Enregistrement caméra démarré</value>
+  </data>
+  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
+    <value>Enregistrement caméra terminé</value>
+  </data>
+  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
+    <value>Enregistrement {0} demandé par l'agent</value>
+  </data>
+  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
+    <value>Enregistrement {0} envoyé à l'agent</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nouveau: Fil d'activité</value>

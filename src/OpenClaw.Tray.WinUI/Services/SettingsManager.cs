@@ -26,6 +26,9 @@ public class SettingsManager
     public static string SettingsDirectoryPath => DefaultSettingsDirectory;
     public static string SettingsPath => DefaultSettingsFilePath;
 
+    /// <summary>Raised after settings are persisted to disk.</summary>
+    public event EventHandler? Saved;
+
     // Connection
     public string GatewayUrl { get; set; } = "ws://localhost:18789";
     public string Token { get; set; } = "";
@@ -277,6 +280,7 @@ public class SettingsManager
             File.WriteAllText(_settingsFilePath, json);
             
             Logger.Info("Settings saved");
+            Saved?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {

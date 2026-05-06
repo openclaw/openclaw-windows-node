@@ -20,6 +20,14 @@ public sealed class RecordingConsentDialog : WindowEx
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+
     private readonly TaskCompletionSource<bool> _tcs = new();
     private bool _consented;
 
@@ -141,8 +149,7 @@ public sealed class RecordingConsentDialog : WindowEx
         var allowButton = new Button
         {
             Content = LocalizationHelper.GetString("RecordingConsent_Allow"),
-            Background = new SolidColorBrush(new global::Windows.UI.Color { A = 255, R = 0, G = 102, B = 204 }),
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"]
         };
         allowButton.Click += (s, e) =>
         {
@@ -174,7 +181,12 @@ public sealed class RecordingConsentDialog : WindowEx
         {
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd != IntPtr.Zero)
+            {
+                // Briefly set topmost to guarantee visibility, then remove topmost flag
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
                 SetForegroundWindow(hwnd);
+            }
         }
         catch { /* best-effort */ }
 
