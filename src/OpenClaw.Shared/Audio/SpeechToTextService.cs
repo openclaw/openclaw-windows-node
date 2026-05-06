@@ -63,8 +63,14 @@ public sealed class SpeechToTextService : IDisposable
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            // Whisper.net's WithLanguage expects either "auto" or a 2-letter
+            // ISO 639-1 code. The capability validator accepts the broader
+            // BCP-47 shape ("en-US", "zh-Hans-CN") because that's what the
+            // public docs advertise; normalize down here so Whisper actually
+            // sees something it understands.
+            var whisperLang = NormalizeForWhisper(language);
             var builder = _factory.CreateBuilder()
-                .WithLanguage(language == "auto" ? "auto" : language)
+                .WithLanguage(whisperLang)
                 .WithThreads(Math.Max(1, Environment.ProcessorCount / 2));
 
             using var processor = builder.Build();
@@ -82,7 +88,7 @@ public sealed class SpeechToTextService : IDisposable
                         Text = text,
                         Start = segment.Start,
                         End = segment.End,
-                        Language = language
+                        Language = whisperLang
                     });
                 }
             }
@@ -140,6 +146,32 @@ public sealed class SpeechToTextService : IDisposable
         writer.Flush();
         ms.Position = 0;
         return ms;
+    }
+
+    /// <summary>
+    /// Reduce a BCP-47 tag (e.g. "en-US", "zh-Hans-CN") to the 2-letter
+    /// language subtag that Whisper.net's WithLanguage call expects.
+    /// "auto" passes through unchanged. Returns "auto" for nulls/whitespace
+    /// or values that don't begin with at least 2 ASCII letters.
+    /// </summary>
+    internal static string NormalizeForWhisper(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language)) return "auto";
+        var trimmed = language.Trim();
+        if (string.Equals(trimmed, "auto", StringComparison.OrdinalIgnoreCase)) return "auto";
+
+        // Take everything up to the first '-' (the primary subtag) and lowercase.
+        var dash = trimmed.IndexOf('-');
+        var primary = (dash >= 0 ? trimmed[..dash] : trimmed).ToLowerInvariant();
+
+        // Whisper expects 2-letter ISO 639-1. If the caller handed us a
+        // 3-letter ISO 639-3 tag (no good cross-walk without a table) or
+        // garbage, fall back to auto-detection rather than silently
+        // sending an invalid value.
+        if (primary.Length != 2 || primary[0] is < 'a' or > 'z' || primary[1] is < 'a' or > 'z')
+            return "auto";
+
+        return primary;
     }
 
     public void Dispose()

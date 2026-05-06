@@ -41,6 +41,16 @@ public sealed class AudioPipeline : IAsyncDisposable
     private AudioPipelineState _state = AudioPipelineState.Stopped;
     private CancellationTokenSource? _cts;
 
+    // Backpressure: cap how many transcription Task.Run callbacks may be
+    // outstanding at once. Each holds its own copy of the audio samples
+    // for an entire silence-bounded utterance, so an unbounded queue
+    // means unbounded RAM if Whisper falls behind. When we hit the cap
+    // we drop the *new* segment with a diagnostic instead of queueing,
+    // because piling up old utterances behind a stuck Whisper is a worse
+    // UX than the user noticing one missed segment.
+    private int _inFlightTranscriptions;
+    private const int MaxConcurrentTranscriptions = 2;
+
     /// <summary>Fired when a single Whisper segment has been transcribed.
     /// Multiple of these may fire per silence-bounded utterance — useful
     /// for streaming bubble updates. Consumers that want a complete
@@ -149,19 +159,29 @@ public sealed class AudioPipeline : IAsyncDisposable
         if (_state == AudioPipelineState.Stopped)
             return;
 
-        _cts?.Cancel();
-
+        // Order matters here. Previously we cancelled `_cts` first and THEN
+        // tried to flush the speech buffer — but the flush passed `_cts.Token`
+        // straight into Whisper.net, which honored the cancel and dropped the
+        // final utterance. Now:
+        //
+        //   1. Stop capturing new audio so the buffer doesn't grow further.
+        //   2. Flush any buffered speech using a fresh (non-cancelled) token
+        //      so the last utterance actually reaches Whisper.
+        //   3. Cancel `_cts` to stop background transcription tasks that
+        //      are in flight from earlier segments.
+        //   4. Tear down capture resources.
         if (_capture != null)
         {
             try { _capture.StopRecording(); }
             catch (Exception ex) { _logger.Error("Error stopping capture", ex); }
         }
 
-        // If there's buffered speech, transcribe it before stopping
         if (_speechBuffer.Count > 0 && _stt.IsModelLoaded)
         {
             await FlushSpeechBufferAsync();
         }
+
+        _cts?.Cancel();
 
         CleanupCapture();
         SetState(AudioPipelineState.Stopped);
@@ -278,18 +298,33 @@ public sealed class AudioPipeline : IAsyncDisposable
                     {
                         try { DiagnosticMessage?.Invoke($"Transcribing {durationSec:F1}s of speech..."); } catch { }
 
-                        _ = Task.Run(async () =>
+                        // Bounded in-flight count. If Whisper is stuck or
+                        // slow, dropping a segment is preferable to letting
+                        // a queue of stale utterances arrive minutes later.
+                        if (Interlocked.Increment(ref _inFlightTranscriptions) > MaxConcurrentTranscriptions)
                         {
-                            try
+                            Interlocked.Decrement(ref _inFlightTranscriptions);
+                            try { DiagnosticMessage?.Invoke("⚠️ Transcription backlog — segment dropped"); } catch { }
+                        }
+                        else
+                        {
+                            _ = Task.Run(async () =>
                             {
-                                await TranscribeSamplesAsync(samples);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Error("Transcription task failed", ex);
-                                try { DiagnosticMessage?.Invoke($"⚠️ Error: {ex.Message}"); } catch { }
-                            }
-                        });
+                                try
+                                {
+                                    await TranscribeSamplesAsync(samples);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.Error("Transcription task failed", ex);
+                                    try { DiagnosticMessage?.Invoke($"⚠️ Error: {ex.Message}"); } catch { }
+                                }
+                                finally
+                                {
+                                    Interlocked.Decrement(ref _inFlightTranscriptions);
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -303,7 +338,7 @@ public sealed class AudioPipeline : IAsyncDisposable
         }
     }
 
-    private async Task TranscribeSamplesAsync(float[] samples)
+    private async Task TranscribeSamplesAsync(float[] samples, CancellationToken? overrideToken = null)
     {
         if (!_stt.IsModelLoaded || samples.Length == 0)
         {
@@ -321,10 +356,11 @@ public sealed class AudioPipeline : IAsyncDisposable
         SetState(AudioPipelineState.Processing);
         try
         {
-            var results = await _stt.TranscribeAsync(
-                samples,
-                _options.Language,
-                _cts?.Token ?? CancellationToken.None);
+            // overrideToken is used by FlushSpeechBufferAsync during teardown
+            // so the final utterance isn't dropped when the pipeline cancel
+            // token is about to fire.
+            var token = overrideToken ?? _cts?.Token ?? CancellationToken.None;
+            var results = await _stt.TranscribeAsync(samples, _options.Language, token);
 
             if (results.Count == 0)
             {
@@ -381,7 +417,11 @@ public sealed class AudioPipeline : IAsyncDisposable
 
         try
         {
-            await TranscribeSamplesAsync(samples);
+            // Pass CancellationToken.None — the flush is the last chance
+            // to transcribe the user's final utterance during teardown,
+            // so it must not be killable by the pipeline's own cancel
+            // token (which StopAsync is about to fire).
+            await TranscribeSamplesAsync(samples, CancellationToken.None);
         }
         catch (Exception ex)
         {

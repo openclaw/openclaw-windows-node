@@ -315,17 +315,36 @@ public sealed class VoiceService : IAsyncDisposable
         {
             await pipeline.StartAsync(options, linkedCts.Token);
 
-            using var reg = linkedCts.Token.Register(() =>
+            // Wait for either an utterance or timeout/cancellation.
+            // We don't throw immediately on timeout — pipeline.StopAsync's
+            // flush path may still produce an UtteranceTranscribed for
+            // speech that was buffered when the timer fired. Only after
+            // giving the flush a brief window do we report timeout.
+            var sentinel = new TaskCompletionSource<bool>();
+            using (linkedCts.Token.Register(() => sentinel.TrySetResult(true)))
             {
-                // Timeout / external cancellation with no completed utterance.
-                tcs.TrySetException(new TimeoutException("No speech detected within timeout"));
-            });
+                var winner = await Task.WhenAny(tcs.Task, sentinel.Task).ConfigureAwait(false);
+                if (winner == tcs.Task)
+                {
+                    return await tcs.Task.ConfigureAwait(false);
+                }
+            }
 
-            return await tcs.Task;
+            // Timeout / external cancellation. Stop the pipeline (which
+            // flushes any buffered speech) and give UtteranceTranscribed
+            // up to 2 s to fire before reporting timeout.
+            try { await pipeline.StopAsync().ConfigureAwait(false); } catch { /* swallow */ }
+            await Task.WhenAny(tcs.Task, Task.Delay(2000)).ConfigureAwait(false);
+            if (tcs.Task.IsCompletedSuccessfully)
+            {
+                return await tcs.Task.ConfigureAwait(false);
+            }
+
+            throw new TimeoutException("No speech detected within timeout");
         }
         finally
         {
-            await pipeline.StopAsync();
+            try { await pipeline.StopAsync(); } catch { /* idempotent — already stopped above on timeout */ }
             await pipeline.DisposeAsync();
         }
     }
