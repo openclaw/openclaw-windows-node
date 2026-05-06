@@ -31,21 +31,8 @@ public sealed class QuickSendDialog : WindowEx
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-    [DllImport("user32.dll")]
-    private static extern bool SetWindowPos(
-        IntPtr hWnd,
-        IntPtr hWndInsertAfter,
-        int X,
-        int Y,
-        int cx,
-        int cy,
-        uint uFlags);
-
-    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const int TitleBarHeight = 48;
     private const int SW_SHOWNORMAL = 1;
-    private const uint SWP_NOMOVE = 0x0002;
-    private const uint SWP_NOSIZE = 0x0001;
-    private const uint SWP_SHOWWINDOW = 0x0040;
 
     public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = null)
     {
@@ -53,7 +40,8 @@ public sealed class QuickSendDialog : WindowEx
         
         // Window setup
         Title = LocalizationHelper.GetString("WindowTitle_QuickSend");
-        this.SetWindowSize(420, 260);
+        ExtendsContentIntoTitleBar = true;
+        this.SetWindowSize(420, 260 + TitleBarHeight);
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
         
@@ -61,10 +49,6 @@ public sealed class QuickSendDialog : WindowEx
         // This avoids focus/activation oddities on Windows 10 for hotkey-launched windows.
         BackdropHelper.TrySetAcrylicBackdrop((Microsoft.UI.Xaml.Window)this);
 
-        // Hotkey-launched windows can fail to foreground on Windows 10 due to
-        // foreground activation restrictions. Ensure the window is topmost.
-        this.IsAlwaysOnTop = true;
-        
         // Build UI programmatically (simple dialog)
         var root = new Grid
         {
@@ -130,18 +114,44 @@ public sealed class QuickSendDialog : WindowEx
         Grid.SetRow(buttonPanel, 3);
         root.Children.Add(buttonPanel);
 
-        Content = new Border
+        var body = new Border
         {
             Padding = new Thickness(24),
             Child = root
         };
 
-        // Focus the text box when shown
-        Activated += (s, e) =>
+        var outerGrid = new Grid();
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TitleBarHeight) });
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var titleBar = new Grid { Padding = new Thickness(16, 0, 140, 0) };
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
+        titleStack.Children.Add(new TextBlock
         {
-            TryBringToFront();
-            RequestInputFocus();
-        };
+            Text = "🦞",
+            FontSize = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        });
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = LocalizationHelper.GetString("WindowTitle_QuickSend"),
+            FontSize = 13,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        titleBar.Children.Add(titleStack);
+        Grid.SetRow(titleBar, 0);
+        outerGrid.Children.Add(titleBar);
+
+        Grid.SetRow(body, 1);
+        outerGrid.Children.Add(body);
+
+        Content = outerGrid;
+        SetTitleBar(titleBar);
+
+        // Focus the text box when shown
+        Activated += OnActivated;
 
         Closed += (s, e) => Logger.Info("[QuickSend] Dialog closed");
 
@@ -155,15 +165,25 @@ public sealed class QuickSendDialog : WindowEx
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd == IntPtr.Zero) return;
 
-            // Make sure it's actually shown and promoted.
+            // Make sure it's shown and activated.
             ShowWindow(hwnd, SW_SHOWNORMAL);
-            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             SetForegroundWindow(hwnd);
         }
         catch (Exception ex)
         {
             Logger.Warn($"QuickSend bring-to-front failed: {ex.Message}");
         }
+    }
+
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            Close();
+            return;
+        }
+
+        RequestInputFocus();
     }
 
     private async void OnKeyDown(object sender, KeyRoutedEventArgs e)
@@ -191,7 +211,7 @@ public sealed class QuickSendDialog : WindowEx
 
         _errorDetailsTextBox.Visibility = Visibility.Collapsed;
         _errorDetailsTextBox.Text = string.Empty;
-        this.SetWindowSize(420, 260);
+        this.SetWindowSize(420, 260 + TitleBarHeight);
 
         _isSending = true;
         _sendButton.IsEnabled = false;
@@ -257,7 +277,7 @@ public sealed class QuickSendDialog : WindowEx
         _errorDetailsTextBox.MinHeight = 140;
         _errorDetailsTextBox.Text = details;
         _errorDetailsTextBox.Visibility = Visibility.Visible;
-        this.SetWindowSize(520, 400);
+        this.SetWindowSize(520, 400 + TitleBarHeight);
 
         // Move focus to the details box so users can immediately select/copy text.
         _errorDetailsTextBox.Focus(FocusState.Programmatic);
@@ -269,7 +289,7 @@ public sealed class QuickSendDialog : WindowEx
         _errorDetailsTextBox.MinHeight = 80;
         _errorDetailsTextBox.Text = details;
         _errorDetailsTextBox.Visibility = Visibility.Visible;
-        this.SetWindowSize(500, 320);
+        this.SetWindowSize(500, 320 + TitleBarHeight);
     }
 
     private static bool TryExtractMissingScope(string? message, out string scope)
@@ -317,18 +337,6 @@ public sealed class QuickSendDialog : WindowEx
     private void RequestInputFocus()
     {
         QueueFocusMessageInput();
-        _ = RetryFocusMessageInputAsync();
-    }
-
-    private async Task RetryFocusMessageInputAsync()
-    {
-        var delaysMs = new[] { 60, 160, 320 };
-        foreach (var delay in delaysMs)
-        {
-            await Task.Delay(delay);
-            TryBringToFront();
-            QueueFocusMessageInput();
-        }
     }
 
     private async Task<bool> EnsureGatewayConnectedAsync(int timeoutMs = 3000)
