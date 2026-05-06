@@ -274,4 +274,96 @@ public class WizardFlowControllerTests
         Assert.Equal(1, starts);
         Assert.True(WizardFlowController.IsStartPayload(payload));
     }
+
+    // ── TryResumeWithSessionAsync tests ──────────────────────────────────────
+
+    [Fact]
+    public async Task TryResumeWithSessionAsync_WhenSessionAlive_CallsNextNotStart()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = true };
+        var nextCalled = false;
+        var startCalled = false;
+        using var doc = JsonDocument.Parse("{\"done\":false,\"step\":{\"id\":\"ch-step\",\"type\":\"select\"}}");
+        var channelsPayload = doc.RootElement.Clone();
+
+        var (resumed, returnedPayload) = await WizardFlowController.TryResumeWithSessionAsync(
+            "session-alive",
+            gateway,
+            async sid => { nextCalled = true; return channelsPayload; },
+            async () => { startCalled = true; return default; });
+
+        Assert.True(resumed);
+        Assert.True(nextCalled);
+        Assert.False(startCalled);
+        Assert.Equal("ch-step", returnedPayload.GetProperty("step").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task TryResumeWithSessionAsync_WhenSessionNotFound_FallsBackToStart()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = true };
+        var startPayload = Payload("new-session");
+
+        var (resumed, returnedPayload) = await WizardFlowController.TryResumeWithSessionAsync(
+            "session-gone",
+            gateway,
+            async sid => throw new InvalidOperationException("wizard not found"),
+            async () => startPayload);
+
+        Assert.False(resumed);
+        Assert.Equal("new-session", returnedPayload.GetProperty("sessionId").GetString());
+    }
+
+    [Fact]
+    public async Task TryResumeWithSessionAsync_WhenNoSessionId_FallsBackToStart()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = true };
+        var startPayload = Payload("s1");
+        var nextCalled = false;
+
+        var (resumed, _) = await WizardFlowController.TryResumeWithSessionAsync(
+            null,
+            gateway,
+            async sid => { nextCalled = true; return default; },
+            async () => startPayload);
+
+        Assert.False(resumed);
+        Assert.False(nextCalled);
+    }
+
+    [Fact]
+    public async Task TryResumeWithSessionAsync_WhenTimeoutException_FallsBackToStart()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = true };
+        var startPayload = Payload("s1");
+        var startCalled = false;
+
+        var (resumed, _) = await WizardFlowController.TryResumeWithSessionAsync(
+            "session-timeout",
+            gateway,
+            async sid => throw new TimeoutException("resume timed out"),
+            async () => { startCalled = true; return startPayload; });
+
+        Assert.False(resumed);
+        Assert.True(startCalled);
+    }
+
+    [Fact]
+    public async Task TryResumeWithSessionAsync_WhenDisconnected_FallsBackToStart()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = false };
+        var startPayload = Payload("s1");
+        var nextCalled = false;
+        var startCalled = false;
+
+        var (resumed, _) = await WizardFlowController.TryResumeWithSessionAsync(
+            "session-alive",
+            gateway,
+            async sid => { nextCalled = true; return default; },
+            async () => { startCalled = true; return startPayload; });
+
+        Assert.False(resumed);
+        Assert.False(nextCalled);
+        Assert.True(startCalled);
+    }
 }

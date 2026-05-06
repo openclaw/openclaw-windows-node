@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.Onboarding.Services;
 
@@ -151,5 +152,40 @@ public static class WizardFlowController
         {
             return WizardRecoveryResult.Failed(ex);
         }
+    }
+
+    /// <summary>
+    /// Attempts to resume a live wizard session via wizard.next (no answer) before
+    /// falling back to wizard.start. Caller must NOT clear WizardSessionId before calling.
+    /// </summary>
+    public static async Task<(bool Resumed, JsonElement Payload)> TryResumeWithSessionAsync(
+        string? sessionId,
+        IWizardGateway? client,
+        Func<string, Task<JsonElement>> sendWizardNextNoAnswerAsync,
+        Func<Task<JsonElement>> fallbackStartWizardAsync)
+    {
+        if (!string.IsNullOrEmpty(sessionId) && client?.IsConnectedToGateway == true)
+        {
+            try
+            {
+                Logger.Info($"[WizardFlow] TryResume: wizard.next(no answer) sessionId={sessionId}");
+                var stepPayload = await sendWizardNextNoAnswerAsync(sessionId);
+                Logger.Info("[WizardFlow] TryResume: resume succeeded");
+                return (true, stepPayload);
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("wizard not found", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("wizard not running", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("session not found", StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Warn($"[WizardFlow] TryResume: session not found ({ex.Message}) → fallback wizard.start");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.Warn($"[WizardFlow] TryResume: unexpected error ({ex.GetType().Name}: {ex.Message}) → fallback wizard.start");
+            }
+        }
+        var startPayload = await fallbackStartWizardAsync();
+        return (false, startPayload);
     }
 }

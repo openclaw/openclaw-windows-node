@@ -37,6 +37,9 @@ public sealed class WizardPage : Component<OnboardingState>
         var (submitting, setSubmitting) = UseState(false);
         var (errorPrimaryAction, setErrorPrimaryAction) = UseState("retry");
         var (recoveryGuard, _) = UseState(new WizardRecoveryGuardState(), threadSafe: true);
+        // Tracks the answer last submitted to wizard.next so we can restore it on Scenario B resume
+        // (connection dropped after user clicked Continue but before gateway received the answer).
+        var (pendingSubmission, setPendingSubmission) = UseState<(string StepId, string AnswerValue)?>(null);
 
         void SaveState(string state, string? error = null)
         {
@@ -218,16 +221,19 @@ public sealed class WizardPage : Component<OnboardingState>
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("already running", StringComparison.OrdinalIgnoreCase))
             {
-                Logger.Info("[Wizard] Session already running, fetching current status...");
+                Logger.Warn("[Wizard] wizard.start: session already running, attempting wizard.next resume");
                 try
                 {
-                    var response = await client.SendWizardRequestAsync("wizard.status");
+                    var existingSessionId = Props.WizardSessionId;
+                    if (string.IsNullOrEmpty(existingSessionId))
+                        throw new InvalidOperationException("no saved sessionId for wizard.next resume");
+                    var response = await client.SendWizardRequestAsync("wizard.next", new { sessionId = existingSessionId });
                     ApplyStep(response);
                     return true;
                 }
                 catch
                 {
-                    Logger.Warn("[Wizard] Could not resume existing wizard session, skipping");
+                    Logger.Warn("[Wizard] wizard.next resume failed after 'already running' — falling offline");
                     setWizardState("offline");
                     SaveState("offline");
                     return false;
@@ -277,20 +283,53 @@ public sealed class WizardPage : Component<OnboardingState>
                 requestContext,
                 async () =>
                 {
-                    var previousSessionId = Props.WizardSessionId ?? "(none)";
-                    Logger.Warn($"[WizardDiag] Recovery enter: method=wizard.start params={{allowRestore:false}} sessionId={previousSessionId} ex={ex.GetType().Name} connected={client?.IsConnectedToGateway}");
-                    ClearWizardSessionState();
+                    var previousSessionId = Props.WizardSessionId;
+                    Logger.Warn($"[WizardDiag] Recovery enter: sessionId={previousSessionId} ex={ex.GetType().Name} connected={client?.IsConnectedToGateway}");
                     setWizardState("loading");
                     setErrorMsg("");
-                    var started = await StartWizardAsync(allowRestore: false);
-                    if (!started || !Props.WizardStepPayload.HasValue)
+
+                    var (resumed, payload) = await WizardFlowController.TryResumeWithSessionAsync(
+                        previousSessionId,
+                        wizardGateway,
+                        async sid => await client!.SendWizardRequestAsync("wizard.next", new { sessionId = sid }),
+                        async () =>
+                        {
+                            ClearWizardSessionState();
+                            var started = await StartWizardAsync(allowRestore: false);
+                            if (!started || !Props.WizardStepPayload.HasValue)
+                            {
+                                Logger.Warn($"[WizardDiag] Recovery exit: method=wizard.start result=failed sessionId={previousSessionId ?? "(none)"} newSessionId={Props.WizardSessionId ?? "(none)"}");
+                                throw new InvalidOperationException("wizard.start recovery failed");
+                            }
+                            Logger.Info($"[WizardDiag] Recovery exit: method=wizard.start result=recovered sessionId={previousSessionId ?? "(none)"} newSessionId={Props.WizardSessionId ?? "(none)"}");
+                            return Props.WizardStepPayload.Value;
+                        });
+
+                    if (resumed)
                     {
-                        Logger.Warn($"[WizardDiag] Recovery exit: method=wizard.start result=failed sessionId={previousSessionId} newSessionId={Props.WizardSessionId ?? "(none)"}");
-                        throw new InvalidOperationException("wizard.start recovery failed");
+                        Logger.Info($"[WizardDiag] Recovery exit: method=wizard.next result=resumed sessionId={previousSessionId ?? "(none)"}");
+                        // Scenario B: same step returned — restore the user's pending answer so they don't re-select
+                        if (pendingSubmission.HasValue &&
+                            payload.TryGetProperty("step", out var resumedStep) &&
+                            resumedStep.TryGetProperty("id", out var resumedId) &&
+                            resumedId.GetString() == pendingSubmission.Value.StepId)
+                        {
+                            ApplyStep(payload);
+                            setStepInput(pendingSubmission.Value.AnswerValue);
+                            Logger.Info($"[Wizard] Resume Scenario B: stepId={pendingSubmission.Value.StepId} answer restored");
+                        }
+                        else
+                        {
+                            ApplyStep(payload);
+                        }
+                    }
+                    else
+                    {
+                        ApplyStep(payload);
                     }
 
-                    Logger.Info($"[WizardDiag] Recovery exit: method=wizard.start result=recovered sessionId={previousSessionId} newSessionId={Props.WizardSessionId ?? "(none)"}");
-                    return Props.WizardStepPayload.Value;
+                    setPendingSubmission(null);
+                    return payload;
                 });
 
             if (result.Kind == WizardRecoveryKind.NotEligible)
@@ -396,11 +435,16 @@ public sealed class WizardPage : Component<OnboardingState>
                      stepMessage.Contains("OAuth", StringComparison.OrdinalIgnoreCase));
                 var timeoutMs = isAuthStep ? 300_000 : 30_000;
 
+                // Track the pending submission before sending (supports Scenario B resume if connection drops)
+                setPendingSubmission((stepId, stepInput));
+
                 var response = await client.SendWizardRequestAsync("wizard.next", new
                 {
                     sessionId = Props.WizardSessionId ?? "",
                     answer = new { stepId, value = answerValue }
                 }, timeoutMs: timeoutMs);
+
+                setPendingSubmission(null);
 
                 // Validate response before applying
                 if (response.ValueKind == JsonValueKind.Undefined || response.ValueKind == JsonValueKind.Null)
@@ -537,37 +581,13 @@ public sealed class WizardPage : Component<OnboardingState>
                 }
                 else if (stepType == "select" || stepType == "multiselect")
                 {
-                    // Read options directly from stored payload to avoid state timing issues
-                    var labels = new List<string>();
-                    var values = new List<string>();
-                    if (Props.WizardStepPayload.HasValue)
-                    {
-                        var p = Props.WizardStepPayload.Value;
-                        if (p.TryGetProperty("step", out var s) && s.TryGetProperty("options", out var opts) && opts.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var o in opts.EnumerateArray())
-                            {
-                                if (o.ValueKind == JsonValueKind.Object)
-                                {
-                                    var label = o.TryGetProperty("label", out var lp) ? lp.ToString() : "";
-                                    var value = o.TryGetProperty("value", out var vp) ? vp.ToString() : label;
-                                    var hint = o.TryGetProperty("hint", out var hp) ? hp.ToString() : "";
-                                    labels.Add(string.IsNullOrEmpty(hint) ? label : $"{label} — {hint}");
-                                    values.Add(value);
-                                }
-                                else
-                                {
-                                    labels.Add(o.ToString());
-                                    values.Add(o.ToString());
-                                }
-                            }
-                        }
-                    }
+                    // Use stable arrays set once by ApplyStep — same reference across re-renders prevents
+                    // WinUI3 ItemsSource churn (UpdateItemsSource → Select(-1) → selection flash).
+                    var labelsArr = optionLabels;
+                    var valuesArr = optionValues;
 
-                    if (labels.Count > 0)
+                    if (labelsArr.Length > 0)
                     {
-                        var labelsArr = labels.ToArray();
-                        var valuesArr = values.ToArray();
                         var selIdx = WizardStepSelection.SelectedIndex(stepInput, valuesArr);
                         disablePrimaryButton = WizardStepSelection.ShouldDisableContinue(stepType, stepInput, valuesArr);
                         inputArea = RadioButtons(labelsArr, selIdx >= 0 ? selIdx : -1,
