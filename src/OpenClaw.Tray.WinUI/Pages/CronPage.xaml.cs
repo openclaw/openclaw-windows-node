@@ -31,9 +31,20 @@ public sealed partial class CronPage : Page
 
     private void OnRunNowClick(object sender, RoutedEventArgs e)
     {
-        var jobId = (sender as Button)?.Tag as string;
+        var btn = sender as Button;
+        var jobId = btn?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
+        // Brief visual feedback
+        var origContent = btn!.Content;
+        btn.Content = "Triggered ✓";
+        btn.IsEnabled = false;
         _ = _hub.GatewayClient.RunCronJobAsync(jobId);
+        DispatcherQueue?.TryEnqueue(async () =>
+        {
+            await Task.Delay(1500);
+            btn.Content = origContent;
+            btn.IsEnabled = true;
+        });
     }
 
     private void OnRemoveClick(object sender, RoutedEventArgs e)
@@ -57,6 +68,308 @@ public sealed partial class CronPage : Page
             if (vm != null)
             {
                 _ = _hub.GatewayClient.UpdateCronJobAsync(new { jobId, patch = new { enabled = !vm.IsEnabled } });
+            }
+        }
+    }
+
+    // --- Job creation/edit form ---
+    private string? _editingJobId = null; // null = creating new, set = editing existing
+
+    private void OnNewJobClick(object sender, RoutedEventArgs e)
+    {
+        _editingJobId = null;
+        ResetForm();
+        FormTitle.Text = "New Job";
+        FormSaveButton.Content = "Create Job";
+        JobFormPanel.Visibility = Visibility.Visible;
+    }
+
+    private void OnEditJobClick(object sender, RoutedEventArgs e)
+    {
+        var jobId = (sender as Button)?.Tag as string;
+        if (string.IsNullOrEmpty(jobId)) return;
+        if (JobsList.ItemsSource is not List<CronJobViewModel> jobs) return;
+        var vm = jobs.Find(j => j.Id == jobId);
+        if (vm == null) return;
+
+        _editingJobId = jobId;
+        FormTitle.Text = "Edit Job";
+        FormSaveButton.Content = "Save Changes";
+
+        // Populate form fields from VM
+        FormName.Text = vm.Name;
+        FormMessage.Text = vm.Description;
+
+        // Schedule
+        var kind = vm.ScheduleKind;
+        FormScheduleKind.SelectedIndex = kind switch { "at" => 1, "cron" => 2, _ => 0 };
+        UpdateScheduleFieldVisibility(kind);
+
+        if (kind == "cron")
+        {
+            FormCronExpr.Text = vm.ScheduleExpr;
+            SelectComboByTag(FormTimezone, vm.ScheduleTz);
+            HighlightPreset(vm.ScheduleExpr);
+        }
+        else if (kind == "every")
+        {
+            // Decompose everyMs into value + unit
+            var ms = vm.ScheduleEveryMs;
+            if (ms >= 86400000 && ms % 86400000 == 0) { FormEveryValue.Text = (ms / 86400000).ToString(); FormEveryUnit.SelectedIndex = 2; }
+            else if (ms >= 3600000 && ms % 3600000 == 0) { FormEveryValue.Text = (ms / 3600000).ToString(); FormEveryUnit.SelectedIndex = 1; }
+            else { FormEveryValue.Text = (ms / 60000).ToString(); FormEveryUnit.SelectedIndex = 0; }
+        }
+        else if (kind == "at")
+        {
+            if (DateTimeOffset.TryParse(vm.ScheduleAt, out var dto))
+            {
+                FormAtDate.Date = dto;
+                FormAtTime.Time = dto.TimeOfDay;
+            }
+            FormDeleteAfterRun.IsChecked = vm.DeleteAfterRun;
+        }
+
+        // Delivery
+        var deliveryMode = vm.RawDeliveryMode;
+        FormDeliveryMode.SelectedIndex = deliveryMode == "announce" ? 1 : 0;
+        FormDeliveryChannel.Text = vm.RawDeliveryChannel;
+        DeliveryChannelPanel.Visibility = deliveryMode == "announce" ? Visibility.Visible : Visibility.Collapsed;
+
+        // Advanced
+        SelectComboByTag(FormSessionTarget, vm.SessionTarget);
+        SelectComboByTag(FormWakeMode, vm.WakeMode);
+
+        FormError.Visibility = Visibility.Collapsed;
+        JobFormPanel.Visibility = Visibility.Visible;
+    }
+
+    private void OnFormCancelClick(object sender, RoutedEventArgs e)
+    {
+        JobFormPanel.Visibility = Visibility.Collapsed;
+        _editingJobId = null;
+    }
+
+    private void OnFormSaveClick(object sender, RoutedEventArgs e)
+    {
+        // Validate
+        var name = FormName.Text?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            ShowFormError("Name is required.");
+            return;
+        }
+
+        var message = FormMessage.Text?.Trim();
+        if (string.IsNullOrEmpty(message))
+        {
+            ShowFormError("Prompt is required.");
+            return;
+        }
+
+        if (_hub?.GatewayClient == null)
+        {
+            ShowFormError("Not connected to gateway.");
+            return;
+        }
+
+        var kind = GetSelectedTag(FormScheduleKind) ?? "cron";
+
+        // Build schedule object (use dictionaries for reliable serialization)
+        object schedule;
+        if (kind == "cron")
+        {
+            var expr = FormCronExpr.Text?.Trim();
+            if (string.IsNullOrEmpty(expr))
+            {
+                ShowFormError("Cron expression is required.");
+                return;
+            }
+            var tz = GetSelectedTag(FormTimezone);
+            var sched = new Dictionary<string, object> { ["kind"] = "cron", ["expr"] = expr };
+            if (!string.IsNullOrEmpty(tz)) sched["tz"] = tz;
+            schedule = sched;
+        }
+        else if (kind == "every")
+        {
+            if (!int.TryParse(FormEveryValue.Text?.Trim(), out var everyVal) || everyVal <= 0)
+            {
+                ShowFormError("Enter a valid interval number.");
+                return;
+            }
+            var unitStr = GetSelectedTag(FormEveryUnit) ?? "60000";
+            var unitMs = long.Parse(unitStr);
+            var everyMs = (long)everyVal * unitMs;
+            schedule = new Dictionary<string, object> { ["kind"] = "every", ["everyMs"] = everyMs };
+        }
+        else // at
+        {
+            var date = FormAtDate.Date;
+            var time = FormAtTime.Time;
+            var dt = date.Date + time;
+            var isoAt = dt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            schedule = new Dictionary<string, object> { ["kind"] = "at", ["at"] = isoAt };
+        }
+
+        var deliveryMode = GetSelectedTag(FormDeliveryMode) ?? "none";
+        var deliveryChannel = FormDeliveryChannel.Text?.Trim();
+
+        var sessionTarget = GetSelectedTag(FormSessionTarget) ?? "isolated";
+        var wakeMode = GetSelectedTag(FormWakeMode) ?? "now";
+
+        if (_editingJobId != null)
+        {
+            // Update existing job — payload.kind depends on sessionTarget
+            var payloadKind = sessionTarget == "main" ? "systemEvent" : "agentTurn";
+            var payloadTextField = sessionTarget == "main" ? "text" : "message";
+            var patch = new Dictionary<string, object>
+            {
+                ["name"] = name,
+                ["schedule"] = schedule,
+                ["sessionTarget"] = sessionTarget,
+                ["wakeMode"] = wakeMode,
+                ["payload"] = new Dictionary<string, object> { ["kind"] = payloadKind, [payloadTextField] = message },
+                ["delivery"] = !string.IsNullOrEmpty(deliveryChannel) && deliveryMode == "announce"
+                    ? new Dictionary<string, object> { ["mode"] = deliveryMode, ["channel"] = deliveryChannel }
+                    : new Dictionary<string, object> { ["mode"] = deliveryMode }
+            };
+            if (kind == "at")
+                patch["deleteAfterRun"] = FormDeleteAfterRun.IsChecked == true;
+
+            var updatePayload = new Dictionary<string, object>
+            {
+                ["jobId"] = _editingJobId,
+                ["patch"] = patch
+            };
+            _ = _hub.GatewayClient.UpdateCronJobAsync(updatePayload);
+        }
+        else
+        {
+            // Create new job — payload.kind depends on sessionTarget
+            var payloadKind = sessionTarget == "main" ? "systemEvent" : "agentTurn";
+            var payloadTextField = sessionTarget == "main" ? "text" : "message";
+            var job = new Dictionary<string, object>
+            {
+                ["name"] = name,
+                ["enabled"] = true,
+                ["schedule"] = schedule,
+                ["sessionTarget"] = sessionTarget,
+                ["wakeMode"] = wakeMode,
+                ["payload"] = new Dictionary<string, object> { ["kind"] = payloadKind, [payloadTextField] = message },
+                ["delivery"] = !string.IsNullOrEmpty(deliveryChannel) && deliveryMode == "announce"
+                    ? new Dictionary<string, object> { ["mode"] = deliveryMode, ["channel"] = deliveryChannel }
+                    : new Dictionary<string, object> { ["mode"] = deliveryMode }
+            };
+            if (kind == "at")
+                job["deleteAfterRun"] = FormDeleteAfterRun.IsChecked == true;
+
+            _ = _hub.GatewayClient.AddCronJobAsync(job);
+        }
+
+        JobFormPanel.Visibility = Visibility.Collapsed;
+        _editingJobId = null;
+    }
+
+    private void OnScheduleKindChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var kind = GetSelectedTag(FormScheduleKind) ?? "cron";
+        UpdateScheduleFieldVisibility(kind);
+    }
+
+    private void UpdateScheduleFieldVisibility(string kind)
+    {
+        if (CronFields == null) return; // not yet loaded
+        CronFields.Visibility = kind == "cron" ? Visibility.Visible : Visibility.Collapsed;
+        EveryFields.Visibility = kind == "every" ? Visibility.Visible : Visibility.Collapsed;
+        AtFields.Visibility = kind == "at" ? Visibility.Visible : Visibility.Collapsed;
+        if (kind == "at")
+        {
+            var now = DateTimeOffset.Now;
+            FormAtDate.Date = now;
+            FormAtTime.Time = now.TimeOfDay;
+        }
+    }
+
+    private void OnPresetClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string expr)
+        {
+            FormCronExpr.Text = expr;
+            HighlightPreset(expr);
+        }
+    }
+
+    private void HighlightPreset(string? expr)
+    {
+        if (PresetGrid == null) return;
+        foreach (var child in PresetGrid.Items)
+        {
+            if (child is Button b)
+            {
+                var isMatch = b.Tag is string tag && tag == expr;
+                if (isMatch)
+                {
+                    if (Application.Current.Resources.TryGetValue("AccentButtonStyle", out var style) && style is Style s)
+                        b.Style = s;
+                    b.FontWeight = Microsoft.UI.Text.FontWeights.Bold;
+                }
+                else
+                {
+                    b.ClearValue(Button.StyleProperty);
+                    b.FontWeight = Microsoft.UI.Text.FontWeights.Normal;
+                }
+            }
+        }
+    }
+
+    private void OnDeliveryModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DeliveryChannelPanel == null) return;
+        var mode = GetSelectedTag(FormDeliveryMode);
+        DeliveryChannelPanel.Visibility = mode == "announce" ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ResetForm()
+    {
+        FormName.Text = "";
+        FormCronExpr.Text = "";
+        FormTimezone.SelectedIndex = -1;
+        FormEveryValue.Text = "30";
+        FormEveryUnit.SelectedIndex = 0; // Minutes
+        FormAtDate.Date = DateTimeOffset.Now;
+        FormAtTime.Time = DateTimeOffset.Now.TimeOfDay;
+        FormDeleteAfterRun.IsChecked = true;
+        FormMessage.Text = "";
+        FormDeliveryMode.SelectedIndex = 0;
+        FormDeliveryChannel.Text = "";
+        DeliveryChannelPanel.Visibility = Visibility.Collapsed;
+        FormSessionTarget.SelectedIndex = 0;
+        FormWakeMode.SelectedIndex = 0;
+        FormScheduleKind.SelectedIndex = 0; // "Every" is now index 0
+        HighlightPreset(null);
+        UpdateScheduleFieldVisibility("every");
+        FormError.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowFormError(string message)
+    {
+        FormError.Text = message;
+        FormError.Visibility = Visibility.Visible;
+    }
+
+    private static string? GetSelectedTag(ComboBox combo)
+    {
+        return (combo.SelectedItem as ComboBoxItem)?.Tag as string;
+    }
+
+    private static void SelectComboByTag(ComboBox combo, string? tag)
+    {
+        if (string.IsNullOrEmpty(tag)) return;
+        for (int i = 0; i < combo.Items.Count; i++)
+        {
+            if (combo.Items[i] is ComboBoxItem item && item.Tag as string == tag)
+            {
+                combo.SelectedIndex = i;
+                return;
             }
         }
     }
@@ -110,6 +423,16 @@ public sealed partial class CronPage : Page
                         "at" => FormatAtSchedule(schedEl, tz),
                         _ => kind
                     };
+
+                    // Raw schedule fields for editing
+                    vm.ScheduleKind = kind;
+                    vm.ScheduleTz = tz;
+                    if (kind == "cron" && schedEl.TryGetProperty("expr", out var exprEl))
+                        vm.ScheduleExpr = exprEl.GetString() ?? "";
+                    if (kind == "every" && schedEl.TryGetProperty("everyMs", out var evMsEl) && evMsEl.ValueKind == JsonValueKind.Number)
+                        vm.ScheduleEveryMs = evMsEl.GetInt64();
+                    if (kind == "at" && schedEl.TryGetProperty("at", out var atRawEl))
+                        vm.ScheduleAt = atRawEl.GetString() ?? "";
                 }
                 else
                 {
@@ -139,6 +462,8 @@ public sealed partial class CronPage : Page
             {
                 var mode = delEl.TryGetProperty("mode", out var modeEl) ? modeEl.GetString() ?? "" : "";
                 var channel = delEl.TryGetProperty("channel", out var chEl) ? chEl.GetString() ?? "" : "";
+                vm.RawDeliveryMode = mode;
+                vm.RawDeliveryChannel = channel;
                 if (!string.IsNullOrEmpty(mode) && mode != "none")
                 {
                     vm.DeliveryText = string.IsNullOrEmpty(channel) ? $"delivery: {mode}" : $"delivery: {mode} → {channel}";
@@ -146,12 +471,22 @@ public sealed partial class CronPage : Page
                 }
             }
 
-            // Description from payload message
+            // deleteAfterRun flag
+            if (item.TryGetProperty("deleteAfterRun", out var darEl))
+                vm.DeleteAfterRun = darEl.ValueKind == JsonValueKind.True;
+
+            // Description from payload message or text
             if (item.TryGetProperty("payload", out var payEl) && payEl.ValueKind == JsonValueKind.Object)
             {
                 if (payEl.TryGetProperty("message", out var msgEl))
                 {
                     vm.Description = msgEl.GetString() ?? "";
+                    if (!string.IsNullOrEmpty(vm.Description))
+                        vm.DescriptionVisibility = Visibility.Visible;
+                }
+                else if (payEl.TryGetProperty("text", out var txtEl))
+                {
+                    vm.Description = txtEl.GetString() ?? "";
                     if (!string.IsNullOrEmpty(vm.Description))
                         vm.DescriptionVisibility = Visibility.Visible;
                 }
@@ -297,7 +632,63 @@ public sealed partial class CronPage : Page
     private static string FormatCronSchedule(JsonElement sched, string tz)
     {
         var expr = sched.TryGetProperty("expr", out var exprEl) ? exprEl.GetString() ?? "" : "";
-        return $"cron: {expr}" + (string.IsNullOrEmpty(tz) ? "" : $" ({tz})");
+        var human = CronToHuman(expr);
+        var tzSuffix = string.IsNullOrEmpty(tz) ? "" : $" ({tz})";
+        return $"cron: {human}{tzSuffix}";
+    }
+
+    private static string CronToHuman(string expr)
+    {
+        var parts = expr.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 5) return expr;
+        var (min, hour, dom, mon, dow) = (parts[0], parts[1], parts[2], parts[3], parts[4]);
+
+        // Every minute
+        if (min == "*" && hour == "*" && dom == "*" && mon == "*" && dow == "*")
+            return "every minute";
+
+        // Hourly (0 * * * *)
+        if (hour == "*" && dom == "*" && mon == "*" && dow == "*" && min != "*")
+            return "hourly";
+
+        // Format time string
+        var timeStr = "";
+        if (int.TryParse(hour, out var h) && int.TryParse(min, out var m))
+        {
+            var ampm = h >= 12 ? "pm" : "am";
+            var h12 = h == 0 ? 12 : h > 12 ? h - 12 : h;
+            timeStr = m == 0 ? $"{h12}{ampm}" : $"{h12}:{m:00}{ampm}";
+        }
+        else
+        {
+            return expr; // complex hour/min, just show raw
+        }
+
+        // Daily (at specific time, all days)
+        if (dom == "*" && mon == "*" && dow == "*")
+            return $"daily at {timeStr}";
+
+        // Day-of-week patterns
+        if (dom == "*" && mon == "*" && dow != "*")
+        {
+            var dayLabel = dow switch
+            {
+                "1-5" => "weekdays",
+                "0-4" => "weekdays",
+                "1" => "Mondays",
+                "0" => "Sundays",
+                "6" => "Saturdays",
+                "6,0" or "0,6" => "weekends",
+                _ => $"days {dow}"
+            };
+            return $"{dayLabel} at {timeStr}";
+        }
+
+        // Monthly
+        if (mon == "*" && dow == "*" && dom != "*")
+            return $"monthly (day {dom}) at {timeStr}";
+
+        return expr;
     }
 
     private static string FormatEverySchedule(JsonElement sched)
@@ -471,5 +862,15 @@ public sealed partial class CronPage : Page
         public string Description { get; set; } = "";
         public Visibility DescriptionVisibility { get; set; } = Visibility.Collapsed;
         public string DetailLine { get; set; } = "";
+
+        // Raw fields for editing
+        public string ScheduleKind { get; set; } = "cron";
+        public string ScheduleExpr { get; set; } = "";
+        public string ScheduleTz { get; set; } = "";
+        public long ScheduleEveryMs { get; set; } = 0;
+        public string ScheduleAt { get; set; } = "";
+        public bool DeleteAfterRun { get; set; } = false;
+        public string RawDeliveryMode { get; set; } = "none";
+        public string RawDeliveryChannel { get; set; } = "";
     }
 }

@@ -4,21 +4,35 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <Grid Padding="24,16,24,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Title + Status -->
         <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}"/>
-                <TextBlock x:Name="JobCountText" Text="(0)" VerticalAlignment="Center"
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0"/>
+                <TextBlock x:Name="JobCountText" Text="(0)" VerticalAlignment="Center" Grid.Column="1" Margin="8,0,0,0"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            </StackPanel>
+                <Button x:Name="NewJobButton" Grid.Column="3" Click="OnNewJobClick" Padding="8,4">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <FontIcon Glyph="&#xE710;" FontSize="14"/>
+                        <TextBlock Text="New Job" FontSize="13"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
 
             <!-- Scheduler status row -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -48,8 +62,230 @@
         <!-- Store path (hidden, just for data) -->
         <TextBlock x:Name="StorePathText" Visibility="Collapsed"/>
 
+        <!-- Job creation/edit form -->
+        <Border x:Name="JobFormPanel" Grid.Row="2" Visibility="Collapsed"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="8" Padding="20" Margin="0,0,0,12">
+            <StackPanel Spacing="16">
+                <TextBlock x:Name="FormTitle" Text="New Cron Job" Style="{StaticResource SubtitleTextBlockStyle}"/>
+
+                <!-- Row 1: Name + Schedule type -->
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4" Grid.Column="0">
+                        <TextBlock Text="NAME" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBox x:Name="FormName" PlaceholderText="Morning brief" FontSize="13"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4" Grid.Column="1">
+                        <TextBlock Text="SCHEDULE" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <ComboBox x:Name="FormScheduleKind" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13"
+                                  SelectionChanged="OnScheduleKindChanged">
+                            <ComboBoxItem Content="Every" Tag="every"/>
+                            <ComboBoxItem Content="At" Tag="at"/>
+                            <ComboBoxItem Content="Cron" Tag="cron"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Schedule presets (cron only) -->
+                <StackPanel x:Name="CronFields" Spacing="8">
+                    <TextBlock Text="QUICK PRESETS" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <ItemsControl x:Name="PresetGrid">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <Button Content="⏰ Hourly" Tag="0 * * * *" Click="OnPresetClick"
+                                FontSize="11" Padding="10,6" CornerRadius="6"/>
+                        <Button Content="🌅 Daily 9am" Tag="0 9 * * *" Click="OnPresetClick"
+                                FontSize="11" Padding="10,6" CornerRadius="6"/>
+                        <Button Content="🌆 Daily 6pm" Tag="0 18 * * *" Click="OnPresetClick"
+                                FontSize="11" Padding="10,6" CornerRadius="6"/>
+                        <Button Content="💼 Weekdays" Tag="0 9 * * 1-5" Click="OnPresetClick"
+                                FontSize="11" Padding="10,6" CornerRadius="6"/>
+                        <Button Content="📅 Weekly" Tag="0 9 * * 1" Click="OnPresetClick"
+                                FontSize="11" Padding="10,6" CornerRadius="6"/>
+                    </ItemsControl>
+
+                    <!-- Cron expression + timezone row -->
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4" Grid.Column="0">
+                            <TextBlock Text="EXPRESSION" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBox x:Name="FormCronExpr" PlaceholderText="0 9 * * *"
+                                     FontSize="13" FontFamily="Consolas"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4" Grid.Column="1">
+                            <TextBlock Text="TIMEZONE" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <ComboBox x:Name="FormTimezone" HorizontalAlignment="Stretch" FontSize="13"
+                                      PlaceholderText="Optional">
+                                <ComboBoxItem Content="America/New_York" Tag="America/New_York"/>
+                                <ComboBoxItem Content="America/Chicago" Tag="America/Chicago"/>
+                                <ComboBoxItem Content="America/Denver" Tag="America/Denver"/>
+                                <ComboBoxItem Content="America/Los_Angeles" Tag="America/Los_Angeles"/>
+                                <ComboBoxItem Content="Europe/London" Tag="Europe/London"/>
+                                <ComboBoxItem Content="Europe/Berlin" Tag="Europe/Berlin"/>
+                                <ComboBoxItem Content="Asia/Tokyo" Tag="Asia/Tokyo"/>
+                                <ComboBoxItem Content="UTC" Tag="UTC"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Every fields -->
+                <StackPanel x:Name="EveryFields" Spacing="8">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4" Grid.Column="0">
+                            <TextBlock Text="EVERY" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBox x:Name="FormEveryValue" Text="30" FontSize="13"
+                                     InputScope="Number"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4" Grid.Column="1">
+                            <TextBlock Text="UNIT" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <ComboBox x:Name="FormEveryUnit" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13">
+                                <ComboBoxItem Content="Minutes" Tag="60000"/>
+                                <ComboBoxItem Content="Hours" Tag="3600000"/>
+                                <ComboBoxItem Content="Days" Tag="86400000"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- At fields -->
+                <StackPanel x:Name="AtFields" Spacing="4" Visibility="Collapsed">
+                    <TextBlock Text="RUN AT" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <DatePicker x:Name="FormAtDate"/>
+                        <TimePicker x:Name="FormAtTime" ClockIdentifier="12HourClock"/>
+                    </StackPanel>
+                    <CheckBox x:Name="FormDeleteAfterRun" Content="Delete job after it runs" IsChecked="True"
+                              FontSize="12" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Prompt -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="PROMPT / PAYLOAD" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBox x:Name="FormMessage" PlaceholderText="What should the agent do?"
+                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" MaxHeight="140" FontSize="13"/>
+                </StackPanel>
+
+                <!-- Row: Delivery + Channel -->
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4" Grid.Column="0">
+                        <TextBlock Text="DELIVERY" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <ComboBox x:Name="FormDeliveryMode" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13"
+                                  SelectionChanged="OnDeliveryModeChanged">
+                            <ComboBoxItem Content="Silent (none)" Tag="none"/>
+                            <ComboBoxItem Content="Notify me (announce)" Tag="announce"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel x:Name="DeliveryChannelPanel" Spacing="4" Grid.Column="1" Visibility="Collapsed">
+                        <TextBlock Text="CHANNEL" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBox x:Name="FormDeliveryChannel" PlaceholderText="e.g. webchat" FontSize="13"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Advanced options -->
+                <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Text="Advanced options" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Margin="0,4,0,0">
+                        <!-- Row 1: Session behavior + On failure -->
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="4" Grid.Column="0">
+                                <TextBlock Text="SESSION BEHAVIOR" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <ComboBox x:Name="FormSessionTarget" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13">
+                                    <ComboBoxItem Content="New session each run" Tag="isolated"/>
+                                    <ComboBoxItem Content="Resume main session" Tag="main"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Spacing="4" Grid.Column="1">
+                                <TextBlock Text="ON FAILURE" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <ComboBox x:Name="FormOnFailure" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13">
+                                    <ComboBoxItem Content="Alert after 3 consecutive errors" Tag="3"/>
+                                    <ComboBoxItem Content="Alert immediately" Tag="1"/>
+                                    <ComboBoxItem Content="No alerts" Tag="0"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                        <!-- Row 2: Wake mode -->
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="4" Grid.Column="0">
+                                <TextBlock Text="WAKE MODE" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <ComboBox x:Name="FormWakeMode" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13">
+                                    <ComboBoxItem Content="Now (immediate)" Tag="now"/>
+                                    <ComboBoxItem Content="Queue (wait for idle)" Tag="queue"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                        <!-- Row 3: Toggles -->
+                        <StackPanel Spacing="8">
+                            <CheckBox x:Name="FormDeleteAfterRunAdv"
+                                      IsChecked="False" MinHeight="32">
+                                <TextBlock Text="Delete after run (one-time job)" FontSize="14" VerticalAlignment="Center"/>
+                            </CheckBox>
+                            <CheckBox x:Name="FormClearContext"
+                                      IsChecked="False" MinHeight="32">
+                                <TextBlock Text="Clear agent context before run" FontSize="14" VerticalAlignment="Center"/>
+                            </CheckBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Validation error -->
+                <TextBlock x:Name="FormError" Text="" Foreground="IndianRed" FontSize="12"
+                           Visibility="Collapsed" TextWrapping="Wrap"/>
+
+                <!-- Buttons -->
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+                    <Button x:Name="FormCancelButton" Content="Cancel" Click="OnFormCancelClick" Padding="16,8"/>
+                    <Button x:Name="FormSaveButton" Content="Create Job" Click="OnFormSaveClick"
+                            Style="{StaticResource AccentButtonStyle}" Padding="16,8" FontWeight="SemiBold"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <!-- Jobs list -->
-        <ListView x:Name="JobsList" Grid.Row="2"
+        <ListView x:Name="JobsList" Grid.Row="3"
                   SelectionMode="None"
                   Visibility="Collapsed"
                   IsItemClickEnabled="True"
@@ -179,6 +415,13 @@
                                         <TextBlock Text="{Binding ToggleEnabledText}"/>
                                     </StackPanel>
                                 </Button>
+                                <Button Tag="{Binding Id}" Click="OnEditJobClick"
+                                        FontSize="12" Padding="8,4">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE70F;" FontSize="12"/>
+                                        <TextBlock Text="Edit"/>
+                                    </StackPanel>
+                                </Button>
                                 <Button Tag="{Binding Id}" Click="OnRemoveClick"
                                         FontSize="12" Padding="8,4">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -194,7 +437,7 @@
         </ListView>
 
         <!-- Empty state -->
-        <StackPanel x:Name="EmptyState" Grid.Row="2"
+        <StackPanel x:Name="EmptyState" Grid.Row="3"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
             <TextBlock Text="⏱️" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock Text="No cron jobs configured"
@@ -206,4 +449,5 @@
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
         </StackPanel>
     </Grid>
+    </ScrollViewer>
 </Page>
