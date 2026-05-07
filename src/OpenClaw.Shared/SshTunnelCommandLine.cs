@@ -8,6 +8,16 @@ public static class SshTunnelCommandLine
     private static readonly Regex s_validSshUser = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
     private static readonly Regex s_validSshHost = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
 
+    // Fixed SSH options shared by every tunnel invocation.
+    // Centralised here so the connection policy is visible and easy to review or adjust.
+    private const string BaseOptions =
+        "-o BatchMode=yes " +
+        "-o ExitOnForwardFailure=yes " +
+        "-o ServerAliveInterval=15 " +
+        "-o ServerAliveCountMax=3 " +
+        "-o TCPKeepAlive=yes " +
+        "-N ";
+
     public static string BuildArguments(string user, string host, int remotePort, int localPort)
         => BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward: false);
 
@@ -33,13 +43,7 @@ public static class SshTunnelCommandLine
             ValidateBrowserProxyPort(localPort, nameof(localPort));
         }
 
-        var sb = new StringBuilder();
-        sb.Append("-o BatchMode=yes ");
-        sb.Append("-o ExitOnForwardFailure=yes ");
-        sb.Append("-o ServerAliveInterval=15 ");
-        sb.Append("-o ServerAliveCountMax=3 ");
-        sb.Append("-o TCPKeepAlive=yes ");
-        sb.Append("-N ");
+        var sb = new StringBuilder(BaseOptions);
         AppendLocalForward(sb, localPort, remotePort);
         if (includeBrowserProxyForward)
             AppendLocalForward(sb, localPort + 2, remotePort + 2);
