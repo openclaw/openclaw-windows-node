@@ -150,6 +150,12 @@ public partial class App : Application
     private QuickSendDialog? _quickSendDialog;
     private ChatWindow? _chatWindow;
     private string? _authFailureMessage;
+
+    // Bug 3: per-device idempotency for "Node paired" toast. WindowsNodeClient.HandleHelloOk
+    // re-fires PairingStatusChanged(Paired) on every WS reconnect; we only want one toast
+    // per device per session. (Source-side suppression also exists in WindowsNodeClient as
+    // defense-in-depth.)
+    private readonly HashSet<string> _shownPairedToasts = new(StringComparer.Ordinal);
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -491,9 +497,18 @@ public partial class App : Application
     internal void ShowChatWindow()
     {
         if (_settings == null) return;
+        var url = _settings.GetEffectiveGatewayUrl();
+        var token = _settings.Token ?? string.Empty;
         if (_chatWindow == null)
         {
-            _chatWindow = new ChatWindow(_settings.GetEffectiveGatewayUrl(), _settings.Token);
+            _chatWindow = new ChatWindow(url, token);
+        }
+        else
+        {
+            // Bug 2: cached ChatWindow may have been pre-warmed with empty/stale credentials
+            // (built before pairing completed). Refresh before re-activating so quick-chat
+            // matches the working companion-app path.
+            _chatWindow.RefreshCredentials(url, token);
         }
 
         // Toggle: if visible, hide; if hidden, show near tray
@@ -503,7 +518,27 @@ public partial class App : Application
         }
         else
         {
-            _chatWindow.ShowNearTrayAnimated();
+            // Bug 1: When called from the wizard's close handler, OnboardingWindow.Close()
+            // steals focus on the same UI tick, deactivating ChatWindow → its
+            // OnWindowActivated auto-hides it immediately. Defer the show to a later
+            // dispatcher tick (Low priority) so the close + focus-loss cascade settles
+            // before we make the chat window visible.
+            var window = _chatWindow;
+            var dispatcher = _dispatcherQueue;
+            if (dispatcher != null)
+            {
+                dispatcher.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () =>
+                    {
+                        try { window.ShowNearTrayAnimated(); }
+                        catch (Exception ex) { Logger.Warn($"ShowChatWindow deferred show failed: {ex.Message}"); }
+                    });
+            }
+            else
+            {
+                window.ShowNearTrayAnimated();
+            }
         }
     }
 
@@ -2023,10 +2058,20 @@ public partial class App : Application
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
-                AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
-                ShowToast(new ToastContentBuilder()
-                    .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
+                // Bug 3: idempotency guard — only show "Node paired" toast/activity once
+                // per device per session. WS reconnects re-fire Paired; suppress duplicates.
+                var deviceKey = args.DeviceId ?? string.Empty;
+                if (_shownPairedToasts.Add(deviceKey))
+                {
+                    AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
+                    ShowToast(new ToastContentBuilder()
+                        .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
+                        .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
+                }
+                else
+                {
+                    Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
+                }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
             {

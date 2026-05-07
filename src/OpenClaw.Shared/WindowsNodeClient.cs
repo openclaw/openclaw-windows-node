@@ -34,6 +34,10 @@ public class WindowsNodeClient : WebSocketClientBase
     // even after OnDisconnected clears _isPendingApproval.
     private volatile bool _pairingBlocked;
     private volatile bool _rateLimited;
+    // Bug 3: source-side idempotency for PairingStatusChanged. HandleHelloOk runs on every
+    // WS reconnect and re-fires PairingStatus.Paired even when nothing changed, causing a
+    // toast storm in the tray UI. Track the last emitted status and only fire on transitions.
+    private PairingStatus? _lastEmittedPairingStatus;
     private readonly string _gatewayToken;
     private readonly string? _bootstrapToken;
     
@@ -654,7 +658,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     _pairingApprovedAwaitingReconnect = false;
                     _logger.Info("Received device token - we are now paired!");
                     _deviceIdentity.StoreDeviceTokenForRole("node", deviceToken, TryGetAuthScopes(authPayload));
-                    PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                    EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                         PairingStatus.Paired,
                         _deviceIdentity.DeviceId,
                         wasWaiting ? "Pairing approved!" : null));
@@ -683,7 +687,7 @@ public class WindowsNodeClient : WebSocketClientBase
                         _pairingBlocked = true;
                         _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
                         _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
-                        PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                        EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                             PairingStatus.Pending, 
                             _deviceIdentity.DeviceId,
                             $"Run: openclaw devices approve {ShortDeviceId}..."));
@@ -695,7 +699,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     _isPaired = true;
                     _pairingApprovedAwaitingReconnect = false;
                     _logger.Info("Already paired with stored device token");
-                    PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                    EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                         PairingStatus.Paired, 
                         _deviceIdentity.DeviceId));
                 }
@@ -703,6 +707,21 @@ public class WindowsNodeClient : WebSocketClientBase
             
             RaiseStatusChanged(ConnectionStatus.Connected);
         }
+    }
+
+    /// <summary>
+    /// Bug 3: source-side suppression of duplicate PairingStatusChanged events from
+    /// HandleHelloOk on WS reconnects. Only fire when the status differs from the last
+    /// emitted status (or when nothing has been emitted yet).
+    /// </summary>
+    private void EmitPairingStatusOnTransition(PairingStatusEventArgs args)
+    {
+        if (_lastEmittedPairingStatus == args.Status)
+        {
+            return;
+        }
+        _lastEmittedPairingStatus = args.Status;
+        PairingStatusChanged?.Invoke(this, args);
     }
 
     private void HandleRequestError(JsonElement root)

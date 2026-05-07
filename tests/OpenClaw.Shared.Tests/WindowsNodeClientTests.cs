@@ -199,6 +199,62 @@ public class WindowsNodeClientTests
     }
 
     /// <summary>
+    /// Bug 3 (toast storm): When hello-ok is processed multiple times for the same already-
+    /// paired device (simulating WS reconnects), PairingStatusChanged must fire exactly once
+    /// — not on every reconnect. The source-side transition guard suppresses re-emits.
+    /// </summary>
+    [Fact]
+    public void HandleResponse_HelloOkRepeatedReconnects_FiresPairedExactlyOnce()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var identityField = typeof(WindowsNodeClient).GetField(
+                "_deviceIdentity",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var identity = identityField!.GetValue(client)!;
+            var storeMethod = identity.GetType().GetMethod("StoreDeviceTokenForRole");
+            storeMethod!.Invoke(identity, ["node", "stored-device-token-xyz", null]);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+
+            var json = """
+                {
+                    "type": "res",
+                    "ok": true,
+                    "payload": {
+                        "type": "hello-ok",
+                        "nodeId": "test-node-id"
+                    }
+                }
+                """;
+            var root = JsonDocument.Parse(json).RootElement;
+
+            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
+                "HandleResponse",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            // Simulate three WS reconnects, each delivering hello-ok with stored token.
+            handleResponseMethod!.Invoke(client, [root]);
+            handleResponseMethod!.Invoke(client, [root]);
+            handleResponseMethod!.Invoke(client, [root]);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    /// <summary>
     /// When the gateway returns ok: false, ConnectionStatus.Error is raised.
     /// </summary>
     [Fact]

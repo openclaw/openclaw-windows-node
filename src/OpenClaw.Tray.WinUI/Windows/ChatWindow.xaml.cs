@@ -17,8 +17,8 @@ namespace OpenClawTray.Windows;
 
 public sealed partial class ChatWindow : WindowEx
 {
-    private readonly string _gatewayUrl;
-    private readonly string _token;
+    private string _gatewayUrl;
+    private string _token;
     private string _chatUrl = "";
     private bool _webViewInitialized;
     public bool IsClosed { get; private set; }
@@ -141,6 +141,56 @@ public sealed partial class ChatWindow : WindowEx
         // Intercept close → hide instead (keeps WebView2 warm)
         args.Handled = true;
         this.Hide();
+    }
+
+    /// <summary>
+    /// Re-resolve the gateway URL and token, and reload the WebView2 if either changed.
+    /// Bug 2 fix: ChatWindow caches credentials at construction. When the pre-warmed window
+    /// is created before pairing completes, its cached token is empty/stale. App calls this
+    /// before re-activating the cached window so the freshest credentials are used.
+    /// </summary>
+    public void RefreshCredentials(string gatewayUrl, string token)
+    {
+        gatewayUrl ??= string.Empty;
+        token ??= string.Empty;
+        if (string.Equals(gatewayUrl, _gatewayUrl, StringComparison.Ordinal) &&
+            string.Equals(token, _token, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _gatewayUrl = gatewayUrl;
+        _token = token;
+
+        // Rebuild the chat URL with the new credentials.
+        if (GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedUrl) &&
+            Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri))
+        {
+            var scheme = uri.Scheme == "wss" ? "https" : "http";
+            _chatUrl = $"{scheme}://{uri.Host}:{uri.Port}?token={Uri.EscapeDataString(_token)}";
+        }
+        else
+        {
+            _chatUrl = $"http://127.0.0.1:19001?token={Uri.EscapeDataString(_token)}";
+        }
+
+        // If WebView2 is already up, navigate it to the refreshed URL so the user gets a
+        // working chat instead of the pre-warmed (auth-failed) view.
+        if (_webViewInitialized && WebView?.CoreWebView2 != null)
+        {
+            try
+            {
+                ErrorPanel.Visibility = Visibility.Collapsed;
+                WebView.Visibility = Visibility.Visible;
+                LoadingRing.IsActive = true;
+                LoadingRing.Visibility = Visibility.Visible;
+                WebView.CoreWebView2.Navigate(_chatUrl);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"ChatWindow.RefreshCredentials navigate failed: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>Actually close and dispose (called on app shutdown).</summary>
