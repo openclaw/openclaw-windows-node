@@ -13,6 +13,8 @@ namespace OpenClawTray.Pages;
 public sealed partial class CronPage : Page
 {
     private HubWindow? _hub;
+    private List<CronJobViewModel> _jobs = new();
+    private Border? _editingCard = null; // card hidden during inline edit
 
     public CronPage()
     {
@@ -62,13 +64,10 @@ public sealed partial class CronPage : Page
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
 
-        if (JobsList.ItemsSource is List<CronJobViewModel> jobs)
+        var vm = _jobs.Find(j => j.Id == jobId);
+        if (vm != null)
         {
-            var vm = jobs.Find(j => j.Id == jobId);
-            if (vm != null)
-            {
-                _ = _hub.GatewayClient.UpdateCronJobAsync(new { jobId, patch = new { enabled = !vm.IsEnabled } });
-            }
+            _ = _hub.GatewayClient.UpdateCronJobAsync(new { jobId, patch = new { enabled = !vm.IsEnabled } });
         }
     }
 
@@ -78,6 +77,7 @@ public sealed partial class CronPage : Page
     private void OnNewJobClick(object sender, RoutedEventArgs e)
     {
         _editingJobId = null;
+        RestoreFormFromInline(); // ensure form is back in its home position
         ResetForm();
         FormTitle.Text = "New Job";
         FormSaveButton.Content = "Create Job";
@@ -88,8 +88,7 @@ public sealed partial class CronPage : Page
     {
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId)) return;
-        if (JobsList.ItemsSource is not List<CronJobViewModel> jobs) return;
-        var vm = jobs.Find(j => j.Id == jobId);
+        var vm = _jobs.Find(j => j.Id == jobId);
         if (vm == null) return;
 
         _editingJobId = jobId;
@@ -123,8 +122,9 @@ public sealed partial class CronPage : Page
         {
             if (DateTimeOffset.TryParse(vm.ScheduleAt, out var dto))
             {
-                FormAtDate.Date = dto;
-                FormAtTime.Time = dto.TimeOfDay;
+                var local = dto.LocalDateTime;
+                FormAtDate.Date = new DateTimeOffset(local);
+                FormAtTime.Text = local.ToString("h:mm tt");
             }
             FormDeleteAfterRun.IsChecked = vm.DeleteAfterRun;
         }
@@ -140,11 +140,14 @@ public sealed partial class CronPage : Page
         SelectComboByTag(FormWakeMode, vm.WakeMode);
 
         FormError.Visibility = Visibility.Collapsed;
-        JobFormPanel.Visibility = Visibility.Visible;
+
+        // Inline: find the card in the list panel, collapse it, insert form there
+        PlaceFormInline(jobId);
     }
 
     private void OnFormCancelClick(object sender, RoutedEventArgs e)
     {
+        RestoreFormFromInline();
         JobFormPanel.Visibility = Visibility.Collapsed;
         _editingJobId = null;
     }
@@ -204,9 +207,24 @@ public sealed partial class CronPage : Page
         else // at
         {
             var date = FormAtDate.Date;
-            var time = FormAtTime.Time;
-            var dt = date.Date + time;
-            var isoAt = dt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            if (date == null)
+            {
+                ShowFormError("Date is required for 'at' schedule.");
+                return;
+            }
+            if (!TryParseTime(FormAtTime.Text, out var time))
+            {
+                ShowFormError("Invalid time. Use format like '3:30 PM' or '15:30'.");
+                return;
+            }
+            var dt = date.Value.Date + time;
+            var localDto = new DateTimeOffset(dt, TimeZoneInfo.Local.GetUtcOffset(dt));
+            if (localDto < DateTimeOffset.Now)
+            {
+                ShowFormError("Scheduled time must be in the future.");
+                return;
+            }
+            var isoAt = localDto.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
             schedule = new Dictionary<string, object> { ["kind"] = "at", ["at"] = isoAt };
         }
 
@@ -265,6 +283,7 @@ public sealed partial class CronPage : Page
             _ = _hub.GatewayClient.AddCronJobAsync(job);
         }
 
+        RestoreFormFromInline();
         JobFormPanel.Visibility = Visibility.Collapsed;
         _editingJobId = null;
     }
@@ -285,7 +304,7 @@ public sealed partial class CronPage : Page
         {
             var now = DateTimeOffset.Now;
             FormAtDate.Date = now;
-            FormAtTime.Time = now.TimeOfDay;
+            FormAtTime.Text = now.ToString("h:mm tt");
         }
     }
 
@@ -336,7 +355,7 @@ public sealed partial class CronPage : Page
         FormEveryValue.Text = "30";
         FormEveryUnit.SelectedIndex = 0; // Minutes
         FormAtDate.Date = DateTimeOffset.Now;
-        FormAtTime.Time = DateTimeOffset.Now.TimeOfDay;
+        FormAtTime.Text = DateTimeOffset.Now.ToString("h:mm tt");
         FormDeleteAfterRun.IsChecked = true;
         FormMessage.Text = "";
         FormDeliveryMode.SelectedIndex = 0;
@@ -354,6 +373,19 @@ public sealed partial class CronPage : Page
     {
         FormError.Text = message;
         FormError.Visibility = Visibility.Visible;
+    }
+
+    private static bool TryParseTime(string? input, out TimeSpan time)
+    {
+        time = TimeSpan.Zero;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        // Try standard time formats: "3:30 PM", "15:30", "3:30PM", "3PM"
+        if (DateTime.TryParse(input.Trim(), out var dt))
+        {
+            time = dt.TimeOfDay;
+            return true;
+        }
+        return false;
     }
 
     private static string? GetSelectedTag(ComboBox combo)
@@ -585,17 +617,20 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
+            _jobs = jobs;
             JobCountText.Text = $"({jobs.Count})";
             if (jobs.Count > 0)
             {
-                JobsList.ItemsSource = jobs;
-                JobsList.Visibility = Visibility.Visible;
+                // Don't rebuild cards if we're currently editing inline (would lose the form)
+                if (_editingJobId == null)
+                    RebuildJobCards();
+                JobsListPanel.Visibility = Visibility.Visible;
                 EmptyState.Visibility = Visibility.Collapsed;
             }
             else
             {
-                JobsList.ItemsSource = null;
-                JobsList.Visibility = Visibility.Collapsed;
+                JobsListPanel.Children.Clear();
+                JobsListPanel.Visibility = Visibility.Collapsed;
                 EmptyState.Visibility = Visibility.Visible;
             }
         });
@@ -754,21 +789,266 @@ public sealed partial class CronPage : Page
         }
     }
 
-    private void JobsList_ItemClick(object sender, ItemClickEventArgs e)
+    private void OnCardClick(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
-        if (e.ClickedItem is not CronJobViewModel vm) return;
-        vm.IsExpanded = !vm.IsExpanded;
+        // Don't toggle expand when clicking buttons inside the detail panel
+        if (e.OriginalSource is FrameworkElement fe)
+        {
+            var parent = fe;
+            while (parent != null)
+            {
+                if (parent is Button) return;
+                parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent) as FrameworkElement;
+            }
+        }
 
-        var container = JobsList.ContainerFromItem(e.ClickedItem) as ListViewItem;
-        if (container?.ContentTemplateRoot is Grid grid)
+        if (sender is not Border card) return;
+        var jobId = card.Tag as string;
+        var vm = _jobs.Find(j => j.Id == jobId);
+        if (vm == null) return;
+
+        vm.IsExpanded = !vm.IsExpanded;
+        if (card.Child is Grid grid)
             ApplyExpandState(grid, vm.IsExpanded);
     }
 
-    private void JobsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    // --- Inline form placement ---
+
+    private void PlaceFormInline(string jobId)
     {
-        if (args.Item is not CronJobViewModel vm) return;
-        if (args.ItemContainer?.ContentTemplateRoot is Grid grid)
-            ApplyExpandState(grid, vm.IsExpanded);
+        // Remove form from its current parent
+        if (JobFormPanel.Parent is Panel parentPanel)
+            parentPanel.Children.Remove(JobFormPanel);
+
+        // Find the card for this job in the list and collapse it
+        for (int i = 0; i < JobsListPanel.Children.Count; i++)
+        {
+            if (JobsListPanel.Children[i] is Border card && card.Tag as string == jobId)
+            {
+                _editingCard = card;
+                card.Visibility = Visibility.Collapsed;
+                // Insert form right at this position
+                JobsListPanel.Children.Insert(i, JobFormPanel);
+                JobFormPanel.Visibility = Visibility.Visible;
+                return;
+            }
+        }
+
+        // Fallback: show at top if card not found
+        _editingCard = null;
+        var pageGrid = FindParentGrid();
+        if (pageGrid != null && !pageGrid.Children.Contains(JobFormPanel))
+        {
+            pageGrid.Children.Add(JobFormPanel);
+            Grid.SetRow(JobFormPanel, 2);
+        }
+        JobFormPanel.Visibility = Visibility.Visible;
+    }
+
+    private void RestoreFormFromInline()
+    {
+        // Remove form from wherever it is
+        if (JobFormPanel.Parent is Panel parentPanel)
+            parentPanel.Children.Remove(JobFormPanel);
+
+        // Restore the hidden card
+        if (_editingCard != null)
+        {
+            _editingCard.Visibility = Visibility.Visible;
+            _editingCard = null;
+        }
+
+        // Put form back in the Grid at Row 2 (its home position)
+        var pageGrid = FindParentGrid();
+        if (pageGrid != null && !pageGrid.Children.Contains(JobFormPanel))
+        {
+            pageGrid.Children.Add(JobFormPanel);
+            Grid.SetRow(JobFormPanel, 2);
+        }
+    }
+
+    private Grid? FindParentGrid()
+    {
+        // The page's main Grid is inside the ScrollViewer
+        if (this.Content is ScrollViewer sv && sv.Content is Grid g)
+            return g;
+        return null;
+    }
+
+    // --- Card building ---
+
+    private void RebuildJobCards()
+    {
+        JobsListPanel.Children.Clear();
+        foreach (var vm in _jobs)
+            JobsListPanel.Children.Add(BuildJobCard(vm));
+    }
+
+    private Border BuildJobCard(CronJobViewModel vm)
+    {
+        var card = new Border
+        {
+            Tag = vm.Id,
+            Padding = new Thickness(16, 10, 16, 12),
+            Margin = new Thickness(0, 2, 0, 0),
+            CornerRadius = new CornerRadius(6),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+            Opacity = vm.CardOpacity
+        };
+
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        // Row 0: Name + badges + chevron
+        var headerGrid = new Grid();
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var nameText = new TextBlock { Text = vm.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(nameText, 0);
+        headerGrid.Children.Add(nameText);
+
+        var scheduleBadge = new Border
+        {
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+        };
+        scheduleBadge.Child = new TextBlock { Text = vm.Schedule, FontSize = 10, FontFamily = new FontFamily("Consolas"), Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+        Grid.SetColumn(scheduleBadge, 1);
+        headerGrid.Children.Add(scheduleBadge);
+
+        var enabledBadge = new Border
+        {
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = vm.EnabledBadgeBackground
+        };
+        enabledBadge.Child = new TextBlock { Text = vm.EnabledText, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = vm.EnabledBadgeForeground };
+        Grid.SetColumn(enabledBadge, 2);
+        headerGrid.Children.Add(enabledBadge);
+
+        if (vm.ResultBadgeVisibility == Visibility.Visible)
+        {
+            var resultBadge = new Border
+            {
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = vm.ResultBadgeBackground
+            };
+            resultBadge.Child = new TextBlock { Text = vm.LastResult, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = vm.ResultBadgeForeground };
+            Grid.SetColumn(resultBadge, 3);
+            headerGrid.Children.Add(resultBadge);
+        }
+
+        var chevron = new FontIcon { Glyph = "\uE70D", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] };
+        Grid.SetColumn(chevron, 5);
+        headerGrid.Children.Add(chevron);
+
+        Grid.SetRow(headerGrid, 0);
+        grid.Children.Add(headerGrid);
+
+        // Row 1: Summary line
+        if (vm.SummaryVisibility == Visibility.Visible)
+        {
+            var summary = new TextBlock { Text = vm.SummaryLine, FontSize = 11, Margin = new Thickness(0, 3, 0, 0), Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] };
+            Grid.SetRow(summary, 1);
+            grid.Children.Add(summary);
+        }
+
+        // Row 2: Expandable detail
+        var detailPanel = BuildDetailPanel(vm);
+        detailPanel.Visibility = vm.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetRow(detailPanel, 2);
+        grid.Children.Add(detailPanel);
+
+        card.Child = grid;
+
+        // Click to expand/collapse
+        card.PointerReleased += OnCardClick;
+
+        return card;
+    }
+
+    private StackPanel BuildDetailPanel(CronJobViewModel vm)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 10, 0, 0), Spacing = 8 };
+
+        // Description
+        if (vm.DescriptionVisibility == Visibility.Visible)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = vm.Description, TextWrapping = TextWrapping.Wrap, FontSize = 12,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                IsTextSelectionEnabled = true
+            });
+        }
+
+        // Timestamps
+        var tsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+        tsPanel.Children.Add(MakeTimestampPair("Last run:", vm.LastRunTime));
+        tsPanel.Children.Add(MakeTimestampPair("Next:", vm.NextRunTime));
+        if (vm.DurationVisibility == Visibility.Visible)
+            tsPanel.Children.Add(MakeTimestampPair("Duration:", vm.LastDuration));
+        panel.Children.Add(tsPanel);
+
+        // Chips
+        var chipsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        if (vm.SessionTargetVisibility == Visibility.Visible)
+            chipsPanel.Children.Add(MakeChip(vm.SessionTargetLabel));
+        if (vm.WakeModeVisibility == Visibility.Visible)
+            chipsPanel.Children.Add(MakeChip(vm.WakeModeLabel));
+        if (vm.DeliveryVisibility == Visibility.Visible)
+            chipsPanel.Children.Add(MakeChip(vm.DeliveryText));
+        if (chipsPanel.Children.Count > 0)
+            panel.Children.Add(chipsPanel);
+
+        // Action buttons
+        var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        buttonsPanel.Children.Add(MakeActionButton("\uE768", "Run Now", vm.Id, OnRunNowClick));
+        buttonsPanel.Children.Add(MakeActionButton(vm.ToggleEnabledGlyph, vm.ToggleEnabledText, vm.Id, OnToggleEnabledClick));
+        buttonsPanel.Children.Add(MakeActionButton("\uE70F", "Edit", vm.Id, OnEditJobClick));
+        buttonsPanel.Children.Add(MakeActionButton("\uE711", "Remove", vm.Id, OnRemoveClick));
+        panel.Children.Add(buttonsPanel);
+
+        return panel;
+    }
+
+    private static StackPanel MakeTimestampPair(string label, string value)
+    {
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] });
+        sp.Children.Add(new TextBlock { Text = value, FontSize = 11, Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] });
+        return sp;
+    }
+
+    private static Border MakeChip(string text)
+    {
+        var chip = new Border
+        {
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 1, 6, 1),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+        };
+        chip.Child = new TextBlock { Text = text, FontSize = 10, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+        return chip;
+    }
+
+    private static Button MakeActionButton(string glyph, string text, string jobId, RoutedEventHandler handler)
+    {
+        var btn = new Button { Tag = jobId, FontSize = 12, Padding = new Thickness(8, 4, 8, 4) };
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        sp.Children.Add(new FontIcon { Glyph = glyph, FontSize = 12 });
+        sp.Children.Add(new TextBlock { Text = text });
+        btn.Content = sp;
+        btn.Click += handler;
+        return btn;
     }
 
     private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject

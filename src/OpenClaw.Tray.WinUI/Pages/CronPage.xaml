@@ -174,8 +174,10 @@
                     <TextBlock Text="RUN AT" FontSize="11" FontWeight="SemiBold"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <DatePicker x:Name="FormAtDate"/>
-                        <TimePicker x:Name="FormAtTime" ClockIdentifier="12HourClock"/>
+                        <CalendarDatePicker x:Name="FormAtDate" PlaceholderText="Date"
+                                            DateFormat="{}{month.abbreviated} {day.integer}, {year.full}"/>
+                        <TextBox x:Name="FormAtTime" PlaceholderText="3:30 PM" Width="120"
+                                 InputScope="TimeHour"/>
                     </StackPanel>
                     <CheckBox x:Name="FormDeleteAfterRun" Content="Delete job after it runs" IsChecked="True"
                               FontSize="12" Margin="0,4,0,0"/>
@@ -284,157 +286,8 @@
             </StackPanel>
         </Border>
 
-        <!-- Jobs list -->
-        <ListView x:Name="JobsList" Grid.Row="3"
-                  SelectionMode="None"
-                  Visibility="Collapsed"
-                  IsItemClickEnabled="True"
-                  ItemClick="JobsList_ItemClick"
-                  ContainerContentChanging="JobsList_ContainerContentChanging">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                    <Setter Property="Padding" Value="0,1"/>
-                    <Setter Property="Margin" Value="0"/>
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <Grid Padding="16,10,16,12" Margin="0,2" CornerRadius="6"
-                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                          Opacity="{Binding CardOpacity}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Row 0: Name + schedule badge + enabled badge + result badge + chevron -->
-                        <Grid Grid.Row="0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold"
-                                       FontSize="14" VerticalAlignment="Center"/>
-                            <Border Grid.Column="1" CornerRadius="4" Padding="6,2" Margin="8,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                <TextBlock Text="{Binding Schedule}" FontSize="10" FontFamily="Consolas"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Border>
-                            <Border Grid.Column="2" CornerRadius="4" Padding="6,2" Margin="4,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Background="{Binding EnabledBadgeBackground}">
-                                <TextBlock Text="{Binding EnabledText}" FontSize="10" FontWeight="SemiBold"
-                                           Foreground="{Binding EnabledBadgeForeground}"/>
-                            </Border>
-                            <Border Grid.Column="3" CornerRadius="4" Padding="5,1" Margin="4,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Background="{Binding ResultBadgeBackground}"
-                                    Visibility="{Binding ResultBadgeVisibility}">
-                                <TextBlock Text="{Binding LastResult}" FontSize="10" FontWeight="SemiBold"
-                                           Foreground="{Binding ResultBadgeForeground}"/>
-                            </Border>
-                            <FontIcon Grid.Column="5" Glyph="&#xE70D;" FontSize="10" VerticalAlignment="Center"
-                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        </Grid>
-
-                        <!-- Row 1: Compact summary line (relative times) -->
-                        <TextBlock Grid.Row="1" Text="{Binding SummaryLine}" FontSize="11"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" Margin="0,3,0,0"
-                                   Visibility="{Binding SummaryVisibility}"/>
-
-                        <!-- Row 2: Expandable detail (hidden by default) -->
-                        <StackPanel Grid.Row="2" Visibility="Collapsed" Margin="0,10,0,0" Spacing="8">
-                            <!-- Description -->
-                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
-                                       FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{Binding DescriptionVisibility}"
-                                       IsTextSelectionEnabled="True"/>
-                            <!-- Full timestamps (reference) -->
-                            <StackPanel Orientation="Horizontal" Spacing="16">
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <TextBlock Text="Last run:" FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                                    <TextBlock Text="{Binding LastRunTime}" FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <TextBlock Text="Next:" FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                                    <TextBlock Text="{Binding NextRunTime}" FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="4"
-                                            Visibility="{Binding DurationVisibility}">
-                                    <TextBlock Text="Duration:" FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                                    <TextBlock Text="{Binding LastDuration}" FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <!-- Chips -->
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Border CornerRadius="4" Padding="6,1"
-                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                        Visibility="{Binding SessionTargetVisibility}">
-                                    <TextBlock Text="{Binding SessionTargetLabel}" FontSize="10"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                </Border>
-                                <Border CornerRadius="4" Padding="6,1"
-                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                        Visibility="{Binding WakeModeVisibility}">
-                                    <TextBlock Text="{Binding WakeModeLabel}" FontSize="10"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                </Border>
-                                <Border CornerRadius="4" Padding="6,1"
-                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                        Visibility="{Binding DeliveryVisibility}">
-                                    <TextBlock Text="{Binding DeliveryText}" FontSize="10"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                </Border>
-                            </StackPanel>
-                            <!-- Action buttons -->
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Button Tag="{Binding Id}" Click="OnRunNowClick"
-                                        FontSize="12" Padding="8,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <FontIcon Glyph="&#xE768;" FontSize="12"/>
-                                        <TextBlock Text="Run Now"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Tag="{Binding Id}" Click="OnToggleEnabledClick"
-                                        FontSize="12" Padding="8,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <FontIcon Glyph="{Binding ToggleEnabledGlyph}" FontSize="12"/>
-                                        <TextBlock Text="{Binding ToggleEnabledText}"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Tag="{Binding Id}" Click="OnEditJobClick"
-                                        FontSize="12" Padding="8,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <FontIcon Glyph="&#xE70F;" FontSize="12"/>
-                                        <TextBlock Text="Edit"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Tag="{Binding Id}" Click="OnRemoveClick"
-                                        FontSize="12" Padding="8,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <FontIcon Glyph="&#xE711;" FontSize="12"/>
-                                        <TextBlock Text="Remove"/>
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
-                        </StackPanel>
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+        <!-- Jobs list (manually managed for inline editing) -->
+        <StackPanel x:Name="JobsListPanel" Grid.Row="3" Spacing="4" Visibility="Collapsed"/>
 
         <!-- Empty state -->
         <StackPanel x:Name="EmptyState" Grid.Row="3"
