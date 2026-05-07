@@ -5,6 +5,37 @@ Older entries archived. See history-archive.md.
 
 ---
 
+## 2026-05-07 — Commit 7: MSIX Validation Wiring + Inno Ordering Test
+
+**Commit:** `feat/wsl-gateway-uninstall` — `test(uninstall): MSIX storage-path validation + Inno [UninstallRun] ordering test`
+
+### 7A — validate-msix-storage-paths.ps1 wiring (Aaron's CLI flag)
+- Added Phase 4a `Invoke-CliEngineUninstall` between probe and post-snapshot
+- CLI contract: `OpenClaw.Tray.WinUI.exe --uninstall --confirm-destructive --json-output <path>`
+- New verdict.json fields: `engine_cli_invoked`, `engine_cli_exit_code`, `engine_postconditions`, `cross_check_consistent`
+- `cross_check_consistent` finalized in teardown after orphan data is known
+
+### 7B — tests/PackagingTests/Test-InnoUninstallOrdering.ps1 (new)
+- Tests that `[UninstallRun]` hook fires before `{app}` directory is deleted
+- Exit codes: 0=PASS, 1=FAIL, 2=SKIP, 3=ERROR
+- Run result: **SKIP** (exit 2) — no installer binary on machine (expected)
+- Syntax bug (extra `)`) fixed during commit
+
+### 7C — MSIX build + validation
+- MSIX built: `src/.../AppPackages/OpenClaw.Tray.WinUI_0.4.4.0_x64.msix` (warnings only)
+- Validation: **Inconclusive** — MSIX sideload blocked by cert trust dialog (cannot automate root store addition without admin)
+- `-WhatIf` run: PASS (all 4 preflight checks, dry-run plan correct, exit 0)
+
+### Test counts
+- `./build.ps1`: ✅ 4/4
+- `OpenClaw.Shared.Tests`: ✅ exit 0
+- `OpenClaw.Tray.Tests`: ⚠️ 636 pass / 9 fail (8 pre-existing LocalizationValidation + 1 flaky SettingsManagerIsolation env-var race — not caused by PS-only changes)
+
+### Verdict doc
+`.squad/decisions/inbox/bostick-uninstall-commit-7.md`
+
+---
+
 ## 2026-05-07 — MSIX Storage Path Validation Script (anticipatory, pre-commit-7)
 
 **Task:** Draft `scripts/validate-msix-storage-paths.ps1` before Aaron's commits 5-7 land, so

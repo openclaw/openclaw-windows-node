@@ -351,3 +351,8 @@ test_ws.py
 visual-test-output/
 
 .squad/
+
+# MSIX and packaging test output
+msix-validation-evidence/
+packaging-test-output/
+uninstall-validation-output/

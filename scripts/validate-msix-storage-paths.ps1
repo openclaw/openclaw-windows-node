@@ -243,6 +243,9 @@ $script:summary = [ordered]@{
     error             = $null
 }
 
+# Script-level slot for engine result (populated by Invoke-CliEngineUninstall)
+$script:engineResult = $null
+
 # Exit-code sentinels
 $EXIT_PASS            = 0
 $EXIT_FAIL            = 1
@@ -772,6 +775,124 @@ function Invoke-ProbeSetup {
 }
 
 # ---------------------------------------------------------------------------
+# PHASE 4a — CLI ENGINE UNINSTALL
+# Invoke OpenClawTray.exe --uninstall CLI to:
+#   1. Drive the engine's own cleanup (WSL distro, settings, etc.)
+#   2. Capture engine postconditions for cross_check_consistent in verdict.json
+#
+# Runs AFTER the probe has triggered file writes so the filesystem diff is
+# captured before engine cleanup happens (Phase 5 snapshots the post-probe
+# state AFTER this phase so the diff reflects what the tray itself wrote,
+# not the engine cleanup).
+#
+# NOTE: The EXE is taken from the MSIX install location so it is the same
+# binary that was probed.  If the EXE is not found, the phase is skipped and
+# cross_check_consistent will be false.
+# ---------------------------------------------------------------------------
+function Invoke-CliEngineUninstall {
+    param([object]$Pkg)
+
+    Write-Host ""
+    Write-Host "═══ PHASE 4a: CLI ENGINE UNINSTALL ═══" -ForegroundColor Magenta
+
+    # Locate the EXE inside the MSIX install location
+    $installLocation = if ($Pkg) { $Pkg.InstallLocation } else { $script:summary.installLocation }
+    $exePath = $null
+    if (-not [string]::IsNullOrEmpty($installLocation)) {
+        $candidate = Join-Path $installLocation "OpenClaw.Tray.WinUI.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            $exePath = $candidate
+        }
+    }
+
+    if ([string]::IsNullOrEmpty($exePath)) {
+        Add-Step "cli-engine-uninstall" "Skipped" "OpenClaw.Tray.WinUI.exe not found in install location '$installLocation'.  cross_check_consistent will be false." @{
+            installLocation = $installLocation
+        }
+        return [ordered]@{
+            invoked          = $false
+            exit_code        = $null
+            success          = $false
+            json_path        = $null
+            postconditions   = $null
+            skip_reason      = "EXE not found at install location"
+        }
+    }
+
+    Write-StepInfo "Engine EXE: $exePath"
+
+    Ensure-EvidenceDir
+    $jsonOutputPath  = Get-EvidencePath "engine-uninstall-result.json"
+    $stdoutPath      = Get-EvidencePath "cli-engine-uninstall.stdout.txt"
+    $stderrPath      = Get-EvidencePath "cli-engine-uninstall.stderr.txt"
+
+    $cliArgs = @('--uninstall', '--confirm-destructive', '--json-output', $jsonOutputPath)
+    Write-StepInfo "Invoking: $exePath $($cliArgs -join ' ')"
+
+    $exitCode = $null
+    try {
+        & $exePath @cliArgs > $stdoutPath 2> $stderrPath
+        $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int]$global:LASTEXITCODE }
+    }
+    catch {
+        $exitCode = -1
+        "Exception: $($_.ToString())" | Set-Content -LiteralPath $stderrPath -Encoding UTF8
+    }
+
+    # Parse engine JSON result
+    $engineJson       = $null
+    $engineSuccess    = $false
+    $enginePostconds  = $null
+    if (Test-Path -LiteralPath $jsonOutputPath) {
+        try {
+            $raw          = Get-Content -LiteralPath $jsonOutputPath -Raw -Encoding UTF8
+            $engineJson   = $raw | ConvertFrom-Json
+            $engineSuccess = [bool]$engineJson.success
+            # Build an ordered hashtable from the postconditions object
+            $pc = $engineJson.postconditions
+            if ($pc) {
+                $enginePostconds = [ordered]@{
+                    wsl_distro_absent     = [bool]$pc.wsl_distro_absent
+                    autostart_cleared     = [bool]$pc.autostart_cleared
+                    setup_state_absent    = [bool]$pc.setup_state_absent
+                    device_token_cleared  = [bool]$pc.device_token_cleared
+                    mcp_token_preserved   = [bool]$pc.mcp_token_preserved
+                    keepalives_absent     = [bool]$pc.keepalives_absent
+                    vhd_dir_absent        = [bool]$pc.vhd_dir_absent
+                }
+            }
+        }
+        catch {
+            Write-StepInfo "Warning: could not parse engine JSON: $_"
+        }
+    }
+
+    $stepStatus = if ($exitCode -eq 0) { "Completed" } else { "Warning" }
+    Add-Step "cli-engine-uninstall" $stepStatus "CLI engine exit code $exitCode. success=$engineSuccess." @{
+        exePath     = $exePath
+        exitCode    = $exitCode
+        success     = $engineSuccess
+        jsonPath    = $jsonOutputPath
+        stdout      = $stdoutPath
+        stderr      = $stderrPath
+    }
+
+    $result = [ordered]@{
+        invoked          = $true
+        exit_code        = $exitCode
+        success          = $engineSuccess
+        json_path        = $jsonOutputPath
+        postconditions   = $enginePostconds
+        skip_reason      = $null
+    }
+
+    # Store in script-level slot so Invoke-Teardown can reference it
+    $script:engineResult = $result
+
+    return $result
+}
+
+# ---------------------------------------------------------------------------
 # PHASE 5 — POST-INSTALL SNAPSHOT
 # ---------------------------------------------------------------------------
 function Invoke-PostInstallSnapshot {
@@ -784,7 +905,10 @@ function Invoke-PostInstallSnapshot {
 # PHASE 6 — DIFF & VERDICT
 # ---------------------------------------------------------------------------
 function Invoke-Verdict {
-    param([object]$Pkg)
+    param(
+        [object]$Pkg,
+        [object]$EngineResult  # result from Invoke-CliEngineUninstall; may be $null
+    )
 
     Write-Host ""
     Write-Host "═══ PHASE 6: DIFF & VERDICT ═══" -ForegroundColor Magenta
@@ -850,7 +974,28 @@ function Invoke-Verdict {
         new_real_appdata_files           = @($newInAppData)
         new_real_localappdata_files      = @($newInLocalAppData)
         removal_orphans                  = @()   # populated in phase 7
+        # ------------------------------------------------------------------ 7A fields
+        # Engine CLI postconditions from --uninstall --confirm-destructive --json-output.
+        # cross_check_consistent is updated in Phase 7 (Invoke-Teardown) once orphan
+        # data is available.  Initial value is $false; Teardown sets final value.
+        engine_cli_invoked               = $false
+        engine_cli_exit_code             = $null
+        engine_postconditions            = $null
+        cross_check_consistent           = $false
+        # ------------------------------------------------------------------
         capturedAt                       = (Get-Date).ToString("o")
+    }
+
+    # Embed engine result if we have one (may have been populated by Invoke-CliEngineUninstall)
+    if ($null -ne $EngineResult) {
+        $verdictData.engine_cli_invoked   = [bool]$EngineResult.invoked
+        $verdictData.engine_cli_exit_code = $EngineResult.exit_code
+        $verdictData.engine_postconditions = $EngineResult.postconditions
+    } elseif ($null -ne $script:engineResult) {
+        $er = $script:engineResult
+        $verdictData.engine_cli_invoked   = [bool]$er.invoked
+        $verdictData.engine_cli_exit_code = $er.exit_code
+        $verdictData.engine_postconditions = $er.postconditions
     }
 
     $verdictPath = Get-EvidencePath "verdict.json"
@@ -956,9 +1101,44 @@ function Invoke-Teardown {
     $survivedLocal    = Get-SurvivedPaths -PostFile $postLocalData  -PostUninstallFile $postUnLocalData
     $allSurvivors     = @($survivedAppData) + @($survivedLocal)
 
-    # Update verdict.json with removal_orphans
+    # -----------------------------------------------------------------------
+    # cross_check_consistent (7A requirement):
+    #   "Do the engine postconditions match the empirical filesystem diff?"
+    #
+    #   For PathA-OrphanRisk: consistent = engine was invoked AND succeeded
+    #   AND engine.postconditions.wsl_distro_absent == true (engine cleaned or
+    #   confirmed WSL distro was never registered) WHILE files in real APPDATA
+    #   survived Remove-AppxPackage (confirming MSIX does not auto-clean them).
+    #   This is the definitive PathA evidence package.
+    #
+    #   For PathB-CleanRemove: consistent = engine was invoked AND succeeded
+    #   AND no orphan files survived Remove-AppxPackage.
+    #
+    #   Inconclusive: always false.
+    # -----------------------------------------------------------------------
+    $crossCheckConsistent = $false
+    $er = $script:engineResult
+    if ($VerdictData -and $null -ne $er -and [bool]$er.invoked -and $er.exit_code -eq 0) {
+        $enginePc             = $er.postconditions
+        $engineWslAbsent      = if ($enginePc -and $null -ne $enginePc.wsl_distro_absent) { [bool]$enginePc.wsl_distro_absent } else { $false }
+        $currentVerdict       = $VerdictData.verdict
+
+        if ($currentVerdict -eq "PathA-OrphanRisk") {
+            # PathA: real-APPDATA writes confirmed AND engine cleaned WSL (or no distro was ever
+            # registered).  Orphans surviving MSIX removal confirm the orphan-risk claim.
+            $crossCheckConsistent = $engineWslAbsent
+        }
+        elseif ($currentVerdict -eq "PathB-CleanRemove") {
+            # PathB: no orphan files after MSIX removal AND engine completed successfully.
+            $crossCheckConsistent = ($engineWslAbsent -and ($allSurvivors.Count -eq 0))
+        }
+        # Inconclusive → stays false
+    }
+
+    # Update verdict.json with removal_orphans AND cross_check_consistent
     if ($VerdictData) {
-        $VerdictData.removal_orphans = $allSurvivors
+        $VerdictData.removal_orphans       = $allSurvivors
+        $VerdictData.cross_check_consistent = $crossCheckConsistent
         $verdictPath = Get-EvidencePath "verdict.json"
         $VerdictData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $verdictPath -Encoding UTF8
     }
@@ -1045,10 +1225,17 @@ try {
             # Phase 5: Post-install snapshot
             Invoke-PostInstallSnapshot
 
-            # Phase 6: Verdict
-            $verdictData = Invoke-Verdict -Pkg $pkg
+            # Phase 4a: CLI Engine Uninstall — invoke Aaron's --uninstall flag to:
+            #   1. Drive the engine's own gateway cleanup (WSL distro, settings, etc.)
+            #   2. Capture engine postconditions for cross_check_consistent in verdict.json
+            # Must run AFTER the probe snapshot so the post-probe state reflects what the
+            # tray itself wrote (not engine cleanup).
+            $engineResult = Invoke-CliEngineUninstall -Pkg $pkg
 
-            # Phase 7: Teardown
+            # Phase 6: Verdict (includes engine data in verdict.json)
+            $verdictData = Invoke-Verdict -Pkg $pkg -EngineResult $engineResult
+
+            # Phase 7: Teardown (Remove-AppxPackage, orphan check, final cross_check update)
             Invoke-Teardown -Pkg $pkg -VerdictData $verdictData
 
             # Evaluate final exit code
