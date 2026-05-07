@@ -60,7 +60,7 @@ public class CameraCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("Camera list failed", ex);
-            return Error($"List failed: {ex.Message}");
+            return Error("List failed");
         }
     }
     
@@ -106,7 +106,7 @@ public class CameraCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("Camera snap failed", ex);
-            return Error($"Snap failed: {ex.Message}");
+            return Error("Snap failed");
         }
     }
     
@@ -147,7 +147,7 @@ public class CameraCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("Camera clip failed", ex);
-            return Error($"Clip failed: {ex.Message}");
+            return Error("Clip failed");
         }
     }
 }
