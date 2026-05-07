@@ -68,3 +68,16 @@ Key structural diff on PR #274 base: `LocalGatewaySetupRuntimeConfiguration` alr
 
 - Underlying tray ctor exception (env-specific to fresh box) — defensive try/catch will surface in openclaw-tray.log
 - Uninstall feature: 8 open design Qs for Mike (see Active Workstreams)
+
+
+### WSL Gateway Uninstall — Commit 6 COMPLETE (2026-05-07, SHA 1cfc1ee)
+scripts/validate-wsl-gateway-uninstall.ps1 — 1000 lines.
+
+**Smoke-test results (this machine, OpenClawGateway IS registered):**
+- -Mode PreflightOnly → verdict PreflightOnly, exit 0. Distro found registered; pre-state.json written. ✅
+- -Mode Full -DryRun → verdict DryRunComplete, exit 0. All 13 steps recorded as DryRun; no state mutated. ✅
+- -Mode PostconditionOnly → verdict PARTIAL, exit 1. Correct: distro registered + setup-state.json present = 2 failing postconditions. ✅
+- -Help → usage printed cleanly, exit 0. ✅
+- -Mode Full (no -ConfirmDestructive) → exit 2. ✅
+- -DistroName Ubuntu → exit 2. ✅
+- PSScriptAnalyzer not installed; parse check clean (Get-Command no errors).
