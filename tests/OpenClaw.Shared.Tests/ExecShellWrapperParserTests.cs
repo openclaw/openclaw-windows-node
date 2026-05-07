@@ -138,8 +138,11 @@ public class ExecShellWrapperParserTests
         Assert.Contains(result.Targets, t => t.Command.Contains("Remove-Item"));
     }
 
-    // All unique prefix abbreviations of -EncodedCommand beyond -enc/-ec
+    // All unique prefix abbreviations of -EncodedCommand beyond -enc/-ec.
+    // Windows PowerShell also accepts -e as EncodedCommand, so include it to
+    // keep the shell-wrapper parser fail-closed.
     [Theory]
+    [InlineData("-e")]
     [InlineData("-en")]
     [InlineData("-enco")]
     [InlineData("-encod")]
@@ -208,17 +211,14 @@ public class ExecShellWrapperParserTests
         Assert.Contains(result.Targets, t => t.Command.Contains("Get-Date"));
     }
 
-    // Ambiguous -e alone must NOT be treated as -EncodedCommand
     [Fact]
-    public void Expand_Powershell_SingleE_NotTreatedAsEncodedCommand()
+    public void Expand_Powershell_SingleE_DecodesEncodedCommand()
     {
-        // -e alone is ambiguous (-EncodedCommand vs -ExecutionPolicy); must not decode
         var payload = "Get-ChildItem";
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(payload));
         var result = Expand($"powershell -e {encoded}");
-        // Should not produce a decoded target from -e
-        Assert.True(result.Error != null || !result.Targets.Any(t => t.Command.Contains("Get-ChildItem")),
-            "Ambiguous -e flag must not be silently treated as -EncodedCommand");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Get-ChildItem"));
     }
 
     [Fact]

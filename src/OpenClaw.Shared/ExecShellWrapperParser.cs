@@ -188,11 +188,14 @@ internal static class ExecShellWrapperParser
         flag.Equals("-Command", StringComparison.OrdinalIgnoreCase) ||
         flag.Equals("-c", StringComparison.OrdinalIgnoreCase);
 
-    // Matches -ec (explicit alias) and all unique prefix abbreviations of -EncodedCommand
-    // starting from the minimum disambiguating prefix -en (2 chars after '-').
-    // -e alone is ambiguous with -ExecutionPolicy and is intentionally excluded.
+    // Matches -e/-ec aliases and all unique prefix abbreviations of -EncodedCommand.
+    // Windows PowerShell accepts -e as EncodedCommand despite the apparent ambiguity with
+    // -ExecutionPolicy, so the parser must fail closed and decode it.
     private static bool IsEncodedCommandFlag(string flag)
     {
+        if (flag.Equals("-e", StringComparison.OrdinalIgnoreCase))
+            return true;
+
         if (flag.Equals("-ec", StringComparison.OrdinalIgnoreCase))
             return true;
 
