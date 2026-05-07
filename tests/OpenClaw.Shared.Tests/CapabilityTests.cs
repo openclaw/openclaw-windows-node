@@ -2583,8 +2583,8 @@ public class TtsCapabilityTests
     [InlineData(" ELEVENLABS ", "windows", "elevenlabs")]
     [InlineData(null, "elevenlabs", "elevenlabs")]
     [InlineData("   ", "elevenlabs", "elevenlabs")]
-    [InlineData(null, "", "windows")]
-    [InlineData(null, "   ", "windows")]
+    [InlineData(null, "", "piper")]
+    [InlineData(null, "   ", "piper")]
     public void ResolveProvider_NormalizesRequestedAndConfiguredValues(
         string? requestedProvider,
         string? configuredProvider,
@@ -2712,7 +2712,32 @@ public class TtsCapabilityTests
         });
 
         Assert.False(res.Ok);
-        Assert.Contains("Audio device unavailable", res.Error);
+        // Privacy: response surfaces a fixed sanitized error; the underlying
+        // exception text (which can include device names, ElevenLabs key
+        // fragments from 401 messages, etc.) stays in the local log only.
+        Assert.Equal("Speak failed", res.Error);
+    }
+
+    [Fact]
+    public async Task Speak_HandlerException_DoesNotLeakExceptionMessageIntoError()
+    {
+        // Privacy regression: a 401 from ElevenLabs containing a key prefix
+        // must not bleed into the response error path (and from there into
+        // recent activity / support bundles).
+        var cap = new TtsCapability(NullLogger.Instance);
+        const string sensitive = "ElevenLabs 401: invalid key sk-secret-prefix-do-not-leak";
+        cap.SpeakRequested += (_, _) => throw new InvalidOperationException(sensitive);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-priv",
+            Command = "tts.speak",
+            Args = Parse("""{"text":"hello"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(sensitive, res.Error);
+        Assert.DoesNotContain("sk-secret-prefix-do-not-leak", res.Error);
     }
 
     [Fact]
@@ -2899,5 +2924,569 @@ public class LocationCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Unknown command", res.Error);
+    }
+}
+
+public class SttCapabilityTests
+{
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void CanHandle_SttTranscribe()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        Assert.True(cap.CanHandle("stt.transcribe"));
+        Assert.True(cap.CanHandle("stt.listen"));
+        Assert.True(cap.CanHandle("stt.status"));
+        Assert.False(cap.CanHandle("stt.stream"));
+        Assert.False(cap.CanHandle("tts.speak"));
+        Assert.Equal("stt", cap.Category);
+        Assert.Contains(SttCapability.TranscribeCommand, cap.Commands);
+        Assert.Contains(SttCapability.ListenCommand, cap.Commands);
+        Assert.Contains(SttCapability.StatusCommand, cap.Commands);
+    }
+
+    [Fact]
+    public void ResolveLanguage_PrefersRequested()
+    {
+        Assert.Equal("ja-JP", SttCapability.ResolveLanguage("ja-JP", "en-GB"));
+        Assert.Equal("en-GB", SttCapability.ResolveLanguage(null, "en-GB"));
+        Assert.Equal("en-GB", SttCapability.ResolveLanguage("   ", "en-GB"));
+        Assert.Equal(SttCapability.DefaultLanguage, SttCapability.ResolveLanguage(null, null));
+    }
+
+    [Fact]
+    public void ResolveLanguage_RejectsNonsense()
+    {
+        Assert.Null(SttCapability.ResolveLanguage("not a tag", null));
+        Assert.Null(SttCapability.ResolveLanguage("english", null));
+        Assert.Null(SttCapability.ResolveLanguage("en_US", null));
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenMaxDurationMissing()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.TranscribeRequested += (_, _) => throw new InvalidOperationException("should not be called");
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt1",
+            Command = "stt.transcribe",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Missing required maxDurationMs", res.Error);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(-5000)]
+    public async Task Transcribe_ReturnsError_WhenMaxDurationNotPositive(int maxMs)
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt2",
+            Command = "stt.transcribe",
+            Args = Parse($$"""{"maxDurationMs":{{maxMs}}}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Missing required maxDurationMs", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenMaxDurationExceedsBound()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt3",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":60000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("exceeds 30000", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenLanguageInvalid()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt4",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000,"language":"english please"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Invalid language tag", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_InvalidLanguageError_DoesNotEchoCallerInput()
+    {
+        // Privacy regression: caller-supplied language must not be echoed back
+        // in the error string, since failed-invoke errors land in recent
+        // activity / support bundles.
+        var cap = new SttCapability(NullLogger.Instance);
+        const string secretish = "ZZ-secret-tag-do-not-leak";
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt-priv-lang",
+            Command = "stt.transcribe",
+            Args = Parse($$"""{"maxDurationMs":5000,"language":"{{secretish}}"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(secretish, res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_HandlerException_DoesNotLeakExceptionMessageIntoError()
+    {
+        // Privacy regression: raw handler exception text could surface mic /
+        // audio-stack details. Response error must be a fixed sanitized
+        // string; full detail stays in logs.
+        var cap = new SttCapability(NullLogger.Instance);
+        const string sensitive = "secret-mic-device-path-or-stack-trace";
+        cap.TranscribeRequested += (_, _) => throw new InvalidOperationException(sensitive);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt-priv-ex",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(sensitive, res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsError_WhenHandlerNotWired()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt5",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_PassesArgsToHandler_AndReturnsPayload()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttTranscribeArgs? received = null;
+        cap.TranscribeRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttTranscribeResult
+            {
+                Transcribed = true,
+                Text = "hello",
+                DurationMs = 4200,
+                Language = a.Language ?? SttCapability.DefaultLanguage
+            });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt6",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":5000,"language":"en-GB"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(5000, received!.MaxDurationMs);
+        Assert.Equal("en-GB", received.Language);
+
+        var payload = JsonSerializer.SerializeToElement(res.Payload);
+        Assert.True(payload.GetProperty("transcribed").GetBoolean());
+        Assert.Equal("hello", payload.GetProperty("text").GetString());
+        Assert.Equal(4200, payload.GetProperty("durationMs").GetInt32());
+        Assert.Equal("en-GB", payload.GetProperty("language").GetString());
+    }
+
+    [Fact]
+    public async Task Transcribe_DropsLanguage_WhenOmitted_LettingTrayUseSetting()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttTranscribeArgs? received = null;
+        cap.TranscribeRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttTranscribeResult { Transcribed = true, Text = "hi", DurationMs = 100, Language = "en-US" });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt7",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":1000}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Null(received!.Language);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReportsHandlerException()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.TranscribeRequested += (_, _) => throw new InvalidOperationException("Microphone unavailable.");
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt8",
+            Command = "stt.transcribe",
+            Args = Parse("""{"maxDurationMs":2000}""")
+        });
+
+        Assert.False(res.Ok);
+        // Privacy: response surfaces a fixed sanitized error; raw exception
+        // text stays in the local log only. See
+        // Transcribe_HandlerException_DoesNotLeakExceptionMessageIntoError.
+        Assert.Equal("Transcribe failed", res.Error);
+    }
+
+    [Fact]
+    public async Task Transcribe_ReturnsCanceled_WhenTokenFires()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.TranscribeRequested += async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return new SttTranscribeResult();
+        };
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var res = await cap.ExecuteAsync(
+            new NodeInvokeRequest { Id = "stt9", Command = "stt.transcribe", Args = Parse("""{"maxDurationMs":5000}""") },
+            cts.Token);
+
+        Assert.False(res.Ok);
+        Assert.Contains("canceled", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReturnsError_ForUnknownCommand()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "stt10",
+            Command = "stt.stream",
+            Args = Parse("""{}""")
+        });
+        Assert.False(res.Ok);
+        Assert.Contains("Unknown command", res.Error);
+    }
+
+    // ============================================================
+    // stt.listen (VAD-driven capture)
+    // ============================================================
+
+    [Fact]
+    public async Task Listen_ClampsTimeoutMs_BelowMin()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttListenArgs? received = null;
+        cap.ListenRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttListenResult { Text = "x", Language = "auto", DurationMs = 100 });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-min",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":50}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(SttCapability.MinListenTimeoutMs, received!.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task Listen_ClampsTimeoutMs_AboveMax()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttListenArgs? received = null;
+        cap.ListenRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttListenResult { Text = "x", Language = "auto", DurationMs = 100 });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-max",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":1000000}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal(SttCapability.MaxListenTimeoutMs, received!.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task Listen_DefaultsLanguageToAuto()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        SttListenArgs? received = null;
+        cap.ListenRequested += (a, _) =>
+        {
+            received = a;
+            return Task.FromResult(new SttListenResult { Text = "ok", Language = a.Language, DurationMs = 100 });
+        };
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-auto",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":5000}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Equal(SttCapability.AutoLanguage, received!.Language);
+    }
+
+    [Fact]
+    public async Task Listen_ReturnsError_WhenLanguageInvalid()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-bad-lang",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":5000,"language":"english please"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("Invalid language tag", res.Error);
+    }
+
+    [Fact]
+    public async Task Listen_InvalidLanguageError_DoesNotEchoCallerInput()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        const string secretish = "ZZ-secret-tag-do-not-leak";
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-priv-lang",
+            Command = "stt.listen",
+            Args = Parse($$"""{"timeoutMs":5000,"language":"{{secretish}}"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(secretish, res.Error);
+    }
+
+    [Fact]
+    public async Task Listen_ReturnsError_WhenHandlerNotWired()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-no-handler",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":5000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error);
+    }
+
+    [Fact]
+    public async Task Listen_HandlerException_DoesNotLeakExceptionMessageIntoError()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        const string sensitive = "secret-mic-device-path-or-stack-trace";
+        cap.ListenRequested += (_, _) => throw new InvalidOperationException(sensitive);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-priv-ex",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":5000}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(sensitive, res.Error);
+        Assert.Equal("Listen failed", res.Error);
+    }
+
+    [Fact]
+    public async Task Listen_PassesSegmentsAndEngineMetadata()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.ListenRequested += (_, _) => Task.FromResult(new SttListenResult
+        {
+            Text = "hello world",
+            Language = "en-US",
+            DurationMs = 1500,
+            Segments = new[]
+            {
+                new SttSegment { Text = "hello", StartMs = 0, EndMs = 500 },
+                new SttSegment { Text = "world", StartMs = 600, EndMs = 1500 },
+            },
+            EngineEffective = SttCapability.EngineWhisper
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "listen-payload",
+            Command = "stt.listen",
+            Args = Parse("""{"timeoutMs":5000,"language":"en-US"}""")
+        });
+
+        Assert.True(res.Ok);
+        // Round-trip through serialization to make sure the response object
+        // exposes the new fields.
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"text\":\"hello world\"", json);
+        Assert.Contains("\"engineEffective\":\"whisper\"", json);
+        Assert.Contains("\"segments\":", json);
+    }
+
+    [Fact]
+    public async Task Listen_ReturnsCanceled_WhenTokenFires()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.ListenRequested += async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return new SttListenResult();
+        };
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var res = await cap.ExecuteAsync(
+            new NodeInvokeRequest { Id = "listen-cancel", Command = "stt.listen", Args = Parse("""{"timeoutMs":5000}""") },
+            cts.Token);
+
+        Assert.False(res.Ok);
+        Assert.Contains("canceled", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ============================================================
+    // stt.status
+    // ============================================================
+
+    [Fact]
+    public async Task Status_ReturnsError_WhenHandlerNotWired()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "status-no-handler",
+            Command = "stt.status",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error);
+    }
+
+    [Fact]
+    public async Task Status_HandlerException_DoesNotLeakExceptionMessageIntoError()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        const string sensitive = "secret-engine-stack-trace";
+        cap.StatusRequested += _ => throw new InvalidOperationException(sensitive);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "status-priv-ex",
+            Command = "stt.status",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.DoesNotContain(sensitive, res.Error);
+        Assert.Equal("Status failed", res.Error);
+    }
+
+    [Fact]
+    public async Task Status_ReturnsEngineReadiness()
+    {
+        var cap = new SttCapability(NullLogger.Instance);
+        cap.StatusRequested += _ => Task.FromResult(new SttStatusResult
+        {
+            Engine = SttCapability.EngineWhisper,
+            Readiness = "model-downloading",
+            ModelDownloadProgress = 0.42,
+            IsListenWithVadSupported = false,
+            IsBoundedTranscribeSupported = false,
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "status-ok",
+            Command = "stt.status",
+            Args = Parse("""{}""")
+        });
+
+        Assert.True(res.Ok);
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"engine\":\"whisper\"", json);
+        Assert.Contains("\"readiness\":\"model-downloading\"", json);
+        Assert.Contains("\"modelDownloadProgress\":0.42", json);
+        // No PII fields ever surface in stt.status — even when synthesizing
+        // a result, callers can only see flat readiness strings + a single
+        // engine identifier.
+        Assert.DoesNotContain("language", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("path", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ============================================================
+    // BCP-47 + "auto" sentinel
+    // ============================================================
+
+    [Theory]
+    [InlineData("en-US", "en-US")]
+    [InlineData("en-GB", "en-GB")]
+    [InlineData("ja-JP", "ja-JP")]
+    [InlineData("zh-Hans-CN", "zh-Hans-CN")]
+    [InlineData(" en-US ", "en-US")] // leading/trailing whitespace trimmed
+    [InlineData("auto", "auto")]
+    [InlineData("AUTO", "auto")] // case-insensitive sentinel, normalized to lowercase
+    [InlineData("Auto", "auto")]
+    public void NormalizeLanguageTag_AcceptsValid(string input, string expected)
+    {
+        Assert.Equal(expected, SttCapability.NormalizeLanguageTag(input));
+    }
+
+    [Theory]
+    [InlineData("english")]
+    [InlineData("en_US")] // underscore not allowed
+    [InlineData("not a tag")]
+    [InlineData("en US")] // space not allowed
+    [InlineData("automatic")] // not the sentinel
+    public void NormalizeLanguageTag_RejectsInvalid(string input)
+    {
+        Assert.Null(SttCapability.NormalizeLanguageTag(input));
     }
 }

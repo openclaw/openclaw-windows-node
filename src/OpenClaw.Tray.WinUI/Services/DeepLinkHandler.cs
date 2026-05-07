@@ -242,6 +242,15 @@ public static class DeepLinkHandler
                 }
                 break;
 
+            case "voice":
+            case "voice-start":
+                actions.OpenVoice?.Invoke();
+                break;
+
+            case "voice-stop":
+                actions.StopVoice?.Invoke();
+                break;
+
             default:
                 if (path == "hub" || path.StartsWith("hub/"))
                 {
@@ -286,4 +295,6 @@ public class DeepLinkActions
     public Action<string?>? OpenQuickSend { get; set; }
     public Action<string?>? OpenHub { get; set; }
     public Func<string, Task>? SendMessage { get; set; }
+    public Action? OpenVoice { get; set; }
+    public Action? StopVoice { get; set; }
 }

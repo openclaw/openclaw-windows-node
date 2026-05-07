@@ -282,7 +282,7 @@ public sealed class WizardPage : Component<OnboardingState>
                 var answerValue = string.IsNullOrEmpty(stepInput) ? "true" : stepInput;
 
                 // Smart timeout: 5min for auth-related steps (device code polling), 30s for everything else
-                var isAuthStep = !string.IsNullOrEmpty(stepMessage) && 
+                var isAuthStep = !string.IsNullOrEmpty(stepMessage) &&
                     (stepMessage.Contains("device", StringComparison.OrdinalIgnoreCase) ||
                      stepMessage.Contains("authorize", StringComparison.OrdinalIgnoreCase) ||
                      stepMessage.Contains("login", StringComparison.OrdinalIgnoreCase) ||
@@ -639,4 +639,3 @@ public sealed class WizardPage : Component<OnboardingState>
         .Padding(0, 8, 0, 0);
     }
 }
-

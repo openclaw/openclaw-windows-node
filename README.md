@@ -177,6 +177,7 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
 | **Canvas** | `canvas.present`, `canvas.hide`, `canvas.navigate`, `canvas.eval`, `canvas.snapshot`, `canvas.a2ui.push`, `canvas.a2ui.pushJSONL`, `canvas.a2ui.reset` | Display and control a WebView2 window |
 | **Screen** | `screen.snapshot`, `screen.record` | Capture screenshots and fixed-duration MP4 screen recordings |
 | **Camera** | `camera.list`, `camera.snap`, `camera.clip` | Enumerate cameras and capture still photos or short video clips |
+| **Speech-to-text** | `stt.transcribe` | Capture audio from the default microphone for a bounded duration and return transcribed text. Default-off; opt-in via Settings. When enabled, advertised to both gateway callers (subject to gateway allowlist) and local MCP clients (subject to bearer token). |
 | **Location** | `location.get` | Return Windows geolocation when permission is available |
 | **Device** | `device.info`, `device.status` | Return Windows host/app metadata and lightweight status |
 | **Text-to-speech** | `tts.speak` | Speak text aloud through Windows speech synthesis, or ElevenLabs when configured |

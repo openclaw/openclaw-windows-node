@@ -24,6 +24,18 @@ public class LocalizationValidationTests
         "Onboarding_Connection_Token",
         "WindowTitle_TrayMenu",
         "WindowTitle_Update",
+        // STT/TTS card invariants — these are protocol/brand identifiers
+        // not user-visible prose. They intentionally read the same in every
+        // locale: "eleven_multilingual_v2" is an ElevenLabs model
+        // identifier, "ElevenLabs" is a brand name.
+        // VoiceOverlayWindow window-title key — matches the convention
+        // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
+        "VoiceOverlayWindow_winexWindowEx_2.Title",
+        "CapabilitiesPage_TtsElevenLabsModel.PlaceholderText",
+        "CapabilitiesPage_TtsProviderElevenLabs.Content",
+        // Sample IDs / brand identifiers — same across locales.
+        "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
+        "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =

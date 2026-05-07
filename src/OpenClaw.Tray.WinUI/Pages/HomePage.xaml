@@ -19,14 +19,14 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Molty mascot with status ring -->
+                    <!-- Companion mascot with status ring -->
                     <Grid Grid.Column="0" Width="72" Height="72" VerticalAlignment="Center">
                         <!-- Colored ring (Ellipse behind emoji) -->
-                        <Ellipse x:Name="MoltyRing" Width="68" Height="68"
+                        <Ellipse x:Name="CompanionRing" Width="68" Height="68"
                                  StrokeThickness="3" Fill="Transparent"
                                  Stroke="{ThemeResource TextFillColorDisabledBrush}"/>
                         <!-- Animated ProgressRing for "working" state -->
-                        <ProgressRing x:Name="MoltyProgressRing" Width="72" Height="72"
+                        <ProgressRing x:Name="CompanionProgressRing" Width="72" Height="72"
                                       IsActive="False" Visibility="Collapsed"/>
                         <!-- Lobster emoji -->
                         <TextBlock Text="🦞" FontSize="36"

@@ -1732,4 +1732,34 @@ public class SessionInfoContextSummaryTests
         var session = new SessionInfo { TotalTokens = 500, ContextTokens = 1000 };
         Assert.Contains("500/1.0K", session.ContextSummaryShort);
     }
+
+    [Fact]
+    public void DangerousCommands_IncludesSttTranscribe()
+    {
+        Assert.Contains("stt.transcribe", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("stt.transcribe", (IReadOnlySet<string>)CommandCenterCommandGroups.DangerousCommandSet);
+        // stt.listen and stt.status need the same explicit gateway opt-in so
+        // chat agents see them once NodeSttEnabled is on. Otherwise the
+        // gateway's Windows platform default policy keeps them hidden.
+        Assert.Contains("stt.listen", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("stt.status", CommandCenterCommandGroups.DangerousCommands);
+    }
+
+    [Fact]
+    public void MacNodeParityCommands_ExcludesSttTranscribe()
+    {
+        // Mac has no equivalent yet; ensure parity diagnostic does not flag
+        // Windows nodes for "missing" stt.transcribe.
+        Assert.DoesNotContain("stt.transcribe", CommandCenterCommandGroups.MacNodeParityCommands);
+    }
+
+    [Fact]
+    public void CommonDangerousCommands_StillIncludedInMacParity()
+    {
+        // Refactor invariant: the original camera/screen dangerous commands
+        // still appear in Mac parity via the shared CommonDangerousCommands set.
+        Assert.Contains("camera.snap", CommandCenterCommandGroups.MacNodeParityCommands);
+        Assert.Contains("camera.clip", CommandCenterCommandGroups.MacNodeParityCommands);
+        Assert.Contains("screen.record", CommandCenterCommandGroups.MacNodeParityCommands);
+    }
 }

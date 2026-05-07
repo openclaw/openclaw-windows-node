@@ -336,7 +336,7 @@ Recommended gateway defaults:
 | Command bucket | Windows default? | Reason |
 |----------------|------------------|--------|
 | Safe declared companion commands: `canvas.*`, `camera.list`, `location.get`, `screen.snapshot`, `device.info`, `device.status` | Yes | Matches macOS parity and only applies when declared by the node |
-| Dangerous/privacy-heavy commands: `camera.snap`, `camera.clip`, `screen.record`, write commands like `contacts.add` | No | Existing gateway model already requires explicit `gateway.nodes.allowCommands` |
+| Dangerous/privacy-heavy commands: `camera.snap`, `camera.clip`, `screen.record`, `stt.transcribe`, write commands like `contacts.add` | No | Existing gateway model already requires explicit `gateway.nodes.allowCommands` |
 | Exec commands: `system.run`, `system.run.prepare`, `system.which`, `system.notify`, `browser.proxy` | Yes | Existing Windows headless-host behavior |
 
 Until the gateway expands Windows safe defaults, the practical local solution is:
@@ -364,6 +364,7 @@ Privacy-sensitive commands should stay out of the default safe list and should o
 camera.snap
 camera.clip
 screen.record
+stt.transcribe
 ```
 
 After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyCommands`, re-approve or re-pair the Windows node. Approved device records may keep a snapshot of the commands that were visible at approval time, so a gateway restart alone may not refresh existing approvals.
@@ -424,6 +425,7 @@ Proposal:
   - `camera.snap`
   - `camera.clip`
   - `screen.record`
+  - `stt.transcribe`
   - write commands such as `contacts.add`, `calendar.add`, etc.
 
 This does not grant capabilities to headless Windows hosts by itself. A command still has to pass both gates: the node must declare it in `commands`, and the gateway policy must allow it. Headless Windows node hosts that only declare `system.run` / `system.which` remain exec-only.
@@ -441,7 +443,7 @@ When shipping the Windows node, README/wiki should tell users:
 > ```
 > Then re-pair the node (`openclaw devices reject <old-id>` + re-approve).
 >
-> Add `camera.snap`, `camera.clip`, and `screen.record` only when you explicitly want to allow privacy-sensitive camera or screen capture.
+> Add `camera.snap`, `camera.clip`, `screen.record`, and `stt.transcribe` only when you explicitly want to allow privacy-sensitive camera, screen, or microphone capture.
 >
 > The Windows tray Command Center (`openclaw://commandcenter`) surfaces these policy problems directly: it separates safe companion allowlist fixes from privacy-sensitive opt-ins and provides copyable repair text for safe fixes or pending pairing approval.
 

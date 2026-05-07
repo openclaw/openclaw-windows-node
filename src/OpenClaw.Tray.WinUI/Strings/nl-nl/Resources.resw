@@ -1,24 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
-<root>
-  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
-    <xsd:element name="root" msdata:IsDataSet="true">
-      <xsd:complexType>
-        <xsd:choice maxOccurs="unbounded">
-          <xsd:element name="data">
-            <xsd:complexType>
-              <xsd:sequence>
-                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
-                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
-              </xsd:sequence>
-              <xsd:attribute name="name" type="xsd:string" use="required" />
-            </xsd:complexType>
-          </xsd:element>
-        </xsd:choice>
-      </xsd:complexType>
-    </xsd:element>
-  </xsd:schema>
-  <!-- ==================== SettingsWindow.xaml ==================== -->
-  <!-- Section headers -->
+<?xml version='1.0' encoding='utf-8'?>
+<root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:schema id="root">
+    <xs:element name="root" ns1:IsDataSet="true">
+      <xs:complexType>
+        <xs:choice maxOccurs="unbounded">
+          <xs:element name="data">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="value" type="xsd:string" minOccurs="0" ns1:Ordinal="1" />
+                <xs:element name="comment" type="xsd:string" minOccurs="0" ns1:Ordinal="2" />
+              </xs:sequence>
+              <xs:attribute name="name" type="xsd:string" use="required" />
+            </xs:complexType>
+          </xs:element>
+        </xs:choice>
+      </xs:complexType>
+    </xs:element>
+  </xs:schema>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>VERBINDING</value>
   </data>
@@ -31,7 +29,6 @@
   <data name="SettingsAdvancedHeader.Text" xml:space="preserve">
     <value>GEAVANCEERD (EXPERIMENTEEL)</value>
   </data>
-  <!-- TextBox headers and placeholders -->
   <data name="SettingsGatewayUrlTextBox.Header" xml:space="preserve">
     <value>Gateway-URL</value>
   </data>
@@ -44,7 +41,6 @@
   <data name="SettingsTokenTextBox.PlaceholderText" xml:space="preserve">
     <value>Je API-token</value>
   </data>
-  <!-- Toggle headers -->
   <data name="SettingsAutoStartToggle.Header" xml:space="preserve">
     <value>Automatisch starten met Windows</value>
   </data>
@@ -57,7 +53,6 @@
   <data name="SettingsNodeModeToggle.Header" xml:space="preserve">
     <value>Node-modus inschakelen</value>
   </data>
-  <!-- ComboBox -->
   <data name="SettingsSoundComboBox.Header" xml:space="preserve">
     <value>Geluid</value>
   </data>
@@ -70,14 +65,12 @@
   <data name="SettingsSoundSubtle.Content" xml:space="preserve">
     <value>Subtiel</value>
   </data>
-  <!-- Notification filter labels -->
   <data name="SettingsNotifyForLabel.Text" xml:space="preserve">
     <value>Meldingen weergeven voor:</value>
   </data>
   <data name="SettingsNotifyFilterHint.Text" xml:space="preserve">
     <value>Filtert op trefwoorden in het bericht (bijv. 'e-mail', 'herinnering')</value>
   </data>
-  <!-- Notification filter checkboxes -->
   <data name="SettingsNotifyHealthCb.Content" xml:space="preserve">
     <value>Gezondheidsmeldingen</value>
   </data>
@@ -102,7 +95,6 @@
   <data name="SettingsNotifyInfoCb.Content" xml:space="preserve">
     <value>Informatieberichten</value>
   </data>
-  <!-- Buttons -->
   <data name="SettingsTestConnectionButton.Content" xml:space="preserve">
     <value>Testen</value>
   </data>
@@ -115,12 +107,9 @@
   <data name="SettingsCancelButton.Content" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <!-- Node mode description -->
   <data name="SettingsNodeModeDescription.Text" xml:space="preserve">
     <value>Wanneer ingeschakeld, kan deze pc opdrachten ontvangen van de agent (canvas, schermafbeeldingen, enz.)</value>
   </data>
-  <!-- ==================== StatusDetailWindow.xaml ==================== -->
-  <!-- Section headers -->
   <data name="StatusUsageHeader.Text" xml:space="preserve">
     <value>GEBRUIK</value>
   </data>
@@ -154,7 +143,6 @@
   <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
     <value>RECENTE ACTIVITEIT</value>
   </data>
-  <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
     <value>Kosten (venster):</value>
   </data>
@@ -164,7 +152,6 @@
   <data name="StatusProvidersLabel.Text" xml:space="preserve">
     <value>Aanbieders:</value>
   </data>
-  <!-- Default values -->
   <data name="StatusConnectedText.Text" xml:space="preserve">
     <value>Verbonden</value>
   </data>
@@ -198,7 +185,6 @@
   <data name="StatusCronDescription.Text" xml:space="preserve">
     <value>Open geplande automatiseringsbesturing wanneer de verbonden gateway dit ondersteunt.</value>
   </data>
-  <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>Vernieuwen</value>
   </data>
@@ -247,12 +233,9 @@
   <data name="StatusOpenStreamButton.Content" xml:space="preserve">
     <value>Stream openen</value>
   </data>
-  <!-- ==================== ActivityStreamWindow.xaml ==================== -->
-  <!-- Header -->
   <data name="ActivityStreamTitle.Text" xml:space="preserve">
     <value>⚡ Activiteitenstroom</value>
   </data>
-  <!-- Filter items -->
   <data name="ActivityFilterAll.Content" xml:space="preserve">
     <value>Alle activiteit</value>
   </data>
@@ -268,11 +251,9 @@
   <data name="ActivityFilterNotifications.Content" xml:space="preserve">
     <value>Meldingen</value>
   </data>
-  <!-- Empty state -->
   <data name="ActivityEmptyText.Text" xml:space="preserve">
     <value>Nog geen activiteit</value>
   </data>
-  <!-- Buttons -->
   <data name="ActivityOpenDashboardButton.Content" xml:space="preserve">
     <value>Dashboard openen</value>
   </data>
@@ -282,24 +263,18 @@
   <data name="ActivityCloseButton.Content" xml:space="preserve">
     <value>Sluiten</value>
   </data>
-  <!-- ==================== NotificationHistoryWindow.xaml ==================== -->
-  <!-- Header -->
   <data name="NotificationHistoryTitle.Text" xml:space="preserve">
     <value>📋 Meldingsgeschiedenis</value>
   </data>
-  <!-- Empty state -->
   <data name="NotificationEmptyText.Text" xml:space="preserve">
     <value>Nog geen meldingen</value>
   </data>
-  <!-- Buttons -->
   <data name="NotificationClearAllButton.Content" xml:space="preserve">
     <value>Alles wissen</value>
   </data>
   <data name="NotificationCloseButton.Content" xml:space="preserve">
     <value>Sluiten</value>
   </data>
-  <!-- ==================== Runtime strings (C# code) ==================== -->
-  <!-- Window titles -->
   <data name="WindowTitle_Settings" xml:space="preserve">
     <value>Instellingen — OpenClaw Tray</value>
   </data>
@@ -325,7 +300,6 @@
   <data name="WindowTitle_Update" xml:space="preserve">
     <value>OpenClaw-update</value>
   </data>
-  <!-- Settings runtime status -->
   <data name="Status_Testing" xml:space="preserve">
     <value>Testen...</value>
   </data>
@@ -335,7 +309,6 @@
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ Verbinding mislukt</value>
   </data>
-  <!-- QuickSend dialog -->
   <data name="QuickSend_Header" xml:space="preserve">
     <value>📤 Snel verzenden</value>
   </data>
@@ -360,7 +333,6 @@
   <data name="QuickSend_ToastBody" xml:space="preserve">
     <value>Je bericht is verzonden naar OpenClaw.</value>
   </data>
-  <!-- WelcomeDialog -->
   <data name="Welcome_Title" xml:space="preserve">
     <value>Welkom bij OpenClaw!</value>
   </data>
@@ -385,7 +357,6 @@
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>Instellingen openen</value>
   </data>
-  <!-- UpdateDialog -->
   <data name="Update_VersionAvailable" xml:space="preserve">
     <value>🎉 Versie {0} is beschikbaar!</value>
   </data>
@@ -404,7 +375,6 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>Downloaden en installeren</value>
   </data>
-  <!-- Tray menu items -->
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Dashboard openen</value>
   </data>
@@ -498,7 +468,6 @@
   <data name="Menu_RestartSshTunnel" xml:space="preserve">
     <value>SSH-tunnel opnieuw starten</value>
   </data>
-  <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
     <value>Toestand: {0}</value>
   </data>
@@ -535,18 +504,15 @@
   <data name="Menu_NodeDisconnected" xml:space="preserve">
     <value>⚪ Niet verbonden</value>
   </data>
-  <!-- Notification test -->
   <data name="TestNotification_Title" xml:space="preserve">
     <value>Testmelding</value>
   </data>
   <data name="TestNotification_Body" xml:space="preserve">
     <value>Dit is een testmelding van OpenClaw Tray.</value>
   </data>
-  <!-- Status detail runtime -->
   <data name="Status_LastCheckFormat" xml:space="preserve">
     <value>Laatste controle: {0}</value>
   </data>
-  <!-- Time ago strings -->
   <data name="TimeAgo_JustNow" xml:space="preserve">
     <value>Zojuist</value>
   </data>
@@ -556,14 +522,12 @@
   <data name="TimeAgo_HoursFormat" xml:space="preserve">
     <value>{0}u geleden</value>
   </data>
-  <!-- Activity stream runtime -->
   <data name="Activity_ClickToOpen" xml:space="preserve">
     <value>Klik om te openen in het dashboard</value>
   </data>
   <data name="TimeAgo_DaysFormat" xml:space="preserve">
     <value>{0}d geleden</value>
   </data>
-  <!-- Status display text (plain, no emoji) -->
   <data name="StatusDisplay_Connected" xml:space="preserve">
     <value>Verbonden</value>
   </data>
@@ -582,7 +546,6 @@
   <data name="Status_NotAvailable" xml:space="preserve">
     <value>n.v.t.</value>
   </data>
-  <!-- ==================== CanvasWindow.xaml ==================== -->
   <data name="WindowTitle_Canvas" xml:space="preserve">
     <value>Canvasweergave</value>
   </data>
@@ -616,7 +579,6 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Kiezen...</value>
   </data>
-  <!-- ==================== WebChatWindow.xaml ==================== -->
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Webchat niet beschikbaar</value>
   </data>
@@ -655,11 +617,9 @@ Gebruik een van deze opties:
 • Bij een zelfondertekend certificaat: importeer je gateway-CA/certificaat in Vertrouwde basiscertificeringsinstanties van Windows (certmgr.msc)
 • Of tunnel naar localhost: ssh -N -L 18789:localhost:18789 &lt;server&gt;</value>
   </data>
-  <!-- ==================== TrayMenuWindow.xaml ==================== -->
   <data name="WindowTitle_TrayMenu" xml:space="preserve">
     <value>OpenClaw-menu</value>
   </data>
-  <!-- ==================== Toast: Device / Node ==================== -->
   <data name="Toast_DeviceIdCopied" xml:space="preserve">
     <value>📋 Apparaat-ID gekopieerd</value>
   </data>
@@ -672,14 +632,12 @@ Gebruik een van deze opties:
   <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
     <value>{0} node(s) gekopieerd naar klembord</value>
   </data>
-  <!-- ==================== Toast: Session ==================== -->
   <data name="Toast_SessionActionFailed" xml:space="preserve">
     <value>❌ Sessieactie mislukt</value>
   </data>
   <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
     <value>Kan verzoek niet naar gateway verzenden.</value>
   </data>
-  <!-- ==================== Toast: Node Mode ==================== -->
   <data name="Toast_NodeModeActive" xml:space="preserve">
     <value>🔌 Node-modus actief</value>
   </data>
@@ -710,7 +668,6 @@ Gebruik een van deze opties:
   <data name="Toast_PairingRejectedDetail" xml:space="preserve">
     <value>De gateway heeft het koppelingsverzoek voor dit apparaat geweigerd.</value>
   </data>
-  <!-- ==================== Toast: Health Check ==================== -->
   <data name="Toast_HealthCheck" xml:space="preserve">
     <value>Statuscontrole</value>
   </data>
@@ -723,7 +680,6 @@ Gebruik een van deze opties:
   <data name="Toast_HealthCheckFailed" xml:space="preserve">
     <value>Statuscontrole mislukt</value>
   </data>
-  <!-- ==================== Toast: Screen / Camera ==================== -->
   <data name="Toast_ScreenCaptured" xml:space="preserve">
     <value>📸 Schermafbeelding gemaakt</value>
   </data>
@@ -736,6 +692,115 @@ Gebruik een van deze opties:
   <data name="Toast_CameraBlockedDetail" xml:space="preserve">
     <value>Schakel cameratoegang in via Windows-privacyinstellingen voor OpenClaw Tray</value>
   </data>
+
+  <!-- ==================== Toast: Recording ==================== -->
+
+  <data name="Toast_ScreenRecordingStarted" xml:space="preserve">
+    <value>🔴 Schermopname gestart</value>
+  </data>
+  <data name="Toast_ScreenRecordingStartedDetail" xml:space="preserve">
+    <value>OpenClaw-agent neemt uw scherm op</value>
+  </data>
+  <data name="Toast_ScreenRecordingComplete" xml:space="preserve">
+    <value>✅ Schermopname voltooid</value>
+  </data>
+  <data name="Toast_ScreenRecordingCompleteDetail" xml:space="preserve">
+    <value>Schermopname is naar de agent verzonden</value>
+  </data>
+  <data name="Toast_ScreenRecordingFailed" xml:space="preserve">
+    <value>❌ Schermopname mislukt</value>
+  </data>
+  <data name="Toast_ScreenRecordingFailedDetail" xml:space="preserve">
+    <value>Er is een fout opgetreden bij het opnemen van het scherm</value>
+  </data>
+  <data name="Toast_CameraRecordingStarted" xml:space="preserve">
+    <value>🔴 Camera-opname gestart</value>
+  </data>
+  <data name="Toast_CameraRecordingStartedDetail" xml:space="preserve">
+    <value>OpenClaw-agent neemt op vanaf uw camera</value>
+  </data>
+  <data name="Toast_CameraRecordingComplete" xml:space="preserve">
+    <value>✅ Camera-opname voltooid</value>
+  </data>
+  <data name="Toast_CameraRecordingCompleteDetail" xml:space="preserve">
+    <value>Cameraclip is naar de agent verzonden</value>
+  </data>
+
+  <!-- ==================== Recording Consent Dialog ==================== -->
+
+  <data name="RecordingConsent_WindowTitle" xml:space="preserve">
+    <value>OpenClaw · Toestemmingsverzoek</value>
+  </data>
+  <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
+    <value>Schermopname toestaan?</value>
+  </data>
+  <data name="RecordingConsent_CameraTitle" xml:space="preserve">
+    <value>Camera-opname toestaan?</value>
+  </data>
+  <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
+    <value>Een agent vraagt om uw scherm op te nemen. Dit zal video van uw beeldscherm vastleggen en naar de agent sturen. Uw keuze wordt onthouden voor toekomstige verzoeken totdat u deze wijzigt in Instellingen.</value>
+  </data>
+  <data name="RecordingConsent_CameraDescription" xml:space="preserve">
+    <value>Een agent vraagt om op te nemen vanaf uw camera. Dit zal video van uw webcam vastleggen en naar de agent sturen. Uw keuze wordt onthouden voor toekomstige verzoeken totdat u deze wijzigt in Instellingen.</value>
+  </data>
+  <data name="RecordingConsent_Privacy" xml:space="preserve">
+    <value>U kunt dit later wijzigen in Instellingen.</value>
+  </data>
+  <data name="RecordingConsent_Allow" xml:space="preserve">
+    <value>Opname toestaan</value>
+  </data>
+  <data name="RecordingConsent_Deny" xml:space="preserve">
+    <value>Weigeren</value>
+  </data>
+
+  <!-- ==================== Settings: Privacy ==================== -->
+
+  <data name="Settings_PrivacyHeader" xml:space="preserve">
+    <value>Privacyinstellingen</value>
+  </data>
+  <data name="Settings_PrivacyDescription" xml:space="preserve">
+    <value>Bepaal welke mogelijkheden agents op dit apparaat kunnen gebruiken.</value>
+  </data>
+  <data name="Settings_AllowScreenRecording" xml:space="preserve">
+    <value>Schermopname toestaan</value>
+  </data>
+  <data name="Settings_AllowCameraRecording" xml:space="preserve">
+    <value>Camera-opname toestaan</value>
+  </data>
+  <data name="SettingsPrivacyHeader.Text" xml:space="preserve">
+    <value>Privacyinstellingen</value>
+  </data>
+  <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
+    <value>Keur mogelijkheden vooraf goed zodat agents ze kunnen gebruiken zonder elke keer toestemming te vragen. Er wordt nog steeds een aftelling getoond voordat de opname begint.</value>
+  </data>
+  <data name="ScreenRecordingToggle.Header" xml:space="preserve">
+    <value>Schermopname toestaan</value>
+  </data>
+  <data name="CameraRecordingToggle.Header" xml:space="preserve">
+    <value>Camera-opname toestaan</value>
+  </data>
+
+  <!-- ==================== Activity Stream: Recording ==================== -->
+
+  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
+    <value>Schermopname gestart</value>
+  </data>
+  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
+    <value>Schermopname voltooid</value>
+  </data>
+  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
+    <value>Camera-opname gestart</value>
+  </data>
+  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
+    <value>Camera-opname voltooid</value>
+  </data>
+  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
+    <value>{0}-opname aangevraagd door agent</value>
+  </data>
+  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
+    <value>{0}-opname verzonden naar agent</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nieuw: Activiteitenstroom</value>
@@ -746,7 +811,6 @@ Gebruik een van deze opties:
   <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
     <value>Activiteitenstroom openen</value>
   </data>
-  <!-- ==================== SetupWizardWindow (C# code) ==================== -->
   <data name="Setup_Title" xml:space="preserve">
     <value>OpenClaw Instellen</value>
   </data>
@@ -897,7 +961,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Setup_StepDone" xml:space="preserve">
     <value>Stap 3 van 3 — Gereed</value>
   </data>
-  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
   <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
     <value>ONTWIKKELAARSMODUS</value>
   </data>
@@ -905,7 +968,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Lokale MCP-server inschakelen</value>
   </data>
   <data name="SettingsMcpDescription.Text" xml:space="preserve">
-    <value>Stelt dezelfde knooppuntmogelijkheden (systeem, scherm, camera, canvas) beschikbaar voor lokale MCP-clients (Claude Desktop, Cursor, Claude Code).</value>
+    <value>Stelt dezelfde knooppuntmogelijkheden (systeem, scherm, camera, microfoon, luidsprekers, canvas) beschikbaar voor lokale MCP-clients (Claude Desktop, Cursor, Claude Code).</value>
   </data>
   <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
     <value>Eindpunt:</value>
@@ -931,7 +994,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Mcp_Status_FailedToStart" xml:space="preserve">
     <value>Starten mislukt: </value>
   </data>
-  <!-- ==================== MCP token (SettingsWindow) ==================== -->
   <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
     <value>Bearer-token:</value>
   </data>
@@ -980,14 +1042,12 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <!-- ==================== DownloadProgressDialog ==================== -->
   <data name="WindowTitle_Downloading" xml:space="preserve">
     <value>Update downloaden...</value>
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>Update downloaden...</value>
   </data>
-  <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — URL goedkeuren</value>
   </data>
@@ -1537,7 +1597,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Wissen</value>
   </data>
-<data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
+  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>🔀 Koppelingen</value>
   </data>
   <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
@@ -1771,7 +1831,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
     <value>Geen cron-taken geconfigureerd</value>
   </data>
-<data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
+  <data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
     <value>🐛 Foutopsporing</value>
   </data>
   <data name="DebugPage_TextBlock_14.Text" xml:space="preserve">
@@ -1825,7 +1885,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="DebugPage_Button_114.Content" xml:space="preserve">
     <value>📋 Ondersteuningscontext kopiëren</value>
   </data>
-<data name="StatusHeadline.Text" xml:space="preserve">
+  <data name="StatusHeadline.Text" xml:space="preserve">
     <value>Niet verbonden met gateway</value>
   </data>
   <data name="ScanButton.Content" xml:space="preserve">
@@ -2340,5 +2400,353 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>Taak verwijderen</value>
+  </data>
+  <data name="CapabilitiesPage_SttCardDescription.Text" xml:space="preserve">
+    <value>Herkent microfoonaudio lokaal op deze pc met Whisper. Het model wordt één keer gedownload bij het eerste gebruik.</value>
+  </data>
+  <data name="CapabilitiesPage_SttCardHeader.Text" xml:space="preserve">
+    <value>🎤 Spraak-naar-tekst</value>
+  </data>
+  <data name="CapabilitiesPage_SttMoreSettingsLink.Content" xml:space="preserve">
+    <value>Meer spraakinstellingen…</value>
+  </data>
+  <data name="CapabilitiesPage_TtsCardDescription.Text" xml:space="preserve">
+    <value>Standaardaanbieder voor tts.speak. Per-aanroep provider/voiceId/model overschrijft deze standaard.</value>
+  </data>
+  <data name="CapabilitiesPage_TtsCardHeader.Text" xml:space="preserve">
+    <value>🔊 Tekst-naar-spraak</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
+    <value>ElevenLabs API-sleutel</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsHelp.Text" xml:space="preserve">
+    <value>API-sleutel wordt versleuteld opgeslagen met Windows DPAPI. Laat leeg om de eerder opgeslagen waarde te behouden bij het wijzigen van andere velden.</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsModel.Header" xml:space="preserve">
+    <value>ElevenLabs-model</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
+    <value>eleven_multilingual_v2</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
+    <value>ElevenLabs stem-ID</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderComboBox.Header" xml:space="preserve">
+    <value>Aanbieder</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderElevenLabs.Content" xml:space="preserve">
+    <value>ElevenLabs</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderPiper.Content" xml:space="preserve">
+    <value>Piper (lokale ML, aanbevolen)</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderWindows.Content" xml:space="preserve">
+    <value>Ingebouwde Windows-spraak</value>
+  </data>
+  <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
+    <value>🎙️ Spraak en audio</value>
+  </data>
+  <data name="VoiceSettingsPage_PageDescription.Text" xml:space="preserve">
+    <value>Configureer spraak-naar-tekst en spraakinteractie-instellingen. Alle spraakverwerking draait lokaal op uw apparaat.</value>
+  </data>
+  <data name="VoiceSettingsPage_SttHeader.Text" xml:space="preserve">
+    <value>Spraak-naar-tekst</value>
+  </data>
+  <data name="VoiceSettingsPage_SttDescription.Text" xml:space="preserve">
+    <value>Schakel spraakinvoer via microfoon in. Vereist een Whisper-modeldownload.</value>
+  </data>
+  <data name="VoiceSettingsPage_SttEnabledToggle.Header" xml:space="preserve">
+    <value>Spraakinvoer inschakelen</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
+    <value>Spraakmodel</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelCombo.Header" xml:space="preserve">
+    <value>Modelgrootte</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
+    <value>Tiny (~75 MB) — Snel, basisnauwkeurigheid</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
+    <value>Base (~142 MB) — Goede balans</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
+    <value>Small (~466 MB) — Hoge nauwkeurigheid</value>
+  </data>
+  <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
+    <value>Model downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_LanguageHeader.Text" xml:space="preserve">
+    <value>Taal</value>
+  </data>
+  <data name="VoiceSettingsPage_LangAuto.Content" xml:space="preserve">
+    <value>Automatisch detecteren</value>
+  </data>
+  <data name="VoiceSettingsPage_LangEn.Content" xml:space="preserve">
+    <value>Engels</value>
+  </data>
+  <data name="VoiceSettingsPage_LangEs.Content" xml:space="preserve">
+    <value>Spaans</value>
+  </data>
+  <data name="VoiceSettingsPage_LangFr.Content" xml:space="preserve">
+    <value>Frans</value>
+  </data>
+  <data name="VoiceSettingsPage_LangDe.Content" xml:space="preserve">
+    <value>Duits</value>
+  </data>
+  <data name="VoiceSettingsPage_LangJa.Content" xml:space="preserve">
+    <value>Japans</value>
+  </data>
+  <data name="VoiceSettingsPage_LangZh.Content" xml:space="preserve">
+    <value>Chinees</value>
+  </data>
+  <data name="VoiceSettingsPage_LangKo.Content" xml:space="preserve">
+    <value>Koreaans</value>
+  </data>
+  <data name="VoiceSettingsPage_LangPt.Content" xml:space="preserve">
+    <value>Portugees</value>
+  </data>
+  <data name="VoiceSettingsPage_LangIt.Content" xml:space="preserve">
+    <value>Italiaans</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceChatHeader.Text" xml:space="preserve">
+    <value>Spraakchat</value>
+  </data>
+  <data name="VoiceSettingsPage_SilenceSlider.Header" xml:space="preserve">
+    <value>Stilte-time-out (seconden)</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsResponseToggle.Header" xml:space="preserve">
+    <value>Lees antwoorden hardop voor</value>
+  </data>
+  <data name="VoiceSettingsPage_AudioFeedbackToggle.Header" xml:space="preserve">
+    <value>Audio-feedbackgeluiden</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceHeader.Text" xml:space="preserve">
+    <value>🔊 Companion-stem</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
+    <value>Kies de stem die wordt gebruikt bij het hardop voorlezen van antwoorden.</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
+    <value>Aanbieder</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsPiper.Content" xml:space="preserve">
+    <value>Piper (lokale neurale stemmen)</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsWindows.Content" xml:space="preserve">
+    <value>Windows (ingebouwde neurale stemmen)</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsElevenLabs.Content" xml:space="preserve">
+    <value>ElevenLabs (cloud, API-sleutel vereist)</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
+    <value>Stem</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDownloadButtonText.Text" xml:space="preserve">
+    <value>Stem downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDeleteButton.Content" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
+    <value>▶ Voorbeeld</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperInfoText.Text" xml:space="preserve">
+    <value>Stemmen worden gedownload van de GitHub-releases van het sherpa-onnx-project (~25 MB lage kwaliteit, tot ~150 MB hoge kwaliteit). Ze draaien volledig op deze pc; er verlaat geen audio uw apparaat.</value>
+  </data>
+  <data name="VoiceSettingsPage_WindowsVoiceCombo.Header" xml:space="preserve">
+    <value>Stem</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
+    <value>▶ Voorbeeld van stem</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">
+    <value>API-sleutel</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.Header" xml:space="preserve">
+    <value>Stem-ID</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsModelBox.Header" xml:space="preserve">
+    <value>Model (optioneel)</value>
+  </data>
+  <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
+    <value>Alle spraakverwerking draait volledig op uw apparaat. Er worden geen audiogegevens verzonden naar een cloudservice.</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
+    <value>✅ Model gereed</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
+    <value>⬇️ Download vereist</value>
+  </data>
+  <data name="VoiceSettingsPage_ButtonReDownload" xml:space="preserve">
+    <value>Opnieuw downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloading" xml:space="preserve">
+    <value>Downloaden...</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloadingPct" xml:space="preserve">
+    <value>Downloaden... {0}%</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloadCanceled" xml:space="preserve">
+    <value>Download geannuleerd</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusError" xml:space="preserve">
+    <value>❌ Bewerking mislukt (zie Debug-log)</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonDownloaded" xml:space="preserve">
+    <value>Gedownload</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperVoiceReady" xml:space="preserve">
+    <value>Stem gereed op deze pc ({0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperVoiceNotDownloaded" xml:space="preserve">
+    <value>Stem nog niet gedownload. Klik op Downloaden om het model op te halen (~25–150 MB afhankelijk van kwaliteit).</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonDownloading" xml:space="preserve">
+    <value>Downloaden…</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperConnecting" xml:space="preserve">
+    <value>Verbinding maken met sherpa-onnx-releases…</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperProgressIndeterminate" xml:space="preserve">
+    <value>Downloaden… {0} MB tot nu toe</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperProgressBytes" xml:space="preserve">
+    <value>Downloaden… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperExtracting" xml:space="preserve">
+    <value>Download voltooid. Uitpakken…</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDownloadCanceled" xml:space="preserve">
+    <value>Download geannuleerd.</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDownloadFailed" xml:space="preserve">
+    <value>Download mislukt (zie Debug-log).</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonRetry" xml:space="preserve">
+    <value>Download opnieuw proberen</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDeleted" xml:space="preserve">
+    <value>Stem verwijderd.</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDeleteFailed" xml:space="preserve">
+    <value>Verwijderen mislukt (zie Debug-log).</value>
+  </data>
+  <data name="VoiceSettingsPage_CompanionPreviewText" xml:space="preserve">
+    <value>Hallo! Dit is uw Companion die spreekt.</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreviewFailed" xml:space="preserve">
+    <value>Voorbeeld mislukt (zie Debug-log).</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceErrorLoading" xml:space="preserve">
+    <value>Fout bij laden van stemmen (zie Debug-log).</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewButtonPlaying" xml:space="preserve">
+    <value>▶ Afspelen...</value>
+  </data>
+  <data name="VoiceOverlayWindow_HeaderText.Text" xml:space="preserve">
+    <value>Companion-stem</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusBadge.Text" xml:space="preserve">
+    <value>Gereed</value>
+  </data>
+  <data name="VoiceOverlayWindow_EmptyStateText.Text" xml:space="preserve">
+    <value>Druk op Start en begin met spreken</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusText.Text" xml:space="preserve">
+    <value>Druk op Start om te beginnen</value>
+  </data>
+  <data name="VoiceOverlayWindow_StartStopText.Text" xml:space="preserve">
+    <value>Beginnen met luisteren</value>
+  </data>
+  <data name="VoiceOverlayWindow_MuteButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dempen</value>
+  </data>
+  <data name="VoiceOverlayWindow_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Spraakinstellingen</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusListening" xml:space="preserve">
+    <value>🗣️ Aan het luisteren...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
+    <value>Spreek nu — ik luister</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
+    <value>Initialiseren...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateStarting" xml:space="preserve">
+    <value>Bezig met starten</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateDownloadingModel" xml:space="preserve">
+    <value>Spraakmodel downloaden...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateDownloadingPct" xml:space="preserve">
+    <value>Model downloaden... {0}%</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateLoadingModel" xml:space="preserve">
+    <value>Spraakmodel laden...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateStartingMic" xml:space="preserve">
+    <value>Microfoon starten...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateStopping" xml:space="preserve">
+    <value>Stoppen...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateError" xml:space="preserve">
+    <value>Fout</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusError" xml:space="preserve">
+    <value>Fout opgetreden (zie Debug-log)</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusMuted" xml:space="preserve">
+    <value>Gedempt</value>
+  </data>
+  <data name="VoiceOverlayWindow_StopText" xml:space="preserve">
+    <value>Stoppen</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeStopped" xml:space="preserve">
+    <value>Gestopt</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeStartingDots" xml:space="preserve">
+    <value>Bezig met starten...</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeListening" xml:space="preserve">
+    <value>Aan het luisteren</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeProcessing" xml:space="preserve">
+    <value>Verwerken...</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeUnknown" xml:space="preserve">
+    <value>Onbekend</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusInitMic" xml:space="preserve">
+    <value>Microfoon initialiseren...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusTranscribing" xml:space="preserve">
+    <value>Uw spraak transcriberen...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
+    <value>Er is een fout opgetreden</value>
+  </data>
+  <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>Companion Voice</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeReady" xml:space="preserve">
+    <value>Gereed</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusReadyMessage" xml:space="preserve">
+    <value>Druk op Start om te beginnen</value>
+  </data>
+  <data name="VoiceOverlayWindow_ButtonStartListening" xml:space="preserve">
+    <value>Beginnen met luisteren</value>
+  </data>
+  <data name="VoiceSettingsPage_ButtonDownloadModel" xml:space="preserve">
+    <value>Model downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonDownloadVoice" xml:space="preserve">
+    <value>Stem downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
+    <value>▶ Voorbeeld van stem</value>
   </data>
 </root>

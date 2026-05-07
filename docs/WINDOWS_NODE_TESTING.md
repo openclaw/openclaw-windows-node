@@ -61,6 +61,7 @@ These features need the gateway to send `node.invoke` commands:
 | `location.get` | Get Windows location | Uses Windows location permission/settings |
 | `device.info` / `device.status` | Device metadata/status | Returns host/app/locale plus battery/storage/network/uptime payloads |
 | `browser.proxy` | Proxy browser-control host requests | Requires Browser proxy bridge enabled, a compatible browser-control host listening on gateway port + 2, and matching browser-control auth |
+| `stt.transcribe` | Speech-to-text from default microphone | Default-off; bounded `maxDurationMs` ≤ 30000; concatenates phrases until duration elapses; requires explicit gateway allowlist |
 | `tts.speak` | Speak text aloud | Requires Text-to-speech playback enabled in Settings; gateway mode also requires `tts.speak` in `gateway.nodes.allowCommands` |
 
 ## Capabilities Advertised
@@ -111,6 +112,40 @@ When the node connects, it advertises these capabilities:
 ### Camera permission denied
 - If you see "Camera access blocked", enable camera access for desktop apps in Windows Privacy settings
 - Packaged MSIX builds will show the system consent prompt automatically
+
+### `stt.transcribe` returns "Speech recognition failed" or "Internal Speech Error"
+- Open Windows Settings → Privacy & security → Speech (`ms-settings:privacy-speech`)
+- Turn **Online speech recognition** = On. The Windows speech recognizer's default dictation grammar often fails without it, and Windows surfaces an unmapped HRESULT as "Internal Speech Error"
+- Open Windows Settings → Time & language → Language & region (`ms-settings:regionlanguage`), select your display language → Language options, and confirm **Speech** appears under Installed features (install it if not, ~50 MB; reboot or sign out/in afterward)
+- Verify the recognizer end-to-end with `ms-settings:speech` → "Microphone" → **Get started** before re-trying `stt.transcribe`
+
+### `stt.transcribe` returns "Microphone permission denied"
+- Open Windows Settings → Privacy & security → Microphone
+- Ensure **Microphone access** (top-level toggle) is on
+- For **unpackaged** tray builds (the default `.\build.ps1` output): ensure **Let desktop apps access your microphone** is on. The tray exe will **not** appear as its own row — desktop-app access is granted as a group, not per-app
+- For **packaged MSIX** tray builds: the tray appears as its own entry under "Let apps access your microphone" and must be individually enabled (the OS shows a consent prompt on first use)
+- After changing permissions, re-pair the node so the gateway picks up the new advertised command
+
+### `stt.transcribe` returns "Language pack 'X' is not installed"
+- Open Windows Settings → Time & language → Language & region
+- Add the requested display language and ensure the **Speech** optional feature is installed
+- Restart the tray after installing the speech pack
+
+### Manual STT validation
+1. Enable Node Mode in Settings.
+2. Enable **Speech-to-text (microphone)** in Settings → Node mode.
+3. Append `stt.transcribe` to your existing gateway allowlist (do **not** copy a literal `...` — substitute the commands you already allow). For example, starting from the recommended Windows safe companion list:
+   ```bash
+   openclaw config set gateway.nodes.allowCommands '["canvas.present","canvas.hide","canvas.navigate","canvas.eval","canvas.snapshot","canvas.a2ui.push","canvas.a2ui.pushJSONL","canvas.a2ui.reset","camera.list","location.get","screen.snapshot","device.info","device.status","system.execApprovals.get","system.execApprovals.set","stt.transcribe"]'
+   openclaw gateway restart
+   ```
+4. Re-pair or re-approve the node so the gateway refreshes its command snapshot.
+5. Invoke and speak a short phrase:
+   ```bash
+   openclaw nodes invoke --node <id> --command stt.transcribe \
+       --params '{"maxDurationMs":5000,"language":"en-US"}'
+   ```
+6. The Windows microphone OS indicator should appear during recognition. Confirm a `transcribed:true` payload returns the text.
 
 ## Remaining Work (Roadmap)
 

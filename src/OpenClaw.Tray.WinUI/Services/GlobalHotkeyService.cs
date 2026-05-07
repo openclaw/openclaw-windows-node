@@ -12,10 +12,12 @@ namespace OpenClawTray.Services;
 public class GlobalHotkeyService : IDisposable
 {
     private const int HOTKEY_ID = 9001;
+    private const int HOTKEY_ID_VOICE = 9002;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_SHIFT = 0x0004;
     private const uint VK_C = 0x43;
+    private const uint VK_V = 0x56;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -114,6 +116,7 @@ public class GlobalHotkeyService : IDisposable
     private readonly ManualResetEventSlim _opCompleted = new(false);
 
     public event EventHandler? HotkeyPressed;
+    public event EventHandler? VoiceHotkeyPressed;
 
     public GlobalHotkeyService()
     {
@@ -240,6 +243,18 @@ public class GlobalHotkeyService : IDisposable
                 Logger.Warn($"Failed to register global hotkey (Win32Error={err}: {errMsg})");
             }
 
+            // Also register voice hotkey: Ctrl+Alt+Shift+V
+            if (RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
+                MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+                VK_V))
+            {
+                Logger.Info("Voice hotkey registered: Ctrl+Alt+Shift+V");
+            }
+            else
+            {
+                Logger.Warn("Failed to register voice hotkey Ctrl+Alt+Shift+V");
+            }
+
             _opCompleted.Set();
             return IntPtr.Zero;
         }
@@ -251,8 +266,9 @@ public class GlobalHotkeyService : IDisposable
                 if (_registered)
                 {
                     UnregisterHotKey(hWnd, HOTKEY_ID);
+                    UnregisterHotKey(hWnd, HOTKEY_ID_VOICE);
                     _registered = false;
-                    Logger.Info("Global hotkey unregistered");
+                    Logger.Info("Global hotkeys unregistered");
                 }
             }
             catch (Exception ex)
@@ -270,6 +286,11 @@ public class GlobalHotkeyService : IDisposable
         {
             Logger.Info("Hotkey pressed: Ctrl+Alt+Shift+C");
             OnHotkeyPressed();
+        }
+        else if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID_VOICE)
+        {
+            Logger.Info("Voice hotkey pressed: Ctrl+Alt+Shift+V");
+            VoiceHotkeyPressed?.Invoke(this, EventArgs.Empty);
         }
         return DefWindowProc(hWnd, msg, wParam, lParam);
     }

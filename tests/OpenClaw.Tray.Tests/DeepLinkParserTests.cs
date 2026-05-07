@@ -121,6 +121,21 @@ public class DeepLinkParserTests
         Assert.Equal("settings", result.Path);
     }
 
+    [Theory]
+    [InlineData("openclaw://send/?message=hello", "send")]
+    [InlineData("openclaw://agent/?message=hi&key=abc", "agent")]
+    [InlineData("openclaw://activity/?filter=nodes", "activity")]
+    public void ParseDeepLink_TrailingSlashBeforeQuery_IsStripped(string uri, string expectedPath)
+    {
+        // Windows canonicalizes openclaw://send?... to openclaw://send/?...
+        // before handing it to us. The slash sits before the `?`, so a naïve
+        // TrimEnd before query split fails to strip it. Regression test for
+        // the off-by-one fix in DeepLinkParser.ParseDeepLink.
+        var result = DeepLinkParser.ParseDeepLink(uri);
+        Assert.NotNull(result);
+        Assert.Equal(expectedPath, result!.Path);
+    }
+
     [Fact]
     public void ParseDeepLink_CaseInsensitiveScheme()
     {

@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
@@ -11,6 +12,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using WinUIEx;
+using Windows.Foundation;
 using Windows.Storage.Streams;
 
 namespace OpenClawTray.Windows;
@@ -47,6 +49,15 @@ public sealed partial class CanvasWindow : WindowEx
         "OpenClawTray", "canvas");
     private FileSystemWatcher? _canvasWatcher;
     private long _lastReloadTicks = 0;
+
+    private readonly DispatcherQueue? _dispatcherQueue;
+    private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
+
+    /// <summary>
+    /// Fired when the SPA sends a message to the native side via
+    /// <c>window.chrome.webview.postMessage(...)</c>.
+    /// </summary>
+    public event EventHandler<WebBridgeMessage>? BridgeMessageReceived;
     
     // HTML sanitization — block embedded iframes/objects/embeds/applets
     private static readonly Regex s_sanitizeBlock = new(
@@ -219,6 +230,7 @@ public sealed partial class CanvasWindow : WindowEx
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         this.SetIcon("Assets\\openclaw.ico");
+        _dispatcherQueue = DispatcherQueue;
         this.Closed += OnWindowClosed;
         
         // Initialize WebView2
@@ -262,7 +274,30 @@ public sealed partial class CanvasWindow : WindowEx
             CanvasWebView.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = false;
             CanvasWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             CanvasWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            
+
+            // Wire the bidirectional native↔SPA bridge
+            // SPA → native: window.chrome.webview.postMessage({ type, payload })
+            _webMessageReceivedHandler = (s, e) =>
+            {
+                if (!IsTrustedBridgeSource(e.Source))
+                {
+                    Logger.Warn($"[Canvas] rejected bridge message from untrusted source {SanitizeBridgeLogValue(e.Source)}");
+                    return;
+                }
+
+                var msg = WebBridgeMessage.TryParse(e.WebMessageAsJson);
+                if (msg != null)
+                {
+                    Logger.Debug($"[Canvas] bridge message from SPA, type={SanitizeBridgeLogValue(msg.Type)}");
+                    BridgeMessageReceived?.Invoke(this, msg);
+                }
+                else
+                {
+                    Logger.Warn("[Canvas] received unrecognised bridge message");
+                }
+            };
+            CanvasWebView.CoreWebView2.WebMessageReceived += _webMessageReceivedHandler;
+
             // Inject auth token for gateway requests
             if (!string.IsNullOrEmpty(_trustedGatewayOrigin) && !string.IsNullOrEmpty(_gatewayToken))
             {
@@ -399,6 +434,14 @@ public sealed partial class CanvasWindow : WindowEx
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+
+        if (CanvasWebView.CoreWebView2 != null)
+        {
+            if (_webMessageReceivedHandler != null)
+                CanvasWebView.CoreWebView2.WebMessageReceived -= _webMessageReceivedHandler;
+            CanvasWebView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+        }
+
         _canvasWatcher?.Dispose();
         _canvasWatcher = null;
     }
@@ -585,26 +628,6 @@ public sealed partial class CanvasWindow : WindowEx
         await NavigateAndWaitAsync(url);
     }
     
-    public async Task<string> SendA2UIMessageAsync(string json)
-    {
-        await EnsureWebViewReadyAsync();
-        if (!_isWebViewInitialized)
-            throw new InvalidOperationException("WebView2 not initialized");
-        
-        var script = BuildA2UIMessageScript(json);
-        return await CanvasWebView.CoreWebView2.ExecuteScriptAsync(script);
-    }
-    
-    public async Task<string> ResetA2UIAsync()
-    {
-        await EnsureWebViewReadyAsync();
-        if (!_isWebViewInitialized)
-            throw new InvalidOperationException("WebView2 not initialized");
-        
-        var script = BuildA2UIResetScript();
-        return await CanvasWebView.CoreWebView2.ExecuteScriptAsync(script);
-    }
-    
     private Task NavigateAndWaitAsync(string url)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -624,59 +647,121 @@ public sealed partial class CanvasWindow : WindowEx
         return uri.AbsolutePath.StartsWith("/__openclaw__/a2ui/", StringComparison.OrdinalIgnoreCase);
     }
     
-    private static string BuildA2UIMessageScript(string json)
-    {
-        var escaped = json.Replace("\\", "\\\\").Replace("`", "\\`").Replace("${", "\\${");
-        return $$"""
-        (() => {
-          const msg = JSON.parse(`{{escaped}}`);
-          const trySend = (target, method) => {
-            if (target && typeof target[method] === 'function') {
-              target[method](msg);
-              return true;
-            }
-            return false;
-          };
-          if (trySend(window.__a2ui, 'receive')) return 'ok';
-          if (trySend(window.__a2ui, 'push')) return 'ok';
-          if (trySend(window.__a2ui, 'ingest')) return 'ok';
-          if (trySend(window.a2ui, 'receive')) return 'ok';
-          if (trySend(window.a2ui, 'push')) return 'ok';
-          if (trySend(window.a2ui, 'ingest')) return 'ok';
-          if (trySend(window.A2UI, 'receive')) return 'ok';
-          if (trySend(window.A2UI, 'push')) return 'ok';
-          if (trySend(window.A2UI, 'ingest')) return 'ok';
-          try { window.dispatchEvent(new MessageEvent('message', { data: msg })); return 'event'; } catch {}
-          try { window.postMessage(msg, '*'); return 'postMessage'; } catch {}
-          return 'no-handler';
-        })()
-        """;
-    }
-    
-    private static string BuildA2UIResetScript()
-    {
-        return """
-        (() => {
-          const tryCall = (target, method) => {
-            if (target && typeof target[method] === 'function') {
-              target[method]();
-              return true;
-            }
-            return false;
-          };
-          if (tryCall(window.__a2ui, 'reset')) return 'ok';
-          if (tryCall(window.__a2ui, 'clear')) return 'ok';
-          if (tryCall(window.a2ui, 'reset')) return 'ok';
-          if (tryCall(window.a2ui, 'clear')) return 'ok';
-          if (tryCall(window.A2UI, 'reset')) return 'ok';
-          if (tryCall(window.A2UI, 'clear')) return 'ok';
-          return 'no-handler';
-        })()
-        """;
-    }
-    
     private Task EnsureWebViewReadyAsync()
     {
         return _isWebViewInitialized ? Task.CompletedTask : _webViewReadyTcs.Task;
+    }
+
+    // ── Bridge: native → SPA ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a bridge message to the SPA via the WebView2 native→web channel.
+    /// The SPA receives this via <c>window.chrome.webview.addEventListener('message', e => { const msg = e.data; ... })</c>.
+    /// Safe to call from background threads. No-op if the WebView2 core is not yet initialised.
+    /// </summary>
+    public void PostBridgeMessage(string type, object? payload = null)
+    {
+        if (IsClosed)
+            return;
+
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("[Canvas] cannot post bridge message because DispatcherQueue is unavailable");
+            return;
+        }
+
+        if (!_dispatcherQueue.TryEnqueue(() => PostBridgeMessageOnUiThread(type, payload)))
+        {
+            Logger.Warn($"[Canvas] failed to enqueue bridge message, type={SanitizeBridgeLogValue(type)}");
+        }
+    }
+
+    private void PostBridgeMessageOnUiThread(string type, object? payload)
+    {
+        if (IsClosed || CanvasWebView.CoreWebView2 == null)
+            return;
+
+        try
+        {
+            var msg = new WebBridgeMessage(type);
+            var json = msg.ToJson(payload);
+            Logger.Debug($"[Canvas] posting bridge message, type={SanitizeBridgeLogValue(type)}");
+            CanvasWebView.CoreWebView2.PostWebMessageAsJson(json);
+        }
+        catch (ArgumentException ex)
+        {
+            Logger.Warn($"[Canvas] invalid bridge message payload: {ex.Message}");
+        }
+        catch (COMException ex)
+        {
+            Logger.Warn($"[Canvas] bridge message post failed: {ex.Message}");
+        }
+        catch (ObjectDisposedException ex)
+        {
+            Logger.Warn($"[Canvas] bridge message post skipped after disposal: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[Canvas] bridge message post failed: {ex.Message}");
+        }
+    }
+
+    // ── Bridge: origin validation ──────────────────────────────────────────
+
+    private bool IsTrustedBridgeSource(string? source)
+    {
+        if (!TryGetUriOrigin(source, out var sourceOrigin))
+            return false;
+
+        // Accept messages from the virtual canvas host
+        if (string.Equals(sourceOrigin.Scheme, "https", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(sourceOrigin.IdnHost, "openclaw-canvas.local", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Accept messages from the configured gateway origin
+        if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
+            Uri.TryCreate(_trustedGatewayOrigin, UriKind.Absolute, out var gatewayUri))
+        {
+            return string.Equals(sourceOrigin.Scheme, gatewayUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(sourceOrigin.IdnHost, gatewayUri.IdnHost, StringComparison.OrdinalIgnoreCase) &&
+                   sourceOrigin.Port == gatewayUri.Port;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetUriOrigin(string? uriText, out Uri origin)
+    {
+        origin = null!;
+        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri))
+            return false;
+
+        var builder = new UriBuilder(uri)
+        {
+            Path = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        origin = builder.Uri;
+        return true;
+    }
+
+    private static string SanitizeBridgeLogValue(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        Span<char> buffer = stackalloc char[Math.Min(value.Length, 80)];
+        var count = 0;
+        foreach (var ch in value)
+        {
+            if (count == buffer.Length)
+                break;
+            buffer[count++] = char.IsControl(ch) ? ' ' : ch;
+        }
+
+        var sanitized = new string(buffer[..count]);
+        return value.Length > count ? sanitized + "..." : sanitized;
     }
 }

@@ -72,7 +72,9 @@
             x:Name="NavView"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
-            PaneDisplayMode="Auto"
+            PaneDisplayMode="Left"
+            PaneOpening="OnNavPaneStateChanged"
+            PaneClosing="OnNavPaneStateChanged"
             SelectionChanged="NavView_SelectionChanged">
 
         <NavigationView.MenuItems>
@@ -132,6 +134,9 @@
             <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_130" Tag="capabilities" Content="Capabilities">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE964;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="voice" Content="Voice &amp; Audio">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE720;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;"/></NavigationViewItem.Icon>

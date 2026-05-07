@@ -73,6 +73,25 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Privacy -->
+                <Expander x:Name="PrivacyExpander" IsExpanded="True"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="PrivacyExpander">
+                    <Expander.Header>
+                        <TextBlock x:Uid="SettingsPrivacyHeader" Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <TextBlock x:Uid="SettingsPrivacyDescription" Text="Pre-approve capabilities so agents can use them without a permission prompt each time. You'll still see a countdown before recording starts."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                        <ToggleSwitch x:Uid="ScreenRecordingToggle" x:Name="ScreenRecordingToggle" Header="Allow screen recording"
+                                      AutomationProperties.AutomationId="SettingsPageScreenRecording"/>
+                        <ToggleSwitch x:Uid="CameraRecordingToggle" x:Name="CameraRecordingToggle" Header="Allow camera recording"
+                                      AutomationProperties.AutomationId="SettingsPageCameraRecording"/>
+                    </StackPanel>
+                </Expander>
+
             </StackPanel>
         </ScrollViewer>
 
@@ -82,9 +101,9 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0" Padding="24,16">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                <Button x:Uid="CancelButton" x:Name="CancelButton" Content="Cancel" Width="80" Click="OnCancel"
+                <Button x:Uid="CancelButton" x:Name="CancelButton" Content="Cancel" MinWidth="80" Click="OnCancel"
                         AutomationProperties.AutomationId="SettingsPageCancel"/>
-                <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save" Width="80" Click="OnSave"
+                <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save" MinWidth="80" Click="OnSave"
                         Style="{ThemeResource AccentButtonStyle}"
                         AutomationProperties.AutomationId="SettingsPageSave"/>
             </StackPanel>

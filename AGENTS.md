@@ -22,5 +22,8 @@ If a command fails:
 Notes:
 
 - If a build/test is blocked by an environmental lock (for example running executable locking output assemblies), stop/close the locking process and rerun.
+- In linked git worktrees, set `OPENCLAW_REPO_ROOT` to the worktree path before running tests that discover the repository root, for example:
+  - `$env:OPENCLAW_REPO_ROOT='D:\github\moltbot-windows-hub.<worktree-name>'`
 - Tray tests must isolate `SettingsManager` from real user settings. Do not use `new SettingsManager()` in tests unless the test intentionally reads `%APPDATA%\OpenClawTray\settings.json`; pass a temp settings directory or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
+- Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
 - Do not claim completion without reporting validation results.

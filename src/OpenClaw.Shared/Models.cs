@@ -762,7 +762,7 @@ public static class PermissionDiagnostics
             {
                 Name = "Microphone",
                 Status = "review",
-                Detail = "Required only for camera clips with audio or future voice features.",
+                Detail = "Required for camera clips with audio and for stt.transcribe speech-to-text capture.",
                 SettingsUri = "ms-settings:privacy-microphone"
             },
             new()
@@ -1019,12 +1019,20 @@ public static class CommandCenterCommandGroups
     public static readonly FrozenSet<string> SafeCompanionCommandSet =
         SafeCompanionCommands.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    public static readonly string[] DangerousCommands =
+    public static readonly string[] CommonDangerousCommands =
     [
         "camera.snap",
         "camera.clip",
         "screen.record",
         "tts.speak"
+    ];
+
+    public static readonly string[] DangerousCommands =
+    [
+        .. CommonDangerousCommands,
+        "stt.transcribe",
+        "stt.listen",
+        "stt.status"
     ];
 
     public static readonly FrozenSet<string> DangerousCommandSet =
@@ -1235,7 +1243,7 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "allowlist",
                 Title = "Privacy-sensitive commands are currently blocked",
-                Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} declared but filtered by gateway policy. Leave blocked unless you explicitly want camera or screen recording access for this node.",
+                Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} declared but filtered by gateway policy. Leave blocked unless you explicitly want camera, microphone, or screen recording access for this node.",
                 RepairAction = "Copy opt-in guidance",
                 CopyText = BuildDangerousCommandOptInGuidance(node.MissingDangerousAllowlistCommands)
             });
