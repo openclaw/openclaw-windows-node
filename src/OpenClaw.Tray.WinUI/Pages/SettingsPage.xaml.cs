@@ -20,7 +20,13 @@ public sealed partial class SettingsPage : Page
     private bool _saving;
     private bool _isDirty;
     private bool _localGatewayInstalled;
+    private bool _uninstallInitiatedThisSession;
     private CancellationTokenSource? _uninstallCts;
+
+    private enum UninstallUiState { Idle, InProgress, Success, Failure }
+
+    private const string GatewayIdleBodyText =
+        "Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.";
 
 
     public SettingsPage()
@@ -125,13 +131,22 @@ public sealed partial class SettingsPage : Page
         _localGatewayInstalled = File.Exists(setupStatePath)
             || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
 
-        LocalGatewayExpander.Visibility = _localGatewayInstalled
-            ? Visibility.Visible : Visibility.Collapsed;
+        LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
         // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
         // TODO(commit-5): soften copy if Bostick's MSIX test confirms Path B (package-virtualized APPDATA).
         MsixWarningBar.IsOpen = PackageHelper.IsPackaged && _localGatewayInstalled;
     }
+
+    /// <summary>
+    /// Returns Visible when a local gateway exists OR an uninstall has been initiated this
+    /// view session (latch). The latch prevents the section from collapsing mid-flight when
+    /// the engine deletes setup-state.json before the result InfoBar is shown.
+    /// Resets on page navigation — section hides again on clean Settings re-open.
+    /// </summary>
+    private Visibility ComputeLocalGatewaySectionVisibility() =>
+        (_localGatewayInstalled || _uninstallInitiatedThisSession)
+            ? Visibility.Visible : Visibility.Collapsed;
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
@@ -239,8 +254,12 @@ public sealed partial class SettingsPage : Page
         var dialogResult = await dialog.ShowAsync();
         if (dialogResult != ContentDialogResult.Primary) return;
 
+        // Latch: keeps the section visible even after setup-state.json is deleted by the engine.
+        _uninstallInitiatedThisSession = true;
+        LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
+
         // --- Begin uninstall ---
-        SetUninstallInProgress(true);
+        ApplyUninstallUiState(UninstallUiState.InProgress);
         UninstallResultBar.IsOpen = false;
 
         _uninstallCts = new CancellationTokenSource();
@@ -260,16 +279,16 @@ public sealed partial class SettingsPage : Page
 
             if (uninstallResult.Success)
             {
+                ApplyUninstallUiState(UninstallUiState.Success);
                 UninstallResultBar.Severity = InfoBarSeverity.Success;
                 UninstallResultBar.Title = "Local gateway removed";
                 UninstallResultBar.Message = "Setup is reset; you can re-run the wizard from Onboarding.";
                 UninstallResultBar.ActionButton = null;
                 UninstallResultBar.IsOpen = true;
-                // Gateway is gone — collapse the section
-                LocalGatewayExpander.Visibility = Visibility.Collapsed;
             }
             else
             {
+                ApplyUninstallUiState(UninstallUiState.Failure);
                 var errorSummary = uninstallResult.Errors.Count > 0
                     ? string.Join("; ", uninstallResult.Errors)
                     : "Removal completed with unknown errors. Check logs for details.";
@@ -278,6 +297,7 @@ public sealed partial class SettingsPage : Page
         }
         catch (OperationCanceledException)
         {
+            ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
             UninstallResultBar.Title = "Removal cancelled";
             UninstallResultBar.Message = "Gateway may be in a partially-removed state. Review logs or retry.";
@@ -286,11 +306,11 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
+            ApplyUninstallUiState(UninstallUiState.Failure);
             ShowUninstallError(ex.Message);
         }
         finally
         {
-            SetUninstallInProgress(false);
             _uninstallCts?.Dispose();
             _uninstallCts = null;
         }
@@ -315,13 +335,46 @@ public sealed partial class SettingsPage : Page
         UninstallResultBar.IsOpen = true;
     }
 
-    private void SetUninstallInProgress(bool inProgress)
+    private void ApplyUninstallUiState(UninstallUiState state)
     {
-        UninstallProgressRing.IsActive = inProgress;
-        UninstallProgressRing.Visibility = inProgress ? Visibility.Visible : Visibility.Collapsed;
-        RemoveGatewayButton.IsEnabled = !inProgress;
-        UninstallStatusText.Visibility = inProgress ? Visibility.Visible : Visibility.Collapsed;
-        if (inProgress)
-            UninstallStatusText.Text = "Removing local gateway…";
+        switch (state)
+        {
+            case UninstallUiState.Idle:
+            case UninstallUiState.Failure:
+                RemoveGatewayButton.Content = "Remove Local Gateway";
+                RemoveGatewayButton.IsEnabled = true;
+                RemoveGatewayButton.Visibility = Visibility.Visible;
+                GatewayBodyText.Text = GatewayIdleBodyText;
+                break;
+
+            case UninstallUiState.InProgress:
+            {
+                var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                sp.Children.Add(new ProgressRing
+                {
+                    IsActive = true,
+                    Width = 16,
+                    Height = 16,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                sp.Children.Add(new TextBlock
+                {
+                    Text = "Removing distro\u2026",
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                RemoveGatewayButton.Content = sp;
+                RemoveGatewayButton.IsEnabled = false;
+                RemoveGatewayButton.Visibility = Visibility.Visible;
+                GatewayBodyText.Text = "Removing the local gateway. This may take 10\u201330 seconds\u2026";
+                break;
+            }
+
+            case UninstallUiState.Success:
+                // Button hidden — success InfoBar carries the message.
+                // MSIX warning is moot once the gateway is gone.
+                RemoveGatewayButton.Visibility = Visibility.Collapsed;
+                MsixWarningBar.IsOpen = false;
+                break;
+        }
     }
 }
