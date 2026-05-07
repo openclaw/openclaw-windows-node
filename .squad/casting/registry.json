@@ -1,0 +1,52 @@
+{
+  "agents": {
+    "kranz": {
+      "persistent_name": "Kranz",
+      "role": "Lead / Architect",
+      "universe": "Apollo 13",
+      "created_at": "2026-05-04",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "aaron": {
+      "persistent_name": "Aaron",
+      "role": "Backend / Infra",
+      "universe": "Apollo 13",
+      "created_at": "2026-05-04",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "mattingly": {
+      "persistent_name": "Mattingly",
+      "role": "Frontend / Onboarding UX",
+      "universe": "Apollo 13",
+      "created_at": "2026-05-04",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "bostick": {
+      "persistent_name": "Bostick",
+      "role": "Tester / Validation",
+      "universe": "Apollo 13",
+      "created_at": "2026-05-04",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "scribe": {
+      "persistent_name": "Scribe",
+      "role": "Session Logger",
+      "universe": "(exempt)",
+      "created_at": "2026-05-04",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "ralph": {
+      "persistent_name": "Ralph",
+      "role": "Work Monitor",
+      "universe": "(exempt)",
+      "created_at": "2026-05-04",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}

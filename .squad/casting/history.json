@@ -1,0 +1,13 @@
+{
+  "universe_usage_history": [
+    { "universe": "Apollo 13", "assigned_at": "2026-05-04" }
+  ],
+  "assignment_cast_snapshots": {
+    "wsl-gateway-clean-2026-05-04": {
+      "assignment_id": "wsl-gateway-clean-2026-05-04",
+      "universe": "Apollo 13",
+      "assigned_at": "2026-05-04",
+      "members": ["kranz", "aaron", "mattingly", "bostick", "scribe", "ralph"]
+    }
+  }
+}
