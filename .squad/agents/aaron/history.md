@@ -40,15 +40,21 @@ Root: App.OnLaunched is sync void (fire-and-forget). InitializeTrayIcon deferre
 
 ### Active Workstreams
 
-**WSL Gateway Uninstall (feat/wsl-gateway-uninstall) — Commits 1+2 COMPLETE (2026-05-08):**  
-Executed Kranz's uninstall plan v3 commits 1 and 2. Baseline merge of pr-241-feedback-fixes into worktree required manual copy of 7 untracked files (LocalGatewaySetup.cs, LocalGatewayLifecycle.cs, scripts, tests, RootfsArtifactManifest.cs, WslGatewayContracts.cs) and resolution of 4 API incompatibilities. Commit 1 removes OPENCLAW_WSL_INSTALL_LOCATION env-var from LocalGatewaySetupRuntimeConfiguration while retaining InstanceInstallLocation on options as test seam. Commit 2 creates scripts/_uninstall-helpers.ps1 with Test-IsOpenClawOwnedDistroName (moved from reset script), plus new Invoke-WslCommand, Stop-OpenClawProcessByPid, Assert-DryRunGate, Add-Step helpers. Fixed 12 pre-existing test failures from baseline merge (localization duplicates, test-code mismatches, env-isolation). All 447 tray tests pass. Next: commits 3+ (uninstall implementation).  
-Previous: Planning-complete (2026-05-07). Two Windows data roots identified: roaming (%APPDATA%\OpenClawTray) + local (%LOCALAPPDATA%\OpenClawTray). Uninstall order: service stop → terminate → unregister → cleanup. Awaiting Mike's answers to 8 design questions (packaging scope, per-user install, wsl --export backup, mcp-token.txt delete, logs/exec-policy cleanup, EnableMcpServer flag, AutoStart removal).
+**WSL Gateway Uninstall (feat/wsl-gateway-uninstall) — Re-baseline onto PR #274 COMPLETE (2026-05-07):**  
+Executed re-baseline from origin/master to PR #274 head (`3e4c217`). Preserved 148 artifacts (MSIX validation script, .squad/ decision inbox/agent histories). Hard reset answered 'n' to all worktree .squad untracked deletion prompts. 3 clean commits landed:
+- `cd1a83b` — refactor(setup): remove OPENCLAW_WSL_INSTALL_LOCATION env-var binding (LocalGatewaySetup.cs, LocalGatewaySetupTests.cs, validate-wsl-gateway.ps1)
+- `83eadcf` — refactor(scripts): extract shared uninstall helpers into _uninstall-helpers.ps1
+- `22bda40` — chore(squad): restore session artifacts (MSIX script + .squad/ files)  
+Key structural diff on PR #274 base: `LocalGatewaySetupRuntimeConfiguration` already cleaned of TrustedSigningKeyId/TrustedSigningPublicKeyPath/RootfsManifestPath fields. App.xaml.cs already does not pass instanceInstallLocation. Commit 1 scope: 5 removals only (record field, constant, FromEnvironment line, factory param, factory assignment). Pre-existing failures: 8 LocalizationValidationTests failing with `OPENCLAW_REPO_ROOT` env not set (worktree environment issue, NOT introduced by this work). Build: PASS. Tray.Tests: 609/617 pass (8 pre-existing localization fails). Shared.Tests: pass (exit 0, ~853 test methods, 2 skipped). Commits 3–7 cleared to start.
+
+**WSL Gateway Uninstall (feat/wsl-gateway-uninstall) — Commits 1+2 COMPLETE (2026-05-08, OLD BASELINE):**  
+[Superseded by re-baseline above. Prior base was origin/master with pr-241-feedback-fixes merge — UNAUTHORIZED scope expansion. Reset and redone on PR #274 head per Mike's Path A decision.]
 
 ## Test Results (Latest)
 
-- **Shared Tests:** passing (all)
-- **Tray Tests:** 447/447
-- **Build:** PASS (2026-05-08, feat/wsl-gateway-uninstall after commits 1+2)
+- **Shared Tests:** passing (exit 0, ~853 test methods, 2 with Skip; 2026-05-07)
+- **Tray Tests:** 609/617 pass — 8 pre-existing LocalizationValidationTests fails (OPENCLAW_REPO_ROOT not set in worktree)
+- **Build:** PASS (2026-05-07, feat/wsl-gateway-uninstall re-baseline onto PR #274)
 
 ## Deferred & Open
 
