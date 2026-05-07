@@ -521,108 +521,19 @@ public sealed class OnboardingWindow : WindowEx
 
     /// <summary>
     /// Auto-sends the bootstrap kickoff message after the web chat loads.
-    /// Waits for the WebSocket to connect, then injects the message via JS.
-    /// Matches macOS's maybeKickoffOnboardingChat behavior.
+    /// Delegates to <see cref="BootstrapMessageInjector"/> so the same gated
+    /// kickoff fires from both the (legacy) onboarding chat overlay and from
+    /// post-wizard <c>App.ShowChatWindow()</c> — guarded by
+    /// <see cref="SettingsManager.HasInjectedFirstRunBootstrap"/>.
     /// </summary>
     private async Task SendBootstrapMessageAsync()
     {
         if (_bootstrapSent || _chatWebView?.CoreWebView2 == null) return;
         _bootstrapSent = true;
 
-        const string bootstrapMessage =
-            "Hi! I just installed OpenClaw and you're my brand-new agent. " +
-            "Please start the first-run ritual from BOOTSTRAP.md, ask one question at a time, " +
-            "and before we talk about WhatsApp/Telegram, visit soul.md with me to craft SOUL.md: " +
-            "ask what matters to me and how you should be. Then guide me through choosing " +
-            "how we should talk (web-only, WhatsApp, or Telegram).";
-
-        try
-        {
-            // Wait for the web UI to initialize its WebSocket connection
-            await Task.Delay(3000);
-
-            // Inject JS that finds the chat input and sends the bootstrap message.
-            // The Lit-based UI uses shadow DOM, so we traverse through custom elements.
-            // SECURITY: Use JsonSerializer to safely encode the message as a JS string literal,
-            // preventing XSS via template expression injection (${...}), quotes, or backslashes.
-            var safeMsg = System.Text.Json.JsonSerializer.Serialize(bootstrapMessage);
-            var js = $$"""
-            (function() {
-                const msg = {{safeMsg}};
-
-                // Strategy 1: Find textarea/input in the page (may be in shadow DOM)
-                function findInput(root) {
-                    const inputs = root.querySelectorAll('textarea, input[type="text"]');
-                    for (const input of inputs) {
-                        if (input.offsetParent !== null || input.offsetHeight > 0) return input;
-                    }
-                    // Search shadow DOMs
-                    const elements = root.querySelectorAll('*');
-                    for (const el of elements) {
-                        if (el.shadowRoot) {
-                            const found = findInput(el.shadowRoot);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                }
-
-                function findButton(root) {
-                    // Look for send buttons
-                    const buttons = root.querySelectorAll('button');
-                    for (const btn of buttons) {
-                        const text = (btn.textContent || '').toLowerCase();
-                        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                        if (text.includes('send') || label.includes('send') ||
-                            btn.querySelector('svg') && btn.closest('form')) {
-                            return btn;
-                        }
-                    }
-                    const elements = root.querySelectorAll('*');
-                    for (const el of elements) {
-                        if (el.shadowRoot) {
-                            const found = findButton(el.shadowRoot);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                }
-
-                const input = findInput(document);
-                if (input) {
-                    // Set value and dispatch events to trigger Lit's data binding
-                    input.value = msg;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-
-                    // Try to find and click the send button
-                    setTimeout(() => {
-                        const btn = findButton(document);
-                        if (btn) {
-                            btn.click();
-                            console.log('[OpenClaw] Bootstrap message sent via button click');
-                        } else {
-                            // Try Enter key as fallback
-                            input.dispatchEvent(new KeyboardEvent('keydown', {
-                                key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true
-                            }));
-                            console.log('[OpenClaw] Bootstrap message sent via Enter key');
-                        }
-                    }, 200);
-                } else {
-                    console.warn('[OpenClaw] Could not find chat input for bootstrap');
-                }
-            })();
-            """;
-
-            await _chatWebView.CoreWebView2.ExecuteScriptAsync(js);
-            Logger.Info("[OnboardingChat] Bootstrap message injection executed");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"[OnboardingChat] Bootstrap injection failed: {ex.Message}");
-            // Not fatal — user can type manually
-        }
+        await BootstrapMessageInjector.InjectAsync(
+            script => _chatWebView.CoreWebView2.ExecuteScriptAsync(script).AsTask(),
+            _settings);
     }
 
     /// <summary>
@@ -718,6 +629,19 @@ public sealed class OnboardingWindow : WindowEx
         _settings.Save();
         Completed = true;
         _state.GatewayClient = null;
+
+        // Materialize the persisted AutoStart preference into the OS-level Run-key.
+        // ReadyPage applies the toggle on each change, but a user who never touches
+        // it should still get the default (true) registered. Idempotent.
+        try
+        {
+            AutoStartManager.SetAutoStart(_settings.AutoStart);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Onboarding] Failed to apply AutoStart={_settings.AutoStart}: {ex.Message}");
+        }
+
         OnboardingCompleted?.Invoke(this, EventArgs.Empty);
 
         if (modelConfigured)

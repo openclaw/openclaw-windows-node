@@ -39,8 +39,13 @@ public class SettingsManager
     public int SshTunnelLocalPort { get; set; } = 18789;
 
     // Startup
-    public bool AutoStart { get; set; } = false;
+    public bool AutoStart { get; set; } = true;
     public bool GlobalHotkeyEnabled { get; set; } = true;
+    /// <summary>
+    /// One-shot gate: set to true after the post-onboarding "first-run" bootstrap
+    /// kickoff message has been injected into the chat exactly once.
+    /// </summary>
+    public bool HasInjectedFirstRunBootstrap { get; set; } = false;
 
     // Notifications
     public bool ShowNotifications { get; set; } = true;
@@ -147,6 +152,7 @@ public class SettingsManager
                     SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? SshTunnelLocalPort : loaded.SshTunnelLocalPort;
                     AutoStart = loaded.AutoStart;
                     GlobalHotkeyEnabled = loaded.GlobalHotkeyEnabled;
+                    HasInjectedFirstRunBootstrap = loaded.HasInjectedFirstRunBootstrap;
                     ShowNotifications = loaded.ShowNotifications;
                     NotificationSound = loaded.NotificationSound ?? NotificationSound;
                     NotifyHealth = loaded.NotifyHealth;
@@ -234,6 +240,7 @@ public class SettingsManager
                     SshTunnelLocalPort = SshTunnelLocalPort,
                     AutoStart = AutoStart,
                     GlobalHotkeyEnabled = GlobalHotkeyEnabled,
+                    HasInjectedFirstRunBootstrap = HasInjectedFirstRunBootstrap,
                     ShowNotifications = ShowNotifications,
                     NotificationSound = NotificationSound,
                     NotifyHealth = NotifyHealth,

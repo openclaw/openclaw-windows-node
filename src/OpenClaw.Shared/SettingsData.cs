@@ -16,8 +16,14 @@ public class SettingsData
     public string? SshTunnelHost { get; set; }
     public int SshTunnelRemotePort { get; set; } = 18789;
     public int SshTunnelLocalPort { get; set; } = 18789;
-    public bool AutoStart { get; set; }
+    public bool AutoStart { get; set; } = true;
     public bool GlobalHotkeyEnabled { get; set; } = true;
+    /// <summary>
+    /// One-shot gate: set to true after the post-onboarding "first-run" bootstrap
+    /// kickoff message has been injected into the chat exactly once. Subsequent
+    /// chat-window launches skip injection.
+    /// </summary>
+    public bool HasInjectedFirstRunBootstrap { get; set; }
     public bool ShowNotifications { get; set; } = true;
     public string? NotificationSound { get; set; }
     public bool NotifyHealth { get; set; } = true;

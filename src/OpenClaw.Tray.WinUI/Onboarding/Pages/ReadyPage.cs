@@ -2,6 +2,7 @@ using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
+using OpenClawTray.Services;
 using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
 
@@ -16,7 +17,12 @@ public sealed class ReadyPage : Component<OnboardingState>
 {
     public override Element Render()
     {
-        var (launchAtLogin, setLaunchAtLogin) = UseState(false);
+        // Initialize from persisted setting (default true — see SettingsManager).
+        // Toggling immediately writes Settings.AutoStart AND flips the OS-level
+        // Run-key entry via AutoStartManager so the change takes effect without
+        // requiring the user to click Finish (Bug 5 fix from PR #274 smoke test —
+        // the toggle was previously cosmetic).
+        var (launchAtLogin, setLaunchAtLogin) = UseState(Props.Settings.AutoStart);
 
         return ScrollView(
             VStack(12,
@@ -49,7 +55,11 @@ public sealed class ReadyPage : Component<OnboardingState>
 
                 // Launch at Login toggle
                 HStack(8,
-                    ToggleSwitch(launchAtLogin, v => setLaunchAtLogin(v)),
+                    ToggleSwitch(launchAtLogin, v =>
+                    {
+                        setLaunchAtLogin(v);
+                        ApplyLaunchAtLogin(v);
+                    }),
                     TextBlock(LocalizationHelper.GetString("Onboarding_Ready_LaunchAtLogin"))
                         .FontSize(13)
                         .VAlign(VerticalAlignment.Center)
@@ -59,6 +69,24 @@ public sealed class ReadyPage : Component<OnboardingState>
             .MaxWidth(460)
             .Padding(0, 8, 0, 0)
         ).HorizontalScrollMode(Microsoft.UI.Xaml.Controls.ScrollMode.Disabled);
+    }
+
+    private void ApplyLaunchAtLogin(bool enabled)
+    {
+        Props.Settings.AutoStart = enabled;
+        // Persist immediately so a user who toggles and then closes the wizard via
+        // the X button still gets their preference saved (OnboardingState.Complete()
+        // also saves on Finish — this is belt-and-braces).
+        Props.Settings.Save();
+
+        try
+        {
+            AutoStartManager.SetAutoStart(enabled);
+        }
+        catch (System.Exception ex)
+        {
+            Logger.Warn($"[ReadyPage] Failed to apply autostart={enabled}: {ex.Message}");
+        }
     }
 
     private Element ModeInfoCard()

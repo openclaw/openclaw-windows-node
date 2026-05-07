@@ -148,7 +148,7 @@ public class SettingsRoundTripTests
         Assert.Null(settings.SshTunnelHost);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
-        Assert.False(settings.AutoStart);
+        Assert.True(settings.AutoStart);
         Assert.True(settings.GlobalHotkeyEnabled);
         Assert.True(settings.ShowNotifications);
         Assert.Null(settings.NotificationSound);
