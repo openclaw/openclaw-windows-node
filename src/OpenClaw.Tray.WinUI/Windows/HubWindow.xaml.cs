@@ -83,8 +83,20 @@ public sealed partial class HubWindow : WindowEx
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
+        RootGrid.SizeChanged += OnRootGridSizeChanged;
+
         // Don't select a nav item here — Settings/GatewayClient aren't set yet.
         // ShowHub() in App.xaml.cs calls NavigateToDefault() after setting properties.
+    }
+
+    private void OnRootGridSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        const double minPane = 200;
+        const double maxPane = 320;
+        const double ratio = 0.25;
+
+        double desired = e.NewSize.Width * ratio;
+        NavView.OpenPaneLength = Math.Clamp(desired, minPane, maxPane);
     }
 
     /// <summary>
