@@ -24,6 +24,8 @@ public sealed class QuickSendDialog : WindowEx
     private readonly TextBox _errorDetailsTextBox;
     private readonly Button _sendButton;
     private bool _isSending;
+    private bool _isClosed;
+    private bool _focusRetryRunning;
 
     private const string TitleIcon = "🦞";
     private const double WindowControlsReservedWidth = 140;
@@ -33,8 +35,22 @@ public sealed class QuickSendDialog : WindowEx
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags);
+
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
     private const int TitleBarHeight = 48;
     private const int SW_SHOWNORMAL = 1;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_SHOWWINDOW = 0x0040;
 
     public QuickSendDialog(OpenClawGatewayClient client, string? prefillMessage = null)
     {
@@ -50,6 +66,10 @@ public sealed class QuickSendDialog : WindowEx
         // Apply Acrylic via controller to keep IsInputActive=true.
         // This avoids focus/activation oddities on Windows 10 for hotkey-launched windows.
         BackdropHelper.TrySetAcrylicBackdrop((Microsoft.UI.Xaml.Window)this);
+
+        // Hotkey-launched windows can fail to foreground on Windows 10 due to
+        // foreground activation restrictions. Keep the existing topmost promotion.
+        this.IsAlwaysOnTop = true;
 
         // Build UI programmatically (simple dialog)
         var root = new Grid
@@ -152,10 +172,21 @@ public sealed class QuickSendDialog : WindowEx
         Content = outerGrid;
         SetTitleBar(titleBar);
 
-        // Focus the text box when shown
-        Activated += OnActivated;
+        // Focus the text box when shown without closing on transient deactivation.
+        Activated += (s, e) =>
+        {
+            if (e.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                TryBringToFront();
+                RequestInputFocus();
+            }
+        };
 
-        Closed += (s, e) => Logger.Info("[QuickSend] Dialog closed");
+        Closed += (s, e) =>
+        {
+            _isClosed = true;
+            Logger.Info("[QuickSend] Dialog closed");
+        };
 
         Logger.Info($"[QuickSend] Dialog opened (prefill={!string.IsNullOrEmpty(prefillMessage)})");
     }
@@ -164,33 +195,21 @@ public sealed class QuickSendDialog : WindowEx
     {
         try
         {
+            if (_isClosed)
+                return;
+
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd == IntPtr.Zero) return;
 
-            // Make sure it's shown and activated.
+            // Make sure it's actually shown and promoted.
             ShowWindow(hwnd, SW_SHOWNORMAL);
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             SetForegroundWindow(hwnd);
         }
         catch (Exception ex)
         {
             Logger.Warn($"QuickSend bring-to-front failed: {ex.Message}");
         }
-    }
-
-    private void OnActivated(object sender, WindowActivatedEventArgs args)
-    {
-        if (args.WindowActivationState == WindowActivationState.Deactivated)
-        {
-            if (_isSending)
-            {
-                return;
-            }
-
-            Close();
-            return;
-        }
-
-        RequestInputFocus();
     }
 
     private async void OnKeyDown(object sender, KeyRoutedEventArgs e)
@@ -338,12 +357,41 @@ public sealed class QuickSendDialog : WindowEx
 
     private void QueueFocusMessageInput()
     {
+        if (_isClosed)
+            return;
+
         DispatcherQueue?.TryEnqueue(FocusMessageInput);
     }
 
     private void RequestInputFocus()
     {
         QueueFocusMessageInput();
+        if (!_focusRetryRunning)
+        {
+            _focusRetryRunning = true;
+            _ = RetryFocusMessageInputAsync();
+        }
+    }
+
+    private async Task RetryFocusMessageInputAsync()
+    {
+        try
+        {
+            var delaysMs = new[] { 60, 160, 320 };
+            foreach (var delay in delaysMs)
+            {
+                await Task.Delay(delay);
+                if (_isClosed)
+                    return;
+
+                TryBringToFront();
+                QueueFocusMessageInput();
+            }
+        }
+        finally
+        {
+            _focusRetryRunning = false;
+        }
     }
 
     private async Task<bool> EnsureGatewayConnectedAsync(int timeoutMs = 3000)
