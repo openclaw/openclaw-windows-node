@@ -384,16 +384,30 @@ public partial class App : Application
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
-        // First-run check (also supports forced onboarding for testing)
-        if (RequiresSetup(_settings) ||
-            Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
-        {
-            await ShowOnboardingAsync();
-        }
-
-        // Initialize tray icon (window-less pattern from WinUIEx)
+        // Initialize tray icon FIRST (window-less pattern from WinUIEx).
+        // The tray is application chrome and must always survive any failure
+        // in the onboarding wizard. OnLaunched is async void, so a synchronous
+        // throw inside the OnboardingWindow constructor would otherwise
+        // propagate through `await ShowOnboardingAsync()` and abort OnLaunched
+        // before the tray ever initializes.
         InitializeTrayIcon();
         ShowSurfaceImprovementsTipIfNeeded();
+
+        // First-run check (also supports forced onboarding for testing).
+        // Wrapped in try/catch so a wizard construction failure cannot tear
+        // down the tray; user can retry via the Setup Guide menu item.
+        try
+        {
+            if (RequiresSetup(_settings) ||
+                Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
+            {
+                await ShowOnboardingAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Onboarding failed during launch (tray remains available): {ex}");
+        }
 
         // Initialize connections — always create operator client for UI data,
         // additionally create node service for gateway node mode or local MCP.
