@@ -29,6 +29,8 @@ public class SettingsManager
     /// <summary>Raised after settings are persisted to disk.</summary>
     public event EventHandler? Saved;
 
+    private readonly object _saveLock = new();
+
     // Connection
     public string GatewayUrl { get; set; } = "ws://localhost:18789";
     public string Token { get; set; } = "";
@@ -212,79 +214,82 @@ public class SettingsManager
 
     public void Save()
     {
-        try
+        lock (_saveLock)
         {
-            Directory.CreateDirectory(_settingsDirectory);
-            // Lock the tray data dir to current user + SYSTEM + Administrators —
-            // it co-locates the MCP bearer token, settings.json (which embeds
-            // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
-            // running as the same user could otherwise read these freely.
-            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
-
-            var data = new SettingsData
+            try
             {
-                GatewayUrl = GatewayUrl,
-                Token = Token,
-                BootstrapToken = string.IsNullOrWhiteSpace(BootstrapToken) ? null : BootstrapToken,
-                UseSshTunnel = UseSshTunnel,
-                SshTunnelUser = SshTunnelUser,
-                SshTunnelHost = SshTunnelHost,
-                SshTunnelRemotePort = SshTunnelRemotePort,
-                SshTunnelLocalPort = SshTunnelLocalPort,
-                AutoStart = AutoStart,
-                GlobalHotkeyEnabled = GlobalHotkeyEnabled,
-                ShowNotifications = ShowNotifications,
-                NotificationSound = NotificationSound,
-                NotifyHealth = NotifyHealth,
-                NotifyUrgent = NotifyUrgent,
-                NotifyReminder = NotifyReminder,
-                NotifyEmail = NotifyEmail,
-                NotifyCalendar = NotifyCalendar,
-                NotifyBuild = NotifyBuild,
-                NotifyStock = NotifyStock,
-                NotifyInfo = NotifyInfo,
-                EnableNodeMode = EnableNodeMode,
-                NodeCanvasEnabled = NodeCanvasEnabled,
-                NodeScreenEnabled = NodeScreenEnabled,
-                NodeCameraEnabled = NodeCameraEnabled,
-                ScreenRecordingConsentGiven = ScreenRecordingConsentGiven,
-                CameraRecordingConsentGiven = CameraRecordingConsentGiven,
-                NodeLocationEnabled = NodeLocationEnabled,
-                NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
-                NodeSttEnabled = NodeSttEnabled,
-                SttLanguage = SttLanguage,
-                SttModelName = SttModelName,
-                SttSilenceTimeout = SttSilenceTimeout,
-                VoiceTtsEnabled = VoiceTtsEnabled,
-                VoiceAudioFeedback = VoiceAudioFeedback,
-                NodeTtsEnabled = NodeTtsEnabled,
-                TtsProvider = TtsProvider,
-                TtsElevenLabsApiKey = ProtectSettingSecret(TtsElevenLabsApiKey),
-                TtsElevenLabsModel = string.IsNullOrWhiteSpace(TtsElevenLabsModel) ? null : TtsElevenLabsModel,
-                TtsElevenLabsVoiceId = string.IsNullOrWhiteSpace(TtsElevenLabsVoiceId) ? null : TtsElevenLabsVoiceId,
-                TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
-                HubNavPaneOpen = HubNavPaneOpen,
-                TtsPiperVoiceId = TtsPiperVoiceId,
-                EnableMcpServer = EnableMcpServer,
-                A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
-                // McpOnlyMode is legacy — never written; remains null in serialized output.
-                HasSeenActivityStreamTip = HasSeenActivityStreamTip,
-                SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
-                PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
-                NotifyChatResponses = NotifyChatResponses,
-                PreferStructuredCategories = PreferStructuredCategories,
-                UserRules = UserRules
-            };
+                Directory.CreateDirectory(_settingsDirectory);
+                // Lock the tray data dir to current user + SYSTEM + Administrators —
+                // it co-locates the MCP bearer token, settings.json (which embeds
+                // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
+                // running as the same user could otherwise read these freely.
+                OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
 
-            var json = data.ToJson();
-            File.WriteAllText(_settingsFilePath, json);
-            
-            Logger.Info("Settings saved");
-            Saved?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Failed to save settings: {ex.Message}");
+                var data = new SettingsData
+                {
+                    GatewayUrl = GatewayUrl,
+                    Token = Token,
+                    BootstrapToken = string.IsNullOrWhiteSpace(BootstrapToken) ? null : BootstrapToken,
+                    UseSshTunnel = UseSshTunnel,
+                    SshTunnelUser = SshTunnelUser,
+                    SshTunnelHost = SshTunnelHost,
+                    SshTunnelRemotePort = SshTunnelRemotePort,
+                    SshTunnelLocalPort = SshTunnelLocalPort,
+                    AutoStart = AutoStart,
+                    GlobalHotkeyEnabled = GlobalHotkeyEnabled,
+                    ShowNotifications = ShowNotifications,
+                    NotificationSound = NotificationSound,
+                    NotifyHealth = NotifyHealth,
+                    NotifyUrgent = NotifyUrgent,
+                    NotifyReminder = NotifyReminder,
+                    NotifyEmail = NotifyEmail,
+                    NotifyCalendar = NotifyCalendar,
+                    NotifyBuild = NotifyBuild,
+                    NotifyStock = NotifyStock,
+                    NotifyInfo = NotifyInfo,
+                    EnableNodeMode = EnableNodeMode,
+                    NodeCanvasEnabled = NodeCanvasEnabled,
+                    NodeScreenEnabled = NodeScreenEnabled,
+                    NodeCameraEnabled = NodeCameraEnabled,
+                    ScreenRecordingConsentGiven = ScreenRecordingConsentGiven,
+                    CameraRecordingConsentGiven = CameraRecordingConsentGiven,
+                    NodeLocationEnabled = NodeLocationEnabled,
+                    NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
+                    NodeSttEnabled = NodeSttEnabled,
+                    SttLanguage = SttLanguage,
+                    SttModelName = SttModelName,
+                    SttSilenceTimeout = SttSilenceTimeout,
+                    VoiceTtsEnabled = VoiceTtsEnabled,
+                    VoiceAudioFeedback = VoiceAudioFeedback,
+                    NodeTtsEnabled = NodeTtsEnabled,
+                    TtsProvider = TtsProvider,
+                    TtsElevenLabsApiKey = ProtectSettingSecret(TtsElevenLabsApiKey),
+                    TtsElevenLabsModel = string.IsNullOrWhiteSpace(TtsElevenLabsModel) ? null : TtsElevenLabsModel,
+                    TtsElevenLabsVoiceId = string.IsNullOrWhiteSpace(TtsElevenLabsVoiceId) ? null : TtsElevenLabsVoiceId,
+                    TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
+                    HubNavPaneOpen = HubNavPaneOpen,
+                    TtsPiperVoiceId = TtsPiperVoiceId,
+                    EnableMcpServer = EnableMcpServer,
+                    A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
+                    // McpOnlyMode is legacy — never written; remains null in serialized output.
+                    HasSeenActivityStreamTip = HasSeenActivityStreamTip,
+                    SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
+                    PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
+                    NotifyChatResponses = NotifyChatResponses,
+                    PreferStructuredCategories = PreferStructuredCategories,
+                    UserRules = UserRules
+                };
+
+                var json = data.ToJson();
+                File.WriteAllText(_settingsFilePath, json);
+                
+                Logger.Info("Settings saved");
+                Saved?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to save settings: {ex.Message}");
+            }
         }
     }
 

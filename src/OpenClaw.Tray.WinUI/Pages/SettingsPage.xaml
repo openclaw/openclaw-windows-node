@@ -81,9 +81,10 @@
                         <TextBlock x:Uid="SettingsPrivacyHeader" Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Padding="4">
-                        <TextBlock x:Uid="SettingsPrivacyDescription" Text="Control which capabilities agents can use on this device."
+                        <TextBlock x:Uid="SettingsPrivacyDescription" Text="Pre-approve capabilities so agents can use them without a permission prompt each time. You'll still see a countdown before recording starts."
                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
                         <ToggleSwitch x:Uid="ScreenRecordingToggle" x:Name="ScreenRecordingToggle" Header="Allow screen recording"
                                       AutomationProperties.AutomationId="SettingsPageScreenRecording"/>
                         <ToggleSwitch x:Uid="CameraRecordingToggle" x:Name="CameraRecordingToggle" Header="Allow camera recording"

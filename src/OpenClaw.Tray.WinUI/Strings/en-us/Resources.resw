@@ -767,7 +767,7 @@ Use one of these options:
     <value>Privacy</value>
   </data>
   <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
-    <value>Control which capabilities agents can use on this device.</value>
+    <value>Pre-approve capabilities so agents can use them without a permission prompt each time. You'll still see a countdown before recording starts.</value>
   </data>
   <data name="ScreenRecordingToggle.Header" xml:space="preserve">
     <value>Allow screen recording</value>

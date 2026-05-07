@@ -767,7 +767,7 @@
     <value>隱私</value>
   </data>
   <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
-    <value>控制代理可以在此裝置上使用哪些功能。</value>
+    <value>預先核准功能，以便代理無需每次都請求權限。錄製開始前仍會顯示倒數計時。</value>
   </data>
   <data name="ScreenRecordingToggle.Header" xml:space="preserve">
     <value>允許螢幕錄製</value>

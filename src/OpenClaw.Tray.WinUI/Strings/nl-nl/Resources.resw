@@ -767,7 +767,7 @@ Gebruik een van deze opties:
     <value>Privacyinstellingen</value>
   </data>
   <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
-    <value>Bepaal welke mogelijkheden agents op dit apparaat kunnen gebruiken.</value>
+    <value>Keur mogelijkheden vooraf goed zodat agents ze kunnen gebruiken zonder elke keer toestemming te vragen. Er wordt nog steeds een aftelling getoond voordat de opname begint.</value>
   </data>
   <data name="ScreenRecordingToggle.Header" xml:space="preserve">
     <value>Schermopname toestaan</value>

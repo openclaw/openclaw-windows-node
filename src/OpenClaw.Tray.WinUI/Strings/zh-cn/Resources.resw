@@ -767,7 +767,7 @@
     <value>隐私</value>
   </data>
   <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
-    <value>控制代理可以在此设备上使用哪些功能。</value>
+    <value>预先批准功能，以便代理无需每次都请求权限。录制开始前仍会显示倒计时。</value>
   </data>
   <data name="ScreenRecordingToggle.Header" xml:space="preserve">
     <value>允许屏幕录制</value>

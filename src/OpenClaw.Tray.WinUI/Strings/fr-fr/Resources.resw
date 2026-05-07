@@ -767,7 +767,7 @@ Utilisez l'une de ces options :
     <value>Confidentialité</value>
   </data>
   <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
-    <value>Contrôlez quelles fonctionnalités les agents peuvent utiliser sur cet appareil.</value>
+    <value>Pré-approuvez les fonctionnalités afin que les agents puissent les utiliser sans demander la permission à chaque fois. Un compte à rebours s'affichera toujours avant l'enregistrement.</value>
   </data>
   <data name="ScreenRecordingToggle.Header" xml:space="preserve">
     <value>Autoriser l'enregistrement d'écran</value>
