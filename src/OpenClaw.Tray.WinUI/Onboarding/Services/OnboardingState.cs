@@ -158,19 +158,21 @@ public sealed class OnboardingState : IDisposable
         if (path == Onboarding.Services.SetupPath.Local)
         {
             // Local setup always runs the wizard locally after the gateway is up.
-            return ShowChat
-                ? [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready]
-                : [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready];
+            // The WebView2 chat-preview step was removed per UX update (PR #274 follow-up):
+            // post-Permissions we go straight to Ready, then optionally launch the main
+            // chat window from OnboardingWindow.OnWizardComplete based on whether the
+            // wizard reached its "complete" lifecycle state (i.e. user picked a model).
+            return [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready];
         }
 
         // Advanced path: keep the legacy ConnectionMode-aware ordering.
-        return (Mode, ShowChat) switch
+        // ShowChat (the in-wizard WebView2 chat preview) is intentionally not consulted
+        // anymore — the preview step has been removed from every flow.
+        return Mode switch
         {
-            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, true) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
-            (ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh, false) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
-            (ConnectionMode.Remote, true) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
-            (ConnectionMode.Remote, false) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
-            (ConnectionMode.Later, _) => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Ready],
+            ConnectionMode.Local or ConnectionMode.Wsl or ConnectionMode.Ssh => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            ConnectionMode.Remote => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Permissions, OnboardingRoute.Ready],
+            ConnectionMode.Later => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Ready],
             _ => [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Ready],
         };
     }

@@ -44,6 +44,10 @@ public sealed class OnboardingWindow : WindowEx
     private bool _chatWebViewInitialized;
     private readonly OnboardingState _state;
     private bool _stateDisposed;
+    // Single-fire guard so the X button (Closed) and the Finish button (state.Complete →
+    // OnOnboardingFinished → Close → Closed) don't both dispatch completion. Both paths
+    // route through OnWizardComplete which no-ops after the first call.
+    private bool _completionDispatched;
 
     public OnboardingWindow(SettingsManager settings, string? identityDataPath = null)
     {
@@ -667,15 +671,17 @@ public sealed class OnboardingWindow : WindowEx
 
     private void OnOnboardingFinished(object? sender, EventArgs e)
     {
-        _settings.Save();
-        Completed = true;
-        _state.GatewayClient = null;
-        OnboardingCompleted?.Invoke(this, EventArgs.Empty);
+        OnWizardComplete();
         Close();
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        // X button path: also runs OnWizardComplete (idempotent via _completionDispatched)
+        // so a user who clicks the title-bar X on the Ready page still gets the chat-window
+        // launch when a model has been configured, matching the Finish-button behavior.
+        OnWizardComplete();
+
         if (_stateDisposed) return;
         _stateDisposed = true;
         _state.Finished -= OnOnboardingFinished;
@@ -685,6 +691,50 @@ public sealed class OnboardingWindow : WindowEx
             _state.GatewayClient = null;
         }
         _state.Dispose();
+    }
+
+    /// <summary>
+    /// Unified completion handler invoked from both the Finish button (via
+    /// <see cref="OnOnboardingFinished"/>) and the title-bar X button (via
+    /// <see cref="OnClosed"/>). Idempotent — guarded by <see cref="_completionDispatched"/>.
+    ///
+    /// If the user reached the wizard's "complete" lifecycle state (i.e. the gateway-
+    /// driven wizard, including the model-provider step, ran to completion), launches
+    /// the main tray chat window via <c>App.ShowChatWindow()</c>. Otherwise the wizard
+    /// just closes silently — no further window is launched.
+    /// </summary>
+    private void OnWizardComplete()
+    {
+        if (_completionDispatched) return;
+        _completionDispatched = true;
+
+        // Capture the model-configured signal BEFORE saving / disposing state.
+        // The wizard is gateway-driven (no SettingsManager.ModelProvider field exists);
+        // WizardLifecycleState transitions to "complete" in WizardPage only after the
+        // user advances past the final wizard step, which requires the model-provider
+        // step to have been answered.
+        bool modelConfigured = string.Equals(_state.WizardLifecycleState, "complete", StringComparison.Ordinal);
+
+        _settings.Save();
+        Completed = true;
+        _state.GatewayClient = null;
+        OnboardingCompleted?.Invoke(this, EventArgs.Empty);
+
+        if (modelConfigured)
+        {
+            try
+            {
+                (Microsoft.UI.Xaml.Application.Current as App)?.ShowChatWindow();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[Onboarding] ShowChatWindow after Finish failed: {ex.Message}");
+            }
+        }
+        else
+        {
+            Logger.Info("[Onboarding] Closed without configured model — skipping chat-window launch");
+        }
     }
 
     /// <summary>

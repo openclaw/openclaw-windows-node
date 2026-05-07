@@ -36,7 +36,7 @@ public class OnboardingStateTests
 
         Assert.Equal(
             [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard,
-             OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+             OnboardingRoute.Permissions, OnboardingRoute.Ready],
             pages);
     }
 
@@ -52,7 +52,7 @@ public class OnboardingStateTests
 
         Assert.Equal(
             [OnboardingRoute.SetupWarning, OnboardingRoute.Connection, OnboardingRoute.Wizard,
-             OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+             OnboardingRoute.Permissions, OnboardingRoute.Ready],
             pages);
     }
 
@@ -82,7 +82,7 @@ public class OnboardingStateTests
 
         Assert.DoesNotContain(OnboardingRoute.Wizard, pages);
         Assert.Contains(OnboardingRoute.Permissions, pages);
-        Assert.Contains(OnboardingRoute.Chat, pages);
+        Assert.DoesNotContain(OnboardingRoute.Chat, pages);
     }
 
     [Fact]
@@ -110,6 +110,7 @@ public class OnboardingStateTests
         // EnableNodeMode=true mid-onboarding (LocalGatewaySetup.cs:2147), but the tray
         // also has operator credentials from Phase 12, so the Wizard hop must remain.
         // Only explicit Advanced + node-mode flows skip Wizard.
+        // (Chat preview step removed per UX update — flow ends Permissions → Ready.)
         var state = new OnboardingState(CreateSettings(enableNodeMode: true));
         state.SetupPath = SetupPath.Local;
         state.Mode = ConnectionMode.Local;
@@ -119,7 +120,7 @@ public class OnboardingStateTests
 
         Assert.Equal(
             [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard,
-             OnboardingRoute.Permissions, OnboardingRoute.Chat, OnboardingRoute.Ready],
+             OnboardingRoute.Permissions, OnboardingRoute.Ready],
             pages);
     }
 

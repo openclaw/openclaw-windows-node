@@ -487,7 +487,7 @@ public partial class App : Application
         ShowChatWindow();
     }
 
-    private void ShowChatWindow()
+    internal void ShowChatWindow()
     {
         if (_settings == null) return;
         if (_chatWindow == null)
