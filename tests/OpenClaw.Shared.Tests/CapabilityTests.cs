@@ -2082,7 +2082,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest { Id = "s5", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("Display access denied", res.Error);
+        Assert.Equal("Capture failed", res.Error);
     }
 
     [Fact]
@@ -2327,7 +2327,7 @@ public class ScreenCapabilityTests
         var req = new NodeInvokeRequest { Id = "s15", Command = "screen.record", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("Capture permission denied", res.Error);
+        Assert.Equal("Recording failed", res.Error);
     }
 }
 
@@ -2457,7 +2457,7 @@ public class CameraCapabilityTests
         var req = new NodeInvokeRequest { Id = "cam6", Command = "camera.snap", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("Camera access blocked", res.Error);
+        Assert.Equal("Snap failed", res.Error);
     }
 
     [Fact]
@@ -2892,7 +2892,7 @@ public class LocationCapabilityTests
         var req = new NodeInvokeRequest { Id = "loc6", Command = "location.get", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("GPS unavailable", res.Error);
+        Assert.Equal("Location failed", res.Error);
     }
 
     [Fact]
