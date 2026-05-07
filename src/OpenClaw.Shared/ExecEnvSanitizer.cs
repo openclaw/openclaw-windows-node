@@ -90,9 +90,20 @@ internal static class ExecEnvSanitizer
         if (name.IndexOfAny(['=', '\0', '\r', '\n']) >= 0)
             return true;
 
-        foreach (var c in name)
+        // Vectorized scan: any char in [0x00, 0x20] covers all ASCII control characters
+        // (0x01–0x1F) plus space (0x20) in a single SIMD pass — the common fast path for
+        // the ASCII-only names that make up virtually all environment variable keys.
+        var span = name.AsSpan();
+        if (span.IndexOfAnyInRange('\x00', '\x20') >= 0)
+            return true;
+        // DEL (0x7F) — control char outside the range above.
+        if (span.IndexOf('\x7F') >= 0)
+            return true;
+        // Non-ASCII Unicode control / whitespace (rare; UTF-8 env var names are uncommon).
+        for (var i = 0; i < name.Length; i++)
         {
-            if (char.IsControl(c) || char.IsWhiteSpace(c))
+            var c = name[i];
+            if (c > '\x7F' && (char.IsControl(c) || char.IsWhiteSpace(c)))
                 return true;
         }
 
