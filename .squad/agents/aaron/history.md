@@ -40,6 +40,14 @@ Root: App.OnLaunched is sync void (fire-and-forget). InitializeTrayIcon deferre
 
 ### Active Workstreams
 
+**WSL Gateway Uninstall — Commit 3 COMPLETE (2026-05-08, SHA bc08f11):**  
+`LocalGatewayUninstall` core engine + unit tests.  
+- NEW `src/OpenClaw.Tray.WinUI/Services/LocalGatewaySetup/LocalGatewayUninstall.cs` (~460 lines): 13-step idempotent uninstall sequence; DryRun=true safety default; `Build()` factory; registry helpers OS-guarded with `OperatingSystem.IsWindows()` (CA1416 compliance on net10.0).  
+- MOD `src/OpenClaw.Shared/DeviceIdentity.cs`: Added `TryClearDeviceToken(string dataPath, IOpenClawLogger?)` — nulls DeviceToken + DeviceTokenScopes, preserves file + mcp-token.txt unconditionally (v3 §F).  
+- MOD `tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj`: added `<Compile>` link for `LocalGatewayUninstall.cs`.  
+- NEW `tests/OpenClaw.Tray.Tests/LocalGatewayUninstallTests.cs` (~380 lines): 20 `[WindowsFact]` tests.  
+Results: Build PASS, Tray 632/640 pass (8 pre-existing localization fails).
+
 **WSL Gateway Uninstall (feat/wsl-gateway-uninstall) — Re-baseline onto PR #274 COMPLETE (2026-05-07):**  
 Executed re-baseline from origin/master to PR #274 head (`3e4c217`). Preserved 148 artifacts (MSIX validation script, .squad/ decision inbox/agent histories). Hard reset answered 'n' to all worktree .squad untracked deletion prompts. 3 clean commits landed:
 - `cd1a83b` — refactor(setup): remove OPENCLAW_WSL_INSTALL_LOCATION env-var binding (LocalGatewaySetup.cs, LocalGatewaySetupTests.cs, validate-wsl-gateway.ps1)
@@ -53,7 +61,7 @@ Key structural diff on PR #274 base: `LocalGatewaySetupRuntimeConfiguration` alr
 ## Test Results (Latest)
 
 - **Shared Tests:** passing (exit 0, ~853 test methods, 2 with Skip; 2026-05-07)
-- **Tray Tests:** 609/617 pass — 8 pre-existing LocalizationValidationTests fails (OPENCLAW_REPO_ROOT not set in worktree)
+- **Tray Tests:** 632/640 pass — 8 pre-existing LocalizationValidationTests fails (OPENCLAW_REPO_ROOT not set in worktree) — updated after Commit 3
 - **Build:** PASS (2026-05-07, feat/wsl-gateway-uninstall re-baseline onto PR #274)
 
 ## Deferred & Open
