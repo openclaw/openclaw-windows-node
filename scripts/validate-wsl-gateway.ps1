@@ -448,7 +448,8 @@ function Start-TrayForLocalSetup {
         OPENCLAW_SKIP_UPDATE_CHECK = "1"
         OPENCLAW_FORCE_ONBOARDING = "1"
         OPENCLAW_WSL_DISTRO_NAME = $DistroName
-        OPENCLAW_WSL_INSTALL_LOCATION = $wslInstallLocation
+        # TODO: OPENCLAW_WSL_INSTALL_LOCATION was removed (commit: remove OPENCLAW_WSL_INSTALL_LOCATION env-var binding).
+        # The install location is now derived from the distro name by the tray app. Remove this comment once uninstall support lands.
         OPENCLAW_WSL_ALLOW_EXISTING_DISTRO = if ($Scenario -eq "UpstreamInstall") { "1" } else { "0" }
         OPENCLAW_TRAY_DATA_DIR = $validationAppDataRoot
         OPENCLAW_TRAY_APPDATA_DIR = $validationAppDataRoot
