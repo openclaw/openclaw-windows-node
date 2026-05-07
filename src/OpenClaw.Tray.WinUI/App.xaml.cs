@@ -540,6 +540,22 @@ public partial class App : Application
                 window.ShowNearTrayAnimated();
             }
         }
+
+        // PR #274 Bug 4 — first-run BOOTSTRAP.md kickoff (one-shot, gated by
+        // Settings.HasInjectedFirstRunBootstrap). Mattingly's BootstrapMessageInjector
+        // has its own 3000ms initial delay to let the Lit-based chat UI hydrate, and
+        // its persistent gate dedupes against the legacy onboarding kickoff path.
+        var injectTarget = _chatWindow;
+        if (injectTarget != null && _settings != null)
+        {
+            var executor = injectTarget.TryGetScriptExecutor();
+            if (executor != null)
+            {
+                _ = OpenClawTray.Services.BootstrapMessageInjector.InjectAsync(
+                    script => executor(script),
+                    _settings);
+            }
+        }
     }
 
     private VoiceOverlayWindow? _voiceOverlayWindow;
