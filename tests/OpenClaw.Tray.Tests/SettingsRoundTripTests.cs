@@ -35,6 +35,8 @@ public class SettingsRoundTripTests
             NodeCanvasEnabled = false,
             NodeScreenEnabled = true,
             NodeCameraEnabled = false,
+            ScreenRecordingConsentGiven = true,
+            CameraRecordingConsentGiven = true,
             NodeLocationEnabled = true,
             NodeBrowserProxyEnabled = false,
             NodeSttEnabled = true,
@@ -89,6 +91,8 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NodeCanvasEnabled, restored.NodeCanvasEnabled);
         Assert.Equal(original.NodeScreenEnabled, restored.NodeScreenEnabled);
         Assert.Equal(original.NodeCameraEnabled, restored.NodeCameraEnabled);
+        Assert.Equal(original.ScreenRecordingConsentGiven, restored.ScreenRecordingConsentGiven);
+        Assert.Equal(original.CameraRecordingConsentGiven, restored.CameraRecordingConsentGiven);
         Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
         Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
         Assert.Equal(original.NodeSttEnabled, restored.NodeSttEnabled);
@@ -160,6 +164,8 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCanvasEnabled);
         Assert.True(settings.NodeScreenEnabled);
         Assert.True(settings.NodeCameraEnabled);
+        Assert.False(settings.ScreenRecordingConsentGiven);
+        Assert.False(settings.CameraRecordingConsentGiven);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
         Assert.False(settings.NodeSttEnabled);
@@ -231,6 +237,8 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCanvasEnabled);
         Assert.True(settings.NodeScreenEnabled);
         Assert.True(settings.NodeCameraEnabled);
+        Assert.False(settings.ScreenRecordingConsentGiven);
+        Assert.False(settings.CameraRecordingConsentGiven);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
         Assert.False(settings.NodeSttEnabled);
@@ -252,6 +260,32 @@ public class SettingsRoundTripTests
     public void InvalidJson_ReturnsNull()
     {
         Assert.Null(SettingsData.FromJson("not json at all"));
+    }
+
+    [Fact]
+    public void SettingsManager_PersistsRecordingConsentFlags()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var settings = new SettingsManager(dir)
+            {
+                ScreenRecordingConsentGiven = true,
+                CameraRecordingConsentGiven = true
+            };
+
+            settings.Save();
+
+            var reloaded = new SettingsManager(dir);
+            Assert.True(reloaded.ScreenRecordingConsentGiven);
+            Assert.True(reloaded.CameraRecordingConsentGiven);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 
     [WindowsFact]

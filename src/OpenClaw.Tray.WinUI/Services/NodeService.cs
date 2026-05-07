@@ -1489,104 +1489,123 @@ public sealed class NodeService : IDisposable
 
     private async Task EnsureRecordingConsentAsync(RecordingType type)
     {
-        var hasConsent = type == RecordingType.Screen
-            ? _settings?.ScreenRecordingConsentGiven == true
-            : _settings?.CameraRecordingConsentGiven == true;
-        if (hasConsent) return;
+        if (HasRecordingConsent(type)) return;
 
-        // Serialize consent dialogs so concurrent requests coalesce onto one prompt
+        Task<bool>? existingConsentPrompt = null;
+        TaskCompletionSource<bool>? ownedConsentPrompt = null;
+
         await _consentLock.WaitAsync();
         try
         {
-            // Re-check after acquiring lock — a prior caller may have resolved consent
-            hasConsent = type == RecordingType.Screen
-                ? _settings?.ScreenRecordingConsentGiven == true
-                : _settings?.CameraRecordingConsentGiven == true;
-            if (hasConsent) return;
+            // Re-check after acquiring lock: a prior caller may have resolved consent.
+            if (HasRecordingConsent(type)) return;
 
-            // If a dialog is already in flight for this type, wait for its result
-            ref var inFlight = ref (type == RecordingType.Screen
-                ? ref _screenConsentInFlight
-                : ref _cameraConsentInFlight);
-
+            var inFlight = GetConsentPrompt(type);
             if (inFlight != null)
             {
-                // Release lock so the UI thread can complete the dialog
-                _consentLock.Release();
-                var result = await inFlight.Task;
-                if (!result)
-                    throw new InvalidOperationException("Recording denied: user has not given consent");
-                return;
+                existingConsentPrompt = inFlight.Task;
             }
-
-            var sharedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            inFlight = sharedTcs;
-
-            // Release lock before awaiting the UI dialog
+            else
+            {
+                ownedConsentPrompt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                SetConsentPrompt(type, ownedConsentPrompt);
+            }
+        }
+        finally
+        {
             _consentLock.Release();
+        }
 
-            try
-            {
-                var dialogTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-                if (!_dispatcherQueue.TryEnqueue(async () =>
-                {
-                    try
-                    {
-                        var dialog = new Dialogs.RecordingConsentDialog(type);
-                        var consented = await dialog.ShowAsync();
-
-                        if (consented && _settings != null)
-                        {
-                            if (type == RecordingType.Screen)
-                                _settings.ScreenRecordingConsentGiven = true;
-                            else
-                                _settings.CameraRecordingConsentGiven = true;
-                            _settings.Save();
-                        }
-
-                        dialogTcs.TrySetResult(consented);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error($"[RecordingConsent] Dialog error: {ex.Message}");
-                        dialogTcs.TrySetResult(false);
-                    }
-                }))
-                {
-                    throw new InvalidOperationException("Recording denied: unable to show consent prompt");
-                }
-
-                var consented = await dialogTcs.Task;
-                sharedTcs.TrySetResult(consented);
-
-                if (!consented)
-                    throw new InvalidOperationException("Recording denied: user has not given consent");
-            }
-            catch
-            {
-                sharedTcs.TrySetResult(false);
-                throw;
-            }
-            finally
-            {
-                await _consentLock.WaitAsync();
-                if (type == RecordingType.Screen)
-                    _screenConsentInFlight = null;
-                else
-                    _cameraConsentInFlight = null;
-                _consentLock.Release();
-            }
-
+        if (existingConsentPrompt != null)
+        {
+            if (!await existingConsentPrompt)
+                throw new InvalidOperationException("Recording denied: user has not given consent");
             return;
+        }
+
+        try
+        {
+            var consented = await ShowRecordingConsentDialogAsync(type);
+            ownedConsentPrompt!.TrySetResult(consented);
+
+            if (!consented)
+                throw new InvalidOperationException("Recording denied: user has not given consent");
         }
         catch
         {
-            // Only release if we didn't already release above
-            if (_consentLock.CurrentCount == 0)
-                try { _consentLock.Release(); } catch { }
+            ownedConsentPrompt!.TrySetResult(false);
             throw;
         }
+        finally
+        {
+            await _consentLock.WaitAsync();
+            try
+            {
+                if (ReferenceEquals(GetConsentPrompt(type), ownedConsentPrompt))
+                    SetConsentPrompt(type, null);
+            }
+            finally
+            {
+                _consentLock.Release();
+            }
+        }
+    }
+
+    private bool HasRecordingConsent(RecordingType type)
+    {
+        return type == RecordingType.Screen
+            ? _settings?.ScreenRecordingConsentGiven == true
+            : _settings?.CameraRecordingConsentGiven == true;
+    }
+
+    private TaskCompletionSource<bool>? GetConsentPrompt(RecordingType type)
+    {
+        return type == RecordingType.Screen
+            ? _screenConsentInFlight
+            : _cameraConsentInFlight;
+    }
+
+    private void SetConsentPrompt(RecordingType type, TaskCompletionSource<bool>? prompt)
+    {
+        if (type == RecordingType.Screen)
+            _screenConsentInFlight = prompt;
+        else
+            _cameraConsentInFlight = prompt;
+    }
+
+    private Task<bool> ShowRecordingConsentDialogAsync(RecordingType type)
+    {
+        var dialogTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!_dispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                var dialog = new Dialogs.RecordingConsentDialog(type);
+                var consented = await dialog.ShowAsync();
+
+                if (consented && _settings != null)
+                {
+                    if (type == RecordingType.Screen)
+                        _settings.ScreenRecordingConsentGiven = true;
+                    else
+                        _settings.CameraRecordingConsentGiven = true;
+                    _settings.Save();
+                }
+
+                dialogTcs.TrySetResult(consented);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"[RecordingConsent] Dialog error: {ex.Message}");
+                dialogTcs.TrySetResult(false);
+            }
+        }))
+        {
+            throw new InvalidOperationException("Recording denied: unable to show consent prompt");
+        }
+
+        return dialogTcs.Task;
     }
 
     private async Task ShowRecordingCountdownAsync()
