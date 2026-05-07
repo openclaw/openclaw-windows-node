@@ -128,6 +128,14 @@ param(
 
     [switch]$DryRun,
 
+    # When set, -Mode Full skips the CLI delegate and executes the inline
+    # PowerShell step replication instead.  Use for diagnostics or when
+    # OpenClawTray.exe is not available (e.g. standalone script on bare machine).
+    [switch]$NoCli,
+
+    # Path to OpenClawTray.exe.  Auto-detected from common locations when empty.
+    [string]$ExePath = "",
+
     [switch]$Help
 )
 
@@ -162,6 +170,9 @@ OPTIONS:
   -PreserveExecPolicy <bool>  Default: $true  (do not delete exec-policy.json)
   -OutputDir <path>       Default: .\uninstall-validation-output\<utc-timestamp>\
   -DryRun                 Full mode records steps without any destruction.
+  -NoCli                  Full mode: skip CLI delegate; use inline PS replication.
+                          Use for diagnostics or when the EXE is unavailable.
+  -ExePath <path>         Explicit path to OpenClawTray.exe (auto-detected when empty).
   -Help                   Show this help.
 
 EXIT CODES:
@@ -177,8 +188,11 @@ EXAMPLES:
   # Dry-run (records steps, no destruction):
   .\validate-wsl-gateway-uninstall.ps1 -Mode Full -DryRun
 
-  # Live full uninstall + verification:
+  # Live full uninstall + verification (via CLI delegate — default):
   .\validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive
+
+  # Live full uninstall via inline PS replication (diagnostic fallback):
+  .\validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive -NoCli
 
   # Verify state after in-tray uninstall:
   .\validate-wsl-gateway-uninstall.ps1 -Mode PostconditionOnly
@@ -389,6 +403,23 @@ function Get-StateSnapshot {
     return $snapshot
 }
 
+function Get-TrayExePath {
+    param([string]$Hint)
+
+    # 1. Explicit hint from caller
+    if ($Hint -and (Test-Path -LiteralPath $Hint)) { return $Hint }
+
+    # 2. Same directory as this script (Inno install layout: script is in {app})
+    $candidate = Join-Path $PSScriptRoot 'OpenClaw.Tray.WinUI.exe'
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+
+    # 3. Parent directory (repo layout: scripts\ sibling of publish\)
+    $candidate = Join-Path (Split-Path $PSScriptRoot -Parent) 'publish\OpenClaw.Tray.WinUI.exe'
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+
+    return $null
+}
+
 # ---------------------------------------------------------------------------
 # Postcondition evaluation
 # ---------------------------------------------------------------------------
@@ -446,6 +477,7 @@ function Get-Postconditions {
         device_key_file_preserved = $deviceKeyFilePreserved
         mcp_token_preserved       = $mcpTokenPreserved
         keepalives_absent         = $keepalivesAbsent
+        vhd_dir_absent            = (-not (Test-Path -LiteralPath $vhdDirPath))
     }
 }
 
@@ -457,7 +489,7 @@ function Get-Verdict {
 
     # Required postconditions (device_key_file_preserved and mcp_token_preserved are advisory).
     $required   = @('wsl_distro_absent', 'autostart_cleared', 'setup_state_absent',
-                    'device_token_cleared', 'keepalives_absent')
+                    'device_token_cleared', 'keepalives_absent', 'vhd_dir_absent')
     $failedKeys = @($required | Where-Object { $Postconditions[$_] -ne $true })
     $errCount   = if ($null -eq $Errors) { 0 } else { @($Errors).Count }
 
@@ -928,11 +960,75 @@ try {
                     -ForegroundColor Yellow
             }
 
-            # Execute 13-step sequence.
             $isDryRun   = $DryRun.IsPresent
-            $stepErrors = Invoke-UninstallSteps -IsDryRun $isDryRun
-            $verdictData.destruction_executed = -not $isDryRun
-            $verdictData.errors               = @($stepErrors)
+            $stepErrors = @()
+
+            # ----------------------------------------------------------------
+            # CLI delegate path (default) — eliminates engine/script drift
+            # -NoCli falls back to the inline PS replication below.
+            # ----------------------------------------------------------------
+            $trayExe    = Get-TrayExePath -Hint $ExePath
+            $useCliPath = (-not $NoCli.IsPresent) -and ($null -ne $trayExe)
+
+            if ($useCliPath) {
+                Write-Host "Delegating to CLI: $trayExe" -ForegroundColor Cyan
+
+                $cliJsonPath = Join-Path $OutputDir 'uninstall-result.json'
+                $cliArgs     = @('--uninstall', '--json-output', $cliJsonPath)
+
+                if ($isDryRun)            { $cliArgs += '--dry-run' }
+                if (-not $isDryRun)       { $cliArgs += '--confirm-destructive' }
+
+                try {
+                    & $trayExe @cliArgs
+                    $cliExitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { $global:LASTEXITCODE }
+
+                    Add-Step -Name 'cli-uninstall-delegate' -Status 'Completed' `
+                        -Message "Exit code: $cliExitCode. JSON: $cliJsonPath"
+                    $verdictData.destruction_executed = -not $isDryRun
+
+                    # Merge CLI result JSON into step audit trail
+                    if (Test-Path -LiteralPath $cliJsonPath) {
+                        try {
+                            $cliResult = Get-Content -LiteralPath $cliJsonPath -Raw | ConvertFrom-Json
+                            foreach ($step in $cliResult.steps) {
+                                Add-Step -Name $step.name -Status $step.status -Message $step.detail
+                            }
+                            if ($cliResult.errors.Count -gt 0) {
+                                $stepErrors = @($cliResult.errors)
+                            }
+                            # Persist CLI step JSON as the primary step audit trail
+                            $cliJsonPath | Out-Null  # already written to OutputDir
+                        } catch {
+                            $stepErrors += "cli-result-parse: $($_.Exception.Message)"
+                        }
+                    }
+
+                    if ($cliExitCode -ne 0) {
+                        $stepErrors += "CLI exited $cliExitCode"
+                    }
+                } catch {
+                    $stepErrors += "cli-delegate: $($_.Exception.Message)"
+                    Add-Step -Name 'cli-uninstall-delegate' -Status 'Failed' `
+                        -Message $_.Exception.Message
+                }
+
+            } else {
+                # ----------------------------------------------------------------
+                # Inline PS replication (diagnostic fallback / -NoCli)
+                # ----------------------------------------------------------------
+                if ($NoCli.IsPresent) {
+                    Write-Host "Inline PS replication (-NoCli)." -ForegroundColor Yellow
+                } else {
+                    Write-Host "OpenClawTray.exe not found; falling back to inline PS replication." `
+                        -ForegroundColor Yellow
+                }
+
+                $stepErrors = Invoke-UninstallSteps -IsDryRun $isDryRun
+                $verdictData.destruction_executed = -not $isDryRun
+            }
+
+            $verdictData.errors = @($stepErrors)
 
             # Save step audit trail.
             $script:steps | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $stepsPath -Encoding UTF8

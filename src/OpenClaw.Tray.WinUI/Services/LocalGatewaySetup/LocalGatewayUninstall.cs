@@ -45,6 +45,9 @@ public sealed record LocalGatewayUninstallPostconditions
 
     /// <summary>No OpenClaw keepalive process running.</summary>
     public bool KeepalivesAbsent { get; init; }
+
+    /// <summary>VHD parent directory absent: %LOCALAPPDATA%\OpenClawTray\wsl\&lt;DistroName&gt;.</summary>
+    public bool VhdDirAbsent { get; init; }
 }
 
 /// <summary>
@@ -330,6 +333,28 @@ public sealed class LocalGatewayUninstall
         });
 
         // ------------------------------------------------------------------
+        // Step 5a — VHD parent-dir cleanup (idempotent)
+        // wsl --unregister removes the .vhdx but the parent dir may persist
+        // if Windows wrote additional files there.
+        // ------------------------------------------------------------------
+        await RunStepAsync("VHD parent dir cleanup", options, ct, () =>
+        {
+            var vhdDir = Path.Combine(_localDataPath, "wsl", options.DistroName);
+            if (Directory.Exists(vhdDir))
+            {
+                Directory.Delete(vhdDir, recursive: true);
+                RecordStep("VHD parent dir cleanup", UninstallStepStatus.Executed,
+                    "Deleted VHD parent directory.");
+            }
+            else
+            {
+                RecordStep("VHD parent dir cleanup", UninstallStepStatus.Skipped,
+                    "Directory absent.");
+            }
+            return Task.CompletedTask;
+        });
+
+        // ------------------------------------------------------------------
         // Step 6 — Reset autostart
         // CRITICAL ORDERING (v3 §B): persist settings BEFORE deleting registry.
         // ------------------------------------------------------------------
@@ -376,6 +401,27 @@ public sealed class LocalGatewayUninstall
 
             File.Delete(path);
             RecordStep("Delete setup-state.json", UninstallStepStatus.Executed);
+            return Task.CompletedTask;
+        });
+
+        // ------------------------------------------------------------------
+        // Step 8a — Delete run.marker (idempotent)
+        // run.marker is written by App.xaml.cs at tray startup and deleted
+        // on clean exit. A stale marker may remain after a crash. Include
+        // here so the engine removes it as part of data cleanup.
+        // ------------------------------------------------------------------
+        await RunStepAsync("Delete run.marker", options, ct, () =>
+        {
+            var path = Path.Combine(_localDataPath, "run.marker");
+            if (!File.Exists(path))
+            {
+                RecordStep("Delete run.marker", UninstallStepStatus.Skipped,
+                    "File not found.");
+                return Task.CompletedTask;
+            }
+
+            File.Delete(path);
+            RecordStep("Delete run.marker", UninstallStepStatus.Executed);
             return Task.CompletedTask;
         });
 
@@ -565,6 +611,10 @@ public sealed class LocalGatewayUninstall
         }
         catch { /* leave true */ }
 
+        // VHD parent dir absent?
+        bool vhdDirAbsent = !Directory.Exists(
+            Path.Combine(_localDataPath, "wsl", options.DistroName));
+
         return new LocalGatewayUninstallPostconditions
         {
             WslDistroAbsent = wslAbsent,
@@ -572,7 +622,8 @@ public sealed class LocalGatewayUninstall
             SetupStateAbsent = setupStateAbsent,
             DeviceTokenCleared = deviceTokenCleared,
             McpTokenPreserved = mcpTokenPreserved,
-            KeepalivesAbsent = keepalivesAbsent
+            KeepalivesAbsent = keepalivesAbsent,
+            VhdDirAbsent = vhdDirAbsent
         };
     }
 

@@ -53,6 +53,8 @@ Name: "cmdpalette"; Description: "Install PowerToys Command Palette extension"; 
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 ; Command Palette extension (all files from build output)
 Source: "{#publish}\cmdpal\*"; DestDir: "{app}\CommandPalette"; Flags: ignoreversion recursesubdirs; Tasks: cmdpalette
+; WSL gateway uninstall helper — invoked by [UninstallRun] to drive clean removal
+Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -66,5 +68,11 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -Command ""Add-AppxPackage -Register '{app}\CommandPalette\AppxManifest.xml' -ForceApplicationShutdown"""; Flags: runhidden; Tasks: cmdpalette
 
 [UninstallRun]
+; ORDERING NOTE: Inno Setup runs [UninstallRun] entries BEFORE deleting {app}
+; directory contents.  This guarantees OpenClawTray.exe is still present when
+; the script executes.  See Inno docs: "[UninstallRun] section".
+; Fallback: if OpenClawTray.exe is missing for any reason, Uninstall-LocalGateway.ps1
+; logs the error to {app}\uninstall-gateway-error.log and exits 0 so Inno continues.
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall-LocalGateway.ps1"""; Flags: shellexec waituntilterminated; StatusMsg: "Removing local WSL gateway..."
 ; Unregister Command Palette extension on uninstall
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -Command ""Get-AppxPackage -Name '*OpenClaw*' | Remove-AppxPackage"""; Flags: runhidden

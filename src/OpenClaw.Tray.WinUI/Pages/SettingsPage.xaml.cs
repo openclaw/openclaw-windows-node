@@ -4,8 +4,11 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Services.LocalGatewaySetup;
 using OpenClawTray.Windows;
 using System;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
@@ -16,6 +19,8 @@ public sealed partial class SettingsPage : Page
     private bool _initialized;
     private bool _saving;
     private bool _isDirty;
+    private bool _localGatewayInstalled;
+    private CancellationTokenSource? _uninstallCts;
 
 
     public SettingsPage()
@@ -106,6 +111,26 @@ public sealed partial class SettingsPage : Page
 
         ScreenRecordingToggle.IsOn = settings.ScreenRecordingConsentGiven;
         CameraRecordingToggle.IsOn = settings.CameraRecordingConsentGiven;
+        LoadGatewaySection(settings);
+    }
+
+    private void LoadGatewaySection(SettingsManager settings)
+    {
+        var localDataRoot = Path.Combine(
+            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray");
+        var setupStatePath = Path.Combine(localDataRoot, "setup-state.json");
+
+        _localGatewayInstalled = File.Exists(setupStatePath)
+            || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
+
+        LocalGatewayExpander.Visibility = _localGatewayInstalled
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
+        // TODO(commit-5): soften copy if Bostick's MSIX test confirms Path B (package-virtualized APPDATA).
+        MsixWarningBar.IsOpen = PackageHelper.IsPackaged && _localGatewayInstalled;
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -167,5 +192,136 @@ public sealed partial class SettingsPage : Page
                 .Show();
         }
         catch { }
+    }
+
+    private async void OnRemoveGateway(object sender, RoutedEventArgs e)
+    {
+        // Build confirmation dialog content
+        var dialogContent = new StackPanel { Spacing = 8 };
+        dialogContent.Children.Add(new TextBlock
+        {
+            Text = "This will permanently remove the following:",
+            TextWrapping = TextWrapping.Wrap
+        });
+        dialogContent.Children.Add(new TextBlock
+        {
+            Text = "• WSL distro: OpenClawGateway (and its disk image)\n" +
+                   "• Autostart registry entry\n" +
+                   "• Gateway credentials (token and bootstrap token cleared)\n" +
+                   "• Setup state (onboarding will reset)",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.7
+        });
+        dialogContent.Children.Add(new TextBlock
+        {
+            Text = "Preserved: Your MCP token and device key are NOT deleted.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.7
+        });
+        dialogContent.Children.Add(new TextBlock
+        {
+            Text = "This cannot be undone.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Microsoft.UI.Xaml.Thickness(0, 4, 0, 0),
+            Opacity = 0.7
+        });
+
+        var dialog = new ContentDialog
+        {
+            Title = "Remove Local Gateway?",
+            Content = dialogContent,
+            PrimaryButtonText = "Remove Local Gateway",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+
+        var dialogResult = await dialog.ShowAsync();
+        if (dialogResult != ContentDialogResult.Primary) return;
+
+        // --- Begin uninstall ---
+        SetUninstallInProgress(true);
+        UninstallResultBar.IsOpen = false;
+
+        _uninstallCts = new CancellationTokenSource();
+        try
+        {
+            if (_hub?.Settings == null)
+                throw new InvalidOperationException("Settings not available.");
+
+            var engine = LocalGatewayUninstall.Build(_hub.Settings);
+            var uninstallResult = await engine.RunAsync(
+                new LocalGatewayUninstallOptions
+                {
+                    DryRun = false,
+                    ConfirmDestructive = true
+                },
+                _uninstallCts.Token);
+
+            if (uninstallResult.Success)
+            {
+                UninstallResultBar.Severity = InfoBarSeverity.Success;
+                UninstallResultBar.Title = "Local gateway removed";
+                UninstallResultBar.Message = "Setup is reset; you can re-run the wizard from Onboarding.";
+                UninstallResultBar.ActionButton = null;
+                UninstallResultBar.IsOpen = true;
+                // Gateway is gone — collapse the section
+                LocalGatewayExpander.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                var errorSummary = uninstallResult.Errors.Count > 0
+                    ? string.Join("; ", uninstallResult.Errors)
+                    : "Removal completed with unknown errors. Check logs for details.";
+                ShowUninstallError(errorSummary);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UninstallResultBar.Severity = InfoBarSeverity.Warning;
+            UninstallResultBar.Title = "Removal cancelled";
+            UninstallResultBar.Message = "Gateway may be in a partially-removed state. Review logs or retry.";
+            UninstallResultBar.ActionButton = null;
+            UninstallResultBar.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            ShowUninstallError(ex.Message);
+        }
+        finally
+        {
+            SetUninstallInProgress(false);
+            _uninstallCts?.Dispose();
+            _uninstallCts = null;
+        }
+    }
+
+    private void ShowUninstallError(string message)
+    {
+        var logsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray", "Logs");
+
+        var viewLogsButton = new Button { Content = "View Logs" };
+        viewLogsButton.Click += (_, _) =>
+        {
+            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
+        };
+
+        UninstallResultBar.Severity = InfoBarSeverity.Error;
+        UninstallResultBar.Title = "Removal failed";
+        UninstallResultBar.Message = message;
+        UninstallResultBar.ActionButton = viewLogsButton;
+        UninstallResultBar.IsOpen = true;
+    }
+
+    private void SetUninstallInProgress(bool inProgress)
+    {
+        UninstallProgressRing.IsActive = inProgress;
+        UninstallProgressRing.Visibility = inProgress ? Visibility.Visible : Visibility.Collapsed;
+        RemoveGatewayButton.IsEnabled = !inProgress;
+        UninstallStatusText.Visibility = inProgress ? Visibility.Visible : Visibility.Collapsed;
+        if (inProgress)
+            UninstallStatusText.Text = "Removing local gateway…";
     }
 }

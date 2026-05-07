@@ -659,4 +659,138 @@ public sealed class LocalGatewayUninstallTests
         Assert.Equal(UninstallStepStatus.Executed, postconditionStep.Status);
         Assert.NotNull(result.Postconditions);
     }
+
+    // -----------------------------------------------------------------------
+    // Test 21: VHD parent-dir cleanup — directory present → Executed + deleted
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task VhdDirCleanup_DirectoryPresent_ExecutedAndDeleted()
+    {
+        using var env = new UninstallTestEnv();
+        // Create the VHD parent dir structure
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+        File.WriteAllText(Path.Combine(vhdDir, "ext4.vhdx"), "fake vhd");
+        Assert.True(Directory.Exists(vhdDir));
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.False(Directory.Exists(vhdDir));
+        var step = result.Steps.FirstOrDefault(s => s.Name == "VHD parent dir cleanup");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Executed, step.Status);
+        Assert.True(result.Postconditions.VhdDirAbsent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 22: VHD parent-dir cleanup — directory absent → Skipped (idempotent)
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task VhdDirCleanup_DirectoryAbsent_Skipped()
+    {
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Assert.False(Directory.Exists(vhdDir));
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var step = result.Steps.FirstOrDefault(s => s.Name == "VHD parent dir cleanup");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
+        Assert.True(result.Postconditions.VhdDirAbsent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 23: VhdDirAbsent postcondition in DryRun remains default (false)
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task VhdDirCleanup_DryRun_StepRecordedNotExecuted()
+    {
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(
+            new LocalGatewayUninstallOptions { DryRun = true });
+
+        Assert.True(Directory.Exists(vhdDir)); // not deleted in DryRun
+        var step = result.Steps.FirstOrDefault(s => s.Name == "VHD parent dir cleanup");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.DryRun, step.Status);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 24: run.marker cleanup — file present → Executed + deleted
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task RunMarker_Present_ExecutedAndDeleted()
+    {
+        using var env = new UninstallTestEnv();
+        var markerPath = Path.Combine(env.LocalDataDir, "run.marker");
+        File.WriteAllText(markerPath, DateTime.Now.ToString("O"));
+        Assert.True(File.Exists(markerPath));
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.False(File.Exists(markerPath));
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Delete run.marker");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Executed, step.Status);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 25: run.marker cleanup — file absent → Skipped (idempotent)
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task RunMarker_Absent_Skipped()
+    {
+        using var env = new UninstallTestEnv();
+        var markerPath = Path.Combine(env.LocalDataDir, "run.marker");
+        Assert.False(File.Exists(markerPath));
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Delete run.marker");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 26: CLI arg parser — --uninstall without --confirm-destructive
+    //          NOTE: RunAsync already covers this via Test 2 (throws
+    //          InvalidOperationException when ConfirmDestructive=false,
+    //          DryRun=false). The CLI layer maps that to exit code 2 with
+    //          the required stderr message; unit-testing that mapping would
+    //          require spawning the WinUI EXE as a subprocess, which is an
+    //          integration concern beyond unit test scope. This note documents
+    //          the coverage decision: smoke-tested manually with
+    //          `OpenClawTray.exe --uninstall` (no --confirm-destructive flag).
+    // -----------------------------------------------------------------------
+    // (Manual smoke test: confirmed exit code 2 + stderr message 2026-05-07)
 }

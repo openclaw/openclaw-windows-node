@@ -92,6 +92,66 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Local Gateway — hidden when no local gateway is installed (gated in code-behind) -->
+                <Expander x:Name="LocalGatewayExpander"
+                          IsExpanded="False"
+                          Visibility="Collapsed"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="LocalGatewayExpander">
+                    <Expander.Header>
+                        <TextBlock Text="&#x1F5D1;&#xFE0F; Local Gateway" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+
+                        <!-- Row A: MSIX warning (shown when PackageHelper.IsPackaged AND local gateway installed) -->
+                        <InfoBar x:Name="MsixWarningBar"
+                                 Severity="Warning"
+                                 IsOpen="False"
+                                 IsClosable="False"
+                                 Title="MSIX installation detected"
+                                 Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
+
+                        <!-- Row B: Body description -->
+                        <TextBlock Text="Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Row C: Action row — Grid keeps ProgressRing and Button on the same row -->
+                        <Grid HorizontalAlignment="Right">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ProgressRing x:Name="UninstallProgressRing"
+                                          Grid.Column="0"
+                                          Width="16" Height="16"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,8,0"/>
+                            <Button x:Name="RemoveGatewayButton"
+                                    Grid.Column="1"
+                                    Content="Remove Local Gateway"
+                                    Click="OnRemoveGateway"
+                                    AutomationProperties.AutomationId="RemoveLocalGatewayButton"/>
+                        </Grid>
+
+                        <!-- Step status text — visible only while operation is in progress -->
+                        <TextBlock x:Name="UninstallStatusText"
+                                   Text=""
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"/>
+
+                        <!-- Row D: Result InfoBar — revealed after operation completes -->
+                        <InfoBar x:Name="UninstallResultBar"
+                                 IsOpen="False"
+                                 IsClosable="True"/>
+                    </StackPanel>
+                </Expander>
+
             </StackPanel>
         </ScrollViewer>
 
