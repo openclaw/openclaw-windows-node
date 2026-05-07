@@ -430,4 +430,27 @@ public class WizardFlowControllerTests
         Assert.False(result);
         Assert.Equal(5, pollCount);
     }
+
+    [Fact]
+    public async Task WaitForConnectionAsync_WhenCancelledDuringPolling_ThrowsOperationCanceledException()
+    {
+        var gateway = new FakeWizardGateway { IsConnectedToGateway = false };
+        using var cts = new System.Threading.CancellationTokenSource();
+        var pollCount = 0;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            WizardFlowController.WaitForConnectionAsync(
+                gateway,
+                maxPollCount: 30,
+                delayAsync: () =>
+                {
+                    pollCount++;
+                    if (pollCount >= 2)
+                        cts.Cancel();
+                    return Task.CompletedTask;
+                },
+                cancellationToken: cts.Token));
+
+        Assert.True(pollCount >= 2);
+    }
 }

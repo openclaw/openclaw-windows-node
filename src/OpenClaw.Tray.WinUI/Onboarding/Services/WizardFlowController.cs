@@ -158,15 +158,21 @@ public static class WizardFlowController
     /// Waits up to <paramref name="maxPollCount"/> poll intervals for the gateway to
     /// (re-)connect. Returns true if connected at exit, false on timeout. The
     /// <paramref name="delayAsync"/> delegate is injected so unit tests can run instantly.
+    /// Pass <paramref name="cancellationToken"/> to abort polling early (e.g., on app shutdown
+    /// or page navigation away); throws <see cref="OperationCanceledException"/> if cancelled.
     /// </summary>
     public static async Task<bool> WaitForConnectionAsync(
         IWizardGateway? client,
         int maxPollCount = 30,
-        Func<Task>? delayAsync = null)
+        Func<Task>? delayAsync = null,
+        CancellationToken cancellationToken = default)
     {
-        delayAsync ??= () => Task.Delay(1000);
+        delayAsync ??= () => Task.Delay(1000, cancellationToken);
         for (int poll = 0; poll < maxPollCount && client?.IsConnectedToGateway != true; poll++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             await delayAsync();
+        }
         return client?.IsConnectedToGateway == true;
     }
 

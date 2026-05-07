@@ -292,7 +292,8 @@ public sealed class WizardPage : Component<OnboardingState>
                     // TryResumeWithSessionAsync requires IsConnectedToGateway == true; without this
                     // wait it would see connected=False (recovery fires right after disconnect) and
                     // fall through directly to wizard.start, creating a new session at step 0.
-                    var reconnected = await WizardFlowController.WaitForConnectionAsync(wizardGateway);
+                    // TODO: wire a page-lifetime CancellationToken here once WizardPage adopts _disposalCts.
+                    var reconnected = await WizardFlowController.WaitForConnectionAsync(wizardGateway, cancellationToken: default);
                     Logger.Info($"[WizardDiag] Recovery reconnect-wait done: connected={reconnected}");
 
                     var (resumed, payload) = await WizardFlowController.TryResumeWithSessionAsync(

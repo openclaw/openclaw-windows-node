@@ -2889,18 +2889,34 @@ public static class LocalGatewaySetupEngineFactory
         string? distroName = null,
         string? instanceInstallLocation = null,
         bool allowExistingDistro = false,
-        bool replaceExistingConfigurationConfirmed = false)
+        bool replaceExistingConfigurationConfirmed = false,
+        string? identityDataPath = null,
+        string? setupStatePath = null)
     {
-        // Fail-closed: refuse to construct the engine if tray settings indicate
-        // existing configuration and the caller has not passed explicit confirmation.
-        // Default is false (safe). Pass true only from the SetupWarningPage confirm flow.
-        if (!replaceExistingConfigurationConfirmed
-            && !string.IsNullOrWhiteSpace(settings.Token))
+        // Defense-in-depth fail-closed: refuse to construct the engine if any of the
+        // 6 sync existing-config predicates fire and the caller has not passed explicit
+        // confirmation. Predicates checked: Token, BootstrapToken, GatewayUrl (non-default),
+        // operator DeviceToken, node DeviceToken, and setup-state phase (non-initial).
+        // The 7th predicate (WSL distro probe) is intentionally excluded here — the engine
+        // factory is a synchronous constructor path, and the WSL distro check is async-only.
+        // Forcing it async would cascade to all callers. The page-level gate
+        // (LocalSetupProgressPage) performs the full 7-predicate check including the WSL probe.
+        // Default is false (safe). Pass true only from the confirmed SetupWarningPage flow.
+        if (!replaceExistingConfigurationConfirmed)
         {
-            throw new InvalidOperationException(
-                "existing_config_replacement_not_confirmed: " +
-                "A gateway token already exists in settings. " +
-                "Pass replaceExistingConfigurationConfirmed=true to confirm replacement.");
+            var resolvedIdentityDataPath = identityDataPath ?? Path.Combine(
+                Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
+                    ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpenClawTray");
+            var guard = new OnboardingExistingConfigGuard(settings, resolvedIdentityDataPath, setupStatePath);
+            if (guard.HasExistingConfiguration())
+            {
+                throw new InvalidOperationException(
+                    "existing_config_replacement_not_confirmed: " +
+                    "Existing OpenClaw configuration detected (token, bootstrap token, " +
+                    "gateway URL, device identity, or active setup state). " +
+                    "Pass replaceExistingConfigurationConfirmed=true to confirm replacement.");
+            }
         }
 
         var runtime = LocalGatewaySetupRuntimeConfiguration.FromEnvironment();

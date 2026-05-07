@@ -485,6 +485,91 @@ public class LocalGatewaySetupTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             LocalGatewaySetupEngineFactory.CreateLocalOnly(
                 settings,
+                identityDataPath: temp.Path,
+                replaceExistingConfigurationConfirmed: false));
+
+        Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    [Fact]
+    public void CreateLocalOnly_ThrowsInvalidOperation_WhenBootstrapTokenExistsAndNotConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path) { BootstrapToken = "bootstrap-abc" };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LocalGatewaySetupEngineFactory.CreateLocalOnly(
+                settings,
+                identityDataPath: temp.Path,
+                replaceExistingConfigurationConfirmed: false));
+
+        Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    [Fact]
+    public void CreateLocalOnly_ThrowsInvalidOperation_WhenNonDefaultGatewayUrlAndNotConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path) { GatewayUrl = "ws://my-server:9000" };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LocalGatewaySetupEngineFactory.CreateLocalOnly(
+                settings,
+                identityDataPath: temp.Path,
+                replaceExistingConfigurationConfirmed: false));
+
+        Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    [Fact]
+    public void CreateLocalOnly_ThrowsInvalidOperation_WhenOperatorDeviceTokenExistsAndNotConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path);
+        File.WriteAllText(
+            Path.Combine(temp.Path, "device-key-ed25519.json"),
+            """{"DeviceToken":"op-device-token-value"}""");
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LocalGatewaySetupEngineFactory.CreateLocalOnly(
+                settings,
+                identityDataPath: temp.Path,
+                replaceExistingConfigurationConfirmed: false));
+
+        Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    [Fact]
+    public void CreateLocalOnly_ThrowsInvalidOperation_WhenNodeDeviceTokenExistsAndNotConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path);
+        File.WriteAllText(
+            Path.Combine(temp.Path, "device-key-ed25519.json"),
+            """{"NodeDeviceToken":"node-device-token-value"}""");
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LocalGatewaySetupEngineFactory.CreateLocalOnly(
+                settings,
+                identityDataPath: temp.Path,
+                replaceExistingConfigurationConfirmed: false));
+
+        Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    [Fact]
+    public void CreateLocalOnly_ThrowsInvalidOperation_WhenActiveSetupStateAndNotConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path);
+        var setupStatePath = Path.Combine(temp.Path, "setup-state.json");
+        File.WriteAllText(setupStatePath, """{"Phase":"ConfigureWslInstance"}""");
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LocalGatewaySetupEngineFactory.CreateLocalOnly(
+                settings,
+                identityDataPath: temp.Path,
+                setupStatePath: setupStatePath,
                 replaceExistingConfigurationConfirmed: false));
 
         Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
