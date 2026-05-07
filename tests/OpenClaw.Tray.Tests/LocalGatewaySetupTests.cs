@@ -476,6 +476,33 @@ public class LocalGatewaySetupTests
         Assert.True(settings.SaveCalled);
     }
 
+    [Fact]
+    public void CreateLocalOnly_ThrowsInvalidOperation_WhenTokenExistsAndNotConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path) { Token = "existing-token" };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LocalGatewaySetupEngineFactory.CreateLocalOnly(
+                settings,
+                replaceExistingConfigurationConfirmed: false));
+
+        Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    [Fact]
+    public void CreateLocalOnly_Succeeds_WhenTokenExistsAndConfirmed()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path) { Token = "existing-token" };
+
+        var engine = LocalGatewaySetupEngineFactory.CreateLocalOnly(
+            settings,
+            replaceExistingConfigurationConfirmed: true);
+
+        Assert.NotNull(engine);
+    }
+
     internal sealed class FakeWslCommandRunner : IWslCommandRunner
     {
         public List<WslDistroInfo> Distros { get; set; } = [];

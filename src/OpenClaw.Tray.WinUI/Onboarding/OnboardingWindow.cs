@@ -45,7 +45,7 @@ public sealed class OnboardingWindow : WindowEx
     private readonly OnboardingState _state;
     private bool _stateDisposed;
 
-    public OnboardingWindow(SettingsManager settings)
+    public OnboardingWindow(SettingsManager settings, string? identityDataPath = null)
     {
         _settings = settings;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -78,6 +78,18 @@ public sealed class OnboardingWindow : WindowEx
         _state = new OnboardingState(settings);
         _state.Finished += OnOnboardingFinished;
         _state.RouteChanged += OnRouteChanged;
+
+        // Construct the existing-config guard and apply returning-user defaults.
+        // When existing config is detected, default SetupPath to Advanced so the
+        // user lands on the SetupWarning page with Next enabled (→ Connection page)
+        // rather than the local setup path. The warn-and-confirm gate on
+        // SetupWarningPage protects the "Set up locally" button.
+        if (identityDataPath != null)
+        {
+            _state.ExistingConfigGuard = new OnboardingExistingConfigGuard(settings, identityDataPath);
+            if (_state.ExistingConfigGuard.HasExistingConfiguration())
+                _state.SetupPath = SetupPath.Advanced;
+        }
 
         // Optional override for visual tests / engineering: jump straight to a route.
         // Accepts the OnboardingRoute enum name (e.g., "Connection").

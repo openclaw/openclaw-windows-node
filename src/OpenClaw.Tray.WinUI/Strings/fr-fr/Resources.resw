@@ -476,6 +476,9 @@
   <data name="Menu_SetupGuide" xml:space="preserve">
     <value>Guide de configuration...</value>
   </data>
+  <data name="Menu_Reconfigure" xml:space="preserve">
+    <value>Reconfigurer…</value>
+  </data>
   <data name="Menu_SupportDebugHeader" xml:space="preserve">
     <value>🧰 Support et débogage</value>
   </data>
@@ -1399,6 +1402,18 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Onboarding_SetupWarning_Advanced" xml:space="preserve">
     <value>Configuration avancée</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceHeading" xml:space="preserve">
+    <value>⚠️ Remplacer la configuration existante ?</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceBody" xml:space="preserve">
+    <value>Continuer déconnectera de la passerelle actuelle et effacera tous les paramètres.</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceConfirm" xml:space="preserve">
+    <value>Remplacer ma configuration</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceCancel" xml:space="preserve">
+    <value>Conserver ma configuration</value>
   </data>
   <data name="Onboarding_LocalSetup_Title" xml:space="preserve">
     <value>Configuration locale en cours</value>

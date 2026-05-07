@@ -476,6 +476,9 @@
   <data name="Menu_SetupGuide" xml:space="preserve">
     <value>Setup Guide...</value>
   </data>
+  <data name="Menu_Reconfigure" xml:space="preserve">
+    <value>Reconfigure…</value>
+  </data>
   <data name="Menu_SupportDebugHeader" xml:space="preserve">
     <value>🧰 Support &amp; Debug</value>
   </data>
@@ -1400,6 +1403,18 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="Onboarding_SetupWarning_Advanced" xml:space="preserve">
     <value>Advanced setup</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceHeading" xml:space="preserve">
+    <value>⚠️ Replace existing configuration?</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceBody" xml:space="preserve">
+    <value>Moving forward will disconnect from the current gateway and lose all settings.</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceConfirm" xml:space="preserve">
+    <value>Replace my setup</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceCancel" xml:space="preserve">
+    <value>Keep my setup</value>
   </data>
   <data name="Onboarding_LocalSetup_Title" xml:space="preserve">
     <value>Setting up locally</value>

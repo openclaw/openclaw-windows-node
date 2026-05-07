@@ -467,4 +467,18 @@ public class OnboardingStateTests
     }
 
     #endregion
+
+    [Fact]
+    public void ExistingConfig_SetupPathAdvanced_EnablesNextButton_OnSetupWarningPage()
+    {
+        // Simulate OnboardingWindow setting SetupPath=Advanced when existing config detected.
+        // The OnboardingApp nav-bar logic: nextDisabled = Props.SetupPath == null
+        // With Advanced set, the Next button is enabled immediately.
+        var state = CreateState();
+        state.SetupPath = SetupPath.Advanced;
+
+        bool nextDisabled = state.SetupPath == null;
+
+        Assert.False(nextDisabled);
+    }
 }

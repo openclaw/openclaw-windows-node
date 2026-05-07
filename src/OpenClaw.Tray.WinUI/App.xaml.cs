@@ -60,14 +60,16 @@ public partial class App : Application
     /// the engine pairs the operator + Windows tray node into the gateway it
     /// installs, so we eagerly materialize the NodeService when needed.
     /// </summary>
-    public LocalGatewaySetupEngine CreateLocalGatewaySetupEngine()
+    public LocalGatewaySetupEngine CreateLocalGatewaySetupEngine(
+        bool replaceExistingConfigurationConfirmed = false)
     {
         var settings = _settings ?? new SettingsManager();
         var nodeService = EnsureNodeServiceForLocalGatewaySetup(settings);
         var engine = LocalGatewaySetupEngineFactory.CreateLocalOnly(
             settings,
             new AppLogger(),
-            nodeService);
+            nodeService,
+            replaceExistingConfigurationConfirmed: replaceExistingConfigurationConfirmed);
         // Bug #2: cache so OnPairingStatusChanged can read engine.IsAutoPairingWindowsNode
         // and suppress the "copy pairing command" toast during the Phase 14 blip.
         _localSetupEngine = engine;
@@ -977,7 +979,12 @@ public partial class App : Application
 
         // Settings & Setup
         menu.AddMenuItem(LocalizationHelper.GetString("Menu_Settings"), "⚙️", "settings");
-        menu.AddMenuItem(LocalizationHelper.GetString("Menu_SetupGuide"), "🧭", "setup");
+        var setupMenuLabel = _settings != null
+            && new OpenClawTray.Onboarding.Services.OnboardingExistingConfigGuard(_settings, IdentityDataPath)
+                .HasExistingConfiguration()
+            ? LocalizationHelper.GetString("Menu_Reconfigure")
+            : LocalizationHelper.GetString("Menu_SetupGuide");
+        menu.AddMenuItem(setupMenuLabel, "🧭", "setup");
         var autoStartText = (_settings?.AutoStart ?? false)
             ? LocalizationHelper.GetString("Menu_AutoStartEnabled")
             : LocalizationHelper.GetString("Menu_AutoStart");
@@ -2489,7 +2496,7 @@ public partial class App : Application
             try { _onboardingWindow.Activate(); return; } catch { _onboardingWindow = null; }
         }
 
-        _onboardingWindow = new OnboardingWindow(_settings);
+        _onboardingWindow = new OnboardingWindow(_settings, IdentityDataPath);
         _onboardingWindow.OnboardingCompleted += (s, e) =>
         {
             Logger.Info("Onboarding completed");

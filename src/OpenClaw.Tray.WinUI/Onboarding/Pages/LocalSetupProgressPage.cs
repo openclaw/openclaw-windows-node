@@ -104,12 +104,30 @@ public sealed class LocalSetupProgressPage : Component<OnboardingState>
                 return () => { };
             }
 
+            // Defense-in-depth: block local setup if existing config detected and
+            // replacement was not explicitly confirmed via the SetupWarningPage
+            // warn-and-confirm flow. Primary gate is SetupWarningPage; this catches
+            // env-override (OPENCLAW_ONBOARDING_START_ROUTE=LocalSetupProgress) and
+            // any future callers that bypass SetupWarningPage.
+            if (!Props.ReplaceExistingConfigurationConfirmed
+                && Props.ExistingConfigGuard?.HasExistingConfiguration() == true)
+            {
+                var failState = LocalGatewaySetupState.Create(new LocalGatewaySetupOptions());
+                failState.Block(
+                    "existing_config_gate",
+                    "Existing configuration detected. Use Advanced Setup to reconnect, or confirm replacement on the previous page.",
+                    retryable: false,
+                    detail: null);
+                setSnapshot(Capture(failState));
+                return () => { };
+            }
+
             if (s_engine == null)
             {
                 try
                 {
                     var app = (App)Application.Current;
-                    s_engine = app.CreateLocalGatewaySetupEngine();
+                    s_engine = app.CreateLocalGatewaySetupEngine(Props.ReplaceExistingConfigurationConfirmed);
                 }
                 catch (Exception ex)
                 {

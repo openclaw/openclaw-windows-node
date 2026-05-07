@@ -2888,8 +2888,21 @@ public static class LocalGatewaySetupEngineFactory
 #endif
         string? distroName = null,
         string? instanceInstallLocation = null,
-        bool allowExistingDistro = false)
+        bool allowExistingDistro = false,
+        bool replaceExistingConfigurationConfirmed = false)
     {
+        // Fail-closed: refuse to construct the engine if tray settings indicate
+        // existing configuration and the caller has not passed explicit confirmation.
+        // Default is false (safe). Pass true only from the SetupWarningPage confirm flow.
+        if (!replaceExistingConfigurationConfirmed
+            && !string.IsNullOrWhiteSpace(settings.Token))
+        {
+            throw new InvalidOperationException(
+                "existing_config_replacement_not_confirmed: " +
+                "A gateway token already exists in settings. " +
+                "Pass replaceExistingConfigurationConfirmed=true to confirm replacement.");
+        }
+
         var runtime = LocalGatewaySetupRuntimeConfiguration.FromEnvironment();
         var options = new LocalGatewaySetupOptions
         {

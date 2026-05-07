@@ -111,6 +111,21 @@ public sealed class OnboardingState : IDisposable
     /// <summary>Wizard error message if in error state.</summary>
     public string? WizardError { get; set; }
 
+    /// <summary>
+    /// Guard that detects existing tray configuration.
+    /// Set by <see cref="OnboardingWindow"/> after construction.
+    /// Null when not available (startup auto-onboarding or env-override paths).
+    /// </summary>
+    public OnboardingExistingConfigGuard? ExistingConfigGuard { get; set; }
+
+    /// <summary>
+    /// Set to true by <see cref="SetupWarningPage"/> warn-and-confirm flow
+    /// before advancing to the local setup path. Required by
+    /// <see cref="LocalSetupProgressPage"/> defense-in-depth guard and the
+    /// <see cref="LocalGatewaySetupEngineFactory"/> fail-closed check.
+    /// </summary>
+    public bool ReplaceExistingConfigurationConfirmed { get; set; }
+
     public OnboardingState(SettingsManager settings)
     {
         Settings = settings;

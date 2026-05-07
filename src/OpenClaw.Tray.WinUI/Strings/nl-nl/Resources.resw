@@ -476,6 +476,9 @@
   <data name="Menu_SetupGuide" xml:space="preserve">
     <value>Installatiegids...</value>
   </data>
+  <data name="Menu_Reconfigure" xml:space="preserve">
+    <value>Opnieuw configureren…</value>
+  </data>
   <data name="Menu_SupportDebugHeader" xml:space="preserve">
     <value>🧰 Ondersteuning en foutopsporing</value>
   </data>
@@ -1400,6 +1403,18 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="Onboarding_SetupWarning_Advanced" xml:space="preserve">
     <value>Geavanceerde installatie</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceHeading" xml:space="preserve">
+    <value>⚠️ Bestaande configuratie vervangen?</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceBody" xml:space="preserve">
+    <value>Doorgaan verbreekt de verbinding met de huidige gateway en verwijdert alle instellingen.</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceConfirm" xml:space="preserve">
+    <value>Mijn configuratie vervangen</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceCancel" xml:space="preserve">
+    <value>Mijn configuratie behouden</value>
   </data>
   <data name="Onboarding_LocalSetup_Title" xml:space="preserve">
     <value>Bezig met lokaal instellen</value>

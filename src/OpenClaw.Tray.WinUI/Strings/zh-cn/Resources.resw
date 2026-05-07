@@ -476,6 +476,9 @@
   <data name="Menu_SetupGuide" xml:space="preserve">
     <value>设置指南...</value>
   </data>
+  <data name="Menu_Reconfigure" xml:space="preserve">
+    <value>重新配置…</value>
+  </data>
   <data name="Menu_SupportDebugHeader" xml:space="preserve">
     <value>🧰 支持和调试</value>
   </data>
@@ -1400,6 +1403,18 @@
   </data>
   <data name="Onboarding_SetupWarning_Advanced" xml:space="preserve">
     <value>高级设置</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceHeading" xml:space="preserve">
+    <value>⚠️ 替换现有配置？</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceBody" xml:space="preserve">
+    <value>继续操作将断开与当前网关的连接并丢失所有设置。</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceConfirm" xml:space="preserve">
+    <value>替换我的设置</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceCancel" xml:space="preserve">
+    <value>保留我的设置</value>
   </data>
   <data name="Onboarding_LocalSetup_Title" xml:space="preserve">
     <value>正在本地设置</value>
