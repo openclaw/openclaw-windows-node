@@ -81,6 +81,58 @@ public class DeviceIdentity
 
     public static bool HasStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
         !string.IsNullOrWhiteSpace(TryReadStoredDeviceTokenForRole(dataPath, role, logger));
+
+    /// <summary>
+    /// Sets the <c>DeviceToken</c> field to <c>null</c> in
+    /// <c>device-key-ed25519.json</c> without deleting the file.
+    /// Preserves all other fields (Ed25519 keypair, algorithm, timestamps,
+    /// NodeDeviceToken).  Used by the uninstall engine (v3 §C).
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if the token was cleared; <c>false</c> if the file was
+    /// absent or the <c>DeviceToken</c> field was already null/empty
+    /// (idempotent skip).
+    /// </returns>
+    public static bool TryClearDeviceToken(string dataPath, IOpenClawLogger? logger = null)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath))
+            return false;
+
+        try
+        {
+            var json = File.ReadAllText(keyPath);
+            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
+            if (data == null)
+                return false;
+
+            if (string.IsNullOrEmpty(data.DeviceToken))
+                return false; // already null — idempotent
+
+            data.DeviceToken = null;
+            data.DeviceTokenScopes = null;
+            File.WriteAllText(keyPath,
+                JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictSensitiveFileAcl(keyPath);
+            logger?.Info("DeviceToken cleared from device-key-ed25519.json (file preserved).");
+            return true;
+        }
+        catch (IOException ex)
+        {
+            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            return false;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            return false;
+        }
+    }
     
     public DeviceIdentity(string dataPath, IOpenClawLogger? logger = null)
     {
