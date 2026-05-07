@@ -734,10 +734,10 @@
     <value>允許攝影機錄製？</value>
   </data>
   <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
-    <value>代理正在請求錄製您的螢幕。這將從您的顯示器擷取視訊並傳送給代理。</value>
+    <value>代理正在請求錄製您的螢幕。這將從您的顯示器擷取視訊並傳送給代理。您的選擇將被記住用於以後的請求，直到您在設定中變更。</value>
   </data>
   <data name="RecordingConsent_CameraDescription" xml:space="preserve">
-    <value>代理正在請求從您的攝影機錄製。這將從您的網路攝影機擷取視訊並傳送給代理。</value>
+    <value>代理正在請求從您的攝影機錄製。這將從您的網路攝影機擷取視訊並傳送給代理。您的選擇將被記住用於以後的請求，直到您在設定中變更。</value>
   </data>
   <data name="RecordingConsent_Privacy" xml:space="preserve">
     <value>您可以稍後在設定中變更此項。</value>

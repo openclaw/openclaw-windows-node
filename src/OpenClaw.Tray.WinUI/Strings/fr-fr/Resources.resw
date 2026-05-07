@@ -734,10 +734,10 @@ Utilisez l'une de ces options :
     <value>Autoriser l'enregistrement de la caméra ?</value>
   </data>
   <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
-    <value>Un agent demande d'enregistrer votre écran. Cela capturera la vidéo de votre affichage et l'enverra à l'agent.</value>
+    <value>Un agent demande d'enregistrer votre écran. Cela capturera la vidéo de votre affichage et l'enverra à l'agent. Votre choix sera mémorisé pour les prochaines demandes jusqu'à ce que vous le modifiiez dans les Paramètres.</value>
   </data>
   <data name="RecordingConsent_CameraDescription" xml:space="preserve">
-    <value>Un agent demande d'enregistrer depuis votre caméra. Cela capturera la vidéo de votre webcam et l'enverra à l'agent.</value>
+    <value>Un agent demande d'enregistrer depuis votre caméra. Cela capturera la vidéo de votre webcam et l'enverra à l'agent. Votre choix sera mémorisé pour les prochaines demandes jusqu'à ce que vous le modifiiez dans les Paramètres.</value>
   </data>
   <data name="RecordingConsent_Privacy" xml:space="preserve">
     <value>Vous pouvez modifier cela ultérieurement dans les Paramètres.</value>

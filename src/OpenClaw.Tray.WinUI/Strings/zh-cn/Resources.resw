@@ -734,10 +734,10 @@
     <value>允许摄像头录制？</value>
   </data>
   <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
-    <value>代理正在请求录制您的屏幕。这将从您的显示器捕获视频并发送给代理。</value>
+    <value>代理正在请求录制您的屏幕。这将从您的显示器捕获视频并发送给代理。您的选择将被记住用于以后的请求，直到您在设置中更改。</value>
   </data>
   <data name="RecordingConsent_CameraDescription" xml:space="preserve">
-    <value>代理正在请求从您的摄像头录制。这将从您的网络摄像头捕获视频并发送给代理。</value>
+    <value>代理正在请求从您的摄像头录制。这将从您的网络摄像头捕获视频并发送给代理。您的选择将被记住用于以后的请求，直到您在设置中更改。</value>
   </data>
   <data name="RecordingConsent_Privacy" xml:space="preserve">
     <value>您可以稍后在设置中更改此项。</value>

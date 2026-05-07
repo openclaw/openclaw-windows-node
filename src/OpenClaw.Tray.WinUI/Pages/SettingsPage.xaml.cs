@@ -15,6 +15,7 @@ public sealed partial class SettingsPage : Page
     private HubWindow? _hub;
     private bool _initialized;
     private bool _saving;
+    private bool _isDirty;
 
 
     public SettingsPage()
@@ -29,6 +30,7 @@ public sealed partial class SettingsPage : Page
         {
             LoadSettings(hub.Settings);
             hub.Settings.Saved += OnExternalSettingsChanged;
+            RegisterDirtyHandlers();
             _initialized = true;
         }
         else if (_initialized && hub.Settings != null)
@@ -38,9 +40,29 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private void RegisterDirtyHandlers()
+    {
+        void MarkDirty(object s, RoutedEventArgs e) { if (_initialized) _isDirty = true; }
+
+        AutoStartToggle.Toggled += MarkDirty;
+        GlobalHotkeyToggle.Toggled += MarkDirty;
+        NotificationsToggle.Toggled += MarkDirty;
+        ScreenRecordingToggle.Toggled += MarkDirty;
+        CameraRecordingToggle.Toggled += MarkDirty;
+        NotificationSoundComboBox.SelectionChanged += (s, e) => { if (_initialized) _isDirty = true; };
+        NotifyHealthCb.Checked += MarkDirty; NotifyHealthCb.Unchecked += MarkDirty;
+        NotifyUrgentCb.Checked += MarkDirty; NotifyUrgentCb.Unchecked += MarkDirty;
+        NotifyReminderCb.Checked += MarkDirty; NotifyReminderCb.Unchecked += MarkDirty;
+        NotifyEmailCb.Checked += MarkDirty; NotifyEmailCb.Unchecked += MarkDirty;
+        NotifyCalendarCb.Checked += MarkDirty; NotifyCalendarCb.Unchecked += MarkDirty;
+        NotifyBuildCb.Checked += MarkDirty; NotifyBuildCb.Unchecked += MarkDirty;
+        NotifyStockCb.Checked += MarkDirty; NotifyStockCb.Unchecked += MarkDirty;
+        NotifyInfoCb.Checked += MarkDirty; NotifyInfoCb.Unchecked += MarkDirty;
+    }
+
     private void OnExternalSettingsChanged(object? sender, EventArgs e)
     {
-        if (_hub?.Settings == null || _saving) return;
+        if (_hub?.Settings == null || _saving || _isDirty) return;
         DispatcherQueue.TryEnqueue(() =>
         {
             ScreenRecordingToggle.IsOn = _hub.Settings.ScreenRecordingConsentGiven;
@@ -113,6 +135,7 @@ public sealed partial class SettingsPage : Page
         _saving = true;
         s.Save();
         _saving = false;
+        _isDirty = false;
         AutoStartManager.SetAutoStart(s.AutoStart);
         _hub.RaiseSettingsSaved();
 
@@ -130,6 +153,7 @@ public sealed partial class SettingsPage : Page
             _initialized = false;
             LoadSettings(_hub.Settings);
             _initialized = true;
+            _isDirty = false;
         }
     }
 

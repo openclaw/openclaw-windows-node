@@ -734,10 +734,10 @@ Gebruik een van deze opties:
     <value>Camera-opname toestaan?</value>
   </data>
   <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
-    <value>Een agent vraagt om uw scherm op te nemen. Dit zal video van uw beeldscherm vastleggen en naar de agent sturen.</value>
+    <value>Een agent vraagt om uw scherm op te nemen. Dit zal video van uw beeldscherm vastleggen en naar de agent sturen. Uw keuze wordt onthouden voor toekomstige verzoeken totdat u deze wijzigt in Instellingen.</value>
   </data>
   <data name="RecordingConsent_CameraDescription" xml:space="preserve">
-    <value>Een agent vraagt om op te nemen vanaf uw camera. Dit zal video van uw webcam vastleggen en naar de agent sturen.</value>
+    <value>Een agent vraagt om op te nemen vanaf uw camera. Dit zal video van uw webcam vastleggen en naar de agent sturen. Uw keuze wordt onthouden voor toekomstige verzoeken totdat u deze wijzigt in Instellingen.</value>
   </data>
   <data name="RecordingConsent_Privacy" xml:space="preserve">
     <value>U kunt dit later wijzigen in Instellingen.</value>

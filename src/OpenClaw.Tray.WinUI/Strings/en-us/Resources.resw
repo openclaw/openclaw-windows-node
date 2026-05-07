@@ -734,10 +734,10 @@ Use one of these options:
     <value>Allow camera recording?</value>
   </data>
   <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
-    <value>An agent is requesting to record your screen. This will capture video from your display and send it to the agent.</value>
+    <value>An agent is requesting to record your screen. This will capture video from your display and send it to the agent. Your choice will be remembered for future requests until you change it in Settings.</value>
   </data>
   <data name="RecordingConsent_CameraDescription" xml:space="preserve">
-    <value>An agent is requesting to record from your camera. This will capture video from your webcam and send it to the agent.</value>
+    <value>An agent is requesting to record from your camera. This will capture video from your webcam and send it to the agent. Your choice will be remembered for future requests until you change it in Settings.</value>
   </data>
   <data name="RecordingConsent_Privacy" xml:space="preserve">
     <value>You can change this later in Settings.</value>
