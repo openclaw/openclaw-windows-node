@@ -30,6 +30,10 @@ public class WindowsNodeClient : WebSocketClientBase
     private bool _isPaired;
     // Bridges the gap between an approval event and the next hello-ok when the gateway omits auth.deviceToken.
     private bool _pairingApprovedAwaitingReconnect;
+    // Persists across disconnect/error so ShouldAutoReconnect can block reconnect
+    // even after OnDisconnected clears _isPendingApproval.
+    private volatile bool _pairingBlocked;
+    private volatile bool _rateLimited;
     private readonly string _gatewayToken;
     private readonly string? _bootstrapToken;
     
@@ -296,6 +300,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         _isPendingApproval = true;
         _isPaired = false;
+        _pairingBlocked = true;
         _pairingApprovedAwaitingReconnect = false;
 
         _logger.Info($"[NODE] Pairing requested for this device via {eventType}");
@@ -329,6 +334,7 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _isPendingApproval = false;
             _isPaired = true;
+            _pairingBlocked = false; // Allow reconnect after approval
             _pairingApprovedAwaitingReconnect = true;
 
             PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
@@ -622,6 +628,7 @@ public class WindowsNodeClient : WebSocketClientBase
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             var reconnectingAfterApproval = _pairingApprovedAwaitingReconnect;
             _isConnected = true;
+            _rateLimited = false; // Clear transient rate-limit on successful connect
             ResetReconnectAttempts();
             
             // Extract node ID if returned
@@ -673,6 +680,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     {
                         _isPendingApproval = true;
                         _isPaired = false;
+                        _pairingBlocked = true;
                         _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
                         _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
                         PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
@@ -736,6 +744,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
             _isPendingApproval = true;
             _isPaired = false;
+            _pairingBlocked = true;
             _pairingApprovedAwaitingReconnect = false;
 
             var detail = !string.IsNullOrWhiteSpace(pairingRequestId)
@@ -747,6 +756,18 @@ public class WindowsNodeClient : WebSocketClientBase
                 PairingStatus.Pending,
                 _deviceIdentity.DeviceId,
                 detail));
+            return;
+        }
+
+        // Rate-limit / terminal auth errors — stop reconnecting
+        if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase) ||
+            error.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
+            error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
+            error.Contains("token mismatch", StringComparison.OrdinalIgnoreCase))
+        {
+            _rateLimited = true;
+            _logger.Warn($"[NODE] Terminal auth error; stopping reconnect. Error: {TokenSanitizer.Sanitize(error)}");
+            RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
 
@@ -1026,6 +1047,20 @@ public class WindowsNodeClient : WebSocketClientBase
         GatewaySelfUpdated?.Invoke(this, info);
     }
     
+    protected override bool ShouldAutoReconnect()
+    {
+        // Don't reconnect while awaiting pairing approval — each reconnect
+        // generates a new pairing request on the gateway, causing a storm.
+        // _pairingBlocked survives OnDisconnected (which clears _isPendingApproval).
+        if (_pairingBlocked)
+            return false;
+
+        if (_rateLimited)
+            return false;
+
+        return true;
+    }
+
     protected override void OnDisconnected()
     {
         _isConnected = false;

@@ -96,7 +96,7 @@ public static class McpAuthToken
         try
         {
             File.WriteAllText(tempPath, token, Encoding.UTF8);
-            TryRestrictFileAcl(tempPath);
+            TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
         catch
@@ -104,7 +104,7 @@ public static class McpAuthToken
             try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             throw;
         }
-        TryRestrictFileAcl(path);
+        TryRestrictSensitiveFileAcl(path);
         return token;
     }
 
@@ -127,7 +127,7 @@ public static class McpAuthToken
         try
         {
             File.WriteAllText(tempPath, token, Encoding.UTF8);
-            TryRestrictFileAcl(tempPath);
+            TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
         catch
@@ -137,7 +137,7 @@ public static class McpAuthToken
         }
         // Move on Windows preserves the source's DACL; re-apply defensively in
         // case a future rename strategy substitutes a different file.
-        TryRestrictFileAcl(path);
+        TryRestrictSensitiveFileAcl(path);
         return token;
     }
 
@@ -183,8 +183,9 @@ public static class McpAuthToken
         catch { /* best-effort; acl restriction is defense-in-depth, not load-bearing */ }
     }
 
-    private static void TryRestrictFileAcl(string path)
+    public static void TryRestrictSensitiveFileAcl(string path)
     {
+        if (string.IsNullOrEmpty(path)) return;
         if (!OperatingSystem.IsWindows()) return;
         try { RestrictFileAclWindows(path); }
         catch { /* see above */ }

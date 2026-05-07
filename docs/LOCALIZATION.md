@@ -46,7 +46,7 @@ OpenClaw Tray uses WinUI `.resw` resource files for localization. Windows automa
 
 5. **Do not translate resource key names** (the `name` attribute). Only translate `<value>` content.
 
-6. **Submit a pull request** with just your new `Resources.resw` file. No code changes are needed — the build system automatically discovers new locale folders.
+6. **Submit a pull request** with just your new `Resources.resw` file. No code changes are needed — the build system and localization tests automatically discover new locale folders.
 
 ## How It Works
 
@@ -104,15 +104,17 @@ All onboarding wizard strings use the `Onboarding_` prefix:
 
 ## Validation
 
-All 5 resource files must have the **same set of keys**. You can verify with:
+All resource files must have the **same set of keys**. Locale directories are discovered dynamically under `Strings/`, so adding a new `Strings/<locale>/Resources.resw` file automatically brings it under validation. You can verify counts with:
 
 ```powershell
-$locales = @("en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw")
 $base = "src\OpenClaw.Tray.WinUI\Strings"
-foreach ($loc in $locales) {
+Get-ChildItem $base -Directory | ForEach-Object {
+    $loc = $_.Name
     $count = (Select-String -Path "$base\$loc\Resources.resw" -Pattern '<data name="' | Measure-Object).Count
     Write-Host "$loc : $count keys"
 }
 ```
 
 All locale counts should match. Missing or extra keys indicate an incomplete translation.
+
+Non-English resource values must also follow the all-or-none rule enforced by `LocalizationValidationTests`: each key is either translated in every non-English locale, intentionally invariant in every non-English locale, or explicitly deferred with rationale. Partial translation, where only some non-English locales differ from `en-us`, is treated as a regression.

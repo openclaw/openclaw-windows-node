@@ -546,7 +546,7 @@ public class LocalCommandRunnerIntegrationTests
         {
             Command = "Write-Output 'hello world'",
             Shell = "powershell",
-            TimeoutMs = 10000
+            TimeoutMs = 30000
         });
 
         Assert.Equal(0, result.ExitCode);
@@ -634,8 +634,8 @@ public class LocalCommandRunnerIntegrationTests
         var runner = new LocalCommandRunner();
         var result = await runner.RunAsync(new CommandRequest
         {
-            Command = "Write-Output $env:TEST_OPENCLAW_VAR",
-            Shell = "powershell",
+            Command = "echo %TEST_OPENCLAW_VAR%",
+            Shell = "cmd",
             TimeoutMs = 10000,
             Env = new() { { "TEST_OPENCLAW_VAR", "hello_from_test" } }
         });

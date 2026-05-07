@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using OpenClaw.Shared.Mcp;
 using NSec.Cryptography;
 
 namespace OpenClaw.Shared;
@@ -168,8 +169,11 @@ public class DeviceIdentity
         {
             Directory.CreateDirectory(dir);
         }
+        if (!string.IsNullOrEmpty(dir))
+            McpAuthToken.TryRestrictDataDirectoryAcl(dir);
         
         File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+        McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
         _logger.Info($"Generated new Ed25519 device identity: {_deviceId}");
     }
     
@@ -358,6 +362,9 @@ public class DeviceIdentity
 
     private void StoreDeviceTokenCore(string token, string[]? scopes)
     {
+        if (string.IsNullOrWhiteSpace(token))
+            throw new ArgumentException("Device token cannot be empty.", nameof(token));
+
         _deviceToken = token;
         _deviceTokenScopes = scopes;
         
@@ -373,6 +380,7 @@ public class DeviceIdentity
                     data.DeviceToken = token;
                     data.DeviceTokenScopes = scopes;
                     File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+                    McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
                     _logger.Info("Device token stored");
                 }
             }
@@ -385,6 +393,9 @@ public class DeviceIdentity
 
     private void StoreNodeDeviceTokenCore(string token, string[]? scopes)
     {
+        if (string.IsNullOrWhiteSpace(token))
+            throw new ArgumentException("Device token cannot be empty.", nameof(token));
+
         _nodeDeviceToken = token;
         _nodeDeviceTokenScopes = scopes;
 

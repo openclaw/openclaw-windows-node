@@ -14,6 +14,9 @@
             <SolidColorBrush x:Key="LobsterAccentBrush" Color="#E74C3C" />
             <SolidColorBrush x:Key="LobsterAccentBrushHover" Color="#C0392B" />
             
+            <!-- Hub NavigationView accent -->
+            <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="#E74C3C"/>
+
             <!-- Custom Button Style -->
             <Style x:Key="AccentButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="{StaticResource LobsterAccentBrush}" />

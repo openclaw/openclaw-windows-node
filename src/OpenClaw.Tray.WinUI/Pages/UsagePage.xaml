@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.UsagePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+
+            <TextBlock x:Uid="UsagePage_TextBlock_10" Text="📊 Usage &amp; Cost" Style="{StaticResource TitleTextBlockStyle}"/>
+
+            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" Title="Not Connected"
+                     Message="Connect to gateway to see live data"
+                     Severity="Warning" IsOpen="True" IsClosable="False" Visibility="Collapsed"/>
+
+            <!-- Big number: Total Cost -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock x:Uid="UsagePage_TextBlock_21" Text="Total Cost" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="TotalCostText" Text="—" FontSize="28" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Stats row: 3 cards side by side -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Uid="UsagePage_TextBlock_35" Text="Requests" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="RequestCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Uid="UsagePage_TextBlock_45" Text="Tokens" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Uid="TokenCountText" x:Name="TokenCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Uid="UsagePage_TextBlock_55" Text="Providers" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="ProviderCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Time period buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Uid="Period7DaysButton" x:Name="Period7DaysButton" Content="7 Days" Click="OnPeriod7Days"
+                        Style="{ThemeResource AccentButtonStyle}"/>
+                <Button x:Uid="Period30DaysButton" x:Name="Period30DaysButton" Content="30 Days" Click="OnPeriod30Days"/>
+            </StackPanel>
+
+            <!-- Provider Breakdown -->
+            <TextBlock x:Uid="UsagePage_TextBlock_70" Text="Provider Breakdown" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0"/>
+            <ListView x:Name="ProviderListView" SelectionMode="None">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Requests}" Margin="16,0"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Tokens}" Margin="16,0"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Cost}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <!-- Daily Cost -->
+            <TextBlock x:Uid="UsagePage_TextBlock_100" Text="Daily Cost" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0"/>
+            <ListView x:Name="DailyListView" SelectionMode="None">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="4,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Date}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Cost}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,24,24,12">
+            <StackPanel Spacing="12" HorizontalAlignment="Stretch">
+
+                <TextBlock x:Uid="SettingsPage_TextBlock_16" Text="⚙️ Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
+                <TextBlock x:Uid="SettingsPage_TextBlock_17" Text="Local app preferences for this computer."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+
+                <!-- Startup -->
+                <Expander x:Name="StartupExpander" IsExpanded="True"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="StartupExpander">
+                    <Expander.Header>
+                        <TextBlock x:Uid="SettingsPage_TextBlock_26" Text="Startup" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <ToggleSwitch x:Uid="AutoStartToggle" x:Name="AutoStartToggle" Header="Start automatically with Windows"
+                                      AutomationProperties.AutomationId="SettingsPageAutoStart"/>
+                        <ToggleSwitch x:Uid="GlobalHotkeyToggle" x:Name="GlobalHotkeyToggle" Header="Global hotkey (Ctrl+Alt+Shift+C → Quick Send)"
+                                      AutomationProperties.AutomationId="SettingsPageHotkey"/>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Notifications -->
+                <Expander x:Name="NotificationsExpander" IsExpanded="True"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="NotificationsExpander">
+                    <Expander.Header>
+                        <TextBlock x:Uid="SettingsPage_TextBlock_41" Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <ToggleSwitch x:Uid="NotificationsToggle" x:Name="NotificationsToggle" Header="Show notifications"
+                                      AutomationProperties.AutomationId="SettingsPageNotifications"/>
+                        <ComboBox x:Uid="NotificationSoundComboBox" x:Name="NotificationSoundComboBox" Header="Sound" Width="200"
+                                  AutomationProperties.AutomationId="SettingsPageSound">
+                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
+                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
+                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_50" Content="Subtle" Tag="Subtle"/>
+                        </ComboBox>
+                        <TextBlock x:Uid="SettingsPage_TextBlock_52" Text="Show notifications for:"
+                                   Style="{StaticResource BodyTextBlockStyle}" Margin="0,4,0,0"/>
+                        <StackPanel Spacing="4">
+                            <CheckBox x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb" Content="Health alerts"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyHealth"/>
+                            <CheckBox x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb" Content="Urgent messages"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyUrgent"/>
+                            <CheckBox x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb" Content="Reminders"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyReminder"/>
+                            <CheckBox x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb" Content="Email summaries"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyEmail"/>
+                            <CheckBox x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb" Content="Calendar events"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyCalendar"/>
+                            <CheckBox x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb" Content="Build notifications"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyBuild"/>
+                            <CheckBox x:Uid="NotifyStockCb" x:Name="NotifyStockCb" Content="Stock alerts"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyStock"/>
+                            <CheckBox x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb" Content="Info messages"
+                                      AutomationProperties.AutomationId="SettingsPageNotifyInfo"/>
+                        </StackPanel>
+                        <Button x:Uid="TestNotificationButton" x:Name="TestNotificationButton" Content="Send Test Notification" Click="OnTestNotification"/>
+                    </StackPanel>
+                </Expander>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Border Grid.Row="1"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0" Padding="24,16">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button x:Uid="CancelButton" x:Name="CancelButton" Content="Cancel" Width="80" Click="OnCancel"
+                        AutomationProperties.AutomationId="SettingsPageCancel"/>
+                <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save" Width="80" Click="OnSave"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        AutomationProperties.AutomationId="SettingsPageSave"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

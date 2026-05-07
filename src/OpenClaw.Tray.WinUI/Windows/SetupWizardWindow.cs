@@ -51,7 +51,7 @@ public sealed class SetupWizardWindow : WindowEx
     // Step 0: Setup code + manual entry
     private readonly TextBox _setupCodeBox;
     private readonly TextBox _gatewayUrlBox;
-    private readonly PasswordBox _tokenBox;
+    private readonly TextBox _tokenBox;
     private readonly TextBlock _testStatusLabel;
     private readonly Button _testButton;
     private readonly StackPanel _manualEntryPanel;
@@ -79,6 +79,7 @@ public sealed class SetupWizardWindow : WindowEx
         _draftEnableNodeMode = settings.EnableNodeMode;
 
         Title = LocalizationHelper.GetString("Setup_Title");
+        ExtendsContentIntoTitleBar = true;
         this.SetWindowSize(720, 900);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -195,17 +196,17 @@ public sealed class SetupWizardWindow : WindowEx
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
-        _tokenBox = new PasswordBox
+        _tokenBox = new TextBox
         {
             Header = LocalizationHelper.GetString("Setup_TokenHeader"),
             PlaceholderText = LocalizationHelper.GetString("Setup_TokenPlaceholder"),
-            Password = _draftToken
+            Text = _draftToken
         };
         AutomationProperties.SetAutomationId(_tokenBox, "TokenBox");
-        _tokenBox.PasswordChanged += (s, e) => _connectionTested = false;
-        _tokenBox.PasswordChanged += (s, e) =>
+        _tokenBox.TextChanged += (s, e) => _connectionTested = false;
+        _tokenBox.TextChanged += (s, e) =>
         {
-            _draftToken = _tokenBox.Password;
+            _draftToken = _tokenBox.Text;
             UpdatePairingStatusText();
         };
         _manualEntryPanel.Children.Add(_tokenBox);
@@ -370,7 +371,37 @@ public sealed class SetupWizardWindow : WindowEx
         Grid.SetRow(navPanel, 3);
         root.Children.Add(navPanel);
 
-        Content = root;
+        // Wrap content in a container with custom titlebar
+        var outerGrid = new Grid();
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var titleBar = new Grid { Padding = new Thickness(16, 0, 140, 0) };
+        var titleIcon = new TextBlock
+        {
+            Text = "🦞",
+            FontSize = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        var titleText = new TextBlock
+        {
+            Text = LocalizationHelper.GetString("Setup_Title"),
+            FontSize = 13,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
+        titleStack.Children.Add(titleIcon);
+        titleStack.Children.Add(titleText);
+        titleBar.Children.Add(titleStack);
+        Grid.SetRow(titleBar, 0);
+        outerGrid.Children.Add(titleBar);
+
+        Grid.SetRow(root, 1);
+        outerGrid.Children.Add(root);
+        Content = outerGrid;
+        SetTitleBar(titleBar);
         Logger.Info("[Setup] Wizard opened");
 
         // Load device identity for step 3
@@ -687,7 +718,7 @@ public sealed class SetupWizardWindow : WindowEx
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         _draftGatewayUrl = _gatewayUrlBox.Text.Trim();
-        _draftToken = _tokenBox.Password;
+        _draftToken = _tokenBox.Text;
         UpdatePairingStatusText();
 
         if (!GatewayUrlHelper.IsValidGatewayUrl(_draftGatewayUrl))

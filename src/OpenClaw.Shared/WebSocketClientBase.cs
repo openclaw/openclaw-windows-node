@@ -251,6 +251,10 @@ public abstract class WebSocketClientBase : IDisposable
             while (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
             {
                 var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+                // Add 0-25% jitter to prevent thundering herd when multiple clients
+                // (operator + node) reconnect on the same schedule
+                var jitter = Random.Shared.Next(0, delay / 4);
+                delay += jitter;
                 _reconnectAttempts++;
                 _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
                 RaiseStatusChanged(ConnectionStatus.Connecting);

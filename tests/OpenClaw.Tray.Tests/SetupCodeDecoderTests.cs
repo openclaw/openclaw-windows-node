@@ -69,20 +69,6 @@ public class SetupCodeDecoderTests
         Assert.Equal("abc123", result.Token);
     }
 
-    [Theory]
-    [InlineData("bootstrap_token")]
-    [InlineData("token")]
-    public void Decode_AlternateTokenPropertyNames_ReturnsToken(string propertyName)
-    {
-        var json = $$"""{"url":"ws://localhost:18789","{{propertyName}}":"abc123"}""";
-        var code = ToBase64Url(json);
-
-        var result = SetupCodeDecoder.Decode(code);
-
-        Assert.True(result.Success);
-        Assert.Equal("abc123", result.Token);
-    }
-
     [Fact]
     public void Decode_HttpUrl_AlsoValid()
     {
@@ -120,7 +106,7 @@ public class SetupCodeDecoderTests
     }
 
     [Fact]
-    public void Decode_TokenOver512Chars_TokenIsNull()
+    public void Decode_TokenOver512Chars_ReturnsError()
     {
         var longToken = new string('x', 513);
         var json = $$$"""{"url":"ws://localhost:18789","bootstrapToken":"{{{longToken}}}"}""";
@@ -128,8 +114,8 @@ public class SetupCodeDecoderTests
 
         var result = SetupCodeDecoder.Decode(code);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Token);
+        Assert.False(result.Success);
+        Assert.Contains("512", result.Error);
     }
 
     #endregion
@@ -182,16 +168,38 @@ public class SetupCodeDecoderTests
     }
 
     [Fact]
-    public void Decode_MissingUrlField_SucceedsWithNullUrl()
+    public void Decode_MissingUrlAndToken_ReturnsError()
     {
         var json = """{"other":"data"}""";
         var code = ToBase64Url(json);
 
         var result = SetupCodeDecoder.Decode(code);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Url);
-        Assert.Null(result.Token);
+        Assert.False(result.Success);
+        Assert.Contains("gateway URL or bootstrap token", result.Error);
+    }
+
+    [Fact]
+    public void Decode_NonStringToken_ReturnsError()
+    {
+        var json = """{"url":"ws://localhost:18789","bootstrapToken":123}""";
+        var code = ToBase64Url(json);
+
+        var result = SetupCodeDecoder.Decode(code);
+
+        Assert.False(result.Success);
+        Assert.Contains("bootstrap token", result.Error);
+    }
+
+    [Fact]
+    public void Decode_NonObjectJson_ReturnsError()
+    {
+        var code = ToBase64Url("[]");
+
+        var result = SetupCodeDecoder.Decode(code);
+
+        Assert.False(result.Success);
+        Assert.Contains("object", result.Error);
     }
 
     #endregion

@@ -18,6 +18,8 @@ namespace OpenClawTray.Windows;
 /// </summary>
 public sealed partial class TrayMenuWindow : WindowEx
 {
+    private const int MenuWidthViewUnits = 320;
+
     #region Win32 Imports
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -111,6 +113,8 @@ public sealed partial class TrayMenuWindow : WindowEx
     private string? _activeFlyoutKey;
     private bool _isShown;
     private global::Windows.Graphics.RectInt32? _lastMoveAndResizeRect;
+    private uint _lastMeasureDpi;
+    private double _lastMeasureRasterizationScale;
 
     public TrayMenuWindow() : this(ownerMenu: null)
     {
@@ -128,6 +132,9 @@ public sealed partial class TrayMenuWindow : WindowEx
         this.IsResizable = false;
         this.IsAlwaysOnTop = true;
         
+        // Apply acrylic backdrop for system-consistent transparency
+        BackdropHelper.TrySetAcrylicBackdrop(this);
+        
         // NOTE: Do NOT set IsTitleBarVisible = false!
         // Bug 57667927: causes fail-fast in WndProc during dictionary enumeration.
         // We remove the caption via Win32 SetWindowLong instead.
@@ -143,13 +150,34 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            if (_activeFlyoutWindow == null)
+            // Always use delayed check — immediate dismiss races with flyout transitions
+            var timer = DispatcherQueue.CreateTimer();
+            timer.Interval = TimeSpan.FromMilliseconds(150);
+            timer.IsRepeating = false;
+            timer.Tick += (_, _) =>
             {
-                this.Hide();
-                return;
-            }
+                timer.Stop();
+                if (!_isShown) return; // already hidden
 
-            HideCascadeIfFocusLeavesMenu();
+                var foreground = GetForegroundWindow();
+                var thisHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+                var flyoutHwnd = _activeFlyoutWindow != null
+                    ? WinRT.Interop.WindowNative.GetWindowHandle(_activeFlyoutWindow)
+                    : IntPtr.Zero;
+                var ownerHwnd = _ownerMenu != null
+                    ? WinRT.Interop.WindowNative.GetWindowHandle(_ownerMenu)
+                    : IntPtr.Zero;
+
+                // Stay open if focus is on this window, its flyout, or its parent
+                if (foreground == thisHwnd || foreground == flyoutHwnd ||
+                    (ownerHwnd != IntPtr.Zero && foreground == ownerHwnd))
+                    return;
+
+                // Focus went elsewhere — dismiss everything
+                HideCascade();
+                _ownerMenu?.HideCascade();
+            };
+            timer.Start();
         }
     }
 
@@ -164,32 +192,11 @@ public sealed partial class TrayMenuWindow : WindowEx
             var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
             GetMonitorInfo(hMonitor, ref monitorInfo);
             var workArea = monitorInfo.rcWork;
-
-            // Prefer using the AppWindow's actual pixel size. This is more reliable than
-            // estimating based on DPI and item counts, especially on Windows 10 when the
-            // cursor can be in the taskbar region (outside rcWork).
-            int menuWidthPx;
-            int menuHeightPx;
-            try
-            {
-                menuWidthPx = this.AppWindow.Size.Width;
-                menuHeightPx = this.AppWindow.Size.Height;
-            }
-            catch
-            {
-                menuWidthPx = 0;
-                menuHeightPx = 0;
-            }
-
-            // Fallback to a conservative estimate if AppWindow size isn't available yet.
-            if (menuWidthPx <= 0 || menuHeightPx <= 0)
-            {
-                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-                uint dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
-                double scale = dpi / 96.0;
-                menuWidthPx = (int)(280 * scale);
-                menuHeightPx = (int)(_menuHeight * scale);
-            }
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
+            SizeToContent(workArea.Bottom - workArea.Top, dpi);
+            var menuWidthPx = ConvertViewUnitsToPixels(MenuWidthViewUnits, dpi);
+            var menuHeightPx = ConvertViewUnitsToPixels(_menuHeight, dpi);
 
             const int margin = 8;
 
@@ -199,10 +206,20 @@ public sealed partial class TrayMenuWindow : WindowEx
                 workArea.Left, workArea.Top, workArea.Right, workArea.Bottom,
                 margin);
 
-            this.Move(x, y);
+            var targetRect = new global::Windows.Graphics.RectInt32(x, y, menuWidthPx, menuHeightPx);
+            if (!RectEquals(_lastMoveAndResizeRect, targetRect))
+            {
+                AppWindow.MoveAndResize(targetRect);
+                _lastMoveAndResizeRect = targetRect;
+            }
+        }
+        else
+        {
+            SizeToContent();
         }
 
         ApplyRoundedWindowRegion();
+        _isShown = true;
         Activate();
         SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _ = VisualTestCapture.CaptureAsync(RootGrid, "TrayMenu");
@@ -230,6 +247,7 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
+        SizeToContent(monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top, dpi);
         var submenuWidthPx = ConvertViewUnitsToPixels(280, dpi);
         var submenuHeightPx = ConvertViewUnitsToPixels(_menuHeight, dpi);
 
@@ -297,6 +315,7 @@ public sealed partial class TrayMenuWindow : WindowEx
         // Hover effect
         button.PointerEntered += (s, e) =>
         {
+            HideActiveFlyout();
             if (button.IsEnabled)
                 button.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
         };
@@ -321,7 +340,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             : "TrayMenuItem" + new string(chars);
     }
 
-    public void AddFlyoutMenuItem(string text, string? icon, IEnumerable<TrayMenuFlyoutItem> items, bool indent = false)
+    public void AddFlyoutMenuItem(string text, string? icon, IEnumerable<TrayMenuFlyoutItem> items, bool indent = false, string? action = null)
     {
         var content = new TextBlock
         {
@@ -353,7 +372,18 @@ public sealed partial class TrayMenuWindow : WindowEx
         {
             button.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
         };
-        button.Click += (s, e) => ShowCascadingFlyout(button, flyoutItems);
+        button.Click += (s, e) =>
+        {
+            if (!string.IsNullOrEmpty(action))
+            {
+                HideActiveFlyout();
+                MenuItemClicked?.Invoke(this, action);
+            }
+            else
+            {
+                ShowCascadingFlyout(button, flyoutItems);
+            }
+        };
 
         MenuPanel.Children.Add(button);
         _itemCount++;
@@ -361,12 +391,14 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public void AddSeparator()
     {
-        MenuPanel.Children.Add(new Border
+        var sep = new Border
         {
             Height = 1,
             Margin = new Thickness(8, 6, 8, 6),
             Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"]
-        });
+        };
+        sep.PointerEntered += (s, e) => HideActiveFlyout();
+        MenuPanel.Children.Add(sep);
         _separatorCount++;
     }
 
@@ -399,16 +431,74 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public void AddHeader(string text)
     {
-        MenuPanel.Children.Add(new TextBlock
+        var tb = new TextBlock
         {
             Text = text,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Padding = new Thickness(12, 10, 12, 4),
             Opacity = 0.7
-        });
+        };
+        tb.PointerEntered += (s, e) => HideActiveFlyout();
+        MenuPanel.Children.Add(tb);
         _headerCount++;
     }
 
+    public void AddCustomElement(UIElement element)
+    {
+        if (element is FrameworkElement fe)
+            fe.PointerEntered += (s, e) => HideActiveFlyout();
+        MenuPanel.Children.Add(element);
+    }
+
+    /// <summary>
+    /// Adds a custom UIElement as a flyout-enabled menu item with hover/click behavior.
+    /// Same behavior as AddFlyoutMenuItem but accepts any UIElement instead of text.
+    /// </summary>
+    public void AddFlyoutCustomItem(UIElement content, IEnumerable<TrayMenuFlyoutItem> items, string? action = null)
+    {
+        var flyoutItems = items.ToArray();
+
+        var button = new Button
+        {
+            Content = content,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(0),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(6)
+        };
+
+        button.PointerEntered += (s, e) =>
+        {
+            button.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            ShowCascadingFlyout(button, flyoutItems);
+        };
+        button.PointerExited += (s, e) =>
+        {
+            button.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        };
+        button.Click += (s, e) =>
+        {
+            if (!string.IsNullOrEmpty(action))
+            {
+                HideActiveFlyout();
+                MenuItemClicked?.Invoke(this, action);
+                HideCascade();
+            }
+            else
+            {
+                ShowCascadingFlyout(button, flyoutItems);
+            }
+        };
+
+        MenuPanel.Children.Add(button);
+        _itemCount++;
+    }
+
+    /// <summary>
+    /// Adds a custom UIElement as a flyout-enabled menu item whose flyout content is a raw UIElement.
+    /// </summary>
     public void ClearItems()
     {
         HideActiveFlyout();
@@ -430,24 +520,58 @@ public sealed partial class TrayMenuWindow : WindowEx
     /// </summary>
     public void SizeToContent()
     {
-        // Calculate height based on item counts
-        // Menu items: ~36px each (button with padding)
-        // Separators: ~13px each  
-        // Headers: ~30px each
-        // Plus padding: ~16px
-        var contentHeight = (_itemCount * 36) + (_separatorCount * 13) + (_headerCount * 30) + 16;
-        _menuHeight = Math.Max(contentHeight, 100); // minimum
-
         if (TryGetCurrentMonitorMetrics(out var workAreaHeightPx, out var dpi))
         {
-            // Constrain the popup to the visible work area so the ScrollViewer gets
-            // a viewport and the menu stays reachable near the tray/taskbar.
-            var workAreaHeight = MenuSizingHelper.ConvertPixelsToViewUnits(workAreaHeightPx, dpi);
-            _menuHeight = MenuSizingHelper.CalculateWindowHeight(contentHeight, workAreaHeight);
+            SizeToContent(workAreaHeightPx, dpi);
+            return;
         }
 
-        this.SetWindowSize(280, _menuHeight);
+        SizeToContent(0, 96);
+    }
+
+    private void SizeToContent(int workAreaHeightPx, uint dpi)
+    {
+        PrepareLayoutForMeasurement(dpi);
+
+        // Measure the actual content size instead of estimating
+        MenuPanel.Measure(new global::Windows.Foundation.Size(MenuWidthViewUnits, double.PositiveInfinity));
+        var desiredHeight = MenuPanel.DesiredSize.Height;
+        
+        // Add border chrome (1px border top+bottom = 2px, plus small rounding buffer)
+        var contentHeight = (int)Math.Ceiling(desiredHeight) + 4;
+        _menuHeight = Math.Max(contentHeight, 100);
+
+        if (workAreaHeightPx > 0)
+        {
+            var workAreaHeight = MenuSizingHelper.ConvertPixelsToViewUnits(workAreaHeightPx, dpi);
+            _menuHeight = MenuSizingHelper.CalculateWindowHeight(_menuHeight, workAreaHeight);
+        }
+
+        this.SetWindowSize(MenuWidthViewUnits, _menuHeight);
         ApplyRoundedWindowRegion();
+    }
+
+    private void PrepareLayoutForMeasurement(uint dpi)
+    {
+        dpi = dpi == 0 ? 96 : dpi;
+        var rasterizationScale = RootGrid.XamlRoot?.RasterizationScale ?? dpi / 96.0;
+        var dpiChanged = _lastMeasureDpi != 0
+            && MenuSizingHelper.HasDpiOrScaleChanged(_lastMeasureDpi, _lastMeasureRasterizationScale, dpi, rasterizationScale);
+
+        _lastMeasureDpi = dpi;
+        _lastMeasureRasterizationScale = rasterizationScale;
+
+        if (dpiChanged)
+        {
+            _lastMoveAndResizeRect = null;
+            HideActiveFlyout();
+        }
+
+        RootGrid.InvalidateMeasure();
+        RootGrid.InvalidateArrange();
+        MenuPanel.InvalidateMeasure();
+        MenuPanel.InvalidateArrange();
+        RootGrid.UpdateLayout();
     }
 
     private bool TryGetCurrentMonitorMetrics(out int workAreaHeight, out uint dpi)
@@ -572,10 +696,28 @@ public sealed partial class TrayMenuWindow : WindowEx
             flyoutWindow.ClearItems();
             foreach (var item in items)
             {
-                flyoutWindow.AddMenuItem(item.Text, item.Icon, item.Action);
+                if (item.IsHeader)
+                {
+                    flyoutWindow.AddHeader(item.Text);
+                }
+                else if (string.IsNullOrEmpty(item.Action))
+                {
+                    // Non-interactive detail line — compact padding
+                    flyoutWindow.AddCustomElement(new TextBlock
+                    {
+                        Text = item.Text,
+                        Padding = new Thickness(12, 2, 12, 2),
+                        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                        Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
+                else
+                {
+                    flyoutWindow.AddMenuItem(item.Text, item.Icon, item.Action);
+                }
             }
 
-            flyoutWindow.SizeToContent();
             _activeFlyoutOwner = ownerButton;
             _activeFlyoutKey = flyoutKey;
         }
@@ -669,14 +811,17 @@ public sealed partial class TrayMenuWindow : WindowEx
 
 public sealed class TrayMenuFlyoutItem
 {
-    public TrayMenuFlyoutItem(string text, string? icon, string action)
+    public TrayMenuFlyoutItem() { }
+
+    public TrayMenuFlyoutItem(string text, string? icon = null, string? action = null)
     {
         Text = text;
         Icon = icon;
-        Action = action;
+        Action = action ?? "";
     }
 
-    public string Text { get; }
-    public string? Icon { get; }
-    public string Action { get; }
+    public string Text { get; set; } = "";
+    public string? Icon { get; set; }
+    public string Action { get; set; } = "";
+    public bool IsHeader { get; set; }
 }

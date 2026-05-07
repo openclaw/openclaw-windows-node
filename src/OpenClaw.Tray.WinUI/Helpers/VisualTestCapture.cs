@@ -14,21 +14,6 @@ internal static class VisualTestCapture
 {
     private static readonly ConcurrentDictionary<string, int> s_captureIndexes = new(StringComparer.OrdinalIgnoreCase);
 
-    public static void CaptureOnLoaded(FrameworkElement root, string surfaceName)
-    {
-        var rootDir = GetVisualTestDirectory();
-        if (rootDir is null)
-            return;
-
-        var surfaceDir = Path.Combine(rootDir, SanitizePathSegment(surfaceName));
-        root.Loaded += (_, _) =>
-        {
-            _ = CaptureAfterDelayAsync(root, surfaceDir, 300);
-            _ = CaptureAfterDelayAsync(root, surfaceDir, 1500);
-            _ = CaptureAfterDelayAsync(root, surfaceDir, 3500);
-        };
-    }
-
     public static async Task CaptureAsync(FrameworkElement root, string surfaceName)
     {
         var rootDir = GetVisualTestDirectory();
@@ -36,12 +21,6 @@ internal static class VisualTestCapture
             return;
 
         await CaptureToDirectoryAsync(root, Path.Combine(rootDir, SanitizePathSegment(surfaceName)));
-    }
-
-    private static async Task CaptureAfterDelayAsync(FrameworkElement root, string surfaceDir, int delayMs)
-    {
-        await Task.Delay(delayMs);
-        await CaptureToDirectoryAsync(root, surfaceDir);
     }
 
     private static async Task CaptureToDirectoryAsync(FrameworkElement root, string surfaceDir)

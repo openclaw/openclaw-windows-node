@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
@@ -212,6 +213,11 @@ public sealed partial class CanvasWindow : WindowEx
     public CanvasWindow()
     {
         this.InitializeComponent();
+        AutomationProperties.SetName(
+            CanvasTitlebarReloadButton,
+            LocalizationHelper.GetString("CanvasReloadButton_AutomationName"));
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         this.SetIcon("Assets\\openclaw.ico");
         this.Closed += OnWindowClosed;
         

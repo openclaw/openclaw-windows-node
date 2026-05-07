@@ -67,12 +67,10 @@ public sealed class ReadyPage : Component<OnboardingState>
         {
             return Border(
                 VStack(8,
-                    TextBlock("🔌 Node Mode Active")
+                    TextBlock(LocalizationHelper.GetString("Onboarding_Ready_NodeModeActive"))
                         .FontSize(14)
                         .FontWeight(new global::Windows.UI.Text.FontWeight(600)),
-                    TextBlock("This PC will operate as a remote compute node. " +
-                        "The gateway can invoke screen capture, camera, and system " +
-                        "commands on this machine.")
+                    TextBlock(LocalizationHelper.GetString("Onboarding_Ready_NodeModeActiveDetail"))
                         .FontSize(12)
                         .Opacity(0.8)
                         .TextWrapping()

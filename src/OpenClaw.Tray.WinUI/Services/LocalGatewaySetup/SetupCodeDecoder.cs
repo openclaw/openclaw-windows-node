@@ -41,31 +41,44 @@ public static class SetupCodeDecoder
         try
         {
             using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            var url = TryReadString(root, "url");
-            if (!string.IsNullOrEmpty(url) && !GatewayUrlHelper.IsValidGatewayUrl(url))
-                return new DecodeResult(false, Error: "Invalid gateway URL in setup code");
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return new DecodeResult(false, Error: "Setup code JSON must be an object");
 
-            var token = TryReadString(root, "bootstrapToken")
-                ?? TryReadString(root, "bootstrap_token")
-                ?? TryReadString(root, "token");
-            if (token?.Length > 512)
-                token = null;
+            string? url = null;
+            string? token = null;
 
-            return new DecodeResult(true, Url: string.IsNullOrEmpty(url) ? null : url, Token: token);
+            if (doc.RootElement.TryGetProperty("url", out var urlProp))
+            {
+                if (urlProp.ValueKind != JsonValueKind.String)
+                    return new DecodeResult(false, Error: "Invalid gateway URL in setup code");
+                var decoded = urlProp.GetString() ?? "";
+                if (!string.IsNullOrEmpty(decoded))
+                {
+                    if (!GatewayUrlHelper.IsValidGatewayUrl(decoded))
+                        return new DecodeResult(false, Error: "Invalid gateway URL in setup code");
+                    url = decoded;
+                }
+            }
+
+            if (doc.RootElement.TryGetProperty("bootstrapToken", out var tokenProp))
+            {
+                if (tokenProp.ValueKind != JsonValueKind.String)
+                    return new DecodeResult(false, Error: "Invalid bootstrap token in setup code");
+                var decoded = tokenProp.GetString() ?? "";
+                if (decoded.Length > 512)
+                    return new DecodeResult(false, Error: "Bootstrap token exceeds 512 character limit");
+                if (!string.IsNullOrEmpty(decoded))
+                    token = decoded;
+            }
+
+            if (url == null && token == null)
+                return new DecodeResult(false, Error: "Setup code must include a gateway URL or bootstrap token");
+
+            return new DecodeResult(true, Url: url, Token: token);
         }
         catch (JsonException ex)
         {
             return new DecodeResult(false, Error: $"Invalid JSON: {ex.Message}");
         }
-    }
-
-    private static string? TryReadString(JsonElement root, string propertyName)
-    {
-        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
-            return null;
-
-        var value = property.GetString();
-        return string.IsNullOrEmpty(value) ? null : value;
     }
 }

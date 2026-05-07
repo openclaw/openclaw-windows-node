@@ -87,7 +87,7 @@ OpenClaw.Tray.Tests  ──tests──▶  OpenClaw.Shared
 |-----------|----------|---------|
 | **Gateway Communication** | `OpenClaw.Shared/OpenClawGatewayClient.cs` | WebSocket client with protocol v3, reconnect/backoff logic |
 | **Notification System** | `OpenClaw.Tray.WinUI/App.xaml.cs` | Event routing, toast notifications, classification |
-| **WebView2 Integration** | `OpenClaw.Tray.WinUI/Windows/WebChatWindow.xaml.cs` | Embedded chat panel with lifecycle management |
+| **WebView2 Integration** | `OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml.cs` | Embedded chat panel with lifecycle management |
 | **Tray Icon Management** | `OpenClaw.Tray.WinUI/Helpers/IconHelper.cs` | GDI handle management, dynamic icon generation |
 | **Session Tracking** | `OpenClaw.Shared/OpenClawGatewayClient.cs` | Session state, activity tracking, polling |
 | **Settings & Logging** | `OpenClaw.Tray.WinUI/Services/` | JSON settings persistence, file rotation logging |
@@ -285,7 +285,7 @@ Notifications are classified using two strategies:
 
 ### WebView2 Lifecycle
 
-The `WebChatWindow` uses Microsoft Edge WebView2 for embedded web content:
+The `ChatWindow` uses Microsoft Edge WebView2 for embedded web content:
 
 **Initialization:**
 1. WebView2 control created in XAML
@@ -299,7 +299,7 @@ Window Created → WebView2.EnsureCoreWebView2Async() → Navigate to Chat URL �
 ```
 
 **Key Design Decisions:**
-- **Singleton pattern**: Only one WebChat window instance exists
+- **Singleton pattern**: Only one chat window instance exists
 - **Hidden instead of disposed**: Window is hidden when closed to preserve state
 - **Separate user data folder**: Isolates cookies/storage from browser
 - **Navigation guard**: Prevents accidental navigation away from chat
@@ -425,8 +425,8 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 ```
 
 **Test Coverage:**
-- ✅ **652 tests** in `OpenClaw.Shared.Tests` — models, gateway client, exec approvals, capabilities, URL helpers, notification categorization, shell quoting
-- ✅ **262 tests** in `OpenClaw.Tray.Tests` — menu display, menu positioning, settings round-trip, deep link parsing, onboarding state, setup code decoder, security validation, wizard step parsing, localization validation
+- ✅ **1182 tests** in `OpenClaw.Shared.Tests` — models, gateway client, exec approvals, capabilities, URL helpers, notification categorization, shell quoting, MCP, device identity, and WinNode client coverage
+- ✅ **388 tests** in `OpenClaw.Tray.Tests` — settings round-trip, deep link parsing, onboarding state, setup code decoder, gateway health/chat helpers, security validation, wizard step parsing, gateway discovery, localization validation
 - ✅ All tests are pure unit tests (no network, no file system, no external dependencies)
 
 See [tests/OpenClaw.Shared.Tests/README.md](tests/OpenClaw.Shared.Tests/README.md) for detailed test documentation.
@@ -441,7 +441,7 @@ You can test the UI and basic functionality without a running gateway:
 3. Enter a dummy gateway URL (e.g., `ws://localhost:18789`)
 4. The app will show "Disconnected" status but you can:
    - Test the tray menu structure
-   - Open Settings dialog and configure preferences
+   - Open the Settings page and configure preferences
    - Test auto-start functionality
    - View logs
 
@@ -487,8 +487,8 @@ You can test the UI and basic functionality without a running gateway:
    - Verify Windows toast notification appears (if enabled)
    - Click toast → should open relevant UI
 
-2. **Notification History**:
-   - Right-click tray → **Notification History**
+2. **Activity / notification history**:
+   - Right-click tray → **Activity Stream** or **Notification History**
    - Verify past notifications are listed
    - Test filtering by category
 

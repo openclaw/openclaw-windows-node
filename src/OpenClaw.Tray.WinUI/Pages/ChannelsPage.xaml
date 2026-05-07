@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.ChannelsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+
+            <TextBlock x:Uid="ChannelsPage_TextBlock_10" Text="📡 Channels" Style="{StaticResource TitleTextBlockStyle}"/>
+
+            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" Title="Not Connected"
+                     Message="Connect to gateway to see live data"
+                     Severity="Warning" IsOpen="True" IsClosable="False" Visibility="Collapsed"/>
+
+            <!-- Channel Cards -->
+            <StackPanel x:Name="ChannelsList" Spacing="8"/>
+
+            <!-- Empty state -->
+            <StackPanel x:Name="EmptyState" Spacing="8" HorizontalAlignment="Center" Margin="0,32,0,0">
+                <TextBlock Text="📡" FontSize="48" HorizontalAlignment="Center"/>
+                <TextBlock x:Uid="ChannelsPage_TextBlock_22" Text="No channels configured"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

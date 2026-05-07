@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.AgentEventsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="24,16,24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title -->
+        <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock x:Uid="AgentEventsPage_TextBlock_18" Text="Agent Events" Style="{StaticResource TitleTextBlockStyle}"/>
+                <TextBlock x:Name="CountText" Text="(0)" VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+            <!-- Agent Filter -->
+            <ComboBox x:Uid="AgentFilterCombo" x:Name="AgentFilterCombo" Header="Agent" MinWidth="200"
+                      SelectionChanged="OnAgentFilterComboChanged">
+                <ComboBoxItem x:Uid="AgentEventsPage_ComboBoxItem_26" Content="All Agents" Tag="" IsSelected="True"/>
+            </ComboBox>
+        </StackPanel>
+
+        <!-- Filter bar -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                      Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <ToggleButton x:Uid="FilterAllButton" x:Name="FilterAllButton" Content="All" Tag="all" IsChecked="True"
+                              Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_36" Content="Tool" Tag="tool" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_37" Content="Assistant" Tag="assistant" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_38" Content="Error" Tag="error" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_39" Content="Lifecycle" Tag="lifecycle" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_40" Content="Plan" Tag="plan" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_41" Content="Approval" Tag="approval" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_42" Content="Thinking" Tag="thinking" Click="OnFilterClick"/>
+                <ToggleButton x:Uid="AgentEventsPage_ToggleButton_43" Content="Patch" Tag="patch" Click="OnFilterClick"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Events list -->
+        <ListView x:Name="EventsList" Grid.Row="2"
+                  SelectionMode="None"
+                  Visibility="Collapsed"
+                  IsItemClickEnabled="True"
+                  ItemClick="EventsList_ItemClick"
+                  ContainerContentChanging="EventsList_ContainerContentChanging">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="0,1"/>
+                    <Setter Property="Margin" Value="0"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="16,10,16,12" Margin="0,2" CornerRadius="6"
+                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Row 0: badge + timestamp + chevron -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" CornerRadius="4" Padding="8,2,8,4" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding StreamUpper}" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="White" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="{Binding FormattedTime}" VerticalAlignment="Center"
+                                       FontSize="11" FontFamily="Consolas" Margin="8,0,0,0"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                            <FontIcon Grid.Column="3" Glyph="&#xE70D;" FontSize="10" VerticalAlignment="Center"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        </Grid>
+
+                        <!-- Row 1: Summary line -->
+                        <TextBlock Grid.Row="1" Text="{Binding SummaryLine}" 
+                                   FontSize="13" TextWrapping="Wrap" MaxLines="3"
+                                   Margin="0,6,0,0"/>
+
+                        <!-- Row 2: Expandable detail (hidden by default) -->
+                        <Grid Grid.Row="2" Visibility="Collapsed" Margin="0,8,0,0">
+                            <!-- Assistant: full text, same formatting as summary -->
+                            <TextBlock TextWrapping="Wrap" FontSize="13"
+                                       IsTextSelectionEnabled="True" Visibility="Collapsed"/>
+
+                            <!-- Non-assistant: RunId + JSON -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding RunId}"
+                                           FontSize="11" FontFamily="Consolas"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Text="{Binding DataJson}" TextWrapping="Wrap"
+                                           FontFamily="Consolas" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           IsTextSelectionEnabled="True"/>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!-- Empty state -->
+        <StackPanel x:Name="EmptyState" Grid.Row="2"
+                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+            <TextBlock Text="🤖" FontSize="48" HorizontalAlignment="Center"/>
+            <TextBlock x:Uid="AgentEventsPage_TextBlock_96" Text="No agent events yet"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Uid="AgentEventsPage_TextBlock_99" Text="Real-time agent events (tool calls, responses, errors) will appear here as agents run."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
+        </StackPanel>
+
+        <!-- Footer -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            <Button x:Uid="ClearButton" x:Name="ClearButton" Content="Clear" Click="OnClear"/>
+        </StackPanel>
+    </Grid>
+</Page>

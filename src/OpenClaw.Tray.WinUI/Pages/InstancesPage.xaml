@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="OpenClawTray.Pages.InstancesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Uid="InstancesPage_TextBlock_12" Text="🖥️ Instances" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center"/>
+                <Button x:Uid="RefreshButton" x:Name="RefreshButton" Grid.Column="1" Content="⟳ Refresh" Click="OnRefresh" VerticalAlignment="Center"/>
+            </Grid>
+
+            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" IsOpen="True" IsClosable="False"
+                     Severity="Warning" Title="Not connected"
+                     Message="Connect to a gateway to see instance presence." Visibility="Collapsed"/>
+
+            <StackPanel x:Name="EmptyState" Spacing="8" Visibility="Collapsed"
+                        HorizontalAlignment="Center" Padding="0,32">
+                <TextBlock x:Uid="InstancesPage_TextBlock_22" Text="🖥️ No other instances detected"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <TextBlock x:Uid="InstancesPage_TextBlock_25" Text="Other OpenClaw nodes connected to the same gateway will appear here."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+            </StackPanel>
+
+            <StackPanel x:Name="InstancesList" Spacing="8"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

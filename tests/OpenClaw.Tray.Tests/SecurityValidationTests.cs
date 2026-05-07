@@ -166,7 +166,7 @@ public class SecurityValidationTests
     }
 
     [Fact]
-    public void Token_513Chars_Ignored()
+    public void Token_513Chars_Rejected()
     {
         var token = new string('x', 513);
         var json = $$"""{"bootstrapToken":"{{token}}"}""";
@@ -174,8 +174,8 @@ public class SecurityValidationTests
         var code = Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
         var result = SetupCodeDecoder.Decode(code);
-        Assert.True(result.Success);
-        Assert.Null(result.Token);
+        Assert.False(result.Success);
+        Assert.Contains("512", result.Error);
     }
 
     #endregion

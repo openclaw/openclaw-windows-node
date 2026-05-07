@@ -251,7 +251,7 @@ public class WebSocketClientBaseTests
 
         Assert.Contains(ConnectionStatus.Error, statuses);
         Assert.True(statuses.Count(s => s == ConnectionStatus.Connecting) >= 2);
-        Assert.Contains(_logger.Logs, line => line.Contains("reconnecting in 1000ms", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(_logger.Logs, line => line.Contains("reconnecting in 1", StringComparison.OrdinalIgnoreCase) && line.Contains("ms (attempt 1)", StringComparison.OrdinalIgnoreCase));
 
         client.Dispose();
     }

@@ -41,7 +41,7 @@ public class ElevenLabsTextToSpeechClientTests
     }
 
     [Fact]
-    public async Task SynthesizeAsync_ReturnsErrorMessageForProviderFailure()
+    public async Task SynthesizeAsync_DoesNotEchoProviderFailureBody()
     {
         var handler = new CapturingHandler(new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
@@ -57,7 +57,8 @@ public class ElevenLabsTextToSpeechClientTests
         }));
 
         Assert.Contains("401", ex.Message);
-        Assert.Contains("bad key", ex.Message);
+        Assert.DoesNotContain("bad key", ex.Message);
+        Assert.Contains("error body", ex.Message);
     }
 
     [Fact]

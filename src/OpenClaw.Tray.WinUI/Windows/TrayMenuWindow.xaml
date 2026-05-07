@@ -1,24 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <winex:WindowEx
+    x:Uid="TrayMenuWindow_winexWindowEx_2"
     x:Class="OpenClawTray.Windows.TrayMenuWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw Menu"
-    Width="280"
+    Width="320"
     Height="400">
 
-    <!-- Backdrop disabled - causes crashes after idle periods -->
+    <!-- Acrylic backdrop applied in code-behind via BackdropHelper -->
 
     <Grid x:Name="RootGrid" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
         <Border Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8">
-            <ScrollViewer VerticalScrollBarVisibility="Visible"
-                          VerticalScrollMode="Enabled"
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          VerticalScrollMode="Auto"
                           HorizontalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="MenuPanel" AutomationProperties.AutomationId="TrayMenuPanel" Padding="4,6">
+                <StackPanel x:Name="MenuPanel" AutomationProperties.AutomationId="TrayMenuPanel" Padding="6,8">
                     <!-- Menu items will be added programmatically -->
                 </StackPanel>
             </ScrollViewer>

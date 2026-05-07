@@ -1505,3 +1505,323 @@ internal static class ModelFormatting
     }
 }
 
+// ── Agent Events ──
+
+/// <summary>Raw agent event from gateway broadcast.</summary>
+public class AgentEventInfo
+{
+    public string RunId { get; set; } = "";
+    public int Seq { get; set; }
+    public string Stream { get; set; } = "";
+    public double Ts { get; set; }
+    public JsonElement Data { get; set; }
+    public string? SessionKey { get; set; }
+    public string? Summary { get; set; }
+
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)Ts).LocalDateTime;
+
+    public string FormattedTime => Timestamp.ToString("HH:mm:ss.fff");
+
+    /// <summary>Resolved event kind — for "item" stream events, uses data.kind instead.</summary>
+    public string ResolvedStream
+    {
+        get
+        {
+            var s = Stream.ToLowerInvariant();
+            if (s == "item" && Data.ValueKind == JsonValueKind.Object &&
+                Data.TryGetProperty("kind", out var k))
+            {
+                return k.GetString()?.ToLowerInvariant() ?? s;
+            }
+            return s;
+        }
+    }
+
+    public string StreamUpper => ResolvedStream.ToUpperInvariant();
+
+    /// <summary>Color hex for stream badge (used by UI to create brush).</summary>
+    public string BadgeColorHex => ResolvedStream switch
+    {
+        "tool" => "#FFB45D3A",       // Burnt sienna
+        "assistant" => "#FF28A050",   // Green
+        "error" => "#FFC83232",       // Red
+        "lifecycle" => "#FF3C78C8",   // Blue
+        "plan" => "#FF8C50C8",        // Purple
+        "approval" => "#FFC8A01E",    // Amber
+        "thinking" => "#FF648CB4",    // Steel
+        "patch" => "#FF50A0A0",       // Teal
+        _ => "#FF646464"              // Gray
+    };
+
+    /// <summary>Human-readable summary extracted from event data.</summary>
+    public string SummaryLine
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Summary)) return Summary;
+            try
+            {
+                var s = ResolvedStream;
+                if (s == "tool" && Data.ValueKind == JsonValueKind.Object)
+                {
+                    var name = Data.TryGetProperty("name", out var n) ? n.GetString() : null;
+                    var title = Data.TryGetProperty("title", out var ti) ? ti.GetString() : null;
+                    var phase = Data.TryGetProperty("phase", out var p) ? p.GetString() : null;
+                    var status = Data.TryGetProperty("status", out var st) ? st.GetString() : null;
+                    // Prefer title (richer) over just name
+                    if (title != null)
+                        return phase != null ? $"🔧 {title} ({phase})" : $"🔧 {title}";
+                    if (name != null)
+                        return phase != null ? $"🔧 {name} ({phase})" : $"🔧 {name}";
+                }
+                if (s == "assistant" && Data.ValueKind == JsonValueKind.Object)
+                {
+                    var text = Data.TryGetProperty("text", out var t) ? t.GetString() : null;
+                    if (text != null) return text.Length > 300 ? text[..300] + "…" : text;
+                }
+                if (s == "error" && Data.ValueKind == JsonValueKind.Object)
+                {
+                    var msg = Data.TryGetProperty("message", out var m) ? m.GetString()
+                        : Data.TryGetProperty("error", out var e) ? e.GetString() : null;
+                    if (msg != null) return $"❌ {msg}";
+                }
+                if (s == "lifecycle" && Data.ValueKind == JsonValueKind.Object)
+                {
+                    var state = Data.TryGetProperty("state", out var st) ? st.GetString()
+                        : Data.TryGetProperty("livenessState", out var ls) ? ls.GetString() : null;
+                    var phase = Data.TryGetProperty("phase", out var ph) ? ph.GetString() : null;
+                    if (state != null)
+                        return phase != null ? $"⚡ {state} ({phase})" : $"⚡ {state}";
+                }
+            }
+            catch { }
+            return "";
+        }
+    }
+
+    public bool HasSummary => !string.IsNullOrEmpty(SummaryLine);
+
+    /// <summary>Full assistant message text (no truncation), for expanded view.</summary>
+    public string? FullAssistantText
+    {
+        get
+        {
+            if (ResolvedStream != "assistant" || Data.ValueKind != JsonValueKind.Object) return null;
+            try { return Data.TryGetProperty("text", out var t) ? t.GetString() : null; }
+            catch { return null; }
+        }
+    }
+
+    /// <summary>Whether this event is an assistant stream (expanded view shows full text instead of JSON).</summary>
+    public bool IsAssistantStream => ResolvedStream == "assistant";
+
+    /// <summary>Whether to show the raw DataJson section. Hidden for streams where SummaryLine is sufficient.</summary>
+    public bool ShowDataJson
+    {
+        get
+        {
+            var s = ResolvedStream;
+            if (s is "assistant" or "error" or "lifecycle") return false;
+            return true;
+        }
+    }
+
+    // UI-only state for expand/collapse (not serialized)
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsExpanded { get; set; }
+
+    private string? _cachedDataJson;
+
+    public string DataJson
+    {
+        get
+        {
+            if (_cachedDataJson != null) return _cachedDataJson;
+            try
+            {
+                _cachedDataJson = JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch
+            {
+                _cachedDataJson = Data.ToString() ?? "{}";
+            }
+            return _cachedDataJson;
+        }
+    }
+}
+
+// ── Node/Device Pairing ──
+
+public class PairingRequest
+{
+    public string RequestId { get; set; } = "";
+    public string NodeId { get; set; } = "";
+    public string? DisplayName { get; set; }
+    public string? Platform { get; set; }
+    public string? Version { get; set; }
+    public string? RemoteIp { get; set; }
+    public bool IsRepair { get; set; }
+    public double Ts { get; set; }
+
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)Ts).LocalDateTime;
+
+    public string Description
+    {
+        get
+        {
+            var lines = new List<string>();
+            lines.Add($"Node: {DisplayName ?? NodeId}");
+            if (!string.IsNullOrEmpty(Platform)) lines.Add($"Platform: {Platform}");
+            if (!string.IsNullOrEmpty(Version)) lines.Add($"Version: {Version}");
+            if (!string.IsNullOrEmpty(RemoteIp)) lines.Add($"IP: {RemoteIp}");
+            if (IsRepair) lines.Add("Repair: yes");
+            return string.Join("\n", lines);
+        }
+    }
+}
+
+public class DevicePairingRequest
+{
+    public string RequestId { get; set; } = "";
+    public string DeviceId { get; set; } = "";
+    public string? PublicKey { get; set; }
+    public string? DisplayName { get; set; }
+    public string? Platform { get; set; }
+    public string? ClientId { get; set; }
+    public string? ClientMode { get; set; }
+    public string? Role { get; set; }
+    public string[]? Scopes { get; set; }
+    public string? RemoteIp { get; set; }
+    public bool IsRepair { get; set; }
+    public double Ts { get; set; }
+
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)Ts).LocalDateTime;
+
+    public string Description
+    {
+        get
+        {
+            var lines = new List<string>();
+            lines.Add($"Device: {DisplayName ?? DeviceId}");
+            if (!string.IsNullOrEmpty(Platform)) lines.Add($"Platform: {Platform}");
+            if (!string.IsNullOrEmpty(Role)) lines.Add($"Role: {Role}");
+            if (Scopes is { Length: > 0 }) lines.Add($"Scopes: {string.Join(", ", Scopes)}");
+            if (!string.IsNullOrEmpty(RemoteIp)) lines.Add($"IP: {RemoteIp}");
+            if (IsRepair) lines.Add("Repair: yes");
+            return string.Join("\n", lines);
+        }
+    }
+}
+
+public class PairingListInfo
+{
+    public List<PairingRequest> Pending { get; set; } = new();
+}
+
+public class DevicePairingListInfo
+{
+    public List<DevicePairingRequest> Pending { get; set; } = new();
+}
+
+// ── Models List ──
+
+public class ModelInfo
+{
+    public string Id { get; set; } = "";
+    public string? Name { get; set; }
+    public string? Provider { get; set; }
+    public int? ContextWindow { get; set; }
+    public bool IsConfigured { get; set; }
+
+    public string DisplayName => Name ?? Id;
+}
+
+public class ModelsListInfo
+{
+    public List<ModelInfo> Models { get; set; } = new();
+}
+
+// ── Agent Info ──
+
+public class AgentInfo
+{
+    public string Id { get; set; } = "";
+    public string? Name { get; set; }
+    public string? Emoji { get; set; }
+    public string? Workspace { get; set; }
+    public string? ModelPrimary { get; set; }
+    public string DisplayName => Name ?? Id;
+}
+
+// ── Presence (connected clients/instances) ──
+
+public class PresenceEntry
+{
+    public string? Host { get; set; }
+    public string? Ip { get; set; }
+    public string? Version { get; set; }
+    public string? Platform { get; set; }
+    public string? DeviceFamily { get; set; }
+    public string? ModelIdentifier { get; set; }
+    public string? Mode { get; set; }
+    public int? LastInputSeconds { get; set; }
+    public string? Reason { get; set; }
+    public string[]? Tags { get; set; }
+    public string? Text { get; set; }
+    public long Ts { get; set; }
+    public string? DeviceId { get; set; }
+    public string[]? Roles { get; set; }
+    public string[]? Scopes { get; set; }
+    public string? InstanceId { get; set; }
+
+    public string DisplayName => Host ?? DeviceId ?? Ip ?? "Unknown";
+    public DateTime Timestamp => DateTimeOffset.FromUnixTimeSeconds(Ts).LocalDateTime;
+    public string PlatformLabel => Platform ?? "unknown";
+    public string ModeLabel => Mode ?? "unknown";
+
+    public string LastSeenText
+    {
+        get
+        {
+            if (LastInputSeconds is not { } secs) return "";
+            if (secs < 60) return $"{secs}s ago";
+            if (secs < 3600) return $"{secs / 60}m ago";
+            return $"{secs / 3600}h ago";
+        }
+    }
+}
+
+// ── Gateway Discovery ──
+
+public class DiscoveredGateway
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string? Host { get; set; }
+    public int Port { get; set; }
+    public string? LanHost { get; set; }
+    public string? TailnetDns { get; set; }
+    public bool TlsEnabled { get; set; }
+    public string? TlsFingerprint { get; set; }
+
+    public string ConnectionUrl
+    {
+        get
+        {
+            var scheme = TlsEnabled ? "wss" : "ws";
+            var host = Host ?? LanHost ?? "localhost";
+            return $"{scheme}://{host}:{Port}";
+        }
+    }
+
+    public string HttpUrl
+    {
+        get
+        {
+            var scheme = TlsEnabled ? "https" : "http";
+            var host = Host ?? LanHost ?? "localhost";
+            return $"{scheme}://{host}:{Port}";
+        }
+    }
+}
+

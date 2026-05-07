@@ -940,6 +940,25 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_EmptyArray_ClearsPreviousSessions()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        // First populate with sessions
+        helper.ParseSessionsPayload("""
+        {
+            "agent:main:main": { "status": "active", "model": "gpt-4" },
+            "agent:sub:worker": { "status": "idle", "model": "gpt-4" }
+        }
+        """);
+        Assert.Equal(2, helper.GetSessionList().Length);
+
+        // Now parse an empty array — sessions should be cleared
+        helper.ParseSessionsPayload("[]");
+        Assert.Empty(helper.GetSessionList());
+    }
+
+    [Fact]
     public void ParseUsageStatusPayload_PopulatesProviderSummary()
     {
         var helper = new GatewayClientTestHelper();

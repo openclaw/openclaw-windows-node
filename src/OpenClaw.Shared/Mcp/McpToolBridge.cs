@@ -239,6 +239,28 @@ public class McpToolBridge
         // tts.*
         ["tts.speak"] =
             "Speak text aloud on the Windows node. Args: text (string, required), provider ('windows'|'elevenlabs', optional), voiceId (string, optional), model (string, optional), interrupt (bool, default false). Returns { spoken, provider, contentType, durationMs }.",
+
+        // app.*
+        ["app.navigate"] =
+            "Navigate the companion app to a specific page (e.g., 'home', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }.",
+        ["app.status"] =
+            "Get current connection status, node state, and gateway info. Returns { connectionStatus, nodeConnected, nodePaired, nodePendingApproval, gatewayVersion, sessionCount, nodeCount }.",
+        ["app.sessions"] =
+            "List active sessions with optional agent filter. Args: agentId (string, optional). Returns array of { Key, Status, Model, AgeText, tokens }.",
+        ["app.agents"] =
+            "List agents from the connected gateway. Returns the raw agents JSON array.",
+        ["app.nodes"] =
+            "List connected nodes and their capabilities. Returns array of { DisplayName, NodeId, IsOnline, Platform, CapabilityCount }.",
+        ["app.config.get"] =
+            "Read gateway configuration value at a dot-path. Args: path (string, optional). Returns the config subtree or full config.",
+        ["app.settings.get"] =
+            "Read a local app setting by name. Args: name (string, required). Returns the setting value.",
+        ["app.settings.set"] =
+            "Set a local app setting (name and value). Args: name (string, required), value (string, required). Returns { name, value }.",
+        ["app.menu"] =
+            "Get tray menu state (status, session count, node count). Returns array of menu items.",
+        ["app.search"] =
+            "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
     };
 
     private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)

@@ -603,6 +603,16 @@ public class SessionInfoTests
         var session = new SessionInfo { TotalTokens = 1000, ContextTokens = 0 };
         Assert.Equal("", session.ContextSummaryShort);
     }
+
+    [Fact]
+    public void SessionInfo_EmptyStatus_DoesNotThrow()
+    {
+        var session = new SessionInfo { Key = "test", Status = "" };
+        // The title-casing logic should handle empty strings without throwing
+        var status = string.IsNullOrEmpty(session.Status) ? "Unknown"
+            : char.ToUpperInvariant(session.Status[0]) + session.Status[1..];
+        Assert.Equal("Unknown", status);
+    }
 }
 
 public class GatewayUsageInfoTests

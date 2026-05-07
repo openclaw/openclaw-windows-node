@@ -98,13 +98,13 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
 - 🌐 **Web Chat** - Embedded chat window with WebView2
 - 📊 **Live Status** - Real-time sessions, channels, and usage display
 - 🧭 **Command Center** - Dense gateway, channel, usage, node, pairing, and allowlist diagnostics from one window
-- ⚡ **Activity Stream** - Dedicated flyout for live session, usage, node, and notification events
+- ⚡ **Activity Stream** - Command Center page for live session, usage, node, and notification events
 - 🔔 **Toast Notifications** - Clickable Windows notifications with [smart categorization](docs/NOTIFICATION_CATEGORIZATION.md)
 - 📡 **Channel Control** - Start/stop Telegram & WhatsApp from the menu
 - 🖥️ **Node Observability** - Node inventory with online/offline state and copyable summary
 - ⏱ **Cron Jobs** - Quick access to scheduled tasks
 - 🚀 **Auto-start** - Launch with Windows
-- ⚙️ **Settings** - Full configuration dialog
+- ⚙️ **Settings** - Full configuration page
 - 🎯 **First-run onboarding** — 6-screen setup wizard (connection, permissions, chat, configuration)
 
 #### Quick Send scope requirement
@@ -123,7 +123,7 @@ If Quick Send fails with `pairing required` / `NOT_PAIRED`, that is a **device a
 
 ### Menu Sections
 - **Status** - Gateway connection status with click-to-view details
-- **Command Center** - Status detail window with diagnostics, channel health, usage, sessions, nodes, and copyable repair commands
+- **Command Center** - Hub with diagnostics, channel health, usage, sessions, nodes, and copyable repair commands
 - **Sessions** - Active agent sessions with preview and per-session controls
 - **Usage** - Provider/cost summary with quick jump to activity details
 - **Channels** - Telegram/WhatsApp status with toggle control
@@ -180,6 +180,8 @@ When Node Mode is enabled in Settings, your Windows PC becomes a **node** that t
 | **Location** | `location.get` | Return Windows geolocation when permission is available |
 | **Device** | `device.info`, `device.status` | Return Windows host/app metadata and lightweight status |
 | **Text-to-speech** | `tts.speak` | Speak text aloud through Windows speech synthesis, or ElevenLabs when configured |
+
+Packaged installs declare camera, microphone, and location capabilities. Windows may ask for consent the first time a node capability uses one of those protected resources.
 
 #### Node Setup
 
@@ -299,12 +301,12 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 
 | Link | Description |
 |------|-------------|
-| `openclaw://settings` | Open Settings dialog |
+| `openclaw://settings` | Open the Settings page |
 | `openclaw://setup` | Open Setup Wizard |
-| `openclaw://chat` | Open Web Chat window |
+| `openclaw://chat` | Open the Chat page |
 | `openclaw://commandcenter` | Open Command Center diagnostics |
-| `openclaw://activity` | Open Activity Stream |
-| `openclaw://history` | Open Notification History |
+| `openclaw://activity` | Open the Activity page |
+| `openclaw://history` | Open the Activity page filtered to notification history |
 | `openclaw://dashboard` | Open Dashboard in browser |
 | `openclaw://dashboard/sessions` | Open specific dashboard page |
 | `openclaw://dashboard/channels` | Open Channels dashboard page |
@@ -341,15 +343,15 @@ PowerToys Command Palette extension for quick OpenClaw access.
 - **📡 Dashboard: Channels** - Open the channel configuration dashboard
 - **🧩 Dashboard: Skills** - Open the skills dashboard
 - **⏱️ Dashboard: Cron** - Open the scheduled jobs dashboard
-- **💬 Web Chat** - Open the embedded Web Chat window
+- **💬 Web Chat** - Open the embedded Chat page
 - **📝 Quick Send** - Open the Quick Send dialog to compose a message
 - **🧭 Setup Wizard** - Open pairing/setup
 - **🧭 Command Center** - Open diagnostics and support actions
 - **🔄 Run Health Check** - Refresh connection health
 - **⬇️ Check for Updates** - Run a manual GitHub Releases update check
 - **⚡ Activity Stream** - Open recent activity
-- **📋 Notification History** - Open notification history
-- **⚙️ Settings** - Open the OpenClaw Tray Settings dialog
+- **📋 Notification History** - Open notification history in the Activity page
+- **⚙️ Settings** - Open the OpenClaw Tray Settings page
 - **📄 Open Log File / 📁 Logs / 🗂️ Config / 🧪 Diagnostics** - Open support files and folders
 - **📋 Copy Support Context** - Copy redacted Command Center metadata
 - **🧰 Copy Debug Bundle** - Copy combined support, port, capability, node, channel, and activity diagnostics

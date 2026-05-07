@@ -9,6 +9,37 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public class LocalizationValidationTests
 {
+    private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
+    {
+        "AboutPage_TextBlock_19.Text",
+        "CanvasWindow_TextBlock_31.Text",
+        "CanvasWindow_winexWindowEx_2.Title",
+        "ChatWindow_winexWindowEx_2.Title",
+        "HubWindow_winexWindowEx_2.Title",
+        "TitleText.Text",
+        "TokenPromptBox.Header",
+        "TokenTextBox.Header",
+        "TrayMenuWindow_winexWindowEx_2.Title",
+        "Onboarding_Connection_QrButton",
+        "Onboarding_Connection_Token",
+        "WindowTitle_TrayMenu",
+        "WindowTitle_Update",
+    };
+
+    private static readonly string[] RequiredRuntimeOnboardingKeys =
+    [
+        "Onboarding_Ready_Node_ScreenCapture",
+        "Onboarding_Ready_Node_ScreenCapture_Sub",
+        "Onboarding_Ready_Node_Camera",
+        "Onboarding_Ready_Node_Camera_Sub",
+        "Onboarding_Ready_Node_SystemCmd",
+        "Onboarding_Ready_Node_SystemCmd_Sub",
+        "Onboarding_Ready_Node_Canvas",
+        "Onboarding_Ready_Node_Canvas_Sub",
+        "Onboarding_Ready_Node_Notify",
+        "Onboarding_Ready_Node_Notify_Sub",
+    ];
+
     private static string GetRepositoryRoot()
     {
         var envRepoRoot = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
@@ -40,6 +71,29 @@ public class LocalizationValidationTests
                 e => e.Element("value")?.Value ?? string.Empty);
     }
 
+    private static List<string> GetNonEnglishLocaleDirectories(string stringsDir) =>
+        Directory.GetDirectories(stringsDir)
+            .Where(d => !string.Equals(Path.GetFileName(d), "en-us", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(Path.GetFileName, StringComparer.Ordinal)
+            .ToList();
+
+    private static bool IsInvariantValue(string value) =>
+        string.IsNullOrWhiteSpace(value) ||
+        Regex.IsMatch(value, @"^\d+(\.\d+)?[Kk]?$", RegexOptions.CultureInvariant) ||
+        Regex.IsMatch(value, @"^(v\d|[A-Z0-9._%+-]+://|~?/|\.NET|WinUI|WinAppSDK|OpenClaw$|GitHub|MCP|JSON|API|HTTP|HTTPS|SSH|TLS|WebView2|OAuth|QR$|Cron$|main$|user$|machine-name$)", RegexOptions.CultureInvariant) ||
+        value.Contains("openclaw://", StringComparison.Ordinal) ||
+        value.Contains("github.com", StringComparison.Ordinal) ||
+        value.Contains("openclaw.ai", StringComparison.Ordinal) ||
+        value.Contains("localhost", StringComparison.Ordinal) ||
+        value.Contains("ws://", StringComparison.Ordinal) ||
+        value.Contains("wss://", StringComparison.Ordinal) ||
+        value.Contains("http://", StringComparison.Ordinal) ||
+        value.Contains("https://", StringComparison.Ordinal) ||
+        value.Contains("~/", StringComparison.Ordinal);
+
+    private static bool IsInvariantOrDeferred(string key, string value) =>
+        InvariantOrDeferredResourceKeys.Contains(key) || IsInvariantValue(value);
+
     [Fact]
     public void AllLocales_HaveExactlySameKeysAsEnUs()
     {
@@ -49,9 +103,7 @@ public class LocalizationValidationTests
 
         var referenceKeys = LoadResw(referencePath).Keys.ToHashSet(StringComparer.Ordinal);
 
-        var localeDirs = Directory.GetDirectories(stringsDir)
-            .Where(d => !string.Equals(Path.GetFileName(d), "en-us", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var localeDirs = GetNonEnglishLocaleDirectories(stringsDir);
 
         Assert.NotEmpty(localeDirs);
 
@@ -86,8 +138,7 @@ public class LocalizationValidationTests
         if (keysWithPlaceholders.Count == 0)
             return;
 
-        var localeDirs = Directory.GetDirectories(stringsDir)
-            .Where(d => !string.Equals(Path.GetFileName(d), "en-us", StringComparison.OrdinalIgnoreCase));
+        var localeDirs = GetNonEnglishLocaleDirectories(stringsDir);
 
         foreach (var localeDir in localeDirs)
         {
@@ -151,6 +202,28 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void AllLocales_ContainRuntimeOnboardingKeys()
+    {
+        var stringsDir = GetStringsDirectory();
+        var localeDirs = Directory.GetDirectories(stringsDir);
+
+        foreach (var localeDir in localeDirs)
+        {
+            var locale = Path.GetFileName(localeDir);
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var keys = LoadResw(reswPath).Keys.ToHashSet(StringComparer.Ordinal);
+            var missing = RequiredRuntimeOnboardingKeys
+                .Where(key => !keys.Contains(key))
+                .ToList();
+
+            Assert.True(missing.Count == 0,
+                $"Locale '{locale}' is missing runtime onboarding key(s): {string.Join(", ", missing)}");
+        }
+    }
+
+    [Fact]
     public void NoLocale_HasDuplicateKeys()
     {
         var stringsDir = GetStringsDirectory();
@@ -194,5 +267,47 @@ public class LocalizationValidationTests
             var count = LoadResw(reswPath).Count;
             Assert.Equal(referenceCount, count);
         }
+    }
+
+    [Fact]
+    public void Resources_AreTranslatedAllOrNoneAcrossNonEnglishLocales()
+    {
+        var stringsDir = GetStringsDirectory();
+        var referenceResw = LoadResw(Path.Combine(stringsDir, "en-us", "Resources.resw"));
+        var localeResw = GetNonEnglishLocaleDirectories(stringsDir)
+            .Select(d => (Locale: Path.GetFileName(d), Resources: LoadResw(Path.Combine(d, "Resources.resw"))))
+            .ToList();
+
+        Assert.NotEmpty(localeResw);
+
+        var partial = new List<string>();
+        var identicalWithoutRationale = new List<string>();
+
+        foreach (var (key, enValue) in referenceResw.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var identicalLocales = localeResw
+                .Where(l => l.Resources.TryGetValue(key, out var value) && value == enValue)
+                .Select(l => l.Locale)
+                .ToList();
+
+            if (identicalLocales.Count == 0)
+                continue;
+
+            if (identicalLocales.Count != localeResw.Count)
+            {
+                partial.Add($"{key} ({enValue}) identical in [{string.Join(", ", identicalLocales)}]");
+                continue;
+            }
+
+            if (!IsInvariantOrDeferred(key, enValue))
+                identicalWithoutRationale.Add($"{key} ({enValue})");
+        }
+
+        Assert.True(partial.Count == 0,
+            "Resources must be translated in all non-English locales or invariant in all. Partial entries: " +
+            string.Join("; ", partial.Take(20)));
+        Assert.True(identicalWithoutRationale.Count == 0,
+            "Resources identical to en-us in every non-English locale need an invariant/deferred rationale. Entries: " +
+            string.Join("; ", identicalWithoutRationale.Take(20)));
     }
 }

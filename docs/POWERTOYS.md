@@ -39,15 +39,15 @@ Open Command Palette (`Win+Alt+Space`), type **"OpenClaw"** — you should see t
 | **📡 Dashboard: Channels** | Opens the channel configuration dashboard |
 | **🧩 Dashboard: Skills** | Opens the skills dashboard |
 | **⏱️ Dashboard: Cron** | Opens the scheduled jobs dashboard |
-| **💬 Web Chat** | Opens the embedded Web Chat window in OpenClaw Tray |
+| **💬 Web Chat** | Opens the embedded Chat page in OpenClaw Tray |
 | **📝 Quick Send** | Opens the Quick Send dialog to compose a message |
 | **🧭 Setup Wizard** | Opens QR, setup code, and manual gateway pairing |
 | **🧭 Command Center** | Opens gateway, tunnel, node, browser, and support diagnostics |
 | **🔄 Run Health Check** | Refreshes gateway or node connection health |
 | **⬇️ Check for Updates** | Runs a manual GitHub Releases update check |
 | **⚡ Activity Stream** | Opens recent tray activity and support bundle actions |
-| **📋 Notification History** | Opens recent OpenClaw tray notifications |
-| **⚙️ Settings** | Opens the OpenClaw Tray Settings dialog |
+| **📋 Notification History** | Opens recent OpenClaw tray notifications in the Activity page |
+| **⚙️ Settings** | Opens the OpenClaw Tray Settings page |
 | **📄 Open Log File** | Opens the current OpenClaw Tray log |
 | **📁 Open Logs Folder** | Opens the OpenClaw Tray logs folder |
 | **🗂️ Open Config Folder** | Opens the OpenClaw Tray configuration folder |

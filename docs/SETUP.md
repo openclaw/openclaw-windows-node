@@ -63,7 +63,7 @@ On first launch, Molty opens a **6-screen onboarding wizard** that walks you thr
    - **Camera** — for camera capture
    - **Microphone** — for voice input
    - **Screen Capture** — for screenshots
-   - **Location** — optional, for location-aware features
+   - **Location** — optional, for location-aware features; packaged installs declare this capability so Windows may prompt for location consent the first time it is used
 
    Each permission shows its current status. Click **Open Settings** next to any permission to jump directly to the relevant Windows Settings page.
 
@@ -95,14 +95,14 @@ OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a 
 | `openclaw://dashboard/channels` | Open the channels dashboard page |
 | `openclaw://dashboard/skills` | Open the skills dashboard page |
 | `openclaw://dashboard/cron` | Open the cron dashboard page |
-| `openclaw://chat` | Open the embedded Web Chat window |
+| `openclaw://chat` | Open the embedded Chat page |
 | `openclaw://send` | Open the Quick Send dialog |
 | `openclaw://send?message=Hello` | Open Quick Send with pre-filled text |
-| `openclaw://settings` | Open the Settings dialog |
+| `openclaw://settings` | Open the Settings page |
 | `openclaw://setup` | Open the Setup Wizard |
 | `openclaw://commandcenter` | Open Command Center diagnostics |
-| `openclaw://activity` | Open the Activity Stream |
-| `openclaw://history` | Open Notification History |
+| `openclaw://activity` | Open the Activity page |
+| `openclaw://history` | Open the Activity page filtered to notification history |
 | `openclaw://healthcheck` | Run a manual health check |
 | `openclaw://check-updates` | Run a manual update check |
 | `openclaw://logs` | Open the current tray log file |

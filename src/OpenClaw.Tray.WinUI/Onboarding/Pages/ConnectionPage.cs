@@ -66,34 +66,6 @@ public sealed class ConnectionPage : Component<OnboardingState>
         return DefaultLocalUrl;
     }
 
-    /// <summary>
-    /// Probes common local gateway ports and returns the first reachable URL.
-    /// Checks the default port (18789) first, then the dev port (19001).
-    /// Uses a very short timeout for responsiveness.
-    /// </summary>
-    private static async Task<string> DetectLocalGatewayUrlAsync()
-    {
-        foreach (var candidate in new[] { DefaultLocalUrl, DevLocalUrl })
-        {
-            try
-            {
-                var uri = new Uri(candidate.Replace("ws://", "http://"));
-                using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
-                var response = await client.GetAsync($"{uri.GetLeftPart(UriPartial.Authority)}/health");
-                if (response.IsSuccessStatusCode)
-                {
-                    Logger.Info($"[Connection] Detected local gateway at {candidate}");
-                    return candidate;
-                }
-            }
-            catch
-            {
-                // Port not reachable, try next
-            }
-        }
-        return DefaultLocalUrl; // Fallback to default
-    }
-
     private static string GetVisualTestPairingDeviceId() =>
         Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_PAIRING") == "1"
             ? VisualTestPairingDeviceId
@@ -164,14 +136,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         void OnSetupCodeChanged(string code)
         {
-            setSetupCode(code);
             if (string.IsNullOrWhiteSpace(code)) return;
 
             var result = SetupCodeDecoder.Decode(code);
 
             if (!result.Success)
             {
-                // Not a valid setup code — user might be still typing
+                // Not a valid setup code — user might be still typing.
+                // Don't call setSetupCode here to avoid re-render that steals focus.
                 if (code.Length > 2048)
                     Logger.Warn("[Connection] Setup code rejected: exceeds 2048 character limit");
                 else
@@ -179,6 +151,8 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 return;
             }
 
+            // Valid setup code decoded — now update state (will re-render)
+            setSetupCode(code);
             if (result.Url != null)
             {
                 setUrl(result.Url);
@@ -187,7 +161,8 @@ public sealed class ConnectionPage : Component<OnboardingState>
             if (result.Token != null)
             {
                 setToken(result.Token);
-                Props.Settings.Token = result.Token;
+                // Bootstrap token goes to BootstrapToken only — it's single-use for pairing.
+                // Don't save as Settings.Token (causes reconnect storms on restart).
                 Props.Settings.BootstrapToken = result.Token;
             }
             setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
@@ -233,7 +208,13 @@ public sealed class ConnectionPage : Component<OnboardingState>
         async void TestConnection()
         {
             Props.Settings.GatewayUrl = url;
-            Props.Settings.Token = token;
+            // Only save to Settings.Token if the user entered a manual token,
+            // not a decoded bootstrap token (which belongs in BootstrapToken only).
+            if (string.IsNullOrWhiteSpace(Props.Settings.BootstrapToken) ||
+                !string.Equals(token, Props.Settings.BootstrapToken, StringComparison.Ordinal))
+            {
+                Props.Settings.Token = token;
+            }
 
             // When SSH mode, start the managed tunnel before health-checking the local URL.
             if (mode == ConnectionMode.Ssh)
@@ -501,40 +482,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 catch { /* clipboard unavailable — ignore */ }
             }
 
-            // Setup code row: TextField + Paste + QR buttons (Grid keeps the field expanding)
+            // Setup code row: TextField + Paste + QR buttons
             cardChildren.Add(
                 Grid(["1*", "Auto", "Auto"], ["Auto"],
                     TextField(setupCode, OnSetupCodeChanged,
                         placeholder: LocalizationHelper.GetString("Onboarding_Connection_SetupCodePlaceholder"),
                         header: LocalizationHelper.GetString("Onboarding_Connection_SetupCode"))
-                        .OnGotFocus((sender, _) =>
-                        {
-                            if (sender is Microsoft.UI.Xaml.Controls.TextBox tb && string.IsNullOrEmpty(tb.Text))
-                            {
-                                try
-                                {
-                                    var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                                    if (content.Contains(global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
-                                    {
-                                        var task = content.GetTextAsync();
-                                        task.Completed = (op, status) =>
-                                        {
-                                            if (status == global::Windows.Foundation.AsyncStatus.Completed)
-                                            {
-                                                var text = op.GetResults();
-                                                tb.DispatcherQueue.TryEnqueue(() =>
-                                                {
-                                                    tb.Text = text;
-                                                    OnSetupCodeChanged(text);
-                                                });
-                                            }
-                                        };
-                                    }
-                                }
-                                catch { }
-                            }
-                        })
-                        .Grid(row: 0, column: 0),
+                        .Grid(row: 0, column: 0)
+                        .Set(tb => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(tb, "OnboardingSetupCode")),
                     Button(LocalizationHelper.GetString("Onboarding_Connection_PasteSetup"), PasteSetupCode)
                         .VAlign(VerticalAlignment.Bottom)
                         .Margin(6, 0, 0, 0)
@@ -798,31 +753,5 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 .MaxWidth(460)
                 .Padding(0, 12, 0, 12)
         );
-    }
-
-    /// <summary>
-    /// Lightweight logger that captures the first and last error/warning for UI display.
-    /// Preserves the first error so reconnect noise doesn't overwrite the real cause.
-    /// </summary>
-    private sealed class ConnectionTestLogger : IOpenClawLogger
-    {
-        /// <summary>The first error captured — preserves the original cause.</summary>
-        public string? FirstError { get; private set; }
-        public string? LastError { get; private set; }
-        public string? LastWarn { get; private set; }
-
-        public void Info(string message) { }
-        public void Debug(string message) { }
-        public void Warn(string message)
-        {
-            LastWarn = message;
-            FirstError ??= message;
-            LastError ??= message;
-        }
-        public void Error(string message, Exception? ex = null)
-        {
-            FirstError ??= message;
-            LastError = message;
-        }
     }
 }

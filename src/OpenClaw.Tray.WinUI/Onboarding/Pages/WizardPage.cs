@@ -35,11 +35,6 @@ public sealed class WizardPage : Component<OnboardingState>
         var (errorMsg, setErrorMsg) = UseState(Props.WizardError ?? "");
         var (placeholder, setPlaceholder) = UseState("");
         var (submitting, setSubmitting) = UseState(false);
-        var (errorPrimaryAction, setErrorPrimaryAction) = UseState("retry");
-        var (recoveryGuard, _) = UseState(new WizardRecoveryGuardState(), threadSafe: true);
-        // Tracks the answer last submitted to wizard.next so we can restore it on Scenario B resume
-        // (connection dropped after user clicked Continue but before gateway received the answer).
-        var (pendingSubmission, setPendingSubmission) = UseState<(string StepId, string AnswerValue)?>(null);
 
         void SaveState(string state, string? error = null)
         {
@@ -52,21 +47,19 @@ public sealed class WizardPage : Component<OnboardingState>
             // Guard against default/undefined JsonElement
             if (payload.ValueKind == JsonValueKind.Undefined || payload.ValueKind == JsonValueKind.Null)
             {
-                setErrorMsg("Empty response from gateway");
+                setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyGatewayResponse"));
                 setWizardState("error");
-                SaveState("error", "Empty response from gateway");
+                SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyGatewayResponse"));
                 return;
             }
 
             try
             {
-            // Extract sessionId from wizard.start response. wizard.next payloads do not carry
-            // this start-shape field, so this is the macOS-equivalent successful-start reset.
+            // Extract sessionId from wizard.start response
             if (payload.TryGetProperty("sessionId", out var sidProp))
             {
                 var sid = sidProp.GetString() ?? "";
                 Props.WizardSessionId = sid;
-                recoveryGuard.ResetAfterSuccessfulStart();
             }
 
             // Store payload for persistence
@@ -86,15 +79,13 @@ public sealed class WizardPage : Component<OnboardingState>
                 var typeStr = step.TryGetProperty("type", out var tp) ? tp.ToString() : "note";
                 var newTitle = step.TryGetProperty("title", out var t) ? t.ToString() : "";
                 var newMessage = step.TryGetProperty("message", out var m) ? m.ToString() : "";
-                var newStepId = step.TryGetProperty("id", out var id) ? id.ToString() : "";
-                Logger.Info($"[WizardDiag] ApplyStep: stepId={newStepId} type={typeStr} title={newTitle}");
                 // If no title, use the type as a fallback label
                 if (string.IsNullOrEmpty(newTitle) && !string.IsNullOrEmpty(newMessage))
                     newTitle = typeStr switch { "confirm" => "Confirm", "select" => "Select", "text" => "Input", _ => "Setup" };
                 setStepTitle(newTitle);
                 setStepMessage(newMessage);
                 setStepType(typeStr);
-                setStepId(newStepId);
+                setStepId(step.TryGetProperty("id", out var id) ? id.ToString() : "");
                 setPlaceholder(step.TryGetProperty("placeholder", out var ph) ? ph.ToString() : "");
                 var iv = step.TryGetProperty("initialValue", out var ivp) ? ivp.ToString() : "";
                 setStepInput(iv);
@@ -135,6 +126,28 @@ public sealed class WizardPage : Component<OnboardingState>
                     setOptionHints(Array.Empty<string>());
                 }
 
+                // For select: default to first option's value if no initialValue
+                var typeStr2 = step.TryGetProperty("type", out var tp3) ? tp3.ToString() : "";
+                if (string.IsNullOrEmpty(iv) && typeStr2 == "select")
+                {
+                    // Re-read first option value directly
+                    if (step.TryGetProperty("options", out var opts2) && opts2.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var o in opts2.EnumerateArray())
+                        {
+                            if (o.ValueKind == JsonValueKind.Object && o.TryGetProperty("value", out var fv))
+                            {
+                                setStepInput(fv.ToString());
+                                break;
+                            }
+                            else
+                            {
+                                setStepInput(o.ToString());
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
             if (payload.TryGetProperty("stepIndex", out var si))
@@ -153,248 +166,89 @@ public sealed class WizardPage : Component<OnboardingState>
             }
         }
 
-        void ClearWizardSessionState()
-        {
-            Props.WizardSessionId = null;
-            Props.WizardStepPayload = null;
-        }
-
-        void SetRecoveryFailureError()
-        {
-            ClearWizardSessionState();
-            setErrorPrimaryAction("restart");
-            setErrorMsg(WizardFlowController.RecoveryFailureMessage);
-            setWizardState("error");
-            SaveState("error", WizardFlowController.RecoveryFailureMessage);
-        }
-
-        OpenClawGatewayClient? GetGatewayClient()
-        {
-            var app = (App)Microsoft.UI.Xaml.Application.Current;
-            return app.GatewayClient ?? Props.GatewayClient;
-        }
-
-        async Task<bool> StartWizardAsync(bool allowRestore)
-        {
-            var clientForLog = GetGatewayClient();
-            Logger.Info($"[Wizard] WizardPage constructed; gatewayClient={(clientForLog == null ? "null" : "present")}");
-            Logger.Info("[Wizard] Start wizard path entered; about to send wizard.start");
-
-            if (allowRestore && !string.IsNullOrEmpty(Props.WizardSessionId) && Props.WizardStepPayload.HasValue)
-            {
-                ApplyStep(Props.WizardStepPayload.Value);
-                return true;
-            }
-
-            if (allowRestore && Props.WizardLifecycleState is "complete" or "offline")
-            {
-                setWizardState(Props.WizardLifecycleState);
-                return Props.WizardLifecycleState == "complete";
-            }
-
-            setWizardState("loading");
-            setErrorMsg("");
-            setErrorPrimaryAction("retry");
-
-            OpenClawGatewayClient? client = null;
-            for (int wait = 0; wait < 30; wait++)
-            {
-                client = GetGatewayClient();
-                Logger.Info($"[Wizard] Polling for gateway client; attempt {wait + 1}");
-                if (client?.IsConnectedToGateway == true) break;
-                await Task.Delay(1000);
-            }
-
-            if (client == null || !client.IsConnectedToGateway)
-            {
-                setWizardState("offline");
-                SaveState("offline");
-                return false;
-            }
-
-            try
-            {
-                Logger.Info("[Wizard] Sending wizard.start frame");
-                var response = await client.SendWizardRequestAsync("wizard.start");
-                ApplyStep(response);
-                return true;
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("already running", StringComparison.OrdinalIgnoreCase))
-            {
-                Logger.Warn("[Wizard] wizard.start: session already running, attempting wizard.next resume");
-                try
-                {
-                    var existingSessionId = Props.WizardSessionId;
-                    if (string.IsNullOrEmpty(existingSessionId))
-                        throw new InvalidOperationException("no saved sessionId for wizard.next resume");
-                    var response = await client.SendWizardRequestAsync("wizard.next", new { sessionId = existingSessionId });
-                    ApplyStep(response);
-                    return true;
-                }
-                catch
-                {
-                    Logger.Warn("[Wizard] wizard.next resume failed after 'already running' — falling offline");
-                    setWizardState("offline");
-                    SaveState("offline");
-                    return false;
-                }
-            }
-            catch (TimeoutException)
-            {
-                setWizardState("offline");
-                SaveState("offline");
-                return false;
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("unknown method", StringComparison.OrdinalIgnoreCase)
-                || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
-            {
-                setWizardState("offline");
-                SaveState("offline");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[Wizard] Start failed: {ex}");
-                var genericMsg = "Failed to start wizard setup";
-                setErrorMsg(genericMsg);
-                setWizardState("error");
-                SaveState("error", genericMsg);
-                return false;
-            }
-        }
-
-        async Task<bool> TryHandleWizardFailureAsync(Exception ex, OpenClawGatewayClient? client, WizardRequestContext requestContext)
-        {
-            var wizardGateway = client == null ? null : new OpenClawWizardGatewayAdapter(client);
-
-            if (ex is TimeoutException && !WizardFlowController.ShouldRecover(ex, wizardGateway, recoveryGuard, requestContext))
-            {
-                setErrorPrimaryAction("retry");
-                setErrorMsg(WizardFlowController.SlowStepRetryMessage);
-                setWizardState("error");
-                SaveState("error", WizardFlowController.SlowStepRetryMessage);
-                return true;
-            }
-
-            var result = await WizardFlowController.TryRecoverAsync(
-                ex,
-                wizardGateway,
-                recoveryGuard,
-                requestContext,
-                async () =>
-                {
-                    var previousSessionId = Props.WizardSessionId;
-                    Logger.Warn($"[WizardDiag] Recovery enter: sessionId={previousSessionId} ex={ex.GetType().Name} connected={client?.IsConnectedToGateway}");
-                    setWizardState("loading");
-                    setErrorMsg("");
-
-                    // Wait up to 30 s for the gateway to reconnect before attempting wizard.next.
-                    // TryResumeWithSessionAsync requires IsConnectedToGateway == true; without this
-                    // wait it would see connected=False (recovery fires right after disconnect) and
-                    // fall through directly to wizard.start, creating a new session at step 0.
-                    // TODO: wire a page-lifetime CancellationToken here once WizardPage adopts _disposalCts.
-                    var reconnected = await WizardFlowController.WaitForConnectionAsync(wizardGateway, cancellationToken: default);
-                    Logger.Info($"[WizardDiag] Recovery reconnect-wait done: connected={reconnected}");
-
-                    var (resumed, payload) = await WizardFlowController.TryResumeWithSessionAsync(
-                        previousSessionId,
-                        wizardGateway,
-                        async sid => await client!.SendWizardRequestAsync("wizard.next", new { sessionId = sid }),
-                        async () =>
-                        {
-                            ClearWizardSessionState();
-                            var started = await StartWizardAsync(allowRestore: false);
-                            if (!started || !Props.WizardStepPayload.HasValue)
-                            {
-                                Logger.Warn($"[WizardDiag] Recovery exit: method=wizard.start result=failed sessionId={previousSessionId ?? "(none)"} newSessionId={Props.WizardSessionId ?? "(none)"}");
-                                throw new InvalidOperationException("wizard.start recovery failed");
-                            }
-                            Logger.Info($"[WizardDiag] Recovery exit: method=wizard.start result=recovered sessionId={previousSessionId ?? "(none)"} newSessionId={Props.WizardSessionId ?? "(none)"}");
-                            return Props.WizardStepPayload.Value;
-                        });
-
-                    if (resumed)
-                    {
-                        Logger.Info($"[WizardDiag] Recovery exit: method=wizard.next result=resumed sessionId={previousSessionId ?? "(none)"}");
-                        // Scenario B: same step returned — restore the user's pending answer so they don't re-select
-                        if (pendingSubmission.HasValue &&
-                            payload.TryGetProperty("step", out var resumedStep) &&
-                            resumedStep.TryGetProperty("id", out var resumedId) &&
-                            resumedId.GetString() == pendingSubmission.Value.StepId)
-                        {
-                            ApplyStep(payload);
-                            setStepInput(pendingSubmission.Value.AnswerValue);
-                            Logger.Info($"[Wizard] Resume Scenario B: stepId={pendingSubmission.Value.StepId} answer restored");
-                        }
-                        else
-                        {
-                            ApplyStep(payload);
-                        }
-                    }
-                    else
-                    {
-                        ApplyStep(payload);
-                    }
-
-                    setPendingSubmission(null);
-                    return payload;
-                });
-
-            if (result.Kind == WizardRecoveryKind.NotEligible)
-            {
-                return false;
-            }
-
-            if (result.Kind is WizardRecoveryKind.AlreadyAttempted or WizardRecoveryKind.Failed)
-            {
-                if (result.Exception != null)
-                {
-                    Logger.Error($"[Wizard] Session recovery failed: {result.Exception}");
-                }
-
-                SetRecoveryFailureError();
-            }
-
-            return true;
-        }
-
-        async void RestartWizard()
-        {
-            await WizardFlowController.RestartWizardAsync(
-                recoveryGuard,
-                ClearWizardSessionState,
-                async () =>
-                {
-                    await StartWizardAsync(allowRestore: false);
-                    return Props.WizardStepPayload ?? default;
-                });
-        }
-
-        void PrimaryButtonAction()
-        {
-            if (wizardState == "error" && errorPrimaryAction == "restart")
-            {
-                RestartWizard();
-                return;
-            }
-
-            SubmitStep();
-        }
-
-        UseEffect(() =>
-        {
-            var client = GetGatewayClient();
-            if (client == null) return () => { };
-
-            void OnStatusChanged(object? _, ConnectionStatus status) => recoveryGuard.ObserveConnectionStatus(status);
-            client.StatusChanged += OnStatusChanged;
-            return () => client.StatusChanged -= OnStatusChanged;
-        }, Array.Empty<object>());
-
         // Start wizard on mount only (empty dependency array = run once)
         UseEffect(() =>
         {
-            async void StartWizard() => await StartWizardAsync(allowRestore: true);
+            async void StartWizard()
+            {
+                // If wizard already has a session, restore from saved payload
+                if (!string.IsNullOrEmpty(Props.WizardSessionId) && Props.WizardStepPayload.HasValue)
+                {
+                    ApplyStep(Props.WizardStepPayload.Value);
+                    return;
+                }
+
+                // If previously completed or in error, restore that state
+                if (Props.WizardLifecycleState is "complete" or "offline")
+                {
+                    setWizardState(Props.WizardLifecycleState);
+                    return;
+                }
+
+                // Read client from App directly (persistent singleton, not Props)
+                var app = (App)Microsoft.UI.Xaml.Application.Current;
+                var client = app.GatewayClient ?? Props.GatewayClient;
+
+                // Show loading UX and poll for client + connection (up to 30s)
+                setWizardState("loading");
+                setErrorMsg("");
+
+                for (int wait = 0; wait < 30; wait++)
+                {
+                    client = app.GatewayClient ?? Props.GatewayClient;
+                    if (client?.IsConnectedToGateway == true) break;
+                    await Task.Delay(1000);
+                }
+
+                if (client == null || !client.IsConnectedToGateway)
+                {
+                    setWizardState("offline");
+                    SaveState("offline");
+                    return;
+                }
+
+                try
+                {
+                    var response = await client.SendWizardRequestAsync("wizard.start");
+                    ApplyStep(response);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("already running", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Wizard session exists — try to get current status instead of restarting
+                    Logger.Info("[Wizard] Session already running, fetching current status...");
+                    try
+                    {
+                        var response = await client.SendWizardRequestAsync("wizard.status");
+                        ApplyStep(response);
+                    }
+                    catch
+                    {
+                        // wizard.status not available — skip wizard gracefully
+                        Logger.Warn("[Wizard] Could not resume existing wizard session, skipping");
+                        setWizardState("offline");
+                        SaveState("offline");
+                    }
+                }
+                catch (TimeoutException)
+                {
+                    setWizardState("offline");
+                    SaveState("offline");
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("unknown method", StringComparison.OrdinalIgnoreCase)
+                    || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    setWizardState("offline");
+                    SaveState("offline");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"[Wizard] Start failed: {ex}");
+                    var genericMsg = "Failed to start wizard setup";
+                    setErrorMsg(genericMsg);
+                    setWizardState("error");
+                    SaveState("error", genericMsg);
+                }
+            }
             StartWizard();
         }, Array.Empty<object>());
 
@@ -407,9 +261,9 @@ public sealed class WizardPage : Component<OnboardingState>
 
             if (!client.IsConnectedToGateway)
             {
-                setErrorMsg("Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.");
+                setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnectedDetail"));
                 setWizardState("error");
-                SaveState("error", "Gateway disconnected");
+                SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnected"));
                 return;
             }
 
@@ -421,18 +275,11 @@ public sealed class WizardPage : Component<OnboardingState>
             }
 
             setSubmitting(true);
-            var requestContext = WizardFlowController.CaptureRequestContext(recoveryGuard);
             try
             {
-                var optionValuesForSubmit = Props.WizardStepPayload.HasValue
-                    ? WizardStepParser.Parse(Props.WizardStepPayload.Value).OptionValues
-                    : Array.Empty<string>();
-                if (!WizardStepSelection.TryBuildAnswerValue(stepType, stepInput, optionValuesForSubmit, out var answerValue))
-                {
-                    setErrorMsg("Choose an option to continue.");
-                    setSubmitting(false);
-                    return;
-                }
+                // All step types need an answer to advance.
+                // For note/confirm: send "true". For text/select: send user input.
+                var answerValue = string.IsNullOrEmpty(stepInput) ? "true" : stepInput;
 
                 // Smart timeout: 5min for auth-related steps (device code polling), 30s for everything else
                 var isAuthStep = !string.IsNullOrEmpty(stepMessage) && 
@@ -443,23 +290,18 @@ public sealed class WizardPage : Component<OnboardingState>
                      stepMessage.Contains("OAuth", StringComparison.OrdinalIgnoreCase));
                 var timeoutMs = isAuthStep ? 300_000 : 30_000;
 
-                // Track the pending submission before sending (supports Scenario B resume if connection drops)
-                setPendingSubmission((stepId, stepInput));
-
                 var response = await client.SendWizardRequestAsync("wizard.next", new
                 {
                     sessionId = Props.WizardSessionId ?? "",
                     answer = new { stepId, value = answerValue }
                 }, timeoutMs: timeoutMs);
 
-                setPendingSubmission(null);
-
                 // Validate response before applying
                 if (response.ValueKind == JsonValueKind.Undefined || response.ValueKind == JsonValueKind.Null)
                 {
-                    setErrorMsg("Gateway returned empty response for wizard.next");
+                    setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyNextResponse"));
                     setWizardState("error");
-                    SaveState("error", "Empty wizard.next response");
+                    SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorEmptyNextResponse"));
                 }
                 else
                 {
@@ -470,11 +312,8 @@ public sealed class WizardPage : Component<OnboardingState>
             {
                 // SECURITY: Log full exception, show only generic error type to user
                 Logger.Error($"[Wizard] Step '{stepId}' ({stepType}) failed: {ex}");
-                if (await TryHandleWizardFailureAsync(ex, client, requestContext)) return;
-
                 var msg = LocalizationHelper.GetString("Onboarding_Wizard_StepError");
                 if (msg == "Onboarding_Wizard_StepError") msg = "An error occurred processing this step";
-                setErrorPrimaryAction("retry");
                 setErrorMsg(msg);
                 setWizardState("error");
                 SaveState("error", msg);
@@ -494,14 +333,13 @@ public sealed class WizardPage : Component<OnboardingState>
 
             if (!client.IsConnectedToGateway)
             {
-                setErrorMsg("Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.");
+                setErrorMsg(LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnectedDetail"));
                 setWizardState("error");
-                SaveState("error", "Gateway disconnected");
+                SaveState("error", LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnected"));
                 return;
             }
 
             setSubmitting(true);
-            var requestContext = WizardFlowController.CaptureRequestContext(recoveryGuard);
             try
             {
                 // Send a proper skip answer based on step type:
@@ -530,11 +368,8 @@ public sealed class WizardPage : Component<OnboardingState>
             catch (Exception ex)
             {
                 Logger.Error($"[Wizard] Skip step failed: {ex}");
-                if (await TryHandleWizardFailureAsync(ex, client, requestContext)) return;
-
                 var msg = LocalizationHelper.GetString("Onboarding_Wizard_StepError");
                 if (msg == "Onboarding_Wizard_StepError") msg = "An error occurred processing this step";
-                setErrorPrimaryAction("retry");
                 setErrorMsg(msg);
                 setWizardState("error");
                 SaveState("error", msg);
@@ -554,13 +389,11 @@ public sealed class WizardPage : Component<OnboardingState>
         string buttonLabel1 = LocalizationHelper.GetString("Onboarding_Wizard_Continue");
         string buttonLabel2 = LocalizationHelper.GetString("Onboarding_Wizard_Skip");
         bool showButtons = false;
-        bool disablePrimaryButton = false;
 
         switch (wizardState)
         {
             case "active":
                 displayTitle = stepTitle;
-                // TODO: Empty note messages are an upstream gateway content issue; do not synthesize tray copy here.
                 displayMessage = stepMessage;
                 showButtons = true;
 
@@ -589,16 +422,39 @@ public sealed class WizardPage : Component<OnboardingState>
                 }
                 else if (stepType == "select" || stepType == "multiselect")
                 {
-                    // Use stable arrays set once by ApplyStep — same reference across re-renders prevents
-                    // WinUI3 ItemsSource churn (UpdateItemsSource → Select(-1) → selection flash).
-                    var labelsArr = optionLabels;
-                    var valuesArr = optionValues;
-
-                    if (labelsArr.Length > 0)
+                    // Read options directly from stored payload to avoid state timing issues
+                    var labels = new List<string>();
+                    var values = new List<string>();
+                    if (Props.WizardStepPayload.HasValue)
                     {
-                        var selIdx = WizardStepSelection.SelectedIndex(stepInput, valuesArr);
-                        disablePrimaryButton = WizardStepSelection.ShouldDisableContinue(stepType, stepInput, valuesArr);
-                        inputArea = RadioButtons(labelsArr, selIdx >= 0 ? selIdx : -1,
+                        var p = Props.WizardStepPayload.Value;
+                        if (p.TryGetProperty("step", out var s) && s.TryGetProperty("options", out var opts) && opts.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var o in opts.EnumerateArray())
+                            {
+                                if (o.ValueKind == JsonValueKind.Object)
+                                {
+                                    var label = o.TryGetProperty("label", out var lp) ? lp.ToString() : "";
+                                    var value = o.TryGetProperty("value", out var vp) ? vp.ToString() : label;
+                                    var hint = o.TryGetProperty("hint", out var hp) ? hp.ToString() : "";
+                                    labels.Add(string.IsNullOrEmpty(hint) ? label : $"{label} — {hint}");
+                                    values.Add(value);
+                                }
+                                else
+                                {
+                                    labels.Add(o.ToString());
+                                    values.Add(o.ToString());
+                                }
+                            }
+                        }
+                    }
+
+                    if (labels.Count > 0)
+                    {
+                        var selIdx = values.IndexOf(stepInput);
+                        var labelsArr = labels.ToArray();
+                        var valuesArr = values.ToArray();
+                        inputArea = RadioButtons(labelsArr, selIdx >= 0 ? selIdx : 0,
                             idx =>
                             {
                                 if (idx >= 0 && idx < valuesArr.Length)
@@ -608,21 +464,21 @@ public sealed class WizardPage : Component<OnboardingState>
                     }
                     else
                     {
-                        inputArea = TextBlock("No options available").FontSize(12).Opacity(0.5);
+                        inputArea = TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_NoOptionsAvailable")).FontSize(12).Opacity(0.5);
                         showButtons = false; // Don't allow submit with no valid selection
                     }
                 }
                 else if (stepType == "confirm")
                 {
-                    buttonLabel1 = "Yes";
-                    buttonLabel2 = "No / Skip";
+                    buttonLabel1 = LocalizationHelper.GetString("Onboarding_Wizard_Yes");
+                    buttonLabel2 = LocalizationHelper.GetString("Onboarding_Wizard_NoSkip");
                 }
                 else if (stepType == "progress")
                 {
                     // Show spinner while gateway polls for auth completion
                     inputArea = HStack(8,
                         ProgressRing().Width(24).Height(24),
-                        TextBlock("Waiting...").FontSize(13).Opacity(0.7)
+                        TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_Waiting")).FontSize(13).Opacity(0.7)
                             .VAlign(VerticalAlignment.Center)
                     );
                     showButtons = false; // Gateway auto-advances on completion
@@ -632,23 +488,23 @@ public sealed class WizardPage : Component<OnboardingState>
 
             case "complete":
                 displayTitle = $"✅ {LocalizationHelper.GetString("Onboarding_Wizard_Complete")}";
-                displayMessage = "Click Next to continue.";
+                displayMessage = LocalizationHelper.GetString("Onboarding_Wizard_ClickNextToContinue");
                 break;
 
             case "error":
-                displayTitle = "❌ Wizard error";
+                displayTitle = $"❌ {LocalizationHelper.GetString("Onboarding_Wizard_ErrorTitle")}";
                 displayMessage = errorMsg;
                 showButtons = true;
-                buttonLabel1 = errorPrimaryAction == "restart" ? "Restart wizard" : "Retry";
-                buttonLabel2 = "Skip Wizard";
+                buttonLabel1 = LocalizationHelper.GetString("Onboarding_Retry");
+                buttonLabel2 = LocalizationHelper.GetString("Onboarding_Wizard_SkipWizard");
                 break;
 
             case "loading":
                 displayTitle = $"🔄 {LocalizationHelper.GetString("Onboarding_Connection_StatusAuthenticating")}";
-                displayMessage = "Connecting to gateway...";
+                displayMessage = LocalizationHelper.GetString("Onboarding_Wizard_ConnectingToGateway");
                 inputArea = HStack(8,
                     ProgressRing().Width(24).Height(24),
-                    TextBlock("Please wait while the connection is established...")
+                    TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_ConnectionWaitDetail"))
                         .FontSize(13).Opacity(0.7)
                         .VAlign(VerticalAlignment.Center)
                 );
@@ -656,7 +512,7 @@ public sealed class WizardPage : Component<OnboardingState>
 
             default:
                 displayTitle = $"🔌  {LocalizationHelper.GetString("Onboarding_Wizard_Offline")}";
-                displayMessage = $"{LocalizationHelper.GetString("Onboarding_Wizard_OfflineMessage")}\n\nClick Next to continue.";
+                displayMessage = $"{LocalizationHelper.GetString("Onboarding_Wizard_OfflineMessage")}\n\n{LocalizationHelper.GetString("Onboarding_Wizard_ClickNextToContinue")}";
                 break;
         }
 
@@ -770,7 +626,7 @@ public sealed class WizardPage : Component<OnboardingState>
 
             showButtons
                 ? HStack(8,
-                    Button(buttonLabel1, PrimaryButtonAction).Disabled(submitting || disablePrimaryButton),
+                    Button(buttonLabel1, SubmitStep).Disabled(submitting),
                     Button(buttonLabel2, SkipStep).Disabled(submitting))
                 : TextBlock(""),
 

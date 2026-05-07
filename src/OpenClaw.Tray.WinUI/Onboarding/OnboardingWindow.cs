@@ -64,6 +64,7 @@ public sealed class OnboardingWindow : WindowEx
         }
 
         Title = LocalizationHelper.GetString("Onboarding_Title");
+        ExtendsContentIntoTitleBar = true;
         this.SetWindowSize(720, 900);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -130,19 +131,50 @@ public sealed class OnboardingWindow : WindowEx
         _chatOverlay.Visibility = Visibility.Collapsed;
         _chatOverlay.VerticalAlignment = VerticalAlignment.Top;
 
-        // Root grid: functional UI host fills everything, overlay sits on top (except nav bar)
+        // Root grid: titlebar row + content area
         _rootGrid = new Grid
         {
             Background = GetThemeBrush("SolidBackgroundFillColorBaseBrush")
         };
-        _rootGrid.Children.Add(_host);
-        _rootGrid.Children.Add(_chatOverlay);
+        _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
+        _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        // Custom title bar — matches HubWindow treatment
+        var titleBar = new Grid { Padding = new Thickness(16, 0, 140, 0) };
+        var titleIcon = new TextBlock
+        {
+            Text = "🦞",
+            FontSize = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        var titleText = new TextBlock
+        {
+            Text = LocalizationHelper.GetString("Onboarding_Title"),
+            FontSize = 13,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
+        titleStack.Children.Add(titleIcon);
+        titleStack.Children.Add(titleText);
+        titleBar.Children.Add(titleStack);
+        Grid.SetRow(titleBar, 0);
+        _rootGrid.Children.Add(titleBar);
+        SetTitleBar(titleBar);
+
+        // Content area
+        var contentGrid = new Grid();
+        contentGrid.Children.Add(_host);
+        contentGrid.Children.Add(_chatOverlay);
+        Grid.SetRow(contentGrid, 1);
+        _rootGrid.Children.Add(contentGrid);
         Content = _rootGrid;
         Closed += OnClosed;
 
-        // Size the overlay after layout — leave space for the nav bar
-        // Nav bar is ~60px + VStack bottom padding 20px = 80px minimum
-        _rootGrid.SizeChanged += (_, args) =>
+        // Size the overlay after layout — leave space for the nav bar (~84px)
+        // contentGrid is already in row 1 (below titlebar), so no need to subtract titlebar height
+        contentGrid.SizeChanged += (_, args) =>
         {
             _chatOverlay.Height = Math.Max(0, args.NewSize.Height - 84);
         };
@@ -456,7 +488,7 @@ public sealed class OnboardingWindow : WindowEx
         {
             _chatRetryButton = new Button
             {
-                Content = "Retry",
+                Content = LocalizationHelper.GetString("Onboarding_Retry"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 40, 0, 0)

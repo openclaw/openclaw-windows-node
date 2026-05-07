@@ -54,7 +54,7 @@ Checks 5 Windows permissions using native APIs and registry:
 Each permission shows its current status (Enabled/Disabled/Allowed/Denied) with an "Open Settings" button linking to the relevant `ms-settings:` URI.
 
 ### Chat
-Embeds the gateway's web chat UI via WebView2, matching the post-setup `WebChatWindow` for visual consistency. Uses the shared `GatewayChatHelper` for URL building and WebView2 initialization.
+Embeds the gateway's web chat UI via WebView2, matching the post-setup `ChatWindow` for visual consistency. Uses the shared `GatewayChatHelper` for URL building and WebView2 initialization.
 
 On first load, a bootstrap message is auto-injected to kick off the gateway's first-run ritual (BOOTSTRAP.md). The message is safely encoded using `JsonSerializer.Serialize` to prevent XSS.
 
@@ -75,7 +75,7 @@ The onboarding wizard follows these security practices:
 
 ## Localization
 
-All user-visible strings use `LocalizationHelper.GetString()` with the `Onboarding_*` key namespace. Supported languages: English, French, Dutch, Chinese Simplified, Chinese Traditional.
+All user-visible strings use `LocalizationHelper.GetString()` with the `Onboarding_*` key namespace. Supported languages are discovered from the `Strings/<locale>/Resources.resw` directories; the current locales are English, French, Dutch, Chinese Simplified, and Chinese Traditional.
 
 Translations are AI-generated following the repo convention. Technical terms (Gateway, Token, Node Mode) are kept in English across all locales.
 

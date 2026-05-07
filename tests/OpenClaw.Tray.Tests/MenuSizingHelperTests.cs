@@ -64,6 +64,30 @@ public class MenuSizingHelperTests
         Assert.Equal(800, MenuSizingHelper.ConvertPixelsToViewUnits(1000, 120));
     }
 
+    [Fact]
+    public void HasDpiOrScaleChanged_SameDpiAndScale_ReturnsFalse()
+    {
+        Assert.False(MenuSizingHelper.HasDpiOrScaleChanged(120, 1.25, 120, 1.25));
+    }
+
+    [Fact]
+    public void HasDpiOrScaleChanged_DifferentDpi_ReturnsTrue()
+    {
+        Assert.True(MenuSizingHelper.HasDpiOrScaleChanged(96, 1.0, 120, 1.25));
+    }
+
+    [Fact]
+    public void HasDpiOrScaleChanged_DifferentRasterizationScale_ReturnsTrue()
+    {
+        Assert.True(MenuSizingHelper.HasDpiOrScaleChanged(120, 1.0, 120, 1.25));
+    }
+
+    [Fact]
+    public void HasDpiOrScaleChanged_NormalizesInvalidInputs()
+    {
+        Assert.False(MenuSizingHelper.HasDpiOrScaleChanged(0, double.NaN, 96, 1.0));
+    }
+
     // ── CalculateWindowHeight ───────────────────────────────────────
 
     [Fact]
