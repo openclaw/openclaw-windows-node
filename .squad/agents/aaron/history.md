@@ -70,6 +70,30 @@ Key structural diff on PR #274 base: `LocalGatewaySetupRuntimeConfiguration` alr
 - Uninstall feature: 8 open design Qs for Mike (see Active Workstreams)
 
 
+### WSL Gateway Uninstall — Commit 5 COMPLETE (2026-05-08, SHA 0a78b0d)
+
+**Files touched:**
+- `src/OpenClaw.Tray.WinUI/App.xaml.cs` — `--uninstall` CLI interception in OnLaunched (early, before mutex), `AttachConsole` P/Invoke, `RunCliUninstallAsync()`, `CliRedact()`
+- `src/OpenClaw.Tray.WinUI/Services/LocalGatewaySetup/LocalGatewayUninstall.cs` — Step 5a VHD parent-dir cleanup, Step 8a run.marker cleanup, `VhdDirAbsent` postcondition
+- `installer.iss` — `[Files]` entry for `scripts\Uninstall-LocalGateway.ps1`, `[UninstallRun]` entry
+- `scripts/Uninstall-LocalGateway.ps1` (NEW) — Inno helper; thin CLI wrapper, always exits 0
+- `scripts/validate-wsl-gateway-uninstall.ps1` — `-NoCli`/`-ExePath` params, `Get-TrayExePath`, CLI delegation in Full mode, `vhd_dir_absent` postcondition
+- `docs/uninstall-portable.md` (NEW) — portable ZIP uninstall documentation
+- `docs/uninstall-msix.md` (NEW) — MSIX uninstall feasibility verdict (NOT feasible)
+- `tests/OpenClaw.Tray.Tests/LocalGatewayUninstallTests.cs` — Tests 21–25 (VHD dir cleanup × 3, run.marker × 2)
+
+**Test results:** 645 total (+5 new), 636 passed, 8 pre-existing localization fails, 1 pre-existing flaky `SettingsManagerIsolation` (passes in isolation).
+
+**Key empirical finding — run.marker:** Written ONLY in `App.xaml.cs` constructor (`MarkRunStarted`); no setup-side writer. Stale markers possible after crash. Step 8a handles idempotently (skip-if-absent).
+
+**MSIX verdict:** `runFullTrust` MSIX has NO supported `CustomUninstall` extension point. In-tray button is the only safe uninstall path for MSIX installs. Documented in `docs/uninstall-msix.md`.
+
+**CLI flag contract for Commit 7 (Bostick):**
+```
+OpenClaw.Tray.WinUI.exe --uninstall --confirm-destructive [--dry-run] --json-output <path>
+```
+Exit 0 = success, non-zero = failure. Output JSON written to `<path>`; any access tokens redacted. Stdout also printed (attached console).
+
 ### WSL Gateway Uninstall — Commit 6 COMPLETE (2026-05-07, SHA 1cfc1ee)
 scripts/validate-wsl-gateway-uninstall.ps1 — 1000 lines.
 
