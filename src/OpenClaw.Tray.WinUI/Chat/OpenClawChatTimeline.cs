@@ -467,12 +467,16 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     })
                     .Padding(14, 10, 14, 10)
             ).Background(userBubbleBg).CornerRadius(10)
-             .Set(b => b.MaxWidth = 560);
+             .Set(b => b.MaxWidth = 560)
+             // Center the bubble vertically within the row — the avatar
+             // forces the row to 36px so a 1-line bubble would otherwise
+             // stretch and pin its text to the top.
+             .VAlign(VerticalAlignment.Center);
 
             // Avatar shown only on the LAST entry of a same-sender burst.
             // Mid-burst entries get a 36px-wide spacer so bubbles align.
             Element rightSlot = endsBurst
-                ? AvatarBox("🧑", userAvatarBg, userBubbleBdr, userAvatarFg).VAlign(VerticalAlignment.Bottom)
+                ? AvatarBox("🧑", userAvatarBg, userBubbleBdr, userAvatarFg).VAlign(VerticalAlignment.Center)
                 : Border(Empty()).Size(36, 36);
 
             // Trash icon (delete user message) — visible only on hover.
