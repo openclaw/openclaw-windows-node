@@ -111,6 +111,8 @@
                     <Button x:Uid="DebugPage_Button_111" Content="📄 Open Log File" Click="OnOpenLogFile" HorizontalAlignment="Stretch"/>
                     <Button x:Uid="DebugPage_Button_112" Content="📁 Open Config Folder" Click="OnOpenConfigFolder" HorizontalAlignment="Stretch"/>
                     <Button x:Uid="DebugPage_Button_113" Content="📁 Open Diagnostics Folder" Click="OnOpenDiagnosticsFolder" HorizontalAlignment="Stretch"/>
+                        <Button Content="🧪 Run MXC Sandbox Example" Click="OnInvokeNodeCapabilityViaMxc"
+                            HorizontalAlignment="Stretch"/>
                     <Button x:Uid="DebugPage_Button_114" Content="📋 Copy Support Context" Click="OnCopySupportContext"
                             Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch"/>
                     <Button Content="🔄 Relaunch First-Run Setup" Click="OnRelaunchOnboarding" HorizontalAlignment="Stretch"/>

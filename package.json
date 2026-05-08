@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@microsoft/mxc-sdk": "^0.1.8"
+  }
+}
