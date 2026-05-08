@@ -55,65 +55,99 @@ public static class BootstrapMessageInjector
         return $$"""
         (function() {
             const msg = {{safeMsg}};
+            const seen = new Set();
 
-            function findInput(root) {
-                const inputs = root.querySelectorAll('textarea, input[type="text"]');
-                for (const input of inputs) {
-                    if (input.offsetParent !== null || input.offsetHeight > 0) return input;
-                }
-                const elements = root.querySelectorAll('*');
+            function walk(root, visit) {
+                if (!root || seen.has(root)) return null;
+                seen.add(root);
+                const found = visit(root);
+                if (found) return found;
+                const elements = root.querySelectorAll ? root.querySelectorAll('*') : [];
                 for (const el of elements) {
                     if (el.shadowRoot) {
-                        const found = findInput(el.shadowRoot);
-                        if (found) return found;
+                        const nested = walk(el.shadowRoot, visit);
+                        if (nested) return nested;
                     }
                 }
                 return null;
+            }
+
+            function isVisible(el) {
+                return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+            }
+
+            function isUsableInput(el) {
+                return isVisible(el) && !el.disabled && !el.readOnly;
+            }
+
+            function findInput(root) {
+                return walk(root, r => {
+                    const inputs = r.querySelectorAll(
+                        'textarea, input[type="text"], input:not([type]), [contenteditable="true"], [role="textbox"]');
+                    return Array.from(inputs).find(isUsableInput) || null;
+                });
             }
 
             function findButton(root) {
-                const buttons = root.querySelectorAll('button');
-                for (const btn of buttons) {
-                    const text = (btn.textContent || '').toLowerCase();
-                    const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                    if (text.includes('send') || label.includes('send') ||
-                        btn.querySelector('svg') && btn.closest('form')) {
-                        return btn;
-                    }
-                }
-                const elements = root.querySelectorAll('*');
-                for (const el of elements) {
-                    if (el.shadowRoot) {
-                        const found = findButton(el.shadowRoot);
-                        if (found) return found;
-                    }
-                }
-                return null;
+                seen.clear();
+                return walk(root, r => {
+                    const buttons = r.querySelectorAll('button:not([disabled]), [role="button"]:not([aria-disabled="true"])');
+                    return Array.from(buttons).find(btn => {
+                        if (!isVisible(btn)) return false;
+                        const text = (btn.textContent || '').toLowerCase();
+                        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+                        const title = (btn.getAttribute('title') || '').toLowerCase();
+                        return text.includes('send') || label.includes('send') || title.includes('send') ||
+                            text === '➤' || text === '↑' || btn.closest('form');
+                    }) || null;
+                });
             }
 
-            const input = findInput(document);
-            if (input) {
-                input.value = msg;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
+            function setNativeValue(el, value) {
+                if (el.isContentEditable) {
+                    el.textContent = value;
+                    return;
+                }
+                const proto = el.tagName === 'TEXTAREA'
+                    ? window.HTMLTextAreaElement.prototype
+                    : window.HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                setter ? setter.call(el, value) : (el.value = value);
+            }
 
-                setTimeout(() => {
-                    const btn = findButton(document);
-                    if (btn) {
-                        btn.click();
-                        console.log('[OpenClaw] Bootstrap message sent via button click');
-                    } else {
-                        input.dispatchEvent(new KeyboardEvent('keydown', {
-                            key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true
-                        }));
-                        console.log('[OpenClaw] Bootstrap message sent via Enter key');
-                    }
-                }, 200);
-                return 'sent';
-            } else {
+            const inputCount = document.querySelectorAll('input,textarea,button,[contenteditable="true"],[role="textbox"]').length;
+            console.log('[OpenClaw] Bootstrap probe controls=' + inputCount);
+            seen.clear();
+            const input = findInput(document);
+            if (!input) {
                 console.warn('[OpenClaw] Could not find chat input for bootstrap');
                 return 'no-input';
             }
+
+            input.focus();
+            setNativeValue(input, msg);
+            input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: msg }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const btn = findButton(document);
+            if (btn) {
+                btn.click();
+                console.log('[OpenClaw] Bootstrap message sent via button click');
+                return 'sent';
+            }
+
+            const form = input.closest && input.closest('form');
+            if (form?.requestSubmit) {
+                form.requestSubmit();
+                console.log('[OpenClaw] Bootstrap message sent via form submit');
+                return 'sent';
+            }
+
+            input.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+            }));
+            console.log('[OpenClaw] Bootstrap message sent via Enter key');
+            return 'sent';
         })();
         """;
     }
@@ -166,10 +200,17 @@ public static class BootstrapMessageInjector
             }
 
             var js = BuildInjectionScript(Message);
-            await executor(js).ConfigureAwait(true);
-            MarkInjected(settings);
-            Logger.Info("[BootstrapMessageInjector] Bootstrap message injection executed");
-            return true;
+            var result = await executor(js).ConfigureAwait(true);
+            var status = TryParseScriptResult(result);
+            if (string.Equals(status, "sent", StringComparison.Ordinal))
+            {
+                MarkInjected(settings);
+                Logger.Info("[BootstrapMessageInjector] Bootstrap message injection sent");
+                return true;
+            }
+
+            Logger.Warn($"[BootstrapMessageInjector] Bootstrap injection did not send; status={status ?? result ?? "<null>"}");
+            return false;
         }
         catch (OperationCanceledException)
         {
@@ -179,6 +220,19 @@ public static class BootstrapMessageInjector
         {
             Logger.Warn($"[BootstrapMessageInjector] Bootstrap injection failed: {ex.Message}");
             return false;
+        }
+    }
+
+    private static string? TryParseScriptResult(string? result)
+    {
+        if (string.IsNullOrWhiteSpace(result)) return result;
+        try
+        {
+            return JsonSerializer.Deserialize<string>(result);
+        }
+        catch (JsonException)
+        {
+            return result;
         }
     }
 }

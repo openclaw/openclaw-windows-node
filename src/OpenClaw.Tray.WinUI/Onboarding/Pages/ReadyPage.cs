@@ -17,12 +17,16 @@ public sealed class ReadyPage : Component<OnboardingState>
 {
     public override Element Render()
     {
-        // Initialize from persisted setting (default true — see SettingsManager).
-        // Toggling immediately writes Settings.AutoStart AND flips the OS-level
-        // Run-key entry via AutoStartManager so the change takes effect without
-        // requiring the user to click Finish (Bug 5 fix from PR #274 smoke test —
-        // the toggle was previously cosmetic).
-        var (launchAtLogin, setLaunchAtLogin) = UseState(Props.Settings.AutoStart);
+        // Safety-default the rendered switch to ON, then sync from persisted settings
+        // on mount (SettingsManager defaults AutoStart=true for fresh users). The mount
+        // sync also materializes the Run-key even if the user never touches the switch.
+        var (launchAtLogin, setLaunchAtLogin) = UseState(true);
+        UseEffect(() =>
+        {
+            var persisted = Props.Settings.AutoStart;
+            setLaunchAtLogin(persisted);
+            ApplyLaunchAtLogin(persisted);
+        }, Props.Settings.AutoStart);
 
         return ScrollView(
             VStack(12,

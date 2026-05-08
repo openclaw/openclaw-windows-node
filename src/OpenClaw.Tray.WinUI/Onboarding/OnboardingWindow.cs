@@ -32,6 +32,7 @@ public sealed class OnboardingWindow : WindowEx
     private readonly FunctionalHostControl _host;
     private readonly string? _visualTestDir;
     private readonly DispatcherQueue _dispatcherQueue;
+    private readonly string? _identityDataPath;
     private int _captureIndex;
 
     // WebView2 overlay for Chat page
@@ -52,6 +53,7 @@ public sealed class OnboardingWindow : WindowEx
     public OnboardingWindow(SettingsManager settings, string? identityDataPath = null)
     {
         _settings = settings;
+        _identityDataPath = identityDataPath;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _visualTestDir = Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1"
             ? ValidateTestDir(Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR")
@@ -609,22 +611,18 @@ public sealed class OnboardingWindow : WindowEx
     /// <see cref="OnOnboardingFinished"/>) and the title-bar X button (via
     /// <see cref="OnClosed"/>). Idempotent — guarded by <see cref="_completionDispatched"/>.
     ///
-    /// If the user reached the wizard's "complete" lifecycle state (i.e. the gateway-
-    /// driven wizard, including the model-provider step, ran to completion), launches
-    /// the main tray chat window via <c>App.ShowChatWindow()</c>. Otherwise the wizard
-    /// just closes silently — no further window is launched.
+    /// If the user is closing from the Ready page and setup no longer requires
+    /// credentials, launches the main tray chat window via <c>App.ShowChatWindow()</c>.
+    /// This intentionally does not depend on WizardLifecycleState == "complete": the
+    /// gateway wizard can stop on a later channel step even after credentials/model
+    /// setup succeeded, but Finish on Ready still runs this handler.
     /// </summary>
     private void OnWizardComplete()
     {
         if (_completionDispatched) return;
         _completionDispatched = true;
 
-        // Capture the model-configured signal BEFORE saving / disposing state.
-        // The wizard is gateway-driven (no SettingsManager.ModelProvider field exists);
-        // WizardLifecycleState transitions to "complete" in WizardPage only after the
-        // user advances past the final wizard step, which requires the model-provider
-        // step to have been answered.
-        bool modelConfigured = string.Equals(_state.WizardLifecycleState, "complete", StringComparison.Ordinal);
+        var finishedFromReady = _state.CurrentRoute == OnboardingRoute.Ready;
 
         _settings.Save();
         Completed = true;
@@ -644,20 +642,23 @@ public sealed class OnboardingWindow : WindowEx
 
         OnboardingCompleted?.Invoke(this, EventArgs.Empty);
 
-        if (modelConfigured)
+        var dataPath = _identityDataPath ?? SettingsManager.SettingsDirectoryPath;
+        var setupStillRequired = StartupSetupState.RequiresSetup(_settings, dataPath);
+        if (finishedFromReady && !setupStillRequired)
         {
+            Logger.Info("[OnboardingWindow] OnWizardComplete launching chat");
             try
             {
                 (Microsoft.UI.Xaml.Application.Current as App)?.ShowChatWindow();
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[Onboarding] ShowChatWindow after Finish failed: {ex.Message}");
+                Logger.Warn($"[OnboardingWindow] ShowChatWindow after Finish failed: {ex.Message}");
             }
         }
         else
         {
-            Logger.Info("[Onboarding] Closed without configured model — skipping chat-window launch");
+            Logger.Info($"[OnboardingWindow] OnWizardComplete skipping chat launch; route={_state.CurrentRoute}, setupStillRequired={setupStillRequired}");
         }
     }
 
