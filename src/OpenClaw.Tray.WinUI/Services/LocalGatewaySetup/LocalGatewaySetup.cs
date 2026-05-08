@@ -1315,15 +1315,69 @@ public interface ILocalGatewaySetupSettings
 public sealed class SettingsManagerLocalGatewaySetupSettings : ILocalGatewaySetupSettings
 {
     private readonly SettingsManager _settings;
+    private readonly GatewayRegistry? _registry;
 
-    public SettingsManagerLocalGatewaySetupSettings(SettingsManager settings)
+    public SettingsManagerLocalGatewaySetupSettings(SettingsManager settings, GatewayRegistry? registry = null)
     {
         _settings = settings;
+        _registry = registry;
     }
 
-    public string GatewayUrl { get => _settings.GatewayUrl; set => _settings.GatewayUrl = value; }
-    public string Token { get => _settings.Token; set => _settings.Token = value; }
-    public string BootstrapToken { get => _settings.BootstrapToken; set => _settings.BootstrapToken = value; }
+    public string GatewayUrl
+    {
+        get => _registry?.GetActive()?.Url ?? _settings.GatewayUrl;
+        set
+        {
+            _settings.GatewayUrl = value;
+            if (_registry != null && !string.IsNullOrWhiteSpace(value))
+            {
+                var gw = _registry.GetActive();
+                if (gw != null)
+                {
+                    gw.Url = value;
+                    _registry.AddOrUpdate(gw);
+                }
+                else
+                {
+                    // Create record if none exists (e.g., first setup)
+                    var id = GatewayRecord.GenerateId(value);
+                    _registry.AddOrUpdate(new GatewayRecord { Id = id, Url = value });
+                }
+            }
+        }
+    }
+
+    public string Token
+    {
+        get => _registry?.GetActive()?.OperatorDeviceToken ?? _settings.Token;
+        set
+        {
+            _settings.Token = value;
+            var gw = _registry?.GetActive();
+            if (gw != null && !string.IsNullOrWhiteSpace(value))
+            {
+                // If no operator token yet, this is the shared gateway token
+                // (provisioned before pairing). Store it as both.
+                if (string.IsNullOrWhiteSpace(gw.SharedGatewayToken))
+                    gw.SharedGatewayToken = value;
+                gw.OperatorDeviceToken = value;
+                gw.BootstrapToken = null;
+                _registry!.AddOrUpdate(gw);
+            }
+        }
+    }
+
+    public string BootstrapToken
+    {
+        get => _registry?.GetActive()?.BootstrapToken ?? _settings.BootstrapToken;
+        set
+        {
+            _settings.BootstrapToken = value;
+            var gw = _registry?.GetActive();
+            if (gw != null) { gw.BootstrapToken = value; _registry!.AddOrUpdate(gw); }
+        }
+    }
+
     public bool UseSshTunnel { get => _settings.UseSshTunnel; set => _settings.UseSshTunnel = value; }
     public bool EnableNodeMode { get => _settings.EnableNodeMode; set => _settings.EnableNodeMode = value; }
     public void Save() => _settings.Save();
@@ -1632,8 +1686,8 @@ public sealed class SettingsOperatorPairingService : IOperatorPairingService
     private readonly IGatewayOperatorConnector? _connector;
     private readonly IPendingDeviceApprover? _pendingApprover;
 
-    public SettingsOperatorPairingService(SettingsManager settings, IGatewayOperatorConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
-        : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector, pendingApprover)
+    public SettingsOperatorPairingService(SettingsManager settings, IGatewayOperatorConnector? connector = null, IPendingDeviceApprover? pendingApprover = null, GatewayRegistry? registry = null)
+        : this(new SettingsManagerLocalGatewaySetupSettings(settings, registry), connector, pendingApprover)
     {
     }
 
@@ -2325,8 +2379,8 @@ public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisi
     private readonly IWindowsNodeConnector? _connector;
     private readonly IPendingDeviceApprover? _pendingApprover;
 
-    public SettingsWindowsTrayNodeProvisioner(SettingsManager settings, IWindowsNodeConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
-        : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector, pendingApprover)
+    public SettingsWindowsTrayNodeProvisioner(SettingsManager settings, IWindowsNodeConnector? connector = null, IPendingDeviceApprover? pendingApprover = null, GatewayRegistry? registry = null)
+        : this(new SettingsManagerLocalGatewaySetupSettings(settings, registry), connector, pendingApprover)
     {
     }
 
@@ -2921,7 +2975,8 @@ public static class LocalGatewaySetupEngineFactory
         bool allowExistingDistro = false,
         bool replaceExistingConfigurationConfirmed = false,
         string? identityDataPath = null,
-        string? setupStatePath = null)
+        string? setupStatePath = null,
+        GatewayRegistry? gatewayRegistry = null)
     {
         // Defense-in-depth fail-closed: refuse to construct the engine if any of the
         // 6 sync existing-config predicates fire and the caller has not passed explicit
@@ -2964,7 +3019,7 @@ public static class LocalGatewaySetupEngineFactory
         };
 
         var wsl = new WslExeCommandRunner(logger, TimeSpan.FromMinutes(30));
-        var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings);
+        var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings, gatewayRegistry);
         var operatorConnector = new OpenClawGatewayOperatorConnector(logger);
         var bootstrapTokenProvider = new WslGatewayCliBootstrapTokenProvider(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
         var sharedGatewayTokenProvider = new WslGatewayCliSharedGatewayTokenProvider(wsl);

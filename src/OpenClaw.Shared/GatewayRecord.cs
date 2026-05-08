@@ -17,6 +17,10 @@ public class GatewayRecord
     /// Transient bootstrap token for pairing. Cleared after pairing completes.
     /// </summary>
     public string? BootstrapToken { get; set; }
+    /// <summary>
+    /// The gateway's shared secret token (gateway.auth.token). Used for web dashboard auth.
+    /// </summary>
+    public string? SharedGatewayToken { get; set; }
 
     /// <summary>
     /// Generates a stable, human-readable ID from a gateway URL.
@@ -49,6 +53,7 @@ public class GatewayRecord
         OperatorDeviceToken = OperatorDeviceToken,
         NodeDeviceToken = NodeDeviceToken,
         BootstrapToken = BootstrapToken,
+        SharedGatewayToken = SharedGatewayToken,
     };
 }
 

@@ -461,7 +461,13 @@ public sealed class WizardPage : Component<OnboardingState>
                         var selIdx = values.IndexOf(stepInput);
                         var labelsArr = labels.ToArray();
                         var valuesArr = values.ToArray();
-                        inputArea = RadioButtons(labelsArr, selIdx >= 0 ? selIdx : 0,
+                        // Default to first option if none selected
+                        if (selIdx < 0)
+                        {
+                            selIdx = 0;
+                            setStepInput(valuesArr[0]);
+                        }
+                        inputArea = RadioButtons(labelsArr, selIdx,
                             idx =>
                             {
                                 if (idx >= 0 && idx < valuesArr.Length)

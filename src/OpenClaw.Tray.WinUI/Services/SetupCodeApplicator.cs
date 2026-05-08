@@ -23,6 +23,7 @@ public static class SetupCodeApplicator
 
         var gatewayUrl = result.Url ?? settings.GatewayUrl ?? "";
 
+        // Registry: single source of truth
         if (registry != null && !string.IsNullOrWhiteSpace(gatewayUrl))
         {
             var id = GatewayRecord.GenerateId(gatewayUrl);
@@ -34,6 +35,14 @@ public static class SetupCodeApplicator
                 BootstrapToken = result.Token,
             });
         }
+
+        // Settings: keep in sync for setup engine and other consumers
+        if (!string.IsNullOrEmpty(result.Url))
+            settings.GatewayUrl = result.Url;
+        if (!string.IsNullOrEmpty(result.Token))
+            settings.BootstrapToken = result.Token;
+        settings.Token = "";
+        settings.Save();
 
         // Clear stored device token — setup code targets a potentially different gateway
         if (!string.IsNullOrEmpty(dataPath))

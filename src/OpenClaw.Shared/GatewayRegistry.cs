@@ -82,6 +82,8 @@ public class GatewayRegistry
                     existing.OperatorDeviceToken = record.OperatorDeviceToken;
                 if (record.NodeDeviceToken != null)
                     existing.NodeDeviceToken = record.NodeDeviceToken;
+                if (record.SharedGatewayToken != null)
+                    existing.SharedGatewayToken = record.SharedGatewayToken;
                 // BootstrapToken: always overwrite (null = cleared after pairing)
                 existing.BootstrapToken = record.BootstrapToken;
             }

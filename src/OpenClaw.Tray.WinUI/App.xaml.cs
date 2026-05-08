@@ -71,7 +71,8 @@ public partial class App : Application
             settings,
             new AppLogger(),
             nodeService,
-            replaceExistingConfigurationConfirmed: replaceExistingConfigurationConfirmed);
+            replaceExistingConfigurationConfirmed: replaceExistingConfigurationConfirmed,
+            gatewayRegistry: _gatewayRegistry);
         // Bug #2: cache so OnPairingStatusChanged can read engine.IsAutoPairingWindowsNode
         // and suppress the "copy pairing command" toast during the Phase 14 blip.
         _localSetupEngine = engine;
@@ -1673,29 +1674,34 @@ public partial class App : Application
             return;
         }
 
-        // Bug #4 (Wizard hung at "Authenticating"): broaden credential resolution
-        // beyond settings.Token so a paired operator whose only credential is
-        // BootstrapToken or a stored DeviceIdentity DeviceToken still gets a
-        // client. Mirrors the prototype's resolver shape (openclaw-windows-node
-        // App.xaml.cs:1244-1298). Logic lives in GatewayCredentialResolver so
-        // Tray tests can cover all branches without booting WinUI.
-        var identityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
-        var credential = OpenClawTray.Services.GatewayCredentialResolver.Resolve(
-            _settings.Token,
-            _settings.BootstrapToken,
-            identityPath,
-            msg => Logger.Warn(msg));
-        if (credential == null)
+        // Resolve credential from registry (single source of truth)
+        var activeGw = _gatewayRegistry?.GetActive();
+        string? effectiveToken = null;
+        var tokenIsBootstrap = false;
+
+        if (!string.IsNullOrWhiteSpace(activeGw?.OperatorDeviceToken))
+        {
+            effectiveToken = activeGw.OperatorDeviceToken;
+        }
+        else if (!string.IsNullOrWhiteSpace(activeGw?.BootstrapToken))
+        {
+            effectiveToken = activeGw.BootstrapToken;
+            tokenIsBootstrap = true;
+        }
+        else if (!string.IsNullOrWhiteSpace(_settings.Token))
+        {
+            // Fallback: settings for legacy/manual token entry
+            effectiveToken = _settings.Token;
+        }
+
+        if (string.IsNullOrWhiteSpace(effectiveToken))
         {
             Logger.Info("Gateway token not configured — skipping operator client initialization");
             return;
         }
 
-        // Caller's useBootstrapHandoffAuth hint is preserved as an OR so existing
-        // call sites that put a bootstrap value into settings.Token + pass true
-        // continue to send auth.bootstrapToken (OpenClawGatewayClient.cs:556-565).
-        var tokenIsBootstrapToken = credential.IsBootstrapToken || useBootstrapHandoffAuth;
-        Logger.Info($"Gateway credential resolved from {credential.Source} (bootstrap={tokenIsBootstrapToken})");
+        var tokenIsBootstrapToken = tokenIsBootstrap || useBootstrapHandoffAuth;
+        Logger.Info($"Gateway credential resolved (bootstrap={tokenIsBootstrapToken})");
 
         // Unsubscribe from old client if exists
         UnsubscribeGatewayEvents();
@@ -1704,7 +1710,7 @@ public partial class App : Application
 
         _gatewayClient = new OpenClawGatewayClient(
             gatewayUrl,
-            credential.Token,
+            effectiveToken,
             new AppLogger(),
             tokenIsBootstrapToken);
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
@@ -2157,9 +2163,7 @@ public partial class App : Application
                     Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
                 }
 
-                // Store tokens in the gateway registry — this is the only place
-                // gateway records are created, ensuring only successfully paired
-                // gateways appear in the registry.
+                // Store tokens in the gateway registry
                 if (_gatewayRegistry != null)
                 {
                     var activeGw = _gatewayRegistry.GetActive();
@@ -2170,7 +2174,6 @@ public partial class App : Application
                         {
                             Logger.Info("Storing operator device token from bootstrap handoff");
                             activeGw.OperatorDeviceToken = args.OperatorDeviceToken;
-                            // Only clear bootstrap token once we have a proper operator token
                             activeGw.BootstrapToken = null;
                         }
 
@@ -2180,6 +2183,19 @@ public partial class App : Application
 
                         _gatewayRegistry.AddOrUpdate(activeGw);
                     }
+                }
+
+                // Sync to settings for setup engine and other consumers
+                if (_settings != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(args.OperatorDeviceToken))
+                    {
+                        _settings.Token = args.OperatorDeviceToken;
+                        DeviceIdentity.StoreOperatorDeviceToken(DataPath, args.OperatorDeviceToken, new AppLogger());
+                    }
+                    if (!string.IsNullOrWhiteSpace(_settings.BootstrapToken))
+                        _settings.BootstrapToken = "";
+                    _settings.Save();
                 }
 
                 // Reinitialize operator client — dispatch to UI thread
@@ -3884,25 +3900,37 @@ public partial class App : Application
         token = string.Empty;
         credentialSource = "none";
 
-        if (_settings == null)
-            return false;
-
-        gatewayUrl = _settings.GetEffectiveGatewayUrl();
+        // Registry is the single source of truth
+        var activeGw = _gatewayRegistry?.GetActive();
+        gatewayUrl = GetActiveGatewayUrl() ?? "";
         if (string.IsNullOrWhiteSpace(gatewayUrl))
             return false;
 
-        var identityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
-        var credential = OpenClawTray.Services.GatewayCredentialResolver.Resolve(
-            _settings.Token,
-            _settings.BootstrapToken,
-            identityPath,
-            msg => Logger.Warn(msg));
-        if (credential == null)
-            return false;
+        // Prefer shared gateway token (for web dashboard auth),
+        // fall back to operator device token, then settings
+        if (!string.IsNullOrWhiteSpace(activeGw?.SharedGatewayToken))
+        {
+            token = activeGw.SharedGatewayToken;
+            credentialSource = "registry:shared";
+            return true;
+        }
 
-        token = credential.Token;
-        credentialSource = credential.Source;
-        return true;
+        if (!string.IsNullOrWhiteSpace(activeGw?.OperatorDeviceToken))
+        {
+            token = activeGw.OperatorDeviceToken;
+            credentialSource = "registry:operator";
+            return true;
+        }
+
+        // Last resort: settings (for legacy/manual token entry)
+        if (!string.IsNullOrWhiteSpace(_settings?.Token))
+        {
+            token = _settings.Token;
+            credentialSource = "settings";
+            return true;
+        }
+
+        return false;
     }
 
     #region Actions
