@@ -271,7 +271,7 @@ public class SystemCapability : NodeCapabilityBase
             {
                 // Rail 1: no silent fallback — handler exceptions become typed denies.
                 Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
-                v2Result = ExecApprovalV2Result.ValidationFailed($"Handler exception: {ex.Message}");
+                v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
             }
 
             Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
@@ -413,7 +413,7 @@ public class SystemCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("system.run failed", ex);
-            return Error($"Execution failed: {ex.Message}");
+            return Error("Execution failed");
         }
     }
 
@@ -614,7 +614,7 @@ public class SystemCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("execApprovals.set failed", ex);
-            return Error($"Failed to update policy: {ex.Message}");
+            return Error("Failed to update policy");
         }
     }
 

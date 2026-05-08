@@ -28,7 +28,11 @@ public sealed class QuickSendDialog : WindowEx
     private readonly TextBox _errorDetailsTextBox;
     private readonly Button _sendButton;
     private bool _isSending;
+    private bool _isClosed;
+    private bool _focusRetryRunning;
 
+    private const string TitleIcon = "🦞";
+    private const double WindowControlsReservedWidth = 140;
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -46,6 +50,7 @@ public sealed class QuickSendDialog : WindowEx
         uint uFlags);
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const int TitleBarHeight = 48;
     private const int SW_SHOWNORMAL = 1;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
@@ -63,7 +68,8 @@ public sealed class QuickSendDialog : WindowEx
         
         // Window setup
         Title = LocalizationHelper.GetString("WindowTitle_QuickSend");
-        this.SetWindowSize(420, 260);
+        ExtendsContentIntoTitleBar = true;
+        this.SetWindowSize(420, 260 + TitleBarHeight);
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
         
@@ -72,9 +78,9 @@ public sealed class QuickSendDialog : WindowEx
         BackdropHelper.TrySetAcrylicBackdrop((Microsoft.UI.Xaml.Window)this);
 
         // Hotkey-launched windows can fail to foreground on Windows 10 due to
-        // foreground activation restrictions. Ensure the window is topmost.
+        // foreground activation restrictions. Keep the existing topmost promotion.
         this.IsAlwaysOnTop = true;
-        
+
         // Build UI programmatically (simple dialog)
         var root = new Grid
         {
@@ -140,20 +146,57 @@ public sealed class QuickSendDialog : WindowEx
         Grid.SetRow(buttonPanel, 3);
         root.Children.Add(buttonPanel);
 
-        Content = new Border
+        var body = new Border
         {
             Padding = new Thickness(24),
             Child = root
         };
 
-        // Focus the text box when shown
+        var outerGrid = new Grid();
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TitleBarHeight) });
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var titleBar = new Grid { Padding = new Thickness(16, 0, WindowControlsReservedWidth, 0) };
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = TitleIcon,
+            FontSize = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        });
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = LocalizationHelper.GetString("WindowTitle_QuickSend"),
+            FontSize = 13,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        titleBar.Children.Add(titleStack);
+        Grid.SetRow(titleBar, 0);
+        outerGrid.Children.Add(titleBar);
+
+        Grid.SetRow(body, 1);
+        outerGrid.Children.Add(body);
+
+        Content = outerGrid;
+        SetTitleBar(titleBar);
+
+        // Focus the text box when shown without closing on transient deactivation.
         Activated += (s, e) =>
         {
-            TryBringToFront();
-            RequestInputFocus();
+            if (e.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                TryBringToFront();
+                RequestInputFocus();
+            }
         };
 
-        Closed += (s, e) => Logger.Info("[QuickSend] Dialog closed");
+        Closed += (s, e) =>
+        {
+            _isClosed = true;
+            Logger.Info("[QuickSend] Dialog closed");
+        };
 
         Logger.Info($"[QuickSend] Dialog opened (prefill={!string.IsNullOrEmpty(prefillMessage)})");
     }
@@ -162,6 +205,9 @@ public sealed class QuickSendDialog : WindowEx
     {
         try
         {
+            if (_isClosed)
+                return;
+
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd == IntPtr.Zero) return;
 
@@ -201,7 +247,7 @@ public sealed class QuickSendDialog : WindowEx
 
         _errorDetailsTextBox.Visibility = Visibility.Collapsed;
         _errorDetailsTextBox.Text = string.Empty;
-        this.SetWindowSize(420, 260);
+        this.SetWindowSize(420, 260 + TitleBarHeight);
 
         _isSending = true;
         _sendButton.IsEnabled = false;
@@ -280,7 +326,7 @@ public sealed class QuickSendDialog : WindowEx
         _errorDetailsTextBox.MinHeight = 140;
         _errorDetailsTextBox.Text = details;
         _errorDetailsTextBox.Visibility = Visibility.Visible;
-        this.SetWindowSize(520, 400);
+        this.SetWindowSize(520, 400 + TitleBarHeight);
 
         // Move focus to the details box so users can immediately select/copy text.
         _errorDetailsTextBox.Focus(FocusState.Programmatic);
@@ -292,7 +338,7 @@ public sealed class QuickSendDialog : WindowEx
         _errorDetailsTextBox.MinHeight = 80;
         _errorDetailsTextBox.Text = details;
         _errorDetailsTextBox.Visibility = Visibility.Visible;
-        this.SetWindowSize(500, 320);
+        this.SetWindowSize(500, 320 + TitleBarHeight);
     }
 
     private static void CopyTextToClipboard(string text)
@@ -304,23 +350,40 @@ public sealed class QuickSendDialog : WindowEx
 
     private void QueueFocusMessageInput()
     {
+        if (_isClosed)
+            return;
+
         DispatcherQueue?.TryEnqueue(FocusMessageInput);
     }
 
     private void RequestInputFocus()
     {
         QueueFocusMessageInput();
-        _ = RetryFocusMessageInputAsync();
+        if (!_focusRetryRunning)
+        {
+            _focusRetryRunning = true;
+            _ = RetryFocusMessageInputAsync();
+        }
     }
 
     private async Task RetryFocusMessageInputAsync()
     {
-        var delaysMs = new[] { 60, 160, 320 };
-        foreach (var delay in delaysMs)
+        try
         {
-            await Task.Delay(delay);
-            TryBringToFront();
-            QueueFocusMessageInput();
+            var delaysMs = new[] { 60, 160, 320 };
+            foreach (var delay in delaysMs)
+            {
+                await Task.Delay(delay);
+                if (_isClosed)
+                    return;
+
+                TryBringToFront();
+                QueueFocusMessageInput();
+            }
+        }
+        finally
+        {
+            _focusRetryRunning = false;
         }
     }
 

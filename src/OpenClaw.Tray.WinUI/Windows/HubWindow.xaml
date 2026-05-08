@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw"
-    MinWidth="600" MinHeight="400">
+    MinWidth="750" MinHeight="400">
 
     <Window.SystemBackdrop>
         <MicaBackdrop/>

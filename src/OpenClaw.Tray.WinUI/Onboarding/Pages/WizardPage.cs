@@ -18,6 +18,13 @@ namespace OpenClawTray.Onboarding.Pages;
 /// </summary>
 public sealed class WizardPage : Component<OnboardingState>
 {
+    private static readonly Regex UrlInMessagePattern = new(
+        @"(https?://[^\s\)\"",]+)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex DeviceCodePattern = new(
+        @"(?:^|\s)(?:[Cc]ode|user_code|USER_CODE)\s*[:=]\s*([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b",
+        RegexOptions.Compiled);
     public override Element Render()
     {
         // Read persisted wizard state from shared OnboardingState
@@ -523,7 +530,7 @@ public sealed class WizardPage : Component<OnboardingState>
         if (!string.IsNullOrEmpty(displayMessage))
         {
             // URL detection — find https:// URLs in the message
-            var urlMatch = Regex.Match(displayMessage, @"(https?://[^\s\)\"",]+)");
+            var urlMatch = UrlInMessagePattern.Match(displayMessage);
             if (urlMatch.Success)
             {
                 var detectedUrl = urlMatch.Value;
@@ -545,9 +552,7 @@ public sealed class WizardPage : Component<OnboardingState>
             // Capture must contain a digit or hyphen (or be all uppercase) to avoid
             // matching common English words like "below" that follow "code".
             // Case-sensitive on the value to require the GitHub-style uppercase code.
-            var codeMatch = Regex.Match(
-                displayMessage,
-                @"(?:^|\s)(?:[Cc]ode|user_code|USER_CODE)\s*[:=]\s*([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
+            var codeMatch = DeviceCodePattern.Match(displayMessage);
             if (codeMatch.Success)
             {
                 var code = codeMatch.Groups[1].Value;
@@ -581,7 +586,7 @@ public sealed class WizardPage : Component<OnboardingState>
         {
             if (!string.IsNullOrEmpty(displayMessage))
             {
-                var urlMatch = Regex.Match(displayMessage, @"(https?://[^\s\)\"",]+)");
+                var urlMatch = UrlInMessagePattern.Match(displayMessage);
                 if (urlMatch.Success)
                 {
                     try

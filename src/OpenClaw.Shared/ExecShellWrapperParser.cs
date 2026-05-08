@@ -135,8 +135,26 @@ internal static class ExecShellWrapperParser
         for (var i = 1; i < tokens.Length; i++)
         {
             var option = tokens[i];
-            if (option.Equals("-Command", StringComparison.OrdinalIgnoreCase) ||
-                option.Equals("-c", StringComparison.OrdinalIgnoreCase))
+
+            // Check for inline separator form first: -flag:value or -flag=value
+            var sepIdx = IndexOfFlagSeparator(option);
+            if (sepIdx > 0)
+            {
+                var flagPart = option[..sepIdx];
+                var valuePart = option[(sepIdx + 1)..];
+
+                if (IsCommandFlag(flagPart))
+                {
+                    return string.IsNullOrWhiteSpace(valuePart)
+                        ? ("", shell, "Shell wrapper payload was empty")
+                        : (valuePart, shell, null);
+                }
+
+                if (IsEncodedCommandFlag(flagPart))
+                    return DecodeEncodedPayload(valuePart, shell);
+            }
+
+            if (IsCommandFlag(option))
             {
                 var payload = string.Join(" ", tokens, i + 1, tokens.Length - i - 1).Trim();
                 return string.IsNullOrWhiteSpace(payload)
@@ -144,30 +162,66 @@ internal static class ExecShellWrapperParser
                     : (payload, shell, null);
             }
 
-            if (option.Equals("-EncodedCommand", StringComparison.OrdinalIgnoreCase) ||
-                option.Equals("-enc", StringComparison.OrdinalIgnoreCase) ||
-                option.Equals("-ec", StringComparison.OrdinalIgnoreCase))
+            if (IsEncodedCommandFlag(option))
             {
                 var encoded = i + 1 < tokens.Length ? tokens[i + 1] : null;
-                if (string.IsNullOrWhiteSpace(encoded))
-                    return ("", shell, "Shell wrapper payload was empty");
-
-                try
-                {
-                    var bytes = Convert.FromBase64String(encoded);
-                    var payload = Encoding.Unicode.GetString(bytes).Trim();
-                    return string.IsNullOrWhiteSpace(payload)
-                        ? ("", shell, "EncodedCommand decoded to an empty payload")
-                        : (payload, shell, null);
-                }
-                catch (FormatException)
-                {
-                    return ("", shell, "EncodedCommand could not be decoded");
-                }
+                return DecodeEncodedPayload(encoded, shell);
             }
         }
 
         return default;
+    }
+
+    // Returns the index of the first ':' or '=' in a flag token (after the leading '-').
+    private static int IndexOfFlagSeparator(string token)
+    {
+        for (var i = 1; i < token.Length; i++)
+        {
+            if (token[i] == ':' || token[i] == '=')
+                return i;
+        }
+        return -1;
+    }
+
+    // Matches -Command and -c (documented PowerShell -Command aliases).
+    private static bool IsCommandFlag(string flag) =>
+        flag.Equals("-Command", StringComparison.OrdinalIgnoreCase) ||
+        flag.Equals("-c", StringComparison.OrdinalIgnoreCase);
+
+    // Matches -e/-ec aliases and all unique prefix abbreviations of -EncodedCommand.
+    // Windows PowerShell accepts -e as EncodedCommand despite the apparent ambiguity with
+    // -ExecutionPolicy, so the parser must fail closed and decode it.
+    private static bool IsEncodedCommandFlag(string flag)
+    {
+        if (flag.Equals("-e", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (flag.Equals("-ec", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        const string fullFlag = "-encodedcommand";
+        return flag.Length >= 3 &&  // minimum: -en
+               flag.Length <= fullFlag.Length &&
+               fullFlag.StartsWith(flag, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (string? Payload, string? Shell, string? Error) DecodeEncodedPayload(string? encoded, string shell)
+    {
+        if (string.IsNullOrWhiteSpace(encoded))
+            return ("", shell, "Shell wrapper payload was empty");
+
+        try
+        {
+            var bytes = Convert.FromBase64String(encoded);
+            var payload = Encoding.Unicode.GetString(bytes).Trim();
+            return string.IsNullOrWhiteSpace(payload)
+                ? ("", shell, "EncodedCommand decoded to an empty payload")
+                : (payload, shell, null);
+        }
+        catch (FormatException)
+        {
+            return ("", shell, "EncodedCommand could not be decoded");
+        }
     }
 
     private static List<string> SplitTopLevelCommands(string command)
