@@ -5,6 +5,7 @@ using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Windows.ApplicationModel.DataTransfer;
@@ -40,11 +41,23 @@ public sealed partial class ConnectionPage : Page
         UpdateStatus(hub.CurrentStatus);
         UpdateDeviceIdentity();
         LoadConnectionLog();
+        LoadGatewayList();
     }
 
     public void UpdateStatus(ConnectionStatus status)
     {
-        var (color, text) = status switch
+        var registry = _hub?.GatewayRegistry;
+        var activeGw = registry?.GetActive();
+        var hasOperatorToken = !string.IsNullOrWhiteSpace(activeGw?.OperatorDeviceToken);
+        var hasNodeToken = !string.IsNullOrWhiteSpace(activeGw?.NodeDeviceToken);
+        var hasBothTokens = hasOperatorToken && hasNodeToken;
+
+        // Only show "Connected" when operator has a working token
+        var effectiveStatus = status;
+        if (status == ConnectionStatus.Connected && !hasOperatorToken)
+            effectiveStatus = ConnectionStatus.Connecting; // still bootstrapping
+
+        var (color, text) = effectiveStatus switch
         {
             ConnectionStatus.Connected => (Microsoft.UI.Colors.LimeGreen, "Connected"),
             ConnectionStatus.Connecting => (Microsoft.UI.Colors.Orange, "Connecting…"),
@@ -55,14 +68,12 @@ public sealed partial class ConnectionPage : Page
         StatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
         StatusText.Text = text;
 
-        // Button visibility: Reconnect when disconnected/error, Disconnect when connected
-        var isConnected = status == ConnectionStatus.Connected;
-        ReconnectButton.IsEnabled = status != ConnectionStatus.Connecting;
+        var isConnected = effectiveStatus == ConnectionStatus.Connected;
+        ReconnectButton.IsEnabled = effectiveStatus != ConnectionStatus.Connecting;
         ReconnectButton.Visibility = isConnected ? Visibility.Collapsed : Visibility.Visible;
         DisconnectButton.Visibility = isConnected ? Visibility.Visible : Visibility.Collapsed;
 
-        // Connection attempts counter
-        if (status == ConnectionStatus.Connecting)
+        if (effectiveStatus == ConnectionStatus.Connecting)
         {
             _connectionAttempts++;
             ConnectionAttemptsText.Text = $"Connection attempt {_connectionAttempts}…";
@@ -70,14 +81,14 @@ public sealed partial class ConnectionPage : Page
         }
         else
         {
-            if (status == ConnectionStatus.Connected)
+            if (effectiveStatus == ConnectionStatus.Connected)
                 _connectionAttempts = 0;
             ConnectionAttemptsText.Visibility = Visibility.Collapsed;
         }
 
         // Gateway details
         var self = _hub?.LastGatewaySelf;
-        var effectiveUrl = _hub?.Settings?.GetEffectiveGatewayUrl() ?? "";
+        var effectiveUrl = activeGw?.Url ?? "";
 
         if (self != null && status == ConnectionStatus.Connected)
         {
@@ -94,7 +105,18 @@ public sealed partial class ConnectionPage : Page
         }
         else
         {
-            GatewayDetailText.Text = "";
+            // Show registry state even when not connected
+            var detailParts = new List<string>();
+            if (activeGw != null)
+            {
+                if (!string.IsNullOrWhiteSpace(activeGw.OperatorDeviceToken))
+                    detailParts.Add("Operator: paired");
+                else if (!string.IsNullOrWhiteSpace(activeGw.BootstrapToken))
+                    detailParts.Add("Operator: pairing…");
+                if (!string.IsNullOrWhiteSpace(activeGw.NodeDeviceToken))
+                    detailParts.Add("Node: paired");
+            }
+            GatewayDetailText.Text = detailParts.Count > 0 ? string.Join(" · ", detailParts) : "";
             GatewayUrlDetail.Text = !string.IsNullOrEmpty(effectiveUrl)
                 ? SanitizeUrl(effectiveUrl) : "";
         }
@@ -127,6 +149,7 @@ public sealed partial class ConnectionPage : Page
 
         UpdateDeviceIdentity();
         LoadConnectionLog();
+        LoadGatewayList();
 
         // Show auth error if present
         var authError = _hub?.LastAuthError;
@@ -236,6 +259,133 @@ public sealed partial class ConnectionPage : Page
         return url;
     }
 
+    // ─── Gateway List ───
+
+    private void LoadGatewayList()
+    {
+        GatewayListPanel.Children.Clear();
+        var registry = _hub?.GatewayRegistry;
+        if (registry == null)
+        {
+            RecentGatewaysCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var gateways = registry.GetAll();
+        if (gateways.Count == 0)
+        {
+            RecentGatewaysCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        RecentGatewaysCard.Visibility = Visibility.Visible;
+        var active = registry.GetActive();
+
+        foreach (var gw in gateways)
+        {
+            var isActive = gw.Id == active?.Id;
+            var row = new Grid { ColumnSpacing = 8, Padding = new Thickness(0, 2, 0, 2) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+
+            // Active indicator
+            var indicator = new TextBlock
+            {
+                Text = isActive ? "✓" : "",
+                VerticalAlignment = VerticalAlignment.Center,
+                Width = 16,
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            };
+            Grid.SetColumn(indicator, 0);
+            row.Children.Add(indicator);
+
+            // URL + token status
+            var hasOp = !string.IsNullOrWhiteSpace(gw.OperatorDeviceToken);
+            var hasNode = !string.IsNullOrWhiteSpace(gw.NodeDeviceToken);
+            var hasBoot = !string.IsNullOrWhiteSpace(gw.BootstrapToken);
+            var statusParts = new List<string>();
+            if (hasOp && hasNode) statusParts.Add("paired");
+            else if (hasBoot) statusParts.Add("pairing…");
+            else if (hasNode) statusParts.Add("node only");
+            var statusSuffix = statusParts.Count > 0 ? $"  ({string.Join(", ", statusParts)})" : "";
+
+            var infoPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            infoPanel.Children.Add(new TextBlock
+            {
+                Text = GatewayUrlHelper.SanitizeForDisplay(gw.Url),
+                Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            infoPanel.Children.Add(new TextBlock
+            {
+                Text = $"{gw.Id}{statusSuffix}",
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            });
+            Grid.SetColumn(infoPanel, 1);
+            row.Children.Add(infoPanel);
+
+            // Connect button
+            var connectBtn = new Button
+            {
+                Content = isActive ? "Active" : "Connect",
+                IsEnabled = !isActive,
+                VerticalAlignment = VerticalAlignment.Center,
+                Tag = gw.Id,
+            };
+            connectBtn.Click += OnConnectGateway;
+            Grid.SetColumn(connectBtn, 2);
+            row.Children.Add(connectBtn);
+
+            // Remove button
+            var removeBtn = new Button
+            {
+                Content = "✕",
+                VerticalAlignment = VerticalAlignment.Center,
+                Tag = gw.Id,
+                Padding = new Thickness(6, 4, 6, 4),
+            };
+            removeBtn.Click += OnRemoveGateway;
+            Grid.SetColumn(removeBtn, 3);
+            row.Children.Add(removeBtn);
+
+            GatewayListPanel.Children.Add(row);
+        }
+    }
+
+    private void OnConnectGateway(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string gwId) return;
+        var registry = _hub?.GatewayRegistry;
+        if (registry == null) return;
+
+        registry.SetActive(gwId);
+
+        // Update settings URL from the new active gateway (for the Advanced UI)
+        var active = registry.GetActive();
+        if (active != null && _hub?.Settings != null)
+        {
+            _hub.Settings.GatewayUrl = active.Url;
+            _hub.Settings.Token = active.OperatorDeviceToken ?? "";
+            _hub.Settings.Save();
+        }
+
+        LoadGatewayList();
+        _hub?.ReconnectAction?.Invoke();
+    }
+
+    private void OnRemoveGateway(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string gwId) return;
+        var registry = _hub?.GatewayRegistry;
+        if (registry == null) return;
+
+        registry.Remove(gwId);
+        LoadGatewayList();
+    }
+
     // ─── Event Handlers ───
 
     private void OnDisconnect(object sender, RoutedEventArgs e)
@@ -331,7 +481,7 @@ public sealed partial class ConnectionPage : Page
             ? v
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
 
-        var result = SetupCodeApplicator.Apply(SetupCodeTextBox.Text, settings, dataPath);
+        var result = SetupCodeApplicator.Apply(SetupCodeTextBox.Text, settings, dataPath, _hub?.GatewayRegistry);
         if (!result.Success)
         {
             SetupCodeResultText.Text = $"✗ {result.Error}";

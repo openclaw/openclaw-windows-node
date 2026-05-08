@@ -33,8 +33,9 @@ public sealed partial class HubWindow : WindowEx
             }
         }
     }
-    public OpenClawGatewayClient? GatewayClient { get; set; }
-    public ConnectionStatus CurrentStatus { get; set; }
+    public OpenClawGatewayClient? GatewayClient => GatewayRegistry?.ActiveClient;
+    public GatewayRegistry? GatewayRegistry { get; set; }
+    public ConnectionStatus CurrentStatus => GatewayRegistry?.ActiveConnectionStatus ?? ConnectionStatus.Disconnected;
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;
 
@@ -167,7 +168,6 @@ public sealed partial class HubWindow : WindowEx
             DispatcherQueue?.TryEnqueue(() =>
             {
                 if (IsClosed) return;
-                CurrentStatus = status;
                 _cachedCommands = null;
                 if (status == ConnectionStatus.Disconnected)
                     _lastGatewaySelf = null;
@@ -175,7 +175,8 @@ public sealed partial class HubWindow : WindowEx
                 UpdateNavItemsForConnectionState(status);
                 if (ContentFrame?.Content is HomePage homePage)
                 {
-                    homePage.UpdateConnectionStatus(status, Settings?.GetEffectiveGatewayUrl());
+                    var gwUrl = GatewayRegistry?.GetActive()?.Url;
+                    homePage.UpdateConnectionStatus(status, gwUrl);
                 }
                 if (ContentFrame?.Content is ConnectionPage connectionPage)
                 {

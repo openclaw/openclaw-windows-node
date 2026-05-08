@@ -94,6 +94,7 @@ public partial class App : Application
     public void ReinitializeGatewayClient(bool useBootstrapHandoffAuth = false) =>
         InitializeGatewayClient(useBootstrapHandoffAuth);
     private SettingsManager? _settings;
+    private GatewayRegistry? _gatewayRegistry;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
@@ -101,7 +102,20 @@ public partial class App : Application
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
     
-    private ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
+    private ConnectionStatus _currentStatusBacking = ConnectionStatus.Disconnected;
+    private ConnectionStatus _currentStatus
+    {
+        get => _currentStatusBacking;
+        set
+        {
+            _currentStatusBacking = value;
+            if (_gatewayRegistry != null)
+            {
+                _gatewayRegistry.ActiveConnectionStatus = value;
+                _gatewayRegistry.ActiveClient = _gatewayClient;
+            }
+        }
+    }
     private AgentActivity? _currentActivity;
     private ChannelHealth[] _lastChannels = Array.Empty<ChannelHealth>();
     private SessionInfo[] _lastSessions = Array.Empty<SessionInfo>();
@@ -364,6 +378,19 @@ public partial class App : Application
 
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
+
+        // Initialize gateway registry (migrates from settings on first run)
+        _gatewayRegistry = new GatewayRegistry(DataPath);
+        if (_gatewayRegistry.GetAll().Count == 0)
+        {
+            var storedOpToken = DeviceIdentity.TryReadStoredOperatorDeviceToken(DataPath);
+            var storedNodeToken = DeviceIdentity.TryReadStoredDeviceToken(DataPath);
+            _gatewayRegistry.TryMigrateFromSettings(
+                _settings.GatewayUrl,
+                storedOpToken ?? (string.IsNullOrWhiteSpace(_settings.Token) ? null : _settings.Token),
+                storedNodeToken);
+        }
+
         DiagnosticsJsonlService.Configure(DataPath);
         DiagnosticsJsonlService.Write("app.start", new
         {
@@ -938,7 +965,7 @@ public partial class App : Application
             var detailParts = new List<string>();
             if (_lastGatewaySelf != null && !string.IsNullOrEmpty(_lastGatewaySelf.ServerVersion))
                 detailParts.Add($"v{_lastGatewaySelf.ServerVersion}");
-            var url = _settings?.GetEffectiveGatewayUrl();
+            var url = GetActiveGatewayUrl();
             if (!string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 detailParts.Add($"{uri.Host}:{uri.Port}");
             if (_lastPresence != null && _lastPresence.Length > 0)
@@ -1639,8 +1666,7 @@ public partial class App : Application
         if (_settings == null) return;
         if (!EnsureSshTunnelConfigured()) return;
 
-        // Guard against empty gateway URL (e.g., fresh install before onboarding)
-        var gatewayUrl = _settings.GetEffectiveGatewayUrl();
+        var gatewayUrl = GetActiveGatewayUrl();
         if (string.IsNullOrWhiteSpace(gatewayUrl))
         {
             Logger.Info("Gateway URL not configured — skipping client initialization");
@@ -1763,8 +1789,6 @@ public partial class App : Application
             return;
         }
 
-        // Surface gateway-disabled fallback so the user isn't surprised when
-        // they enabled both but only MCP comes up.
         if (enableNode && !canRunGateway && enableMcp)
         {
             Logger.Warn("Node mode enabled but gateway auth is missing — running MCP-only.");
@@ -1788,10 +1812,12 @@ public partial class App : Application
             _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
             _nodeService.RecordingStateChanged += OnRecordingStateChanged;
 
-            if (canRunGateway)
+            if (canRunGateway && !string.IsNullOrWhiteSpace(gatewayUrl))
             {
+                // Use node device token if available, fall back to operator token
+                var nodeToken = activeGw?.NodeDeviceToken ?? activeGw?.OperatorDeviceToken ?? "";
                 Logger.Info($"Initializing Windows Node service (gateway{(enableMcp ? " + MCP" : "")})...");
-                _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
+                _ = _nodeService.ConnectAsync(gatewayUrl, nodeToken, activeGw?.BootstrapToken);
             }
             else
             {
@@ -1987,6 +2013,26 @@ public partial class App : Application
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
     }
 
+    /// <summary>
+    /// Gets the effective gateway URL from the registry.
+    /// Applies SSH tunnel override if enabled.
+    /// </summary>
+    private string? GetActiveGatewayUrl()
+    {
+        var gw = _gatewayRegistry?.GetActive();
+        var baseUrl = gw?.Url;
+        if (string.IsNullOrWhiteSpace(baseUrl)) return null;
+        if (_settings?.UseSshTunnel == true)
+            return $"ws://127.0.0.1:{_settings.SshTunnelLocalPort}";
+        return baseUrl;
+    }
+
+    /// <summary>
+    /// Gets the operator token from the registry.
+    /// </summary>
+    private string? GetActiveOperatorToken() =>
+        _gatewayRegistry?.GetActive()?.OperatorDeviceToken;
+
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
     {
         Logger.Info($"Node status: {status}");
@@ -2113,33 +2159,30 @@ public partial class App : Application
                     Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
                 }
 
-                // If the gateway issued a role-specific operator device token during
-                // bootstrap pairing, store it in Settings.Token AND the identity file.
-                if (!string.IsNullOrWhiteSpace(args.OperatorDeviceToken) && _settings != null)
+                // Store tokens in the gateway registry — this is the only place
+                // gateway records are created, ensuring only successfully paired
+                // gateways appear in the registry.
+                if (_gatewayRegistry != null)
                 {
-                    Logger.Info("Storing operator device token from bootstrap handoff");
-                    _settings.Token = args.OperatorDeviceToken;
-                    DeviceIdentity.StoreOperatorDeviceToken(DataPath, args.OperatorDeviceToken, new AppLogger());
-                }
+                    var activeGw = _gatewayRegistry.GetActive();
 
-                // Always clear consumed bootstrap token after node pairs
-                if (_settings != null && !string.IsNullOrWhiteSpace(_settings.BootstrapToken))
-                {
-                    _settings.BootstrapToken = "";
-                }
-
-                // If no operator token from gateway, try the stored one from a previous session
-                if (string.IsNullOrWhiteSpace(_settings?.Token))
-                {
-                    var storedOpToken = DeviceIdentity.TryReadStoredOperatorDeviceToken(DataPath);
-                    if (!string.IsNullOrWhiteSpace(storedOpToken) && _settings != null)
+                    if (activeGw != null)
                     {
-                        Logger.Info("Using stored operator device token from previous session");
-                        _settings.Token = storedOpToken;
+                        if (!string.IsNullOrWhiteSpace(args.OperatorDeviceToken))
+                        {
+                            Logger.Info("Storing operator device token from bootstrap handoff");
+                            activeGw.OperatorDeviceToken = args.OperatorDeviceToken;
+                            // Only clear bootstrap token once we have a proper operator token
+                            activeGw.BootstrapToken = null;
+                        }
+
+                        var nodeToken = DeviceIdentity.TryReadStoredDeviceToken(DataPath);
+                        if (!string.IsNullOrWhiteSpace(nodeToken))
+                            activeGw.NodeDeviceToken = nodeToken;
+
+                        _gatewayRegistry.AddOrUpdate(activeGw);
                     }
                 }
-
-                _settings?.Save();
 
                 // Reinitialize operator client — dispatch to UI thread
                 _dispatcherQueue?.TryEnqueue(() =>
@@ -2288,6 +2331,23 @@ public partial class App : Application
             _authFailureMessage = null;
             if (_hubWindow != null && !_hubWindow.IsClosed)
                 _hubWindow.LastAuthError = null;
+
+            // Persist operator device token from bootstrap handoff to the registry
+            if (_gatewayRegistry != null && _gatewayClient != null)
+            {
+                var activeGw = _gatewayRegistry.GetActive();
+                if (activeGw != null && string.IsNullOrWhiteSpace(activeGw.OperatorDeviceToken))
+                {
+                    var opToken = _gatewayClient.OperatorDeviceToken;
+                    if (!string.IsNullOrWhiteSpace(opToken))
+                    {
+                        Logger.Info("Persisting operator device token from handoff to registry");
+                        activeGw.OperatorDeviceToken = opToken;
+                        activeGw.BootstrapToken = null;
+                        _gatewayRegistry.AddOrUpdate(activeGw);
+                    }
+                }
+            }
         }
 
         // Clear stale data when disconnected so tray menu doesn't show old sessions/nodes
@@ -2892,8 +2952,7 @@ public partial class App : Application
         {
             _hubWindow = new HubWindow();
             _hubWindow.Settings = _settings;
-            _hubWindow.GatewayClient = _gatewayClient;
-            _hubWindow.CurrentStatus = _currentStatus;
+            _hubWindow.GatewayRegistry = _gatewayRegistry;
             _hubWindow.OpenDashboardAction = OpenDashboard;
             _hubWindow.CheckForUpdatesAction = () => _ = CheckForUpdatesUserInitiatedAsync();
             _hubWindow.QuickSendAction = () => ShowQuickSend();
@@ -2942,10 +3001,8 @@ public partial class App : Application
             // Navigate to default page now that properties and data are set
             _hubWindow.NavigateToDefault();
         }
-        // Always update live state
         _hubWindow.Settings = _settings;
-        _hubWindow.GatewayClient = _gatewayClient;
-        _hubWindow.CurrentStatus = _currentStatus;
+        _hubWindow.GatewayRegistry = _gatewayRegistry;
         _hubWindow.VoiceServiceInstance = _nodeService?.VoiceService ?? _standaloneVoiceService;
         if (_nodeService != null)
         {
@@ -3031,6 +3088,9 @@ public partial class App : Application
 
         // Reset status so the tray doesn't show a stale "Connected" from the previous mode
         _currentStatus = ConnectionStatus.Disconnected;
+        _lastSessions = Array.Empty<SessionInfo>();
+        _lastNodes = Array.Empty<GatewayNodeInfo>();
+        _lastChannels = Array.Empty<ChannelHealth>();
         _hubWindow?.UpdateStatus(_currentStatus);
         UpdateTrayIcon();
 
@@ -3073,8 +3133,7 @@ public partial class App : Application
         if (_hubWindow != null && !_hubWindow.IsClosed)
         {
             _hubWindow.Settings = _settings;
-            _hubWindow.GatewayClient = _gatewayClient;
-            _hubWindow.CurrentStatus = _currentStatus;
+            _hubWindow.GatewayRegistry = _gatewayRegistry;
         }
     }
 
@@ -3104,12 +3163,9 @@ public partial class App : Application
         if (_hubWindow != null && !_hubWindow.IsClosed)
         {
             _hubWindow.Settings = _settings;
-            _hubWindow.GatewayClient = _gatewayClient;
-            _hubWindow.CurrentStatus = _currentStatus;
+            _hubWindow.GatewayRegistry = _gatewayRegistry;
         }
-    }
-
-    /// <summary>
+    }    /// <summary>
     /// Reconnects only the node service (preserves gateway client + chat window).
     /// Use for capability toggle changes that don't require a full reconnect.
     /// </summary>
@@ -3725,12 +3781,10 @@ public partial class App : Application
             if (ShouldInitializeNodeService())
                 InitializeNodeService();
 
-            // Keep hub window in sync with new client
             if (_hubWindow != null && !_hubWindow.IsClosed)
             {
                 _hubWindow.Settings = _settings;
-                _hubWindow.GatewayClient = _gatewayClient;
-                _hubWindow.CurrentStatus = _currentStatus;
+                _hubWindow.GatewayRegistry = _gatewayRegistry;
             }
         };
         _onboardingWindow.Closed += (s, e) => _onboardingWindow = null;
@@ -3857,7 +3911,8 @@ public partial class App : Application
         if (_settings == null) return;
         if (!EnsureSshTunnelConfigured()) return;
         
-        var baseUrl = _settings.GetEffectiveGatewayUrl()
+        var gwUrl = GetActiveGatewayUrl() ?? "";
+        var baseUrl = gwUrl
             .Replace("ws://", "http://")
             .Replace("wss://", "https://")
             .TrimEnd('/');
@@ -3866,10 +3921,11 @@ public partial class App : Application
             ? baseUrl
             : $"{baseUrl}/{path.TrimStart('/')}";
 
-        if (!string.IsNullOrEmpty(_settings.Token))
+        var token = GetActiveOperatorToken();
+        if (!string.IsNullOrEmpty(token))
         {
             var separator = url.Contains('?') ? "&" : "?";
-            url = $"{url}{separator}token={Uri.EscapeDataString(_settings.Token)}";
+            url = $"{url}{separator}token={Uri.EscapeDataString(token)}";
         }
 
         try

@@ -101,6 +101,20 @@
                 </StackPanel>
             </Border>
 
+            <!-- ═══ Section 2.5: Recent Gateways ═══ -->
+            <Border x:Name="RecentGatewaysCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16"
+                    Visibility="Collapsed">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="📡 Recent Gateways" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock Text="Switch between previously paired gateways."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel x:Name="GatewayListPanel" Spacing="6"/>
+                </StackPanel>
+            </Border>
+
             <!-- ═══ Section 3: Device Identity (always visible when paired) ═══ -->
             <Border x:Name="DeviceIdentityCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

@@ -73,6 +73,11 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private string _connectAuthToken;
     private SignatureTokenMode _signatureTokenMode = SignatureTokenMode.V3AuthToken;
     private bool _hasOperatorDeviceToken; // True when _connectAuthToken is a device token (not shared secret)
+
+    /// <summary>
+    /// The operator's device token, if one was issued during bootstrap handoff.
+    /// </summary>
+    public string? OperatorDeviceToken => _hasOperatorDeviceToken ? _connectAuthToken : null;
     private long? _challengeTimestampMs;
     private string? _currentChallengeNonce;
     private bool _usageStatusUnsupported;

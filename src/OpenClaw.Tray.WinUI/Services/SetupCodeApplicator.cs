@@ -4,23 +4,15 @@ using OpenClawTray.Onboarding.Services;
 namespace OpenClawTray.Services;
 
 /// <summary>
-/// Applies a decoded setup code to settings. Shared by Settings page and
-/// Onboarding wizard to guarantee consistent behavior:
-/// — GatewayUrl is updated from the decoded URL
-/// — BootstrapToken is set (single-use, for pairing only)
-/// — Token is cleared to prevent dual-token confusion
-/// — Stored device token is cleared (setup code = new pairing to a potentially different gateway)
+/// Applies a decoded setup code to the gateway registry (the single source
+/// of truth for gateway URL, tokens, and bootstrap state).
 /// </summary>
 public static class SetupCodeApplicator
 {
     public record ApplyResult(bool Success, string? DisplayUrl = null, string? Error = null);
 
-    /// <summary>
-    /// Decodes the raw setup code and applies the result to settings.
-    /// Clears Settings.Token and stored device tokens to avoid stale
-    /// credentials from a previous gateway pairing.
-    /// </summary>
-    public static ApplyResult Apply(string? rawCode, SettingsManager settings, string? dataPath = null)
+    public static ApplyResult Apply(string? rawCode, SettingsManager settings,
+        string? dataPath = null, GatewayRegistry? registry = null)
     {
         if (string.IsNullOrWhiteSpace(rawCode))
             return new ApplyResult(false, Error: "Please paste a setup code.");
@@ -29,32 +21,25 @@ public static class SetupCodeApplicator
         if (!result.Success)
             return new ApplyResult(false, Error: result.Error);
 
-        if (!string.IsNullOrEmpty(result.Url))
-            settings.GatewayUrl = result.Url;
+        var gatewayUrl = result.Url ?? settings.GatewayUrl ?? "";
 
-        if (!string.IsNullOrEmpty(result.Token))
+        if (registry != null && !string.IsNullOrWhiteSpace(gatewayUrl))
         {
-            // Bootstrap token goes to BootstrapToken only — it's single-use for
-            // device pairing and must NOT be saved as Settings.Token.
-            settings.BootstrapToken = result.Token;
+            var id = GatewayRecord.GenerateId(gatewayUrl);
+            registry.Remove(id);
+            registry.AddOrUpdate(new GatewayRecord
+            {
+                Id = id,
+                Url = gatewayUrl,
+                BootstrapToken = result.Token,
+            });
         }
 
-        // Clear the manual token to prevent the dual-save race where
-        // a stale Token value is persisted alongside BootstrapToken.
-        settings.Token = "";
-
-        // Clear any stored device token from a previous pairing — the setup code
-        // may target a different gateway that doesn't recognize the old token.
+        // Clear stored device token — setup code targets a potentially different gateway
         if (!string.IsNullOrEmpty(dataPath))
-        {
             DeviceIdentity.TryClearStoredDeviceToken(dataPath);
-        }
 
-        settings.Save();
-
-        var displayUrl = GatewayUrlHelper.SanitizeForDisplay(
-            result.Url ?? settings.GatewayUrl ?? "");
-
+        var displayUrl = GatewayUrlHelper.SanitizeForDisplay(gatewayUrl);
         return new ApplyResult(true, DisplayUrl: displayUrl);
     }
 }
