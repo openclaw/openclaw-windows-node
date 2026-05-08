@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Windows.UI;
 
@@ -15,6 +16,10 @@ public sealed partial class CronPage : Page
     private HubWindow? _hub;
     private List<CronJobViewModel> _jobs = new();
     private Border? _editingCard = null; // card hidden during inline edit
+    private string? _historyJobId = null; // job whose history is currently displayed
+    private HashSet<string> _runningJobIds = new(); // jobs currently being triggered
+    private HashSet<string> _expandedJobIds = new(); // persisted expanded state
+    private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
 
     public CronPage()
     {
@@ -36,17 +41,10 @@ public sealed partial class CronPage : Page
         var btn = sender as Button;
         var jobId = btn?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
-        // Brief visual feedback
-        var origContent = btn!.Content;
-        btn.Content = "Triggered ✓";
+        _runningJobIds.Add(jobId);
+        btn!.Content = "Running...";
         btn.IsEnabled = false;
         _ = _hub.GatewayClient.RunCronJobAsync(jobId);
-        DispatcherQueue?.TryEnqueue(async () =>
-        {
-            await Task.Delay(1500);
-            btn.Content = origContent;
-            btn.IsEnabled = true;
-        });
     }
 
     private void OnRemoveClick(object sender, RoutedEventArgs e)
@@ -302,9 +300,9 @@ public sealed partial class CronPage : Page
         AtFields.Visibility = kind == "at" ? Visibility.Visible : Visibility.Collapsed;
         if (kind == "at")
         {
-            var now = DateTimeOffset.Now;
-            FormAtDate.Date = now;
-            FormAtTime.Text = now.ToString("h:mm tt");
+            var defaultTime = DateTimeOffset.Now.AddMinutes(5);
+            FormAtDate.Date = defaultTime;
+            FormAtTime.Text = defaultTime.ToString("h:mm tt");
         }
     }
 
@@ -386,6 +384,23 @@ public sealed partial class CronPage : Page
             return true;
         }
         return false;
+    }
+
+    private void ShowJobCompletedNotification(string jobName)
+    {
+        // Cancel any pending auto-dismiss timer
+        _infoDismissCts?.Cancel();
+        _infoDismissCts = new CancellationTokenSource();
+        var cts = _infoDismissCts;
+
+        JobCompletedInfoBar.Title = "Job completed";
+        JobCompletedInfoBar.Message = $"\"{jobName}\" ran successfully and was removed.";
+        JobCompletedInfoBar.IsOpen = true;
+        DispatcherQueue?.TryEnqueue(async () =>
+        {
+            try { await Task.Delay(10000, cts.Token); } catch (TaskCanceledException) { return; }
+            JobCompletedInfoBar.IsOpen = false;
+        });
     }
 
     private static string? GetSelectedTag(ComboBox combo)
@@ -561,6 +576,14 @@ public sealed partial class CronPage : Page
                 }
             }
 
+            // Running state (job currently executing)
+            if (state.TryGetProperty("runningAtMs", out var runningEl) && runningEl.ValueKind == JsonValueKind.Number)
+            {
+                vm.RunningAtMs = runningEl.GetInt64();
+                if (vm.RunningAtMs > 0)
+                    _runningJobIds.Add(vm.Id);
+            }
+
             if (state.TryGetProperty("lastRunAtMs", out var lastRunEl) && lastRunEl.ValueKind == JsonValueKind.Number)
             {
                 var ms = lastRunEl.GetInt64();
@@ -571,6 +594,19 @@ public sealed partial class CronPage : Page
             else
             {
                 vm.LastRunTime = "—";
+            }
+
+            // Infer running state: if scheduled time has passed but lastRunAtMs hasn't caught up
+            if (vm.RunningAtMs == 0 && !_runningJobIds.Contains(vm.Id))
+            {
+                var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                // Check if old nextRunAtMs has passed (compare with previous VM data)
+                var oldVm = _jobs.Find(j => j.Id == vm.Id);
+                if (oldVm != null && oldVm.NextRunAtMs > 0 && nowMs >= oldVm.NextRunAtMs && vm.LastRunAtMs == oldVm.LastRunAtMs)
+                {
+                    // The scheduled time has passed but the job hasn't completed yet — it's running
+                    _runningJobIds.Add(vm.Id);
+                }
             }
 
             if (state.TryGetProperty("lastRunStatus", out var statusEl))
@@ -617,7 +653,35 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
+            // Clear running state for jobs whose lastRunAtMs changed or runningAtMs is 0
+            foreach (var vm in jobs)
+            {
+                if (_runningJobIds.Contains(vm.Id))
+                {
+                    var oldVm = _jobs.Find(j => j.Id == vm.Id);
+                    if (vm.RunningAtMs == 0 || oldVm == null || vm.LastRunAtMs != oldVm.LastRunAtMs)
+                        _runningJobIds.Remove(vm.Id);
+                }
+            }
+
+            // Detect one-shot jobs that disappeared (ran and deleted themselves)
+            var newIds = new HashSet<string>(jobs.Select(j => j.Id));
+            foreach (var oldVm in _jobs)
+            {
+                if (!newIds.Contains(oldVm.Id) && oldVm.DeleteAfterRun)
+                {
+                    ShowJobCompletedNotification(oldVm.Name);
+                }
+            }
+
             _jobs = jobs;
+
+            // Restore expanded state from persisted set
+            foreach (var vm in _jobs)
+            {
+                if (_expandedJobIds.Contains(vm.Id)) vm.IsExpanded = true;
+            }
+
             JobCountText.Text = $"({jobs.Count})";
             if (jobs.Count > 0)
             {
@@ -769,10 +833,18 @@ public sealed partial class CronPage : Page
 
     private static void ApplyExpandState(Grid grid, bool isExpanded)
     {
-        if (grid.Children.Count < 3) return;
+        // Find detail panel (assigned to Row 2) regardless of children count
+        StackPanel? detailPanel = null;
+        for (int i = 0; i < grid.Children.Count; i++)
+        {
+            if (grid.Children[i] is StackPanel sp && Grid.GetRow(sp) == 2)
+            {
+                detailPanel = sp;
+                break;
+            }
+        }
 
-        // Row 2 is the detail panel (was Row 3 before layout change)
-        if (grid.Children[2] is StackPanel detailPanel)
+        if (detailPanel != null)
             detailPanel.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
 
         // Chevron is inside the header grid (Row 0 child), last column
@@ -805,9 +877,23 @@ public sealed partial class CronPage : Page
         if (sender is not Border card) return;
         var jobId = card.Tag as string;
         var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm == null) return;
+        if (vm == null || string.IsNullOrEmpty(jobId)) return;
 
         vm.IsExpanded = !vm.IsExpanded;
+
+        // Persist expanded state
+        if (vm.IsExpanded)
+            _expandedJobIds.Add(jobId);
+        else
+            _expandedJobIds.Remove(jobId);
+
+        // If collapsing and history is open for this job, close it
+        if (!vm.IsExpanded && _historyJobId == jobId)
+        {
+            HideHistoryPanel(jobId);
+            _historyJobId = null;
+        }
+
         if (card.Child is Grid grid)
             ApplyExpandState(grid, vm.IsExpanded);
     }
@@ -879,6 +965,7 @@ public sealed partial class CronPage : Page
 
     private void RebuildJobCards()
     {
+        _historyJobId = null; // history panel is destroyed on rebuild
         JobsListPanel.Children.Clear();
         foreach (var vm in _jobs)
             JobsListPanel.Children.Add(BuildJobCard(vm));
@@ -903,12 +990,13 @@ public sealed partial class CronPage : Page
 
         // Row 0: Name + badges + chevron
         var headerGrid = new Grid();
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 0: name
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 1: schedule
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 2: enabled
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 3: result
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 4: running
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 5: spacer
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 6: chevron
 
         var nameText = new TextBlock { Text = vm.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(nameText, 0);
@@ -947,8 +1035,22 @@ public sealed partial class CronPage : Page
             headerGrid.Children.Add(resultBadge);
         }
 
+        // Show "Running" badge when job is in-progress
+        if (_runningJobIds.Contains(vm.Id))
+        {
+            var runningBadge = new Border
+            {
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromArgb(40, 33, 150, 243))
+            };
+            runningBadge.Child = new TextBlock { Text = "⏳ Running", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromArgb(255, 100, 181, 246)) };
+            Grid.SetColumn(runningBadge, 4);
+            headerGrid.Children.Add(runningBadge);
+        }
+
         var chevron = new FontIcon { Glyph = "\uE70D", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] };
-        Grid.SetColumn(chevron, 5);
+        Grid.SetColumn(chevron, 6);
         headerGrid.Children.Add(chevron);
 
         Grid.SetRow(headerGrid, 0);
@@ -1012,11 +1114,30 @@ public sealed partial class CronPage : Page
 
         // Action buttons
         var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        buttonsPanel.Children.Add(MakeActionButton("\uE768", "Run Now", vm.Id, OnRunNowClick));
+
+        // "Run Now" button — show running state if job is in the running set
+        var runNowBtn = MakeActionButton("\uE768", "Run Now", vm.Id, OnRunNowClick);
+        if (_runningJobIds.Contains(vm.Id))
+        {
+            runNowBtn.Content = "Running...";
+            runNowBtn.IsEnabled = false;
+        }
+        buttonsPanel.Children.Add(runNowBtn);
+
         buttonsPanel.Children.Add(MakeActionButton(vm.ToggleEnabledGlyph, vm.ToggleEnabledText, vm.Id, OnToggleEnabledClick));
         buttonsPanel.Children.Add(MakeActionButton("\uE70F", "Edit", vm.Id, OnEditJobClick));
+        buttonsPanel.Children.Add(MakeActionButton("\uE81C", "History", vm.Id, OnHistoryClick));
         buttonsPanel.Children.Add(MakeActionButton("\uE711", "Remove", vm.Id, OnRemoveClick));
         panel.Children.Add(buttonsPanel);
+
+        // History panel (populated when History button is clicked)
+        var historyPanel = new StackPanel
+        {
+            Tag = $"history_{vm.Id}",
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        panel.Children.Add(historyPanel);
 
         return panel;
     }
@@ -1051,6 +1172,309 @@ public sealed partial class CronPage : Page
         return btn;
     }
 
+    // --- Run History ---
+
+    private void OnHistoryClick(object sender, RoutedEventArgs e)
+    {
+        var jobId = (sender as Button)?.Tag as string;
+        if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
+
+        // Toggle: if already showing history for this job, hide it
+        if (_historyJobId == jobId)
+        {
+            HideHistoryPanel(jobId);
+            _historyJobId = null;
+            return;
+        }
+
+        // Hide previous history if any
+        if (_historyJobId != null)
+            HideHistoryPanel(_historyJobId);
+
+        _historyJobId = jobId;
+
+        // Show loading state
+        var histPanel = FindHistoryPanel(jobId);
+        if (histPanel != null)
+        {
+            histPanel.Children.Clear();
+            histPanel.Children.Add(new TextBlock
+            {
+                Text = "Loading run history...",
+                FontSize = 12,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            });
+            histPanel.Visibility = Visibility.Visible;
+        }
+
+        _ = _hub.GatewayClient.RequestCronRunsAsync(jobId, limit: 20, offset: 0);
+    }
+
+    private void HideHistoryPanel(string jobId)
+    {
+        var panel = FindHistoryPanel(jobId);
+        if (panel != null)
+        {
+            panel.Children.Clear();
+            panel.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private StackPanel? FindHistoryPanel(string jobId)
+    {
+        var tag = $"history_{jobId}";
+        foreach (var child in JobsListPanel.Children)
+        {
+            if (child is Border card && card.Tag as string == jobId)
+            {
+                return FindTaggedPanel(card, tag);
+            }
+        }
+        return null;
+    }
+
+    private static StackPanel? FindTaggedPanel(DependencyObject parent, string tag)
+    {
+        int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is StackPanel sp && sp.Tag as string == tag) return sp;
+            var found = FindTaggedPanel(child, tag);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    public void UpdateCronRuns(JsonElement data)
+    {
+        // data is the full response: { entries: [...], total, offset, limit, hasMore, ... }
+        if (_historyJobId == null) return;
+
+        var histPanel = FindHistoryPanel(_historyJobId);
+        if (histPanel == null) return;
+        histPanel.Children.Clear();
+
+        if (!data.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Array)
+        {
+            histPanel.Children.Add(new TextBlock
+            {
+                Text = "No run history available.",
+                FontSize = 12,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            });
+            return;
+        }
+
+        var total = data.TryGetProperty("total", out var totalEl) && totalEl.ValueKind == JsonValueKind.Number ? totalEl.GetInt32() : 0;
+        var entryCount = 0;
+
+        // Header
+        var headerRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var headerText = new TextBlock
+        {
+            Text = "Run History",
+            FontSize = 12,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        };
+        Grid.SetColumn(headerText, 0);
+        headerRow.Children.Add(headerText);
+
+        var sep = new Border
+        {
+            Height = 1,
+            Margin = new Thickness(0, 0, 0, 4),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+        };
+        histPanel.Children.Add(sep);
+        histPanel.Children.Add(headerRow);
+
+        foreach (var entry in entries.EnumerateArray())
+        {
+            entryCount++;
+            histPanel.Children.Add(BuildRunEntry(entry));
+        }
+
+        // Update header with count
+        headerText.Text = total > 0 ? $"Run History — showing {entryCount} of {total}" : $"Run History — {entryCount} runs";
+
+        // "Load more" if there are more
+        var hasMore = data.TryGetProperty("hasMore", out var hmEl) && hmEl.ValueKind == JsonValueKind.True;
+        if (hasMore)
+        {
+            var nextOffset = data.TryGetProperty("nextOffset", out var noEl) && noEl.ValueKind == JsonValueKind.Number ? noEl.GetInt32() : entryCount;
+            var loadMoreBtn = new Button
+            {
+                Content = $"Load older runs ({total - entryCount - (nextOffset - entryCount)} more)...",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 6, 0, 0),
+                Padding = new Thickness(0, 6, 0, 6),
+                FontSize = 12,
+                Tag = _historyJobId
+            };
+
+            // Simple "load more" content
+            var remaining = total - nextOffset;
+            if (remaining > 0)
+                loadMoreBtn.Content = $"Load older runs ({remaining} more)...";
+            else
+                loadMoreBtn.Content = "Load more runs...";
+
+            loadMoreBtn.Click += (s, args) =>
+            {
+                var jid = (s as Button)?.Tag as string;
+                if (!string.IsNullOrEmpty(jid) && _hub?.GatewayClient != null)
+                {
+                    loadMoreBtn.IsEnabled = false;
+                    loadMoreBtn.Content = "Loading...";
+                    // For simplicity, reload with higher limit
+                    _ = _hub.GatewayClient.RequestCronRunsAsync(jid, limit: nextOffset + 20, offset: 0);
+                }
+            };
+            histPanel.Children.Add(loadMoreBtn);
+        }
+
+        histPanel.Visibility = Visibility.Visible;
+    }
+
+    private Border BuildRunEntry(JsonElement entry)
+    {
+        var status = entry.TryGetProperty("status", out var sEl) ? sEl.GetString() ?? "" : "";
+        var durationMs = entry.TryGetProperty("durationMs", out var dEl) && dEl.ValueKind == JsonValueKind.Number ? dEl.GetInt64() : 0;
+        var summary = entry.TryGetProperty("summary", out var sumEl) ? sumEl.GetString() ?? "" : "";
+        var error = entry.TryGetProperty("error", out var errEl) ? errEl.GetString() ?? "" : "";
+        var model = entry.TryGetProperty("model", out var modEl) ? modEl.GetString() ?? "" : "";
+        var tsMs = entry.TryGetProperty("runAtMs", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number
+            ? tsEl.GetInt64()
+            : (entry.TryGetProperty("ts", out var ts2El) && ts2El.ValueKind == JsonValueKind.Number ? ts2El.GetInt64() : 0);
+
+        var totalTokens = 0L;
+        if (entry.TryGetProperty("usage", out var usageEl) && usageEl.ValueKind == JsonValueKind.Object)
+        {
+            if (usageEl.TryGetProperty("total_tokens", out var ttEl) && ttEl.ValueKind == JsonValueKind.Number)
+                totalTokens = ttEl.GetInt64();
+        }
+
+        var delivered = entry.TryGetProperty("delivered", out var delEl) && delEl.ValueKind == JsonValueKind.True;
+        var deliveryStatus = entry.TryGetProperty("deliveryStatus", out var dsEl) ? dsEl.GetString() ?? "" : "";
+
+        // Colors
+        bool isError = status == "error" || status == "failed";
+        var statusBg = isError
+            ? new SolidColorBrush(Color.FromArgb(40, 224, 85, 69))
+            : new SolidColorBrush(Color.FromArgb(40, 76, 175, 80));
+        var statusFg = isError
+            ? new SolidColorBrush(Color.FromArgb(255, 224, 85, 69))
+            : new SolidColorBrush(Colors.LimeGreen);
+
+        // Container
+        var row = new Border
+        {
+            Padding = new Thickness(0, 6, 0, 6),
+            BorderBrush = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+            BorderThickness = new Thickness(0, 0, 0, 1)
+        };
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) }); // status
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // summary
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // duration
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) }); // time
+
+        // Status badge
+        var statusBadge = new Border
+        {
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1),
+            Background = statusBg, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left
+        };
+        statusBadge.Child = new TextBlock { Text = status, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = statusFg };
+        Grid.SetColumn(statusBadge, 0);
+        grid.Children.Add(statusBadge);
+
+        // Summary/error + metadata
+        var contentPanel = new StackPanel { Margin = new Thickness(4, 0, 8, 0) };
+        var displayText = isError && !string.IsNullOrEmpty(error) ? error : summary;
+        if (!string.IsNullOrEmpty(displayText))
+        {
+            var truncated = displayText.Length > 120 ? displayText[..120] + "…" : displayText;
+            contentPanel.Children.Add(new TextBlock
+            {
+                Text = truncated,
+                FontSize = 11,
+                TextWrapping = TextWrapping.WrapWholeWords,
+                Foreground = isError
+                    ? new SolidColorBrush(Color.FromArgb(255, 224, 85, 69))
+                    : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"],
+                MaxLines = 2
+            });
+        }
+
+        // Meta line: model · tokens · delivery
+        var metaParts = new List<string>();
+        if (!string.IsNullOrEmpty(model)) metaParts.Add(model);
+        if (totalTokens > 0) metaParts.Add($"{totalTokens:N0} tokens");
+        if (delivered) metaParts.Add("delivered ✓");
+        else if (!string.IsNullOrEmpty(deliveryStatus)) metaParts.Add(deliveryStatus);
+
+        if (metaParts.Count > 0)
+        {
+            contentPanel.Children.Add(new TextBlock
+            {
+                Text = string.Join(" · ", metaParts),
+                FontSize = 10,
+                Margin = new Thickness(0, 2, 0, 0),
+                Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
+            });
+        }
+        Grid.SetColumn(contentPanel, 1);
+        grid.Children.Add(contentPanel);
+
+        // Duration
+        var durText = durationMs > 0 ? $"{durationMs / 1000.0:F1}s" : "—";
+        var durBlock = new TextBlock
+        {
+            Text = durText,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 0, 12, 0),
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        };
+        Grid.SetColumn(durBlock, 2);
+        grid.Children.Add(durBlock);
+
+        // Timestamp
+        var timeText = "—";
+        if (tsMs > 0)
+        {
+            var dt = DateTimeOffset.FromUnixTimeMilliseconds(tsMs).LocalDateTime;
+            var now = DateTime.Now;
+            if (dt.Date == now.Date)
+                timeText = $"today {dt:h:mm tt}";
+            else if (dt.Date == now.Date.AddDays(-1))
+                timeText = $"yesterday {dt:h:mm tt}";
+            else
+                timeText = dt.ToString("MMM d h:mm tt");
+        }
+        var timeBlock = new TextBlock
+        {
+            Text = timeText,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            FontFamily = new FontFamily("Consolas"),
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        };
+        Grid.SetColumn(timeBlock, 3);
+        grid.Children.Add(timeBlock);
+
+        row.Child = grid;
+        return row;
+    }
+
     private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
     {
         int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
@@ -1064,10 +1488,11 @@ public sealed partial class CronPage : Page
         return null;
     }
 
-    private static void BuildSummaryLine(CronJobViewModel vm)
+    private void BuildSummaryLine(CronJobViewModel vm)
     {
         var parts = new List<string>();
         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var isRunning = _runningJobIds.Contains(vm.Id);
 
         if (vm.LastRunAtMs > 0)
         {
@@ -1080,7 +1505,7 @@ public sealed partial class CronPage : Page
             var until = vm.NextRunAtMs - nowMs;
             if (until > 0)
                 parts.Add($"next in {FormatRelativeTime(until)}");
-            else
+            else if (!isRunning)
                 parts.Add("overdue");
         }
 
@@ -1126,6 +1551,8 @@ public sealed partial class CronPage : Page
         public Visibility DurationVisibility { get; set; } = Visibility.Collapsed;
         public long LastRunAtMs { get; set; } = 0;
         public long NextRunAtMs { get; set; } = 0;
+        public long RunningAtMs { get; set; } = 0;
+        public bool IsRunning => RunningAtMs > 0;
         public string SummaryLine { get; set; } = "";
         public Visibility SummaryVisibility { get; set; } = Visibility.Collapsed;
         public string SessionTarget { get; set; } = "";

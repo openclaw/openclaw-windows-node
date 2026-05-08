@@ -434,7 +434,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
     public Task<bool> RunCronJobAsync(string jobId, bool force = true)
     {
-        return TrySendTrackedRequestAsync("cron.run", new { jobId, force });
+        return TrySendTrackedRequestAsync("cron.run", new { id = jobId });
     }
 
     public Task<bool> RemoveCronJobAsync(string jobId)

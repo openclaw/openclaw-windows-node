@@ -1526,6 +1526,7 @@ public partial class App : Application
         _gatewayClient.GatewaySelfUpdated += OnGatewaySelfUpdated;
         _gatewayClient.CronListUpdated += OnCronListUpdated;
         _gatewayClient.CronStatusUpdated += OnCronStatusUpdated;
+        _gatewayClient.CronRunsUpdated += OnCronRunsUpdated;
         _gatewayClient.ConfigUpdated += OnConfigUpdated;
         _gatewayClient.ConfigSchemaUpdated += OnConfigSchemaUpdated;
         _gatewayClient.SkillsStatusUpdated += OnSkillsStatusUpdated;
@@ -1559,6 +1560,7 @@ public partial class App : Application
             _gatewayClient.GatewaySelfUpdated -= OnGatewaySelfUpdated;
             _gatewayClient.CronListUpdated -= OnCronListUpdated;
             _gatewayClient.CronStatusUpdated -= OnCronStatusUpdated;
+            _gatewayClient.CronRunsUpdated -= OnCronRunsUpdated;
             _gatewayClient.ConfigUpdated -= OnConfigUpdated;
             _gatewayClient.ConfigSchemaUpdated -= OnConfigSchemaUpdated;
             _gatewayClient.SkillsStatusUpdated -= OnSkillsStatusUpdated;
@@ -2218,6 +2220,11 @@ public partial class App : Application
     private void OnCronStatusUpdated(object? sender, System.Text.Json.JsonElement data)
     {
         _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronStatus(data));
+    }
+
+    private void OnCronRunsUpdated(object? sender, System.Text.Json.JsonElement data)
+    {
+        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronRuns(data));
     }
 
     private void OnSkillsStatusUpdated(object? sender, System.Text.Json.JsonElement data)

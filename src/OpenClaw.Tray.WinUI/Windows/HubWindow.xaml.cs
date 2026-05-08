@@ -285,6 +285,19 @@ public sealed partial class HubWindow : WindowEx
         catch { }
     }
 
+    public void UpdateCronRuns(System.Text.Json.JsonElement data)
+    {
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is CronPage cp) cp.UpdateCronRuns(data);
+            });
+        }
+        catch { }
+    }
+
     public void SeedCronData(CronPage page)
     {
         if (_lastCronList.HasValue) page.UpdateFromGateway(_lastCronList.Value);
