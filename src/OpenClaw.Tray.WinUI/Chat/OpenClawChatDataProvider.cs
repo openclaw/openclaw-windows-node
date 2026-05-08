@@ -295,6 +295,35 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             break;
 
                         case "assistant":
+                            // ── Heuristic recovery for history-flattened tool calls ──
+                            // The gateway strips ``stream:"item"`` / ``command_output``
+                            // detail server-side when serving ``chat.history`` —
+                            // raw exec output is replayed as plain assistant text.
+                            // Detect these telltale shapes and route them through
+                            // the chip pipeline so historic turns look like live ones.
+                            if (LooksLikeSystemControlNote(msg.Text))
+                            {
+                                rebuilt = ApplyAndCaptureMeta(
+                                    rebuilt,
+                                    new ChatStatusEvent(msg.Text, ChatTone.Dim),
+                                    msgMeta);
+                                break;
+                            }
+                            if (LooksLikeFlattenedToolOutput(msg.Text))
+                            {
+                                var kind = ClassifyFlattenedToolOutput(msg.Text);
+                                // Produce a synthetic chip pair so it renders the
+                                // same way live tool events do.
+                                rebuilt = ApplyAndCaptureMeta(
+                                    rebuilt,
+                                    new ChatToolStartEvent(kind, kind),
+                                    msgMeta);
+                                rebuilt = ApplyAndCaptureMeta(
+                                    rebuilt,
+                                    new ChatToolOutputEvent(msg.Text),
+                                    msgMeta);
+                                break;
+                            }
                             rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatMessageEvent(msg.Text), msgMeta);
                             // End the turn so the next assistant message starts a new
                             // entry rather than replacing this one (UpsertAssistant
@@ -907,6 +936,65 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (text.Length <= ToolOutputMaxChars) return text;
         return text[..ToolOutputMaxChars] + "\n…(truncated)";
+    }
+
+    // ── chat.history flattened-tool-output recovery ──
+
+    /// <summary>
+    /// True when an assistant-role <c>chat.history</c> message looks like a
+    /// gateway control note that the web UI hides. We render these as a
+    /// dim Status entry instead of a full assistant bubble so the
+    /// conversation flow doesn't get overwhelmed by transcript scaffolding.
+    /// </summary>
+    private static bool LooksLikeSystemControlNote(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        var t = text.TrimStart();
+        return t.StartsWith("System (untrusted):", StringComparison.Ordinal)
+            || t.StartsWith("System:", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// True when an assistant-role <c>chat.history</c> message is almost
+    /// certainly the verbatim output of an exec tool that the gateway
+    /// flattened into plain text on the way out (the spec confirms it
+    /// strips ``<tool_call>`` / ``<function_call>`` XML and tool blocks
+    /// before serving history). Detected via well-known terminator
+    /// markers and shell-output-shaped openings.
+    /// </summary>
+    private static bool LooksLikeFlattenedToolOutput(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length < 40) return false;
+
+        // Strong terminator markers — the gateway emits these verbatim
+        // around exec results.
+        if (text.Contains("Process exited with code", StringComparison.Ordinal)) return true;
+        if (text.Contains("Command still running (session", StringComparison.Ordinal)) return true;
+        if (text.Contains("Exec completed (", StringComparison.Ordinal)) return true;
+
+        // Opening looks like a UNC / POSIX path — common shape for ``ls``
+        // / ``file`` / ``stat`` style tools.
+        var head = text.AsSpan(0, Math.Min(80, text.Length));
+        if (head.StartsWith("\\\\wsl.localhost\\")) return true;
+        if (head.StartsWith("/usr/") || head.StartsWith("/home/") || head.StartsWith("/var/") ||
+            head.StartsWith("/etc/") || head.StartsWith("/tmp/")) return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Best-guess kind label for a flattened-tool-output assistant
+    /// message. Used to populate the tool chip's monospace
+    /// kind suffix (matches the live ``stream:"item"`` extraction).
+    /// </summary>
+    private static string ClassifyFlattenedToolOutput(string text)
+    {
+        if (text.Contains("Command still running", StringComparison.Ordinal) ||
+            text.Contains("Process exited with code", StringComparison.Ordinal))
+            return "process";
+        if (text.Contains("Exec completed (", StringComparison.Ordinal))
+            return "exec";
+        return "exec";
     }
 
     // ── State helpers ──
