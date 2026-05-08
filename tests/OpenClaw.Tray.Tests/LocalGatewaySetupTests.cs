@@ -1,10 +1,36 @@
 using System.Text;
 using OpenClawTray.Services.LocalGatewaySetup;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Tray.Tests;
 
 public class LocalGatewaySetupTests
 {
+    [Fact]
+    public async Task DrainAsync_ReturnsCompletedReadImmediately()
+    {
+        var task = Task.FromResult("hello");
+        var result = await WslExeCommandRunner.DrainAsync(task, TimeSpan.FromSeconds(1), new NullLogger(), isStderr: false);
+        Assert.Equal("hello", result);
+    }
+
+    [Fact]
+    public async Task DrainAsync_ReturnsEmpty_WhenReadHangsBeyondTimeout()
+    {
+        // Regression: PR #274 smoke test — `wsl.exe --list --verbose` returned but stdout
+        // ReadToEndAsync hung indefinitely because the gateway distro / wslhost descendants
+        // inherited and held the redirected stdout pipe handle. The wizard's "checking
+        // system" step (HasDistroAsync → ListDistrosAsync) blocked forever. DrainAsync now
+        // bounds the post-exit drain so the wizard surfaces partial output instead of
+        // hanging the entire app.
+        var neverCompletes = new TaskCompletionSource<string>().Task;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = await WslExeCommandRunner.DrainAsync(neverCompletes, TimeSpan.FromMilliseconds(150), new NullLogger(), isStderr: false);
+        sw.Stop();
+        Assert.Equal(string.Empty, result);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"DrainAsync should return promptly after timeout; took {sw.Elapsed}");
+    }
+
     [Fact]
     public void ParseDistroList_ParsesVerboseWslOutput()
     {

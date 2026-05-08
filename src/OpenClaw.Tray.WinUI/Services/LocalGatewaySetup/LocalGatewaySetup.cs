@@ -258,11 +258,13 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
 {
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _defaultTimeout;
+    private readonly TimeSpan _streamDrainTimeout;
 
-    public WslExeCommandRunner(IOpenClawLogger? logger = null, TimeSpan? defaultTimeout = null)
+    public WslExeCommandRunner(IOpenClawLogger? logger = null, TimeSpan? defaultTimeout = null, TimeSpan? streamDrainTimeout = null)
     {
         _logger = logger ?? NullLogger.Instance;
         _defaultTimeout = defaultTimeout ?? TimeSpan.FromSeconds(30);
+        _streamDrainTimeout = streamDrainTimeout ?? TimeSpan.FromSeconds(5);
     }
 
     public async Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default)
@@ -383,12 +385,14 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(_defaultTimeout);
+        bool timedOut = false;
         try
         {
             await process.WaitForExitAsync(timeoutCts.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            timedOut = true;
             try
             {
                 process.Kill(entireProcessTree: true);
@@ -397,14 +401,47 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             {
                 _logger.Warn($"[WSL] Failed to kill timed-out process: {ex.Message}");
             }
-
-            return new WslCommandResult(-1, await SafeReadAsync(stdoutTask), "wsl.exe timed out");
         }
 
-        return new WslCommandResult(
-            process.ExitCode,
-            await SafeReadAsync(stdoutTask),
-            await SafeReadAsync(stderrTask));
+        // Drain stdout/stderr with a bounded post-exit timeout. wsl.exe routinely spawns
+        // descendants (wslhost.exe, distro init processes) that inherit our redirected
+        // pipe handles. Even after wsl.exe itself has exited, ReadToEndAsync can hang
+        // indefinitely waiting for EOF — observed as the "checking system" wizard hang
+        // during PR #274 smoke testing where the gateway distro held the pipes open for
+        // hours. WaitForExitAsync only governs process exit, not stream drain, so we
+        // need an explicit drain bound here.
+        var stdout = await DrainAsync(stdoutTask, _streamDrainTimeout, _logger, isStderr: false);
+        var stderr = await DrainAsync(stderrTask, _streamDrainTimeout, _logger, isStderr: true);
+
+        if (timedOut)
+            return new WslCommandResult(-1, stdout, "wsl.exe timed out");
+
+        return new WslCommandResult(process.ExitCode, stdout, stderr);
+    }
+
+    internal static async Task<string> DrainAsync(Task<string> readTask, TimeSpan drainTimeout, IOpenClawLogger logger, bool isStderr)
+    {
+        try
+        {
+            if (readTask.IsCompleted)
+                return await readTask;
+
+            var winner = await Task.WhenAny(readTask, Task.Delay(drainTimeout));
+            if (winner == readTask)
+                return await readTask;
+
+            logger.Warn($"[WSL] Stream drain timed out after {(int)drainTimeout.TotalSeconds}s ({(isStderr ? "stderr" : "stdout")}); descendant process likely still owns the pipe handle. Returning partial output.");
+            return string.Empty;
+        }
+        catch (OperationCanceledException)
+        {
+            return string.Empty;
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"[WSL] Stream drain failed ({(isStderr ? "stderr" : "stdout")}): {ex.Message}");
+            return string.Empty;
+        }
     }
 
     private static void ApplyEnvironment(ProcessStartInfo psi, IReadOnlyDictionary<string, string>? environment)
@@ -446,18 +483,6 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             return;
 
         environment["WSLENV"] = string.IsNullOrWhiteSpace(existing) ? entry : existing + ":" + entry;
-    }
-
-    private static async Task<string> SafeReadAsync(Task<string> task)
-    {
-        try
-        {
-            return await task;
-        }
-        catch (OperationCanceledException)
-        {
-            return string.Empty;
-        }
     }
 
     private static string RedactArgument(string argument) =>

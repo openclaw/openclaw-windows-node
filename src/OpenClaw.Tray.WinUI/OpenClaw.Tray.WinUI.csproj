@@ -49,6 +49,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="OpenClaw.Tray.UITests" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.Tests" />
   </ItemGroup>
 
   <ItemGroup>
