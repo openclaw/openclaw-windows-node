@@ -3924,13 +3924,6 @@ public partial class App : Application
             ? baseUrl
             : $"{baseUrl}/{path.TrimStart('/')}";
 
-        var token = GetActiveOperatorToken();
-        if (!string.IsNullOrEmpty(token))
-        {
-            var separator = url.Contains('?') ? "&" : "?";
-            url = $"{url}{separator}token={Uri.EscapeDataString(token)}";
-        }
-
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });

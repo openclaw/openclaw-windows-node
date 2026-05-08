@@ -22,6 +22,7 @@ public sealed partial class ChatWindow : WindowEx
     private string _chatUrl = "";
     private bool _webViewInitialized;
     public bool IsClosed { get; private set; }
+    public string Token => _token;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
@@ -52,7 +53,7 @@ public sealed partial class ChatWindow : WindowEx
         public int dwFlags;
     }
 
-    public ChatWindow(string gatewayUrl, string token)
+    public ChatWindow(string gatewayUrl, string token, string? deviceId = null)
     {
         _gatewayUrl = gatewayUrl;
         _token = token;

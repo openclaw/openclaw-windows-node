@@ -83,6 +83,24 @@ public class DeviceIdentity
         !string.IsNullOrWhiteSpace(TryReadStoredDeviceTokenForRole(dataPath, role, logger));
 
     /// <summary>
+    /// Reads the device ID from the identity file without loading the full keypair.
+    /// </summary>
+    public static string? TryReadDeviceId(string dataPath)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(keyPath));
+            if (doc.RootElement.TryGetProperty("DeviceId", out var prop) &&
+                prop.ValueKind == JsonValueKind.String)
+                return prop.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>
     /// Clears the stored device token from the identity file without regenerating the keypair.
     /// Used when applying a setup code to a new gateway — the old device token is invalid.
     /// </summary>

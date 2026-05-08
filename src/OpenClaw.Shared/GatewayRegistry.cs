@@ -184,11 +184,13 @@ public class GatewayRegistry
         {
             Directory.CreateDirectory(_directory);
 
-            var tempPath = _filePath + ".tmp";
+            var tempPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
             var json = _data.ToJson();
             File.WriteAllText(tempPath, json);
             McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, _filePath, overwrite: true);
+            // Re-apply ACL after move — Windows may inherit target's existing DACL
+            McpAuthToken.TryRestrictSensitiveFileAcl(_filePath);
         }
         catch (Exception)
         {
