@@ -3153,6 +3153,9 @@ public partial class App : Application
         try { oldNodeService?.Dispose(); } catch (Exception ex) { Logger.Warn($"Node dispose error: {ex.Message}"); }
 
         _currentStatus = ConnectionStatus.Disconnected;
+        _lastSessions = Array.Empty<SessionInfo>();
+        _lastNodes = Array.Empty<GatewayNodeInfo>();
+        _lastChannels = Array.Empty<ChannelHealth>();
         _hubWindow?.UpdateStatus(_currentStatus);
         UpdateTrayIcon();
 
