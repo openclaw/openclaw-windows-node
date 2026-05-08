@@ -309,7 +309,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         _logger.Info($"[NODE] Pairing requested for this device via {eventType}");
         _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
-        PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+        EmitPairingStatusOnTransition(new PairingStatusEventArgs(
             PairingStatus.Pending,
             _deviceIdentity.DeviceId,
             $"Run: openclaw devices approve {ShortDeviceId}..."));
@@ -341,7 +341,7 @@ public class WindowsNodeClient : WebSocketClientBase
             _pairingBlocked = false; // Allow reconnect after approval
             _pairingApprovedAwaitingReconnect = true;
 
-            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+            EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                 PairingStatus.Paired,
                 _deviceIdentity.DeviceId,
                 "Pairing approved; reconnecting to refresh node state."));
@@ -357,7 +357,7 @@ public class WindowsNodeClient : WebSocketClientBase
             _isPaired = false;
             _pairingApprovedAwaitingReconnect = false;
 
-            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+            EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                 PairingStatus.Rejected,
                 _deviceIdentity.DeviceId,
                 null));
@@ -718,6 +718,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         if (_lastEmittedPairingStatus == args.Status)
         {
+            _logger.Info($"[NODE] Suppressing duplicate pairing status event: {args.Status} for {args.DeviceId}");
             return;
         }
         _lastEmittedPairingStatus = args.Status;
@@ -771,7 +772,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 : $"Run: openclaw devices approve {ShortDeviceId}...";
             _logger.Info($"[NODE] Pairing required for this device; reason={pairingReason ?? "unknown"}, requestId={pairingRequestId ?? "none"}");
             _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
-            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+            EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                 PairingStatus.Pending,
                 _deviceIdentity.DeviceId,
                 detail));

@@ -48,6 +48,7 @@ public partial class App : Application
 
     /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
     public OpenClawGatewayClient? GatewayClient => _gatewayClient;
+    internal SettingsManager Settings => _settings ?? throw new InvalidOperationException("Settings are not initialized.");
 
     /// <summary>
     /// Ensures the managed SSH tunnel is started using the current settings.
@@ -156,6 +157,8 @@ public partial class App : Application
     // per device per session. (Source-side suppression also exists in WindowsNodeClient as
     // defense-in-depth.)
     private readonly HashSet<string> _shownPairedToasts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTime> _recentToastKeys = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan ToastDedupeWindow = TimeSpan.FromSeconds(30);
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -424,9 +427,10 @@ public partial class App : Application
         }
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
-        if (_settings != null && !string.IsNullOrWhiteSpace(_settings.GetEffectiveGatewayUrl()))
+        if (_settings != null &&
+            TryResolveChatCredentials(out var prewarmUrl, out var prewarmToken, out _))
         {
-            _chatWindow = new ChatWindow(_settings.GetEffectiveGatewayUrl(), _settings.Token);
+            _chatWindow = new ChatWindow(prewarmUrl, prewarmToken);
             // Window is created but hidden — WebView2 initializes in the background
         }
 
@@ -497,19 +501,22 @@ public partial class App : Application
     internal void ShowChatWindow()
     {
         if (_settings == null) return;
-        var url = _settings.GetEffectiveGatewayUrl();
-        var token = _settings.Token ?? string.Empty;
+        if (!TryResolveChatCredentials(out var url, out var token, out var credentialSource))
+        {
+            Logger.Warn("[ChatWindow] Gateway URL or credential not configured; cannot open quick chat");
+            return;
+        }
+
+        Logger.Info($"[ChatWindow] Quick-chat credentials resolved from {credentialSource}");
         if (_chatWindow == null)
         {
             _chatWindow = new ChatWindow(url, token);
         }
-        else
-        {
-            // Bug 2: cached ChatWindow may have been pre-warmed with empty/stale credentials
-            // (built before pairing completed). Refresh before re-activating so quick-chat
-            // matches the working companion-app path.
-            _chatWindow.RefreshCredentials(url, token);
-        }
+
+        // Bug 2: cached ChatWindow may have been pre-warmed with empty/stale credentials
+        // (built before pairing completed). Refresh on every tray click so quick-chat
+        // follows the same resolver path as the companion-app operator client.
+        _chatWindow.RefreshCredentials(url, token);
 
         // Toggle: if visible, hide; if hidden, show near tray
         if (_chatWindow.Visible)
@@ -541,21 +548,6 @@ public partial class App : Application
             }
         }
 
-        // PR #274 Bug 4 — first-run BOOTSTRAP.md kickoff (one-shot, gated by
-        // Settings.HasInjectedFirstRunBootstrap). Mattingly's BootstrapMessageInjector
-        // has its own 3000ms initial delay to let the Lit-based chat UI hydrate, and
-        // its persistent gate dedupes against the legacy onboarding kickoff path.
-        var injectTarget = _chatWindow;
-        if (injectTarget != null && _settings != null)
-        {
-            var executor = injectTarget.TryGetScriptExecutor();
-            if (executor != null)
-            {
-                _ = OpenClawTray.Services.BootstrapMessageInjector.InjectAsync(
-                    script => executor(script),
-                    _settings);
-            }
-        }
     }
 
     private VoiceOverlayWindow? _voiceOverlayWindow;
@@ -2013,13 +2005,23 @@ public partial class App : Application
         SyncHubNodeState();
         
         // Don't show "connected" toast if waiting for pairing - we'll show pairing status instead
-        if (status == ConnectionStatus.Connected && _nodeService?.IsPaired == true)
+        var nodeService = _nodeService;
+        if (status == ConnectionStatus.Connected && nodeService?.IsPaired == true)
         {
+            var deviceId = nodeService.FullDeviceId;
+            if (HasRecentToast("node-paired", deviceId))
+            {
+                Logger.Info($"[ToastDeduper] Suppressed node-connected toast after node-paired deviceId={deviceId}");
+                return;
+            }
+
             try
             {
                 ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_NodeModeActive"))
-                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail")));
+                    .AddText(LocalizationHelper.GetString("Toast_NodeModeActiveDetail")),
+                    "node-connected",
+                    deviceId);
             }
             catch { /* ignore */ }
         }
@@ -2082,7 +2084,9 @@ public partial class App : Application
                     AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
                     ShowToast(new ToastContentBuilder()
                         .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
-                        .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")));
+                        .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")),
+                        "node-paired",
+                        args.DeviceId);
                 }
                 else
                 {
@@ -2094,7 +2098,9 @@ public partial class App : Application
                 AddRecentActivity("Node pairing rejected", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId, details: args.Message ?? LocalizationHelper.GetString("Toast_PairingRejectedDetail"));
                 ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_PairingRejected"))
-                    .AddText(LocalizationHelper.GetString("Toast_PairingRejectedDetail")));
+                    .AddText(LocalizationHelper.GetString("Toast_PairingRejectedDetail")),
+                    "node-pairing-rejected",
+                    args.DeviceId);
             }
         }
         catch { /* ignore */ }
@@ -2140,7 +2146,9 @@ public partial class App : Application
             .AddButton(new ToastButton()
                 .SetContent(LocalizationHelper.GetString("Toast_CopyPairingCommand"))
                 .AddArgument("action", "copy_pairing_command")
-                .AddArgument("command", command)));
+                .AddArgument("command", command)),
+            "node-pairing-pending",
+            deviceId);
     }
     
     private void OnNodeNotificationRequested(object? sender, OpenClaw.Shared.Capabilities.SystemNotifyArgs args)
@@ -3673,8 +3681,11 @@ public partial class App : Application
 
     #endregion
 
-    private void ShowToast(ToastContentBuilder builder)
+    private void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null)
     {
+        if (!ShouldShowToast(toastTag, deviceId))
+            return;
+
         var sound = _settings?.NotificationSound;
         if (string.Equals(sound, "None", StringComparison.OrdinalIgnoreCase))
         {
@@ -3685,6 +3696,78 @@ public partial class App : Application
             builder.AddAudio(new Uri("ms-winsoundevent:Notification.IM"), silent: false);
         }
         builder.Show();
+    }
+
+    private bool ShouldShowToast(string? toastTag, string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(toastTag))
+            return true;
+
+        var normalizedDeviceId = NormalizeToastDeviceId(deviceId);
+        var dedupeKey = BuildToastKey(toastTag, normalizedDeviceId);
+        var now = DateTime.UtcNow;
+
+        foreach (var staleKey in _recentToastKeys
+            .Where(pair => now - pair.Value >= ToastDedupeWindow)
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            _recentToastKeys.Remove(staleKey);
+        }
+
+        if (_recentToastKeys.TryGetValue(dedupeKey, out var lastShown) &&
+            now - lastShown < ToastDedupeWindow)
+        {
+            Logger.Info($"[ToastDeduper] Suppressed duplicate toast tag={toastTag} deviceId={normalizedDeviceId}");
+            return false;
+        }
+
+        _recentToastKeys[dedupeKey] = now;
+        Logger.Info($"[ToastDeduper] Showing toast tag={toastTag} deviceId={normalizedDeviceId}");
+        return true;
+    }
+
+    private bool HasRecentToast(string toastTag, string? deviceId)
+    {
+        var normalizedDeviceId = NormalizeToastDeviceId(deviceId);
+        return _recentToastKeys.TryGetValue(BuildToastKey(toastTag, normalizedDeviceId), out var lastShown) &&
+            DateTime.UtcNow - lastShown < ToastDedupeWindow;
+    }
+
+    private static string NormalizeToastDeviceId(string? deviceId) =>
+        string.IsNullOrWhiteSpace(deviceId) ? "global" : deviceId.Trim();
+
+    private static string BuildToastKey(string toastTag, string normalizedDeviceId) =>
+        $"{toastTag.Trim()}:{normalizedDeviceId}";
+
+    private bool TryResolveChatCredentials(
+        out string gatewayUrl,
+        out string token,
+        out string credentialSource)
+    {
+        gatewayUrl = string.Empty;
+        token = string.Empty;
+        credentialSource = "none";
+
+        if (_settings == null)
+            return false;
+
+        gatewayUrl = _settings.GetEffectiveGatewayUrl();
+        if (string.IsNullOrWhiteSpace(gatewayUrl))
+            return false;
+
+        var identityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
+        var credential = OpenClawTray.Services.GatewayCredentialResolver.Resolve(
+            _settings.Token,
+            _settings.BootstrapToken,
+            identityPath,
+            msg => Logger.Warn(msg));
+        if (credential == null)
+            return false;
+
+        token = credential.Token;
+        credentialSource = credential.Source;
+        return true;
     }
 
     #region Actions

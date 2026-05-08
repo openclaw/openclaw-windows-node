@@ -153,26 +153,12 @@ public sealed partial class ChatWindow : WindowEx
     {
         gatewayUrl ??= string.Empty;
         token ??= string.Empty;
-        if (string.Equals(gatewayUrl, _gatewayUrl, StringComparison.Ordinal) &&
-            string.Equals(token, _token, StringComparison.Ordinal))
-        {
-            return;
-        }
 
         _gatewayUrl = gatewayUrl;
         _token = token;
+        _chatUrl = BuildChatUrl(_gatewayUrl, _token);
 
-        // Rebuild the chat URL with the new credentials.
-        if (GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedUrl) &&
-            Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri))
-        {
-            var scheme = uri.Scheme == "wss" ? "https" : "http";
-            _chatUrl = $"{scheme}://{uri.Host}:{uri.Port}?token={Uri.EscapeDataString(_token)}";
-        }
-        else
-        {
-            _chatUrl = $"http://127.0.0.1:19001?token={Uri.EscapeDataString(_token)}";
-        }
+        Logger.Info($"[ChatWindow] Refreshing to {_chatUrl}");
 
         // If WebView2 is already up, navigate it to the refreshed URL so the user gets a
         // working chat instead of the pre-warmed (auth-failed) view.
@@ -261,20 +247,13 @@ public sealed partial class ChatWindow : WindowEx
                     ErrorPanel.Visibility = Visibility.Collapsed;
                     WebView.Visibility = Visibility.Visible;
                     RequestChatInputFocus();
+                    OpenClawTray.Services.BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
+                    _ = OpenClawTray.Services.BootstrapMessageInjector.InjectAsync(exec, ((App)Microsoft.UI.Xaml.Application.Current).Settings, initialDelayMs: 500);
                 }
             };
 
             // Build chat URL
-            if (GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedUrl) &&
-                Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri))
-            {
-                var scheme = uri.Scheme == "wss" ? "https" : "http";
-                _chatUrl = $"{scheme}://{uri.Host}:{uri.Port}?token={Uri.EscapeDataString(_token)}";
-            }
-            else
-            {
-                _chatUrl = $"http://127.0.0.1:19001?token={Uri.EscapeDataString(_token)}";
-            }
+            _chatUrl = BuildChatUrl(_gatewayUrl, _token);
 
             WebView.Visibility = Visibility.Visible;
             WebView.CoreWebView2.Navigate(_chatUrl);
@@ -293,6 +272,20 @@ public sealed partial class ChatWindow : WindowEx
     {
         if (_webViewInitialized && !string.IsNullOrEmpty(_chatUrl))
             WebView.CoreWebView2?.Navigate(_chatUrl);
+    }
+
+    private static string BuildChatUrl(string gatewayUrl, string token)
+    {
+        if (GatewayUrlHelper.TryNormalizeWebSocketUrl(gatewayUrl, out var normalizedUrl) &&
+            Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var gatewayUri))
+        {
+            var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+            var builder = new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port };
+            var baseUrl = builder.Uri.GetLeftPart(UriPartial.Authority);
+            return $"{baseUrl}?token={Uri.EscapeDataString(token)}";
+        }
+
+        return $"http://127.0.0.1:19001?token={Uri.EscapeDataString(token)}";
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e)
