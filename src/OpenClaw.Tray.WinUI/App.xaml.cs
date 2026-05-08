@@ -1044,8 +1044,8 @@ public partial class App : Application
         };
         menu.AddCustomElement(gwGrid);
 
-        // ── Sessions ──
-        if (_lastSessions.Length > 0)
+        // ── Sessions (only when connected) ──
+        if (_currentStatus == ConnectionStatus.Connected && _lastSessions.Length > 0)
         {
             menu.AddSeparator();
 
@@ -1074,8 +1074,8 @@ public partial class App : Application
             menu.AddMenuItem($"⚠️ Pairing approval pending ({total})", "🔗", "hub");
         }
 
-        // ── Connected Devices with inline permission toggles ──
-        if (_lastNodes.Length > 0)
+        // ── Connected Devices (only when connected) ──
+        if (_currentStatus == ConnectionStatus.Connected && _lastNodes.Length > 0)
         {
             menu.AddSeparator();
 
@@ -1999,6 +1999,26 @@ public partial class App : Application
             _hubWindow?.UpdateStatus(_currentStatus);
             UpdateTrayIcon();
             _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+
+            // Clear stale gateway data when disconnected
+            if (status == ConnectionStatus.Disconnected || status == ConnectionStatus.Error)
+            {
+                _lastSessions = Array.Empty<SessionInfo>();
+                _lastChannels = Array.Empty<ChannelHealth>();
+                _lastNodes = Array.Empty<GatewayNodeInfo>();
+                _lastNodePairList = null;
+                _lastDevicePairList = null;
+                _lastModelsList = null;
+                _lastGatewaySelf = null;
+            }
+        }
+
+        // Clear stale auth errors when node connects successfully
+        if (status == ConnectionStatus.Connected)
+        {
+            _authFailureMessage = null;
+            if (_hubWindow != null && !_hubWindow.IsClosed)
+                _hubWindow.LastAuthError = null;
         }
 
         // Keep hub node state in sync for ConnectionPage
@@ -2094,30 +2114,47 @@ public partial class App : Application
                 }
 
                 // If the gateway issued a role-specific operator device token during
-                // bootstrap pairing, store it in Settings.Token for the operator client
-                // AND for chat/dashboard HTTP auth (gateway accepts device tokens for both).
+                // bootstrap pairing, store it in Settings.Token AND the identity file.
                 if (!string.IsNullOrWhiteSpace(args.OperatorDeviceToken) && _settings != null)
                 {
                     Logger.Info("Storing operator device token from bootstrap handoff");
                     _settings.Token = args.OperatorDeviceToken;
-                    _settings.BootstrapToken = ""; // Bootstrap consumed — clear it
-                    _settings.Save();
+                    DeviceIdentity.StoreOperatorDeviceToken(DataPath, args.OperatorDeviceToken, new AppLogger());
+                }
 
-                    // Reset chat window so it picks up the new token
+                // Always clear consumed bootstrap token after node pairs
+                if (_settings != null && !string.IsNullOrWhiteSpace(_settings.BootstrapToken))
+                {
+                    _settings.BootstrapToken = "";
+                }
+
+                // If no operator token from gateway, try the stored one from a previous session
+                if (string.IsNullOrWhiteSpace(_settings?.Token))
+                {
+                    var storedOpToken = DeviceIdentity.TryReadStoredOperatorDeviceToken(DataPath);
+                    if (!string.IsNullOrWhiteSpace(storedOpToken) && _settings != null)
+                    {
+                        Logger.Info("Using stored operator device token from previous session");
+                        _settings.Token = storedOpToken;
+                    }
+                }
+
+                _settings?.Save();
+
+                // Reinitialize operator client — dispatch to UI thread
+                _dispatcherQueue?.TryEnqueue(() =>
+                {
                     if (_chatWindow != null)
                     {
                         _chatWindow.ForceClose();
                         _chatWindow = null;
                     }
-                }
-
-                // Reinitialize operator client so it picks up the operator device token.
-                if (_gatewayClient == null || !_gatewayClient.IsConnectedToGateway)
-                {
-                    Logger.Info("Node paired — reinitializing operator client with operator device token");
-                    _dispatcherQueue?.TryEnqueue(() => InitializeGatewayClient());
-                }
-                }
+                    if (_gatewayClient == null || !_gatewayClient.IsConnectedToGateway)
+                    {
+                        Logger.Info("Node paired — reinitializing operator client");
+                        InitializeGatewayClient();
+                    }
+                });
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
             {
@@ -2139,6 +2176,9 @@ public partial class App : Application
     /// </summary>
     private void SyncHubNodeState()
     {
+        // Update tray icon/tooltip to reflect pairing state
+        UpdateTrayIcon();
+
         if (_hubWindow == null || _hubWindow.IsClosed) return;
         if (_nodeService != null)
         {
@@ -2155,6 +2195,10 @@ public partial class App : Application
             _hubWindow.NodeIsPaired = false;
             _hubWindow.NodeIsPendingApproval = false;
         }
+
+        // Refresh the hub's status display so ConnectionPage, HomePage,
+        // and the title bar all reflect the current pairing state.
+        _hubWindow.UpdateStatus(_currentStatus);
     }
 
     public static string BuildPairingApprovalCommand(string deviceId) =>
@@ -2817,8 +2861,18 @@ public partial class App : Application
             $"OpenClaw Tray — {_currentStatus}",
             $"Topology: {topology.DisplayName}",
             $"Channels: {channelReady}/{_lastChannels.Length} ready · Nodes: {nodeOnline}/{nodeTotal} online",
-            $"Warnings: {warningCount} · Last check: {_lastCheckTime:HH:mm:ss}"
         };
+
+        if (_nodeService != null)
+        {
+            var pairingText = _nodeService.IsPaired ? "Paired"
+                : _nodeService.IsPendingApproval ? "Pending approval"
+                : _nodeService.IsConnected ? "Connected (not paired)"
+                : "Disconnected";
+            tooltip.Add($"Node: {pairingText}");
+        }
+
+        tooltip.Add($"Warnings: {warningCount} · Last check: {_lastCheckTime:HH:mm:ss}");
 
         if (_currentActivity != null && !string.IsNullOrEmpty(_currentActivity.DisplayText))
         {

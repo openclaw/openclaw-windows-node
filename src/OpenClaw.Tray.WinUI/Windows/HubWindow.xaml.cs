@@ -101,13 +101,22 @@ public sealed partial class HubWindow : WindowEx
 
     /// <summary>
     /// Navigate to the default page. Call after setting Settings/GatewayClient.
+    /// When disconnected, lands on Connection page instead of Home.
     /// </summary>
     public void NavigateToDefault()
     {
         if (ContentFrame.Content == null)
         {
-            // Navigate to Home (first item)
-            NavView.SelectedItem = NavView.MenuItems[0];
+            UpdateNavItemsForConnectionState(CurrentStatus);
+            if (CurrentStatus == ConnectionStatus.Disconnected &&
+                (GatewayClient == null || !GatewayClient.IsConnectedToGateway))
+            {
+                NavigateTo("connection");
+            }
+            else
+            {
+                NavView.SelectedItem = NavView.MenuItems[0];
+            }
         }
     }
 
@@ -163,6 +172,7 @@ public sealed partial class HubWindow : WindowEx
                 if (status == ConnectionStatus.Disconnected)
                     _lastGatewaySelf = null;
                 UpdateTitleBarStatus(status);
+                UpdateNavItemsForConnectionState(status);
                 if (ContentFrame?.Content is HomePage homePage)
                 {
                     homePage.UpdateConnectionStatus(status, Settings?.GetEffectiveGatewayUrl());
@@ -171,9 +181,67 @@ public sealed partial class HubWindow : WindowEx
                 {
                     connectionPage.UpdateStatus(status);
                 }
+                // When disconnected and on a gateway-dependent page, redirect to Connection
+                if (status == ConnectionStatus.Disconnected && IsGatewayDependentPage(ContentFrame?.Content))
+                {
+                    NavigateTo("connection");
+                }
             });
         }
         catch { }
+    }
+
+    private static bool IsGatewayDependentPage(object? page) => page is
+        ChatPage or SessionsPage or ConversationsPage or AgentEventsPage or
+        ChannelsPage or NodesPage or InstancesPage or ConfigPage or
+        UsagePage or BindingsPage or SkillsPage or CronPage or WorkspacePage;
+
+    private static readonly string[] s_gatewayDependentTags =
+    [
+        "chat", "sessions", "conversations", "agentevents", "skills",
+        "channels", "nodes", "bindings", "config", "usage", "cron"
+    ];
+
+    private void UpdateNavItemsForConnectionState(ConnectionStatus status)
+    {
+        var visible = status == ConnectionStatus.Connected;
+        SetNavItemsVisibility(NavView.MenuItems, visible);
+    }
+
+    private static void SetNavItemsVisibility(IList<object> items, bool connected)
+    {
+        foreach (var item in items)
+        {
+            if (item is NavigationViewItem navItem)
+            {
+                var tag = navItem.Tag as string;
+                if (tag != null && s_gatewayDependentTags.Contains(tag))
+                {
+                    navItem.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+                }
+                if (tag != null && tag.StartsWith("agent:"))
+                {
+                    navItem.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+                }
+                if (navItem.MenuItems.Count > 0)
+                {
+                    SetNavItemsVisibility(navItem.MenuItems, connected);
+                    var hasGatewayChildren = navItem.MenuItems.OfType<NavigationViewItem>()
+                        .Any(c => (c.Tag as string)?.StartsWith("agent:") == true ||
+                                  s_gatewayDependentTags.Contains(c.Tag as string ?? ""));
+                    if (hasGatewayChildren)
+                    {
+                        var allHidden = navItem.MenuItems.OfType<NavigationViewItem>()
+                            .All(c => c.Visibility == Visibility.Collapsed);
+                        navItem.Visibility = allHidden ? Visibility.Collapsed : Visibility.Visible;
+                    }
+                }
+            }
+            if (item is NavigationViewItemHeader header && header.Content?.ToString() == "Gateway")
+            {
+                header.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
     }
 
     private void UpdateTitleBarStatus(ConnectionStatus status)
@@ -197,6 +265,11 @@ public sealed partial class HubWindow : WindowEx
                 TitleStatusText.Text = $"Connected · v{self.ServerVersion}";
             if (self?.PresenceCount is > 0)
                 TitleStatusText.Text += $" · {self.PresenceCount} clients";
+
+            if (NodeIsPaired)
+                TitleStatusText.Text += " · Node paired";
+            else if (NodeIsPendingApproval)
+                TitleStatusText.Text += " · Node pending approval";
         }
     }
 

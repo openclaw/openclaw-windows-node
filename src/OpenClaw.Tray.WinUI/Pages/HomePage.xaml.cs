@@ -14,7 +14,6 @@ public sealed partial class HomePage : Page
 {
     private HubWindow? _hub;
     private bool _buttonsWired;
-    private ConnectionStatus _lastStatus = ConnectionStatus.Disconnected;
     private SessionInfo[]? _lastSessions;
 
     public HomePage()
@@ -53,7 +52,6 @@ public sealed partial class HomePage : Page
 
     public void UpdateConnectionStatus(ConnectionStatus status, string? gatewayUrl)
     {
-        _lastStatus = status;
         DispatcherQueue?.TryEnqueue(() =>
         {
             if (!string.IsNullOrEmpty(gatewayUrl))
@@ -131,10 +129,11 @@ public sealed partial class HomePage : Page
     public void UpdateSessions(SessionInfo[] sessions)
     {
         _lastSessions = sessions;
+        var status = _hub?.CurrentStatus ?? ConnectionStatus.Disconnected;
         DispatcherQueue?.TryEnqueue(() =>
         {
-            UpdateCompanionRing(_lastStatus);
-            UpdateStatusText(_lastStatus);
+            UpdateCompanionRing(status);
+            UpdateStatusText(status);
         });
     }
 

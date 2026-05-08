@@ -95,11 +95,12 @@ public class DeviceIdentity
         {
             var json = File.ReadAllText(keyPath);
             var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
-            if (data != null && !string.IsNullOrEmpty(data.DeviceToken))
+            if (data != null && (!string.IsNullOrEmpty(data.DeviceToken) || !string.IsNullOrEmpty(data.OperatorDeviceToken)))
             {
                 data.DeviceToken = null;
+                data.OperatorDeviceToken = null;
                 File.WriteAllText(keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
-                logger?.Info("Cleared stored device token for fresh pairing");
+                logger?.Info("Cleared stored device tokens for fresh pairing");
             }
         }
         catch (Exception ex)
@@ -482,7 +483,50 @@ public class DeviceIdentity
         public string[]? DeviceTokenScopes { get; set; }
         public string? NodeDeviceToken { get; set; }
         public string[]? NodeDeviceTokenScopes { get; set; }
+        public string? OperatorDeviceToken { get; set; }
         public string? Algorithm { get; set; }
         public long CreatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Reads the stored operator device token from the identity file.
+    /// </summary>
+    public static string? TryReadStoredOperatorDeviceToken(string dataPath, IOpenClawLogger? logger = null)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(keyPath));
+            if (doc.RootElement.TryGetProperty("OperatorDeviceToken", out var prop) &&
+                prop.ValueKind == JsonValueKind.String)
+            {
+                var value = prop.GetString();
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+        }
+        catch (Exception ex) { logger?.Warn($"Failed to read operator device token: {ex.Message}"); }
+        return null;
+    }
+
+    /// <summary>
+    /// Stores the operator device token in the identity file.
+    /// </summary>
+    public static void StoreOperatorDeviceToken(string dataPath, string token, IOpenClawLogger? logger = null)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath)) return;
+        try
+        {
+            var json = File.ReadAllText(keyPath);
+            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
+            if (data != null)
+            {
+                data.OperatorDeviceToken = token;
+                File.WriteAllText(keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+                logger?.Info("Operator device token stored in identity file");
+            }
+        }
+        catch (Exception ex) { logger?.Error($"Failed to store operator device token: {ex.Message}"); }
     }
 }

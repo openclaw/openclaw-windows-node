@@ -26,7 +26,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private bool _isConnected;
     private string? _nodeId;
     private string? _pendingNonce;  // Store nonce from challenge for signing
-    private NodePairingState _pairingState = NodePairingState.Unknown;
+    private volatile NodePairingState _pairingState = NodePairingState.Unknown;
     private volatile bool _rateLimited;
     // Bug 3: source-side idempotency for PairingStatusChanged. HandleHelloOk runs on every
     // WS reconnect and re-fires PairingStatus.Paired even when nothing changed, causing a
