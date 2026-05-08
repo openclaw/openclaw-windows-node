@@ -359,8 +359,6 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
         };
 
         foreach (var argument in arguments)
@@ -374,6 +372,7 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         try
         {
             process.Start();
+            _logger.Info($"[WSL] Process started (PID {process.Id})");
         }
         catch (Exception ex)
         {
@@ -383,16 +382,19 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
+        _logger.Info($"[WSL] Waiting for exit (timeout={_defaultTimeout.TotalSeconds}s)");
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(_defaultTimeout);
         bool timedOut = false;
         try
         {
             await process.WaitForExitAsync(timeoutCts.Token);
+            _logger.Info($"[WSL] Process exited (code={process.ExitCode})");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             timedOut = true;
+            _logger.Warn("[WSL] Process timed out — killing");
             try
             {
                 process.Kill(entireProcessTree: true);
@@ -410,8 +412,11 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         // during PR #274 smoke testing where the gateway distro held the pipes open for
         // hours. WaitForExitAsync only governs process exit, not stream drain, so we
         // need an explicit drain bound here.
+        _logger.Info("[WSL] Draining stdout...");
         var stdout = await DrainAsync(stdoutTask, _streamDrainTimeout, _logger, isStderr: false);
+        _logger.Info("[WSL] Draining stderr...");
         var stderr = await DrainAsync(stderrTask, _streamDrainTimeout, _logger, isStderr: true);
+        _logger.Info($"[WSL] Done (timedOut={timedOut}, stdout={stdout.Length}c, stderr={stderr.Length}c)");
 
         if (timedOut)
             return new WslCommandResult(-1, stdout, "wsl.exe timed out");
