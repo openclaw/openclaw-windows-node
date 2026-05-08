@@ -525,7 +525,7 @@ public sealed class OnboardingWindow : WindowEx
     /// Auto-sends the bootstrap kickoff message after the web chat loads.
     /// Delegates to <see cref="BootstrapMessageInjector"/> so the same gated
     /// kickoff fires from both the (legacy) onboarding chat overlay and from
-    /// post-wizard <c>App.ShowChatWindow()</c> — guarded by
+    /// post-wizard HubWindow chat navigation — guarded by
     /// <see cref="SettingsManager.HasInjectedFirstRunBootstrap"/>.
     /// </summary>
     private async Task SendBootstrapMessageAsync()
@@ -647,18 +647,38 @@ public sealed class OnboardingWindow : WindowEx
         if (finishedFromReady && !setupStillRequired)
         {
             Logger.Info("[OnboardingWindow] OnWizardComplete launching HubWindow on chat tab");
+            ShowHubChatAfterWizardClose();
+        }
+        else
+        {
+            Logger.Info($"[OnboardingWindow] OnWizardComplete skipping chat launch; route={_state.CurrentRoute}, setupStillRequired={setupStillRequired}");
+        }
+    }
+
+    private void ShowHubChatAfterWizardClose()
+    {
+        void ShowHubChat()
+        {
             try
             {
-                (Microsoft.UI.Xaml.Application.Current as App)?.ShowHub("chat");
+                var app = Microsoft.UI.Xaml.Application.Current as App;
+                if (app == null)
+                {
+                    Logger.Warn("[OnboardingWindow] ShowHub chat after Finish failed: App unavailable");
+                    return;
+                }
+
+                app.ShowHub("chat");
             }
             catch (Exception ex)
             {
                 Logger.Warn($"[OnboardingWindow] ShowHub chat after Finish failed: {ex.Message}");
             }
         }
-        else
+
+        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, ShowHubChat))
         {
-            Logger.Info($"[OnboardingWindow] OnWizardComplete skipping chat launch; route={_state.CurrentRoute}, setupStillRequired={setupStillRequired}");
+            ShowHubChat();
         }
     }
 

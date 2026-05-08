@@ -159,8 +159,8 @@ public sealed class OnboardingState : IDisposable
         {
             // Local setup always runs the wizard locally after the gateway is up.
             // The WebView2 chat-preview step was removed per UX update (PR #274 follow-up):
-            // post-Permissions we go straight to Ready, then optionally launch the main
-            // chat window from OnboardingWindow.OnWizardComplete based on whether the
+            // post-Permissions we go straight to Ready, then optionally launch the Hub
+            // chat tab from OnboardingWindow.OnWizardComplete based on whether the
             // wizard reached its "complete" lifecycle state (i.e. user picked a model).
             return [OnboardingRoute.SetupWarning, OnboardingRoute.LocalSetupProgress, OnboardingRoute.Wizard, OnboardingRoute.Permissions, OnboardingRoute.Ready];
         }

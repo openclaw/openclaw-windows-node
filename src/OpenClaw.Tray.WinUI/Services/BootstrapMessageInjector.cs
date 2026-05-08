@@ -12,8 +12,8 @@ namespace OpenClawTray.Services;
 /// Originally lived inline on <see cref="OpenClawTray.Onboarding.OnboardingWindow"/> and
 /// was wired to the (now-removed) in-wizard chat preview page. PR #274 dropped that
 /// page from the page order, leaving the kickoff dead. This shared service can be
-/// invoked from any chat-window first-show site (onboarding chat overlay, post-
-/// wizard <c>App.ShowChatWindow()</c>, etc.).
+/// invoked from any chat first-show site (onboarding chat overlay, HubWindow chat
+/// page, etc.).
 ///
 /// Gating: <see cref="SettingsManager.HasInjectedFirstRunBootstrap"/> is the
 /// persistent one-shot flag. Once set, no further injection is performed.
