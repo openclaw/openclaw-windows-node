@@ -1843,18 +1843,34 @@ public class OpenClawGatewayClientTests
     // --- HandleRequestError: device signature invalid ---
 
     [Fact]
-    public void HandleRequestError_DeviceSignatureInvalid_IsTerminalWhenAlreadyV2()
+    public void HandleRequestError_DeviceSignatureInvalid_IsTerminalWhenAllModesExhausted()
     {
         var logger = new TestLogger();
         var helper = new GatewayClientTestHelper(logger);
         var authEvents = helper.CaptureAuthenticationFailedEvents();
 
-        // Default is V2 — first rejection is terminal (no further fallback)
-        helper.TrackPendingRequest("req-sig-1", "connect");
+        // Default is V3AuthToken — 4 modes must be exhausted before terminal
+        // V3AuthToken → V3EmptyToken → V2AuthToken → V2EmptyToken → terminal
+        for (int i = 1; i <= 3; i++)
+        {
+            helper.TrackPendingRequest($"req-sig-{i}", "connect");
+            helper.ProcessRawMessage($$"""
+            {
+                "type": "res",
+                "id": "req-sig-{{i}}",
+                "ok": false,
+                "error": "device signature invalid"
+            }
+            """);
+            Assert.False(helper.GetAuthFailedFlag(), $"Should not be terminal after rejection {i}");
+        }
+
+        // 4th rejection (V2EmptyToken → V2EmptyToken, no change) is terminal
+        helper.TrackPendingRequest("req-sig-4", "connect");
         helper.ProcessRawMessage("""
         {
             "type": "res",
-            "id": "req-sig-1",
+            "id": "req-sig-4",
             "ok": false,
             "error": "device signature invalid"
         }

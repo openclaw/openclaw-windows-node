@@ -633,16 +633,16 @@ public class WindowsNodeClient : WebSocketClientBase
             // PairingStatusChanged when the gateway includes auth.deviceToken in hello-ok.
             bool gotNewToken = false;
             string? operatorDeviceToken = null;
+            string? nodeDeviceToken = null;
             if (payload.TryGetProperty("auth", out var authPayload))
             {
                 // Extract node device token
                 if (authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
                 {
-                    var deviceToken = deviceTokenProp.GetString();
-                    if (!string.IsNullOrEmpty(deviceToken))
+                    nodeDeviceToken = deviceTokenProp.GetString();
+                    if (!string.IsNullOrEmpty(nodeDeviceToken))
                     {
                         gotNewToken = true;
-                        _deviceIdentity.StoreDeviceToken(deviceToken);
                     }
                 }
 
@@ -670,7 +670,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     var wasWaiting = _pairingState is NodePairingState.AwaitingApproval or NodePairingState.ApprovedReconnecting;
                     _pairingState = NodePairingState.Paired;
                     _logger.Info("Received device token - we are now paired!");
-                    _deviceIdentity.StoreDeviceTokenForRole("node", deviceToken, TryGetAuthScopes(authPayload));
+                    _deviceIdentity.StoreDeviceTokenForRole("node", nodeDeviceToken!, TryGetAuthScopes(authPayload));
                     EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                         PairingStatus.Paired,
                         _deviceIdentity.DeviceId,

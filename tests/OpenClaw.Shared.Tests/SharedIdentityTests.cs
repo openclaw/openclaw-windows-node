@@ -64,29 +64,37 @@ public class SharedIdentityTests
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-shared-id-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
+        var previousAppData = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR");
 
         try
         {
+            // Point the gateway client at our test data path
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", dataPath);
+
             // Simulate node pairing: create identity and store device token
-            var nodeIdentity = new DeviceIdentity(dataPath);
+            Directory.CreateDirectory(Path.Combine(dataPath, "OpenClawTray"));
+            var nodeIdentity = new DeviceIdentity(Path.Combine(dataPath, "OpenClawTray"));
             nodeIdentity.Initialize();
             nodeIdentity.StoreDeviceToken("node-paired-token");
 
             // Operator client created AFTER node paired — should pick up the token
-            using var operatorClient = new OpenClawGatewayClient(
+            using (var operatorClient = new OpenClawGatewayClient(
                 "ws://localhost:18789",
-                "manual-token",
-                dataPath: dataPath);
-
-            // The operator's effective auth should prefer the stored device token
-            Assert.Equal(nodeIdentity.DeviceId, operatorClient.OperatorDeviceId is null
-                ? nodeIdentity.DeviceId  // DeviceId comes from identity
-                : operatorClient.OperatorDeviceId);
+                "manual-token"))
+            {
+                // The operator's effective auth should prefer the stored device token
+                Assert.Equal("node-paired-token", operatorClient.ConnectAuthToken);
+            }
         }
         finally
         {
-            if (Directory.Exists(dataPath))
-                Directory.Delete(dataPath, true);
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", previousAppData);
+            try
+            {
+                if (Directory.Exists(dataPath))
+                    Directory.Delete(dataPath, true);
+            }
+            catch (IOException) { /* file lock from NSec Key — non-critical in test cleanup */ }
         }
     }
 }

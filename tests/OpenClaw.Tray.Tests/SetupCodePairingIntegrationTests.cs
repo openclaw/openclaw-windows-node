@@ -175,10 +175,7 @@ public class SetupCodePairingIntegrationTests
             var operatorClient = new OpenClawGatewayClient(
                 settings.GatewayUrl,
                 settings.Token,
-                logger,
-                useBootstrapHandoffAuth: false,
-                dataPath: dataPath,
-                isDeviceToken: isDeviceToken);
+                logger);
 
             var operatorConnectedTcs = new TaskCompletionSource<bool>();
             var operatorErrors = new List<string>();

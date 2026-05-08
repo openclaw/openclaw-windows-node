@@ -1812,12 +1812,10 @@ public partial class App : Application
             _nodeService.GatewaySelfUpdated += OnGatewaySelfUpdated;
             _nodeService.RecordingStateChanged += OnRecordingStateChanged;
 
-            if (canRunGateway && !string.IsNullOrWhiteSpace(gatewayUrl))
+            if (canRunGateway)
             {
-                // Use node device token if available, fall back to operator token
-                var nodeToken = activeGw?.NodeDeviceToken ?? activeGw?.OperatorDeviceToken ?? "";
                 Logger.Info($"Initializing Windows Node service (gateway{(enableMcp ? " + MCP" : "")})...");
-                _ = _nodeService.ConnectAsync(gatewayUrl, nodeToken, activeGw?.BootstrapToken);
+                _ = _nodeService.ConnectAsync(_settings.GetEffectiveGatewayUrl(), _settings.Token, _settings.BootstrapToken);
             }
             else
             {
