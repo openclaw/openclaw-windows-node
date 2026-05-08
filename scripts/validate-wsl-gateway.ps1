@@ -63,7 +63,8 @@ $screenshotsRoot = Join-Path $runRoot "screenshots"
 $summaryPath = Join-Path $runRoot "summary.json"
 $summaryMarkdownPath = Join-Path $runRoot "summary.md"
 $trayProject = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
-$trayExe = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\OpenClaw.Tray.WinUI.exe"
+$runtimeIdentifier = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "win-arm64" } else { "win-x64" }
+$trayExe = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\$runtimeIdentifier\OpenClaw.Tray.WinUI.exe"
 $cliProject = Join-Path $repoRoot "src\OpenClaw.Cli\OpenClaw.Cli.csproj"
 
 # Always isolate AppData under run root for non-Preflight scenarios so we never
@@ -464,14 +465,12 @@ function Start-TrayForLocalSetup {
 
     try {
         New-Item -ItemType Directory -Force -Path $screenshotsRoot | Out-Null
-        if (Test-Path -LiteralPath $trayExe) {
-            $proc = Start-Process -FilePath $trayExe -WorkingDirectory $repoRoot -PassThru
-        } else {
-            $args = @("run", "--project", $trayProject, "-p:Platform=x64", "--no-build")
-            $proc = Start-Process -FilePath "dotnet" -ArgumentList $args -WorkingDirectory $repoRoot -PassThru
+        if (-not (Test-Path -LiteralPath $trayExe)) {
+            throw "Built tray executable not found at $trayExe. Run build.ps1 first or omit -NoBuild."
         }
+        $proc = Start-Process -FilePath $trayExe -WorkingDirectory $repoRoot -PassThru
         Add-Step "launch-tray" "Completed" "Launched tray onboarding for WSL local setup." @{
-            pid = $proc.Id; screenshots = $screenshotsRoot; file = $proc.StartInfo.FileName
+            pid = $proc.Id; screenshots = $screenshotsRoot; file = $trayExe; runtimeIdentifier = $runtimeIdentifier
         }
         return $proc
     } finally {
