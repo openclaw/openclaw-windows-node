@@ -2806,7 +2806,7 @@ public partial class App : Application
 
     #region Window Management
 
-    private void ShowHub(string? navigateTo = null, bool activate = true)
+    internal void ShowHub(string? navigateTo = null, bool activate = true)
     {
         if (_hubWindow == null || _hubWindow.IsClosed)
         {

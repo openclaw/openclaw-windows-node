@@ -97,6 +97,8 @@ public sealed partial class ChatPage : Page
                             document.head.appendChild(style);
                         })();
                     ");
+                    BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
+                    _ = BootstrapMessageInjector.InjectAsync(exec, ((App)Application.Current).Settings, initialDelayMs: 500);
                 }
                 else if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
                                       e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||

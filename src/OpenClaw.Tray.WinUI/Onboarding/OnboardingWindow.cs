@@ -612,7 +612,7 @@ public sealed class OnboardingWindow : WindowEx
     /// <see cref="OnClosed"/>). Idempotent — guarded by <see cref="_completionDispatched"/>.
     ///
     /// If the user is closing from the Ready page and setup no longer requires
-    /// credentials, launches the main tray chat window via <c>App.ShowChatWindow()</c>.
+    /// credentials, launches the main tray hub window on the chat tab.
     /// This intentionally does not depend on WizardLifecycleState == "complete": the
     /// gateway wizard can stop on a later channel step even after credentials/model
     /// setup succeeded, but Finish on Ready still runs this handler.
@@ -646,14 +646,14 @@ public sealed class OnboardingWindow : WindowEx
         var setupStillRequired = StartupSetupState.RequiresSetup(_settings, dataPath);
         if (finishedFromReady && !setupStillRequired)
         {
-            Logger.Info("[OnboardingWindow] OnWizardComplete launching chat");
+            Logger.Info("[OnboardingWindow] OnWizardComplete launching HubWindow on chat tab");
             try
             {
-                (Microsoft.UI.Xaml.Application.Current as App)?.ShowChatWindow();
+                (Microsoft.UI.Xaml.Application.Current as App)?.ShowHub("chat");
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[OnboardingWindow] ShowChatWindow after Finish failed: {ex.Message}");
+                Logger.Warn($"[OnboardingWindow] ShowHub chat after Finish failed: {ex.Message}");
             }
         }
         else
