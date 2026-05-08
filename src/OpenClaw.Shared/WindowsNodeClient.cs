@@ -26,13 +26,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private bool _isConnected;
     private string? _nodeId;
     private string? _pendingNonce;  // Store nonce from challenge for signing
-    private bool _isPendingApproval;  // True when connected but awaiting pairing approval
-    private bool _isPaired;
-    // Bridges the gap between an approval event and the next hello-ok when the gateway omits auth.deviceToken.
-    private bool _pairingApprovedAwaitingReconnect;
-    // Persists across disconnect/error so ShouldAutoReconnect can block reconnect
-    // even after OnDisconnected clears _isPendingApproval.
-    private volatile bool _pairingBlocked;
+    private NodePairingState _pairingState = NodePairingState.Unknown;
     private volatile bool _rateLimited;
     // Bug 3: source-side idempotency for PairingStatusChanged. HandleHelloOk runs on every
     // WS reconnect and re-fires PairingStatus.Paired even when nothing changed, causing a
@@ -62,10 +56,11 @@ public class WindowsNodeClient : WebSocketClientBase
     public IReadOnlyList<INodeCapability> Capabilities => _capabilities;
     
     /// <summary>True if connected but waiting for pairing approval on gateway</summary>
-    public bool IsPendingApproval => _isPendingApproval;
+    public bool IsPendingApproval => _pairingState == NodePairingState.AwaitingApproval;
     
     /// <summary>True if device is paired via a stored token or an explicit gateway approval event.</summary>
-    public bool IsPaired => _isPaired || !string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
+    public bool IsPaired => _pairingState is NodePairingState.Paired or NodePairingState.ApprovedReconnecting
+        || !string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
     
     /// <summary>Device ID for display/approval (first 16 chars of full ID)</summary>
     public string ShortDeviceId => _deviceIdentity.DeviceId.Length > 16 
@@ -297,15 +292,12 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
-        if (!PayloadTargetsCurrentDevice(payload) || _isPendingApproval)
+        if (!PayloadTargetsCurrentDevice(payload) || _pairingState == NodePairingState.AwaitingApproval)
         {
             return;
         }
 
-        _isPendingApproval = true;
-        _isPaired = false;
-        _pairingBlocked = true;
-        _pairingApprovedAwaitingReconnect = false;
+        _pairingState = NodePairingState.AwaitingApproval;
 
         _logger.Info($"[NODE] Pairing requested for this device via {eventType}");
         _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
@@ -336,10 +328,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         if (string.Equals(decision, "approved", StringComparison.OrdinalIgnoreCase))
         {
-            _isPendingApproval = false;
-            _isPaired = true;
-            _pairingBlocked = false; // Allow reconnect after approval
-            _pairingApprovedAwaitingReconnect = true;
+            _pairingState = NodePairingState.ApprovedReconnecting;
 
             EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                 PairingStatus.Paired,
@@ -353,9 +342,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         if (string.Equals(decision, "rejected", StringComparison.OrdinalIgnoreCase))
         {
-            _isPendingApproval = false;
-            _isPaired = false;
-            _pairingApprovedAwaitingReconnect = false;
+            _pairingState = NodePairingState.Rejected;
 
             EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                 PairingStatus.Rejected,
@@ -630,7 +617,7 @@ public class WindowsNodeClient : WebSocketClientBase
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
-            var reconnectingAfterApproval = _pairingApprovedAwaitingReconnect;
+            var wasReconnectingAfterApproval = _pairingState == NodePairingState.ApprovedReconnecting;
             _isConnected = true;
             _rateLimited = false; // Clear transient rate-limit on successful connect
             ResetReconnectAttempts();
@@ -645,23 +632,50 @@ public class WindowsNodeClient : WebSocketClientBase
             // Use gotNewToken to guard the fallback check below and avoid a double-fire of
             // PairingStatusChanged when the gateway includes auth.deviceToken in hello-ok.
             bool gotNewToken = false;
-            if (payload.TryGetProperty("auth", out var authPayload) &&
-                authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
+            string? operatorDeviceToken = null;
+            if (payload.TryGetProperty("auth", out var authPayload))
             {
-                var deviceToken = deviceTokenProp.GetString();
-                if (!string.IsNullOrEmpty(deviceToken))
+                // Extract node device token
+                if (authPayload.TryGetProperty("deviceToken", out var deviceTokenProp))
                 {
-                    gotNewToken = true;
-                    var wasWaiting = _isPendingApproval || reconnectingAfterApproval;
-                    _isPendingApproval = false;
-                    _isPaired = true;
-                    _pairingApprovedAwaitingReconnect = false;
+                    var deviceToken = deviceTokenProp.GetString();
+                    if (!string.IsNullOrEmpty(deviceToken))
+                    {
+                        gotNewToken = true;
+                        _deviceIdentity.StoreDeviceToken(deviceToken);
+                    }
+                }
+
+                // Extract operator device token from deviceTokens array (bootstrap handoff)
+                if (authPayload.TryGetProperty("deviceTokens", out var deviceTokensArray) &&
+                    deviceTokensArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in deviceTokensArray.EnumerateArray())
+                    {
+                        if (entry.TryGetProperty("role", out var roleProp) &&
+                            string.Equals(roleProp.GetString(), "operator", StringComparison.OrdinalIgnoreCase) &&
+                            entry.TryGetProperty("deviceToken", out var opTokenProp))
+                        {
+                            operatorDeviceToken = opTokenProp.GetString();
+                            if (!string.IsNullOrEmpty(operatorDeviceToken))
+                            {
+                                _logger.Info($"Received operator device token from bootstrap handoff (len={operatorDeviceToken.Length}, prefix={operatorDeviceToken[..Math.Min(8, operatorDeviceToken.Length)]})");
+                            }
+                        }
+                    }
+                }
+
+                if (gotNewToken)
+                {
+                    var wasWaiting = _pairingState is NodePairingState.AwaitingApproval or NodePairingState.ApprovedReconnecting;
+                    _pairingState = NodePairingState.Paired;
                     _logger.Info("Received device token - we are now paired!");
                     _deviceIdentity.StoreDeviceTokenForRole("node", deviceToken, TryGetAuthScopes(authPayload));
                     EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                         PairingStatus.Paired,
                         _deviceIdentity.DeviceId,
-                        wasWaiting ? "Pairing approved!" : null));
+                        wasWaiting ? "Pairing approved!" : null,
+                        operatorDeviceToken));
                 }
             }
             
@@ -673,18 +687,14 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                     if (string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken))
                 {
-                    if (reconnectingAfterApproval)
+                    if (wasReconnectingAfterApproval)
                     {
-                        _isPendingApproval = false;
-                        _isPaired = true;
-                        _pairingApprovedAwaitingReconnect = false;
+                        _pairingState = NodePairingState.Paired;
                         _logger.Info("Gateway accepted the node after pairing approval without returning a device token.");
                     }
                     else
                     {
-                        _isPendingApproval = true;
-                        _isPaired = false;
-                        _pairingBlocked = true;
+                        _pairingState = NodePairingState.AwaitingApproval;
                         _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
                         _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
                         EmitPairingStatusOnTransition(new PairingStatusEventArgs(
@@ -695,9 +705,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 }
                 else
                 {
-                    _isPendingApproval = false;
-                    _isPaired = true;
-                    _pairingApprovedAwaitingReconnect = false;
+                    _pairingState = NodePairingState.Paired;
                     _logger.Info("Already paired with stored device token");
                     EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                         PairingStatus.Paired, 
@@ -757,15 +765,12 @@ public class WindowsNodeClient : WebSocketClientBase
 
         if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase))
         {
-            if (_isPendingApproval)
+            if (_pairingState == NodePairingState.AwaitingApproval)
             {
                 return;
             }
 
-            _isPendingApproval = true;
-            _isPaired = false;
-            _pairingBlocked = true;
-            _pairingApprovedAwaitingReconnect = false;
+            _pairingState = NodePairingState.AwaitingApproval;
 
             var detail = !string.IsNullOrWhiteSpace(pairingRequestId)
                 ? $"Device {ShortDeviceId} requires approval (request {pairingRequestId})"
@@ -1071,8 +1076,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         // Don't reconnect while awaiting pairing approval — each reconnect
         // generates a new pairing request on the gateway, causing a storm.
-        // _pairingBlocked survives OnDisconnected (which clears _isPendingApproval).
-        if (_pairingBlocked)
+        if (_pairingState == NodePairingState.AwaitingApproval)
             return false;
 
         if (_rateLimited)
@@ -1084,14 +1088,20 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override void OnDisconnected()
     {
         _isConnected = false;
-        _isPendingApproval = false;
-        _isPaired = false;
+        // Preserve AwaitingApproval and ApprovedReconnecting across disconnects
+        // so reconnect is still blocked/allowed correctly.
+        if (_pairingState is not NodePairingState.AwaitingApproval and not NodePairingState.ApprovedReconnecting)
+        {
+            _pairingState = NodePairingState.Unknown;
+        }
     }
 
     protected override void OnError(Exception ex)
     {
         _isConnected = false;
-        _isPendingApproval = false;
-        _isPaired = false;
+        if (_pairingState is not NodePairingState.AwaitingApproval and not NodePairingState.ApprovedReconnecting)
+        {
+            _pairingState = NodePairingState.Unknown;
+        }
     }
 }

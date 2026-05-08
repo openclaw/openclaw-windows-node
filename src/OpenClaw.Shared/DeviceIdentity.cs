@@ -81,6 +81,32 @@ public class DeviceIdentity
 
     public static bool HasStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
         !string.IsNullOrWhiteSpace(TryReadStoredDeviceTokenForRole(dataPath, role, logger));
+
+    /// <summary>
+    /// Clears the stored device token from the identity file without regenerating the keypair.
+    /// Used when applying a setup code to a new gateway — the old device token is invalid.
+    /// </summary>
+    public static void TryClearStoredDeviceToken(string dataPath, IOpenClawLogger? logger = null)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath)) return;
+
+        try
+        {
+            var json = File.ReadAllText(keyPath);
+            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
+            if (data != null && !string.IsNullOrEmpty(data.DeviceToken))
+            {
+                data.DeviceToken = null;
+                File.WriteAllText(keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+                logger?.Info("Cleared stored device token for fresh pairing");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn($"Failed to clear stored device token: {ex.Message}");
+        }
+    }
     
     public DeviceIdentity(string dataPath, IOpenClawLogger? logger = null)
     {

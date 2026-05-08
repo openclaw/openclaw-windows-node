@@ -2092,6 +2092,32 @@ public partial class App : Application
                 {
                     Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
                 }
+
+                // If the gateway issued a role-specific operator device token during
+                // bootstrap pairing, store it in Settings.Token for the operator client
+                // AND for chat/dashboard HTTP auth (gateway accepts device tokens for both).
+                if (!string.IsNullOrWhiteSpace(args.OperatorDeviceToken) && _settings != null)
+                {
+                    Logger.Info("Storing operator device token from bootstrap handoff");
+                    _settings.Token = args.OperatorDeviceToken;
+                    _settings.BootstrapToken = ""; // Bootstrap consumed — clear it
+                    _settings.Save();
+
+                    // Reset chat window so it picks up the new token
+                    if (_chatWindow != null)
+                    {
+                        _chatWindow.ForceClose();
+                        _chatWindow = null;
+                    }
+                }
+
+                // Reinitialize operator client so it picks up the operator device token.
+                if (_gatewayClient == null || !_gatewayClient.IsConnectedToGateway)
+                {
+                    Logger.Info("Node paired — reinitializing operator client with operator device token");
+                    _dispatcherQueue?.TryEnqueue(() => InitializeGatewayClient());
+                }
+                }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
             {

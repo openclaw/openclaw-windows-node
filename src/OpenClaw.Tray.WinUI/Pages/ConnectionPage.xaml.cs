@@ -6,6 +6,7 @@ using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -514,36 +515,24 @@ public sealed partial class ConnectionPage : Page
 
     private void OnApplySetupCode(object sender, RoutedEventArgs e)
     {
-        var code = SetupCodeTextBox.Text?.Trim();
-        if (string.IsNullOrEmpty(code))
-        {
-            SetupCodeResultText.Text = "Please paste a setup code.";
-            return;
-        }
+        var settings = _hub?.Settings;
+        if (settings == null) return;
 
-        var result = SetupCodeDecoder.Decode(code);
+        // Compute the shared identity data path (same as App.DataPath)
+        var dataPath = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } v
+            ? v
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
+
+        var result = SetupCodeApplicator.Apply(SetupCodeTextBox.Text, settings, dataPath);
         if (!result.Success)
         {
             SetupCodeResultText.Text = $"✗ {result.Error}";
             return;
         }
 
-        var settings = _hub?.Settings;
-        if (settings == null) return;
-
-        if (!string.IsNullOrEmpty(result.Url))
-            settings.GatewayUrl = result.Url;
-        if (!string.IsNullOrEmpty(result.Token))
-        {
-            // Bootstrap token goes to BootstrapToken only — it's single-use for pairing.
-            // Don't save it as Settings.Token, which would cause reconnect storms on restart.
-            settings.BootstrapToken = result.Token;
-        }
-
-        settings.Save();
-
-        SetupCodeResultText.Text = $"✓ Applied — gateway: {SanitizeUrl(result.Url ?? settings.GatewayUrl ?? "")}";
+        SetupCodeResultText.Text = $"✓ Applied — gateway: {result.DisplayUrl}";
         GatewayUrlTextBox.Text = settings.GatewayUrl ?? "";
+        TokenTextBox.Text = ""; // Token was cleared by the applicator
 
         _hub?.RaiseSettingsSaved();
     }

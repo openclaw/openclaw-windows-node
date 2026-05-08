@@ -56,12 +56,12 @@ public class WindowsNodeClientTests
         {
             using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
 
-            // Put client into pending-approval state (simulates first-connect, no stored token)
-            var isPendingField = typeof(WindowsNodeClient).GetField(
-                "_isPendingApproval",
+            // Put client into awaiting-approval state (simulates first-connect, no stored token)
+            var pairingStateField = typeof(WindowsNodeClient).GetField(
+                "_pairingState",
                 BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.NotNull(isPendingField);
-            isPendingField!.SetValue(client, true);
+            Assert.NotNull(pairingStateField);
+            pairingStateField!.SetValue(client, NodePairingState.AwaitingApproval);
 
             var pairingEvents = new List<PairingStatusEventArgs>();
             client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
@@ -357,10 +357,10 @@ public class WindowsNodeClientTests
         {
             using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
 
-            var isPendingField = typeof(WindowsNodeClient).GetField(
-                "_isPendingApproval",
+            var pairingStateField = typeof(WindowsNodeClient).GetField(
+                "_pairingState",
                 BindingFlags.NonPublic | BindingFlags.Instance);
-            isPendingField!.SetValue(client, true);
+            pairingStateField!.SetValue(client, NodePairingState.AwaitingApproval);
 
             var pairingEvents = new List<PairingStatusEventArgs>();
             client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
@@ -657,7 +657,7 @@ public class WindowsNodeClientTests
     [Theory]
     [InlineData("OnDisconnected")]
     [InlineData("OnError")]
-    public async Task EventOnlyPairedState_IsClearedByConnectionResetHooks(string hookName)
+    public async Task ApprovedReconnectingState_SurvivesConnectionReset(string hookName)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -666,6 +666,7 @@ public class WindowsNodeClientTests
         {
             using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
 
+            // Simulate pairing approval (sets state to ApprovedReconnecting)
             await InvokeHandleEventAsync(client, $$"""
                 {
                     "type": "event",
@@ -693,8 +694,10 @@ public class WindowsNodeClientTests
                 method!.Invoke(client, null);
             }
 
+            // ApprovedReconnecting survives disconnects — the device IS paired,
+            // it's just reconnecting to get the device token from the gateway.
             Assert.False(client.IsPendingApproval);
-            Assert.False(client.IsPaired);
+            Assert.True(client.IsPaired);
         }
         finally
         {

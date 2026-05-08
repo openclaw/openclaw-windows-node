@@ -162,8 +162,9 @@ public sealed class ConnectionPage : Component<OnboardingState>
             {
                 setToken(result.Token);
                 // Bootstrap token goes to BootstrapToken only — it's single-use for pairing.
-                // Don't save as Settings.Token (causes reconnect storms on restart).
+                // Clear Settings.Token to prevent dual-token confusion.
                 Props.Settings.BootstrapToken = result.Token;
+                Props.Settings.Token = "";
             }
             setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
         }

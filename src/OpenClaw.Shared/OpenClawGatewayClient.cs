@@ -28,6 +28,17 @@ public class OpenClawGatewayClient : WebSocketClientBase
         "operator.approvals",
         "operator.pairing"
     ];
+
+    // Scopes compatible with bootstrap-issued operator device tokens.
+    // Bootstrap tokens cannot carry admin or pairing scopes.
+    private static readonly string[] s_operatorBootstrapDeviceTokenScopes =
+    [
+        "operator.approvals",
+        "operator.read",
+        "operator.write"
+    ];
+
+    // Scopes for fresh non-local or bootstrap devices (no admin/pairing).
     private static readonly string[] s_operatorBootstrapScopes =
     [
         "operator.approvals",
@@ -61,6 +72,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
     private SignatureTokenMode _signatureTokenMode = SignatureTokenMode.V3AuthToken;
+    private bool _hasOperatorDeviceToken; // True when _connectAuthToken is a device token (not shared secret)
     private long? _challengeTimestampMs;
     private string? _currentChallengeNonce;
     private bool _usageStatusUnsupported;
@@ -194,12 +206,12 @@ public class OpenClawGatewayClient : WebSocketClientBase
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
         _bootstrapPairAsNode = bootstrapPairAsNode;
         _currentGatewayUrl = gatewayUrl;
-        var dataPath = Path.Combine(
+        var identityPath = Path.Combine(
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
 
-        _deviceIdentity = new DeviceIdentity(dataPath, _logger);
+        _deviceIdentity = new DeviceIdentity(identityPath, _logger);
         _deviceIdentity.Initialize();
         _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
     }
@@ -1022,7 +1034,8 @@ public class OpenClawGatewayClient : WebSocketClientBase
                     : TryGetHandshakeDeviceTokenScopesCore(payload, preferredRole: null);
                 _deviceIdentity.StoreDeviceTokenWithScopes(newDeviceToken, deviceTokenScopes);
                 _connectAuthToken = newDeviceToken;
-                _logger.Info("Operator device token stored for reconnect");
+                _hasOperatorDeviceToken = true;
+                _logger.Info("Operator device token received for reconnect");
             }
 
             _logger.Info("Handshake complete (hello-ok)");
@@ -1393,6 +1406,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private static bool IsTerminalAuthError(string errorMessage)
     {
         return errorMessage.Contains("token mismatch", StringComparison.OrdinalIgnoreCase) ||
+               errorMessage.Contains("bootstrap token invalid", StringComparison.OrdinalIgnoreCase) ||
                errorMessage.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
                errorMessage.Contains("too many failed", StringComparison.OrdinalIgnoreCase);
     }

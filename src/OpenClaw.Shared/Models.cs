@@ -22,17 +22,38 @@ public enum PairingStatus
     Rejected    // Pairing was rejected
 }
 
+/// <summary>
+/// Internal state machine for node pairing. Replaces the former set of
+/// boolean flags (_isPendingApproval, _isPaired, _pairingBlocked,
+/// _pairingApprovedAwaitingReconnect) with a single source of truth.
+/// </summary>
+public enum NodePairingState
+{
+    Unknown,              // Initial or post-disconnect (not yet determined)
+    AwaitingApproval,     // Waiting for pairing approval; blocks auto-reconnect
+    ApprovedReconnecting, // Approval received; reconnecting to get device token
+    Paired,               // Fully paired (device token stored or gateway confirmed)
+    Rejected              // Pairing was rejected by the gateway
+}
+
 public class PairingStatusEventArgs : EventArgs
 {
     public PairingStatus Status { get; }
     public string DeviceId { get; }
     public string? Message { get; }
+    /// <summary>
+    /// Operator device token issued by the gateway during bootstrap pairing.
+    /// Present when the node's hello-ok includes auth.deviceTokens with role=operator.
+    /// The app should store this for the operator client to use.
+    /// </summary>
+    public string? OperatorDeviceToken { get; }
     
-    public PairingStatusEventArgs(PairingStatus status, string deviceId, string? message = null)
+    public PairingStatusEventArgs(PairingStatus status, string deviceId, string? message = null, string? operatorDeviceToken = null)
     {
         Status = status;
         DeviceId = deviceId;
         Message = message;
+        OperatorDeviceToken = operatorDeviceToken;
     }
 }
 
