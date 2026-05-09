@@ -1,15 +1,16 @@
 {
-  "last_run": "2026-05-08T12:49:11Z",
-  "last_run_id": "25556380923",
+  "last_run": "2026-05-09T01:09:51Z",
+  "last_run_id": "25587280048",
   "monthly_summary_issue": 254,
   "monthly_summary_month": "2026-05",
   "backlog_cursor": {
     "issues": 283,
-    "prs": 296
+    "prs": 300
   },
   "open_repo_assist_prs": [
     {"number": 294, "title": "[Repo Assist] fix(security): stop leaking ex.Message in CanvasCapability and BrowserProxyCapability", "branch": "repo-assist/fix-canvas-proxy-exception-message-leaks-2026-05-08"},
-    {"number": 296, "title": "[Repo Assist] feat: add ExecApprovalsEvaluator policy evaluation step", "branch": "repo-assist/feat-exec-approvals-evaluator", "note": "Based on PR #295 (ExecApprovalsStore). Merge #295 first."}
+    {"number": 296, "title": "[Repo Assist] feat: add ExecApprovalsEvaluator policy evaluation step", "branch": "repo-assist/feat-exec-approvals-evaluator", "note": "Based on PR #295 (ExecApprovalsStore). Merge #295 first."},
+    {"number": 300, "title": "[Repo Assist] fix(security): apply TokenSanitizer to WSL diagnostic output", "branch": "repo-assist/fix-diagnostic-token-sanitization-2026-05-09", "note": "Addresses issue #281 item #4. 24 new tests."}
   ],
   "comments_made": {
     "246": {"comment_id": "4357284092", "date": "2026-05-01"},
@@ -21,6 +22,7 @@
     "288": {"date": "2026-05-07", "note": "Review comment: HttpClient anti-pattern, dependency surface, TtsCapability conflict"}
   },
   "fix_attempts": {
+    "diagnostic-token-sanitization": {"status": "pr_created", "pr": 300, "branch": "repo-assist/fix-diagnostic-token-sanitization-2026-05-09", "date": "2026-05-09", "description": "TokenSanitizer.Sanitize added to DiagnosticFormatter.SanitizeForDiagnostic. 24 new tests."},
     "exec-approvals-evaluator": {"status": "pr_created", "pr": 296, "branch": "repo-assist/feat-exec-approvals-evaluator", "date": "2026-05-08", "description": "ExecApprovalsEvaluator (policy evaluation phase), ExecApprovalsAllowlistMatcher (pattern matching), ExecApprovalV2EvaluationOutcome. 33 new tests. Based on PR #295."},
     "canvas-proxy-exception-message-leaks": {"status": "pr_created", "pr": 294, "branch": "repo-assist/fix-canvas-proxy-exception-message-leaks-2026-05-08", "date": "2026-05-08", "description": "CanvasCapability and BrowserProxyCapability ex.Message leaks fixed."},
     "capability-ex-message-leaks": {"status": "merged", "pr": 291, "branch": "repo-assist/fix-capability-exception-message-leaks-2026-05-07", "date": "2026-05-07"},
@@ -35,17 +37,21 @@
   "notes": [
     "PR #274 (indierawk2k2) WSL local gateway setup — open, needs review/merge",
     "PR #295 (AlexAlves87) ExecApprovalsStore read path — open, needs review/merge before PR #296",
+    "PR #297 (AlexAlves87) refactor: extract CommandCenterStateBuilder from App.xaml.cs — open, new",
+    "PR #298 (MythiliMur) Add MXC Sandbox example — open, new",
+    "PR #299 (ranjeshj) feat: gateway registry (multi-gateway support) — open draft, new",
     "PR #294 (Repo Assist) CanvasCapability/BrowserProxyCapability security fix — open, needs review/merge",
     "PR #296 (Repo Assist) ExecApprovalsEvaluator — open draft, depends on PR #295",
-    "Issue #281 comment made May 6 — no new human comments yet",
+    "PR #300 (Repo Assist) fix: TokenSanitizer in DiagnosticFormatter — open draft",
+    "Issue #281 comment made May 6 — no new human comments yet; PR #300 closes item #4",
     "Issue #191 open as tracker for remaining bridge integration (gateway SPA listener, openclaw/openclaw#69633)",
     "Issue #235 (Dependabot bundle) still open — suggest closing",
     "ExecApprovals pipeline progress: input validation (master), normalization (master), store read path (PR #295), evaluator (PR #296), coordinator/handler (future)"
   ],
   "checked_off_by_maintainer": [],
   "test_baseline": {
-    "shared_tests": "exit 0 (1479 passed on PR #295+#296 branch, 4 pre-existing failures: ExecApprovalV2Normalization x3 + McpHttpServer x1, 20 skipped)",
-    "tray_tests": "exit 0 (465 passed, 1 skipped Windows DPAPI) — last verified on master",
+    "shared_tests": "exit 0 — all passed on master branch",
+    "tray_tests": "718 passed / 7 pre-existing failures / 1 skipped — baseline on master (7 failures pre-existing)",
     "note": "Both test suites run on Linux. build.ps1 requires Windows."
   }
 }
