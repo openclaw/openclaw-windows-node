@@ -839,3 +839,127 @@ public class LocalGatewaySetupTests
         }
     }
 }
+
+/// <summary>
+/// Tests for LocalGatewaySetup.SecretRedactor — verifies that the key-value regex
+/// redacts sensitive terms found in subprocess output and log strings.
+/// </summary>
+public class LocalGatewaySetupSecretRedactorTests
+{
+    [Theory]
+    [InlineData("gateway-token=abc123def456", "gateway-token=<redacted>")]
+    [InlineData("gateway_token: abc123def456", "gateway_token: <redacted>")]
+    [InlineData("bootstrap-token=tok789", "bootstrap-token=<redacted>")]
+    [InlineData("bootstrap_token = tok789", "bootstrap_token = <redacted>")]
+    [InlineData("device-token: dev-abc", "device-token: <redacted>")]
+    [InlineData("auth-token=\"xyz\"", "auth-token=\"<redacted>\"")]
+    [InlineData("setup-code=ABCD-1234", "setup-code=<redacted>")]
+    [InlineData("setup_code='ABCD-1234'", "setup_code='<redacted>'")]
+    [InlineData("secret: mysecretvalue", "secret: <redacted>")]
+    [InlineData("private-key=MIIB...", "private-key=<redacted>")]
+    [InlineData("private_key: MIIB...", "private_key: <redacted>")]
+    public void Redact_SecretKeyValuePattern_IsRedacted(string input, string expected)
+    {
+        Assert.Equal(expected, SecretRedactor.Redact(input));
+    }
+
+    [Theory]
+    [InlineData("exit code 1")]
+    [InlineData("Error: connection refused")]
+    [InlineData("username: alice")]
+    [InlineData("url: https://gateway.example.com")]
+    public void Redact_NonSecretText_IsUnchanged(string input)
+    {
+        Assert.Equal(input, SecretRedactor.Redact(input));
+    }
+
+    [Fact]
+    public void Redact_EmptyString_ReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, SecretRedactor.Redact(string.Empty));
+    }
+
+    [Fact]
+    public void Redact_CaseInsensitive_RedactsUpperAndMixedCase()
+    {
+        Assert.Contains("<redacted>", SecretRedactor.Redact("GATEWAY-TOKEN=abc123"));
+        Assert.Contains("<redacted>", SecretRedactor.Redact("Bootstrap_Token: abc123"));
+    }
+}
+
+/// <summary>
+/// Tests for LocalGatewaySetup.DiagnosticFormatter — verifies that subprocess
+/// stdout/stderr is sanitized through both SecretRedactor (key-value patterns)
+/// and TokenSanitizer (raw token formats) before being included in diagnostics.
+/// </summary>
+public class LocalGatewaySetupDiagnosticFormatterTests
+{
+    private static WslCommandResult Result(string stdout = "", string stderr = "") =>
+        new(ExitCode: 1, StandardOutput: stdout, StandardError: stderr);
+
+    [Fact]
+    public void Build_IncludesExitCode()
+    {
+        var result = new WslCommandResult(ExitCode: 42, StandardOutput: "", StandardError: "");
+        var output = DiagnosticFormatter.Build("install", result);
+        Assert.Contains("install_exit_code=42", output);
+    }
+
+    [Fact]
+    public void Build_IncludesStdoutAndStderr()
+    {
+        var result = Result(stdout: "ok", stderr: "warn");
+        var output = DiagnosticFormatter.Build("step", result);
+        Assert.Contains("step_stdout=ok", output);
+        Assert.Contains("step_stderr=warn", output);
+    }
+
+    [Fact]
+    public void Build_OmitsEmptyStdoutAndStderr()
+    {
+        var result = Result(stdout: "", stderr: "");
+        var output = DiagnosticFormatter.Build("step", result);
+        Assert.DoesNotContain("stdout", output);
+        Assert.DoesNotContain("stderr", output);
+    }
+
+    [Fact]
+    public void Build_RedactsGatewayTokenKeyValueInStdout()
+    {
+        var result = Result(stdout: "Config loaded: gateway-token=abc123secretvalue");
+        var output = DiagnosticFormatter.Build("configure", result);
+        Assert.DoesNotContain("abc123secretvalue", output);
+        Assert.Contains("<redacted>", output);
+    }
+
+    [Fact]
+    public void Build_RedactsRawHexGatewayTokenInStderr()
+    {
+        // 64-char hex token as would appear if a CLI tool echoes arguments in an error message.
+        // TokenSanitizer.BareGatewayHexTokenPattern catches this even without a key= prefix.
+        var rawToken = new string('a', 64);
+        var result = Result(stderr: $"Error: failed to authenticate with token {rawToken}");
+        var output = DiagnosticFormatter.Build("auth", result);
+        Assert.DoesNotContain(rawToken, output);
+        Assert.Contains("[REDACTED_TOKEN]", output);
+    }
+
+    [Fact]
+    public void Build_TruncatesLongOutput()
+    {
+        var longValue = new string('x', 3000);
+        var result = Result(stdout: longValue);
+        var output = DiagnosticFormatter.Build("step", result);
+        Assert.Contains("...<truncated>", output);
+        Assert.DoesNotContain(longValue, output);
+    }
+
+    [Fact]
+    public void Build_StripsNullBytes()
+    {
+        var result = Result(stdout: "data\0with\0nulls");
+        var output = DiagnosticFormatter.Build("step", result);
+        Assert.DoesNotContain('\0', output);
+        Assert.Contains("datawith", output);
+    }
+}
