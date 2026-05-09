@@ -44,9 +44,8 @@ public static class SetupCodeApplicator
         settings.Token = "";
         settings.Save();
 
-        // Clear stored device token — setup code targets a potentially different gateway
-        if (!string.IsNullOrEmpty(dataPath))
-            DeviceIdentity.TryClearStoredDeviceToken(dataPath);
+        // No need to clear device tokens — per-gateway identity directories
+        // ensure each gateway gets its own Ed25519 keypair and tokens.
 
         var displayUrl = GatewayUrlHelper.SanitizeForDisplay(gatewayUrl);
         return new ApplyResult(true, DisplayUrl: displayUrl);

@@ -1516,16 +1516,18 @@ public sealed class OpenClawGatewayOperatorConnector : IGatewayOperatorConnector
 {
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _timeout;
+    private readonly string? _identityPath;
 
-    public OpenClawGatewayOperatorConnector(IOpenClawLogger? logger = null, TimeSpan? timeout = null)
+    public OpenClawGatewayOperatorConnector(IOpenClawLogger? logger = null, TimeSpan? timeout = null, string? identityPath = null)
     {
         _logger = logger ?? NullLogger.Instance;
         _timeout = timeout ?? TimeSpan.FromSeconds(35);
+        _identityPath = identityPath;
     }
 
     public async Task<GatewayOperatorConnectionResult> ConnectAsync(string gatewayUrl, string token, bool tokenIsBootstrapToken = false, CancellationToken cancellationToken = default)
     {
-        using var client = new OpenClawGatewayClient(gatewayUrl, token, _logger, tokenIsBootstrapToken, bootstrapPairAsNode: false);
+        using var client = new OpenClawGatewayClient(gatewayUrl, token, _logger, tokenIsBootstrapToken, bootstrapPairAsNode: false, identityPath: _identityPath);
         var completion = new TaskCompletionSource<GatewayOperatorConnectionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         client.StatusChanged += (_, status) =>
@@ -1565,7 +1567,7 @@ public sealed class OpenClawGatewayOperatorConnector : IGatewayOperatorConnector
 
     public async Task<GatewayOperatorConnectionResult> ConnectWithStoredDeviceTokenAsync(string gatewayUrl, CancellationToken cancellationToken = default)
     {
-        var dataPath = Path.Combine(
+        var dataPath = _identityPath ?? Path.Combine(
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
@@ -1712,6 +1714,13 @@ public sealed class SettingsOperatorPairingService : IOperatorPairingService
         _settings.GatewayUrl = state.GatewayUrl;
         _settings.UseSshTunnel = false;
         _settings.Save();
+
+        // Clear any stale per-gateway identity so a fresh keypair is generated.
+        // After a nuke+reinstall the gateway is new but the per-gateway dir may
+        // contain a keypair from a previous gateway instance at the same URL.
+        var gwId = GatewayRecord.GenerateId(state.GatewayUrl);
+        var gwIdentityPath = Path.Combine(GatewayRecord.BaseIdentityDir, "gateways", gwId);
+        DeviceIdentity.TryClearStoredDeviceToken(gwIdentityPath);
 
         if (_connector == null)
             return new ProvisioningResult(true);
@@ -3020,7 +3029,10 @@ public static class LocalGatewaySetupEngineFactory
 
         var wsl = new WslExeCommandRunner(logger, TimeSpan.FromMinutes(30));
         var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings, gatewayRegistry);
-        var operatorConnector = new OpenClawGatewayOperatorConnector(logger);
+        var gwId = GatewayRecord.GenerateId(options.GatewayUrl);
+        var gwIdentityPath = Path.Combine(GatewayRecord.BaseIdentityDir, "gateways", gwId);
+        try { Directory.CreateDirectory(gwIdentityPath); } catch { }
+        var operatorConnector = new OpenClawGatewayOperatorConnector(logger, identityPath: gwIdentityPath);
         var bootstrapTokenProvider = new WslGatewayCliBootstrapTokenProvider(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
         var sharedGatewayTokenProvider = new WslGatewayCliSharedGatewayTokenProvider(wsl);
         var gatewayConfigurationPreparer = new OpenClawCliGatewayConfigurationPreparer(wsl);

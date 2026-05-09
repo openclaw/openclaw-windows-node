@@ -95,6 +95,7 @@ public class GatewayRegistry
             if (setActive)
                 _data.ActiveGatewayId = record.Id;
 
+            EnsureIdentityDirectory(record.Id);
             Save();
         }
     }
@@ -160,6 +161,41 @@ public class GatewayRegistry
 
     private GatewayRecord? FindActive() =>
         _data.Gateways.FirstOrDefault(g => g.Id == _data.ActiveGatewayId);
+
+    private static void EnsureIdentityDirectory(string gatewayId)
+    {
+        if (string.IsNullOrWhiteSpace(gatewayId)) return;
+        var dir = Path.Combine(GatewayRecord.BaseIdentityDir, "gateways", gatewayId);
+        try { Directory.CreateDirectory(dir); } catch { }
+    }
+
+    /// <summary>
+    /// One-time migration: moves the legacy root device-key-ed25519.json into the
+    /// active gateway's per-gateway identity directory. Idempotent.
+    /// </summary>
+    public void MigrateLegacyIdentityFile()
+    {
+        lock (_lock)
+        {
+            var active = FindActive();
+            if (active == null) return;
+
+            var legacyPath = Path.Combine(GatewayRecord.BaseIdentityDir, "device-key-ed25519.json");
+            if (!File.Exists(legacyPath)) return;
+
+            var targetDir = active.IdentityPath;
+            var targetPath = Path.Combine(targetDir, "device-key-ed25519.json");
+            if (File.Exists(targetPath)) return;
+
+            try
+            {
+                Directory.CreateDirectory(targetDir);
+                File.Copy(legacyPath, targetPath);
+                File.Delete(legacyPath);
+            }
+            catch { }
+        }
+    }
 
     private void Load()
     {

@@ -111,19 +111,16 @@ public class DeviceIdentity
 
         try
         {
-            var json = File.ReadAllText(keyPath);
-            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
-            if (data != null && (!string.IsNullOrEmpty(data.DeviceToken) || !string.IsNullOrEmpty(data.OperatorDeviceToken)))
-            {
-                data.DeviceToken = null;
-                data.OperatorDeviceToken = null;
-                File.WriteAllText(keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
-                logger?.Info("Cleared stored device tokens for fresh pairing");
-            }
+            // Delete the entire identity file so a fresh Ed25519 keypair is generated
+            // on the next connection. Clearing just tokens is insufficient because
+            // the keypair itself is gateway-specific — a different gateway won't
+            // recognize signatures from a keypair that was paired elsewhere.
+            File.Delete(keyPath);
+            logger?.Info("Deleted stored device identity for fresh pairing");
         }
         catch (Exception ex)
         {
-            logger?.Warn($"Failed to clear stored device token: {ex.Message}");
+            logger?.Warn($"Failed to delete stored device identity: {ex.Message}");
         }
     }
     

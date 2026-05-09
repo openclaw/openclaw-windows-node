@@ -16,6 +16,7 @@ public sealed partial class ConnectionPage : Page
 {
     private HubWindow? _hub;
     private int _connectionAttempts;
+    private GatewayConnectionService? _svc;
 
     public ConnectionPage()
     {
@@ -25,8 +26,15 @@ public sealed partial class ConnectionPage : Page
     public void Initialize(HubWindow hub)
     {
         _hub = hub;
+        _svc = hub.ConnectionService;
         var settings = hub.Settings;
         if (settings == null) return;
+
+        // Subscribe to live state changes from the connection service
+        if (_svc != null)
+        {
+            _svc.StateChanged += OnServiceStateChanged;
+        }
 
         // Populate manual connection fields
         GatewayUrlTextBox.Text = settings.GatewayUrl ?? "";
@@ -42,6 +50,24 @@ public sealed partial class ConnectionPage : Page
         UpdateDeviceIdentity();
         LoadConnectionLog();
         LoadGatewayList();
+    }
+
+    private void OnServiceStateChanged(GatewayConnectionState oldState, GatewayConnectionState newState, GatewayConnectionSnapshot snapshot)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            // Map service state to ConnectionStatus for the existing UpdateStatus method
+            var status = snapshot.Operator switch
+            {
+                GatewayRoleState.Connected => ConnectionStatus.Connected,
+                GatewayRoleState.Connecting => ConnectionStatus.Connecting,
+                GatewayRoleState.PairingRequired => ConnectionStatus.Error,
+                GatewayRoleState.Error => ConnectionStatus.Error,
+                _ => ConnectionStatus.Disconnected
+            };
+            UpdateStatus(status);
+            LoadGatewayList();
+        });
     }
 
     public void UpdateStatus(ConnectionStatus status)
@@ -363,7 +389,7 @@ public sealed partial class ConnectionPage : Page
 
         registry.SetActive(gwId);
 
-        // Update settings URL from the new active gateway (for the Advanced UI)
+        // Update settings URL from the new active gateway
         var active = registry.GetActive();
         if (active != null && _hub?.Settings != null)
         {
@@ -373,7 +399,13 @@ public sealed partial class ConnectionPage : Page
         }
 
         LoadGatewayList();
+
+        // Connect via service + legacy reconnect
         _hub?.ReconnectAction?.Invoke();
+        if (_svc != null)
+        {
+            _ = _svc.ConnectOperatorAsync();
+        }
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e)
@@ -397,6 +429,10 @@ public sealed partial class ConnectionPage : Page
     {
         _connectionAttempts = 0;
         _hub?.ReconnectAction?.Invoke();
+        if (_svc != null)
+        {
+            _ = _svc.ConnectOperatorAsync();
+        }
     }
 
     private void OnSshToggled(object sender, RoutedEventArgs e)
@@ -473,26 +509,57 @@ public sealed partial class ConnectionPage : Page
 
     private void OnApplySetupCode(object sender, RoutedEventArgs e)
     {
+        var svc = _hub?.ConnectionService;
         var settings = _hub?.Settings;
         if (settings == null) return;
 
-        // Compute the shared identity data path (same as App.DataPath)
-        var dataPath = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } v
-            ? v
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
-
-        var result = SetupCodeApplicator.Apply(SetupCodeTextBox.Text, settings, dataPath, _hub?.GatewayRegistry);
-        if (!result.Success)
+        var rawCode = SetupCodeTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(rawCode))
         {
-            SetupCodeResultText.Text = $"✗ {result.Error}";
+            SetupCodeResultText.Text = "✗ Please paste a setup code.";
             return;
         }
 
-        SetupCodeResultText.Text = $"✓ Applied — gateway: {result.DisplayUrl}";
-        GatewayUrlTextBox.Text = settings.GatewayUrl ?? "";
-        TokenTextBox.Text = ""; // Token was cleared by the applicator
+        var decoded = OpenClawTray.Onboarding.Services.SetupCodeDecoder.Decode(rawCode);
+        if (!decoded.Success)
+        {
+            SetupCodeResultText.Text = $"✗ {decoded.Error}";
+            return;
+        }
 
+        var gatewayUrl = decoded.Url ?? settings.GatewayUrl ?? "";
+
+        if (svc != null && !string.IsNullOrWhiteSpace(gatewayUrl))
+        {
+            // Use the connection service — handles registry + per-gateway identity
+            svc.ApplySetupCode(gatewayUrl, decoded.Token);
+        }
+        else
+        {
+            // Fallback: direct registry write (service not available)
+            SetupCodeApplicator.Apply(rawCode, settings, registry: _hub?.GatewayRegistry);
+        }
+
+        // Sync to settings for setup engine and other consumers
+        if (!string.IsNullOrEmpty(decoded.Url))
+            settings.GatewayUrl = decoded.Url;
+        if (!string.IsNullOrEmpty(decoded.Token))
+            settings.BootstrapToken = decoded.Token;
+        settings.Token = "";
+        settings.Save();
+
+        var displayUrl = GatewayUrlHelper.SanitizeForDisplay(gatewayUrl);
+        SetupCodeResultText.Text = $"✓ Applied — gateway: {displayUrl}";
+        GatewayUrlTextBox.Text = settings.GatewayUrl ?? "";
+        TokenTextBox.Text = "";
+
+        // Trigger connection via service (drives the state machine)
+        // Also raise settings saved so App.xaml.cs reconnects (until service fully replaces it)
         _hub?.RaiseSettingsSaved();
+        if (svc != null)
+        {
+            _ = svc.ConnectOperatorAsync();
+        }
     }
 
     private void OnCopyDeviceId(object sender, RoutedEventArgs e)

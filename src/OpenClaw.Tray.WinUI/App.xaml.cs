@@ -96,6 +96,9 @@ public partial class App : Application
         InitializeGatewayClient(useBootstrapHandoffAuth);
     private SettingsManager? _settings;
     private GatewayRegistry? _gatewayRegistry;
+    private GatewayConnectionService? _connectionService;
+    private ConnectionDiagnostics? _diagnostics;
+    private ConnectionStatusWindow? _connectionStatusWindow;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
@@ -391,6 +394,11 @@ public partial class App : Application
                 storedOpToken ?? (string.IsNullOrWhiteSpace(_settings.Token) ? null : _settings.Token),
                 storedNodeToken);
         }
+        _gatewayRegistry.MigrateLegacyIdentityFile();
+
+        // Initialize connection service + diagnostics
+        _diagnostics = new ConnectionDiagnostics();
+        _connectionService = new GatewayConnectionService(_gatewayRegistry, logger: new AppLogger());
 
         DiagnosticsJsonlService.Configure(DataPath);
         DiagnosticsJsonlService.Write("app.start", new
@@ -1678,20 +1686,31 @@ public partial class App : Application
         var activeGw = _gatewayRegistry?.GetActive();
         string? effectiveToken = null;
         var tokenIsBootstrap = false;
+        var identityPath = activeGw?.IdentityPath;
 
-        if (!string.IsNullOrWhiteSpace(activeGw?.OperatorDeviceToken))
+        // Match upstream: SharedGatewayToken → BootstrapToken → stored device token.
+        if (!string.IsNullOrWhiteSpace(activeGw?.SharedGatewayToken))
         {
-            effectiveToken = activeGw.OperatorDeviceToken;
+            effectiveToken = activeGw.SharedGatewayToken;
+            _diagnostics?.RecordCredentialResolved("registry:SharedGatewayToken", "shared", false);
         }
         else if (!string.IsNullOrWhiteSpace(activeGw?.BootstrapToken))
         {
             effectiveToken = activeGw.BootstrapToken;
             tokenIsBootstrap = true;
+            _diagnostics?.RecordCredentialResolved("registry:BootstrapToken", "bootstrap", true);
         }
         else if (!string.IsNullOrWhiteSpace(_settings.Token))
         {
-            // Fallback: settings for legacy/manual token entry
             effectiveToken = _settings.Token;
+        }
+
+        // Fall through to stored device token in per-gateway identity file
+        if (string.IsNullOrWhiteSpace(effectiveToken) && identityPath != null)
+        {
+            var storedToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath);
+            if (!string.IsNullOrWhiteSpace(storedToken))
+                effectiveToken = storedToken;
         }
 
         if (string.IsNullOrWhiteSpace(effectiveToken))
@@ -1712,7 +1731,9 @@ public partial class App : Application
             gatewayUrl,
             effectiveToken,
             new AppLogger(),
-            tokenIsBootstrapToken);
+            tokenIsBootstrapToken,
+            identityPath: identityPath);
+        _gatewayClient.Diagnostics = _diagnostics;
         _gatewayClient.SetUserRules(_settings.UserRules.Count > 0 ? _settings.UserRules : null);
         _gatewayClient.SetPreferStructuredCategories(_settings.PreferStructuredCategories);
         _gatewayClient.StatusChanged += OnConnectionStatusChanged;
@@ -1786,8 +1807,9 @@ public partial class App : Application
         var enableMcp = _settings.EnableMcpServer;
         if (!enableNode && !enableMcp) return;
 
-        // Gateway connection requires auth (operator token, bootstrap token, or stored device token); MCP doesn't.
-        var canRunGateway = StartupSetupState.CanStartNodeGateway(_settings, IdentityDataPath);
+        var activeGwForNode = _gatewayRegistry?.GetActive();
+        var nodeIdentityPath = activeGwForNode?.IdentityPath ?? IdentityDataPath;
+        var canRunGateway = StartupSetupState.CanStartNodeGateway(_settings, nodeIdentityPath);
 
         if (enableNode && !canRunGateway && !enableMcp)
         {
@@ -1809,7 +1831,7 @@ public partial class App : Application
                 () => _keepAliveWindow?.Content as FrameworkElement,
                 _settings,
                 enableMcpServer: enableMcp,
-                identityDataPath: IdentityDataPath);
+                identityDataPath: nodeIdentityPath);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
@@ -2177,7 +2199,7 @@ public partial class App : Application
                             activeGw.BootstrapToken = null;
                         }
 
-                        var nodeToken = DeviceIdentity.TryReadStoredDeviceToken(DataPath);
+                        var nodeToken = DeviceIdentity.TryReadStoredDeviceToken(activeGw.IdentityPath);
                         if (!string.IsNullOrWhiteSpace(nodeToken))
                             activeGw.NodeDeviceToken = nodeToken;
 
@@ -2189,27 +2211,21 @@ public partial class App : Application
                 if (_settings != null)
                 {
                     if (!string.IsNullOrWhiteSpace(args.OperatorDeviceToken))
-                    {
                         _settings.Token = args.OperatorDeviceToken;
-                        DeviceIdentity.StoreOperatorDeviceToken(DataPath, args.OperatorDeviceToken, new AppLogger());
-                    }
                     if (!string.IsNullOrWhiteSpace(_settings.BootstrapToken))
                         _settings.BootstrapToken = "";
                     _settings.Save();
                 }
 
-                // Reinitialize operator client — dispatch to UI thread
+                // Close stale chat window so the next open picks up new credentials.
+                // No operator reconnect needed — HandleHelloOk already stored the
+                // device token in memory and in the per-gateway identity file.
                 _dispatcherQueue?.TryEnqueue(() =>
                 {
                     if (_chatWindow != null)
                     {
                         _chatWindow.ForceClose();
                         _chatWindow = null;
-                    }
-                    if (_gatewayClient == null || !_gatewayClient.IsConnectedToGateway)
-                    {
-                        Logger.Info("Node paired — reinitializing operator client");
-                        InitializeGatewayClient();
                     }
                 });
             }
@@ -2379,6 +2395,16 @@ public partial class App : Application
         UpdateTrayIcon();
         _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
         
+        // Update connection status window
+        _dispatcherQueue?.TryEnqueue(() =>
+        {
+            if (status != ConnectionStatus.Connected)
+            {
+                ShowConnectionStatusWindow();
+            }
+            _connectionStatusWindow?.UpdateOperatorStatus(status);
+        });
+
         if (status == ConnectionStatus.Connected)
         {
             _ = RunHealthCheckAsync();
@@ -2967,6 +2993,7 @@ public partial class App : Application
             _hubWindow = new HubWindow();
             _hubWindow.Settings = _settings;
             _hubWindow.GatewayRegistry = _gatewayRegistry;
+            _hubWindow.ConnectionService = _connectionService;
             _hubWindow.OpenDashboardAction = OpenDashboard;
             _hubWindow.CheckForUpdatesAction = () => _ = CheckForUpdatesUserInitiatedAsync();
             _hubWindow.QuickSendAction = () => ShowQuickSend();
@@ -3017,6 +3044,7 @@ public partial class App : Application
         }
         _hubWindow.Settings = _settings;
         _hubWindow.GatewayRegistry = _gatewayRegistry;
+            _hubWindow.ConnectionService = _connectionService;
         _hubWindow.VoiceServiceInstance = _nodeService?.VoiceService ?? _standaloneVoiceService;
         if (_nodeService != null)
         {
@@ -3148,6 +3176,7 @@ public partial class App : Application
         {
             _hubWindow.Settings = _settings;
             _hubWindow.GatewayRegistry = _gatewayRegistry;
+            _hubWindow.ConnectionService = _connectionService;
         }
     }
 
@@ -3181,6 +3210,7 @@ public partial class App : Application
         {
             _hubWindow.Settings = _settings;
             _hubWindow.GatewayRegistry = _gatewayRegistry;
+            _hubWindow.ConnectionService = _connectionService;
         }
     }    /// <summary>
     /// Reconnects only the node service (preserves gateway client + chat window).
@@ -3252,6 +3282,20 @@ public partial class App : Application
     private void ShowStatusDetail()
     {
         ShowHub("general");
+    }
+
+    private void ShowConnectionStatusWindow()
+    {
+        if (_diagnostics == null) return;
+
+        if (_connectionStatusWindow == null || _connectionStatusWindow.IsClosed)
+        {
+            _connectionStatusWindow = new ConnectionStatusWindow(_diagnostics, _gatewayRegistry, _connectionService);
+            _connectionStatusWindow.Closed += (_, _) => _connectionStatusWindow = null;
+        }
+
+        _connectionStatusWindow.RefreshAll();
+        _connectionStatusWindow.Activate();
     }
 
     private void RestartSshTunnel()
@@ -3802,6 +3846,7 @@ public partial class App : Application
             {
                 _hubWindow.Settings = _settings;
                 _hubWindow.GatewayRegistry = _gatewayRegistry;
+            _hubWindow.ConnectionService = _connectionService;
             }
         };
         _onboardingWindow.Closed += (s, e) => _onboardingWindow = null;

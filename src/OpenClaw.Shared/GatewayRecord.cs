@@ -23,6 +23,23 @@ public class GatewayRecord
     public string? SharedGatewayToken { get; set; }
 
     /// <summary>
+    /// Base directory for per-gateway identity files. Defaults to %APPDATA%/OpenClawTray.
+    /// </summary>
+    [JsonIgnore]
+    public static string BaseIdentityDir { get; set; } = Path.Combine(
+        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "OpenClawTray");
+
+    /// <summary>
+    /// Per-gateway directory for device identity (keypair + tokens).
+    /// Each gateway gets its own Ed25519 keypair so switching gateways
+    /// doesn't cause stale signature/token errors.
+    /// </summary>
+    [JsonIgnore]
+    public string IdentityPath => Path.Combine(BaseIdentityDir, "gateways", Id);
+
+    /// <summary>
     /// Generates a stable, human-readable ID from a gateway URL.
     /// Examples: ws://localhost:18789 → "localhost-18789",
     ///           wss://gw.example.com → "gw-example-com-443"

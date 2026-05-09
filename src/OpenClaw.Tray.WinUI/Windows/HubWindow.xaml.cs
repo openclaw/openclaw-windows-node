@@ -35,6 +35,7 @@ public sealed partial class HubWindow : WindowEx
     }
     public OpenClawGatewayClient? GatewayClient => GatewayRegistry?.ActiveClient;
     public GatewayRegistry? GatewayRegistry { get; set; }
+    public GatewayConnectionService? ConnectionService { get; set; }
     public ConnectionStatus CurrentStatus => GatewayRegistry?.ActiveConnectionStatus ?? ConnectionStatus.Disconnected;
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;

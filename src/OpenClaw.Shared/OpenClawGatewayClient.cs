@@ -72,7 +72,12 @@ public class OpenClawGatewayClient : WebSocketClientBase
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
     private SignatureTokenMode _signatureTokenMode = SignatureTokenMode.V3AuthToken;
-    private bool _hasOperatorDeviceToken; // True when _connectAuthToken is a device token (not shared secret)
+    private bool _hasOperatorDeviceToken;
+
+    /// <summary>
+    /// Optional diagnostics collector. Set before connecting to capture events.
+    /// </summary>
+    public ConnectionDiagnostics? Diagnostics { get; set; }
 
     /// <summary>
     /// The operator's device token, if one was issued during bootstrap handoff.
@@ -205,18 +210,18 @@ public class OpenClawGatewayClient : WebSocketClientBase
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
     public bool IsConnectedToGateway => IsConnected;
 
-    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false)
+    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null)
         : base(gatewayUrl, token, logger)
     {
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
         _bootstrapPairAsNode = bootstrapPairAsNode;
         _currentGatewayUrl = gatewayUrl;
-        var identityPath = Path.Combine(
+        var effectiveIdentityPath = identityPath ?? Path.Combine(
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
 
-        _deviceIdentity = new DeviceIdentity(identityPath, _logger);
+        _deviceIdentity = new DeviceIdentity(effectiveIdentityPath, _logger);
         _deviceIdentity.Initialize();
         _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
     }
@@ -699,6 +704,9 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
         try
         {
+            Diagnostics?.RecordAuthSent(
+                _tokenIsBootstrapToken ? "bootstrap" : (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken) ? "device" : "shared"),
+                requestedScopes, _signatureTokenMode.ToString(), _deviceIdentity.DeviceId);
             await SendRawAsync(JsonSerializer.Serialize(msg));
         }
         catch
@@ -1044,6 +1052,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
             }
 
             _logger.Info("Handshake complete (hello-ok)");
+            Diagnostics?.RecordHelloOk(_grantedOperatorScopes, newDeviceToken);
             if (!string.IsNullOrWhiteSpace(_operatorDeviceId))
             {
                 _logger.Info($"Operator device ID: {_operatorDeviceId}");
@@ -1211,11 +1220,13 @@ public class OpenClawGatewayClient : WebSocketClientBase
             if (_signatureTokenMode != previousMode)
             {
                 _logger.Warn($"Gateway rejected device signature with mode {previousMode}; retrying with mode {_signatureTokenMode}");
+                Diagnostics?.RecordSignatureRejected(previousMode.ToString(), _signatureTokenMode.ToString());
                 _ = SendConnectMessageAsync(_currentChallengeNonce);
                 return;
             }
 
             _logger.Warn("Gateway rejected device signature in all supported payload modes");
+            Diagnostics?.RecordAuthFailed("device signature rejected in all modes");
             _authFailed = true;
             RaiseAuthenticationFailed("device signature rejected in all modes — the gateway may require a different auth protocol version");
             RaiseStatusChanged(ConnectionStatus.Error);
@@ -1229,6 +1240,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
             _pairingRequiredAwaitingApproval = true;
             _pairingRequiredRequestId = pairingDetails.RequestId;
             _logger.Warn("Pairing approval required for this device; auto-reconnect paused until manual reconnect or app restart");
+            Diagnostics?.RecordPairingRequired(pairingDetails.RequestId, message);
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
@@ -1237,6 +1249,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         if (method == "connect" && IsTerminalAuthError(message))
         {
             _authFailed = true;
+            Diagnostics?.RecordAuthFailed(message);
             RaiseAuthenticationFailed(message);
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
@@ -1755,6 +1768,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         _currentChallengeNonce = nonce;
         
         _logger.Info($"Received challenge, nonce: {nonce}");
+        Diagnostics?.RecordChallenge(nonce);
         _ = SendConnectMessageAsync(nonce);
     }
 
