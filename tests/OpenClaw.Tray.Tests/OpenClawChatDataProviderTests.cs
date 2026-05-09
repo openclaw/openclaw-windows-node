@@ -1247,4 +1247,180 @@ public class OpenClawChatDataProviderTests
         sendGate.SetResult();
         await sendTask;
     }
+
+    // ── chat rubber-duck MEDIUM 2: live System (untrusted) / toolresult ──
+
+    [Fact]
+    public async Task OnChatMessageReceived_LiveToolResult_RendersAsToolChip()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "toolresult",
+            Text = "drwxr-xr-x  3 root root\nProcess exited with code 0",
+            State = "final"
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Contains("Process exited", entry.ToolOutput ?? "");
+        // Must NOT have rendered as a normal assistant bubble.
+        Assert.DoesNotContain(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+    }
+
+    [Fact]
+    public async Task OnChatMessageReceived_LiveToolResult_AlternateRoleSpelling_AlsoRenders()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "tool_result",
+            Text = "Exec completed (exit=0)",
+            State = "final"
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Contains("Exec completed", entry.ToolOutput ?? "");
+    }
+
+    [Fact]
+    public async Task OnChatMessageReceived_LiveUserSystemNote_RendersAsStatus()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "System (untrusted): exec result for tool_call_42 follows",
+            State = "final"
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        // Must render as a dim Status entry (provenance preserved), NOT
+        // dropped silently and NOT shown as a real user bubble.
+        Assert.Contains(timeline.Entries, e =>
+            e.Kind == ChatTimelineItemKind.Status &&
+            e.Text.Contains("System (untrusted)"));
+        Assert.DoesNotContain(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User);
+    }
+
+    [Fact]
+    public async Task OnChatMessageReceived_LiveUserPlain_StillIgnored()
+    {
+        // Regression guard for MEDIUM 2 fix: ordinary live ``role=user``
+        // echoes (no System prefix) must still be dropped — the local
+        // SendMessageAsync path already added that user entry.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "USER",
+            Text = "hello there",
+            State = "final"
+        });
+
+        Assert.Empty(snapshots);
+    }
+
+    // ── chat rubber-duck MEDIUM 4: per-message size cap ──
+
+    [Fact]
+    public async Task OnChatMessageReceived_OversizedContent_IsTruncated()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        // 300 KiB of ASCII — 1 byte per char in UTF-8.
+        var huge = new string('A', 300 * 1024);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = huge,
+            State = "final"
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = timeline.Entries.Single(e => e.Kind == ChatTimelineItemKind.Assistant);
+        var bytes = System.Text.Encoding.UTF8.GetByteCount(entry.Text);
+        Assert.True(bytes <= OpenClawChatDataProvider.MaxEntryTextBytes,
+            $"entry was {bytes} bytes; cap is {OpenClawChatDataProvider.MaxEntryTextBytes}");
+        Assert.Contains("bytes truncated", entry.Text);
+        Assert.True(entry.Text.Length < huge.Length);
+    }
+
+    [Fact]
+    public void TruncateForChatEntry_BelowCap_ReturnsInputUnchanged()
+    {
+        var small = "hello world";
+        Assert.Same(small, OpenClawChatDataProvider.TruncateForChatEntry(small));
+    }
+
+    [Fact]
+    public void TruncateForChatEntry_AboveCap_RespectsByteCap()
+    {
+        var big = new string('Z', OpenClawChatDataProvider.MaxEntryTextBytes + 50_000);
+        var truncated = OpenClawChatDataProvider.TruncateForChatEntry(big);
+        var bytes = System.Text.Encoding.UTF8.GetByteCount(truncated);
+        Assert.True(bytes <= OpenClawChatDataProvider.MaxEntryTextBytes);
+        Assert.EndsWith("bytes truncated]", truncated);
+    }
+
+    [Fact]
+    public void TruncateForChatEntry_DoesNotSplitSurrogatePair()
+    {
+        // String of repeated 4-byte UTF-8 emoji that lands very close to
+        // the cap boundary. The truncate must not return a string whose
+        // last char is an unpaired high surrogate.
+        const string emoji = "\uD83D\uDE00"; // 😀 (U+1F600)
+        var sb = new System.Text.StringBuilder(OpenClawChatDataProvider.MaxEntryTextBytes);
+        while (sb.Length < OpenClawChatDataProvider.MaxEntryTextBytes / 2)
+            sb.Append(emoji);
+        var truncated = OpenClawChatDataProvider.TruncateForChatEntry(sb.ToString());
+        // No unpaired surrogates: the last code unit before the marker
+        // " … […]" must not be a high surrogate.
+        var insertedAt = truncated.IndexOf(" … [", StringComparison.Ordinal);
+        if (insertedAt > 0)
+            Assert.False(char.IsHighSurrogate(truncated[insertedAt - 1]));
+    }
+
+    [Fact]
+    public async Task OnAgentEvent_OversizedToolOutput_IsTruncated()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"powershell","args":{"command":"ls"}}"""));
+
+        var huge = new string('B', 400 * 1024);
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            JsonSerializer.Serialize(new { output = huge })));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var output = timeline.Entries.LastOrDefault(e => e.Kind == ChatTimelineItemKind.ToolCall);
+        if (output?.ToolOutput is { } body)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetByteCount(body);
+            Assert.True(bytes <= OpenClawChatDataProvider.MaxEntryTextBytes);
+        }
+    }
 }

@@ -47,11 +47,14 @@ public record MarkdownOptions
     /// <summary>Parser flags. Default: DialectGitHub (tables, strikethrough, task lists).</summary>
     public MarkdownParserFlags ParserFlags { get; init; } = MarkdownParserFlags.DialectGitHub;
     /// <summary>
-    /// Override link rendering. (displayInlines, navigateUri) → element.
-    /// Apps that want to require a confirmation UX or unfurl/origin-preview
-    /// for cross-site hyperlinks should provide this. TASK-048.
+    /// Override link rendering. (displayInlines, navigateUri) → inline element.
+    /// Apps that want to require a confirmation UX, unfurl/origin-preview, or
+    /// — for chat surfaces fed by untrusted Markdown — render links as inert
+    /// plain-text fallback should provide this. When supplied, replaces the
+    /// default <see cref="RichTextHyperlink"/> emission in
+    /// <c>MarkdownBuilder.LeaveLink</c>. TASK-048.
     /// </summary>
-    public Func<Element[], Uri, Element>? LinkBuilder { get; init; }
+    public Func<RichTextInline[], Uri, RichTextInline>? LinkBuilder { get; init; }
     /// <summary>
     /// Hard cap on input markdown size in bytes. Default 4 MiB. Inputs past
     /// the cap throw at <see cref="MarkdownBuilder.Build"/>. TASK-049.
@@ -701,12 +704,38 @@ internal sealed class MarkdownBuilder
                 sb.Append(run.Text);
         }
 
-        // Remove the inlines that were part of the link.
+        // Capture the inline elements that were part of the link before
+        // we tear them off the buffer — the LinkBuilder hook (when set)
+        // receives them as its first argument so callers can re-emit
+        // formatted/inert content instead of a clickable hyperlink.
+        RichTextInline[] linkInlines;
         if (_linkInlineStart < _inlines.Count)
-            _inlines.RemoveRange(_linkInlineStart, _inlines.Count - _linkInlineStart);
+        {
+            int count = _inlines.Count - _linkInlineStart;
+            linkInlines = new RichTextInline[count];
+            for (int i = 0; i < count; i++) linkInlines[i] = _inlines[_linkInlineStart + i];
+            _inlines.RemoveRange(_linkInlineStart, count);
+        }
+        else
+        {
+            linkInlines = Array.Empty<RichTextInline>();
+        }
 
-        // Add the hyperlink inline.
-        _inlines.Add(new RichTextHyperlink(sb.ToString(), _linkUri));
+        // SECURITY (chat-rubber-duck MEDIUM 3 follow-up): when the host
+        // app supplies a LinkBuilder, hand off rendering instead of
+        // unconditionally emitting a click-to-navigate RichTextHyperlink.
+        // This is the documented extension point for confirmation UX,
+        // origin previews, or — in OpenClawTray's chat bubbles — wholly
+        // inert plain-text fallback so untrusted assistant Markdown
+        // cannot manufacture clickable links via bare URLs / autolinks.
+        if (_options.LinkBuilder is not null)
+        {
+            _inlines.Add(_options.LinkBuilder(linkInlines, _linkUri));
+        }
+        else
+        {
+            _inlines.Add(new RichTextHyperlink(sb.ToString(), _linkUri));
+        }
         _linkUri = null;
     }
 

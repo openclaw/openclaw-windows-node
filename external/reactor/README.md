@@ -39,8 +39,9 @@ src/
 A minimal set of edits has been applied so the vendored projects build cleanly inside this repo:
 
 - **TFM**: `Reactor.csproj` bumped from `net9.0-windows10.0.22621.0` to `net10.0-windows10.0.22621.0` to match the rest of this repository (which targets net10).
+- **`MarkdownBuilder.LeaveLink` LinkBuilder hook wired** (`src/Reactor/Markdown/MarkdownBuilder.cs`): the upstream snapshot declared `MarkdownOptions.LinkBuilder` (TASK-048) but never invoked it — `LeaveLink` always emitted a clickable `RichTextHyperlink`. The local edit (a) hands the captured inline elements + URI to `LinkBuilder` when set, and (b) tightens the callback type from `Func<Element[], Uri, Element>` to `Func<RichTextInline[], Uri, RichTextInline>` so the override slots into the inline run buffer correctly. OpenClawTray uses this hook to render untrusted assistant Markdown links as inert `RichTextRun` plain text.
 
-No other source files in `external/reactor/` have been modified. Keep edits minimal — when refreshing from upstream, re-apply only the TFM bump above.
+When refreshing from upstream, re-apply these edits.
 
 ## Refreshing from upstream
 

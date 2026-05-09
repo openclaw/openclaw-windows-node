@@ -1,3 +1,4 @@
+using OpenClaw.Chat;
 using OpenClawTray.Chat;
 using Xunit;
 
@@ -102,6 +103,68 @@ public class FlattenedToolOutputDetectionTests
     public void DetectsSystemControlNotes(string text, bool expected)
     {
         Assert.Equal(expected, OpenClawChatDataProvider.LooksLikeSystemControlNote(text));
+    }
+
+    // ── chat rubber-duck round 2 MEDIUM 2: prefix tightening ──
+
+    [Theory]
+    [InlineData("System (untrusted): Exec completed (oceanic, code 0) :: ok")]
+    [InlineData("System (untrusted): An async command you ran earlier has completed")]
+    [InlineData("System (untrusted): exec result for tool_call_42 follows")]
+    [InlineData("System (untrusted): Tool reported success.")]
+    [InlineData("System: Reset session")]
+    [InlineData("System: Process exited with code 0")]
+    [InlineData("System: Command still running (session foo, pid 1)")]
+    [InlineData("System (untrusted): tool_call_abc started")]
+    public void LooksLikeSystemControlNote_OnRealSystemNote_ReturnsTrue(string text)
+    {
+        Assert.True(OpenClawChatDataProvider.LooksLikeSystemControlNote(text));
+    }
+
+    [Theory]
+    // Plain user prose that happens to start with the magic prefix —
+    // MUST NOT be reclassified as a dim system control entry.
+    [InlineData("System (untrusted): hello world")]
+    [InlineData("System: hello world")]
+    [InlineData("System (untrusted): I think this is fine")]
+    [InlineData("System: my notes for today")]
+    // Prefix without any structural marker.
+    [InlineData("System (untrusted): just chatting")]
+    public void LooksLikeSystemControlNote_OnPlainUserMessageWithSystemPrefix_ReturnsFalse(string text)
+    {
+        Assert.False(OpenClawChatDataProvider.LooksLikeSystemControlNote(text));
+    }
+
+    // ── chat rubber-duck round 2 LOW 4: TruncateChatEvent coverage ──
+
+    [Fact]
+    public void TruncateChatEvent_ChatModelChangedEvent_TruncatesModelField()
+    {
+        var huge = new string('m', 400_000);
+        var truncated = (ChatModelChangedEvent)OpenClawChatDataProvider.TruncateChatEvent(
+            new ChatModelChangedEvent(huge));
+        Assert.True(truncated.Model.Length < huge.Length);
+    }
+
+    [Fact]
+    public void TruncateChatEvent_ChatIntentEvent_TruncatesIntentField()
+    {
+        var huge = new string('i', 400_000);
+        var truncated = (ChatIntentEvent)OpenClawChatDataProvider.TruncateChatEvent(
+            new ChatIntentEvent(huge));
+        Assert.True(truncated.Intent.Length < huge.Length);
+    }
+
+    [Fact]
+    public void TruncateChatEvent_ChatPermissionRequestEvent_TruncatesAllTextFields()
+    {
+        var huge = new string('p', 400_000);
+        var truncated = (ChatPermissionRequestEvent)OpenClawChatDataProvider.TruncateChatEvent(
+            new ChatPermissionRequestEvent("req-1", huge, huge, huge));
+        Assert.True(truncated.PermissionKind.Length < huge.Length);
+        Assert.True(truncated.ToolName.Length < huge.Length);
+        Assert.True(truncated.Detail.Length < huge.Length);
+        Assert.Equal("req-1", truncated.RequestId);
     }
 
     [Theory]

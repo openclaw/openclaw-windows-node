@@ -299,12 +299,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     var msgMeta = new ChatEntryMetadata(ts, modelAtLoad);
 
                     var roleLower = msg.Role?.ToLowerInvariant() ?? "";
+                    // Cap per-message text up front so heuristics, logging,
+                    // and the reducer all see the same bounded value
+                    // (chat rubber-duck MEDIUM 4).
+                    var text = TruncateForChatEntry(msg.Text);
 
                     // Diagnostic: log shape (role + length + heuristic flags) only.
                     // Never log the message text — see HIGH 4 logging audit.
-                    var isFlat = LooksLikeFlattenedToolOutput(msg.Text);
-                    var isSys  = LooksLikeSystemControlNote(msg.Text);
-                    Logger.Debug($"[ChatHistory] role='{roleLower}' len={msg.Text.Length} flat={isFlat} sys={isSys}");
+                    var isFlat = LooksLikeFlattenedToolOutput(text);
+                    var isSys  = LooksLikeSystemControlNote(text);
+                    Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys}");
 
                     switch (roleLower)
                     {
@@ -313,12 +317,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // exec result reports in ``System (untrusted): ...``
                             // and sends them as role=user) — render dim instead
                             // of as a giant user bubble. See the ChatHistory log.
-                            if (LooksLikeSystemControlNote(msg.Text))
+                            if (LooksLikeSystemControlNote(text))
                             {
                                 Logger.Debug($"[ChatHistory]   → routed: SYSTEM (dim status, role=user with control prefix)");
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
-                                    new ChatStatusEvent(msg.Text, ChatTone.Dim),
+                                    new ChatStatusEvent(text, ChatTone.Dim),
                                     msgMeta);
                                 break;
                             }
@@ -328,7 +332,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // ActiveAssistantId here so the next assistant message
                             // starts a fresh entry instead of overwriting the previous.
                             rebuilt = rebuilt with { ActiveAssistantId = null, ActiveReasoningId = null };
-                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatUserMessageEvent(msg.Text), msgMeta);
+                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatUserMessageEvent(text), msgMeta);
                             break;
 
                         case "assistant":
@@ -338,18 +342,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // raw exec output is replayed as plain assistant text.
                             // Detect these telltale shapes and route them through
                             // the chip pipeline so historic turns look like live ones.
-                            if (LooksLikeSystemControlNote(msg.Text))
+                            if (LooksLikeSystemControlNote(text))
                             {
                                 Logger.Debug($"[ChatHistory]   → routed: SYSTEM (dim status)");
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
-                                    new ChatStatusEvent(msg.Text, ChatTone.Dim),
+                                    new ChatStatusEvent(text, ChatTone.Dim),
                                     msgMeta);
                                 break;
                             }
-                            if (LooksLikeFlattenedToolOutput(msg.Text))
+                            if (LooksLikeFlattenedToolOutput(text))
                             {
-                                var kind = ClassifyFlattenedToolOutput(msg.Text);
+                                var kind = ClassifyFlattenedToolOutput(text);
                                 Logger.Debug($"[ChatHistory]   → routed: TOOL chip kind='{kind}'");
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
@@ -357,12 +361,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                     msgMeta);
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
-                                    new ChatToolOutputEvent(msg.Text),
+                                    new ChatToolOutputEvent(text),
                                     msgMeta);
                                 break;
                             }
                             Logger.Debug($"[ChatHistory]   → routed: ASSISTANT bubble (no flatten/system match)");
-                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatMessageEvent(msg.Text), msgMeta);
+                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatMessageEvent(text), msgMeta);
                             // End the turn so the next assistant message starts a new
                             // entry rather than replacing this one (UpsertAssistant
                             // upserts by ActiveAssistantId, which TurnEnd clears).
@@ -378,7 +382,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // the heuristic fires, since the role itself confirms
                             // it's tool output.
                             {
-                                var kind = ClassifyFlattenedToolOutput(msg.Text);
+                                var kind = ClassifyFlattenedToolOutput(text);
                                 Logger.Debug($"[ChatHistory]   → routed: TOOL chip (role=toolresult, kind='{kind}')");
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
@@ -386,7 +390,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                     msgMeta);
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
-                                    new ChatToolOutputEvent(msg.Text),
+                                    new ChatToolOutputEvent(text),
                                     msgMeta);
                             }
                             break;
@@ -399,7 +403,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             Logger.Debug($"[ChatHistory]   → routed: STATUS (role={roleLower})");
                             rebuilt = ApplyAndCaptureMeta(
                                 rebuilt,
-                                new ChatStatusEvent(msg.Text, ChatTone.Dim),
+                                new ChatStatusEvent(text, ChatTone.Dim),
                                 msgMeta);
                             break;
 
@@ -408,7 +412,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // at least visible. Bracket with TurnEnd to avoid
                             // collapsing into adjacent assistant entries.
                             Logger.Debug($"[ChatHistory]   → routed: ASSISTANT (unknown role '{roleLower}', fallback)");
-                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatMessageEvent(msg.Text), msgMeta);
+                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatMessageEvent(text), msgMeta);
                             rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
                             break;
                     }
@@ -718,11 +722,47 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (message is null) return;
 
+        var role = message.Role ?? "";
+        var roleLower = role.ToLowerInvariant();
+
         // User echoes are dropped — SendMessageAsync already added the local
-        // entry that drove the round-trip.
-        if (string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase))
+        // entry that drove the round-trip. EXCEPTION: live ``role=user``
+        // frames whose body is a System (untrusted)/System control note are
+        // gateway provenance markers, not real user turns; route them as a
+        // dim status entry to mirror the chat.history path (HIGH 2 chat
+        // rubber-duck MEDIUM 2 — keep the trust taxonomy visible live).
+        if (roleLower == "user")
+        {
+            if (LooksLikeSystemControlNote(message.Text))
+            {
+                if (string.IsNullOrEmpty(message.Text)) return;
+                var sysThread = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+                ChatEntryMetadata? sysMeta;
+                lock (_gate) { sysMeta = BuildLiveMetaLocked(sysThread, message.Ts); }
+                ApplyEventAndPublish(sysThread,
+                    new ChatStatusEvent(TruncateForChatEntry(message.Text), ChatTone.Dim),
+                    sysMeta);
+            }
             return;
-        if (!string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+        }
+
+        // ``role=toolresult`` frames are tool-output provenance and need to
+        // render as a tool chip, the same way history does at lines 372-390
+        // (chat rubber-duck MEDIUM 2).
+        if (roleLower == "toolresult" || roleLower == "tool_result")
+        {
+            if (string.IsNullOrEmpty(message.Text)) return;
+            var trThread = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+            ChatEntryMetadata? trMeta;
+            lock (_gate) { trMeta = BuildLiveMetaLocked(trThread, message.Ts); }
+            var capped = TruncateForChatEntry(message.Text);
+            var kind = ClassifyFlattenedToolOutput(capped);
+            ApplyEventAndPublish(trThread, new ChatToolStartEvent(kind, kind), trMeta);
+            ApplyEventAndPublish(trThread, new ChatToolOutputEvent(capped), trMeta);
+            return;
+        }
+
+        if (roleLower != "assistant")
             return;
         if (string.IsNullOrEmpty(message.Text))
             return;
@@ -753,7 +793,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // blocks, not token deltas — see spec §"Block Streaming"). Map both
         // to ChatMessageEvent so the reducer REPLACES the active assistant
         // entry's text. Final additionally ends the turn.
-        ApplyEventAndPublish(threadId, new ChatMessageEvent(message.Text), meta);
+        ApplyEventAndPublish(threadId, new ChatMessageEvent(TruncateForChatEntry(message.Text)), meta);
 
         if (message.IsFinal)
         {
@@ -1147,20 +1187,110 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return text[..ToolOutputMaxChars] + "\n…(truncated)";
     }
 
+    /// <summary>
+    /// Per-message UTF-8 byte cap applied to ANY chat-bubble payload that
+    /// flows from the gateway into the timeline (live assistant text, live
+    /// tool output, live system control notes, history replays, status /
+    /// reasoning / error entries). Above this size the entry text is
+    /// truncated at a code-point boundary and a marker is appended.
+    /// </summary>
+    /// <remarks>
+    /// SECURITY (chat rubber-duck MEDIUM 4): Reactor's MarkdownBuilder
+    /// throws above 4 MiB (see <c>MarkdownBuilder.cs:139-148</c>) and a
+    /// multi-MB string can hang the reducer / virtualized list. 256 KiB is
+    /// well above any reasonable chat message (a typical book chapter is
+    /// ~50 KB). Truncation events are logged at <c>Debug</c> level so they
+    /// don't dominate the operator log under normal use.
+    /// </remarks>
+    internal const int MaxEntryTextBytes = 256 * 1024;
+
+    /// <summary>
+    /// Truncate <paramref name="text"/> to at most
+    /// <see cref="MaxEntryTextBytes"/> bytes when encoded as UTF-8 and
+    /// append a <c> … [N bytes truncated]</c> marker. Slices at a UTF-16
+    /// code-unit boundary that doesn't split a surrogate pair, then
+    /// verifies the byte budget. Returns the input unchanged when it
+    /// already fits or is null/empty.
+    /// </summary>
+    internal static string TruncateForChatEntry(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
+        var enc = System.Text.Encoding.UTF8;
+        // Cheap upper bound: every char is at most 3 UTF-8 bytes for the
+        // BMP and surrogate pairs encode to 4 bytes / 2 chars (still ≤ 3
+        // bytes per char). 4 is the worst case and keeps the cheap path
+        // safe. If even the worst case fits, we're done.
+        if ((long)text.Length * 4 <= MaxEntryTextBytes) return text;
+        var actual = enc.GetByteCount(text);
+        if (actual <= MaxEntryTextBytes) return text;
+
+        // Binary search for the largest char-count whose UTF-8 byte count
+        // fits in MaxEntryTextBytes minus a generous margin for the marker.
+        const string markerPrefix = " … [";
+        const string markerSuffix = " bytes truncated]";
+        var marker = $"{markerPrefix}{actual}{markerSuffix}";
+        int budget = MaxEntryTextBytes - enc.GetByteCount(marker);
+        if (budget <= 0) budget = MaxEntryTextBytes / 2;
+
+        int lo = 0, hi = text.Length;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            // Don't split a surrogate pair: nudge mid back if it lands on
+            // a low surrogate.
+            if (mid < text.Length && char.IsLowSurrogate(text[mid])) mid--;
+            int bytes = enc.GetByteCount(text.AsSpan(0, mid));
+            if (bytes <= budget) lo = mid;
+            else hi = mid - 1;
+        }
+        if (lo > 0 && char.IsHighSurrogate(text[lo - 1])) lo--;
+
+        Logger.Debug($"[ChatTruncate] message {actual} bytes → {lo} chars (~{enc.GetByteCount(text.AsSpan(0, lo))} bytes); cap={MaxEntryTextBytes}");
+        return string.Concat(text.AsSpan(0, lo), marker.AsSpan());
+    }
+
     // ── chat.history flattened-tool-output recovery ──
 
     /// <summary>
-    /// True when an assistant-role <c>chat.history</c> message looks like a
-    /// gateway control note that the web UI hides. We render these as a
-    /// dim Status entry instead of a full assistant bubble so the
+    /// True when an assistant- or user-role <c>chat.history</c> message
+    /// looks like a gateway control note that the web UI hides. We render
+    /// these as a dim Status entry instead of a full bubble so the
     /// conversation flow doesn't get overwhelmed by transcript scaffolding.
     /// </summary>
+    /// <remarks>
+    /// SECURITY (chat-rubber-duck round 2 MEDIUM 2): the previous
+    /// implementation matched on the bare ``System (untrusted):`` /
+    /// ``System:`` prefix. That allowed a user (or a prompt-injected
+    /// model) to craft a real user message that started with that prefix
+    /// and have it silently reclassified as a dim system note (visible
+    /// trust-taxonomy spoofing). We now require BOTH the prefix AND a
+    /// known structural marker that the gateway actually emits.
+    /// Plain user prose like ``System (untrusted): hello world`` no
+    /// longer triggers the hide-as-status path and renders as a regular
+    /// user/assistant bubble.
+    /// </remarks>
     internal static bool LooksLikeSystemControlNote(string text)
     {
         if (string.IsNullOrEmpty(text)) return false;
         var t = text.TrimStart();
-        return t.StartsWith("System (untrusted):", StringComparison.Ordinal)
-            || t.StartsWith("System:", StringComparison.Ordinal);
+        bool hasPrefix =
+            t.StartsWith("System (untrusted):", StringComparison.Ordinal) ||
+            t.StartsWith("System:", StringComparison.Ordinal);
+        if (!hasPrefix) return false;
+
+        // Structural markers actually emitted by the gateway in real
+        // system control notes. The gateway-side templates that produce
+        // these strings have stable wording; if they change, this list
+        // is the single point of update. NOT a substring match against
+        // common user prose.
+        return t.Contains("Exec completed (", StringComparison.Ordinal)
+            || t.Contains("Process exited with code", StringComparison.Ordinal)
+            || t.Contains("Command still running (session", StringComparison.Ordinal)
+            || t.Contains("An async command you ran", StringComparison.Ordinal)
+            || t.Contains("Tool reported", StringComparison.Ordinal)
+            || t.Contains("exec result for ", StringComparison.Ordinal)
+            || t.Contains("tool_call_", StringComparison.Ordinal)
+            || t.Contains("Reset session", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1260,8 +1390,67 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     // ── State helpers ──
 
+    /// <summary>
+    /// Apply <see cref="TruncateForChatEntry(string?)"/> to whichever text
+    /// payload a <see cref="ChatEvent"/> carries. Returns the input
+    /// unchanged when there is nothing to truncate or the text already
+    /// fits. Used by <see cref="ApplyEventAndPublish"/> to enforce the
+    /// per-message size cap on every code path.
+    /// </summary>
+    /// <remarks>
+    /// Coverage: every <see cref="ChatEvent"/> subtype that carries a
+    /// caller-supplied text payload is truncated here, including the
+    /// currently-unused
+    /// <see cref="ChatModelChangedEvent"/> /
+    /// <see cref="ChatPermissionRequestEvent"/> /
+    /// <see cref="ChatIntentEvent"/> shapes — these don't flow through
+    /// <see cref="ApplyEventAndPublish"/> today but covering them now
+    /// prevents a future caller from bypassing the cap when wiring
+    /// them up. The <see cref="ChatTurnEndEvent"/> /
+    /// <see cref="ChatContextChangedEvent"/> shapes have no untrusted
+    /// text fields and fall through unchanged.
+    /// </remarks>
+    internal static ChatEvent TruncateChatEvent(ChatEvent evt) => evt switch
+    {
+        ChatUserMessageEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatThinkingEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatReasoningEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatReasoningDeltaEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatMessageEvent e => e with
+        {
+            Text = TruncateForChatEntry(e.Text),
+            ReasoningText = e.ReasoningText is null ? null : TruncateForChatEntry(e.ReasoningText)
+        },
+        ChatMessageDeltaEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatToolStartEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatToolOutputEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatToolErrorEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatStatusEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatErrorEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatRestoredEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatRawEvent e => e with { Text = e.Text is null ? null : TruncateForChatEntry(e.Text) },
+        ChatModelChangedEvent e => e with { Model = TruncateForChatEntry(e.Model) },
+        ChatIntentEvent e => e with { Intent = TruncateForChatEntry(e.Intent) },
+        ChatPermissionRequestEvent e => e with
+        {
+            PermissionKind = TruncateForChatEntry(e.PermissionKind),
+            ToolName = TruncateForChatEntry(e.ToolName),
+            Detail = TruncateForChatEntry(e.Detail)
+        },
+        _ => evt
+    };
+
     private void ApplyEventAndPublish(string threadId, ChatEvent evt, ChatEntryMetadata? meta = null)
     {
+        // Defense-in-depth (chat rubber-duck MEDIUM 4): cap text on every
+        // event that lands in the timeline. Live history-load and
+        // OnChatMessageReceived already truncate at the call site, but
+        // agent-event paths (reasoning deltas, status notes, raw tool
+        // output, errors) flow through here directly. Keeping the cap
+        // here too guarantees no untrusted gateway payload bypasses the
+        // limit.
+        evt = TruncateChatEvent(evt);
+
         ChatDataSnapshot snapshot;
         lock (_gate)
         {

@@ -61,9 +61,46 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 {
     const double FollowThreshold = 60;
 
-    static readonly Microsoft.UI.Reactor.Markdown.MarkdownOptions _markdownOptions = new()
+    // SECURITY (chat-rubber-duck HIGH 1 / MEDIUM 3): chat-bubble Markdown is
+    // rendered with a hardened options object that:
+    //   1. Renders images as inert ``[Image: <alt>]`` text (no Uri fetch) —
+    //      blocks SSRF / tracking-pixel beacons triggered by a compromised
+    //      gateway, malicious tool output, or a prompt-injected model.
+    //   2. Pre-strips inline link / image / ref-def syntax via
+    //      <see cref="ChatMarkdownSanitizer.Sanitize(string?)"/> so explicit
+    //      ``[text](url)`` syntax never reaches the parser.
+    //   3. Wires the Reactor
+    //      <see cref="Microsoft.UI.Reactor.Markdown.MarkdownOptions.LinkBuilder"/>
+    //      hook (vendored edit, see ``external/reactor/README.md``) to
+    //      collapse any link the parser DOES emit — bare URLs and
+    //      ``<https://…>`` autolinks that the sanitizer can't strip
+    //      without breaking prose — into an inert ``RichTextRun`` carrying
+    //      visible URL text but no NavigateUri. Net effect: no
+    //      click-to-navigate hyperlink can be manufactured by untrusted
+    //      Markdown inside a chat bubble.
+    internal static readonly Microsoft.UI.Reactor.Markdown.MarkdownOptions _markdownOptions = new()
     {
         CodeFontFamily = "Cascadia Code, Cascadia Mono, Consolas",
+        // Inert link rendering: emit the link's display text followed by
+        // the visible URL in parentheses, all as a non-clickable
+        // RichTextRun. No NavigateUri is constructed anywhere in this
+        // path, so even an attacker-controlled bare URL or autolink
+        // cannot become a hyperlink.
+        LinkBuilder = (inlines, uri) =>
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var inline in inlines)
+            {
+                switch (inline)
+                {
+                    case Microsoft.UI.Reactor.Core.RichTextRun r: sb.Append(r.Text); break;
+                    case Microsoft.UI.Reactor.Core.RichTextHyperlink h: sb.Append(h.Text); break;
+                    case Microsoft.UI.Reactor.Core.RichTextLineBreak: sb.Append(' '); break;
+                }
+            }
+            var text = ChatMarkdownSanitizer.FlattenLinkToInertText(sb.ToString(), uri?.ToString());
+            return new Microsoft.UI.Reactor.Core.RichTextRun(text);
+        },
         CodeBlock = (code, lang) =>
         {
             var header = lang is { Length: > 0 }
@@ -94,6 +131,16 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 VStack(0, rows)
             ).WithBorder(Theme.DividerStroke, 1)
              .CornerRadius(4).Margin(0, 4, 0, 4);
+        },
+        // Defense-in-depth for any image syntax that survives sanitization
+        // (e.g. reference-style images): render an inert caption-styled
+        // placeholder; never instantiate a Uri-bound BitmapImage.
+        Image = (alt, _) =>
+        {
+            var label = string.IsNullOrEmpty(alt) ? "[Image]" : $"[Image: {alt}]";
+            return Caption(label)
+                .Foreground(Theme.TertiaryText)
+                .Set(t => t.IsTextSelectionEnabled = true);
         },
     };
 
@@ -523,7 +570,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // Assistant bubble — subtle gray with primary text. Radius 10 to
             // match Kenny's Calm pill shape; no border in Calm.
             var card = Border(
-                Markdown(entry.Text ?? "", _markdownOptions)
+                Markdown(ChatMarkdownSanitizer.Sanitize(entry.Text), _markdownOptions)
             ).Background(assistantBubbleBg)
              .CornerRadius(10)
              .Set(b =>
