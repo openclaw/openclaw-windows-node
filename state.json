@@ -1,29 +1,31 @@
 {
-  "last_run": "2026-05-09T12:37:59Z",
-  "last_run_id": "25601293145",
+  "last_run": "2026-05-10T01:17:05Z",
+  "last_run_id": "25616361591",
   "monthly_summary_issue": 254,
   "monthly_summary_month": "2026-05",
   "backlog_cursor": {
     "issues": 283,
-    "prs": 301
+    "prs": 302
   },
   "open_repo_assist_prs": [
     {"number": 294, "title": "[Repo Assist] fix(security): stop leaking ex.Message in CanvasCapability and BrowserProxyCapability", "branch": "repo-assist/fix-canvas-proxy-exception-message-leaks-2026-05-08"},
     {"number": 296, "title": "[Repo Assist] feat: add ExecApprovalsEvaluator policy evaluation step", "branch": "repo-assist/feat-exec-approvals-evaluator", "note": "Based on PR #295 (ExecApprovalsStore). Merge #295 first."},
     {"number": 300, "title": "[Repo Assist] fix(security): apply TokenSanitizer to WSL diagnostic output", "branch": "repo-assist/fix-diagnostic-token-sanitization-2026-05-09", "note": "Addresses issue #281 item #4. 24 new tests."},
-    {"title": "[Repo Assist] fix(wsl): add mountFsTab=false + [time] section to wsl.conf; make probe section-aware", "branch": "repo-assist/fix-wsl-conf-section-probe-and-missing-settings-2026-05-09", "note": "Addresses issue #281 items #5 and #6. 3 new tests + CommandExitCodeByContains in FakeWslCommandRunner. PR number TBD (created this run)."}
+    {"number": 301, "title": "[Repo Assist] fix(wsl): add mountFsTab=false + [time] section to wsl.conf; make IsAlreadyConfigured probe section-aware", "branch": "repo-assist/fix-wsl-conf-section-probe-and-missing-settings-2026-05-09", "note": "Addresses issue #281 items #5 and #6. 3 new tests."},
+    {"number": null, "title": "[Repo Assist] ci: include Directory.Packages.props in NuGet cache key hash", "branch": "repo-assist/eng-nuget-cache-key-fix-2026-05-10", "note": "Task 4 this run. PR number TBD."}
   ],
   "comments_made": {
     "246": {"comment_id": "4357284092", "date": "2026-05-01"},
     "252": {"date": "2026-05-01"},
     "242": {"date": "2026-05-01"},
     "259": {"date": "2026-05-04", "note": "CI failure is pre-existing flaky integration test"},
-    "281": {"date": "2026-05-06", "note": "Confirmed isolation bug: OPENCLAW_TRAY_DATA_DIR mismatch"},
+    "281": {"date": "2026-05-06", "note": "Confirmed isolation bug: OPENCLAW_TRAY_APPDATA_DIR vs OPENCLAW_TRAY_DATA_DIR"},
     "283": {"date": "2026-05-06", "note": "Confirmed root cause: missing ExtendsContentIntoTitleBar + repeated TryBringToFront. Linked to PR #285."},
     "288": {"date": "2026-05-07", "note": "Review comment: HttpClient anti-pattern, dependency surface, TtsCapability conflict"}
   },
   "fix_attempts": {
-    "wsl-conf-section-probe": {"status": "pr_created", "pr": "TBD", "branch": "repo-assist/fix-wsl-conf-section-probe-and-missing-settings-2026-05-09", "date": "2026-05-09", "description": "Added mountFsTab=false and [time] useWindowsTimezone=true to wsl.conf template. Made IsAlreadyConfiguredAsync probe section-aware with awk. 3 new tests + CommandExitCodeByContains."},
+    "nuget-cache-key": {"status": "pr_created", "pr": "TBD", "branch": "repo-assist/eng-nuget-cache-key-fix-2026-05-10", "date": "2026-05-10", "description": "Added Directory.Packages.props to hashFiles() in all 4 NuGet cache steps in ci.yml."},
+    "wsl-conf-section-probe": {"status": "pr_created", "pr": 301, "branch": "repo-assist/fix-wsl-conf-section-probe-and-missing-settings-2026-05-09", "date": "2026-05-09", "description": "Added mountFsTab=false and [time] useWindowsTimezone=true to wsl.conf template. Made IsAlreadyConfiguredAsync probe section-aware with awk. 3 new tests + CommandExitCodeByContains."},
     "diagnostic-token-sanitization": {"status": "pr_created", "pr": 300, "branch": "repo-assist/fix-diagnostic-token-sanitization-2026-05-09", "date": "2026-05-09", "description": "TokenSanitizer.Sanitize added to DiagnosticFormatter.SanitizeForDiagnostic. 24 new tests."},
     "exec-approvals-evaluator": {"status": "pr_created", "pr": 296, "branch": "repo-assist/feat-exec-approvals-evaluator", "date": "2026-05-08", "description": "ExecApprovalsEvaluator (policy evaluation phase), ExecApprovalsAllowlistMatcher (pattern matching), ExecApprovalV2EvaluationOutcome. 33 new tests. Based on PR #295."},
     "canvas-proxy-exception-message-leaks": {"status": "pr_created", "pr": 294, "branch": "repo-assist/fix-canvas-proxy-exception-message-leaks-2026-05-08", "date": "2026-05-08", "description": "CanvasCapability and BrowserProxyCapability ex.Message leaks fixed."},
@@ -39,23 +41,24 @@
   "notes": [
     "PR #274 (indierawk2k2) WSL local gateway setup — MERGED on 2026-05-08",
     "PR #295 (AlexAlves87) ExecApprovalsStore read path — open, needs review/merge before PR #296",
-    "PR #297 (AlexAlves87) refactor: extract CommandCenterStateBuilder from App.xaml.cs — open",
-    "PR #298 (MythiliMur) Add MXC Sandbox example — open",
-    "PR #299 (ranjeshj) feat: gateway registry (multi-gateway support) — open draft",
+    "PR #297 (AlexAlves87) refactor: extract CommandCenterStateBuilder from App.xaml.cs — open, labelled refactor this run",
+    "PR #298 (MythiliMur) Add MXC Sandbox example — open, labelled enhancement+documentation this run",
+    "PR #299 (ranjeshj) feat: gateway registry (multi-gateway support) — open draft, labelled enhancement this run",
     "PR #294 (Repo Assist) CanvasCapability/BrowserProxyCapability security fix — open, needs review/merge",
     "PR #296 (Repo Assist) ExecApprovalsEvaluator — open draft, depends on PR #295",
     "PR #300 (Repo Assist) fix: TokenSanitizer in DiagnosticFormatter — open draft",
-    "PR (TBD) (Repo Assist) fix(wsl): wsl.conf missing settings + section-aware probe — submitted this run",
-    "Issue #281 comment made May 6 — no new human comments; PR #300 closes item #4, new PR closes items #5 and #6",
+    "PR #301 (Repo Assist) fix(wsl): wsl.conf missing settings + section-aware probe — open draft",
+    "PR TBD (Repo Assist) ci: NuGet cache key include Directory.Packages.props — created this run",
     "Issue #281 remaining items: #3 (operator pairing auth), #7 (cancellation kills WSL), #8 (DeviceToken vs NodeDeviceToken)",
     "Issue #191 open as tracker for remaining bridge integration (gateway SPA listener, openclaw/openclaw#69633)",
     "Issue #235 (Dependabot bundle) still open — suggest closing",
-    "ExecApprovals pipeline progress: input validation (master), normalization (master), store read path (PR #295), evaluator (PR #296), coordinator/handler (future)"
+    "ExecApprovals pipeline progress: input validation (master), normalization (master), store read path (PR #295), evaluator (PR #296), coordinator/handler (future)",
+    "WindowsAppRuntime version mismatch: CI installs 1.8.260101001 but csproj references Microsoft.WindowsAppSDK 2.0.1 — may affect UI test reliability"
   ],
   "checked_off_by_maintainer": [],
   "test_baseline": {
     "shared_tests": "1438 passed / 4 pre-existing failures / 22 skipped",
     "tray_tests": "697 passed / 7 pre-existing failures / 1 skipped",
-    "note": "Both test suites run on Linux. build.ps1 requires Windows. 4 new wslconf-probe tests added this run."
+    "note": "Both test suites run on Linux. build.ps1 requires Windows. Baselines from PR #301 run."
   }
 }
