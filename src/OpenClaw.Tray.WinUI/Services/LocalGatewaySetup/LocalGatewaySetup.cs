@@ -402,6 +402,21 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
                 _logger.Warn($"[WSL] Failed to kill timed-out process: {ex.Message}");
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Caller cancelled: kill wsl.exe and its descendants before propagating.
+            // Without this, the Linux-side process tree continues running after setup
+            // is aborted — issue #281 item #7.
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[WSL] Failed to kill cancelled process: {ex.Message}");
+            }
+            throw;
+        }
 
         // Drain stdout/stderr with a bounded post-exit timeout. wsl.exe routinely spawns
         // descendants (wslhost.exe, distro init processes) that inherit our redirected
