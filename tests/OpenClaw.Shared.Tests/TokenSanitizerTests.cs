@@ -140,6 +140,17 @@ public class TokenSanitizerTests
     }
 
     [Fact]
+    public void Sanitize_RedactsBareGatewayHexTokenShapeWithUppercaseHex()
+    {
+        const string token = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+
+        var sanitized = TokenSanitizer.Sanitize($"argv: openclaw devices approve --token {token}");
+
+        Assert.DoesNotContain(token, sanitized);
+        Assert.Contains("[REDACTED_TOKEN]", sanitized);
+    }
+
+    [Fact]
     public void Sanitize_DoesNotRedactGatewayHexTokenAdjacentToHexCharacters()
     {
         const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

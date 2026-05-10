@@ -945,6 +945,18 @@ public class LocalGatewaySetupDiagnosticFormatterTests
     }
 
     [Fact]
+    public void Build_RedactsMixedCaseRawHexGatewayTokenInStderr()
+    {
+        const string rawToken = "0123456789ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef";
+        var result = Result(stderr: $"Error: failed to authenticate with token {rawToken}");
+
+        var output = DiagnosticFormatter.Build("auth", result);
+
+        Assert.DoesNotContain(rawToken, output);
+        Assert.Contains("[REDACTED_TOKEN]", output);
+    }
+
+    [Fact]
     public void Build_TruncatesLongOutput()
     {
         var longValue = new string('x', 3000);

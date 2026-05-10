@@ -13,7 +13,7 @@ public static class TokenSanitizer
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex BareGatewayHexTokenPattern = new(
-        @"(?<![0-9A-Fa-f])[0-9a-f]{64}(?![0-9A-Fa-f])",
+        @"(?<![0-9A-Fa-f])[0-9A-Fa-f]{64}(?![0-9A-Fa-f])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex LongBase64UrlPattern = new(
