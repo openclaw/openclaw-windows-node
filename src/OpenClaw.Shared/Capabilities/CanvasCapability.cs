@@ -244,8 +244,9 @@ public class CanvasCapability : NodeCapabilityBase
             var result = await evalHandler(script);
             return Success(new { result });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Logger.Error("canvas.eval handler failed", ex);
             return Error("Eval failed");
         }
     }
@@ -275,8 +276,9 @@ public class CanvasCapability : NodeCapabilityBase
             
             return Success(new { format, base64 });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Logger.Error("canvas.snapshot handler failed", ex);
             return Error("Snapshot failed");
         }
     }
@@ -495,8 +497,9 @@ public class CanvasCapability : NodeCapabilityBase
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             return Success(System.Text.Json.JsonSerializer.Deserialize<object>(doc.RootElement.GetRawText()));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Logger.Error("canvas.a2ui.dump handler failed", ex);
             return Error("CANVAS_DUMP_FAILED");
         }
     }
@@ -521,8 +524,9 @@ public class CanvasCapability : NodeCapabilityBase
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             return Success(System.Text.Json.JsonSerializer.Deserialize<object>(doc.RootElement.GetRawText()));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Logger.Error("canvas.a2ui.caps handler failed", ex);
             return Error("CANVAS_CAPS_FAILED");
         }
     }
