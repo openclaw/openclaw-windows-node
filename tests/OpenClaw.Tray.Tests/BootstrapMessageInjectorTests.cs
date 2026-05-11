@@ -88,10 +88,23 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
         Assert.Contains("BOOTSTRAP.md", capturedScript!);
     }
 
+    [Fact]
+    public async Task InjectAsync_FlipsGate_WhenMessageRendered()
+    {
+        var settings = new SettingsManager(_isolatedDir);
+        BootstrapMessageInjector.ScriptExecutor executor = _ => Task.FromResult("\"rendered\"");
+
+        var result = await BootstrapMessageInjector.InjectAsync(executor, settings, initialDelayMs: 0);
+
+        Assert.True(result);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
     [Theory]
     [InlineData("\"sent-unverified\"")]
     [InlineData("\"no-input\"")]
     [InlineData("\"no-send-button\"")]
+    [InlineData("\"not-rendered\"")]
     [InlineData("\"unknown\"")]
     public async Task InjectAsync_DoesNotFlipGate_WhenSendIsUnverified(string scriptResult)
     {
@@ -136,5 +149,17 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
         Assert.DoesNotContain("abc\"; alert(1); //${evil}\\", script);
         // JSON-escaped form embeds the encoded payload (escaped quote).
         Assert.Contains("\\\"", script);
+    }
+
+    [Fact]
+    public void BuildInjectionScript_UsesBroadChatComposerDiscovery()
+    {
+        var script = BootstrapMessageInjector.BuildInjectionScript("hello");
+
+        Assert.Contains("allCandidateElements", script);
+        Assert.Contains("shadowRoot", script);
+        Assert.Contains("textarea:not([disabled])", script);
+        Assert.Contains("[contenteditable=\"true\"]", script);
+        Assert.Contains("button[aria-label*=\"Send\" i]", script);
     }
 }

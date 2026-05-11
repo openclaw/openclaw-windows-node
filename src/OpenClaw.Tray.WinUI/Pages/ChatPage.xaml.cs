@@ -8,7 +8,9 @@ using OpenClawTray.Windows;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
+using Windows.Storage.Streams;
 
 namespace OpenClawTray.Pages;
 
@@ -114,8 +116,16 @@ public sealed partial class ChatPage : Page
                             document.head.appendChild(style);
                         })();
                     ");
-                    BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
-                    _ = BootstrapMessageInjector.InjectAsync(exec, ((App)Application.Current).Settings, initialDelayMs: 500);
+                    try
+                    {
+                        BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
+                        _ = BootstrapMessageInjector.InjectAsync(exec, ((App)Application.Current).Settings, initialDelayMs: 500);
+                        _ = CaptureVisualTestChatAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"[ChatPage] Bootstrap injection dispatch failed: {ex.Message}");
+                    }
                 }
                 else if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
                                       e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
@@ -147,6 +157,35 @@ public sealed partial class ChatPage : Page
             WebView.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
             ErrorText.Text = $"WebView2 failed to initialize:\n{ex.Message}";
+        }
+    }
+
+    private async Task CaptureVisualTestChatAsync()
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") != "1") return;
+        if (WebView.CoreWebView2 == null) return;
+
+        try
+        {
+            await Task.Delay(5000);
+            var outputDir = Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR");
+            if (string.IsNullOrWhiteSpace(outputDir)) return;
+
+            Directory.CreateDirectory(outputDir);
+            var path = Path.Combine(outputDir, $"chat-{DateTime.Now:yyyyMMddHHmmss}.png");
+            using var stream = new InMemoryRandomAccessStream();
+            await WebView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+            stream.Seek(0);
+            var reader = new DataReader(stream);
+            await reader.LoadAsync((uint)stream.Size);
+            var bytes = new byte[stream.Size];
+            reader.ReadBytes(bytes);
+            await File.WriteAllBytesAsync(path, bytes);
+            Logger.Info($"[VisualTest] Captured chat WebView {path}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[VisualTest] Chat WebView capture failed: {ex.Message}");
         }
     }
 

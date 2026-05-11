@@ -247,8 +247,15 @@ public sealed partial class ChatWindow : WindowEx
                     ErrorPanel.Visibility = Visibility.Collapsed;
                     WebView.Visibility = Visibility.Visible;
                     RequestChatInputFocus();
-                    OpenClawTray.Services.BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
-                    _ = OpenClawTray.Services.BootstrapMessageInjector.InjectAsync(exec, ((App)Microsoft.UI.Xaml.Application.Current).Settings, initialDelayMs: 500);
+                    try
+                    {
+                        OpenClawTray.Services.BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
+                        _ = OpenClawTray.Services.BootstrapMessageInjector.InjectAsync(exec, ((App)Microsoft.UI.Xaml.Application.Current).Settings, initialDelayMs: 500);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"[ChatWindow] Bootstrap injection dispatch failed: {ex.Message}");
+                    }
                 }
             };
 

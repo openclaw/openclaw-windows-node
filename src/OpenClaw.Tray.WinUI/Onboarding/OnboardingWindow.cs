@@ -531,9 +531,16 @@ public sealed class OnboardingWindow : WindowEx
         if (_bootstrapSent || _chatWebView?.CoreWebView2 == null) return;
         _bootstrapSent = true;
 
-        await BootstrapMessageInjector.InjectAsync(
-            script => _chatWebView.CoreWebView2.ExecuteScriptAsync(script).AsTask(),
-            _settings);
+        try
+        {
+            await BootstrapMessageInjector.InjectAsync(
+                script => _chatWebView.CoreWebView2.ExecuteScriptAsync(script).AsTask(),
+                _settings);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[OnboardingChat] Bootstrap injection dispatch failed: {ex.Message}");
+        }
     }
 
     /// <summary>
