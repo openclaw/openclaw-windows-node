@@ -222,8 +222,18 @@ public sealed class LocalGatewaySetupStateStore : ILocalGatewaySetupStateStore
         if (!File.Exists(_statePath))
             return null;
 
-        await using var stream = File.OpenRead(_statePath);
-        return await JsonSerializer.DeserializeAsync<LocalGatewaySetupState>(stream, s_jsonOptions, cancellationToken);
+        try
+        {
+            await using var stream = File.OpenRead(_statePath);
+            return await JsonSerializer.DeserializeAsync<LocalGatewaySetupState>(stream, s_jsonOptions, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            // Corrupt or incompatible state file — treat as fresh start
+            System.Diagnostics.Debug.WriteLine($"[SetupState] Corrupt setup-state.json at {_statePath}, deleting and starting fresh");
+            try { File.Delete(_statePath); } catch { }
+            return null;
+        }
     }
 
     public async Task SaveAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
@@ -2775,12 +2785,18 @@ public sealed class LocalGatewaySetupEngine
         }
         catch (OperationCanceledException)
         {
+            state.Status = LocalGatewaySetupStatus.Cancelled;
+            state.UserMessage = "Setup was cancelled.";
+            // Persist cancelled state so restarts don't resume from stale Running phase
+            try { await _stateStore.SaveAsync(state, CancellationToken.None); } catch { }
+            StateChanged?.Invoke(state);
             throw;
         }
         catch (Exception ex)
         {
             _logger.Error($"Local gateway setup phase {phase} failed.", ex);
-            state.Block($"{phase.ToString().ToLowerInvariant()}_failed", ex.Message, retryable: true, detail: SecretRedactor.Redact(ex.ToString()));
+            var retryable = ex is not (UnauthorizedAccessException or NotSupportedException or InvalidOperationException or ArgumentException);
+            state.Block($"{phase.ToString().ToLowerInvariant()}_failed", ex.Message, retryable: retryable, detail: SecretRedactor.Redact(ex.ToString()));
             await SaveAndPublishAsync(state, cancellationToken);
             return;
         }

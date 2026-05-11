@@ -36,6 +36,8 @@ public sealed partial class ConnectionPage : Page
         if (_connectionManager != null)
             _connectionManager.StateChanged += OnManagerStateChanged;
 
+        Unloaded += OnPageUnloaded;
+
         // Populate manual connection fields
         GatewayUrlTextBox.Text = settings.GatewayUrl ?? "";
         SshToggle.IsOn = settings.UseSshTunnel;
@@ -57,6 +59,12 @@ public sealed partial class ConnectionPage : Page
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush s_dimBrush = new(Microsoft.UI.ColorHelper.FromArgb(40, 255, 255, 255));
 
     private GatewayConnectionSnapshot? _lastSnapshot;
+
+    private void OnPageUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_connectionManager != null)
+            _connectionManager.StateChanged -= OnManagerStateChanged;
+    }
 
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
     {
@@ -217,7 +225,10 @@ public sealed partial class ConnectionPage : Page
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConnectionPage] Failed to read device ID from identity file: {ex.Message}");
+            }
         }
 
         if (snapshot.OperatorState == RoleConnectionState.PairingRequired)
@@ -520,25 +531,40 @@ public sealed partial class ConnectionPage : Page
         }
 
         url = GatewayUrlHelper.NormalizeForWebSocket(url);
+
+        // Validate SSH config upfront before mutating any state
+        var useSsh = SshToggle.IsOn;
+        SshTunnelConfig? sshConfig = null;
+        if (useSsh)
+        {
+            var sshUser = SshUserBox.Text.Trim();
+            var sshHost = SshHostBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(sshUser) || string.IsNullOrWhiteSpace(sshHost))
+            {
+                DirectConnectResultText.Text = "SSH user and host are required";
+                return;
+            }
+            if (!int.TryParse(SshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
+            {
+                DirectConnectResultText.Text = "SSH remote port must be 1–65535";
+                return;
+            }
+            if (!int.TryParse(SshLocalPortBox.Text, out var localPort) || localPort is < 1 or > 65535)
+            {
+                DirectConnectResultText.Text = "SSH local port must be 1–65535";
+                return;
+            }
+            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort);
+        }
+
         DirectConnectResultText.Text = "Connecting…";
+
+        // Remember previous active gateway so we can revert on failure
+        var previousActiveId = _gatewayRegistry.ActiveGatewayId;
 
         try
         {
             await _connectionManager.DisconnectAsync();
-
-            // Parse SSH config
-            var useSsh = SshToggle.IsOn;
-            SshTunnelConfig? sshConfig = null;
-            if (useSsh)
-            {
-                var sshUser = SshUserBox.Text.Trim();
-                var sshHost = SshHostBox.Text.Trim();
-                int.TryParse(SshRemotePortBox.Text, out var remotePort);
-                int.TryParse(SshLocalPortBox.Text, out var localPort);
-                if (remotePort <= 0) remotePort = 18789;
-                if (localPort <= 0) localPort = 18789;
-                sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort);
-            }
 
             // Create/update gateway record with shared token + SSH config
             var existing = _gatewayRegistry.FindByUrl(url);
@@ -576,7 +602,10 @@ public sealed partial class ConnectionPage : Page
                     writer.Flush();
                     System.IO.File.WriteAllBytes(keyPath, ms.ToArray());
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ConnectionPage] Failed to clear device tokens: {ex.Message}");
+                }
             }
 
             // Save settings (SSH config + gateway URL for legacy compat)
@@ -609,6 +638,13 @@ public sealed partial class ConnectionPage : Page
         catch (Exception ex)
         {
             DirectConnectResultText.Text = $"✗ {ex.Message}";
+
+            // Revert active gateway on failure so the app doesn't point at a broken config
+            if (previousActiveId != null)
+            {
+                _gatewayRegistry.SetActive(previousActiveId);
+                _gatewayRegistry.Save();
+            }
         }
     }
 

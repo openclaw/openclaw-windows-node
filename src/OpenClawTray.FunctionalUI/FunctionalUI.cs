@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
-using System.Runtime.CompilerServices;
 using Windows.UI;
 using Windows.UI.Text;
 using OpenClawTray.Services;
@@ -681,12 +680,21 @@ internal sealed class UiRenderer(Action requestRender)
     {
         control.SelectionChanged -= RadioButtonsSelectionChanged;
         control.Tag = element;
-        var sameRef = ReferenceEquals(control.ItemsSource, element.Items);
-        var itemsHash = RuntimeHelpers.GetHashCode(element.Items);
-        var idxBefore = control.SelectedIndex;
-        Logger.Debug($"[WizardDiag] ConfigureRadioButtons before: itemsHash={itemsHash} sameRef={sameRef} reqIdx={element.SelectedIndex} idxBefore={idxBefore}");
-        control.ItemsSource = element.Items;
-        var idxAfterSet = control.SelectedIndex;
+
+        // Only reassign ItemsSource when the items have actually changed (content comparison).
+        // Setting ItemsSource to a new array reference with the same content causes the
+        // WinUI RadioButtons control to rebuild its children and reset the visual selection,
+        // which makes SelectedIndex assignments unreliable and causes selection to not stick.
+        var currentItems = control.ItemsSource as string[];
+        var needsItemUpdate = currentItems == null
+            || currentItems.Length != element.Items.Length
+            || !currentItems.AsSpan().SequenceEqual(element.Items);
+
+        if (needsItemUpdate)
+        {
+            control.ItemsSource = element.Items;
+        }
+
         if (element.SelectedIndex >= 0 && element.SelectedIndex < element.Items.Length)
         {
             control.SelectedIndex = element.SelectedIndex;
@@ -697,7 +705,6 @@ internal sealed class UiRenderer(Action requestRender)
             control.SelectedIndex = -1;
             control.SelectedItem = null;
         }
-        Logger.Debug($"[WizardDiag] ConfigureRadioButtons after: itemsHash={itemsHash} idxAfterSet={idxAfterSet} idxFinal={control.SelectedIndex}");
         control.SelectionChanged += RadioButtonsSelectionChanged;
         ApplyModifiers(control, element);
         ApplySetters(control, element);

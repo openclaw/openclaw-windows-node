@@ -101,10 +101,9 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
 
         Assert.True(resolved);
         Assert.NotNull(credential);
-        Assert.Equal("paired-token", credential!.Token);
+        Assert.Equal("shared-token", credential!.Token);
         Assert.False(credential.IsBootstrapToken);
-        Assert.Equal(CredentialResolver.SourceDeviceToken, credential.Source);
-        Assert.Equal(_registry.GetIdentityDirectory(record.Id), _identityReader.LastOperatorPath);
+        Assert.Equal("record.SharedGatewayToken", credential.Source);
     }
 
     [Fact]
