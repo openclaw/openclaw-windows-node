@@ -235,18 +235,48 @@ public sealed class LocalGatewayUninstall
         await RunStepAsync("Stop systemd gateway service", options, ct, async () =>
         {
             var distros = await _wsl.ListDistrosAsync(ct);
-            if (!distros.Any(d => string.Equals(d.Name, options.DistroName,
-                    StringComparison.OrdinalIgnoreCase)))
+            var distro = distros.FirstOrDefault(d => string.Equals(
+                d.Name, options.DistroName, StringComparison.OrdinalIgnoreCase));
+
+            if (distro is null)
             {
                 RecordStep("Stop systemd gateway service", UninstallStepStatus.Skipped,
                     "Distro not registered.");
                 return;
             }
 
-            var result = await _wsl.RunInDistroAsync(
-                options.DistroName,
-                ["bash", "-c", "sudo systemctl stop openclaw-gateway 2>&1 || true"],
-                ct);
+            // If the distro is not Running, issuing `wsl -d ... systemctl stop` would
+            // start the distro, run the command, then WSL hangs ~30 s waiting for its
+            // own session to terminate — even though the service was already stopped.
+            // Skip the systemctl call when the distro is stopped; the unregister step
+            // that follows will force-terminate it anyway.
+            if (!string.Equals(distro.State, "Running", StringComparison.OrdinalIgnoreCase))
+            {
+                RecordStep("Stop systemd gateway service", UninstallStepStatus.Skipped,
+                    $"Distro state is '{distro.State}' (not Running); skipping systemctl stop.");
+                return;
+            }
+
+            using var cts5s = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts5s.CancelAfter(TimeSpan.FromSeconds(5));
+            WslCommandResult result;
+            try
+            {
+                result = await _wsl.RunInDistroAsync(
+                    options.DistroName,
+                    ["bash", "-c", "sudo systemctl stop openclaw-gateway 2>&1 || true"],
+                    cts5s.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // 5-second inner timeout fired; the distro is wedged.
+                // Log and continue — the wsl --unregister step will force-terminate it.
+                _logger.Warn("[Uninstall] systemctl stop timed out after 5 s; distro appears wedged. " +
+                             "Proceeding to wsl --unregister.");
+                RecordStep("Stop systemd gateway service", UninstallStepStatus.Executed,
+                    "systemctl stop timed out (5 s); distro wedged — wsl --unregister will force-terminate.");
+                return;
+            }
 
             var detail = (result.StandardOutput + result.StandardError).Trim();
             RecordStep("Stop systemd gateway service", UninstallStepStatus.Executed,

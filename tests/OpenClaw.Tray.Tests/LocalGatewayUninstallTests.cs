@@ -784,15 +784,111 @@ public sealed class LocalGatewayUninstallTests
     }
 
     // -----------------------------------------------------------------------
-    // Test 26: CLI arg parser — --uninstall without --confirm-destructive
-    //          NOTE: RunAsync already covers this via Test 2 (throws
-    //          InvalidOperationException when ConfirmDestructive=false,
-    //          DryRun=false). The CLI layer maps that to exit code 2 with
-    //          the required stderr message; unit-testing that mapping would
-    //          require spawning the WinUI EXE as a subprocess, which is an
-    //          integration concern beyond unit test scope. This note documents
-    //          the coverage decision: smoke-tested manually with
-    //          `OpenClawTray.exe --uninstall` (no --confirm-destructive flag).
+    // Test 26: Stopped distro — systemctl stop is skipped, no hang (BUG-02)
     // -----------------------------------------------------------------------
-    // (Manual smoke test: confirmed exit code 2 + stderr message 2026-05-07)
+
+    [WindowsFact]
+    public async Task StoppedDistro_SystemctlStopSkipped_NoHang()
+    {
+        using var env = new UninstallTestEnv();
+        // Distro is registered but Stopped — simulates the exact BUG-02 scenario.
+        var runner = new FakeWslCommandRunner
+        {
+            Distros = [new WslDistroInfo("OpenClawGateway", "Stopped", 2)]
+        };
+        var engine = env.BuildEngine(runner);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+        sw.Stop();
+
+        // Must complete well under the old 30-second hang budget.
+        Assert.True(sw.Elapsed.TotalSeconds < 10,
+            $"Uninstall took {sw.Elapsed.TotalSeconds:F1}s; expected < 10s for a stopped distro.");
+
+        // Step must be Skipped (not Executed) — we should NOT have called into WSL.
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Stop systemd gateway service");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
+        Assert.Contains("not Running", step.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 27: Wedged running distro — 5-second timeout fires, continues (BUG-02)
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task WedgedRunningDistro_SystemctlTimesOut_ContinuesUninstall()
+    {
+        using var env = new UninstallTestEnv();
+        // Distro is Running but RunInDistroAsync hangs for longer than our 5-second timeout.
+        var runner = new HangingWslCommandRunner(hangSeconds: 30);
+        var engine = env.BuildEngine(runner);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+        sw.Stop();
+
+        // Inner timeout is 5 s; allow headroom for test executor jitter.
+        Assert.True(sw.Elapsed.TotalSeconds < 15,
+            $"Uninstall took {sw.Elapsed.TotalSeconds:F1}s; expected < 15s even with a wedged distro.");
+
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Stop systemd gateway service");
+        Assert.NotNull(step);
+        // Step is recorded as Executed (with timeout note), not Failed — uninstall continues.
+        Assert.Equal(UninstallStepStatus.Executed, step.Status);
+        Assert.Contains("timed out", step.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // -----------------------------------------------------------------------
+    // HangingWslCommandRunner — simulates a Running distro whose wsl.exe
+    // invocation never returns within the caller's timeout budget.
+    // -----------------------------------------------------------------------
+
+    private sealed class HangingWslCommandRunner : IWslCommandRunner
+    {
+        private readonly int _hangSeconds;
+
+        public HangingWslCommandRunner(int hangSeconds) => _hangSeconds = hangSeconds;
+
+        public Task<System.Collections.Generic.IReadOnlyList<WslDistroInfo>> ListDistrosAsync(
+            System.Threading.CancellationToken cancellationToken = default)
+            => Task.FromResult<System.Collections.Generic.IReadOnlyList<WslDistroInfo>>(
+                [new WslDistroInfo("OpenClawGateway", "Running", 2)]);
+
+        public Task<WslCommandResult> RunAsync(
+            System.Collections.Generic.IReadOnlyList<string> arguments,
+            System.Threading.CancellationToken cancellationToken = default,
+            System.Collections.Generic.IReadOnlyDictionary<string, string>? environment = null)
+            => Task.FromResult(new WslCommandResult(0, "", ""));
+
+        public async Task<WslCommandResult> RunInDistroAsync(
+            string name,
+            System.Collections.Generic.IReadOnlyList<string> command,
+            System.Threading.CancellationToken cancellationToken = default,
+            System.Collections.Generic.IReadOnlyDictionary<string, string>? environment = null)
+        {
+            // Simulate a wedged distro: hang until cancelled or the timeout fires.
+            await Task.Delay(TimeSpan.FromSeconds(_hangSeconds), cancellationToken);
+            return new WslCommandResult(0, "", "");
+        }
+
+        public Task<WslCommandResult> TerminateDistroAsync(
+            string name,
+            System.Threading.CancellationToken cancellationToken = default)
+            => Task.FromResult(new WslCommandResult(0, "", ""));
+
+        public Task<WslCommandResult> UnregisterDistroAsync(
+            string name,
+            System.Threading.CancellationToken cancellationToken = default)
+            => Task.FromResult(new WslCommandResult(0, "", ""));
+    }
 }
