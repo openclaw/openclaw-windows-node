@@ -432,7 +432,7 @@ public class OpenClawGatewayClient : WebSocketClientBase
         await SendTrackedRequestAsync("cron.status");
     }
 
-    public Task<bool> RunCronJobAsync(string jobId, bool force = true)
+    public Task<bool> RunCronJobAsync(string jobId)
     {
         return TrySendTrackedRequestAsync("cron.run", new { id = jobId });
     }

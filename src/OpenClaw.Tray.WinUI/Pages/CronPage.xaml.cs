@@ -388,8 +388,9 @@ public sealed partial class CronPage : Page
 
     private void ShowJobCompletedNotification(string jobName)
     {
-        // Cancel any pending auto-dismiss timer
+        // Cancel and dispose any pending auto-dismiss timer
         _infoDismissCts?.Cancel();
+        _infoDismissCts?.Dispose();
         _infoDismissCts = new CancellationTokenSource();
         var cts = _infoDismissCts;
 

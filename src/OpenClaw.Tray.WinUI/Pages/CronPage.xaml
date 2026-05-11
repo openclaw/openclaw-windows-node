@@ -262,10 +262,6 @@
                         </Grid>
                         <!-- Row 3: Toggles -->
                         <StackPanel Spacing="8">
-                            <CheckBox x:Name="FormDeleteAfterRunAdv"
-                                      IsChecked="False" MinHeight="32">
-                                <TextBlock Text="Delete after run (one-time job)" FontSize="14" VerticalAlignment="Center"/>
-                            </CheckBox>
                             <CheckBox x:Name="FormClearContext"
                                       IsChecked="False" MinHeight="32">
                                 <TextBlock Text="Clear agent context before run" FontSize="14" VerticalAlignment="Center"/>
