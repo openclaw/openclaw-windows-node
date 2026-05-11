@@ -51,8 +51,10 @@ Name: "cmdpalette"; Description: "Install PowerToys Command Palette extension"; 
 [Files]
 ; WinUI Tray app - include all files (WinUI needs DLLs, not single-file)
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-; Command Palette extension (all files from build output)
-Source: "{#publish}\cmdpal\*"; DestDir: "{app}\CommandPalette"; Flags: ignoreversion recursesubdirs; Tasks: cmdpalette
+; Command Palette extension (all files from build output).
+; skipifsourcedoesntexist: prevents ISCC compile error when the cmdpal publish
+; dir is absent (e.g. developer builds that skip the cmdpalette task).
+Source: "{#publish}\cmdpal\*"; DestDir: "{app}\CommandPalette"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist; Tasks: cmdpalette
 ; WSL gateway uninstall helper — invoked by [UninstallRun] to drive clean removal
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
