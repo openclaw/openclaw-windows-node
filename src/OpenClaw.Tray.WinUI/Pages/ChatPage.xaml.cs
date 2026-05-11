@@ -131,16 +131,7 @@ public sealed partial class ChatPage : Page
                             document.head.appendChild(style);
                         })();
                     ");
-                    try
-                    {
-                        BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
-                        _ = BootstrapMessageInjector.InjectAsync(exec, ((App)Application.Current).Settings, initialDelayMs: 500);
-                        _ = CaptureVisualTestChatAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn($"[ChatPage] Bootstrap injection dispatch failed: {ex.Message}");
-                    }
+                    _ = CaptureVisualTestChatAsync();
                 }
                 else if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
                                       e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
@@ -202,6 +193,17 @@ public sealed partial class ChatPage : Page
                 ShowChatReadinessFailure($"Timed out waiting for chat at {gatewayUrl}. Retry once the gateway is ready.");
                 Logger.Warn("[ChatPage] Timed out waiting for chat HTTP surface before navigation");
                 return;
+            }
+
+            WaitingStatusText.Text = "Chat is ready; starting your first hatching conversation…";
+            var bootstrapped = await OnboardingChatBootstrapper.BootstrapAsync(
+                connectionManager?.OperatorClient,
+                ((App)Application.Current).Settings,
+                TimeSpan.FromSeconds(90),
+                cancellationToken).ConfigureAwait(true);
+            if (!bootstrapped && !((App)Application.Current).Settings.HasInjectedFirstRunBootstrap)
+            {
+                Logger.Warn("[ChatPage] Gateway hatching bootstrap did not complete; navigating to empty chat");
             }
 
             if (cancellationToken.IsCancellationRequested || _navigationStarted) return;

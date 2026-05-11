@@ -65,9 +65,9 @@ public class OpenClawGatewayClientTests
             return MenuDisplayHelper.TruncateText(text, maxLen);
         }
 
-        public Task<bool> RegisterPendingChatSend(string requestId)
+        public Task<ChatSendResult> RegisterPendingChatSend(string requestId)
         {
-            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var completion = new TaskCompletionSource<ChatSendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             var method = typeof(OpenClawGatewayClient).GetMethod(
                 "TrackPendingChatSend",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -694,11 +694,12 @@ public class OpenClawGatewayClientTests
             "type": "res",
             "id": "chat-1",
             "ok": true,
-            "payload": { "accepted": true }
+            "payload": { "accepted": true, "runId": "run-1" }
         }
         """);
 
-        Assert.True(await task);
+        var result = await task;
+        Assert.Equal("run-1", result.RunId);
     }
 
     [Fact]
