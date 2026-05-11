@@ -54,7 +54,7 @@ public static class BootstrapMessageInjector
     {
         var safeMsg = JsonSerializer.Serialize(message);
         return $$"""
-        (function() {
+        (async function() {
             const msg = {{safeMsg}};
 
             function isVisible(el) {
@@ -130,6 +130,43 @@ public static class BootstrapMessageInjector
                 return el.value || '';
             }
 
+            function isComposerCleared(el) {
+                return getRenderedValue(el).trim() === '';
+            }
+
+            function transcriptShowsUserMessage() {
+                const selectors = [
+                    '[data-role="user"]',
+                    '[data-author="user"]',
+                    '[data-testid*="user" i]',
+                    '[class*="user-message" i]',
+                    '[class*="message-user" i]',
+                    '[class*="from-user" i]',
+                    '[role="article"]',
+                    '[role="listitem"]'
+                ];
+                return allCandidateElements(selectors).some(el => {
+                    if (!isVisible(el)) return false;
+                    const text = (el.innerText || el.textContent || '').trim();
+                    return text === msg || text.includes(msg);
+                });
+            }
+
+            function pageLooksLike404() {
+                const title = (document.title || '').toLowerCase();
+                const body = ((document.body && (document.body.innerText || document.body.textContent)) || '').trim().toLowerCase();
+                return title.includes('404') || body.startsWith('404') || body.startsWith('not found');
+            }
+
+            async function waitForAcceptedSendProof(input) {
+                for (let i = 0; i < 5; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    if (pageLooksLike404()) return false;
+                    if (isComposerCleared(input) || transcriptShowsUserMessage()) return true;
+                }
+                return false;
+            }
+
             const input = findInput();
             if (!input) {
                 console.warn('[OpenClaw] Could not find chat input for bootstrap');
@@ -151,23 +188,38 @@ public static class BootstrapMessageInjector
             }
 
             const form = input.closest ? input.closest('form') : null;
+            let submitAttempted = false;
             if (form && typeof form.requestSubmit === 'function') {
                 try {
                     form.requestSubmit();
+                    submitAttempted = true;
                     console.log('[OpenClaw] Bootstrap message submitted via composer form');
-                    return 'sent';
                 } catch { }
             }
 
-            const button = findSendButton();
-            if (!button) {
+            let button = null;
+            if (!submitAttempted) {
+                button = findSendButton();
+            }
+
+            if (!submitAttempted && !button) {
                 console.warn('[OpenClaw] Bootstrap message rendered, but send button was not found');
                 return 'rendered';
             }
 
-            button.click();
-            console.log('[OpenClaw] Bootstrap message submitted via chat send button');
-            return 'sent';
+            if (!submitAttempted && button) {
+                button.click();
+                submitAttempted = true;
+                console.log('[OpenClaw] Bootstrap message submitted via chat send button');
+            }
+
+            if (submitAttempted && await waitForAcceptedSendProof(input)) {
+                console.log('[OpenClaw] Bootstrap message accepted by chat UI');
+                return 'sent';
+            }
+
+            console.warn('[OpenClaw] Bootstrap message submit was clicked but not accepted by chat UI');
+            return 'unconfirmed';
         })();
         """;
     }
@@ -236,8 +288,14 @@ public static class BootstrapMessageInjector
             if (string.Equals(status, "sent", StringComparison.Ordinal))
             {
                 MarkInjected(settings);
-                Logger.Info("[BootstrapMessageInjector] Bootstrap message injection sent");
+                Logger.Info("[BootstrapMessageInjector] Bootstrap message injection sent (accepted-send proof observed)");
                 return true;
+            }
+
+            if (string.Equals(status, "unconfirmed", StringComparison.Ordinal))
+            {
+                Logger.Warn("[BootstrapMessageInjector] Bootstrap message submit was unconfirmed; gate remains open");
+                return false;
             }
 
             if (string.Equals(status, "rendered", StringComparison.Ordinal))

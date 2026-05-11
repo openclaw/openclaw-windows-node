@@ -70,7 +70,7 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
     }
 
     [Fact]
-    public async Task InjectAsync_FlipsGate_OnSuccessfulExecution()
+    public async Task InjectAsync_FlipsGate_OnProvenSentExecution()
     {
         var settings = new SettingsManager(_isolatedDir);
         string? capturedScript = null;
@@ -101,6 +101,7 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
     }
 
     [Theory]
+    [InlineData("\"unconfirmed\"")]
     [InlineData("\"sent-unverified\"")]
     [InlineData("\"no-input\"")]
     [InlineData("\"no-send-button\"")]
@@ -182,5 +183,17 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
         Assert.Contains("textarea:not([disabled])", script);
         Assert.Contains("[contenteditable=\"true\"]", script);
         Assert.Contains("button[aria-label*=\"Send\" i]", script);
+    }
+
+    [Fact]
+    public void BuildInjectionScript_RequiresAcceptedSendProof()
+    {
+        var script = BootstrapMessageInjector.BuildInjectionScript("hello");
+
+        Assert.Contains("waitForAcceptedSendProof", script);
+        Assert.Contains("isComposerCleared", script);
+        Assert.Contains("transcriptShowsUserMessage", script);
+        Assert.Contains("return 'unconfirmed'", script);
+        Assert.Contains("return 'sent'", script);
     }
 }
