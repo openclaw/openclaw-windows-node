@@ -73,6 +73,11 @@ Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -Command ""Add-
 ; the script executes.  See Inno docs: "[UninstallRun] section".
 ; Fallback: if OpenClawTray.exe is missing for any reason, Uninstall-LocalGateway.ps1
 ; logs the error to {app}\uninstall-gateway-error.log and exits 0 so Inno continues.
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall-LocalGateway.ps1"""; Flags: shellexec waituntilterminated; StatusMsg: "Removing local WSL gateway..."
+; *** DO NOT COMMENT OUT OR REMOVE THE Flags LINE BELOW ***
+; waituntilterminated is non-negotiable: without it Inno races ahead and deletes
+; {app} while the PowerShell hook (and the CLI engine it invokes) is still running,
+; leaving 279+ application files behind after unins000.exe reports exit 0.
+; runhidden suppresses the console window that would otherwise flash briefly.
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall-LocalGateway.ps1"""; Flags: shellexec waituntilterminated runhidden; StatusMsg: "Removing local WSL gateway..."
 ; Unregister Command Palette extension on uninstall
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -Command ""Get-AppxPackage -Name '*OpenClaw*' | Remove-AppxPackage"""; Flags: runhidden
