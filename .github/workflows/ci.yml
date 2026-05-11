@@ -8,9 +8,33 @@ on:
     branches: [ master, main ]
 
 jobs:
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Ensure .squad stays untracked
+      shell: bash
+      run: |
+        tracked_squad="$(git ls-files .squad)"
+        if [ -n "$tracked_squad" ]; then
+          echo "::error::.squad files must not be tracked by Git. Keep squad state local and ignored."
+          echo "$tracked_squad"
+          exit 1
+        fi
+
   test:
+    needs: repo-hygiene
+    if: ${{ !cancelled() }}
     runs-on: windows-latest
     steps:
+    - name: Fail if repo hygiene failed
+      if: ${{ needs.repo-hygiene.result != 'success' }}
+      shell: pwsh
+      run: |
+        Write-Error "repo-hygiene failed; see the repo-hygiene job output."
+        exit 1
+
     - uses: actions/checkout@v6
       with:
         fetch-depth: 0
@@ -347,8 +371,8 @@ jobs:
         path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
 
   release:
-    needs: [test, build, build-msix, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v') && !cancelled()
+    needs: [repo-hygiene, test, build, build-msix, build-extension]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
       contents: write
