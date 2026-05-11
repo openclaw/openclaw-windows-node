@@ -116,11 +116,13 @@ public sealed partial class VoiceSettingsPage : Page
         {
             ModelStatusText.Text = L("VoiceSettingsPage_StatusModelReady");
             DownloadButtonText.Text = L("VoiceSettingsPage_ButtonReDownload");
+            TestVoiceButton.Visibility = Visibility.Visible;
         }
         else
         {
             ModelStatusText.Text = L("VoiceSettingsPage_StatusDownloadRequired");
             DownloadButtonText.Text = L("VoiceSettingsPage_ButtonDownloadModel");
+            TestVoiceButton.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -262,6 +264,11 @@ public sealed partial class VoiceSettingsPage : Page
     }
 
     // ── TTS Voice Selection ──
+
+    private void OnTestVoiceClick(object sender, RoutedEventArgs e)
+    {
+        _hub?.OpenVoiceAction?.Invoke();
+    }
 
     private void LoadTtsSettings(SettingsManager settings)
     {

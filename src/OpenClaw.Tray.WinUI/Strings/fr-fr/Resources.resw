@@ -2748,4 +2748,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
     <value>▶ Aperçu de la voix</value>
   </data>
+  <data name="VoiceSettingsPage_TestVoiceButtonText.Text" xml:space="preserve">
+    <value>Tester la saisie vocale</value>
+  </data>
 </root>
