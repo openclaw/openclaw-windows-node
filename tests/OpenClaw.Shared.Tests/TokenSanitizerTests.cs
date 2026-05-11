@@ -129,6 +129,38 @@ public class TokenSanitizerTests
     }
 
     [Fact]
+    public void Sanitize_RedactsBareGatewayHexTokenShape()
+    {
+        const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        var sanitized = TokenSanitizer.Sanitize($"argv: openclaw devices approve --token {token}");
+
+        Assert.DoesNotContain(token, sanitized);
+        Assert.Contains("[REDACTED_TOKEN]", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_RedactsBareGatewayHexTokenShapeWithUppercaseHex()
+    {
+        const string token = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+
+        var sanitized = TokenSanitizer.Sanitize($"argv: openclaw devices approve --token {token}");
+
+        Assert.DoesNotContain(token, sanitized);
+        Assert.Contains("[REDACTED_TOKEN]", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_DoesNotRedactGatewayHexTokenAdjacentToHexCharacters()
+    {
+        const string token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        var sanitized = TokenSanitizer.Sanitize($"x{token}f");
+
+        Assert.Equal($"x{token}f", sanitized);
+    }
+
+    [Fact]
     public void Sanitize_TokenAtStartOfString_IsRedacted()
     {
         var token = new string('x', 43);

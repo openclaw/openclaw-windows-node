@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.VoiceSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="600">
+
+            <TextBlock x:Uid="VoiceSettingsPage_PageTitle" x:Name="PageTitleText" Text="🎙️ Voice &amp; Audio" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="VoiceSettingsPage_PageDescription" x:Name="PageDescriptionText"
+                       Text="Configure speech-to-text and voice interaction settings. All speech processing runs locally on your device."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+            <!-- Enable STT -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Uid="VoiceSettingsPage_SttHeader" x:Name="SttHeaderText" Text="Speech-to-Text" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_SttDescription" x:Name="SttDescriptionText"
+                               Text="Enable voice input via microphone. Requires a Whisper model download."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <ToggleSwitch x:Uid="VoiceSettingsPage_SttEnabledToggle" x:Name="SttEnabledToggle" Toggled="OnSttToggled"
+                                  Header="Enable Voice Input"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Model Management -->
+            <Border x:Name="ModelCard"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="VoiceSettingsPage_ModelHeader" x:Name="ModelHeaderText" Text="Speech Model" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+
+                    <ComboBox x:Uid="VoiceSettingsPage_ModelCombo" x:Name="ModelCombo" Header="Model Size"
+                              SelectionChanged="OnModelChanged" Width="320">
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelTiny"  Content="Tiny (~75 MB) — Fast, basic accuracy" Tag="tiny"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelBase"  Content="Base (~142 MB) — Good balance"        Tag="base"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelSmall" Content="Small (~466 MB) — High accuracy"      Tag="small"/>
+                    </ComboBox>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button x:Name="DownloadButton" Click="OnDownloadClick"
+                                Style="{StaticResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE896;" FontSize="14"/>
+                                <TextBlock x:Uid="VoiceSettingsPage_DownloadButtonText" x:Name="DownloadButtonText" Text="Download Model"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="ModelStatusText" VerticalAlignment="Center"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <ProgressBar x:Name="DownloadProgress" Visibility="Collapsed"
+                                 Minimum="0" Maximum="100"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Language -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Uid="VoiceSettingsPage_LanguageHeader" x:Name="LanguageHeaderText" Text="Language" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <ComboBox x:Name="LanguageCombo"
+                              SelectionChanged="OnLanguageChanged" Width="200">
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangAuto" Content="Auto-detect" Tag="auto"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangEn"   Content="English"     Tag="en"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangEs"   Content="Spanish"     Tag="es"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangFr"   Content="French"      Tag="fr"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangDe"   Content="German"      Tag="de"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangJa"   Content="Japanese"    Tag="ja"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangZh"   Content="Chinese"     Tag="zh"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangKo"   Content="Korean"      Tag="ko"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangPt"   Content="Portuguese"  Tag="pt"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_LangIt"   Content="Italian"     Tag="it"/>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <!-- Voice Chat Settings -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Uid="VoiceSettingsPage_VoiceChatHeader" x:Name="VoiceChatHeaderText" Text="Voice Chat" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+
+                    <Slider x:Uid="VoiceSettingsPage_SilenceSlider" x:Name="SilenceSlider" Header="Silence timeout (seconds)"
+                            Minimum="0.5" Maximum="5" StepFrequency="0.5"
+                            ValueChanged="OnSilenceChanged" Width="250"/>
+
+                    <ToggleSwitch x:Uid="VoiceSettingsPage_TtsResponseToggle" x:Name="TtsResponseToggle" Toggled="OnTtsResponseToggled"
+                                  Header="Read responses aloud"/>
+
+                    <ToggleSwitch x:Uid="VoiceSettingsPage_AudioFeedbackToggle" x:Name="AudioFeedbackToggle" Toggled="OnAudioFeedbackToggled"
+                                  Header="Audio feedback sounds"/>
+                </StackPanel>
+            </Border>
+
+            <!-- TTS Voice Selection -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="VoiceSettingsPage_VoiceHeader" x:Name="VoiceHeaderText" Text="🔊 Companion Voice" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_VoiceDescription" x:Name="VoiceDescriptionText"
+                               Text="Choose the voice used when reading responses aloud."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+
+                    <ComboBox x:Uid="VoiceSettingsPage_TtsProviderCombo" x:Name="TtsProviderCombo" Header="Provider"
+                              SelectionChanged="OnTtsProviderChanged" Width="360">
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_TtsPiper"      Content="Piper (local neural voices)"          Tag="piper"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_TtsWindows"    Content="Windows (built-in neural voices)"     Tag="windows"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_TtsElevenLabs" Content="ElevenLabs (cloud, requires API key)" Tag="elevenlabs"/>
+                    </ComboBox>
+
+                    <!-- Piper voice picker (local neural TTS via Sherpa-ONNX) -->
+                    <StackPanel x:Name="PiperVoicePanel" Spacing="8" Visibility="Collapsed">
+                        <ComboBox x:Uid="VoiceSettingsPage_PiperVoiceCombo" x:Name="PiperVoiceCombo" Header="Voice"
+                                  SelectionChanged="OnPiperVoiceChanged" Width="400"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="PiperDownloadButton" Click="OnPiperDownloadClick"
+                                    Width="180" MinHeight="32">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon x:Name="PiperDownloadIcon" Glyph="&#xE896;" FontSize="14"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_PiperDownloadButtonText" x:Name="PiperDownloadButtonText" Text="Download Voice"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Uid="VoiceSettingsPage_PiperDeleteButton" x:Name="PiperDeleteButton" Click="OnPiperDeleteClick"
+                                    Content="Delete" Width="80" Visibility="Collapsed"/>
+                            <Button x:Uid="VoiceSettingsPage_PiperPreviewButton" x:Name="PiperPreviewButton" Click="OnPiperPreviewClick"
+                                    Content="▶ Preview" Width="100" Visibility="Collapsed"/>
+                        </StackPanel>
+                        <ProgressBar x:Name="PiperDownloadProgress" Visibility="Collapsed"
+                                     IsIndeterminate="False" Maximum="100" Height="6" Width="400" HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="PiperStatusText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                        <TextBlock x:Uid="VoiceSettingsPage_PiperInfoText" x:Name="PiperInfoText"
+                                   Text="Voices download from the sherpa-onnx project's GitHub releases (~25 MB low quality, up to ~150 MB high quality). They run fully on this PC; no audio leaves your device."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Windows voice picker -->
+                    <StackPanel x:Name="WindowsVoicePanel" Spacing="8" Visibility="Collapsed">
+                        <ComboBox x:Uid="VoiceSettingsPage_WindowsVoiceCombo" x:Name="WindowsVoiceCombo" Header="Voice"
+                                  SelectionChanged="OnWindowsVoiceChanged" Width="300"/>
+                        <Button x:Uid="VoiceSettingsPage_PreviewVoiceButton" x:Name="PreviewVoiceButton" Click="OnPreviewVoiceClick"
+                                Content="▶ Preview Voice" Width="140"/>
+                    </StackPanel>
+
+                    <!-- ElevenLabs settings -->
+                    <StackPanel x:Name="ElevenLabsPanel" Spacing="8" Visibility="Collapsed">
+                        <PasswordBox x:Uid="VoiceSettingsPage_ElevenLabsApiKeyBox" x:Name="ElevenLabsApiKeyBox" Header="API Key"
+                                     PasswordChanged="OnElevenLabsKeyChanged" Width="300"/>
+                        <TextBox x:Uid="VoiceSettingsPage_ElevenLabsVoiceIdBox" x:Name="ElevenLabsVoiceIdBox" Header="Voice ID"
+                                 TextChanged="OnElevenLabsVoiceIdChanged" Width="300"
+                                 PlaceholderText="e.g. 21m00Tcm4TlvDq8ikWAM"/>
+                        <TextBox x:Uid="VoiceSettingsPage_ElevenLabsModelBox" x:Name="ElevenLabsModelBox" Header="Model (optional)"
+                                 TextChanged="OnElevenLabsModelChanged" Width="300"
+                                 PlaceholderText="e.g. eleven_turbo_v2"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Privacy notice -->
+            <Border Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                    CornerRadius="8" Padding="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE8D7;" FontSize="16" Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_PrivacyNote" x:Name="PrivacyNoteText"
+                               Text="All speech processing runs entirely on your device. No audio data is sent to any cloud service."
+                               Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

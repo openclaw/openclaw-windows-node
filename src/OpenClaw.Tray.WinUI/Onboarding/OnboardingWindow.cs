@@ -32,6 +32,7 @@ public sealed class OnboardingWindow : WindowEx
     private readonly FunctionalHostControl _host;
     private readonly string? _visualTestDir;
     private readonly DispatcherQueue _dispatcherQueue;
+    private readonly string? _identityDataPath;
     private int _captureIndex;
 
     // WebView2 overlay for Chat page
@@ -44,15 +45,29 @@ public sealed class OnboardingWindow : WindowEx
     private bool _chatWebViewInitialized;
     private readonly OnboardingState _state;
     private bool _stateDisposed;
+    // Single-fire guard so the X button (Closed) and the Finish button (state.Complete →
+    // OnOnboardingFinished → Close → Closed) don't both dispatch completion. Both paths
+    // route through OnWizardComplete which no-ops after the first call.
+    private bool _completionDispatched;
 
-    public OnboardingWindow(SettingsManager settings)
+    public OnboardingWindow(SettingsManager settings, string? identityDataPath = null)
     {
         _settings = settings;
+        _identityDataPath = identityDataPath;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _visualTestDir = Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1"
             ? ValidateTestDir(Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR")
               ?? Path.Combine(Path.GetTempPath(), "openclaw-visual-test"))
             : null;
+
+        // Optional override for visual tests: render the onboarding UI in a specific locale
+        // (e.g. "fr-FR", "zh-CN") regardless of system language. Must be set BEFORE the first
+        // LocalizationHelper.GetString call so the resource context picks it up.
+        var testLocale = Environment.GetEnvironmentVariable("OPENCLAW_TEST_LOCALE");
+        if (!string.IsNullOrWhiteSpace(testLocale))
+        {
+            LocalizationHelper.SetLanguageOverride(testLocale);
+        }
 
         Title = LocalizationHelper.GetString("Onboarding_Title");
         ExtendsContentIntoTitleBar = true;
@@ -71,13 +86,35 @@ public sealed class OnboardingWindow : WindowEx
         _state.Finished += OnOnboardingFinished;
         _state.RouteChanged += OnRouteChanged;
 
+        // Construct the existing-config guard and apply returning-user defaults.
+        // When existing config is detected, default SetupPath to Advanced so the
+        // user lands on the SetupWarning page with Next enabled (→ Connection page)
+        // rather than the local setup path. The warn-and-confirm gate on
+        // SetupWarningPage protects the "Set up locally" button.
+        if (identityDataPath != null)
+        {
+            _state.ExistingConfigGuard = new OnboardingExistingConfigGuard(settings, identityDataPath);
+            if (_state.ExistingConfigGuard.HasExistingConfiguration())
+                _state.SetupPath = SetupPath.Advanced;
+        }
+
         // Optional override for visual tests / engineering: jump straight to a route.
         // Accepts the OnboardingRoute enum name (e.g., "Connection").
         var startRoute = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_ROUTE");
         if (!string.IsNullOrWhiteSpace(startRoute) &&
             Enum.TryParse<OnboardingRoute>(startRoute, ignoreCase: true, out var parsed))
         {
+            // Ensure SetupPath is consistent with the requested route so GetPageOrder
+            // produces the expected step indicator. Defaults can be overridden below.
+            if (parsed == OnboardingRoute.LocalSetupProgress) _state.SetupPath = SetupPath.Local;
+            else if (parsed == OnboardingRoute.Connection) _state.SetupPath = SetupPath.Advanced;
             _state.CurrentRoute = parsed;
+        }
+        var startSetupPath = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_SETUP_PATH");
+        if (!string.IsNullOrWhiteSpace(startSetupPath) &&
+            Enum.TryParse<SetupPath>(startSetupPath, ignoreCase: true, out var parsedPath))
+        {
+            _state.SetupPath = parsedPath;
         }
         // Optional override for visual tests: pre-select a connection mode (Local/Wsl/Remote/Ssh/Later).
         var startMode = Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_MODE");
@@ -279,11 +316,9 @@ public sealed class OnboardingWindow : WindowEx
             Logger.Info("[OnboardingChat] Initializing WebView2 chat overlay");
 
             var gatewayUrl = _state.Settings.GetEffectiveGatewayUrl();
-            // Use settings token for chat URL — this is the gateway shared secret
-            // that the chat web UI's JavaScript uses for WebSocket authentication.
-            // NOTE: Do NOT use the client's connect auth token here. After device pairing,
-            // that becomes the Ed25519 device token, which the HTTP chat JS doesn't understand.
-            var token = _state.Settings.Token;
+            // Get token from GatewayRegistry — the source of truth for credentials.
+            var app0 = (App)Microsoft.UI.Xaml.Application.Current;
+            var token = app0.Registry?.GetActive()?.SharedGatewayToken ?? "";
 
             // Pre-flight: verify gateway is reachable before loading chat
             var app = (App)Microsoft.UI.Xaml.Application.Current;
@@ -486,108 +521,19 @@ public sealed class OnboardingWindow : WindowEx
 
     /// <summary>
     /// Auto-sends the bootstrap kickoff message after the web chat loads.
-    /// Waits for the WebSocket to connect, then injects the message via JS.
-    /// Matches macOS's maybeKickoffOnboardingChat behavior.
+    /// Delegates to <see cref="BootstrapMessageInjector"/> so the same gated
+    /// kickoff fires from both the (legacy) onboarding chat overlay and from
+    /// post-wizard HubWindow chat navigation — guarded by
+    /// <see cref="SettingsManager.HasInjectedFirstRunBootstrap"/>.
     /// </summary>
     private async Task SendBootstrapMessageAsync()
     {
         if (_bootstrapSent || _chatWebView?.CoreWebView2 == null) return;
         _bootstrapSent = true;
 
-        const string bootstrapMessage =
-            "Hi! I just installed OpenClaw and you're my brand-new agent. " +
-            "Please start the first-run ritual from BOOTSTRAP.md, ask one question at a time, " +
-            "and before we talk about WhatsApp/Telegram, visit soul.md with me to craft SOUL.md: " +
-            "ask what matters to me and how you should be. Then guide me through choosing " +
-            "how we should talk (web-only, WhatsApp, or Telegram).";
-
-        try
-        {
-            // Wait for the web UI to initialize its WebSocket connection
-            await Task.Delay(3000);
-
-            // Inject JS that finds the chat input and sends the bootstrap message.
-            // The Lit-based UI uses shadow DOM, so we traverse through custom elements.
-            // SECURITY: Use JsonSerializer to safely encode the message as a JS string literal,
-            // preventing XSS via template expression injection (${...}), quotes, or backslashes.
-            var safeMsg = System.Text.Json.JsonSerializer.Serialize(bootstrapMessage);
-            var js = $$"""
-            (function() {
-                const msg = {{safeMsg}};
-
-                // Strategy 1: Find textarea/input in the page (may be in shadow DOM)
-                function findInput(root) {
-                    const inputs = root.querySelectorAll('textarea, input[type="text"]');
-                    for (const input of inputs) {
-                        if (input.offsetParent !== null || input.offsetHeight > 0) return input;
-                    }
-                    // Search shadow DOMs
-                    const elements = root.querySelectorAll('*');
-                    for (const el of elements) {
-                        if (el.shadowRoot) {
-                            const found = findInput(el.shadowRoot);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                }
-
-                function findButton(root) {
-                    // Look for send buttons
-                    const buttons = root.querySelectorAll('button');
-                    for (const btn of buttons) {
-                        const text = (btn.textContent || '').toLowerCase();
-                        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                        if (text.includes('send') || label.includes('send') ||
-                            btn.querySelector('svg') && btn.closest('form')) {
-                            return btn;
-                        }
-                    }
-                    const elements = root.querySelectorAll('*');
-                    for (const el of elements) {
-                        if (el.shadowRoot) {
-                            const found = findButton(el.shadowRoot);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                }
-
-                const input = findInput(document);
-                if (input) {
-                    // Set value and dispatch events to trigger Lit's data binding
-                    input.value = msg;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-
-                    // Try to find and click the send button
-                    setTimeout(() => {
-                        const btn = findButton(document);
-                        if (btn) {
-                            btn.click();
-                            console.log('[OpenClaw] Bootstrap message sent via button click');
-                        } else {
-                            // Try Enter key as fallback
-                            input.dispatchEvent(new KeyboardEvent('keydown', {
-                                key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true
-                            }));
-                            console.log('[OpenClaw] Bootstrap message sent via Enter key');
-                        }
-                    }, 200);
-                } else {
-                    console.warn('[OpenClaw] Could not find chat input for bootstrap');
-                }
-            })();
-            """;
-
-            await _chatWebView.CoreWebView2.ExecuteScriptAsync(js);
-            Logger.Info("[OnboardingChat] Bootstrap message injection executed");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"[OnboardingChat] Bootstrap injection failed: {ex.Message}");
-            // Not fatal — user can type manually
-        }
+        await BootstrapMessageInjector.InjectAsync(
+            script => _chatWebView.CoreWebView2.ExecuteScriptAsync(script).AsTask(),
+            _settings);
     }
 
     /// <summary>
@@ -636,15 +582,17 @@ public sealed class OnboardingWindow : WindowEx
 
     private void OnOnboardingFinished(object? sender, EventArgs e)
     {
-        _settings.Save();
-        Completed = true;
-        _state.GatewayClient = null;
-        OnboardingCompleted?.Invoke(this, EventArgs.Empty);
+        OnWizardComplete();
         Close();
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        // X button path: also runs OnWizardComplete (idempotent via _completionDispatched)
+        // so a user who clicks the title-bar X on the Ready page still gets the chat-window
+        // launch when a model has been configured, matching the Finish-button behavior.
+        OnWizardComplete();
+
         if (_stateDisposed) return;
         _stateDisposed = true;
         _state.Finished -= OnOnboardingFinished;
@@ -654,6 +602,82 @@ public sealed class OnboardingWindow : WindowEx
             _state.GatewayClient = null;
         }
         _state.Dispose();
+    }
+
+    /// <summary>
+    /// Unified completion handler invoked from both the Finish button (via
+    /// <see cref="OnOnboardingFinished"/>) and the title-bar X button (via
+    /// <see cref="OnClosed"/>). Idempotent — guarded by <see cref="_completionDispatched"/>.
+    ///
+    /// If the user is closing from the Ready page and setup no longer requires
+    /// credentials, launches the main tray hub window on the chat tab.
+    /// This intentionally does not depend on WizardLifecycleState == "complete": the
+    /// gateway wizard can stop on a later channel step even after credentials/model
+    /// setup succeeded, but Finish on Ready still runs this handler.
+    /// </summary>
+    private void OnWizardComplete()
+    {
+        if (_completionDispatched) return;
+        _completionDispatched = true;
+
+        var finishedFromReady = _state.CurrentRoute == OnboardingRoute.Ready;
+
+        _settings.Save();
+        Completed = true;
+        _state.GatewayClient = null;
+
+        // Materialize the persisted AutoStart preference into the OS-level Run-key.
+        // ReadyPage applies the toggle on each change, but a user who never touches
+        // it should still get the default (true) registered. Idempotent.
+        try
+        {
+            AutoStartManager.SetAutoStart(_settings.AutoStart);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Onboarding] Failed to apply AutoStart={_settings.AutoStart}: {ex.Message}");
+        }
+
+        OnboardingCompleted?.Invoke(this, EventArgs.Empty);
+
+        var dataPath = _identityDataPath ?? SettingsManager.SettingsDirectoryPath;
+        var setupStillRequired = StartupSetupState.RequiresSetup(_settings, dataPath);
+        if (finishedFromReady && !setupStillRequired)
+        {
+            Logger.Info("[OnboardingWindow] OnWizardComplete launching HubWindow on chat tab");
+            ShowHubChatAfterWizardClose();
+        }
+        else
+        {
+            Logger.Info($"[OnboardingWindow] OnWizardComplete skipping chat launch; route={_state.CurrentRoute}, setupStillRequired={setupStillRequired}");
+        }
+    }
+
+    private void ShowHubChatAfterWizardClose()
+    {
+        void ShowHubChat()
+        {
+            try
+            {
+                var app = Microsoft.UI.Xaml.Application.Current as App;
+                if (app == null)
+                {
+                    Logger.Warn("[OnboardingWindow] ShowHub chat after Finish failed: App unavailable");
+                    return;
+                }
+
+                app.ShowHub("chat");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[OnboardingWindow] ShowHub chat after Finish failed: {ex.Message}");
+            }
+        }
+
+        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, ShowHubChat))
+        {
+            ShowHubChat();
+        }
     }
 
     /// <summary>

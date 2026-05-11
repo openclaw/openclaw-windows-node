@@ -24,7 +24,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Install GitVersion
@@ -163,7 +163,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
@@ -237,7 +237,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Setup MSBuild
@@ -331,7 +331,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore Command Palette Extension

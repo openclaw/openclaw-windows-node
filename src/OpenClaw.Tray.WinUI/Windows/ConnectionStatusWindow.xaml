@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<winex:WindowEx x:Uid="ConnectionStatusWindow"
+    x:Class="OpenClawTray.Windows.ConnectionStatusWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:winex="using:WinUIEx"
+    Title="Connection Status"
+    Width="1100" Height="700"
+    MinWidth="800" MinHeight="500">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop/>
+    </Window.SystemBackdrop>
+
+    <Grid Padding="12,40,12,12" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Title in the title bar area -->
+        <TextBlock Grid.ColumnSpan="2" Text="Connection Status" FontSize="12" FontWeight="SemiBold"
+                   VerticalAlignment="Top" Margin="4,-28,0,0" Opacity="0.8"/>
+
+        <!-- LEFT COLUMN: State Machine + Gateways + Credentials -->
+        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+
+            <!-- State Machine Visual -->
+            <TextBlock Text="STATE MACHINE" FontWeight="Bold" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,4" CharacterSpacing="100"/>
+            <Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Operator flow -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,3">
+                        <TextBlock Text="OPERATOR" FontSize="9" FontWeight="Bold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="80" VerticalAlignment="Center" Width="65"/>
+                        <Border x:Name="OpDisconnected" CornerRadius="3" Padding="6,2"><TextBlock Text="Off" FontSize="10"/></Border>
+                        <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <Border x:Name="OpConnecting" CornerRadius="3" Padding="6,2"><TextBlock Text="Connecting" FontSize="10"/></Border>
+                        <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <Border x:Name="OpConnected" CornerRadius="3" Padding="6,2"><TextBlock Text="Connected" FontSize="10"/></Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="69,0,0,0">
+                        <Border x:Name="OpPairing" CornerRadius="3" Padding="6,2"><TextBlock Text="Pairing" FontSize="10"/></Border>
+                        <Border x:Name="OpError" CornerRadius="3" Padding="6,2"><TextBlock Text="Error" FontSize="10"/></Border>
+                    </StackPanel>
+                    <TextBlock x:Name="OpDetailText" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="69,2,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <!-- Node flow -->
+                <StackPanel Grid.Row="1">
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,3">
+                        <TextBlock Text="NODE" FontSize="9" FontWeight="Bold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="80" VerticalAlignment="Center" Width="65"/>
+                        <Border x:Name="NodeDisconnected" CornerRadius="3" Padding="6,2"><TextBlock Text="Off" FontSize="10"/></Border>
+                        <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <Border x:Name="NodeConnecting" CornerRadius="3" Padding="6,2"><TextBlock Text="Connecting" FontSize="10"/></Border>
+                        <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <Border x:Name="NodeConnected" CornerRadius="3" Padding="6,2"><TextBlock Text="Connected" FontSize="10"/></Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="69,0,0,0">
+                        <Border x:Name="NodePairing" CornerRadius="3" Padding="6,2"><TextBlock Text="Pairing" FontSize="10"/></Border>
+                        <Border x:Name="NodeError" CornerRadius="3" Padding="6,2"><TextBlock Text="Error" FontSize="10"/></Border>
+                    </StackPanel>
+                    <TextBlock x:Name="NodeDetailText" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="69,2,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Gateways -->
+            <TextBlock Text="GATEWAYS" FontWeight="Bold" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,4" CharacterSpacing="100"/>
+            <StackPanel x:Name="GatewayListPanel" Spacing="3" Margin="0,0,0,8"/>
+
+            <!-- Credentials -->
+            <TextBlock Text="CREDENTIALS" FontWeight="Bold" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,4" CharacterSpacing="100"/>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Padding="10">
+                <TextBlock x:Name="CredentialsText" FontFamily="Consolas" FontSize="10.5" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+            </Border>
+
+            <!-- Setup Code -->
+            <TextBlock Text="SETUP CODE" FontWeight="Bold" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,4" CharacterSpacing="100"/>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Padding="10">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Paste a setup code to connect end-to-end." FontSize="10.5"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBox x:Name="SetupCodeBox" PlaceholderText="Paste setup code…" FontSize="11"
+                             TextChanged="OnSetupCodeChanged"/>
+                    <TextBlock x:Name="SetupCodePreview" FontFamily="Consolas" FontSize="10"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SetupCodeResult" Grid.Column="0" FontSize="10.5"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" x:Name="ConnectButton" Content="Connect" Click="OnConnect" Padding="8,3" FontSize="11"/>
+                        <Button Grid.Column="2" x:Name="DisconnectBtn" Content="Disconnect" Click="OnDisconnectClick" Padding="8,3" FontSize="11"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Direct Connect (URL + Token) -->
+            <TextBlock Text="DIRECT CONNECT" FontWeight="Bold" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,4" CharacterSpacing="100"/>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Padding="10">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Connect with a gateway URL and shared token (admin scope)." FontSize="10.5"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBox x:Name="DirectUrlBox" PlaceholderText="ws://localhost:18790" Text="ws://localhost:18790" FontSize="11" Header="Gateway URL"/>
+                    <TextBox x:Name="DirectTokenBox" PlaceholderText="Shared gateway token" FontSize="11" Header="Token"/>
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="DirectConnectResult" Grid.Column="0" FontSize="10.5"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="Connect" Click="OnDirectConnect" Padding="8,3" FontSize="11"
+                                Style="{ThemeResource AccentButtonStyle}"/>
+                    </Grid>
+
+                    <!-- SSH Tunnel -->
+                    <ToggleSwitch x:Name="DiagSshToggle" Header="SSH Tunnel" FontSize="11" Margin="0,4,0,0"
+                                  Toggled="OnDiagSshToggled"/>
+                    <StackPanel x:Name="DiagSshDetailsPanel" Spacing="4" Visibility="Collapsed">
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="DiagSshUserBox" Grid.Column="0" Header="SSH User" PlaceholderText="user" FontSize="11"/>
+                            <TextBox x:Name="DiagSshHostBox" Grid.Column="1" Header="SSH Host" PlaceholderText="192.168.x.x" FontSize="11"/>
+                        </Grid>
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="DiagSshRemotePortBox" Grid.Column="0" Header="Remote Port" PlaceholderText="18789" Text="18789" FontSize="11"/>
+                            <TextBox x:Name="DiagSshLocalPortBox" Grid.Column="1" Header="Local Port" PlaceholderText="18790" Text="18790" FontSize="11"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+        </ScrollViewer>
+
+        <!-- RIGHT COLUMN: Event Timeline -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="EVENT TIMELINE" FontWeight="Bold" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" CharacterSpacing="100"/>
+                <Button Grid.Column="1" Content="Copy" Click="OnCopyTimeline" Margin="0,0,4,0" Padding="6,2" FontSize="11"/>
+                <Button Grid.Column="2" Content="Clear" Click="OnClearTimeline" Padding="6,2" FontSize="11"/>
+            </Grid>
+            <ScrollViewer Grid.Row="1" x:Name="TimelineScroll"
+                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Padding="10"
+                          VerticalScrollBarVisibility="Auto">
+                <RichTextBlock x:Name="TimelineRichText" FontFamily="Consolas" FontSize="11" IsTextSelectionEnabled="True" TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</winex:WindowEx>

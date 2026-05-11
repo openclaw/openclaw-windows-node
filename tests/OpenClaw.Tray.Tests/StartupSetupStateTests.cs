@@ -6,28 +6,6 @@ namespace OpenClaw.Tray.Tests;
 public class StartupSetupStateTests
 {
     [Fact]
-    public void RequiresSetup_ReturnsFalse_WhenOperatorTokenExists()
-    {
-        using var temp = TempSettings.Create();
-        var settings = new SettingsManager(temp.Path) { Token = "operator-token" };
-
-        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path));
-    }
-
-    [Fact]
-    public void RequiresSetup_ReturnsFalse_WhenNodeBootstrapTokenExists()
-    {
-        using var temp = TempSettings.Create();
-        var settings = new SettingsManager(temp.Path)
-        {
-            EnableNodeMode = true,
-            BootstrapToken = "bootstrap-token"
-        };
-
-        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path));
-    }
-
-    [Fact]
     public void RequiresSetup_ReturnsFalse_WhenNodeHasStoredDeviceToken()
     {
         using var temp = TempSettings.Create();

@@ -17,8 +17,23 @@ public sealed partial class HubWindow : WindowEx
     public bool IsClosed { get; private set; }
 
     // Shared state accessible by pages
-    public SettingsManager? Settings { get; set; }
-    public OpenClawGatewayClient? GatewayClient { get; set; }
+    private SettingsManager? _settings;
+    public SettingsManager? Settings
+    {
+        get => _settings;
+        set
+        {
+            _settings = value;
+            // Apply persisted nav-pane state. NavView starts with its XAML
+            // default of IsPaneOpen=true; honor the user's last preference
+            // here so they don't re-toggle on every Hub open.
+            if (value != null && NavView != null)
+            {
+                NavView.IsPaneOpen = value.HubNavPaneOpen;
+            }
+        }
+    }
+    public IOperatorGatewayClient? GatewayClient { get; set; }
     public ConnectionStatus CurrentStatus { get; set; }
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;
@@ -30,6 +45,10 @@ public sealed partial class HubWindow : WindowEx
     public Action? ConnectAction { get; set; }
     public Action? DisconnectAction { get; set; }
     public Action? ReconnectAction { get; set; }
+    public Action? OpenSetupAction { get; set; }
+    public Action? OpenConnectionStatusAction { get; set; }
+    public OpenClawTray.Services.Connection.IGatewayConnectionManager? ConnectionManager { get; set; }
+    public OpenClawTray.Services.Connection.GatewayRegistry? GatewayRegistry { get; set; }
 
     // Node service state (set by App.xaml.cs in ShowHub)
     public bool NodeIsConnected { get; set; }
@@ -37,6 +56,7 @@ public sealed partial class HubWindow : WindowEx
     public bool NodeIsPendingApproval { get; set; }
     public string? LastAuthError { get; set; }
     public string? NodeShortDeviceId { get; set; }
+    public VoiceService? VoiceServiceInstance { get; set; }
     public string? NodeFullDeviceId { get; set; }
 
     // Cached gateway data — pages read these on navigation
@@ -66,8 +86,20 @@ public sealed partial class HubWindow : WindowEx
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
+        RootGrid.SizeChanged += OnRootGridSizeChanged;
+
         // Don't select a nav item here — Settings/GatewayClient aren't set yet.
         // ShowHub() in App.xaml.cs calls NavigateToDefault() after setting properties.
+    }
+
+    private void OnRootGridSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        const double minPane = 200;
+        const double maxPane = 320;
+        const double ratio = 0.25;
+
+        double desired = e.NewSize.Width * ratio;
+        NavView.OpenPaneLength = Math.Clamp(desired, minPane, maxPane);
     }
 
     /// <summary>
@@ -509,6 +541,7 @@ public sealed partial class HubWindow : WindowEx
             {
                 if (IsClosed) return;
                 if (ContentFrame?.Content is NodesPage np) np.UpdateDevicePairingRequests(data);
+                if (ContentFrame?.Content is ConnectionPage cp) cp.UpdateDevicePairingRequests(data);
             });
         }
         catch { }
@@ -562,6 +595,23 @@ public sealed partial class HubWindow : WindowEx
         }
     }
 
+    /// <summary>
+    /// Persist the NavigationView's expanded/compact state on every toggle.
+    /// Both PaneOpening and PaneClosing route here; we read the current
+    /// state from the sender so we don't have to distinguish the two.
+    /// </summary>
+    private void OnNavPaneStateChanged(NavigationView sender, object args)
+    {
+        if (_settings == null) return;
+        // PaneOpening fires BEFORE IsPaneOpen flips, PaneClosing fires
+        // BEFORE it flips the other way. Use the event identity to know
+        // the new state rather than reading IsPaneOpen.
+        var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
+        if (_settings.HubNavPaneOpen == newState) return;
+        _settings.HubNavPaneOpen = newState;
+        try { _settings.Save(); } catch { /* swallow — don't block UI */ }
+    }
+
     private void InitializeCurrentPage()
     {
         switch (ContentFrame.Content)
@@ -572,7 +622,10 @@ public sealed partial class HubWindow : WindowEx
                 sessions.Initialize(this);
                 if (LastModelsList != null) sessions.UpdateModelsList(LastModelsList);
                 break;
-            case ConnectionPage connection: connection.Initialize(this); break;
+            case ConnectionPage connection:
+                connection.Initialize(this);
+                if (LastDevicePairList != null) connection.UpdateDevicePairingRequests(LastDevicePairList);
+                break;
             case ChannelsPage channels: channels.Initialize(this); break;
             case UsagePage usage: usage.Initialize(this); break;
             case NodesPage nodes:
@@ -601,6 +654,7 @@ public sealed partial class HubWindow : WindowEx
                 break;
             case PermissionsPage permissions: permissions.Initialize(this); break;
             case CapabilitiesPage capabilities: capabilities.Initialize(this); break;
+            case VoiceSettingsPage voice: voice.Initialize(this, VoiceServiceInstance); break;
             case ConversationsPage convos: convos.Initialize(this); break;
             case ActivityPage activity: activity.Initialize(this); break;
             case AgentEventsPage agentEvents:
@@ -649,6 +703,7 @@ public sealed partial class HubWindow : WindowEx
         "usage" => typeof(UsagePage),
         "bindings" => typeof(BindingsPage),
         "capabilities" => typeof(CapabilitiesPage),
+        "voice" => typeof(VoiceSettingsPage),
         "permissions" => typeof(PermissionsPage),
         "activity" => typeof(ActivityPage),
         "settings" => typeof(SettingsPage),

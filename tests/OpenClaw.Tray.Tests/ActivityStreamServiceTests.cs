@@ -2,6 +2,13 @@ using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
+[CollectionDefinition(ActivityStreamServiceCollection.Name, DisableParallelization = true)]
+public sealed class ActivityStreamServiceCollection
+{
+    public const string Name = "ActivityStreamService";
+}
+
+[Collection(ActivityStreamServiceCollection.Name)]
 public class ActivityStreamServiceTests : IDisposable
 {
     public ActivityStreamServiceTests()

@@ -64,7 +64,7 @@ public class LocationCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("location.get failed", ex);
-            return Error($"Location failed: {ex.Message}");
+            return Error("Location failed");
         }
     }
 }

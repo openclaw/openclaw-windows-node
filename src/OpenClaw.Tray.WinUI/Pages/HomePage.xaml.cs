@@ -59,12 +59,12 @@ public sealed partial class HomePage : Page
             if (!string.IsNullOrEmpty(gatewayUrl))
                 GatewayUrlText.Text = gatewayUrl;
 
-            UpdateMoltyRing(status);
+            UpdateCompanionRing(status);
             UpdateStatusText(status);
         });
     }
 
-    private void UpdateMoltyRing(ConnectionStatus status)
+    private void UpdateCompanionRing(ConnectionStatus status)
     {
         bool hasActiveSessions = _lastSessions?.Any(s =>
             string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase)) ?? false;
@@ -72,17 +72,17 @@ public sealed partial class HomePage : Page
         if (status == ConnectionStatus.Connected && hasActiveSessions)
         {
             // Agent working — animated blue ring
-            MoltyRing.Visibility = Visibility.Collapsed;
-            MoltyProgressRing.IsActive = true;
-            MoltyProgressRing.Visibility = Visibility.Visible;
+            CompanionRing.Visibility = Visibility.Collapsed;
+            CompanionProgressRing.IsActive = true;
+            CompanionProgressRing.Visibility = Visibility.Visible;
         }
         else
         {
-            MoltyProgressRing.IsActive = false;
-            MoltyProgressRing.Visibility = Visibility.Collapsed;
-            MoltyRing.Visibility = Visibility.Visible;
+            CompanionProgressRing.IsActive = false;
+            CompanionProgressRing.Visibility = Visibility.Collapsed;
+            CompanionRing.Visibility = Visibility.Visible;
 
-            MoltyRing.Stroke = status switch
+            CompanionRing.Stroke = status switch
             {
                 ConnectionStatus.Connected => new SolidColorBrush(Colors.LimeGreen),
                 ConnectionStatus.Error => new SolidColorBrush(Colors.Red),
@@ -133,7 +133,7 @@ public sealed partial class HomePage : Page
         _lastSessions = sessions;
         DispatcherQueue?.TryEnqueue(() =>
         {
-            UpdateMoltyRing(_lastStatus);
+            UpdateCompanionRing(_lastStatus);
             UpdateStatusText(_lastStatus);
         });
     }

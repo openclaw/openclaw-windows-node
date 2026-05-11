@@ -6,8 +6,7 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Onboarding.Services;
 
 /// <summary>
-/// Decodes base64url-encoded setup codes into gateway URL and token.
-/// Extracted from ConnectionPage for testability.
+/// Decodes upstream OpenClaw setup codes into gateway URL and bootstrap token fields.
 /// </summary>
 public static class SetupCodeDecoder
 {
@@ -24,10 +23,10 @@ public static class SetupCodeDecoder
         string json;
         try
         {
-            // Base64url decode: replace URL-safe chars, add padding
             var b64 = setupCode.Trim().Replace('-', '+').Replace('_', '/');
             var pad = b64.Length % 4;
-            if (pad > 0) b64 += new string('=', 4 - pad);
+            if (pad > 0)
+                b64 += new string('=', 4 - pad);
 
             json = Encoding.UTF8.GetString(Convert.FromBase64String(b64));
         }

@@ -216,8 +216,8 @@ public class CanvasCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            Logger.Error($"canvas.navigate handler failed: {ex.Message}", ex);
-            return Error($"Navigate failed: {ex.Message}");
+            Logger.Error("canvas.navigate handler failed", ex);
+            return Error("Navigate failed");
         }
     }
     
@@ -246,7 +246,8 @@ public class CanvasCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            return Error($"Eval failed: {ex.Message}");
+            Logger.Error("canvas.eval handler failed", ex);
+            return Error("Eval failed");
         }
     }
     
@@ -277,7 +278,8 @@ public class CanvasCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            return Error($"Snapshot failed: {ex.Message}");
+            Logger.Error("canvas.snapshot handler failed", ex);
+            return Error("Snapshot failed");
         }
     }
     
@@ -367,7 +369,7 @@ public class CanvasCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Invalid jsonlPath: {ex.Message}", ex);
+            throw new InvalidOperationException("Invalid jsonlPath", ex);
         }
 
         if (!IsPathWithinRoot(fullPath, tempRoot))
@@ -497,7 +499,8 @@ public class CanvasCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            return Error($"CANVAS_DUMP_FAILED: {ex.Message}");
+            Logger.Error("canvas.a2ui.dump handler failed", ex);
+            return Error("CANVAS_DUMP_FAILED");
         }
     }
 
@@ -523,7 +526,8 @@ public class CanvasCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
-            return Error($"CANVAS_CAPS_FAILED: {ex.Message}");
+            Logger.Error("canvas.a2ui.caps handler failed", ex);
+            return Error("CANVAS_CAPS_FAILED");
         }
     }
 }

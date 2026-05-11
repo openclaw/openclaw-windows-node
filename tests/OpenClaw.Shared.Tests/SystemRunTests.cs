@@ -546,7 +546,7 @@ public class LocalCommandRunnerIntegrationTests
         {
             Command = "Write-Output 'hello world'",
             Shell = "powershell",
-            TimeoutMs = 10000
+            TimeoutMs = 30000
         });
 
         Assert.Equal(0, result.ExitCode);

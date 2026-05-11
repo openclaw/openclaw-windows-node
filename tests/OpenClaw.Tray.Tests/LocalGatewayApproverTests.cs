@@ -1,3 +1,4 @@
+using OpenClaw.Shared;
 using OpenClawTray.Onboarding.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -89,4 +90,19 @@ public class LocalGatewayApproverTests
     }
 
     #endregion
+
+    [Theory]
+    [InlineData("ws://localhost:18789")]
+    [InlineData("ws://127.0.0.1:18789")]
+    [InlineData("ws://[::1]:18789")]
+    [InlineData("wss://localhost:18789")]
+    [InlineData("ws://gateway.example.com:18789")]
+    [InlineData("ws://10.0.0.5:18789")]
+    [InlineData("not a url")]
+    public void IsLocalGateway_ReturnsSharedClassifierResult(string gatewayUrl)
+    {
+        Assert.Equal(
+            LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl),
+            LocalGatewayApprover.IsLocalGateway(gatewayUrl));
+    }
 }

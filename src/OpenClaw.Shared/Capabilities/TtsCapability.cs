@@ -10,6 +10,11 @@ public sealed class TtsCapability : NodeCapabilityBase
     public const string SpeakCommand = "tts.speak";
     public const string WindowsProvider = "windows";
     public const string ElevenLabsProvider = "elevenlabs";
+    /// <summary>
+    /// Local neural TTS via Sherpa-ONNX wrapping Piper voices. No network
+    /// egress; voice models download once to %LOCALAPPDATA%.
+    /// </summary>
+    public const string PiperProvider = "piper";
     public const int MaxTextLength = 5000;
 
     private static readonly string[] _commands = [SpeakCommand];
@@ -30,7 +35,7 @@ public sealed class TtsCapability : NodeCapabilityBase
             : requestedProvider;
 
         return string.IsNullOrWhiteSpace(provider)
-            ? WindowsProvider
+            ? PiperProvider
             : provider.Trim().ToLowerInvariant();
     }
 
@@ -81,8 +86,14 @@ public sealed class TtsCapability : NodeCapabilityBase
         }
         catch (Exception ex)
         {
+            // Privacy: never echo raw exception text into the response. The
+            // exception flows through the failed-invoke path and may be
+            // persisted to recent activity / support bundles. ElevenLabs
+            // error messages can contain key prefixes; OS speech errors
+            // can contain device names. Full detail stays in the local
+            // log only. (Same pattern as SttCapability.)
             Logger.Error("TTS speak failed", ex);
-            return Error($"Speak failed: {ex.Message}");
+            return Error("Speak failed");
         }
     }
 

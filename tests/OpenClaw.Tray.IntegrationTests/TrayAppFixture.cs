@@ -142,12 +142,10 @@ public sealed class TrayAppFixture : IAsyncLifetime
 
     private void WriteSettings()
     {
-        // Token must be non-empty to skip the setup wizard. HasSeenActivityStreamTip
-        // suppresses the first-run UI tip. EnableMcpServer + !EnableNodeMode routes
-        // through StartLocalOnlyAsync (no gateway WebSocket).
+        // HasSeenActivityStreamTip suppresses the first-run UI tip. EnableMcpServer
+        // + !EnableNodeMode routes through StartLocalOnlyAsync (no gateway WebSocket).
         var settings = new SettingsData
         {
-            Token = "integration-test-token",
             EnableMcpServer = true,
             EnableNodeMode = false,
             AutoStart = false,

@@ -80,19 +80,23 @@ public class BrowserProxyCapability : NodeCapabilityBase
         }
         catch (HttpRequestException ex)
         {
-            return Error($"Browser control host is not reachable on 127.0.0.1:{controlPort}: {ex.Message}. {BuildReachabilityGuidance(controlPort, _sshRemoteGatewayPort)}");
+            Logger.Warn($"browser proxy: control host unreachable on 127.0.0.1:{controlPort}: {ex.Message}");
+            return Error($"Browser control host is not reachable on 127.0.0.1:{controlPort}. {BuildReachabilityGuidance(controlPort, _sshRemoteGatewayPort)}");
         }
         catch (JsonException ex)
         {
-            return Error($"Browser control host returned invalid JSON: {ex.Message}");
+            Logger.Warn($"browser proxy: control host returned invalid JSON: {ex.Message}");
+            return Error("Browser control host returned invalid JSON");
         }
         catch (IOException ex)
         {
-            return Error($"Browser proxy file read failed: {ex.Message}");
+            Logger.Warn($"browser proxy: file read failed: {ex.Message}");
+            return Error("Browser proxy file read failed");
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Error($"Browser proxy file read denied: {ex.Message}");
+            Logger.Warn($"browser proxy: file read denied: {ex.Message}");
+            return Error("Browser proxy file read denied");
         }
     }
 

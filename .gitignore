@@ -349,3 +349,5 @@ test_ws.py
 
 # Local visual test output
 visual-test-output/
+
+.squad/

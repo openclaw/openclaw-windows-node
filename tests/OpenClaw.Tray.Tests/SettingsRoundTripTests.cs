@@ -12,9 +12,7 @@ public class SettingsRoundTripTests
         var original = new SettingsData
         {
             GatewayUrl = "ws://localhost:18789",
-            Token = "secret-token",
-            BootstrapToken = "bootstrap-token",
-            UseSshTunnel = true,
+            UseSshTunnel= true,
             SshTunnelUser = "user1",
             SshTunnelHost = "remote-host",
             SshTunnelRemotePort = 18789,
@@ -35,13 +33,24 @@ public class SettingsRoundTripTests
             NodeCanvasEnabled = false,
             NodeScreenEnabled = true,
             NodeCameraEnabled = false,
+            ScreenRecordingConsentGiven = true,
+            CameraRecordingConsentGiven = true,
             NodeLocationEnabled = true,
             NodeBrowserProxyEnabled = false,
+            NodeSttEnabled = true,
+            SttLanguage = "en-GB",
+            SttModelName = "tiny",
+            SttSilenceTimeout = 2.5f,
+            VoiceTtsEnabled = false,
+            VoiceAudioFeedback = false,
             NodeTtsEnabled = true,
             TtsProvider = "elevenlabs",
             TtsElevenLabsApiKey = "elevenlabs-key",
             TtsElevenLabsModel = "eleven_multilingual_v2",
             TtsElevenLabsVoiceId = "voice-123",
+            TtsWindowsVoiceId = "Microsoft Zira Desktop",
+            HubNavPaneOpen = false,
+            TtsPiperVoiceId = "fr_FR-siwis-low",
             HasSeenActivityStreamTip = true,
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
@@ -57,8 +66,6 @@ public class SettingsRoundTripTests
 
         Assert.NotNull(restored);
         Assert.Equal(original.GatewayUrl, restored.GatewayUrl);
-        Assert.Equal(original.Token, restored.Token);
-        Assert.Equal(original.BootstrapToken, restored.BootstrapToken);
         Assert.Equal(original.UseSshTunnel, restored.UseSshTunnel);
         Assert.Equal(original.SshTunnelUser, restored.SshTunnelUser);
         Assert.Equal(original.SshTunnelHost, restored.SshTunnelHost);
@@ -80,13 +87,24 @@ public class SettingsRoundTripTests
         Assert.Equal(original.NodeCanvasEnabled, restored.NodeCanvasEnabled);
         Assert.Equal(original.NodeScreenEnabled, restored.NodeScreenEnabled);
         Assert.Equal(original.NodeCameraEnabled, restored.NodeCameraEnabled);
+        Assert.Equal(original.ScreenRecordingConsentGiven, restored.ScreenRecordingConsentGiven);
+        Assert.Equal(original.CameraRecordingConsentGiven, restored.CameraRecordingConsentGiven);
         Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
         Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
+        Assert.Equal(original.NodeSttEnabled, restored.NodeSttEnabled);
+        Assert.Equal(original.SttLanguage, restored.SttLanguage);
+        Assert.Equal(original.SttModelName, restored.SttModelName);
+        Assert.Equal(original.SttSilenceTimeout, restored.SttSilenceTimeout);
+        Assert.Equal(original.VoiceTtsEnabled, restored.VoiceTtsEnabled);
+        Assert.Equal(original.VoiceAudioFeedback, restored.VoiceAudioFeedback);
         Assert.Equal(original.NodeTtsEnabled, restored.NodeTtsEnabled);
         Assert.Equal(original.TtsProvider, restored.TtsProvider);
         Assert.Equal(original.TtsElevenLabsApiKey, restored.TtsElevenLabsApiKey);
         Assert.Equal(original.TtsElevenLabsModel, restored.TtsElevenLabsModel);
         Assert.Equal(original.TtsElevenLabsVoiceId, restored.TtsElevenLabsVoiceId);
+        Assert.Equal(original.TtsWindowsVoiceId, restored.TtsWindowsVoiceId);
+        Assert.Equal(original.HubNavPaneOpen, restored.HubNavPaneOpen);
+        Assert.Equal(original.TtsPiperVoiceId, restored.TtsPiperVoiceId);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
@@ -119,14 +137,12 @@ public class SettingsRoundTripTests
 
         Assert.NotNull(settings);
         Assert.Null(settings.GatewayUrl);
-        Assert.Null(settings.Token);
-        Assert.Null(settings.BootstrapToken);
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
-        Assert.False(settings.AutoStart);
+        Assert.True(settings.AutoStart);
         Assert.True(settings.GlobalHotkeyEnabled);
         Assert.True(settings.ShowNotifications);
         Assert.Null(settings.NotificationSound);
@@ -142,10 +158,14 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCanvasEnabled);
         Assert.True(settings.NodeScreenEnabled);
         Assert.True(settings.NodeCameraEnabled);
+        Assert.False(settings.ScreenRecordingConsentGiven);
+        Assert.False(settings.CameraRecordingConsentGiven);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeSttEnabled);
+        Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.NodeTtsEnabled);
-        Assert.Equal("windows", settings.TtsProvider);
+        Assert.Equal("piper", settings.TtsProvider);
         Assert.Null(settings.TtsElevenLabsApiKey);
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
@@ -153,7 +173,22 @@ public class SettingsRoundTripTests
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
+        // HubNavPaneOpen defaults to true (NavView starts expanded for new
+        // installs and for any settings file that predates the field).
+        Assert.True(settings.HubNavPaneOpen);
         Assert.Null(settings.UserRules);
+    }
+
+    [Fact]
+    public void HubNavPaneOpen_DefaultsTrue_ForEmptyJson()
+    {
+        // Existing users have a settings file written before HubNavPaneOpen
+        // existed. The default-true initializer must survive deserialization
+        // of a missing field so the NavView lands expanded for them, not
+        // silently collapsed.
+        var settings = SettingsData.FromJson("{}");
+        Assert.NotNull(settings);
+        Assert.True(settings!.HubNavPaneOpen);
     }
 
     [Fact]
@@ -182,8 +217,6 @@ public class SettingsRoundTripTests
 
         Assert.NotNull(settings);
         Assert.Equal("ws://localhost:18789", settings.GatewayUrl);
-        Assert.Equal("abc", settings.Token);
-        Assert.Null(settings.BootstrapToken);
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
@@ -196,16 +229,22 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeCanvasEnabled);
         Assert.True(settings.NodeScreenEnabled);
         Assert.True(settings.NodeCameraEnabled);
+        Assert.False(settings.ScreenRecordingConsentGiven);
+        Assert.False(settings.CameraRecordingConsentGiven);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeSttEnabled);
+        Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.NodeTtsEnabled);
-        Assert.Equal("windows", settings.TtsProvider);
+        Assert.Equal("piper", settings.TtsProvider);
         Assert.Null(settings.TtsElevenLabsApiKey);
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
         Assert.False(settings.HasSeenActivityStreamTip);
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);
+        // HubNavPaneOpen wasn't in this older JSON shape; default true.
+        Assert.True(settings.HubNavPaneOpen);
         Assert.Null(settings.UserRules);
     }
 
@@ -213,6 +252,32 @@ public class SettingsRoundTripTests
     public void InvalidJson_ReturnsNull()
     {
         Assert.Null(SettingsData.FromJson("not json at all"));
+    }
+
+    [Fact]
+    public void SettingsManager_PersistsRecordingConsentFlags()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var settings = new SettingsManager(dir)
+            {
+                ScreenRecordingConsentGiven = true,
+                CameraRecordingConsentGiven = true
+            };
+
+            settings.Save();
+
+            var reloaded = new SettingsManager(dir);
+            Assert.True(reloaded.ScreenRecordingConsentGiven);
+            Assert.True(reloaded.CameraRecordingConsentGiven);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 
     [WindowsFact]

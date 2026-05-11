@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Windows.UI.Text;
+using OpenClawTray.Services;
 using WinGrid = Microsoft.UI.Xaml.Controls.Grid;
 
 namespace OpenClawTray.FunctionalUI.Core
@@ -133,7 +134,7 @@ internal sealed class ValueHookState<T>(T value, bool threadSafe) : IHookState
 
 internal sealed class EffectHookState : IHookState
 {
-    public object[] Dependencies = [];
+    public object[]? Dependencies;
     public Action? Cleanup;
 }
 
@@ -218,7 +219,7 @@ public sealed class RenderContext
         var hook = _hooks[_hookIndex++] as EffectHookState
             ?? throw new InvalidOperationException("Hooks must be called in the same order every render.");
 
-        if (!DependenciesChanged(hook.Dependencies, dependencies))
+        if (hook.Dependencies is not null && !DependenciesChanged(hook.Dependencies, dependencies))
             return;
 
         var oldCleanup = hook.Cleanup;
@@ -679,7 +680,21 @@ internal sealed class UiRenderer(Action requestRender)
     {
         control.SelectionChanged -= RadioButtonsSelectionChanged;
         control.Tag = element;
-        control.ItemsSource = element.Items;
+
+        // Only reassign ItemsSource when the items have actually changed (content comparison).
+        // Setting ItemsSource to a new array reference with the same content causes the
+        // WinUI RadioButtons control to rebuild its children and reset the visual selection,
+        // which makes SelectedIndex assignments unreliable and causes selection to not stick.
+        var currentItems = control.ItemsSource as string[];
+        var needsItemUpdate = currentItems == null
+            || currentItems.Length != element.Items.Length
+            || !currentItems.AsSpan().SequenceEqual(element.Items);
+
+        if (needsItemUpdate)
+        {
+            control.ItemsSource = element.Items;
+        }
+
         if (element.SelectedIndex >= 0 && element.SelectedIndex < element.Items.Length)
         {
             control.SelectedIndex = element.SelectedIndex;
@@ -976,7 +991,10 @@ internal sealed class UiRenderer(Action requestRender)
     private static void RadioButtonsSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is RadioButtons { Tag: RadioButtonsElement element } rb)
+        {
+            Logger.Debug($"[WizardDiag] RadioButtons.SelectionChanged: idx={rb.SelectedIndex} itemCount={rb.Items?.Count ?? 0}");
             element.OnSelectionChanged?.Invoke(rb.SelectedIndex);
+        }
     }
 
     private static void CheckBoxChanged(object sender, RoutedEventArgs e)

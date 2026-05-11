@@ -73,6 +73,10 @@ The onboarding wizard follows these security practices:
 - **Gateway-owned pairing**: Device approval uses the gateway CLI/API path so scope checks, token issuance, audit, and broadcasts stay centralized
 - **Error sanitization**: Exception details logged but not shown to users
 
+## Credential Storage
+
+Gateway credentials are registry-backed. Setup codes and QR payloads create or update a `GatewayRecord`; bootstrap credentials live in `GatewayRecord.BootstrapToken`, long-lived manual tokens live in `GatewayRecord.SharedGatewayToken`, and post-pairing device tokens are saved in the per-gateway identity directory. `SettingsManager` may read legacy `Token` / `BootstrapToken` JSON fields for migration, but it does not write them back.
+
 ## Localization
 
 All user-visible strings use `LocalizationHelper.GetString()` with the `Onboarding_*` key namespace. Supported languages are discovered from the `Strings/<locale>/Resources.resw` directories; the current locales are English, French, Dutch, Chinese Simplified, and Chinese Traditional.
@@ -102,4 +106,6 @@ Use a temp settings directory for tests that construct `SettingsManager`, or set
 | `Onboarding/Services/WizardStepParser.cs` | Wizard JSON step parsing |
 | `Onboarding/Services/LocalGatewayApprover.cs` | Local gateway URL classification |
 | `Onboarding/Services/PermissionChecker.cs` | Windows permission checks |
-| `Helpers/GatewayChatHelper.cs` | Shared WebView2 chat URL builder |
+| `Services/Connection/GatewayRegistry.cs` | Persistent gateway records and migration target |
+| `Services/Connection/GatewayConnectionManager.cs` | Operator/node connection lifecycle used by onboarding |
+| `Helpers/GatewayChatHelper.cs` / `Helpers/GatewayChatUrlBuilder.cs` | Shared WebView2 chat initialization and URL building |

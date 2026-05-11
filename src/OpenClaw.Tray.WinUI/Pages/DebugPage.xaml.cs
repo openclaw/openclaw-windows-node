@@ -170,6 +170,11 @@ public sealed partial class DebugPage : Page
         catch { }
     }
 
+    private void OnOpenConnectionStatus(object sender, RoutedEventArgs e)
+    {
+        _hub?.OpenConnectionStatusAction?.Invoke();
+    }
+
     private void OnCopySupportContext(object sender, RoutedEventArgs e)
     {
         var lines = new[]
@@ -195,5 +200,10 @@ public sealed partial class DebugPage : Page
             timer.Tick += (t, a) => { btn.Content = "📋 Copy Support Context"; timer.Stop(); };
             timer.Start();
         }
+    }
+
+    private void OnRelaunchOnboarding(object sender, RoutedEventArgs e)
+    {
+        _hub?.OpenSetupAction?.Invoke();
     }
 }

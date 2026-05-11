@@ -87,9 +87,10 @@ When the node connects, it advertises these capabilities:
 ## Troubleshooting
 
 ### Node doesn't connect
-- Check that gateway URL and token are correct in Settings
+- Check the active gateway in Connection settings. Gateway records live in `%APPDATA%\OpenClawTray\gateways.json`; post-pairing device tokens live under `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`.
 - Check logs for connection errors
 - Verify gateway is running and accessible
+- If only a bootstrap token exists, finish pairing or approve the device; paired device tokens take precedence on future connects.
 
 ### No "Node Mode Active" notification
 - Ensure Windows notifications are enabled for the app
@@ -139,6 +140,9 @@ When the node connects, it advertises these capabilities:
 
 - `src/OpenClaw.Shared/WindowsNodeClient.cs` - Node protocol client
 - `src/OpenClaw.Shared/Capabilities/*.cs` - Capability handlers
+- `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayRegistry.cs` - persistent gateway records
+- `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayConnectionManager.cs` - operator/node connection lifecycle
+- `src/OpenClaw.Tray.WinUI/Services/Connection/CredentialResolver.cs` - device-token/shared/bootstrap credential precedence
 - `src/OpenClaw.Tray.WinUI/Services/NodeService.cs` - Orchestrates capabilities
 - `src/OpenClaw.Tray.WinUI/Services/ScreenCaptureService.cs` - screen snapshots
 - `src/OpenClaw.Tray.WinUI/Services/ScreenRecordingService.cs` - screen recordings

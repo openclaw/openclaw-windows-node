@@ -20,10 +20,13 @@ public static class DeepLinkParser
         if (!uri.StartsWith(Scheme, StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var remainder = uri[Scheme.Length..].TrimEnd('/');
+        var remainder = uri[Scheme.Length..];
         var queryIndex = remainder.IndexOf('?');
         var query = queryIndex >= 0 ? remainder[(queryIndex + 1)..] : "";
-        var path = queryIndex >= 0 ? remainder[..queryIndex] : remainder;
+        // Trim trailing slash AFTER splitting off the query so the
+        // Windows-canonicalized form `openclaw://send/?args=...` (slash
+        // BEFORE the `?`) yields path "send", not "send/".
+        var path = (queryIndex >= 0 ? remainder[..queryIndex] : remainder).TrimEnd('/');
 
         var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))

@@ -58,7 +58,12 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Title}" FontWeight="SemiBold"/>
+                        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Icon}" FontSize="11" Margin="5,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding IconVisibility}"/>
+                        </StackPanel>
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TimeAgo}"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

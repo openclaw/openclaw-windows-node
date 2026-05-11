@@ -11,6 +11,48 @@ namespace OpenClawTray.Helpers;
 
 internal static class CommandCenterTextHelper
 {
+    // Pre-compiled patterns used in RedactSupportPath / RedactSupportValue.
+    // Compiled once at startup; reused on every diagnostic / support-text build.
+    private static readonly Regex PathWindowsUserPattern = new(
+        @"\b[A-Za-z]:\\Users\\[^\\]+",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex PathUnixUserPattern = new(
+        @"/Users/[^/]+",
+        RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex ValueUrlHostPattern = new(
+        @"\b[a-z][a-z0-9+.-]*://(?:[^@\s/]+@)?([^:/\s]+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex ValueIpPattern = new(
+        @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex ValueEmailPattern = new(
+        @"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex ValueUserAtHostPattern = new(
+        @"\b(?<user>[A-Za-z0-9._-]+)@(?<host>[A-Za-z0-9._-]+)(?=[:\s]|$)",
+        RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex ValueHostAfterToPattern = new(
+        @"(?<=\bto\s)[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex ValueLeadingHostPattern = new(
+        @"^\s*[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
+        RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
     internal static string BuildSupportContext(GatewayCommandCenterState state)
     {
         var builder = new StringBuilder();
@@ -346,19 +388,9 @@ internal static class CommandCenterTextHelper
             }
         }
 
-        redacted = Regex.Replace(
-            redacted,
-            @"\b[A-Za-z]:\\Users\\[^\\]+",
-            "%USERPROFILE%",
-            RegexOptions.IgnoreCase,
-            TimeSpan.FromMilliseconds(100));
+        redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
 
-        redacted = Regex.Replace(
-            redacted,
-            @"/Users/[^/]+",
-            "$HOME",
-            RegexOptions.None,
-            TimeSpan.FromMilliseconds(100));
+        redacted = PathUnixUserPattern.Replace(redacted, "$HOME");
 
         return redacted;
     }
@@ -368,47 +400,19 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(value))
             return "unknown";
 
-        var redacted = Regex.Replace(
+        var redacted = ValueUrlHostPattern.Replace(
             value,
-            @"\b[a-z][a-z0-9+.-]*://(?:[^@\s/]+@)?([^:/\s]+)",
-            match => match.Value.Replace(match.Groups[1].Value, "<host>"),
-            RegexOptions.IgnoreCase,
-            TimeSpan.FromMilliseconds(100));
+            match => match.Value.Replace(match.Groups[1].Value, "<host>"));
 
-        redacted = Regex.Replace(
-            redacted,
-            @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
-            "<ip>",
-            RegexOptions.None,
-            TimeSpan.FromMilliseconds(100));
+        redacted = ValueIpPattern.Replace(redacted, "<ip>");
 
-        redacted = Regex.Replace(
-            redacted,
-            @"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
-            "<email>",
-            RegexOptions.IgnoreCase,
-            TimeSpan.FromMilliseconds(100));
+        redacted = ValueEmailPattern.Replace(redacted, "<email>");
 
-        redacted = Regex.Replace(
-            redacted,
-            @"\b(?<user>[A-Za-z0-9._-]+)@(?<host>[A-Za-z0-9._-]+)(?=[:\s]|$)",
-            "<user>@<host>",
-            RegexOptions.None,
-            TimeSpan.FromMilliseconds(100));
+        redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
 
-        redacted = Regex.Replace(
-            redacted,
-            @"(?<=\bto\s)[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
-            "<host>",
-            RegexOptions.IgnoreCase,
-            TimeSpan.FromMilliseconds(100));
+        redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
 
-        redacted = Regex.Replace(
-            redacted,
-            @"^\s*[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
-            "<host>",
-            RegexOptions.None,
-            TimeSpan.FromMilliseconds(100));
+        redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
 
         return redacted;
     }

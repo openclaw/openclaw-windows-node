@@ -51,7 +51,7 @@ public sealed class SetupWizardWindow : WindowEx
     // Step 0: Setup code + manual entry
     private readonly TextBox _setupCodeBox;
     private readonly TextBox _gatewayUrlBox;
-    private readonly PasswordBox _tokenBox;
+    private readonly TextBox _tokenBox;
     private readonly TextBlock _testStatusLabel;
     private readonly Button _testButton;
     private readonly StackPanel _manualEntryPanel;
@@ -74,8 +74,8 @@ public sealed class SetupWizardWindow : WindowEx
     {
         _existingSettings = settings;
         _draftGatewayUrl = settings.GatewayUrl;
-        _draftToken = settings.Token;
-        _draftBootstrapToken = settings.BootstrapToken;
+        _draftToken = "";
+        _draftBootstrapToken = "";
         _draftEnableNodeMode = settings.EnableNodeMode;
 
         Title = LocalizationHelper.GetString("Setup_Title");
@@ -196,17 +196,17 @@ public sealed class SetupWizardWindow : WindowEx
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = (SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         });
-        _tokenBox = new PasswordBox
+        _tokenBox = new TextBox
         {
             Header = LocalizationHelper.GetString("Setup_TokenHeader"),
             PlaceholderText = LocalizationHelper.GetString("Setup_TokenPlaceholder"),
-            Password = _draftToken
+            Text = _draftToken
         };
         AutomationProperties.SetAutomationId(_tokenBox, "TokenBox");
-        _tokenBox.PasswordChanged += (s, e) => _connectionTested = false;
-        _tokenBox.PasswordChanged += (s, e) =>
+        _tokenBox.TextChanged += (s, e) => _connectionTested = false;
+        _tokenBox.TextChanged += (s, e) =>
         {
-            _draftToken = _tokenBox.Password;
+            _draftToken = _tokenBox.Text;
             UpdatePairingStatusText();
         };
         _manualEntryPanel.Children.Add(_tokenBox);
@@ -718,7 +718,7 @@ public sealed class SetupWizardWindow : WindowEx
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         _draftGatewayUrl = _gatewayUrlBox.Text.Trim();
-        _draftToken = _tokenBox.Password;
+        _draftToken = _tokenBox.Text;
         UpdatePairingStatusText();
 
         if (!GatewayUrlHelper.IsValidGatewayUrl(_draftGatewayUrl))
@@ -833,12 +833,7 @@ public sealed class SetupWizardWindow : WindowEx
         Logger.Info($"[Setup] Saving settings: gateway={GatewayUrlHelper.SanitizeForDisplay(_draftGatewayUrl)}, nodeMode={_draftEnableNodeMode}");
 
         _existingSettings.GatewayUrl = _draftGatewayUrl;
-        _existingSettings.Token = _draftToken;
         _existingSettings.EnableNodeMode = _draftEnableNodeMode;
-        _existingSettings.BootstrapToken =
-            _draftEnableNodeMode && string.IsNullOrWhiteSpace(_draftToken)
-                ? _draftBootstrapToken
-                : "";
         _existingSettings.Save();
 
         Completed = true;

@@ -19,6 +19,7 @@ public static class ActivityStreamService
         string category,
         string title,
         string? details = null,
+        string? icon = null,
         string? dashboardPath = null,
         string? sessionKey = null,
         string? nodeId = null)
@@ -32,6 +33,7 @@ public static class ActivityStreamService
                 Timestamp = DateTime.Now,
                 Category = string.IsNullOrWhiteSpace(category) ? "general" : category,
                 Title = title,
+                Icon = icon ?? "",
                 Details = details ?? "",
                 DashboardPath = dashboardPath,
                 SessionKey = sessionKey,
@@ -125,6 +127,7 @@ public class ActivityStreamItem
     public DateTime Timestamp { get; set; } = DateTime.Now;
     public string Category { get; set; } = "general";
     public string Title { get; set; } = "";
+    public string Icon { get; set; } = "";
     public string Details { get; set; } = "";
     public string? DashboardPath { get; set; }
     public string? SessionKey { get; set; }

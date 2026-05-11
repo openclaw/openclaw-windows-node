@@ -84,7 +84,7 @@ public class ScreenCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("Screen capture failed", ex);
-            return Error($"Capture failed: {ex.Message}");
+            return Error("Capture failed");
         }
     }
 
@@ -134,7 +134,7 @@ public class ScreenCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("Screen recording failed", ex);
-            return Error($"Recording failed: {ex.Message}");
+            return Error("Recording failed");
         }
     }
 

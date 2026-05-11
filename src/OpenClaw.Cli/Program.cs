@@ -169,11 +169,7 @@ internal static class Program
             gatewayUrl = BuildEffectiveGatewayUrl(loaded);
         }
 
-        var token = options.TokenOverride;
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            token = loaded?.Token;
-        }
+        var token = options.TokenOverride ?? string.Empty;
 
         return (gatewayUrl ?? string.Empty, token ?? string.Empty, loaded);
     }

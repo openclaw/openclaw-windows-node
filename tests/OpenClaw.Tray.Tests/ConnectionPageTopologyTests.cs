@@ -30,6 +30,7 @@ public class ConnectionPageTopologyTests
     public void GetPageOrder_WslMode_BehavesLikeLocal()
     {
         var s = CreateState(ConnectionMode.Wsl);
+        s.SetupPath = SetupPath.Advanced; // Wsl mode only reachable via Advanced fork (Phase 5)
         s.ShowChat = true;
         var pages = s.GetPageOrder();
         Assert.Contains(OnboardingRoute.Wizard, pages);
@@ -40,6 +41,7 @@ public class ConnectionPageTopologyTests
     public void GetPageOrder_SshMode_BehavesLikeLocal()
     {
         var s = CreateState(ConnectionMode.Ssh);
+        s.SetupPath = SetupPath.Advanced;
         s.ShowChat = true;
         var pages = s.GetPageOrder();
         Assert.Contains(OnboardingRoute.Wizard, pages);

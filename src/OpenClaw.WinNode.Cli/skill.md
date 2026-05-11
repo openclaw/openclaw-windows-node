@@ -221,6 +221,124 @@ default camera.
 ```
 Returns `{ format, durationMs, base64 }`.
 
+## Speech-to-text (stt.*)
+
+Local Whisper.net runs on this device — no audio leaves the box. The
+model is downloaded on first use; until then every `stt.*` call returns
+a clear error pointing the caller at the Voice Settings page.
+**Privacy-sensitive: requires `NodeSttEnabled` in tray Settings.**
+
+### stt.transcribe
+Bounded fixed-duration mic capture + transcription.
+```
+{
+  "maxDurationMs": 5000,      // required, > 0, max 30000
+  "language": "en"            // optional BCP-47 tag or "auto" — falls back to SttLanguage setting
+}
+```
+Returns `{ transcribed, text, durationMs, language, engineEffective: "whisper" }`.
+
+### stt.listen
+Mic capture with voice-activity detection. Returns when the user stops
+speaking or after `timeoutMs`. Result is the full silence-bounded
+utterance (all Whisper segments concatenated), not a partial first
+segment.
+```
+{
+  "timeoutMs": 30000,         // optional, default 30000, range 1000..120000
+  "language": "auto"          // optional BCP-47 tag or "auto"
+}
+```
+Returns `{ text, language, durationMs, segments[{ text, startMs, endMs }], engineEffective: "whisper" }`.
+
+### stt.status
+Engine readiness. No params. Carries no PII (no transcript history,
+no language history, no device IDs, no model paths).
+Returns `{ engine: "whisper", readiness, modelDownloadProgress, isListenWithVadSupported, isBoundedTranscribeSupported }`
+where `readiness` ∈ `"ready" | "initializing" | "model-downloading" | "model-not-downloaded" | "unavailable"`.
+
+## Text-to-speech (tts.*)
+
+Three providers — Piper (local neural via Sherpa-ONNX, default), Windows
+built-in speech, and ElevenLabs (cloud). Provider + per-provider voice
+are configured in tray Settings.
+
+### tts.speak
+Speak text aloud on the Windows node.
+```
+{
+  "text": "string",           // required
+  "provider": "piper|windows|elevenlabs",  // optional, falls back to TtsProvider setting
+  "voiceId": "string",        // optional, overrides the per-provider configured voice
+  "model": "string",          // optional, ElevenLabs only
+  "interrupt": false          // default false; true cuts off any in-progress playback
+}
+```
+Returns `{ spoken, provider, contentType, durationMs }`.
+
+## App control (app.*)
+
+Read-only and small write operations targeting the running tray. Used
+by the command palette and by automation that wants to drive the UI.
+
+### app.navigate
+Navigate the companion app to a specific page.
+```
+{"page": "home|sessions|settings|chat|voice|connection|capabilities|conversations|...""}
+```
+Returns `{ navigated, page }`.
+
+### app.status
+Current connection / node state.
+No params. Returns `{ connectionStatus, nodeConnected, nodePaired, nodePendingApproval, gatewayVersion, sessionCount, nodeCount }`.
+
+### app.sessions
+Active sessions, optionally filtered by agent.
+```
+{"agentId": "string"}        // optional
+```
+Returns array of `{ Key, Status, Model, AgeText, tokens }`.
+
+### app.agents
+List agents from the connected gateway. No params. Returns the raw
+agents JSON array.
+
+### app.nodes
+List connected nodes and their capabilities. No params. Returns array
+of `{ DisplayName, NodeId, IsOnline, Platform, CapabilityCount }`.
+
+### app.config.get
+Read gateway configuration value at a dot-path.
+```
+{"path": "string"}           // optional; omit to fetch the full config tree
+```
+Returns the config subtree (or full config) as JSON.
+
+### app.settings.get
+Read a local app setting by name.
+```
+{"name": "string"}           // required
+```
+Returns the setting value (type depends on the setting).
+
+### app.settings.set
+Set a local app setting.
+```
+{"name": "string", "value": "string"}  // both required
+```
+Returns `{ name, value }`.
+
+### app.menu
+Get tray menu state (status, session count, node count). No params.
+Returns array of menu items.
+
+### app.search
+Search the command palette and return matching commands.
+```
+{"query": "string"}          // required
+```
+Returns array of `{ Title, Subtitle, Icon }`.
+
 ---
 
 ## A2UI v0.8 grammar (for canvas.a2ui.push)

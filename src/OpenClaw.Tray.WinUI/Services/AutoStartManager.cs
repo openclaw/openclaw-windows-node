@@ -28,8 +28,12 @@ public static class AutoStartManager
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKey, true);
-            if (key == null) return;
+            using var key = Registry.CurrentUser.CreateSubKey(RegistryKey, true);
+            if (key == null)
+            {
+                Logger.Warn($"Auto-start registry key unavailable: HKCU\\{RegistryKey}");
+                return;
+            }
 
             if (enable)
             {

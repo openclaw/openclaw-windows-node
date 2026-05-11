@@ -1,24 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
-<root>
-  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
-    <xsd:element name="root" msdata:IsDataSet="true">
-      <xsd:complexType>
-        <xsd:choice maxOccurs="unbounded">
-          <xsd:element name="data">
-            <xsd:complexType>
-              <xsd:sequence>
-                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
-                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
-              </xsd:sequence>
-              <xsd:attribute name="name" type="xsd:string" use="required" />
-            </xsd:complexType>
-          </xsd:element>
-        </xsd:choice>
-      </xsd:complexType>
-    </xsd:element>
-  </xsd:schema>
-  <!-- ==================== SettingsWindow.xaml ==================== -->
-  <!-- Section headers -->
+<?xml version='1.0' encoding='utf-8'?>
+<root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:schema id="root">
+    <xs:element name="root" ns1:IsDataSet="true">
+      <xs:complexType>
+        <xs:choice maxOccurs="unbounded">
+          <xs:element name="data">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="value" type="xsd:string" minOccurs="0" ns1:Ordinal="1" />
+                <xs:element name="comment" type="xsd:string" minOccurs="0" ns1:Ordinal="2" />
+              </xs:sequence>
+              <xs:attribute name="name" type="xsd:string" use="required" />
+            </xs:complexType>
+          </xs:element>
+        </xs:choice>
+      </xs:complexType>
+    </xs:element>
+  </xs:schema>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>CONNEXION</value>
   </data>
@@ -31,7 +29,6 @@
   <data name="SettingsAdvancedHeader.Text" xml:space="preserve">
     <value>AVANCÉ (EXPERIMENTAL)</value>
   </data>
-  <!-- TextBox headers and placeholders -->
   <data name="SettingsGatewayUrlTextBox.Header" xml:space="preserve">
     <value>URL de la passerelle</value>
   </data>
@@ -44,7 +41,6 @@
   <data name="SettingsTokenTextBox.PlaceholderText" xml:space="preserve">
     <value>Votre API Token</value>
   </data>
-  <!-- Toggle headers -->
   <data name="SettingsAutoStartToggle.Header" xml:space="preserve">
     <value>Démarrage automatique avec Windows</value>
   </data>
@@ -57,7 +53,6 @@
   <data name="SettingsNodeModeToggle.Header" xml:space="preserve">
     <value>Activer le mode Node</value>
   </data>
-  <!-- ComboBox -->
   <data name="SettingsSoundComboBox.Header" xml:space="preserve">
     <value>Son</value>
   </data>
@@ -70,14 +65,12 @@
   <data name="SettingsSoundSubtle.Content" xml:space="preserve">
     <value>Subtil</value>
   </data>
-  <!-- Notification filter labels -->
   <data name="SettingsNotifyForLabel.Text" xml:space="preserve">
     <value>Afficher les notifications pour:</value>
   </data>
   <data name="SettingsNotifyFilterHint.Text" xml:space="preserve">
     <value>Filtrer par mots clés dans le message (Ex : 'email', 'rappel')</value>
   </data>
-  <!-- Notification filter checkboxes -->
   <data name="SettingsNotifyHealthCb.Content" xml:space="preserve">
     <value>Alertes de santé</value>
   </data>
@@ -102,7 +95,6 @@
   <data name="SettingsNotifyInfoCb.Content" xml:space="preserve">
     <value>Messages d'informations</value>
   </data>
-  <!-- Buttons -->
   <data name="SettingsTestConnectionButton.Content" xml:space="preserve">
     <value>Tester</value>
   </data>
@@ -115,12 +107,9 @@
   <data name="SettingsCancelButton.Content" xml:space="preserve">
     <value>Annuler</value>
   </data>
-  <!-- Node mode description -->
   <data name="SettingsNodeModeDescription.Text" xml:space="preserve">
     <value>Lorsqu'il est activé, ce PC peut recevoir des commandes de l'agent (canvas, captures d'écran, etc.)</value>
   </data>
-  <!-- ==================== StatusDetailWindow.xaml ==================== -->
-  <!-- Section headers -->
   <data name="StatusUsageHeader.Text" xml:space="preserve">
     <value>UTILISATION</value>
   </data>
@@ -154,7 +143,6 @@
   <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
     <value>ACTIVITÉ RÉCENTE</value>
   </data>
-  <!-- Labels -->
   <data name="StatusCostLabel.Text" xml:space="preserve">
     <value>Coûts (période):</value>
   </data>
@@ -164,7 +152,6 @@
   <data name="StatusProvidersLabel.Text" xml:space="preserve">
     <value>Fournisseurs :</value>
   </data>
-  <!-- Default values -->
   <data name="StatusConnectedText.Text" xml:space="preserve">
     <value>Connecté</value>
   </data>
@@ -198,7 +185,6 @@
   <data name="StatusCronDescription.Text" xml:space="preserve">
     <value>Ouvrir les contrôles d'automatisation planifiée quand la passerelle connectée les prend en charge.</value>
   </data>
-  <!-- Buttons -->
   <data name="StatusRefreshButton.Content" xml:space="preserve">
     <value>Rafraîchir</value>
   </data>
@@ -247,12 +233,9 @@
   <data name="StatusOpenStreamButton.Content" xml:space="preserve">
     <value>Ouvrir le flux</value>
   </data>
-  <!-- ==================== ActivityStreamWindow.xaml ==================== -->
-  <!-- Header -->
   <data name="ActivityStreamTitle.Text" xml:space="preserve">
     <value>⚡ Flux d'activité</value>
   </data>
-  <!-- Filter items -->
   <data name="ActivityFilterAll.Content" xml:space="preserve">
     <value>Toute l'activité</value>
   </data>
@@ -268,11 +251,9 @@
   <data name="ActivityFilterNotifications.Content" xml:space="preserve">
     <value>Alertes</value>
   </data>
-  <!-- Empty state -->
   <data name="ActivityEmptyText.Text" xml:space="preserve">
     <value>Aucune activité pour le moment</value>
   </data>
-  <!-- Buttons -->
   <data name="ActivityOpenDashboardButton.Content" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
@@ -282,24 +263,18 @@
   <data name="ActivityCloseButton.Content" xml:space="preserve">
     <value>Fermer</value>
   </data>
-  <!-- ==================== NotificationHistoryWindow.xaml ==================== -->
-  <!-- Header -->
   <data name="NotificationHistoryTitle.Text" xml:space="preserve">
     <value>📋 Historique de notifications</value>
   </data>
-  <!-- Empty state -->
   <data name="NotificationEmptyText.Text" xml:space="preserve">
     <value>Aucune notification disponible</value>
   </data>
-  <!-- Buttons -->
   <data name="NotificationClearAllButton.Content" xml:space="preserve">
     <value>Tout effacer</value>
   </data>
   <data name="NotificationCloseButton.Content" xml:space="preserve">
     <value>Fermer</value>
   </data>
-  <!-- ==================== Runtime strings (C# code) ==================== -->
-  <!-- Window titles -->
   <data name="WindowTitle_Settings" xml:space="preserve">
     <value>Paramètres — OpenClaw Tray</value>
   </data>
@@ -324,7 +299,6 @@
   <data name="WindowTitle_Update" xml:space="preserve">
     <value>Mettre à jour OpenClaw</value>
   </data>
-  <!-- Settings runtime status -->
   <data name="Status_Testing" xml:space="preserve">
     <value>Test en cours...</value>
   </data>
@@ -334,7 +308,6 @@
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ Problème de connexion</value>
   </data>
-  <!-- QuickSend dialog -->
   <data name="QuickSend_Header" xml:space="preserve">
     <value>📤 Envoi rapide</value>
   </data>
@@ -359,7 +332,6 @@
   <data name="QuickSend_ToastBody" xml:space="preserve">
     <value>Votre message a été envoyé à OpenClaw.</value>
   </data>
-  <!-- WelcomeDialog -->
   <data name="Welcome_Title" xml:space="preserve">
     <value>Bienvenue sur OpenClaw!</value>
   </data>
@@ -384,7 +356,6 @@
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>Ouvrir les paramètres</value>
   </data>
-  <!-- UpdateDialog -->
   <data name="Update_VersionAvailable" xml:space="preserve">
     <value>🎉 La version {0} est disponible !</value>
   </data>
@@ -403,7 +374,6 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>Télécharger &amp; Installer</value>
   </data>
-  <!-- Tray menu items -->
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
@@ -445,6 +415,9 @@
   </data>
   <data name="Menu_SetupGuide" xml:space="preserve">
     <value>Guide de configuration...</value>
+  </data>
+  <data name="Menu_Reconfigure" xml:space="preserve">
+    <value>Reconfigurer…</value>
   </data>
   <data name="Menu_SupportDebugHeader" xml:space="preserve">
     <value>🧰 Support et débogage</value>
@@ -494,7 +467,6 @@
   <data name="Menu_RestartSshTunnel" xml:space="preserve">
     <value>Redémarrer le tunnel SSH</value>
   </data>
-  <!-- Tray menu dynamic text -->
   <data name="Menu_StatusFormat" xml:space="preserve">
     <value>État : {0}</value>
   </data>
@@ -531,18 +503,15 @@
   <data name="Menu_NodeDisconnected" xml:space="preserve">
     <value>⚪ Déconnecté</value>
   </data>
-  <!-- Notification test -->
   <data name="TestNotification_Title" xml:space="preserve">
     <value>Test de notifications</value>
   </data>
   <data name="TestNotification_Body" xml:space="preserve">
     <value>Ceci est une notifications de test provenant de OpenClaw Tray.</value>
   </data>
-  <!-- Status detail runtime -->
   <data name="Status_LastCheckFormat" xml:space="preserve">
     <value>Dernière vérification : {0}</value>
   </data>
-  <!-- Time ago strings -->
   <data name="TimeAgo_JustNow" xml:space="preserve">
     <value>Maintenant</value>
   </data>
@@ -552,14 +521,12 @@
   <data name="TimeAgo_HoursFormat" xml:space="preserve">
     <value>Il y a {0}h</value>
   </data>
-  <!-- Activity stream runtime -->
   <data name="Activity_ClickToOpen" xml:space="preserve">
     <value>Cliquez pour ouvrir le tableau de bord</value>
   </data>
   <data name="TimeAgo_DaysFormat" xml:space="preserve">
     <value>Il y a {0}j</value>
   </data>
-  <!-- Status display text (plain, no emoji) -->
   <data name="StatusDisplay_Connected" xml:space="preserve">
     <value>Connecté</value>
   </data>
@@ -578,7 +545,6 @@
   <data name="Status_NotAvailable" xml:space="preserve">
     <value>Indisponible</value>
   </data>
-  <!-- ==================== CanvasWindow.xaml ==================== -->
   <data name="WindowTitle_Canvas" xml:space="preserve">
     <value>Canevas</value>
   </data>
@@ -612,7 +578,6 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Sélectionner...</value>
   </data>
-  <!-- ==================== WebChatWindow.xaml ==================== -->
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Chat indisponible</value>
   </data>
@@ -651,11 +616,9 @@ Utilisez l'une de ces options :
 • S'il est auto-signé, importez l'AC/le certificat de votre passerelle dans les Autorités de certification racines de confiance de Windows (certmgr.msc)
 • Ou utilisez un tunnel vers localhost : ssh -N -L 18789:localhost:18789 &lt;serveur&gt;</value>
   </data>
-  <!-- ==================== TrayMenuWindow.xaml ==================== -->
   <data name="WindowTitle_TrayMenu" xml:space="preserve">
     <value>Menu OpenClaw</value>
   </data>
-  <!-- ==================== Toast: Device / Node ==================== -->
   <data name="Toast_DeviceIdCopied" xml:space="preserve">
     <value>📋 Identifiant de la machine copié</value>
   </data>
@@ -668,14 +631,12 @@ Utilisez l'une de ces options :
   <data name="Toast_NodeSummaryCopiedDetail" xml:space="preserve">
     <value>{0} nœud(s) copiés dans le presse papier</value>
   </data>
-  <!-- ==================== Toast: Session ==================== -->
   <data name="Toast_SessionActionFailed" xml:space="preserve">
     <value>❌ Action de session échouée</value>
   </data>
   <data name="Toast_SessionActionFailedDetail" xml:space="preserve">
     <value>Impossible d'envoyer une requête vers la passerelle.</value>
   </data>
-  <!-- ==================== Toast: Node Mode ==================== -->
   <data name="Toast_NodeModeActive" xml:space="preserve">
     <value>🔌 Mode de noeud actif</value>
   </data>
@@ -706,7 +667,6 @@ Utilisez l'une de ces options :
   <data name="Toast_PairingRejectedDetail" xml:space="preserve">
     <value>La passerelle a rejeté la demande d'appairage de cet appareil.</value>
   </data>
-  <!-- ==================== Toast: Health Check ==================== -->
   <data name="Toast_HealthCheck" xml:space="preserve">
     <value>Vérification de l'état</value>
   </data>
@@ -719,7 +679,6 @@ Utilisez l'une de ces options :
   <data name="Toast_HealthCheckFailed" xml:space="preserve">
     <value>Vérification de l'état échouée</value>
   </data>
-  <!-- ==================== Toast: Screen / Camera ==================== -->
   <data name="Toast_ScreenCaptured" xml:space="preserve">
     <value>📸 Capture d'écran effectuée</value>
   </data>
@@ -732,6 +691,115 @@ Utilisez l'une de ces options :
   <data name="Toast_CameraBlockedDetail" xml:space="preserve">
     <value>Activez l'accès à la caméra dans les paramètres de confidentialité de Windows pour OpenClaw Tray</value>
   </data>
+
+  <!-- ==================== Toast: Recording ==================== -->
+
+  <data name="Toast_ScreenRecordingStarted" xml:space="preserve">
+    <value>🔴 Enregistrement d'écran démarré</value>
+  </data>
+  <data name="Toast_ScreenRecordingStartedDetail" xml:space="preserve">
+    <value>L'agent OpenClaw enregistre votre écran</value>
+  </data>
+  <data name="Toast_ScreenRecordingComplete" xml:space="preserve">
+    <value>✅ Enregistrement d'écran terminé</value>
+  </data>
+  <data name="Toast_ScreenRecordingCompleteDetail" xml:space="preserve">
+    <value>L'enregistrement d'écran a été envoyé à l'agent</value>
+  </data>
+  <data name="Toast_ScreenRecordingFailed" xml:space="preserve">
+    <value>❌ Échec de l'enregistrement d'écran</value>
+  </data>
+  <data name="Toast_ScreenRecordingFailedDetail" xml:space="preserve">
+    <value>Une erreur est survenue lors de l'enregistrement de l'écran</value>
+  </data>
+  <data name="Toast_CameraRecordingStarted" xml:space="preserve">
+    <value>🔴 Enregistrement caméra démarré</value>
+  </data>
+  <data name="Toast_CameraRecordingStartedDetail" xml:space="preserve">
+    <value>L'agent OpenClaw enregistre depuis votre caméra</value>
+  </data>
+  <data name="Toast_CameraRecordingComplete" xml:space="preserve">
+    <value>✅ Enregistrement caméra terminé</value>
+  </data>
+  <data name="Toast_CameraRecordingCompleteDetail" xml:space="preserve">
+    <value>Le clip caméra a été envoyé à l'agent</value>
+  </data>
+
+  <!-- ==================== Recording Consent Dialog ==================== -->
+
+  <data name="RecordingConsent_WindowTitle" xml:space="preserve">
+    <value>OpenClaw · Demande d'autorisation</value>
+  </data>
+  <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
+    <value>Autoriser l'enregistrement d'écran ?</value>
+  </data>
+  <data name="RecordingConsent_CameraTitle" xml:space="preserve">
+    <value>Autoriser l'enregistrement de la caméra ?</value>
+  </data>
+  <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
+    <value>Un agent demande d'enregistrer votre écran. Cela capturera la vidéo de votre affichage et l'enverra à l'agent. Votre choix sera mémorisé pour les prochaines demandes jusqu'à ce que vous le modifiiez dans les Paramètres.</value>
+  </data>
+  <data name="RecordingConsent_CameraDescription" xml:space="preserve">
+    <value>Un agent demande d'enregistrer depuis votre caméra. Cela capturera la vidéo de votre webcam et l'enverra à l'agent. Votre choix sera mémorisé pour les prochaines demandes jusqu'à ce que vous le modifiiez dans les Paramètres.</value>
+  </data>
+  <data name="RecordingConsent_Privacy" xml:space="preserve">
+    <value>Vous pouvez modifier cela ultérieurement dans les Paramètres.</value>
+  </data>
+  <data name="RecordingConsent_Allow" xml:space="preserve">
+    <value>Autoriser l'enregistrement</value>
+  </data>
+  <data name="RecordingConsent_Deny" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+
+  <!-- ==================== Settings: Privacy ==================== -->
+
+  <data name="Settings_PrivacyHeader" xml:space="preserve">
+    <value>Confidentialité</value>
+  </data>
+  <data name="Settings_PrivacyDescription" xml:space="preserve">
+    <value>Contrôlez quelles fonctionnalités les agents peuvent utiliser sur cet appareil.</value>
+  </data>
+  <data name="Settings_AllowScreenRecording" xml:space="preserve">
+    <value>Autoriser l'enregistrement d'écran</value>
+  </data>
+  <data name="Settings_AllowCameraRecording" xml:space="preserve">
+    <value>Autoriser l'enregistrement caméra</value>
+  </data>
+  <data name="SettingsPrivacyHeader.Text" xml:space="preserve">
+    <value>Confidentialité</value>
+  </data>
+  <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
+    <value>Pré-approuvez les fonctionnalités afin que les agents puissent les utiliser sans demander la permission à chaque fois. Un compte à rebours s'affichera toujours avant l'enregistrement.</value>
+  </data>
+  <data name="ScreenRecordingToggle.Header" xml:space="preserve">
+    <value>Autoriser l'enregistrement d'écran</value>
+  </data>
+  <data name="CameraRecordingToggle.Header" xml:space="preserve">
+    <value>Autoriser l'enregistrement caméra</value>
+  </data>
+
+  <!-- ==================== Activity Stream: Recording ==================== -->
+
+  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
+    <value>Enregistrement d'écran démarré</value>
+  </data>
+  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
+    <value>Enregistrement d'écran terminé</value>
+  </data>
+  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
+    <value>Enregistrement caméra démarré</value>
+  </data>
+  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
+    <value>Enregistrement caméra terminé</value>
+  </data>
+  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
+    <value>Enregistrement {0} demandé par l'agent</value>
+  </data>
+  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
+    <value>Enregistrement {0} envoyé à l'agent</value>
+  </data>
+
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nouveau: Fil d'activité</value>
@@ -742,7 +810,6 @@ Utilisez l'une de ces options :
   <data name="Toast_ActivityStreamTipButton" xml:space="preserve">
     <value>Créer un nouveau flux d'activités</value>
   </data>
-  <!-- ==================== SetupWizardWindow (C# code) ==================== -->
   <data name="Setup_Title" xml:space="preserve">
     <value>Configuration d'OpenClaw</value>
   </data>
@@ -893,7 +960,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Setup_StepDone" xml:space="preserve">
     <value>Étape 3 sur 3 — Terminé</value>
   </data>
-  <!-- ==================== Local MCP server (SettingsWindow) ==================== -->
   <data name="SettingsDeveloperModeHeader.Text" xml:space="preserve">
     <value>MODE DÉVELOPPEUR</value>
   </data>
@@ -901,7 +967,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Activer le serveur MCP local</value>
   </data>
   <data name="SettingsMcpDescription.Text" xml:space="preserve">
-    <value>Expose les mêmes capacités du nœud (système, écran, caméra, canvas) aux clients MCP locaux (Claude Desktop, Cursor, Claude Code).</value>
+    <value>Expose les mêmes capacités du nœud (système, écran, caméra, microphone, haut-parleurs, canvas) aux clients MCP locaux (Claude Desktop, Cursor, Claude Code).</value>
   </data>
   <data name="SettingsMcpEndpointLabel.Text" xml:space="preserve">
     <value>Point de terminaison :</value>
@@ -927,7 +993,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Mcp_Status_FailedToStart" xml:space="preserve">
     <value>Échec du démarrage : </value>
   </data>
-  <!-- ==================== MCP token (SettingsWindow) ==================== -->
   <data name="SettingsMcpTokenLabel.Text" xml:space="preserve">
     <value>Jeton porteur :</value>
   </data>
@@ -976,14 +1041,12 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>Annuler</value>
   </data>
-  <!-- ==================== DownloadProgressDialog ==================== -->
   <data name="WindowTitle_Downloading" xml:space="preserve">
     <value>Téléchargement en cours...</value>
   </data>
   <data name="Download_ProgressText" xml:space="preserve">
     <value>Téléchargement en cours...</value>
   </data>
-  <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — Approuver l'URL</value>
   </data>
@@ -1091,9 +1154,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="Onboarding_Ready_RemoteInfo" xml:space="preserve">
     <value>Assurez-vous que votre passerelle distante est en cours d'exécution et accessible.</value>
-  </data>
-  <data name="Onboarding_Welcome_GetConnected" xml:space="preserve">
-    <value>Connectons-nous en quelques étapes.</value>
   </data>
   <data name="Onboarding_Connection_SetupCode" xml:space="preserve">
     <value>Code de configuration</value>
@@ -1347,6 +1407,72 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
     <value>Vous pouvez configurer la passerelle plus tard dans les paramètres.</value>
   </data>
+
+  <data name="Onboarding_SetupWarning_Title" xml:space="preserve">
+    <value>Configurer OpenClaw</value>
+  </data>
+  <data name="Onboarding_SetupWarning_Body" xml:space="preserve">
+    <value>OpenClaw permet aux agents d'exécuter des commandes, de lire et d'écrire des fichiers, et de capturer des captures d'écran sur ce PC. Ne le configurez que sur un ordinateur de confiance.
+
+⚠️ La configuration locale installe une petite instance WSL Linux dédiée à OpenClaw. Si vous préférez vous connecter à une passerelle existante ou distante, choisissez Configuration avancée.</value>
+  </data>
+  <data name="Onboarding_SetupWarning_SetupLocally" xml:space="preserve">
+    <value>Configurer localement</value>
+  </data>
+  <data name="Onboarding_SetupWarning_Advanced" xml:space="preserve">
+    <value>Configuration avancée</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceHeading" xml:space="preserve">
+    <value>⚠️ Remplacer la configuration existante ?</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceBody" xml:space="preserve">
+    <value>Continuer déconnectera de la passerelle actuelle et effacera tous les paramètres.</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceConfirm" xml:space="preserve">
+    <value>Remplacer ma configuration</value>
+  </data>
+  <data name="Onboarding_SetupWarning_ReplaceCancel" xml:space="preserve">
+    <value>Conserver ma configuration</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Title" xml:space="preserve">
+    <value>Configuration locale en cours</value>
+  </data>
+  <data name="Onboarding_LocalSetup_SubtitleIdle" xml:space="preserve">
+    <value>Configuration de votre passerelle OpenClaw locale.</value>
+  </data>
+  <data name="Onboarding_LocalSetup_SubtitleSuccess" xml:space="preserve">
+    <value>La passerelle locale est prête.</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Onboarding_LocalSetup_TerminalFailure" xml:space="preserve">
+    <value>La configuration n'a pas abouti.</value>
+  </data>
+  <data name="Onboarding_LocalSetup_DiagnosticsHint" xml:space="preserve">
+    <value>Diagnostics : aka.ms/wsllogs</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_Preflight" xml:space="preserve">
+    <value>Vérification du système</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_CreateInstance" xml:space="preserve">
+    <value>Installation d'Ubuntu</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_Configure" xml:space="preserve">
+    <value>Configuration de l'instance</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_InstallCli" xml:space="preserve">
+    <value>Installation d'OpenClaw</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_PrepareConfig" xml:space="preserve">
+    <value>Préparation de la passerelle</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_StartGateway" xml:space="preserve">
+    <value>Démarrage de la passerelle</value>
+  </data>
+  <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
+    <value>Génération du code de configuration</value>
+  </data>
   <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
     <value>À propos</value>
   </data>
@@ -1470,7 +1596,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Effacer</value>
   </data>
-<data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
+  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>🔀 Liaisons</value>
   </data>
   <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
@@ -1704,7 +1830,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
     <value>Aucune tâche cron configurée</value>
   </data>
-<data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
+  <data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
     <value>🐛 Débogage</value>
   </data>
   <data name="DebugPage_TextBlock_14.Text" xml:space="preserve">
@@ -1758,7 +1884,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="DebugPage_Button_114.Content" xml:space="preserve">
     <value>📋 Copier le contexte de support</value>
   </data>
-<data name="StatusHeadline.Text" xml:space="preserve">
+  <data name="StatusHeadline.Text" xml:space="preserve">
     <value>Non connecté à la passerelle</value>
   </data>
   <data name="ScanButton.Content" xml:space="preserve">
@@ -2273,5 +2399,353 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>Supprimer la tâche</value>
+  </data>
+  <data name="CapabilitiesPage_SttCardDescription.Text" xml:space="preserve">
+    <value>Reconnaît l'audio du microphone localement sur ce PC à l'aide de Whisper. Le modèle est téléchargé une seule fois lors de la première utilisation.</value>
+  </data>
+  <data name="CapabilitiesPage_SttCardHeader.Text" xml:space="preserve">
+    <value>🎤 Reconnaissance vocale</value>
+  </data>
+  <data name="CapabilitiesPage_SttMoreSettingsLink.Content" xml:space="preserve">
+    <value>Plus de paramètres vocaux…</value>
+  </data>
+  <data name="CapabilitiesPage_TtsCardDescription.Text" xml:space="preserve">
+    <value>Fournisseur par défaut pour tts.speak. Le fournisseur/voiceId/modèle par appel remplace cette valeur par défaut.</value>
+  </data>
+  <data name="CapabilitiesPage_TtsCardHeader.Text" xml:space="preserve">
+    <value>🔊 Synthèse vocale</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
+    <value>Clé API ElevenLabs</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsHelp.Text" xml:space="preserve">
+    <value>La clé API est chiffrée au repos avec Windows DPAPI. Laissez vide pour conserver la valeur précédente lorsque vous modifiez d'autres champs.</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsModel.Header" xml:space="preserve">
+    <value>Modèle ElevenLabs</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
+    <value>eleven_multilingual_v2</value>
+  </data>
+  <data name="CapabilitiesPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
+    <value>ID de voix ElevenLabs</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderComboBox.Header" xml:space="preserve">
+    <value>Fournisseur</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderElevenLabs.Content" xml:space="preserve">
+    <value>ElevenLabs</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderPiper.Content" xml:space="preserve">
+    <value>Piper (ML local, recommandé)</value>
+  </data>
+  <data name="CapabilitiesPage_TtsProviderWindows.Content" xml:space="preserve">
+    <value>Voix intégrée à Windows</value>
+  </data>
+  <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
+    <value>🎙️ Voix et audio</value>
+  </data>
+  <data name="VoiceSettingsPage_PageDescription.Text" xml:space="preserve">
+    <value>Configurez la reconnaissance vocale et les paramètres d'interaction vocale. Tout le traitement vocal s'exécute localement sur votre appareil.</value>
+  </data>
+  <data name="VoiceSettingsPage_SttHeader.Text" xml:space="preserve">
+    <value>Reconnaissance vocale</value>
+  </data>
+  <data name="VoiceSettingsPage_SttDescription.Text" xml:space="preserve">
+    <value>Activer la saisie vocale via le microphone. Nécessite le téléchargement d'un modèle Whisper.</value>
+  </data>
+  <data name="VoiceSettingsPage_SttEnabledToggle.Header" xml:space="preserve">
+    <value>Activer la saisie vocale</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
+    <value>Modèle vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelCombo.Header" xml:space="preserve">
+    <value>Taille du modèle</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
+    <value>Tiny (~75 Mo) — Rapide, précision de base</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
+    <value>Base (~142 Mo) — Bon équilibre</value>
+  </data>
+  <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
+    <value>Small (~466 Mo) — Haute précision</value>
+  </data>
+  <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
+    <value>Télécharger le modèle</value>
+  </data>
+  <data name="VoiceSettingsPage_LanguageHeader.Text" xml:space="preserve">
+    <value>Langue</value>
+  </data>
+  <data name="VoiceSettingsPage_LangAuto.Content" xml:space="preserve">
+    <value>Détection automatique</value>
+  </data>
+  <data name="VoiceSettingsPage_LangEn.Content" xml:space="preserve">
+    <value>Anglais</value>
+  </data>
+  <data name="VoiceSettingsPage_LangEs.Content" xml:space="preserve">
+    <value>Espagnol</value>
+  </data>
+  <data name="VoiceSettingsPage_LangFr.Content" xml:space="preserve">
+    <value>Français</value>
+  </data>
+  <data name="VoiceSettingsPage_LangDe.Content" xml:space="preserve">
+    <value>Allemand</value>
+  </data>
+  <data name="VoiceSettingsPage_LangJa.Content" xml:space="preserve">
+    <value>Japonais</value>
+  </data>
+  <data name="VoiceSettingsPage_LangZh.Content" xml:space="preserve">
+    <value>Chinois</value>
+  </data>
+  <data name="VoiceSettingsPage_LangKo.Content" xml:space="preserve">
+    <value>Coréen</value>
+  </data>
+  <data name="VoiceSettingsPage_LangPt.Content" xml:space="preserve">
+    <value>Portugais</value>
+  </data>
+  <data name="VoiceSettingsPage_LangIt.Content" xml:space="preserve">
+    <value>Italien</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceChatHeader.Text" xml:space="preserve">
+    <value>Chat vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_SilenceSlider.Header" xml:space="preserve">
+    <value>Délai de silence (secondes)</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsResponseToggle.Header" xml:space="preserve">
+    <value>Lire les réponses à voix haute</value>
+  </data>
+  <data name="VoiceSettingsPage_AudioFeedbackToggle.Header" xml:space="preserve">
+    <value>Sons de retour audio</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceHeader.Text" xml:space="preserve">
+    <value>🔊 Voix de Companion</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
+    <value>Choisissez la voix utilisée pour lire les réponses à voix haute.</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
+    <value>Fournisseur</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsPiper.Content" xml:space="preserve">
+    <value>Piper (voix neuronales locales)</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsWindows.Content" xml:space="preserve">
+    <value>Windows (voix neuronales intégrées)</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsElevenLabs.Content" xml:space="preserve">
+    <value>ElevenLabs (cloud, clé API requise)</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
+    <value>Voix</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDownloadButtonText.Text" xml:space="preserve">
+    <value>Télécharger la voix</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDeleteButton.Content" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
+    <value>▶ Aperçu</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperInfoText.Text" xml:space="preserve">
+    <value>Les voix sont téléchargées depuis les versions GitHub du projet sherpa-onnx (~25 Mo basse qualité, jusqu'à ~150 Mo haute qualité). Elles s'exécutent entièrement sur ce PC ; aucun son ne quitte votre appareil.</value>
+  </data>
+  <data name="VoiceSettingsPage_WindowsVoiceCombo.Header" xml:space="preserve">
+    <value>Voix</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
+    <value>▶ Aperçu de la voix</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">
+    <value>Clé API</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.Header" xml:space="preserve">
+    <value>ID de la voix</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsModelBox.Header" xml:space="preserve">
+    <value>Modèle (facultatif)</value>
+  </data>
+  <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
+    <value>Tout le traitement vocal s'exécute entièrement sur votre appareil. Aucune donnée audio n'est envoyée à un service cloud.</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
+    <value>✅ Modèle prêt</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
+    <value>⬇️ Téléchargement requis</value>
+  </data>
+  <data name="VoiceSettingsPage_ButtonReDownload" xml:space="preserve">
+    <value>Retélécharger</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloading" xml:space="preserve">
+    <value>Téléchargement...</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloadingPct" xml:space="preserve">
+    <value>Téléchargement... {0}%</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusDownloadCanceled" xml:space="preserve">
+    <value>Téléchargement annulé</value>
+  </data>
+  <data name="VoiceSettingsPage_StatusError" xml:space="preserve">
+    <value>❌ Échec de l'opération (voir le journal Debug)</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonDownloaded" xml:space="preserve">
+    <value>Téléchargé</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperVoiceReady" xml:space="preserve">
+    <value>Voix prête sur ce PC ({0} Mo).</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperVoiceNotDownloaded" xml:space="preserve">
+    <value>Voix pas encore téléchargée. Cliquez sur Télécharger pour récupérer le modèle (~25–150 Mo selon la qualité).</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonDownloading" xml:space="preserve">
+    <value>Téléchargement…</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperConnecting" xml:space="preserve">
+    <value>Connexion aux versions sherpa-onnx…</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperProgressIndeterminate" xml:space="preserve">
+    <value>Téléchargement… {0} Mo jusqu'à présent</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperProgressBytes" xml:space="preserve">
+    <value>Téléchargement… {0} / {1} Mo</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperExtracting" xml:space="preserve">
+    <value>Téléchargement terminé. Extraction…</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDownloadCanceled" xml:space="preserve">
+    <value>Téléchargement annulé.</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDownloadFailed" xml:space="preserve">
+    <value>Échec du téléchargement (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonRetry" xml:space="preserve">
+    <value>Réessayer le téléchargement</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDeleted" xml:space="preserve">
+    <value>Voix supprimée.</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperDeleteFailed" xml:space="preserve">
+    <value>Échec de la suppression (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_CompanionPreviewText" xml:space="preserve">
+    <value>Bonjour ! C'est votre Companion qui parle.</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreviewFailed" xml:space="preserve">
+    <value>Échec de l'aperçu (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_VoiceErrorLoading" xml:space="preserve">
+    <value>Erreur de chargement des voix (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewButtonPlaying" xml:space="preserve">
+    <value>▶ Lecture...</value>
+  </data>
+  <data name="VoiceOverlayWindow_HeaderText.Text" xml:space="preserve">
+    <value>Voix de Companion</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusBadge.Text" xml:space="preserve">
+    <value>Prêt</value>
+  </data>
+  <data name="VoiceOverlayWindow_EmptyStateText.Text" xml:space="preserve">
+    <value>Appuyez sur Démarrer et commencez à parler</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusText.Text" xml:space="preserve">
+    <value>Appuyez sur Démarrer pour commencer</value>
+  </data>
+  <data name="VoiceOverlayWindow_StartStopText.Text" xml:space="preserve">
+    <value>Commencer l'écoute</value>
+  </data>
+  <data name="VoiceOverlayWindow_MuteButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Muet</value>
+  </data>
+  <data name="VoiceOverlayWindow_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Paramètres vocaux</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusListening" xml:space="preserve">
+    <value>🗣️ Écoute en cours...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
+    <value>Parlez maintenant — j'écoute</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
+    <value>Initialisation...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateStarting" xml:space="preserve">
+    <value>Démarrage</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateDownloadingModel" xml:space="preserve">
+    <value>Téléchargement du modèle vocal...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateDownloadingPct" xml:space="preserve">
+    <value>Téléchargement du modèle... {0}%</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateLoadingModel" xml:space="preserve">
+    <value>Chargement du modèle vocal...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateStartingMic" xml:space="preserve">
+    <value>Démarrage du microphone...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateStopping" xml:space="preserve">
+    <value>Arrêt...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StateError" xml:space="preserve">
+    <value>Erreur</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusError" xml:space="preserve">
+    <value>Erreur rencontrée (voir le journal Debug)</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusMuted" xml:space="preserve">
+    <value>Muet</value>
+  </data>
+  <data name="VoiceOverlayWindow_StopText" xml:space="preserve">
+    <value>Arrêter</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeStopped" xml:space="preserve">
+    <value>Arrêté</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeStartingDots" xml:space="preserve">
+    <value>Démarrage...</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeListening" xml:space="preserve">
+    <value>À l'écoute</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeProcessing" xml:space="preserve">
+    <value>Traitement...</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeUnknown" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusInitMic" xml:space="preserve">
+    <value>Initialisation du microphone...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusTranscribing" xml:space="preserve">
+    <value>Transcription de votre discours...</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
+    <value>Une erreur s'est produite</value>
+  </data>
+  <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
+    <value>Companion Voice</value>
+  </data>
+  <data name="VoiceOverlayWindow_BadgeReady" xml:space="preserve">
+    <value>Prêt</value>
+  </data>
+  <data name="VoiceOverlayWindow_StatusReadyMessage" xml:space="preserve">
+    <value>Appuyez sur Démarrer pour commencer</value>
+  </data>
+  <data name="VoiceOverlayWindow_ButtonStartListening" xml:space="preserve">
+    <value>Commencer l'écoute</value>
+  </data>
+  <data name="VoiceSettingsPage_ButtonDownloadModel" xml:space="preserve">
+    <value>Télécharger le modèle</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperButtonDownloadVoice" xml:space="preserve">
+    <value>Télécharger la voix</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
+    <value>▶ Aperçu de la voix</value>
   </data>
 </root>

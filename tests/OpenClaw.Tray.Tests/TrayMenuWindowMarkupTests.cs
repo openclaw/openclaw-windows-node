@@ -60,6 +60,28 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
+    public void CanvasWindow_BridgeValidatesOriginAndPostsOnDispatcher()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "CanvasWindow.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("BridgeMessageReceived", source);
+        Assert.Contains("IsTrustedBridgeSource(e.Source)", source);
+        Assert.Contains("openclaw-canvas.local", source);
+        Assert.Contains("DispatcherQueue", source);
+        Assert.Contains("TryEnqueue(() => PostBridgeMessageOnUiThread", source);
+        Assert.Contains("PostWebMessageAsJson(json)", source);
+        Assert.Contains("SanitizeBridgeLogValue", source);
+        Assert.Contains("WebMessageReceived -= _webMessageReceivedHandler", source);
+    }
+
+    [Fact]
     public void CommandPalette_HasCommandCenterEntryPoint()
     {
         var sourcePath = Path.Combine(

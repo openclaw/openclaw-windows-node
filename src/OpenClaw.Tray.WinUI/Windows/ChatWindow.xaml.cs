@@ -17,8 +17,8 @@ namespace OpenClawTray.Windows;
 
 public sealed partial class ChatWindow : WindowEx
 {
-    private readonly string _gatewayUrl;
-    private readonly string _token;
+    private string _gatewayUrl;
+    private string _token;
     private string _chatUrl = "";
     private bool _webViewInitialized;
     public bool IsClosed { get; private set; }
@@ -143,6 +143,58 @@ public sealed partial class ChatWindow : WindowEx
         this.Hide();
     }
 
+    /// <summary>
+    /// Re-resolve the gateway URL and token, and reload the WebView2 if either changed.
+    /// Bug 2 fix: ChatWindow caches credentials at construction. When the pre-warmed window
+    /// is created before pairing completes, its cached token is empty/stale. App calls this
+    /// before re-activating the cached window so the freshest credentials are used.
+    /// </summary>
+    public void RefreshCredentials(string gatewayUrl, string token)
+    {
+        gatewayUrl ??= string.Empty;
+        token ??= string.Empty;
+
+        _gatewayUrl = gatewayUrl;
+        _token = token;
+        _chatUrl = BuildChatUrl(_gatewayUrl, _token);
+
+        Logger.Info($"[ChatWindow] Refreshing to {_chatUrl}");
+
+        // If WebView2 is already up, navigate it to the refreshed URL so the user gets a
+        // working chat instead of the pre-warmed (auth-failed) view.
+        if (_webViewInitialized && WebView?.CoreWebView2 != null)
+        {
+            try
+            {
+                ErrorPanel.Visibility = Visibility.Collapsed;
+                WebView.Visibility = Visibility.Visible;
+                LoadingRing.IsActive = true;
+                LoadingRing.Visibility = Visibility.Visible;
+                WebView.CoreWebView2.Navigate(_chatUrl);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"ChatWindow.RefreshCredentials navigate failed: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Bug 4 (PR #274): exposes a script executor wrapping CoreWebView2.ExecuteScriptAsync
+    /// so callers (e.g. App.ShowChatWindow) can invoke BootstrapMessageInjector without
+    /// the WebView2 control field leaking out of this window. Returns null if the
+    /// CoreWebView2 isn't ready yet.
+    /// </summary>
+    public Func<string, Task<string>>? TryGetScriptExecutor()
+    {
+        if (!_webViewInitialized || WebView?.CoreWebView2 == null)
+        {
+            return null;
+        }
+        var core = WebView.CoreWebView2;
+        return script => core.ExecuteScriptAsync(script).AsTask();
+    }
+
     /// <summary>Actually close and dispose (called on app shutdown).</summary>
     public void ForceClose()
     {
@@ -195,20 +247,13 @@ public sealed partial class ChatWindow : WindowEx
                     ErrorPanel.Visibility = Visibility.Collapsed;
                     WebView.Visibility = Visibility.Visible;
                     RequestChatInputFocus();
+                    OpenClawTray.Services.BootstrapMessageInjector.ScriptExecutor exec = script => WebView.CoreWebView2.ExecuteScriptAsync(script).AsTask();
+                    _ = OpenClawTray.Services.BootstrapMessageInjector.InjectAsync(exec, ((App)Microsoft.UI.Xaml.Application.Current).Settings, initialDelayMs: 500);
                 }
             };
 
             // Build chat URL
-            if (GatewayUrlHelper.TryNormalizeWebSocketUrl(_gatewayUrl, out var normalizedUrl) &&
-                Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri))
-            {
-                var scheme = uri.Scheme == "wss" ? "https" : "http";
-                _chatUrl = $"{scheme}://{uri.Host}:{uri.Port}?token={Uri.EscapeDataString(_token)}";
-            }
-            else
-            {
-                _chatUrl = $"http://127.0.0.1:19001?token={Uri.EscapeDataString(_token)}";
-            }
+            _chatUrl = BuildChatUrl(_gatewayUrl, _token);
 
             WebView.Visibility = Visibility.Visible;
             WebView.CoreWebView2.Navigate(_chatUrl);
@@ -227,6 +272,20 @@ public sealed partial class ChatWindow : WindowEx
     {
         if (_webViewInitialized && !string.IsNullOrEmpty(_chatUrl))
             WebView.CoreWebView2?.Navigate(_chatUrl);
+    }
+
+    private static string BuildChatUrl(string gatewayUrl, string token)
+    {
+        if (GatewayUrlHelper.TryNormalizeWebSocketUrl(gatewayUrl, out var normalizedUrl) &&
+            Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var gatewayUri))
+        {
+            var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+            var builder = new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port };
+            var baseUrl = builder.Uri.GetLeftPart(UriPartial.Authority);
+            return $"{baseUrl}?token={Uri.EscapeDataString(token)}";
+        }
+
+        return $"http://127.0.0.1:19001?token={Uri.EscapeDataString(token)}";
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e)

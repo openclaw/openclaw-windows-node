@@ -353,6 +353,118 @@ public class McpToolBridgeTests
     }
 
     [Fact]
+    public async Task ToolsList_SttTranscribe_HasCuratedDescription()
+    {
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("stt", "stt.transcribe"),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var description = doc.RootElement.GetProperty("result")
+            .GetProperty("tools")[0]
+            .GetProperty("description")
+            .GetString()!;
+
+        // Must mention the key surface area so MCP clients render something useful.
+        Assert.Contains("microphone", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("maxDurationMs", description);
+        Assert.Contains("text", description, System.StringComparison.OrdinalIgnoreCase);
+        // And explicitly NOT the generic stub.
+        Assert.DoesNotContain("stt capability:", description);
+    }
+
+    [Fact]
+    public async Task ToolsList_SttListen_HasCuratedDescription()
+    {
+        var caps = new List<INodeCapability> { new FakeCapability("stt", "stt.listen") };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var description = doc.RootElement.GetProperty("result")
+            .GetProperty("tools")[0]
+            .GetProperty("description")
+            .GetString()!;
+
+        Assert.Contains("voice-activity detection", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("timeoutMs", description);
+        // Privacy: must mention NodeSttEnabled gate so MCP clients
+        // know this is opt-in.
+        Assert.Contains("NodeSttEnabled", description);
+        // Engine surface must be advertised so callers can read engineEffective.
+        Assert.Contains("engineEffective", description);
+        Assert.DoesNotContain("stt capability:", description);
+    }
+
+    [Fact]
+    public async Task ToolsList_SttStatus_HasCuratedDescription()
+    {
+        var caps = new List<INodeCapability> { new FakeCapability("stt", "stt.status") };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var description = doc.RootElement.GetProperty("result")
+            .GetProperty("tools")[0]
+            .GetProperty("description")
+            .GetString()!;
+
+        Assert.Contains("readiness", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("engine", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("whisper", description, System.StringComparison.OrdinalIgnoreCase);
+        // Privacy invariant in the description itself: no PII.
+        Assert.Contains("no PII", description, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ToolsList_AllStt_AppearWhenSttCapabilityRegistered()
+    {
+        // Single SttCapability instance advertises all three commands.
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("stt", "stt.transcribe", "stt.listen", "stt.status"),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var toolNames = new HashSet<string>();
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+            toolNames.Add(t.GetProperty("name").GetString()!);
+
+        Assert.Contains("stt.transcribe", toolNames);
+        Assert.Contains("stt.listen", toolNames);
+        Assert.Contains("stt.status", toolNames);
+    }
+
+    [Fact]
+    public async Task ToolsList_AllStt_Absent_WhenSttCapabilityNotRegistered()
+    {
+        // STT capability is gated by NodeSttEnabled in NodeService;
+        // when disabled, no SttCapability is constructed and tools/list
+        // must omit the three stt.* tools.
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("device", "device.status"),
+            new FakeCapability("tts", "tts.speak"),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var toolNames = new HashSet<string>();
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+            toolNames.Add(t.GetProperty("name").GetString()!);
+
+        Assert.DoesNotContain("stt.transcribe", toolNames);
+        Assert.DoesNotContain("stt.listen", toolNames);
+        Assert.DoesNotContain("stt.status", toolNames);
+    }
+
+    [Fact]
     public async Task Initialize_ReturnsCustomServerNameAndVersion()
     {
         var bridge = new McpToolBridge(

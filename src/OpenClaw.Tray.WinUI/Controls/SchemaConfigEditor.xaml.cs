@@ -17,6 +17,10 @@ public sealed partial class SchemaConfigEditor : UserControl
     private JsonElement _config;
     private readonly Dictionary<string, object?> _changes = new();
 
+    private static readonly Regex CamelCaseSplitPattern = new(
+        "([a-z])([A-Z])",
+        RegexOptions.Compiled);
+
     private static readonly SolidColorBrush SecondaryBrush =
         new(ColorHelper.FromArgb(255, 140, 150, 170));
 
@@ -378,7 +382,7 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     private static string GetLabel(string path, string name)
     {
-        var result = Regex.Replace(name, "([a-z])([A-Z])", "$1 $2");
+        var result = CamelCaseSplitPattern.Replace(name, "$1 $2");
         result = result.Replace("_", " ").Replace(".", " \u203A ");
         // Title-case the first character
         if (result.Length > 0)

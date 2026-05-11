@@ -280,7 +280,7 @@ The QR/setup-code path is preferred for first-time node onboarding because it av
 The Windows Setup Wizard:
 1. Accepts a QR image, clipboard QR image, pasteable setup code, or manual gateway URL/token.
 2. For QR/setup-code input, decodes `{ url, bootstrapToken, expiresAtMs }`.
-3. Stores `bootstrapToken` separately from the normal gateway `Token` setting.
+3. Stores `bootstrapToken` in the active `GatewayRecord.BootstrapToken`; manual long-lived tokens are stored as `GatewayRecord.SharedGatewayToken`.
 4. Sends it as `auth.bootstrapToken` in the node connect handshake.
 
 This lets the gateway correctly classify QR setup as a bootstrap-token handshake, which enables:
@@ -296,7 +296,7 @@ After a successful bootstrap-token pairing:
 3. Future connections use `auth.token = <deviceToken>` (device-token auth path)
 4. The bootstrap token is revoked and no longer valid
 
-Windows stores `hello-ok.auth.deviceToken` in its device identity file and prefers that saved device token on future node connections. The bootstrap token is only used when there is no saved device token yet.
+Windows stores `hello-ok.auth.deviceToken` in the per-gateway device identity file and prefers that saved device token on future node connections. The bootstrap token is only used when there is no saved device token yet.
 
 ### 4.7 Bootstrap Flow
 
