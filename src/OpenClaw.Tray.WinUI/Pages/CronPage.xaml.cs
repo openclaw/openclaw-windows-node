@@ -2,11 +2,14 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClaw.Shared;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Windows.UI;
 
 namespace OpenClawTray.Pages;
@@ -41,20 +44,48 @@ public sealed partial class CronPage : Page
         var btn = sender as Button;
         var jobId = btn?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
+        var vm = _jobs.Find(j => j.Id == jobId);
+        if (vm != null && !vm.IsEnabled) return;
         _runningJobIds.Add(jobId);
         btn!.Content = "Running...";
         btn.IsEnabled = false;
-        _ = _hub.GatewayClient.RunCronJobAsync(jobId);
+
+        _hub.GatewayClient.RunCronJobAsync(jobId).ContinueWith(t =>
+        {
+            if (t.IsFaulted || (t.IsCompletedSuccessfully && !t.Result))
+            {
+                // Request failed — clear running state immediately
+                DispatcherQueue?.TryEnqueue(() =>
+                {
+                    _runningJobIds.Remove(jobId);
+                    _ = _hub?.GatewayClient?.RequestCronListAsync();
+                });
+            }
+        });
+
+        // Safety timeout: clear running state after 90s if gateway never reports completion
+        var capturedHub = _hub;
+        Task.Delay(TimeSpan.FromSeconds(90)).ContinueWith(_ =>
+        {
+            if (_runningJobIds.Contains(jobId))
+            {
+                DispatcherQueue?.TryEnqueue(() =>
+                {
+                    _runningJobIds.Remove(jobId);
+                    _ = capturedHub?.GatewayClient?.RequestCronListAsync();
+                });
+            }
+        });
     }
 
     private void OnRemoveClick(object sender, RoutedEventArgs e)
     {
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
-        _ = _hub.GatewayClient.RemoveCronJobAsync(jobId).ContinueWith(_ =>
-        {
-            DispatcherQueue?.TryEnqueue(() => _hub.GatewayClient.RequestCronListAsync());
-        });
+        var vm = _jobs.Find(j => j.Id == jobId);
+        if (vm != null && !vm.IsEnabled) return;
+        // Gateway client's HandleKnownResponse refreshes the list automatically on cron.remove
+        _ = _hub.GatewayClient.RemoveCronJobAsync(jobId);
     }
 
     private void OnToggleEnabledClick(object sender, RoutedEventArgs e)
@@ -65,7 +96,7 @@ public sealed partial class CronPage : Page
         var vm = _jobs.Find(j => j.Id == jobId);
         if (vm != null)
         {
-            _ = _hub.GatewayClient.UpdateCronJobAsync(new { jobId, patch = new { enabled = !vm.IsEnabled } });
+            _ = _hub.GatewayClient.UpdateCronJobAsync(jobId, new { enabled = !vm.IsEnabled });
         }
     }
 
@@ -87,7 +118,7 @@ public sealed partial class CronPage : Page
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId)) return;
         var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm == null) return;
+        if (vm == null || !vm.IsEnabled) return;
 
         _editingJobId = jobId;
         FormTitle.Text = "Edit Job";
@@ -251,12 +282,7 @@ public sealed partial class CronPage : Page
             if (kind == "at")
                 patch["deleteAfterRun"] = FormDeleteAfterRun.IsChecked == true;
 
-            var updatePayload = new Dictionary<string, object>
-            {
-                ["jobId"] = _editingJobId,
-                ["patch"] = patch
-            };
-            _ = _hub.GatewayClient.UpdateCronJobAsync(updatePayload);
+            _ = _hub.GatewayClient.UpdateCronJobAsync(_editingJobId, patch);
         }
         else
         {
@@ -862,7 +888,7 @@ public sealed partial class CronPage : Page
         }
     }
 
-    private void OnCardClick(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    private void OnCardTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
         // Don't toggle expand when clicking buttons inside the detail panel
         if (e.OriginalSource is FrameworkElement fe)
@@ -1074,7 +1100,7 @@ public sealed partial class CronPage : Page
         card.Child = grid;
 
         // Click to expand/collapse
-        card.PointerReleased += OnCardClick;
+        card.Tapped += OnCardTapped;
 
         return card;
     }
@@ -1115,6 +1141,7 @@ public sealed partial class CronPage : Page
 
         // Action buttons
         var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var jobDisabled = !vm.IsEnabled;
 
         // "Run Now" button — show running state if job is in the running set
         var runNowBtn = MakeActionButton("\uE768", "Run Now", vm.Id, OnRunNowClick);
@@ -1123,12 +1150,26 @@ public sealed partial class CronPage : Page
             runNowBtn.Content = "Running...";
             runNowBtn.IsEnabled = false;
         }
+        else if (jobDisabled)
+        {
+            runNowBtn.Opacity = 0.4;
+        }
         buttonsPanel.Children.Add(runNowBtn);
 
         buttonsPanel.Children.Add(MakeActionButton(vm.ToggleEnabledGlyph, vm.ToggleEnabledText, vm.Id, OnToggleEnabledClick));
-        buttonsPanel.Children.Add(MakeActionButton("\uE70F", "Edit", vm.Id, OnEditJobClick));
-        buttonsPanel.Children.Add(MakeActionButton("\uE81C", "History", vm.Id, OnHistoryClick));
-        buttonsPanel.Children.Add(MakeActionButton("\uE711", "Remove", vm.Id, OnRemoveClick));
+
+        var editBtn = MakeActionButton("\uE70F", "Edit", vm.Id, OnEditJobClick);
+        if (jobDisabled) editBtn.Opacity = 0.4;
+        buttonsPanel.Children.Add(editBtn);
+
+        var histBtn = MakeActionButton("\uE81C", "History", vm.Id, OnHistoryClick);
+        if (jobDisabled) histBtn.Opacity = 0.4;
+        buttonsPanel.Children.Add(histBtn);
+
+        var removeBtn = MakeActionButton("\uE711", "Remove", vm.Id, OnRemoveClick);
+        if (jobDisabled) removeBtn.Opacity = 0.4;
+        buttonsPanel.Children.Add(removeBtn);
+
         panel.Children.Add(buttonsPanel);
 
         // History panel (populated when History button is clicked)
@@ -1179,8 +1220,8 @@ public sealed partial class CronPage : Page
     {
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
-
-        // Toggle: if already showing history for this job, hide it
+        var vm = _jobs.Find(j => j.Id == jobId);
+        if (vm != null && !vm.IsEnabled) return;
         if (_historyJobId == jobId)
         {
             HideHistoryPanel(jobId);
@@ -1342,12 +1383,30 @@ public sealed partial class CronPage : Page
         histPanel.Visibility = Visibility.Visible;
     }
 
+    // Redact tokens, secrets, and file paths from text before UI display
+    private static readonly Regex AbsolutePathPattern = new(
+        @"(?:[A-Za-z]:\\(?:Users|home|usr|var|tmp)\\[^\s""']+)|(?:/(?:home|Users|usr|var|tmp)/[^\s""']+)",
+        RegexOptions.Compiled);
+
+    private static string SanitizeForDisplay(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var sanitized = TokenSanitizer.Sanitize(text);
+        sanitized = AbsolutePathPattern.Replace(sanitized, m =>
+        {
+            var sep = m.Value.Contains('\\') ? '\\' : '/';
+            var lastSep = m.Value.LastIndexOf(sep);
+            return lastSep >= 0 ? "…" + sep + m.Value[(lastSep + 1)..] : m.Value;
+        });
+        return sanitized;
+    }
+
     private Border BuildRunEntry(JsonElement entry)
     {
         var status = entry.TryGetProperty("status", out var sEl) ? sEl.GetString() ?? "" : "";
         var durationMs = entry.TryGetProperty("durationMs", out var dEl) && dEl.ValueKind == JsonValueKind.Number ? dEl.GetInt64() : 0;
-        var summary = entry.TryGetProperty("summary", out var sumEl) ? sumEl.GetString() ?? "" : "";
-        var error = entry.TryGetProperty("error", out var errEl) ? errEl.GetString() ?? "" : "";
+        var summary = SanitizeForDisplay(entry.TryGetProperty("summary", out var sumEl) ? sumEl.GetString() ?? "" : "");
+        var error = SanitizeForDisplay(entry.TryGetProperty("error", out var errEl) ? errEl.GetString() ?? "" : "");
         var model = entry.TryGetProperty("model", out var modEl) ? modEl.GetString() ?? "" : "";
         var tsMs = entry.TryGetProperty("runAtMs", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number
             ? tsEl.GetInt64()

@@ -69,8 +69,8 @@ public interface IOperatorGatewayClient
     Task<bool> RunCronJobAsync(string jobId, bool force = true);
     Task<bool> RemoveCronJobAsync(string jobId);
     Task<bool> AddCronJobAsync(object jobDefinition);
-    Task<bool> UpdateCronJobAsync(object jobDefinition);
-    Task RequestCronRunsAsync(string? jobId = null, int limit = 20, int offset = 0);
+    Task<bool> UpdateCronJobAsync(string id, object patch);
+    Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
     Task RequestSkillsStatusAsync(string? agentId = null);
     Task<bool> InstallSkillAsync(string skillId);
     Task<bool> UpdateSkillAsync(string skillId);

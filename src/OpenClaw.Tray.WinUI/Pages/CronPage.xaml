@@ -221,7 +221,7 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Margin="0,4,0,0">
-                        <!-- Row 1: Session behavior + On failure -->
+                        <!-- Row 1: Session behavior + Wake mode -->
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -236,22 +236,6 @@
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Spacing="4" Grid.Column="1">
-                                <TextBlock Text="ON FAILURE" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <ComboBox x:Name="FormOnFailure" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13">
-                                    <ComboBoxItem Content="Alert after 3 consecutive errors" Tag="3"/>
-                                    <ComboBoxItem Content="Alert immediately" Tag="1"/>
-                                    <ComboBoxItem Content="No alerts" Tag="0"/>
-                                </ComboBox>
-                            </StackPanel>
-                        </Grid>
-                        <!-- Row 2: Wake mode -->
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="4" Grid.Column="0">
                                 <TextBlock Text="WAKE MODE" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <ComboBox x:Name="FormWakeMode" SelectedIndex="0" HorizontalAlignment="Stretch" FontSize="13">
@@ -260,13 +244,6 @@
                                 </ComboBox>
                             </StackPanel>
                         </Grid>
-                        <!-- Row 3: Toggles -->
-                        <StackPanel Spacing="8">
-                            <CheckBox x:Name="FormClearContext"
-                                      IsChecked="False" MinHeight="32">
-                                <TextBlock Text="Clear agent context before run" FontSize="14" VerticalAlignment="Center"/>
-                            </CheckBox>
-                        </StackPanel>
                     </StackPanel>
                 </Expander>
 

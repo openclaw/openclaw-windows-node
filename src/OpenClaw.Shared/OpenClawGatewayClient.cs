@@ -457,14 +457,16 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return TrySendTrackedRequestAsync("cron.add", jobDefinition);
     }
 
-    public Task<bool> UpdateCronJobAsync(object jobDefinition)
+    public Task<bool> UpdateCronJobAsync(string id, object patch)
     {
-        return TrySendTrackedRequestAsync("cron.update", jobDefinition);
+        // Wire format uses "id" consistently with cron.run / cron.remove
+        return TrySendTrackedRequestAsync("cron.update", new { id, patch });
     }
 
-    public async Task RequestCronRunsAsync(string? jobId = null, int limit = 50, int offset = 0)
+    public async Task RequestCronRunsAsync(string? id = null, int limit = 50, int offset = 0)
     {
-        await SendTrackedRequestAsync("cron.runs", new { jobId, limit, offset });
+        // Wire format uses "id" consistently with cron.run / cron.remove
+        await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
     }
 
     // Skills/plugin management
