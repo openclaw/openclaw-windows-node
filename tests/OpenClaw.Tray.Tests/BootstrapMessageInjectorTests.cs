@@ -139,6 +139,27 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
     }
 
     [Fact]
+    public async Task InjectAsync_ConcurrentCalls_ExecuteScriptOnce()
+    {
+        var settings = new SettingsManager(_isolatedDir);
+        int callCount = 0;
+        BootstrapMessageInjector.ScriptExecutor executor = async _ =>
+        {
+            Interlocked.Increment(ref callCount);
+            await Task.Delay(50);
+            return "\"sent\"";
+        };
+
+        var results = await Task.WhenAll(
+            BootstrapMessageInjector.InjectAsync(executor, settings, initialDelayMs: 25),
+            BootstrapMessageInjector.InjectAsync(executor, settings, initialDelayMs: 25));
+
+        Assert.Single(results, static r => r);
+        Assert.Equal(1, callCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
     public void BuildInjectionScript_EncodesMessageSafely()
     {
         // Adversarial message: would break naive ${...} or quoted concatenation.

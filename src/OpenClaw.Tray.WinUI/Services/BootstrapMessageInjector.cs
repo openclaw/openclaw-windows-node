@@ -25,6 +25,8 @@ namespace OpenClawTray.Services;
 /// </summary>
 public static class BootstrapMessageInjector
 {
+    private static int s_inFlight;
+
     /// <summary>
     /// Delegate matching <c>CoreWebView2.ExecuteScriptAsync(string)</c>.
     /// Returns the JSON-serialized result of the script (unused here).
@@ -209,12 +211,23 @@ public static class BootstrapMessageInjector
         if (settings is null) return false;
         if (!ShouldInject(settings)) return false;
         if (executor is null) return false;
+        if (Interlocked.CompareExchange(ref s_inFlight, 1, 0) != 0)
+        {
+            Logger.Info("[BootstrapMessageInjector] Bootstrap injection skipped because another injection is in flight");
+            return false;
+        }
 
         try
         {
             if (initialDelayMs > 0)
             {
                 await Task.Delay(initialDelayMs, cancellationToken).ConfigureAwait(true);
+            }
+
+            if (!ShouldInject(settings))
+            {
+                Logger.Info("[BootstrapMessageInjector] Bootstrap injection skipped because gate was consumed during initial delay");
+                return false;
             }
 
             var js = BuildInjectionScript(Message);
@@ -239,6 +252,10 @@ public static class BootstrapMessageInjector
         {
             Logger.Warn($"[BootstrapMessageInjector] Bootstrap injection failed: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref s_inFlight, 0);
         }
     }
 
