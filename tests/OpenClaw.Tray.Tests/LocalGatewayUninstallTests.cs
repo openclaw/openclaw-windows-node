@@ -149,9 +149,10 @@ public sealed class LocalGatewayUninstallTests
         File.WriteAllText(env.ExecPolicyPath, "{}");
         File.WriteAllText(env.LogPath, "log content");
 
-        env.Settings.Token = "gateway-token";
-        env.Settings.AutoStart = true;
-        env.Settings.Save();
+        // Write legacy-format settings.json so SettingsManager.Load() populates LegacyToken
+        File.WriteAllText(Path.Combine(env.DataDir, "settings.json"),
+            """{"Token":"gateway-token","AutoStart":true,"GatewayUrl":"ws://localhost:18789"}""");
+        env.Settings.Load();
 
         var engine = env.BuildEngine();
         var result = await engine.RunAsync(
@@ -171,7 +172,7 @@ public sealed class LocalGatewayUninstallTests
 
         // Settings not mutated by DryRun
         var reloaded = new SettingsManager(env.DataDir);
-        Assert.Equal("gateway-token", reloaded.Token);
+        Assert.Equal("gateway-token", reloaded.LegacyToken);
         Assert.True(reloaded.AutoStart);
     }
 
@@ -556,11 +557,10 @@ public sealed class LocalGatewayUninstallTests
     public async Task OnboardingSettings_Cleared_EnableMcpServerPreserved()
     {
         using var env = new UninstallTestEnv();
-        env.Settings.Token = "tok";
-        env.Settings.BootstrapToken = "btok";
-        env.Settings.GatewayUrl = "ws://custom:9999";
-        env.Settings.EnableMcpServer = true;
-        env.Settings.Save();
+        // Write legacy-format settings.json so SettingsManager.Load() populates LegacyToken/LegacyBootstrapToken
+        File.WriteAllText(Path.Combine(env.DataDir, "settings.json"),
+            """{"Token":"tok","BootstrapToken":"btok","GatewayUrl":"ws://custom:9999","EnableMcpServer":true}""");
+        env.Settings.Load();
 
         var engine = env.BuildEngine();
         await engine.RunAsync(new LocalGatewayUninstallOptions
@@ -570,8 +570,10 @@ public sealed class LocalGatewayUninstallTests
         });
 
         var reloaded = new SettingsManager(env.DataDir);
-        Assert.Equal(string.Empty, reloaded.Token);
-        Assert.Equal(string.Empty, reloaded.BootstrapToken);
+        // Save() no longer writes Token/BootstrapToken — they're absent from the new JSON,
+        // so a fresh Load() produces null for both legacy credential fields.
+        Assert.True(string.IsNullOrEmpty(reloaded.LegacyToken));
+        Assert.True(string.IsNullOrEmpty(reloaded.LegacyBootstrapToken));
         Assert.Equal("ws://localhost:18789", reloaded.GatewayUrl);
         // EnableMcpServer must be preserved
         Assert.True(reloaded.EnableMcpServer);

@@ -258,7 +258,7 @@ public sealed class LocalGatewayUninstall
         // ------------------------------------------------------------------
         await RunStepAsync("Revoke operator token", options, ct, async () =>
         {
-            if (string.IsNullOrWhiteSpace(_settings.Token))
+            if (string.IsNullOrWhiteSpace(_settings.LegacyToken))
             {
                 RecordStep("Revoke operator token", UninstallStepStatus.Skipped,
                     "No operator token stored.");
@@ -267,7 +267,7 @@ public sealed class LocalGatewayUninstall
 
             try
             {
-                var token = _settings.Token;
+                var token = _settings.LegacyToken;
                 var httpBase = _settings.GatewayUrl
                     .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
                     .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
@@ -475,13 +475,13 @@ public sealed class LocalGatewayUninstall
         // ------------------------------------------------------------------
         await RunStepAsync("Reset onboarding settings", options, ct, () =>
         {
-            _settings.Token = string.Empty;
-            _settings.BootstrapToken = string.Empty;
             _settings.GatewayUrl = "ws://localhost:18789";
             // EnableMcpServer: NOT touched.
+            // LegacyToken/LegacyBootstrapToken: cleared implicitly — Save() no longer
+            // writes Token/BootstrapToken fields (GatewayRegistry is the source of truth).
             _settings.Save();
             RecordStep("Reset onboarding settings", UninstallStepStatus.Executed,
-                "Token=***REDACTED***, BootstrapToken=***REDACTED***, GatewayUrl reset. " +
+                "LegacyToken/LegacyBootstrapToken cleared (not written by Save()), GatewayUrl reset. " +
                 "EnableMcpServer preserved.");
             return Task.CompletedTask;
         });
