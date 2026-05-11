@@ -79,7 +79,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
     }
 
     [Fact]
-    public void TryResolve_PrefersPerGatewayDeviceToken()
+    public void TryResolve_PrefersSharedGatewayTokenOverDeviceTokenForHttpSurfaces()
     {
         var settings = new SettingsManager(_tempDir) { GatewayUrl = "ws://active:18789" };
         var record = new GatewayRecord
@@ -103,7 +103,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
         Assert.NotNull(credential);
         Assert.Equal("shared-token", credential!.Token);
         Assert.False(credential.IsBootstrapToken);
-        Assert.Equal("record.SharedGatewayToken", credential.Source);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, credential.Source);
     }
 
     [Fact]

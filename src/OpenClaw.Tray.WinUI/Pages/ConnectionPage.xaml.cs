@@ -559,16 +559,26 @@ public sealed partial class ConnectionPage : Page
 
         DirectConnectResultText.Text = "Connecting…";
 
-        // Remember previous active gateway so we can revert on failure
+        // Snapshot previous state for rollback
         var previousActiveId = _gatewayRegistry.ActiveGatewayId;
+        var previousSettings = _hub?.Settings;
+        var prevGatewayUrl = previousSettings?.GatewayUrl;
+        var prevUseSsh = previousSettings?.UseSshTunnel ?? false;
+        var prevSshUser = previousSettings?.SshTunnelUser;
+        var prevSshHost = previousSettings?.SshTunnelHost;
+        var prevSshRemotePort = previousSettings?.SshTunnelRemotePort ?? 0;
+        var prevSshLocalPort = previousSettings?.SshTunnelLocalPort ?? 0;
+
+        var existing = _gatewayRegistry.FindByUrl(url);
+        var isNewRecord = existing == null;
+        var existingRecordSnapshot = existing;
+        var recordId = existing?.Id ?? Guid.NewGuid().ToString();
 
         try
         {
             await _connectionManager.DisconnectAsync();
 
             // Create/update gateway record with shared token + SSH config
-            var existing = _gatewayRegistry.FindByUrl(url);
-            var recordId = existing?.Id ?? Guid.NewGuid().ToString();
             var record = new GatewayRecord
             {
                 Id = recordId,
@@ -609,19 +619,18 @@ public sealed partial class ConnectionPage : Page
             }
 
             // Save settings (SSH config + gateway URL for legacy compat)
-            var settings = _hub?.Settings;
-            if (settings != null)
+            if (previousSettings != null)
             {
-                settings.GatewayUrl = url;
-                settings.UseSshTunnel = useSsh;
+                previousSettings.GatewayUrl = url;
+                previousSettings.UseSshTunnel = useSsh;
                 if (useSsh && sshConfig != null)
                 {
-                    settings.SshTunnelUser = sshConfig.User;
-                    settings.SshTunnelHost = sshConfig.Host;
-                    settings.SshTunnelRemotePort = sshConfig.RemotePort;
-                    settings.SshTunnelLocalPort = sshConfig.LocalPort;
+                    previousSettings.SshTunnelUser = sshConfig.User;
+                    previousSettings.SshTunnelHost = sshConfig.Host;
+                    previousSettings.SshTunnelRemotePort = sshConfig.RemotePort;
+                    previousSettings.SshTunnelLocalPort = sshConfig.LocalPort;
                 }
-                settings.Save();
+                previousSettings.Save();
             }
 
             // Start SSH tunnel if configured
@@ -633,18 +642,82 @@ public sealed partial class ConnectionPage : Page
             }
 
             await _connectionManager.ConnectAsync(recordId);
-            DirectConnectResultText.Text = $"✓ Connected to {GatewayUrlHelper.SanitizeForDisplay(url)}";
+
+            // Poll connection manager state — ConnectAsync fires connect asynchronously,
+            // so we need to wait for a definitive result before reporting success/failure.
+            bool connected = false;
+            bool failed = false;
+            for (int attempt = 0; attempt < 15; attempt++)
+            {
+                await Task.Delay(1000);
+                var snapshot = _connectionManager.CurrentSnapshot;
+                if (snapshot.OverallState is Services.Connection.OverallConnectionState.Connected
+                    or Services.Connection.OverallConnectionState.Ready)
+                {
+                    connected = true;
+                    break;
+                }
+                if (snapshot.OverallState is Services.Connection.OverallConnectionState.Error)
+                {
+                    failed = true;
+                    break;
+                }
+                if (snapshot.OverallState is Services.Connection.OverallConnectionState.PairingRequired)
+                {
+                    DirectConnectResultText.Text = $"⏳ Pairing required — approve on gateway";
+                    return; // don't rollback, pairing is in progress
+                }
+            }
+
+            if (connected)
+            {
+                DirectConnectResultText.Text = $"✓ Connected to {GatewayUrlHelper.SanitizeForDisplay(url)}";
+                return;
+            }
+
+            // Connection failed or timed out — rollback
+            var reason = failed ? "Connection failed" : "Connection timed out";
+            DirectConnectResultText.Text = $"✗ {reason}";
+            RollbackDirectConnect(previousActiveId, isNewRecord, recordId, existingRecordSnapshot,
+                previousSettings, prevGatewayUrl, prevUseSsh, prevSshUser, prevSshHost, prevSshRemotePort, prevSshLocalPort);
         }
         catch (Exception ex)
         {
             DirectConnectResultText.Text = $"✗ {ex.Message}";
+            RollbackDirectConnect(previousActiveId, isNewRecord, recordId, existingRecordSnapshot,
+                previousSettings, prevGatewayUrl, prevUseSsh, prevSshUser, prevSshHost, prevSshRemotePort, prevSshLocalPort);
+        }
+    }
 
-            // Revert active gateway on failure so the app doesn't point at a broken config
-            if (previousActiveId != null)
-            {
-                _gatewayRegistry.SetActive(previousActiveId);
-                _gatewayRegistry.Save();
-            }
+    private void RollbackDirectConnect(
+        string? previousActiveId, bool isNewRecord, string recordId,
+        GatewayRecord? existingRecordSnapshot, SettingsManager? settings,
+        string? prevGatewayUrl, bool prevUseSsh, string? prevSshUser,
+        string? prevSshHost, int prevSshRemotePort, int prevSshLocalPort)
+    {
+        if (_gatewayRegistry == null) return;
+
+        // Restore or remove the gateway record
+        if (isNewRecord)
+            _gatewayRegistry.Remove(recordId);
+        else if (existingRecordSnapshot != null)
+            _gatewayRegistry.AddOrUpdate(existingRecordSnapshot);
+
+        // Restore active gateway
+        if (previousActiveId != null)
+            _gatewayRegistry.SetActive(previousActiveId);
+        _gatewayRegistry.Save();
+
+        // Restore legacy settings
+        if (settings != null)
+        {
+            settings.GatewayUrl = prevGatewayUrl;
+            settings.UseSshTunnel = prevUseSsh;
+            settings.SshTunnelUser = prevSshUser;
+            settings.SshTunnelHost = prevSshHost;
+            settings.SshTunnelRemotePort = prevSshRemotePort;
+            settings.SshTunnelLocalPort = prevSshLocalPort;
+            settings.Save();
         }
     }
 

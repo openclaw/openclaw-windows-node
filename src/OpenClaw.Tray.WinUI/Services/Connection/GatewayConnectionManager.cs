@@ -297,10 +297,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             DisconnectCore();
-            // Stop tunnel when switching gateways — the new one may not need it
+            // Stop tunnel when switching gateways — the new one may not need it.
+            // Use a bounded timeout to avoid blocking all connection transitions.
             if (_tunnelManager?.IsActive == true)
             {
-                try { await _tunnelManager.StopAsync(); }
+                try
+                {
+                    var tunnelStop = _tunnelManager.StopAsync();
+                    if (await Task.WhenAny(tunnelStop, Task.Delay(TimeSpan.FromSeconds(5))) != tunnelStop)
+                        _logger.Warn("[ConnMgr] Tunnel stop timed out during gateway switch");
+                }
                 catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error on gateway switch: {ex.Message}"); }
             }
             _gatewayNeedsV2Signature = false; // new gateway might support v3
@@ -790,17 +796,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _nodeConnector.StatusChanged -= OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged -= OnNodePairingStatusChanged;
         }
-        _stateMachine.TryTransition(ConnectionTrigger.Disposed);
-        DisposeActiveClient();
-        // Stop tunnel on app shutdown — run on threadpool with timeout to avoid stalling exit
-        if (_tunnelManager?.IsActive == true)
+        // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
+        // Use a short timeout — if something is stuck, proceed with disposal anyway.
+        try { _transitionSemaphore.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        try
         {
-            try { Task.Run(() => _tunnelManager.StopAsync()).Wait(TimeSpan.FromSeconds(3)); }
-            catch { /* shutting down — best effort */ }
+            _stateMachine.TryTransition(ConnectionTrigger.Disposed);
+            DisposeActiveClient();
+            // Stop tunnel on app shutdown — run on threadpool with timeout to avoid stalling exit
+            if (_tunnelManager?.IsActive == true)
+            {
+                try { Task.Run(() => _tunnelManager.StopAsync()).Wait(TimeSpan.FromSeconds(3)); }
+                catch { /* shutting down — best effort */ }
+            }
+            _operationCts?.Cancel();
+            _operationCts?.Dispose();
         }
-        _operationCts?.Cancel();
-        _operationCts?.Dispose();
-        _transitionSemaphore.Dispose();
+        finally
+        {
+            try { _transitionSemaphore.Release(); } catch { }
+            _transitionSemaphore.Dispose();
+        }
     }
 }
 

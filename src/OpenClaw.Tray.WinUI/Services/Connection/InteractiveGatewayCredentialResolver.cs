@@ -34,7 +34,7 @@ public static class InteractiveGatewayCredentialResolver
                     active.Url,
                     active.SharedGatewayToken!,
                     false,
-                    "record.SharedGatewayToken");
+                    CredentialResolver.SourceSharedGatewayToken);
                 return true;
             }
 
