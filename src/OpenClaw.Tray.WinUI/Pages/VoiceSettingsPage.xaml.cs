@@ -243,6 +243,7 @@ public sealed partial class VoiceSettingsPage : Page
 
             ModelStatusText.Text = L("VoiceSettingsPage_StatusModelReady");
             DownloadButtonText.Text = L("VoiceSettingsPage_ButtonReDownload");
+            TestVoiceButton.Visibility = Visibility.Visible;
         }
         catch (OperationCanceledException)
         {
@@ -265,9 +266,108 @@ public sealed partial class VoiceSettingsPage : Page
 
     // ── TTS Voice Selection ──
 
-    private void OnTestVoiceClick(object sender, RoutedEventArgs e)
+    private async void OnTestVoiceClick(object sender, RoutedEventArgs e)
     {
-        _hub?.OpenVoiceAction?.Invoke();
+        if (_hub?.Settings == null) return;
+
+        // Stop any existing voice session first so we can grab the mic
+        if (_voiceService != null)
+        {
+            try { await _voiceService.StopAsync(); } catch { }
+        }
+
+        // Use the existing voice service — it's already initialized with the
+        // correct model and settings.
+        var voiceService = _voiceService ?? new VoiceService(new AppLogger(), _hub.Settings);
+
+        var transcriptText = new TextBlock
+        {
+            Text = "Press Start, then speak. Your words will appear here.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+
+        var statusText = new TextBlock
+        {
+            Text = "",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+        };
+
+        var startButton = new Button { Content = "Start Listening" };
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(startButton);
+        panel.Children.Add(statusText);
+        panel.Children.Add(transcriptText);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Test Voice Input",
+            Content = panel,
+            CloseButtonText = "Done",
+            XamlRoot = this.XamlRoot
+        };
+
+        var listening = false;
+
+        void OnTranscription(string text)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (transcriptText.Text == "Listening..." || transcriptText.Text.StartsWith("Press Start"))
+                    transcriptText.Text = text;
+                else
+                    transcriptText.Text += " " + text;
+            });
+        }
+
+        void OnDiagnostic(string msg)
+        {
+            DispatcherQueue.TryEnqueue(() => statusText.Text = msg);
+        }
+
+        startButton.Click += async (_, _) =>
+        {
+            if (!listening)
+            {
+                listening = true;
+                startButton.Content = "Stop Listening";
+                transcriptText.Text = "Listening...";
+                voiceService.TranscriptionReceived += OnTranscription;
+                voiceService.DiagnosticMessage += OnDiagnostic;
+                try
+                {
+                    await voiceService.StartVoiceChatAsync();
+                    statusText.Text = "Voice chat started — speak now";
+                }
+                catch (Exception ex)
+                {
+                    statusText.Text = $"Error: {ex.Message}";
+                    listening = false;
+                    startButton.Content = "Start Listening";
+                }
+            }
+            else
+            {
+                listening = false;
+                startButton.Content = "Start Listening";
+                voiceService.TranscriptionReceived -= OnTranscription;
+                voiceService.DiagnosticMessage -= OnDiagnostic;
+                await voiceService.StopAsync();
+                statusText.Text = "Stopped";
+            }
+        };
+
+        await dialog.ShowAsync();
+
+        // Clean up when dialog closes
+        if (listening)
+        {
+            voiceService.TranscriptionReceived -= OnTranscription;
+            voiceService.DiagnosticMessage -= OnDiagnostic;
+            await voiceService.StopAsync();
+        }
     }
 
     private void LoadTtsSettings(SettingsManager settings)
