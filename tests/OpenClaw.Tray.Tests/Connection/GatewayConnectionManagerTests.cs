@@ -195,6 +195,25 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal("wss://remote.example", nodeConnector.LastGatewayUrl);
     }
 
+    [Fact]
+    public async Task ChatPageNavigationReadiness_DoesNotCompleteUntilHandshakeSucceeded()
+    {
+        SetupGateway("gw-chat", "ws://localhost:18789", isLocal: true);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+
+        await _manager.ConnectAsync("gw-chat");
+
+        var readiness = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(
+            _manager,
+            TimeSpan.FromSeconds(5));
+
+        Assert.False(readiness.IsCompleted);
+
+        await InvokeHandshakeSucceededAsync(_manager);
+
+        Assert.True(await readiness);
+    }
+
     // ─── Helpers ───
 
     private void SetupGateway(string id, string url, bool isLocal = false)

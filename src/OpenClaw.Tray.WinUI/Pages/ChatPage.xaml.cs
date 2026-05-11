@@ -8,7 +8,9 @@ using OpenClawTray.Windows;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Storage.Streams;
 
@@ -19,8 +21,15 @@ public sealed partial class ChatPage : Page
     private HubWindow? _hub;
     private string _chatUrl = "";
     private bool _webViewInitialized;
+    private bool _navigationStarted;
+    private CancellationTokenSource? _navigationCts;
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navCompletedHandler;
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navStartingHandler;
+    private IGatewayConnectionManager? _connectionManager;
+    private static readonly HttpClient s_httpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(3)
+    };
 
     public ChatPage()
     {
@@ -30,6 +39,7 @@ public sealed partial class ChatPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        _navigationCts?.Cancel();
         if (WebView.CoreWebView2 != null)
         {
             if (_navCompletedHandler != null)
@@ -85,6 +95,11 @@ public sealed partial class ChatPage : Page
             _chatUrl = chatUrl;
 
             PlaceholderPanel.Visibility = Visibility.Collapsed;
+            ErrorPanel.Visibility = Visibility.Collapsed;
+            WebView.Visibility = Visibility.Collapsed;
+            WaitingPanel.Visibility = Visibility.Visible;
+            WaitingStatusText.Text = "The gateway is connected; the chat surface is still coming online.";
+            RetryChatButton.Visibility = Visibility.Collapsed;
             LoadingRing.IsActive = true;
             LoadingRing.Visibility = Visibility.Visible;
 
@@ -146,8 +161,10 @@ public sealed partial class ChatPage : Page
             };
             WebView.CoreWebView2.NavigationStarting += _navStartingHandler;
 
-            WebView.Visibility = Visibility.Visible;
-            WebView.CoreWebView2.Navigate(_chatUrl);
+            _connectionManager = _hub?.ConnectionManager;
+            _navigationCts?.Cancel();
+            _navigationCts = new CancellationTokenSource();
+            _ = NavigateWhenChatReadyAsync(_connectionManager, credential.GatewayUrl, _navigationCts.Token);
         }
         catch (Exception ex)
         {
@@ -158,6 +175,98 @@ public sealed partial class ChatPage : Page
             ErrorPanel.Visibility = Visibility.Visible;
             ErrorText.Text = $"WebView2 failed to initialize:\n{ex.Message}";
         }
+    }
+
+    private async Task NavigateWhenChatReadyAsync(
+        IGatewayConnectionManager? connectionManager,
+        string gatewayUrl,
+        CancellationToken cancellationToken)
+    {
+        if (_navigationStarted) return;
+
+        try
+        {
+            Logger.Info("[ChatPage] Waiting for operator handshake before chat navigation");
+            var ready = await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(connectionManager, TimeSpan.FromSeconds(30), cancellationToken);
+            if (!ready)
+            {
+                ShowChatReadinessFailure("Timed out waiting for the gateway operator handshake. Retry once the gateway is ready.");
+                Logger.Warn("[ChatPage] Timed out waiting for operator handshake before chat navigation");
+                return;
+            }
+
+            Logger.Info("[ChatPage] Operator handshake ready; probing chat HTTP surface");
+            ready = await ProbeChatSurfaceAsync(_chatUrl, TimeSpan.FromSeconds(30), cancellationToken);
+            if (!ready)
+            {
+                ShowChatReadinessFailure($"Timed out waiting for chat at {gatewayUrl}. Retry once the gateway is ready.");
+                Logger.Warn("[ChatPage] Timed out waiting for chat HTTP surface before navigation");
+                return;
+            }
+
+            if (cancellationToken.IsCancellationRequested || _navigationStarted) return;
+
+            _navigationStarted = true;
+            WaitingPanel.Visibility = Visibility.Collapsed;
+            RetryChatButton.Visibility = Visibility.Collapsed;
+            WebView.Visibility = Visibility.Visible;
+            Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
+            WebView.CoreWebView2.Navigate(_chatUrl);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowChatReadinessFailure($"Chat failed to start:\n{ex.Message}");
+            Logger.Warn($"[ChatPage] Chat readiness wait failed: {ex.Message}");
+        }
+    }
+
+    private static async Task<bool> ProbeChatSurfaceAsync(string chatUrl, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        var attempts = 0;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            attempts++;
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, chatUrl);
+                using var response = await s_httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(true);
+
+                if ((int)response.StatusCode is >= 200 and < 400)
+                    return true;
+
+                Logger.Warn($"[ChatPage] Chat readiness probe attempt {attempts} returned {(int)response.StatusCode}");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+            {
+                if (ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
+                    throw;
+                Logger.Warn($"[ChatPage] Chat readiness probe attempt {attempts} failed: {ex.Message}");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(true);
+        }
+
+        return false;
+    }
+
+    private void ShowChatReadinessFailure(string message)
+    {
+        LoadingRing.IsActive = false;
+        LoadingRing.Visibility = Visibility.Collapsed;
+        WebView.Visibility = Visibility.Collapsed;
+        PlaceholderPanel.Visibility = Visibility.Collapsed;
+        WaitingPanel.Visibility = Visibility.Visible;
+        WaitingStatusText.Text = message;
+        RetryChatButton.Visibility = Visibility.Visible;
+        ErrorPanel.Visibility = Visibility.Collapsed;
     }
 
     private async Task CaptureVisualTestChatAsync()
@@ -233,5 +342,21 @@ public sealed partial class ChatPage : Page
     {
         if (_webViewInitialized)
             WebView.CoreWebView2?.OpenDevToolsWindow();
+    }
+
+    private void OnRetryChat(object sender, RoutedEventArgs e)
+    {
+        if (!_webViewInitialized || string.IsNullOrEmpty(_chatUrl))
+            return;
+
+        _navigationStarted = false;
+        _navigationCts?.Cancel();
+        _navigationCts = new CancellationTokenSource();
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        WaitingPanel.Visibility = Visibility.Visible;
+        RetryChatButton.Visibility = Visibility.Collapsed;
+        LoadingRing.IsActive = true;
+        LoadingRing.Visibility = Visibility.Visible;
+        _ = NavigateWhenChatReadyAsync(_connectionManager, _hub?.GatewayRegistry?.GetById(_hub.GatewayRegistry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
     }
 }
