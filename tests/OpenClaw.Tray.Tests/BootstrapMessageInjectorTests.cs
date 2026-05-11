@@ -89,6 +89,21 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
     }
 
     [Fact]
+    public async Task InjectAsync_DoesNotFlipGate_WhenSendIsUnverified()
+    {
+        var settings = new SettingsManager(_isolatedDir);
+        BootstrapMessageInjector.ScriptExecutor executor = _ => Task.FromResult("\"sent-unverified\"");
+
+        var result = await BootstrapMessageInjector.InjectAsync(executor, settings, initialDelayMs: 0);
+
+        Assert.False(result);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
+
+        var reloaded = new SettingsManager(_isolatedDir);
+        Assert.False(reloaded.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
     public async Task InjectAsync_DoesNotFireTwice()
     {
         var settings = new SettingsManager(_isolatedDir);

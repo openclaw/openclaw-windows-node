@@ -45,17 +45,19 @@ public static class BootstrapMessageInjector
     /// <summary>
     /// Builds the JS payload that locates the chat input (traversing shadow DOMs
     /// so it works against the Lit-based gateway chat UI), injects the message,
-    /// and tries to send it via the visible Send button — falling back to an
-    /// Enter keypress. The message is encoded via JsonSerializer to prevent
-    /// JS template/string injection.
+    /// and tries to send it via the input's own form/composer controls. The
+    /// message is encoded via JsonSerializer to prevent JS template/string injection.
     /// </summary>
     public static string BuildInjectionScript(string message)
     {
         var safeMsg = JsonSerializer.Serialize(message);
         return $$"""
-        (function() {
+        (async function() {
             const msg = {{safeMsg}};
             const seen = new Set();
+            const attempts = [0, 1500];
+            const pollCount = 5;
+            const pollDelayMs = 200;
 
             function walk(root, visit) {
                 if (!root || seen.has(root)) return null;
@@ -81,6 +83,7 @@ public static class BootstrapMessageInjector
             }
 
             function findInput(root) {
+                seen.clear();
                 return walk(root, r => {
                     const inputs = r.querySelectorAll(
                         'textarea, input[type="text"], input:not([type]), [contenteditable="true"], [role="textbox"]');
@@ -88,19 +91,76 @@ public static class BootstrapMessageInjector
                 });
             }
 
-            function findButton(root) {
-                seen.clear();
-                return walk(root, r => {
-                    const buttons = r.querySelectorAll('button:not([disabled]), [role="button"]:not([aria-disabled="true"])');
-                    return Array.from(buttons).find(btn => {
-                        if (!isVisible(btn)) return false;
-                        const text = (btn.textContent || '').toLowerCase();
-                        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                        const title = (btn.getAttribute('title') || '').toLowerCase();
-                        return text.includes('send') || label.includes('send') || title.includes('send') ||
-                            text === '➤' || text === '↑' || btn.closest('form');
-                    }) || null;
-                });
+            function getRoot(el) {
+                return (el && el.getRootNode && el.getRootNode()) || document;
+            }
+
+            function findForm(input) {
+                if (!input) return null;
+                if (input.form) return input.form;
+                if (input.closest) {
+                    const direct = input.closest('form');
+                    if (direct) return direct;
+                }
+
+                const root = getRoot(input);
+                const host = root && root.host;
+                return host && host.closest ? host.closest('form') : null;
+            }
+
+            function isSendButton(btn) {
+                if (!btn || !isVisible(btn) || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
+                const text = (btn.textContent || '').trim().toLowerCase();
+                const label = (btn.getAttribute('aria-label') || '').trim().toLowerCase();
+                const title = (btn.getAttribute('title') || '').trim().toLowerCase();
+                const type = (btn.getAttribute('type') || '').trim().toLowerCase();
+
+                return type === 'submit' ||
+                    label === 'send' || label === 'send message' || label.includes('send message') ||
+                    title === 'send' || title === 'send message' || title.includes('send message') ||
+                    text === 'send' || text === '➤' || text === '↑';
+            }
+
+            function findComposerContainer(input) {
+                const selectors = [
+                    'form',
+                    '[role="form"]',
+                    '[data-composer]',
+                    '[data-testid*="composer" i]',
+                    '[class*="composer" i]',
+                    '[class*="chat-input" i]',
+                    '[class*="message-input" i]'
+                ];
+
+                for (const selector of selectors) {
+                    if (input.closest) {
+                        const container = input.closest(selector);
+                        if (container) return container;
+                    }
+                }
+
+                return input.parentElement || getRoot(input);
+            }
+
+            function findSendButton(input) {
+                const form = findForm(input);
+                if (form) {
+                    const formButton = Array.from(form.querySelectorAll('button:not([disabled]), [role="button"]:not([aria-disabled="true"])'))
+                        .find(isSendButton);
+                    if (formButton) return formButton;
+                }
+
+                const container = findComposerContainer(input);
+                const roots = [container, getRoot(input)].filter(Boolean);
+                for (const root of roots) {
+                    const buttons = root.querySelectorAll
+                        ? Array.from(root.querySelectorAll('button:not([disabled]), [role="button"]:not([aria-disabled="true"])'))
+                        : [];
+                    const button = buttons.find(isSendButton);
+                    if (button) return button;
+                }
+
+                return null;
             }
 
             function setNativeValue(el, value) {
@@ -115,39 +175,116 @@ public static class BootstrapMessageInjector
                 setter ? setter.call(el, value) : (el.value = value);
             }
 
+            function getInputValue(el) {
+                if (!el) return '';
+                if (el.isContentEditable) return el.textContent || '';
+                return el.value || el.textContent || '';
+            }
+
+            function normalize(value) {
+                return (value || '').replace(/\s+/g, ' ').trim();
+            }
+
+            function collectVisibleText(root) {
+                if (!root || seen.has(root)) return '';
+                seen.add(root);
+
+                let text = '';
+                if (root.nodeType === Node.TEXT_NODE) {
+                    const parent = root.parentElement;
+                    if (parent && isVisible(parent)) text += root.nodeValue || '';
+                }
+
+                const elements = root.querySelectorAll ? root.querySelectorAll('*') : [];
+                for (const el of elements) {
+                    if (!isVisible(el)) continue;
+                    if (el.matches && el.matches('textarea,input,[contenteditable="true"],[role="textbox"]')) continue;
+                    text += ' ' + (el.childNodes && Array.from(el.childNodes)
+                        .filter(n => n.nodeType === Node.TEXT_NODE)
+                        .map(n => n.nodeValue || '')
+                        .join(' ') || '');
+                    if (el.shadowRoot) text += ' ' + collectVisibleText(el.shadowRoot);
+                }
+
+                return text;
+            }
+
+            function messageAppearsInTranscript() {
+                seen.clear();
+                return normalize(collectVisibleText(document)).includes(normalize(msg));
+            }
+
+            function inputWasAccepted(input) {
+                const value = normalize(getInputValue(input));
+                return value.length === 0 || value !== normalize(msg);
+            }
+
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            async function confirmAccepted(input) {
+                for (let i = 0; i < pollCount; i++) {
+                    if (inputWasAccepted(input) || messageAppearsInTranscript()) {
+                        return true;
+                    }
+                    await sleep(pollDelayMs);
+                }
+
+                return false;
+            }
+
+            async function tryInjectOnce() {
+                seen.clear();
+                const input = findInput(document);
+                if (!input) {
+                    console.warn('[OpenClaw] Could not find chat input for bootstrap');
+                    return 'no-input';
+                }
+
+                input.focus();
+                setNativeValue(input, msg);
+                input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: msg }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                const form = findForm(input);
+                if (form?.requestSubmit) {
+                    form.requestSubmit();
+                    console.log('[OpenClaw] Bootstrap message submitted via composer form');
+                    return await confirmAccepted(input) ? 'sent' : 'sent-unverified';
+                }
+
+                const btn = findSendButton(input);
+                if (btn) {
+                    btn.click();
+                    console.log('[OpenClaw] Bootstrap message submitted via composer send button');
+                    return await confirmAccepted(input) ? 'sent' : 'sent-unverified';
+                }
+
+                input.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+                }));
+
+                if (await confirmAccepted(input)) {
+                    console.log('[OpenClaw] Bootstrap message submitted via Enter key');
+                    return 'sent';
+                }
+
+                console.warn('[OpenClaw] Bootstrap message not accepted by composer');
+                return 'no-send-button';
+            }
+
             const inputCount = document.querySelectorAll('input,textarea,button,[contenteditable="true"],[role="textbox"]').length;
             console.log('[OpenClaw] Bootstrap probe controls=' + inputCount);
-            seen.clear();
-            const input = findInput(document);
-            if (!input) {
-                console.warn('[OpenClaw] Could not find chat input for bootstrap');
-                return 'no-input';
+
+            let lastStatus = 'no-input';
+            for (const delay of attempts) {
+                if (delay > 0) await sleep(delay);
+                lastStatus = await tryInjectOnce();
+                if (lastStatus !== 'no-input') return lastStatus;
             }
 
-            input.focus();
-            setNativeValue(input, msg);
-            input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: msg }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-
-            const btn = findButton(document);
-            if (btn) {
-                btn.click();
-                console.log('[OpenClaw] Bootstrap message sent via button click');
-                return 'sent';
-            }
-
-            const form = input.closest && input.closest('form');
-            if (form?.requestSubmit) {
-                form.requestSubmit();
-                console.log('[OpenClaw] Bootstrap message sent via form submit');
-                return 'sent';
-            }
-
-            input.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-            }));
-            console.log('[OpenClaw] Bootstrap message sent via Enter key');
-            return 'sent';
+            return lastStatus;
         })();
         """;
     }
@@ -178,9 +315,9 @@ public static class BootstrapMessageInjector
     /// <summary>
     /// Attempts to inject the bootstrap kickoff via <paramref name="executor"/>
     /// (typically a delegate wrapping <c>CoreWebView2.ExecuteScriptAsync</c>).
-    /// Returns true if the script ran successfully; the gate flag is flipped on
-    /// any successful execution to prevent spam. Returns false if the gate is
-    /// already consumed, the executor is null, or the call threw.
+    /// Returns true only if the script confirmed that the message was accepted
+    /// by the chat UI. The gate flag is not flipped for unverified sends so the
+    /// next chat-tab visit can retry.
     /// </summary>
     public static async Task<bool> InjectAsync(
         ScriptExecutor? executor,
