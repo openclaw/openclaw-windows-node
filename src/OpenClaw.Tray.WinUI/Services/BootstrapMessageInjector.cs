@@ -233,12 +233,17 @@ public static class BootstrapMessageInjector
             var js = BuildInjectionScript(Message);
             var result = await executor(js).ConfigureAwait(true);
             var status = TryParseScriptResult(result);
-            if (string.Equals(status, "sent", StringComparison.Ordinal) ||
-                string.Equals(status, "rendered", StringComparison.Ordinal))
+            if (string.Equals(status, "sent", StringComparison.Ordinal))
             {
                 MarkInjected(settings);
-                Logger.Info("[BootstrapMessageInjector] Bootstrap message injection rendered");
+                Logger.Info("[BootstrapMessageInjector] Bootstrap message injection sent");
                 return true;
+            }
+
+            if (string.Equals(status, "rendered", StringComparison.Ordinal))
+            {
+                Logger.Warn("[BootstrapMessageInjector] Bootstrap message rendered in composer but was not confirmed sent; gate remains open");
+                return false;
             }
 
             Logger.Warn($"[BootstrapMessageInjector] Bootstrap injection did not send; status={status ?? result ?? "<null>"}");

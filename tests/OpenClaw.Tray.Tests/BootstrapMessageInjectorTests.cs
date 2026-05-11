@@ -89,15 +89,15 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
     }
 
     [Fact]
-    public async Task InjectAsync_FlipsGate_WhenMessageRendered()
+    public async Task InjectAsync_DoesNotFlipGate_WhenMessageRendered()
     {
         var settings = new SettingsManager(_isolatedDir);
         BootstrapMessageInjector.ScriptExecutor executor = _ => Task.FromResult("\"rendered\"");
 
         var result = await BootstrapMessageInjector.InjectAsync(executor, settings, initialDelayMs: 0);
 
-        Assert.True(result);
-        Assert.True(settings.HasInjectedFirstRunBootstrap);
+        Assert.False(result);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
     }
 
     [Theory]
