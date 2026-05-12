@@ -741,6 +741,7 @@ public static class ElementExtensions
     public static ComboBoxElement Set(this ComboBoxElement element, Action<ComboBox> setter) => element.AddSetter(setter);
     public static ImageElement Set(this ImageElement element, Action<Image> setter) => element.AddSetter(setter);
     public static BorderElement Set(this BorderElement element, Action<Border> setter) => element.AddSetter(setter);
+    public static ProgressRingElement Set(this ProgressRingElement element, Action<ProgressRing> setter) => element.AddSetter(setter);
     public static ScrollViewElement Set(this ScrollViewElement element, Action<ScrollViewer> setter) => element.AddSetter(setter);
     public static ExpanderElement Set(this ExpanderElement element, Action<Expander> setter) => element.AddSetter(setter);
     public static T Set<T>(this T element, Action<FrameworkElement> setter) where T : Element => element.AddSetter(setter);
