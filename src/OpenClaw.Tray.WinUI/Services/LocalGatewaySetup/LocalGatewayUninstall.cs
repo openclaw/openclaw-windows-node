@@ -537,6 +537,14 @@ public sealed class LocalGatewayUninstall
 
         // ------------------------------------------------------------------
         // Step 9 — Delete gateway logs (unless PreserveLogs=true)
+        //
+        // Round 2 (Scott #7): delete both candidate Logs/ locations recursively
+        // (idempotent — skip if absent). DiagnosticsJsonlService writes to
+        // %APPDATA%\OpenClawTray\Logs today, but the SettingsPage "View Logs"
+        // button points at %LOCALAPPDATA%\OpenClawTray\Logs — a pre-existing
+        // inconsistency. PreserveLogs=false must leave no logs behind in
+        // either location. The appdata-vs-localappdata ambiguity itself is
+        // tracked as a separate follow-up.
         // ------------------------------------------------------------------
         await RunStepAsync("Delete gateway logs", options, ct, () =>
         {
@@ -547,9 +555,30 @@ public sealed class LocalGatewayUninstall
                 return Task.CompletedTask;
             }
 
-            var deleted = DeleteMatchingFiles(_localDataPath, "*.log", "crash.log");
-            RecordStep("Delete gateway logs", UninstallStepStatus.Executed,
-                $"Deleted {deleted} file(s).");
+            var deletedDirs = 0;
+            foreach (var logsDir in new[]
+            {
+                Path.Combine(_localDataPath, "Logs"), // SettingsPage "View Logs" target
+                Path.Combine(_dataPath, "Logs")        // DiagnosticsJsonlService actual writer
+            })
+            {
+                if (Directory.Exists(logsDir))
+                {
+                    Directory.Delete(logsDir, recursive: true);
+                    deletedDirs++;
+                }
+            }
+
+            if (deletedDirs == 0)
+            {
+                RecordStep("Delete gateway logs", UninstallStepStatus.Skipped,
+                    "No log directories present.");
+            }
+            else
+            {
+                RecordStep("Delete gateway logs", UninstallStepStatus.Executed,
+                    $"Deleted {deletedDirs} log directory(ies).");
+            }
             return Task.CompletedTask;
         });
 

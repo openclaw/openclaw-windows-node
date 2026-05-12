@@ -122,7 +122,15 @@ public sealed class LocalGatewayUninstallTests
         public string SetupStatePath => Path.Combine(LocalDataDir, "setup-state.json");
         public string McpTokenPath => Path.Combine(DataDir, "mcp-token.txt");
         public string ExecPolicyPath => Path.Combine(LocalDataDir, "exec-policy.json");
-        public string LogPath => Path.Combine(LocalDataDir, "gateway.log");
+
+        // Round 2 (Scott #7): logs may live in either of two locations.
+        // LogsDir / LogPath are the SettingsPage "View Logs" target under
+        // %LOCALAPPDATA%; AppDataLogsDir / AppDataLogPath are where
+        // DiagnosticsJsonlService actually writes today under %APPDATA%.
+        public string LogsDir => Path.Combine(LocalDataDir, "Logs");
+        public string LogPath => Path.Combine(LogsDir, "diagnostics.jsonl");
+        public string AppDataLogsDir => Path.Combine(DataDir, "Logs");
+        public string AppDataLogPath => Path.Combine(AppDataLogsDir, "diagnostics.jsonl");
     }
 
     // -----------------------------------------------------------------------
@@ -179,6 +187,7 @@ public sealed class LocalGatewayUninstallTests
         File.WriteAllText(env.SetupStatePath, """{"Phase":"Complete"}""");
         File.WriteAllText(env.McpTokenPath, "mcp-secret");
         File.WriteAllText(env.ExecPolicyPath, "{}");
+        Directory.CreateDirectory(env.LogsDir);
         File.WriteAllText(env.LogPath, "log content");
 
         // Write legacy-format settings.json so SettingsManager.Load() populates LegacyToken
@@ -510,14 +519,17 @@ public sealed class LocalGatewayUninstallTests
     }
 
     // -----------------------------------------------------------------------
-    // Test 14: PreserveLogs=true (default) — log files NOT deleted
+    // Test 14: PreserveLogs=true (default) — Logs/ directories NOT deleted
     // -----------------------------------------------------------------------
 
     [WindowsFact]
     public async Task Logs_NotDeleted_WhenPreserveLogsTrue()
     {
         using var env = new UninstallTestEnv();
-        File.WriteAllText(env.LogPath, "gateway log");
+        Directory.CreateDirectory(env.LogsDir);
+        File.WriteAllText(env.LogPath, "diagnostics");
+        Directory.CreateDirectory(env.AppDataLogsDir);
+        File.WriteAllText(env.AppDataLogPath, "diagnostics");
 
         var engine = env.BuildEngine();
         var result = await engine.RunAsync(new LocalGatewayUninstallOptions
@@ -528,20 +540,24 @@ public sealed class LocalGatewayUninstallTests
         });
 
         Assert.True(File.Exists(env.LogPath));
+        Assert.True(File.Exists(env.AppDataLogPath));
         var step = result.Steps.FirstOrDefault(s => s.Name == "Delete gateway logs");
         Assert.NotNull(step);
         Assert.Equal(UninstallStepStatus.Skipped, step.Status);
     }
 
     // -----------------------------------------------------------------------
-    // Test 15: PreserveLogs=false — log files ARE deleted
+    // Test 15: PreserveLogs=false — both Logs/ directories ARE deleted
     // -----------------------------------------------------------------------
 
     [WindowsFact]
     public async Task Logs_Deleted_WhenPreserveLogsFalse()
     {
         using var env = new UninstallTestEnv();
-        File.WriteAllText(env.LogPath, "gateway log");
+        Directory.CreateDirectory(env.LogsDir);
+        File.WriteAllText(env.LogPath, "diagnostics");
+        Directory.CreateDirectory(env.AppDataLogsDir);
+        File.WriteAllText(env.AppDataLogPath, "diagnostics");
 
         var engine = env.BuildEngine();
         var result = await engine.RunAsync(new LocalGatewayUninstallOptions
@@ -551,10 +567,36 @@ public sealed class LocalGatewayUninstallTests
             PreserveLogs = false
         });
 
-        Assert.False(File.Exists(env.LogPath));
+        Assert.False(Directory.Exists(env.LogsDir));
+        Assert.False(Directory.Exists(env.AppDataLogsDir));
         var step = result.Steps.FirstOrDefault(s => s.Name == "Delete gateway logs");
         Assert.NotNull(step);
         Assert.Equal(UninstallStepStatus.Executed, step.Status);
+        Assert.Contains("2", step.Detail); // "Deleted 2 log directory(ies)."
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 15b: PreserveLogs=false, no Logs/ dirs present — step Skipped
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Logs_Step_Skipped_WhenNoLogsDirectoryExists()
+    {
+        using var env = new UninstallTestEnv();
+        // No Logs/ dirs created.
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true,
+            PreserveLogs = false
+        });
+
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Delete gateway logs");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
+        Assert.Contains("No log directories present", step.Detail);
     }
 
     // -----------------------------------------------------------------------
