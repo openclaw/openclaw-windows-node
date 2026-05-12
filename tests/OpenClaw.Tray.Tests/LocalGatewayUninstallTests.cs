@@ -104,7 +104,7 @@ public sealed class LocalGatewayUninstallTests
         // -----------------------------------------------------------------------
         public string DeviceKeyPath => Path.Combine(DataDir, "device-key-ed25519.json");
 
-        public void WriteDeviceKey(string? deviceToken)
+        public void WriteDeviceKey(string? deviceToken, string? nodeDeviceToken = null)
         {
             var data = new
             {
@@ -113,6 +113,7 @@ public sealed class LocalGatewayUninstallTests
                 DeviceId = "test-device-id",
                 Algorithm = "Ed25519",
                 DeviceToken = deviceToken,
+                NodeDeviceToken = nodeDeviceToken,
                 CreatedAt = 0L
             };
             File.WriteAllText(DeviceKeyPath,
@@ -318,10 +319,10 @@ public sealed class LocalGatewayUninstallTests
     // -----------------------------------------------------------------------
 
     [WindowsFact]
-    public async Task DeviceKey_TokenNulled_FilePreserved_OtherFieldsIntact()
+    public async Task DeviceKey_TokensNulled_FilePreserved_OtherFieldsIntact()
     {
         using var env = new UninstallTestEnv();
-        env.WriteDeviceKey("my-operator-token");
+        env.WriteDeviceKey("my-operator-token", "my-node-token");
         Assert.True(File.Exists(env.DeviceKeyPath));
 
         var engine = env.BuildEngine();
@@ -336,6 +337,7 @@ public sealed class LocalGatewayUninstallTests
 
         // DeviceToken is null
         Assert.False(DeviceIdentity.HasStoredDeviceToken(env.DataDir));
+        Assert.False(DeviceIdentity.HasStoredDeviceTokenForRole(env.DataDir, "node"));
 
         // DeviceId and Algorithm fields are preserved
         using var doc = JsonDocument.Parse(File.ReadAllText(env.DeviceKeyPath));
@@ -343,9 +345,11 @@ public sealed class LocalGatewayUninstallTests
         Assert.Equal("test-device-id", idEl.GetString());
         Assert.True(doc.RootElement.TryGetProperty("Algorithm", out var algEl));
         Assert.Equal("Ed25519", algEl.GetString());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("DeviceToken").ValueKind);
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("NodeDeviceToken").ValueKind);
 
         // Step records Executed
-        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device token");
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device tokens");
         Assert.NotNull(step);
         Assert.Equal(UninstallStepStatus.Executed, step.Status);
     }
@@ -368,7 +372,7 @@ public sealed class LocalGatewayUninstallTests
             ConfirmDestructive = true
         });
 
-        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device token");
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device tokens");
         Assert.NotNull(step);
         Assert.Equal(UninstallStepStatus.Skipped, step.Status);
     }
@@ -390,7 +394,7 @@ public sealed class LocalGatewayUninstallTests
             ConfirmDestructive = true
         });
 
-        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device token");
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device tokens");
         Assert.NotNull(step);
         Assert.Equal(UninstallStepStatus.Skipped, step.Status);
     }
@@ -506,7 +510,7 @@ public sealed class LocalGatewayUninstallTests
     public async Task Postconditions_DeviceTokenCleared_AfterDestructiveRun()
     {
         using var env = new UninstallTestEnv();
-        env.WriteDeviceKey("my-operator-token");
+        env.WriteDeviceKey("my-operator-token", "my-node-token");
 
         var engine = env.BuildEngine();
         var result = await engine.RunAsync(new LocalGatewayUninstallOptions
@@ -633,7 +637,7 @@ public sealed class LocalGatewayUninstallTests
         using var env = new UninstallTestEnv();
         // Write legacy-format settings.json so SettingsManager.Load() populates LegacyToken/LegacyBootstrapToken
         File.WriteAllText(Path.Combine(env.DataDir, "settings.json"),
-            """{"Token":"tok","BootstrapToken":"btok","GatewayUrl":"ws://custom:9999","EnableMcpServer":true}""");
+            """{"Token":"tok","BootstrapToken":"btok","GatewayUrl":"ws://custom:9999","EnableNodeMode":true,"EnableMcpServer":true}""");
         env.Settings.Load();
 
         var engine = env.BuildEngine();
@@ -649,6 +653,7 @@ public sealed class LocalGatewayUninstallTests
         Assert.True(string.IsNullOrEmpty(reloaded.LegacyToken));
         Assert.True(string.IsNullOrEmpty(reloaded.LegacyBootstrapToken));
         Assert.Equal("ws://localhost:18789", reloaded.GatewayUrl);
+        Assert.False(reloaded.EnableNodeMode);
         // EnableMcpServer must be preserved
         Assert.True(reloaded.EnableMcpServer);
     }
@@ -708,6 +713,17 @@ public sealed class LocalGatewayUninstallTests
         env.WriteDeviceKey("some-token");
         Assert.True(DeviceIdentity.TryClearDeviceToken(env.DataDir));
         Assert.False(DeviceIdentity.TryClearDeviceToken(env.DataDir)); // second call = no-op
+    }
+
+    [WindowsFact]
+    public void TryClearDeviceTokenForRole_Node_ReturnsTrue_AndNullsNodeTokenOnly()
+    {
+        using var env = new UninstallTestEnv();
+        env.WriteDeviceKey("operator-token", "node-token");
+
+        Assert.True(DeviceIdentity.TryClearDeviceTokenForRole(env.DataDir, "node"));
+        Assert.Equal("operator-token", DeviceIdentity.TryReadStoredDeviceToken(env.DataDir));
+        Assert.False(DeviceIdentity.HasStoredDeviceTokenForRole(env.DataDir, "node"));
     }
 
     // -----------------------------------------------------------------------
@@ -1086,6 +1102,35 @@ public sealed class LocalGatewayUninstallTests
         Assert.Empty(reloaded.GetAll());
         Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
         Assert.False(Directory.Exists(Path.Combine(env.DataDir, "gateways", "legacy")));
+    }
+
+    [WindowsFact]
+    public async Task Run_SshTunnelLocalhostRemote_Preserved()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([
+            new GatewayRecord
+            {
+                Id = "remote-tunnel",
+                Url = "ws://localhost:18789",
+                IsLocal = false,
+                SshTunnel = new SshTunnelConfig("user", "remote.example.com", 18789, 18789)
+            },
+        ]);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var reloaded = new GatewayRegistry(env.DataDir);
+        reloaded.Load();
+        Assert.Contains("remote-tunnel", reloaded.GetAll().Select(r => r.Id));
+        Assert.True(Directory.Exists(Path.Combine(env.DataDir, "gateways", "remote-tunnel")));
+        Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
+        Assert.True(result.Postconditions.LocalGatewayIdentityDirsAbsent);
     }
 
     // -----------------------------------------------------------------------

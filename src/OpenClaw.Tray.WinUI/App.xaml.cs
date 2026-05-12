@@ -381,7 +381,7 @@ public partial class App : Application
         Console.WriteLine($"Steps:    {result.Steps.Count} ({result.SkippedSteps.Count} skipped)");
         Console.WriteLine($"Errors:   {result.Errors.Count}");
         foreach (var e in result.Errors)
-            Console.Error.WriteLine($"  ERROR: {e}");
+            Console.Error.WriteLine($"  ERROR: {CliRedact(e)}");
         Console.WriteLine("Postconditions:");
         Console.WriteLine($"  WslDistroAbsent:    {result.Postconditions.WslDistroAbsent}");
         Console.WriteLine($"  AutostartCleared:   {result.Postconditions.AutostartCleared}");
@@ -390,6 +390,8 @@ public partial class App : Application
         Console.WriteLine($"  McpTokenPreserved:  {result.Postconditions.McpTokenPreserved}");
         Console.WriteLine($"  KeepalivesAbsent:   {result.Postconditions.KeepalivesAbsent}");
         Console.WriteLine($"  VhdDirAbsent:       {result.Postconditions.VhdDirAbsent}");
+        Console.WriteLine($"  LocalGatewayRecordsAbsent:      {result.Postconditions.LocalGatewayRecordsAbsent}");
+        Console.WriteLine($"  LocalGatewayIdentityDirsAbsent: {result.Postconditions.LocalGatewayIdentityDirsAbsent}");
 
         // JSON output — redaction applied to step details and error strings
         if (jsonOutputPath != null)
@@ -420,7 +422,9 @@ public partial class App : Application
                         device_token_cleared  = result.Postconditions.DeviceTokenCleared,
                         mcp_token_preserved   = result.Postconditions.McpTokenPreserved,
                         keepalives_absent     = result.Postconditions.KeepalivesAbsent,
-                        vhd_dir_absent        = result.Postconditions.VhdDirAbsent
+                        vhd_dir_absent        = result.Postconditions.VhdDirAbsent,
+                        local_gateway_records_absent = result.Postconditions.LocalGatewayRecordsAbsent,
+                        local_gateway_identity_dirs_absent = result.Postconditions.LocalGatewayIdentityDirsAbsent
                     }
                 };
 

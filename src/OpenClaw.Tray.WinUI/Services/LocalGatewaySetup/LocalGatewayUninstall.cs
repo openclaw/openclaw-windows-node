@@ -38,7 +38,7 @@ public sealed record LocalGatewayUninstallPostconditions
     /// <summary>setup-state.json does not exist.</summary>
     public bool SetupStateAbsent { get; init; }
 
-    /// <summary>device-key-ed25519.json absent OR DeviceToken is null/empty.</summary>
+    /// <summary>device-key-ed25519.json absent OR operator/node device tokens are null/empty.</summary>
     public bool DeviceTokenCleared { get; init; }
 
     /// <summary>mcp-token.txt exists if it existed before (never touched).</summary>
@@ -439,7 +439,7 @@ public sealed class LocalGatewayUninstall
         // ------------------------------------------------------------------
         {
             var localRecords = _registry.GetAll()
-                .Where(r => r.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url))
+                .Where(IsLocalGatewayRecordForUninstall)
                 .ToList();
             _localGatewayIdsSnapshot = localRecords.Select(r => r.Id).ToList();
 
@@ -487,16 +487,18 @@ public sealed class LocalGatewayUninstall
         }
 
         // ------------------------------------------------------------------
-        // Step 7 — Null device token (preserve file, per v3 §C)
+        // Step 7 — Null device tokens (preserve file, per v3 §C)
         // ------------------------------------------------------------------
-        await RunStepAsync("Null device token", options, ct, () =>
+        await RunStepAsync("Null device tokens", options, ct, () =>
         {
-            var cleared = DeviceIdentity.TryClearDeviceToken(_dataPath, _logger);
-            RecordStep("Null device token",
+            var operatorCleared = DeviceIdentity.TryClearDeviceTokenForRole(_dataPath, "operator", _logger);
+            var nodeCleared = DeviceIdentity.TryClearDeviceTokenForRole(_dataPath, "node", _logger);
+            var cleared = operatorCleared || nodeCleared;
+            RecordStep("Null device tokens",
                 cleared ? UninstallStepStatus.Executed : UninstallStepStatus.Skipped,
                 cleared
-                    ? "DeviceToken set to null; keypair file preserved. Value: ***REDACTED***"
-                    : "File absent or DeviceToken already null.");
+                    ? "DeviceToken/NodeDeviceToken set to null where present; keypair file preserved. Values: ***REDACTED***"
+                    : "File absent or device tokens already null.");
             return Task.CompletedTask;
         });
 
@@ -619,13 +621,14 @@ public sealed class LocalGatewayUninstall
         await RunStepAsync("Reset onboarding settings", options, ct, () =>
         {
             _settings.GatewayUrl = "ws://localhost:18789";
+            _settings.EnableNodeMode = false;
             // EnableMcpServer: NOT touched.
             // LegacyToken/LegacyBootstrapToken: cleared implicitly — Save() no longer
             // writes Token/BootstrapToken fields (GatewayRegistry is the source of truth).
             _settings.Save();
             RecordStep("Reset onboarding settings", UninstallStepStatus.Executed,
                 "LegacyToken/LegacyBootstrapToken cleared (not written by Save()), GatewayUrl reset. " +
-                "EnableMcpServer preserved.");
+                "EnableNodeMode disabled; EnableMcpServer preserved.");
             return Task.CompletedTask;
         });
 
@@ -747,7 +750,8 @@ public sealed class LocalGatewayUninstall
         }
 
         bool setupStateAbsent = !File.Exists(Path.Combine(_localDataPath, "setup-state.json"));
-        bool deviceTokenCleared = !DeviceIdentity.HasStoredDeviceToken(_dataPath, _logger);
+        bool deviceTokenCleared = !DeviceIdentity.HasStoredDeviceToken(_dataPath, _logger)
+            && !DeviceIdentity.HasStoredDeviceTokenForRole(_dataPath, "node", _logger);
 
         // mcp-token.txt is never touched, so it's always "preserved" from our POV.
         bool mcpTokenPreserved = true;
@@ -771,8 +775,7 @@ public sealed class LocalGatewayUninstall
         {
             var freshRegistry = new GatewayRegistry(_dataPath);
             freshRegistry.Load();
-            localRecordsAbsent = !freshRegistry.GetAll().Any(r =>
-                r.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url));
+            localRecordsAbsent = !freshRegistry.GetAll().Any(IsLocalGatewayRecordForUninstall);
         }
         catch { localRecordsAbsent = false; }
 
@@ -803,6 +806,18 @@ public sealed class LocalGatewayUninstall
         && p.LocalGatewayIdentityDirsAbsent
         && p.KeepalivesAbsent
         && p.VhdDirAbsent;
+
+    private static bool IsLocalGatewayRecordForUninstall(GatewayRecord record)
+    {
+        if (record.IsLocal)
+            return true;
+
+        // Legacy local records may predate the IsLocal marker. Do not apply the
+        // URL fallback to records with explicit SSH tunnel metadata: those can
+        // legitimately use localhost as a forwarded remote endpoint.
+        return record.SshTunnel is null
+            && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
+    }
 
     private void AppendPostconditionErrors(LocalGatewayUninstallPostconditions p)
     {
