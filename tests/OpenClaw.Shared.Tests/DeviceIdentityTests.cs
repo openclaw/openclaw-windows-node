@@ -355,6 +355,91 @@ public class DeviceIdentityIntegrationTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // -----------------------------------------------------------------------
+    // Bot B1 — atomic device-key writes
+    //
+    // The structural contract is: every code path that writes the key file
+    // does so via temp+rename, leaves no orphan .tmp files behind on success,
+    // and preserves all non-token fields when TryClearDeviceToken runs.
+    // True crash-mid-write atomicity cannot be unit-tested without a process-
+    // kill harness; these tests pin the observable shape of the helper.
+    // -----------------------------------------------------------------------
+
+    [IntegrationFact]
+    public void TryClearDeviceToken_LeavesNoTempFileBehind()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var id = new DeviceIdentity(dir);
+            id.Initialize();
+            id.StoreDeviceToken("operator-token");
+
+            var cleared = DeviceIdentity.TryClearDeviceToken(dir);
+            Assert.True(cleared);
+
+            // No sibling .device-key-ed25519.json.<guid>.tmp files left behind.
+            var leftovers = Directory.GetFiles(dir, ".device-key-ed25519.json.*.tmp");
+            Assert.Empty(leftovers);
+
+            // Final file is still valid JSON.
+            var keyPath = Path.Combine(dir, "device-key-ed25519.json");
+            Assert.True(File.Exists(keyPath));
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(keyPath));
+            Assert.Equal(System.Text.Json.JsonValueKind.Object, doc.RootElement.ValueKind);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [IntegrationFact]
+    public void TryClearDeviceToken_PreservesNonTokenFields_AfterAtomicWrite()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var id1 = new DeviceIdentity(dir);
+            id1.Initialize();
+            var deviceId = id1.DeviceId;
+            var pubKey = id1.PublicKeyBase64Url;
+            id1.StoreDeviceTokenWithScopes("operator-token", ["operator.read"]);
+            id1.StoreDeviceTokenForRole("node", "node-token", ["node.connect"]);
+
+            // Clear operator token only.
+            Assert.True(DeviceIdentity.TryClearDeviceToken(dir));
+
+            // Identity, public key, and node token survive.
+            var id2 = new DeviceIdentity(dir);
+            id2.Initialize();
+            Assert.Equal(deviceId, id2.DeviceId);
+            Assert.Equal(pubKey, id2.PublicKeyBase64Url);
+            Assert.Null(id2.DeviceToken);
+            Assert.Null(id2.DeviceTokenScopes);
+            Assert.Equal("node-token", id2.NodeDeviceToken);
+            Assert.Equal(["node.connect"], id2.NodeDeviceTokenScopes);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [IntegrationFact]
+    public void StoreDeviceToken_LeavesNoTempFileBehind()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var id = new DeviceIdentity(dir);
+            id.Initialize();
+            id.StoreDeviceToken("operator-token-1");
+            id.StoreDeviceToken("operator-token-2"); // overwrite path
+
+            var leftovers = Directory.GetFiles(dir, ".device-key-ed25519.json.*.tmp");
+            Assert.Empty(leftovers);
+
+            // Final state is the second token.
+            Assert.Equal("operator-token-2", DeviceIdentity.TryReadStoredDeviceToken(dir));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
 
 /// <summary>
