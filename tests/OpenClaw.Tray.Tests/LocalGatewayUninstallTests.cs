@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
+using OpenClawTray.Services.Connection;
 using OpenClawTray.Services.LocalGatewaySetup;
 
 namespace OpenClaw.Tray.Tests;
@@ -49,12 +51,42 @@ public sealed class LocalGatewayUninstallTests
         /// <summary>
         /// Builds an uninstall engine wired to the isolated dirs.
         /// </summary>
-        public LocalGatewayUninstall BuildEngine(IWslCommandRunner? wsl = null)
+        public LocalGatewayUninstall BuildEngine(
+            IWslCommandRunner? wsl = null,
+            GatewayRegistry? registry = null)
             => LocalGatewayUninstall.Build(
                 Settings,
                 wsl: wsl ?? new FakeWslCommandRunner(),
                 identityDataPath: DataDir,
-                localDataPath: LocalDataDir);
+                localDataPath: LocalDataDir,
+                registry: registry);
+
+        /// <summary>
+        /// Creates a GatewayRegistry rooted at DataDir, adds the supplied records,
+        /// optionally sets active, persists to gateways.json, and creates per-record
+        /// identity directories on disk. Returns the (loaded) registry.
+        /// </summary>
+        public GatewayRegistry SeedRegistry(
+            IEnumerable<GatewayRecord> records,
+            string? activeId = null,
+            bool createIdentityDirs = true)
+        {
+            var registry = new GatewayRegistry(DataDir);
+            foreach (var r in records)
+            {
+                registry.AddOrUpdate(r);
+                if (createIdentityDirs)
+                {
+                    var dir = registry.GetIdentityDirectory(r.Id);
+                    Directory.CreateDirectory(dir);
+                    File.WriteAllText(Path.Combine(dir, "device-key-ed25519.json"), "{}");
+                }
+            }
+            if (activeId != null)
+                registry.SetActive(activeId);
+            registry.Save();
+            return registry;
+        }
 
         public void Dispose()
         {
@@ -890,5 +922,402 @@ public sealed class LocalGatewayUninstallTests
             string name,
             System.Threading.CancellationToken cancellationToken = default)
             => Task.FromResult(new WslCommandResult(0, "", ""));
+    }
+
+    // =======================================================================
+    // PR #310 Blocker #2 / #3 — GatewayRegistry cleanup + postcondition-gated Success
+    // =======================================================================
+
+    private static GatewayRecord LocalRecord(string id, string url = "ws://localhost:18789", bool isLocal = true)
+        => new() { Id = id, Url = url, IsLocal = isLocal };
+
+    private static GatewayRecord RemoteRecord(string id, string url = "wss://gateway.example.com")
+        => new() { Id = id, Url = url, IsLocal = false };
+
+    // -----------------------------------------------------------------------
+    // Run_LocalGatewayRecordsCleared_PostconditionTrue
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_LocalGatewayRecordsCleared_PostconditionTrue()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([
+            LocalRecord("local-1"),
+            LocalRecord("local-2", url: "ws://127.0.0.1:18789"),
+        ]);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
+        Assert.True(result.Postconditions.LocalGatewayIdentityDirsAbsent);
+        Assert.True(result.Success, "expected Success=true; errors=" + string.Join(" | ", result.Errors));
+        Assert.False(Directory.Exists(Path.Combine(env.DataDir, "gateways", "local-1")));
+        Assert.False(Directory.Exists(Path.Combine(env.DataDir, "gateways", "local-2")));
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_OnlyLocalRecordsRemoved_RemoteGatewaysPreserved
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_OnlyLocalRecordsRemoved_RemoteGatewaysPreserved()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([
+            LocalRecord("local-1"),
+            RemoteRecord("remote-1"),
+        ]);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        // Reload from disk to assert persistence.
+        var reloaded = new GatewayRegistry(env.DataDir);
+        reloaded.Load();
+        var ids = reloaded.GetAll().Select(r => r.Id).ToList();
+        Assert.DoesNotContain("local-1", ids);
+        Assert.Contains("remote-1", ids);
+        Assert.True(Directory.Exists(Path.Combine(env.DataDir, "gateways", "remote-1")));
+        Assert.False(Directory.Exists(Path.Combine(env.DataDir, "gateways", "local-1")));
+        Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_LocalAndRemoteWithSameUrl_OnlyIsLocalRemoved
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_LocalAndRemoteWithSameUrl_OnlyIsLocalRemoved()
+    {
+        using var env = new UninstallTestEnv();
+        const string sharedUrl = "wss://gateway.example.com"; // non-local — classifier won't match
+        var registry = env.SeedRegistry([
+            new GatewayRecord { Id = "marked-local", Url = sharedUrl, IsLocal = true },
+            new GatewayRecord { Id = "remote", Url = sharedUrl, IsLocal = false },
+        ]);
+
+        var engine = env.BuildEngine(registry: registry);
+        await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var reloaded = new GatewayRegistry(env.DataDir);
+        reloaded.Load();
+        var ids = reloaded.GetAll().Select(r => r.Id).ToList();
+        Assert.DoesNotContain("marked-local", ids);
+        Assert.Contains("remote", ids);
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_LegacyRecordWithoutIsLocal_RemovedByUrlClassifier
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_LegacyRecordWithoutIsLocal_RemovedByUrlClassifier()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([
+            new GatewayRecord { Id = "legacy", Url = "ws://localhost:18789", IsLocal = false },
+        ]);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var reloaded = new GatewayRegistry(env.DataDir);
+        reloaded.Load();
+        Assert.Empty(reloaded.GetAll());
+        Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
+        Assert.False(Directory.Exists(Path.Combine(env.DataDir, "gateways", "legacy")));
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_RegistryRecordsRemain_ReturnsSuccessFalse
+    // Simulate persistence failure by giving the engine an empty in-memory
+    // registry while gateways.json on disk still contains a local record.
+    // The fresh-disk-reload postcondition catches this.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_RegistryRecordsRemain_ReturnsSuccessFalse()
+    {
+        using var env = new UninstallTestEnv();
+        // In-memory registry is empty (engine sees no records to remove).
+        var emptyRegistry = new GatewayRegistry(env.DataDir);
+        // Disk has a stale local record.
+        File.WriteAllText(Path.Combine(env.DataDir, "gateways.json"),
+            """{"gateways":[{"id":"stale","url":"ws://localhost:18789","isLocal":true}],"activeId":null}""");
+
+        var engine = env.BuildEngine(registry: emptyRegistry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.False(result.Postconditions.LocalGatewayRecordsAbsent);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.Contains("local gateway records still in registry", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_IdentityDirPersists_ReturnsSuccessFalse
+    // Hold an open file handle inside the identity dir to make
+    // Directory.Delete(recursive: true) throw on Windows.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_IdentityDirPersists_ReturnsSuccessFalse()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([LocalRecord("stuck")]);
+        var stuckFile = Path.Combine(env.DataDir, "gateways", "stuck", "device-key-ed25519.json");
+        Assert.True(File.Exists(stuckFile));
+
+        using var holdOpen = File.Open(stuckFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        // Identity dir wasn't fully removed; the snapshot-based postcondition catches it.
+        Assert.True(Directory.Exists(Path.Combine(env.DataDir, "gateways", "stuck")));
+        Assert.False(result.Postconditions.LocalGatewayIdentityDirsAbsent);
+        Assert.False(result.Success);
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_PostconditionFailed_ErrorListed
+    // Force VHD dir to persist (hold a file handle) → VhdDirAbsent=false →
+    // matching postcondition error appears in Errors.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_PostconditionFailed_ErrorListed()
+    {
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+        var blocker = Path.Combine(vhdDir, "ext4.vhdx");
+        File.WriteAllText(blocker, "");
+        using var holdOpen = File.Open(blocker, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.False(result.Postconditions.VhdDirAbsent);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.StartsWith("Postcondition failed:", StringComparison.OrdinalIgnoreCase)
+            && e.Contains("VHD", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_StepErrorAndPostconditionFailure_BothInErrors
+    // Identity-dir delete failure produces a step error AND a postcondition
+    // error; both must appear in the Errors list.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_StepErrorAndPostconditionFailure_BothInErrors()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([LocalRecord("stuck")]);
+        var stuckFile = Path.Combine(env.DataDir, "gateways", "stuck", "device-key-ed25519.json");
+        using var holdOpen = File.Open(stuckFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        // Step error from Step 6a:
+        Assert.Contains(result.Errors, e =>
+            e.StartsWith("Remove local gateway records:", StringComparison.OrdinalIgnoreCase));
+        // Plus postcondition error from the residual identity dir:
+        Assert.Contains(result.Errors, e =>
+            e.StartsWith("Postcondition failed:", StringComparison.OrdinalIgnoreCase)
+            && e.Contains("identity directories", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_ActiveGatewayCleared_WhenLocalRemoved
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_ActiveGatewayCleared_WhenLocalRemoved()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry(
+            [LocalRecord("local-active")],
+            activeId: "local-active");
+        Assert.Equal("local-active", registry.ActiveGatewayId);
+
+        var engine = env.BuildEngine(registry: registry);
+        await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.Null(registry.ActiveGatewayId);
+        var reloaded = new GatewayRegistry(env.DataDir);
+        reloaded.Load();
+        Assert.Null(reloaded.ActiveGatewayId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_ActiveRemoteGateway_StaysActive
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_ActiveRemoteGateway_StaysActive()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry(
+            [LocalRecord("local-1"), RemoteRecord("remote-active")],
+            activeId: "remote-active");
+
+        var engine = env.BuildEngine(registry: registry);
+        await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.Equal("remote-active", registry.ActiveGatewayId);
+        var reloaded = new GatewayRegistry(env.DataDir);
+        reloaded.Load();
+        Assert.Equal("remote-active", reloaded.ActiveGatewayId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_NoGatewaysJson_SucceedsWithPostconditionsTrue
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_NoGatewaysJson_SucceedsWithPostconditionsTrue()
+    {
+        using var env = new UninstallTestEnv();
+        Assert.False(File.Exists(Path.Combine(env.DataDir, "gateways.json")));
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
+        Assert.True(result.Postconditions.LocalGatewayIdentityDirsAbsent);
+        Assert.True(result.Success, "expected Success=true; errors=" + string.Join(" | ", result.Errors));
+        var step6a = result.Steps.FirstOrDefault(s => s.Name == "Remove local gateway records");
+        Assert.NotNull(step6a);
+        Assert.Equal(UninstallStepStatus.Skipped, step6a.Status);
+    }
+
+    // -----------------------------------------------------------------------
+    // Run_PostconditionUsesFreeDiskRegistry_NotInMemory
+    // The postcondition reload-from-disk uses a fresh GatewayRegistry,
+    // independent of whatever the engine mutated in-memory.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task Run_PostconditionUsesFreeDiskRegistry_NotInMemory()
+    {
+        using var env = new UninstallTestEnv();
+        // Engine sees an empty in-memory registry — Step 6a logs "no records found"
+        // and does NOT call Save(), so disk content is preserved.
+        var emptyRegistry = new GatewayRegistry(env.DataDir);
+        File.WriteAllText(Path.Combine(env.DataDir, "gateways.json"),
+            """{"gateways":[{"id":"on-disk","url":"ws://localhost:18789","isLocal":true}],"activeId":null}""");
+
+        var engine = env.BuildEngine(registry: emptyRegistry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        // Engine in-memory said "nothing to remove" — but the fresh-disk-reload
+        // postcondition correctly reports the on-disk record still exists.
+        Assert.False(result.Postconditions.LocalGatewayRecordsAbsent);
+        var step6a = result.Steps.FirstOrDefault(s => s.Name == "Remove local gateway records");
+        Assert.NotNull(step6a);
+        Assert.Equal(UninstallStepStatus.Skipped, step6a.Status);
+    }
+
+    // -----------------------------------------------------------------------
+    // DryRun_RegistryNotMutated
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task DryRun_RegistryNotMutated()
+    {
+        using var env = new UninstallTestEnv();
+        var registry = env.SeedRegistry([LocalRecord("dryrun-id")]);
+        var gatewaysJsonBefore = File.ReadAllText(Path.Combine(env.DataDir, "gateways.json"));
+        var identityDir = Path.Combine(env.DataDir, "gateways", "dryrun-id");
+        Assert.True(Directory.Exists(identityDir));
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions { DryRun = true });
+
+        // gateways.json untouched
+        Assert.Equal(gatewaysJsonBefore,
+            File.ReadAllText(Path.Combine(env.DataDir, "gateways.json")));
+        // Identity dir untouched
+        Assert.True(Directory.Exists(identityDir));
+        // Step recorded as DryRun with IDs in detail
+        var step6a = result.Steps.FirstOrDefault(s => s.Name == "Remove local gateway records");
+        Assert.NotNull(step6a);
+        Assert.Equal(UninstallStepStatus.DryRun, step6a.Status);
+        Assert.Contains("dryrun-id", step6a.Detail ?? "");
+    }
+
+    // -----------------------------------------------------------------------
+    // DryRun_SuccessTrue_PostconditionsSkipped
+    // DryRun bypasses postcondition gating; Success=true even when
+    // residual artifacts exist that would otherwise fail postconditions.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task DryRun_SuccessTrue_PostconditionsSkipped()
+    {
+        using var env = new UninstallTestEnv();
+        // Stage a VHD dir that DryRun won't clean → VhdDirAbsent would be false.
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions { DryRun = true });
+
+        Assert.True(result.Success);
+        Assert.Empty(result.Errors);
     }
 }

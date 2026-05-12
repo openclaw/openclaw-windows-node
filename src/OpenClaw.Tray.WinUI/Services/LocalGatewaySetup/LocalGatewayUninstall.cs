@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using OpenClaw.Shared;
+using OpenClawTray.Services.Connection;
 
 namespace OpenClawTray.Services.LocalGatewaySetup;
 
@@ -48,6 +49,12 @@ public sealed record LocalGatewayUninstallPostconditions
 
     /// <summary>VHD parent directory absent: %LOCALAPPDATA%\OpenClawTray\wsl\&lt;DistroName&gt;.</summary>
     public bool VhdDirAbsent { get; init; }
+
+    /// <summary>No gateway records matching local predicate remain in gateways.json.</summary>
+    public bool LocalGatewayRecordsAbsent { get; init; }
+
+    /// <summary>No per-gateway identity directories remain on disk for local gateway records.</summary>
+    public bool LocalGatewayIdentityDirsAbsent { get; init; }
 }
 
 /// <summary>
@@ -124,6 +131,14 @@ public sealed class LocalGatewayUninstall
     // %LOCALAPPDATA%\OpenClawTray — setup-state, logs, exec-policy
     private readonly string _localDataPath;
 
+    private readonly GatewayRegistry _registry;
+
+    /// <summary>
+    /// Local gateway IDs identified at step start — used by postcondition to verify
+    /// identity dirs are gone regardless of whether Remove() succeeded for each.
+    /// </summary>
+    private IReadOnlyList<string> _localGatewayIdsSnapshot = Array.Empty<string>();
+
     private readonly List<UninstallStep> _steps = new();
     private readonly List<string> _errors = new();
 
@@ -132,13 +147,15 @@ public sealed class LocalGatewayUninstall
         IWslCommandRunner wsl,
         IOpenClawLogger logger,
         string dataPath,
-        string localDataPath)
+        string localDataPath,
+        GatewayRegistry registry)
     {
         _settings = settings;
         _wsl = wsl;
         _logger = logger;
         _dataPath = dataPath;
         _localDataPath = localDataPath;
+        _registry = registry;
     }
 
     /// <summary>
@@ -149,7 +166,8 @@ public sealed class LocalGatewayUninstall
         IWslCommandRunner? wsl = null,
         IOpenClawLogger? logger = null,
         string? identityDataPath = null,
-        string? localDataPath = null)
+        string? localDataPath = null,
+        GatewayRegistry? registry = null)
     {
         var resolvedLogger = logger ?? NullLogger.Instance;
         var resolvedDataPath = identityDataPath ?? SettingsManager.SettingsDirectoryPath;
@@ -158,12 +176,20 @@ public sealed class LocalGatewayUninstall
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenClawTray");
 
+        var resolvedRegistry = registry;
+        if (resolvedRegistry == null)
+        {
+            resolvedRegistry = new GatewayRegistry(resolvedDataPath);
+            resolvedRegistry.Load();
+        }
+
         return new LocalGatewayUninstall(
             settings,
             wsl ?? new WslExeCommandRunner(resolvedLogger),
             resolvedLogger,
             resolvedDataPath,
-            resolvedLocalDataPath);
+            resolvedLocalDataPath,
+            resolvedRegistry);
     }
 
     /// <summary>
@@ -403,6 +429,60 @@ public sealed class LocalGatewayUninstall
         });
 
         // ------------------------------------------------------------------
+        // Step 6a — Remove local gateway records and identity directories
+        // Snapshot BEFORE any mutation so postconditions verify the full
+        // candidate set regardless of partial-remove failures.
+        // ------------------------------------------------------------------
+        {
+            var localRecords = _registry.GetAll()
+                .Where(r => r.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url))
+                .ToList();
+            _localGatewayIdsSnapshot = localRecords.Select(r => r.Id).ToList();
+
+            if (options.DryRun)
+            {
+                RecordStep("Remove local gateway records", UninstallStepStatus.DryRun,
+                    $"Would remove {localRecords.Count} local gateway record(s): " +
+                    $"[{string.Join(", ", localRecords.Select(r => r.Id))}]");
+            }
+            else
+            {
+                try
+                {
+                    if (localRecords.Count == 0)
+                    {
+                        RecordStep("Remove local gateway records", UninstallStepStatus.Skipped,
+                            "No local gateway records found.");
+                    }
+                    else
+                    {
+                        foreach (var record in localRecords)
+                        {
+                            _registry.Remove(record.Id);
+                            var identityDir = _registry.GetIdentityDirectory(record.Id);
+                            if (Directory.Exists(identityDir))
+                                Directory.Delete(identityDir, recursive: true);
+                        }
+                        _registry.Save();
+                        RecordStep("Remove local gateway records", UninstallStepStatus.Executed,
+                            $"Removed {localRecords.Count} record(s): " +
+                            $"[{string.Join(", ", localRecords.Select(r => r.Id))}]");
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"[Uninstall] Step 'Remove local gateway records' threw: {ex.Message}");
+                    RecordStep("Remove local gateway records", UninstallStepStatus.Failed, ex.Message);
+                    _errors.Add($"Remove local gateway records: {ex.Message}");
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Step 7 — Null device token (preserve file, per v3 §C)
         // ------------------------------------------------------------------
         await RunStepAsync("Null device token", options, ct, () =>
@@ -547,7 +627,14 @@ public sealed class LocalGatewayUninstall
             }
         }
 
-        return BuildResult(success: _errors.Count == 0, postconditions: postconditions);
+        if (!options.DryRun)
+        {
+            AppendPostconditionErrors(postconditions);
+        }
+        return BuildResult(
+            success: _errors.Count == 0
+                && (options.DryRun || AllRequiredPostconditionsMet(postconditions)),
+            postconditions: postconditions);
     }
 
     // -----------------------------------------------------------------------
@@ -645,6 +732,21 @@ public sealed class LocalGatewayUninstall
         bool vhdDirAbsent = !Directory.Exists(
             Path.Combine(_localDataPath, "wsl", options.DistroName));
 
+        // Local gateway records absent? Reload from disk — fresh instance, not mutated in-memory.
+        bool localRecordsAbsent;
+        try
+        {
+            var freshRegistry = new GatewayRegistry(_dataPath);
+            freshRegistry.Load();
+            localRecordsAbsent = !freshRegistry.GetAll().Any(r =>
+                r.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url));
+        }
+        catch { localRecordsAbsent = false; }
+
+        // Local gateway identity directories absent? Check snapshot against disk.
+        bool localIdentityDirsAbsent = _localGatewayIdsSnapshot.All(id =>
+            !Directory.Exists(Path.Combine(_dataPath, "gateways", id)));
+
         return new LocalGatewayUninstallPostconditions
         {
             WslDistroAbsent = wslAbsent,
@@ -653,8 +755,40 @@ public sealed class LocalGatewayUninstall
             DeviceTokenCleared = deviceTokenCleared,
             McpTokenPreserved = mcpTokenPreserved,
             KeepalivesAbsent = keepalivesAbsent,
-            VhdDirAbsent = vhdDirAbsent
+            VhdDirAbsent = vhdDirAbsent,
+            LocalGatewayRecordsAbsent = localRecordsAbsent,
+            LocalGatewayIdentityDirsAbsent = localIdentityDirsAbsent
         };
+    }
+
+    private static bool AllRequiredPostconditionsMet(LocalGatewayUninstallPostconditions p)
+        => p.WslDistroAbsent
+        && p.AutostartCleared
+        && p.SetupStateAbsent
+        && p.DeviceTokenCleared
+        && p.LocalGatewayRecordsAbsent
+        && p.LocalGatewayIdentityDirsAbsent
+        && p.KeepalivesAbsent
+        && p.VhdDirAbsent;
+
+    private void AppendPostconditionErrors(LocalGatewayUninstallPostconditions p)
+    {
+        if (!p.WslDistroAbsent)
+            _errors.Add("Postcondition failed: WSL distro still registered.");
+        if (!p.AutostartCleared)
+            _errors.Add("Postcondition failed: autostart still enabled.");
+        if (!p.SetupStateAbsent)
+            _errors.Add("Postcondition failed: setup-state.json still present.");
+        if (!p.DeviceTokenCleared)
+            _errors.Add("Postcondition failed: device token still present.");
+        if (!p.LocalGatewayRecordsAbsent)
+            _errors.Add("Postcondition failed: local gateway records still in registry.");
+        if (!p.LocalGatewayIdentityDirsAbsent)
+            _errors.Add("Postcondition failed: local gateway identity directories still on disk.");
+        if (!p.KeepalivesAbsent)
+            _errors.Add("Postcondition failed: keepalive process still running.");
+        if (!p.VhdDirAbsent)
+            _errors.Add("Postcondition failed: VHD directory still present.");
     }
 
     private LocalGatewayUninstallResult BuildResult(
