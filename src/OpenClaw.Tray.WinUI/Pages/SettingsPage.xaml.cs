@@ -229,7 +229,8 @@ public sealed partial class SettingsPage : Page
         });
         dialogContent.Children.Add(new TextBlock
         {
-            Text = "Preserved: Your MCP token and device key are NOT deleted.",
+            Text = "Preserved: Your MCP token and root device key are NOT deleted.\n" +
+                   "Removed: Local gateway identity credentials and registry records.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.7
         });
@@ -268,7 +269,7 @@ public sealed partial class SettingsPage : Page
             if (_hub?.Settings == null)
                 throw new InvalidOperationException("Settings not available.");
 
-            var engine = LocalGatewayUninstall.Build(_hub.Settings);
+            var engine = LocalGatewayUninstall.Build(_hub.Settings, registry: _hub.GatewayRegistry);
             var uninstallResult = await engine.RunAsync(
                 new LocalGatewayUninstallOptions
                 {
