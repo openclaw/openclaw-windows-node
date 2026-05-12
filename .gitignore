@@ -350,6 +350,7 @@ test_ws.py
 # Local visual test output
 visual-test-output/
 
+# Local squad agent state
 .squad/
 
 # MSIX and packaging test output

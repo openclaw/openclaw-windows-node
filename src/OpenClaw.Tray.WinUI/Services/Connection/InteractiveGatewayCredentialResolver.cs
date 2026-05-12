@@ -5,6 +5,9 @@ namespace OpenClawTray.Services.Connection;
 
 /// <summary>
 /// Resolves operator credentials for user-facing surfaces such as chat.
+/// Unlike the connection credential resolver which prefers DeviceToken (WebSocket auth),
+/// this resolver prefers SharedGatewayToken because HTTP surfaces (chat URL ?token=)
+/// authenticate via the shared token, not the per-device WebSocket token.
 /// </summary>
 public static class InteractiveGatewayCredentialResolver
 {
@@ -19,10 +22,24 @@ public static class InteractiveGatewayCredentialResolver
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsDirectory);
         ArgumentNullException.ThrowIfNull(identityReader);
 
-        var resolver = new CredentialResolver(identityReader);
         var active = registry?.GetActive();
         if (active != null && !string.IsNullOrWhiteSpace(active.Url))
         {
+            // For HTTP surfaces (chat), prefer SharedGatewayToken over DeviceToken.
+            // DeviceToken is for WebSocket auth (auth.deviceToken); SharedGatewayToken
+            // is for HTTP ?token= auth which the chat/dashboard endpoints expect.
+            if (!string.IsNullOrWhiteSpace(active.SharedGatewayToken))
+            {
+                credential = new InteractiveGatewayCredential(
+                    active.Url,
+                    active.SharedGatewayToken!,
+                    false,
+                    CredentialResolver.SourceSharedGatewayToken);
+                return true;
+            }
+
+            // Fall back to standard credential resolution (DeviceToken → Bootstrap)
+            var resolver = new CredentialResolver(identityReader);
             var resolved = resolver.ResolveOperator(active, registry!.GetIdentityDirectory(active.Id));
             if (resolved != null)
             {
@@ -55,7 +72,8 @@ public static class InteractiveGatewayCredentialResolver
             SharedGatewayToken = settings.LegacyToken,
             BootstrapToken = settings.LegacyBootstrapToken
         };
-        var legacyCredential = resolver.ResolveOperator(legacyRecord, settingsDirectory);
+        var resolver2 = new CredentialResolver(identityReader);
+        var legacyCredential = resolver2.ResolveOperator(legacyRecord, settingsDirectory);
         if (legacyCredential == null)
         {
             credential = null;

@@ -23,6 +23,7 @@ public interface IOperatorGatewayClient
     event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     event EventHandler<JsonElement>? CronListUpdated;
     event EventHandler<JsonElement>? CronStatusUpdated;
+    event EventHandler<JsonElement>? CronRunsUpdated;
     event EventHandler<JsonElement>? SkillsStatusUpdated;
     event EventHandler<JsonElement>? ConfigUpdated;
     event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -67,6 +68,9 @@ public interface IOperatorGatewayClient
     Task RequestCronStatusAsync();
     Task<bool> RunCronJobAsync(string jobId, bool force = true);
     Task<bool> RemoveCronJobAsync(string jobId);
+    Task<bool> AddCronJobAsync(object jobDefinition);
+    Task<bool> UpdateCronJobAsync(string id, object patch);
+    Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
     Task RequestSkillsStatusAsync(string? agentId = null);
     Task<bool> InstallSkillAsync(string skillId);
     Task<bool> UpdateSkillAsync(string skillId);

@@ -285,8 +285,13 @@ public sealed partial class HubWindow : WindowEx
         });
     }
 
+    // Cached cron data for when CronPage isn't active
+    private System.Text.Json.JsonElement? _lastCronList;
+    private System.Text.Json.JsonElement? _lastCronStatus;
+
     public void UpdateCronList(System.Text.Json.JsonElement data)
     {
+        _lastCronList = data.Clone();
         try
         {
             DispatcherQueue?.TryEnqueue(() =>
@@ -298,7 +303,38 @@ public sealed partial class HubWindow : WindowEx
         catch { }
     }
 
-    public void UpdateCronStatus(System.Text.Json.JsonElement data) => UpdateCronList(data);
+    public void UpdateCronStatus(System.Text.Json.JsonElement data)
+    {
+        _lastCronStatus = data.Clone();
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is CronPage cp) cp.UpdateFromGateway(data);
+            });
+        }
+        catch { }
+    }
+
+    public void UpdateCronRuns(System.Text.Json.JsonElement data)
+    {
+        try
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (IsClosed) return;
+                if (ContentFrame?.Content is CronPage cp) cp.UpdateCronRuns(data);
+            });
+        }
+        catch { }
+    }
+
+    public void SeedCronData(CronPage page)
+    {
+        if (_lastCronList.HasValue) page.UpdateFromGateway(_lastCronList.Value);
+        if (_lastCronStatus.HasValue) page.UpdateFromGateway(_lastCronStatus.Value);
+    }
 
     public void UpdateConfig(System.Text.Json.JsonElement config)
     {
@@ -598,7 +634,7 @@ public sealed partial class HubWindow : WindowEx
                 if (LastDevicePairList != null) nodes.UpdateDevicePairingRequests(LastDevicePairList);
                 if (LastPresence != null) nodes.UpdatePresence(LastPresence);
                 break;
-            case CronPage cron: cron.Initialize(this); break;
+            case CronPage cron: cron.Initialize(this); SeedCronData(cron); break;
             case SkillsPage skills: skills.Initialize(this); break;
             case ConfigPage config:
                 try

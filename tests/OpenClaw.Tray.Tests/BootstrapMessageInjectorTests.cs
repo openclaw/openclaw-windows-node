@@ -88,6 +88,25 @@ public sealed class BootstrapMessageInjectorTests : IDisposable
         Assert.Contains("BOOTSTRAP.md", capturedScript!);
     }
 
+    [Theory]
+    [InlineData("\"sent-unverified\"")]
+    [InlineData("\"no-input\"")]
+    [InlineData("\"no-send-button\"")]
+    [InlineData("\"unknown\"")]
+    public async Task InjectAsync_DoesNotFlipGate_WhenSendIsUnverified(string scriptResult)
+    {
+        var settings = new SettingsManager(_isolatedDir);
+        BootstrapMessageInjector.ScriptExecutor executor = _ => Task.FromResult(scriptResult);
+
+        var result = await BootstrapMessageInjector.InjectAsync(executor, settings, initialDelayMs: 0);
+
+        Assert.False(result);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
+
+        var reloaded = new SettingsManager(_isolatedDir);
+        Assert.False(reloaded.HasInjectedFirstRunBootstrap);
+    }
+
     [Fact]
     public async Task InjectAsync_DoesNotFireTwice()
     {

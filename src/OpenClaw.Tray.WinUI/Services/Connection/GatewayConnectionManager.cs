@@ -81,6 +81,17 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
+            await ConnectCoreAsync(gatewayId);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    /// <summary>Core connect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
+    private async Task ConnectCoreAsync(string? gatewayId = null)
+    {
             var id = gatewayId ?? _registry.ActiveGatewayId;
             if (id == null)
             {
@@ -238,11 +249,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _logger.Error($"[ConnMgr] Connect failed: {ex.Message}");
                 }
             }, ct);
-        }
-        finally
-        {
-            _transitionSemaphore.Release();
-        }
     }
 
     public async Task DisconnectAsync()
@@ -251,11 +257,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            var prev = _stateMachine.Current.OverallState;
-            DisposeActiveClient();
-            _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
-            _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
-            EmitStateChanged(prev);
+            DisconnectCore();
         }
         finally
         {
@@ -263,24 +265,58 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
+    private void DisconnectCore()
+    {
+        var prev = _stateMachine.Current.OverallState;
+        DisposeActiveClient();
+        _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
+        _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
+        EmitStateChanged(prev);
+    }
+
     public async Task ReconnectAsync()
     {
-        await DisconnectAsync();
-        await ConnectAsync();
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            DisconnectCore();
+            await ConnectCoreAsync();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
     }
 
     public async Task SwitchGatewayAsync(string gatewayId)
     {
-        await DisconnectAsync();
-        // Stop tunnel when switching gateways — the new one may not need it
-        if (_tunnelManager?.IsActive == true)
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync();
+        try
         {
-            try { await _tunnelManager.StopAsync(); }
-            catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error on gateway switch: {ex.Message}"); }
+            DisconnectCore();
+            // Stop tunnel when switching gateways — the new one may not need it.
+            // Use a bounded timeout to avoid blocking all connection transitions.
+            if (_tunnelManager?.IsActive == true)
+            {
+                try
+                {
+                    var tunnelStop = _tunnelManager.StopAsync();
+                    if (await Task.WhenAny(tunnelStop, Task.Delay(TimeSpan.FromSeconds(5))) != tunnelStop)
+                        _logger.Warn("[ConnMgr] Tunnel stop timed out during gateway switch");
+                }
+                catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error on gateway switch: {ex.Message}"); }
+            }
+            _gatewayNeedsV2Signature = false; // new gateway might support v3
+            _registry.SetActive(gatewayId);
+            await ConnectCoreAsync(gatewayId);
         }
-        _gatewayNeedsV2Signature = false; // new gateway might support v3
-        _registry.SetActive(gatewayId);
-        await ConnectAsync(gatewayId);
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
     }
 
     public async Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode)
@@ -723,10 +759,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private void DisposeActiveClient()
     {
-        // Disconnect node first
+        // Disconnect node first — run on threadpool to avoid sync context deadlocks
         if (_nodeConnector != null)
         {
-            try { _nodeConnector.DisconnectAsync().Wait(TimeSpan.FromSeconds(2)); }
+            try { Task.Run(() => _nodeConnector.DisconnectAsync()).Wait(TimeSpan.FromSeconds(2)); }
             catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
         }
 
@@ -760,17 +796,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _nodeConnector.StatusChanged -= OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged -= OnNodePairingStatusChanged;
         }
-        _stateMachine.TryTransition(ConnectionTrigger.Disposed);
-        DisposeActiveClient();
-        // Stop tunnel on app shutdown
-        if (_tunnelManager?.IsActive == true)
+        // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
+        // Use a short timeout — if something is stuck, proceed with disposal anyway.
+        try { _transitionSemaphore.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        try
         {
-            try { _tunnelManager.StopAsync().GetAwaiter().GetResult(); }
-            catch { /* shutting down — best effort */ }
+            _stateMachine.TryTransition(ConnectionTrigger.Disposed);
+            DisposeActiveClient();
+            // Stop tunnel on app shutdown — run on threadpool with timeout to avoid stalling exit
+            if (_tunnelManager?.IsActive == true)
+            {
+                try { Task.Run(() => _tunnelManager.StopAsync()).Wait(TimeSpan.FromSeconds(3)); }
+                catch { /* shutting down — best effort */ }
+            }
+            _operationCts?.Cancel();
+            _operationCts?.Dispose();
         }
-        _operationCts?.Cancel();
-        _operationCts?.Dispose();
-        _transitionSemaphore.Dispose();
+        finally
+        {
+            try { _transitionSemaphore.Release(); } catch { }
+            _transitionSemaphore.Dispose();
+        }
     }
 }
 
