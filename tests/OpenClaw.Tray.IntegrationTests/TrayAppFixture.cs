@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Tray.IntegrationTests;
@@ -173,10 +174,11 @@ public sealed class TrayAppFixture : IAsyncLifetime
 #endif
 
         var repoRoot = FindRepoRoot();
+        var targetFramework = GetTrayTargetFramework(repoRoot);
         var exe = Path.Combine(
             repoRoot,
             "src", "OpenClaw.Tray.WinUI", "bin", configuration,
-            "net10.0-windows10.0.19041.0", rid, "OpenClaw.Tray.WinUI.exe");
+            targetFramework, rid, "OpenClaw.Tray.WinUI.exe");
 
         if (!File.Exists(exe))
         {
@@ -185,6 +187,22 @@ public sealed class TrayAppFixture : IAsyncLifetime
                 $"`dotnet build src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj -c {configuration} -r {rid}`");
         }
         return exe;
+    }
+
+    private static string GetTrayTargetFramework(string repoRoot)
+    {
+        var projectPath = Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj");
+        var targetFramework = XDocument.Load(projectPath)
+            .Descendants("TargetFramework")
+            .Select(e => e.Value.Trim())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        if (targetFramework is null)
+        {
+            throw new InvalidDataException($"Could not locate TargetFramework in {projectPath}");
+        }
+
+        return targetFramework;
     }
 
     private static string FindRepoRoot()
