@@ -188,6 +188,7 @@ public sealed class GatewayRegistry
         {
             Id = id,
             Url = gatewayUrl,
+            IsLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl),
             SharedGatewayToken = string.IsNullOrWhiteSpace(bootstrapToken) ? token : null,
             BootstrapToken = !string.IsNullOrWhiteSpace(bootstrapToken) ? bootstrapToken : null,
             SshTunnel = useSshTunnel

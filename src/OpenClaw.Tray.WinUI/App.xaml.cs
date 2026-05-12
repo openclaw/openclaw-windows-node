@@ -1962,6 +1962,7 @@ public partial class App : Application
             {
                 Id = recordId,
                 Url = gatewayUrl,
+                IsLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl),
                 SshTunnel = _settings.UseSshTunnel
                     ? new SshTunnelConfig(
                         _settings.SshTunnelUser ?? "",
