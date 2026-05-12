@@ -37,6 +37,24 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     }
 
     [Fact]
+    public async Task BootstrapAsync_ConsumesGate_WhenCompletionArrivesSynchronouslyDuringSend()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-sync", SessionKey = "agent:main:main" },
+            FinalRunIdRaisedDuringSend = "run-sync"
+        };
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromMilliseconds(25));
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
     public async Task BootstrapAsync_DoesNotConsumeGate_WhenSendFails()
     {
         var settings = new SettingsManager(_settingsDir);
@@ -69,6 +87,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public string? LastMessage { get; private set; }
         public Exception? SendException { get; init; }
         public ChatSendResult Result { get; init; } = new();
+        public string? FinalRunIdRaisedDuringSend { get; init; }
         public bool IsConnectedToGateway { get; init; } = true;
         public string? OperatorDeviceId => "operator";
         public IReadOnlyList<string> GrantedOperatorScopes => Array.Empty<string>();
@@ -110,6 +129,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
             SendCount++;
             LastMessage = message;
             if (SendException != null) throw SendException;
+            if (!string.IsNullOrWhiteSpace(FinalRunIdRaisedDuringSend))
+                RaiseFinalAssistant(FinalRunIdRaisedDuringSend);
             return Task.FromResult(Result);
         }
 
