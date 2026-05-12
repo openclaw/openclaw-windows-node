@@ -83,6 +83,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             GetDetectedLocalUrl);
         var (url, setUrl) = UseState(initialUrl);
         var (token, setToken) = UseState("");
+        var (gotBootstrapToken, setGotBootstrapToken) = UseState(false);
         var (nodeMode, setNodeMode) = UseState(Props.Settings.EnableNodeMode);
         var (setupCode, setSetupCode) = UseState("");
 
@@ -100,8 +101,8 @@ public sealed class ConnectionPage : Component<OnboardingState>
         var (statusMsg, setStatusMsg) = UseState(Props.Mode == ConnectionMode.Local ? detectedMsg : LocalizationHelper.GetString("Onboarding_Connection_Ready"));
         var (testing, setTesting) = UseState(false);
         var (pairingDeviceId, setPairingDeviceId) = UseState(visualPairingDeviceId);
-        var (pairingCommand, setPairingCommand) = UseState(string.IsNullOrEmpty(visualPairingDeviceId) ? "" : App.BuildPairingApprovalCommand(visualPairingDeviceId));
-        var (copied, setCopied) = UseState(!string.IsNullOrEmpty(visualPairingDeviceId));
+        var (pairingCommand, setPairingCommand) = UseState(string.IsNullOrEmpty(visualPairingDeviceId) ? "" : App.BuildPairingApprovalCommand(null));
+        var (copied, setCopied) = UseState(false);
         var (copyFailed, setCopyFailed) = UseState(false);
 
         var urlReadOnly = ConnectionPageModeSelector.IsGatewayUrlReadOnly(mode); // Ssh mode pins the local-forward URL
@@ -136,7 +137,12 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         void OnSetupCodeChanged(string code)
         {
-            if (string.IsNullOrWhiteSpace(code)) return;
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                setSetupCode("");
+                setGotBootstrapToken(false);
+                return;
+            }
 
             var result = SetupCodeDecoder.Decode(code);
 
@@ -161,7 +167,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             if (result.Token != null)
             {
                 setToken(result.Token);
-                // Bootstrap token stored in GatewayRegistry via ApplySetupCodeAsync
+                setGotBootstrapToken(true);
             }
             setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
         }
@@ -176,6 +182,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         void OnTokenChanged(string v)
         {
+            setGotBootstrapToken(false);
             setToken(v);
             Props.ConnectionTested = false;
             setStatusMsg("");
@@ -293,11 +300,15 @@ public sealed class ConnectionPage : Component<OnboardingState>
                     var sshConfig = useSshTunnel
                         ? new OpenClawTray.Services.Connection.SshTunnelConfig(sshUser, sshHost, sshRemotePort, sshLocalPort)
                         : null;
+                    var isBootstrap = gotBootstrapToken
+                        && !string.IsNullOrWhiteSpace(setupCode)
+                        && SetupCodeDecoder.Decode(setupCode) is { Success: true };
                     var record = new OpenClawTray.Services.Connection.GatewayRecord
                     {
                         Id = recordId,
                         Url = normalizedUrl,
-                        SharedGatewayToken = !string.IsNullOrWhiteSpace(token) ? token : null,
+                        BootstrapToken = isBootstrap && !string.IsNullOrWhiteSpace(token) ? token : null,
+                        SharedGatewayToken = !isBootstrap && !string.IsNullOrWhiteSpace(token) ? token : null,
                         SshTunnel = sshConfig,
                     };
                     registry.AddOrUpdate(record);
@@ -314,7 +325,10 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 bool connected = false;
                 bool pairingRequired = false;
                 bool authFailed = false;
+                int consecutiveErrors = 0;
+                const int maxTransientErrors = 3;
 
+                OpenClawTray.Services.Connection.GatewayConnectionSnapshot? lastSnapshot = null;
                 for (int attempt = 0; attempt < 30; attempt++)
                 {
                     await Task.Delay(1000);
@@ -322,13 +336,22 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
                     var snapshot = app.ConnectionManager?.CurrentSnapshot;
                     if (snapshot == null) continue;
+                    lastSnapshot = snapshot;
                     if (snapshot.OverallState is OpenClawTray.Services.Connection.OverallConnectionState.Connected
                         or OpenClawTray.Services.Connection.OverallConnectionState.Ready)
                     { connected = true; break; }
                     if (snapshot.OverallState == OpenClawTray.Services.Connection.OverallConnectionState.PairingRequired)
                     { pairingRequired = true; break; }
                     if (snapshot.OverallState == OpenClawTray.Services.Connection.OverallConnectionState.Error)
-                    { authFailed = true; break; }
+                    {
+                        consecutiveErrors++;
+                        if (consecutiveErrors >= maxTransientErrors)
+                        { authFailed = true; break; }
+                    }
+                    else
+                    {
+                        consecutiveErrors = 0;
+                    }
                 }
 
                 if (connected)
@@ -347,11 +370,12 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
                     setStatusMsg($"⏳ {LocalizationHelper.GetString("Onboarding_Connection_StatusPairing")}");
                     setPairingDeviceId(deviceId);
-                    var cmd = App.BuildPairingApprovalCommand(deviceId);
+                    var requestId = lastSnapshot?.OperatorPairingRequestId ?? lastSnapshot?.NodePairingRequestId;
+                    var cmd = App.BuildPairingApprovalCommand(requestId);
                     setPairingCommand(cmd);
-                    var commandCopied = TryCopyPairingCommand(cmd);
+                    var commandCopied = !string.IsNullOrWhiteSpace(requestId) && TryCopyPairingCommand(cmd);
                     setCopied(commandCopied);
-                    setCopyFailed(!commandCopied);
+                    setCopyFailed(!commandCopied && !string.IsNullOrWhiteSpace(requestId));
                     app.ShowPairingPendingNotification(deviceId, cmd);
                 }
                 else if (authFailed)

@@ -25,6 +25,11 @@ public sealed record GatewayConnectionSnapshot
     public string? NodeError { get; init; }
     public OpenClaw.Shared.PairingStatus NodePairingStatus { get; init; }
     public string? NodeDeviceId { get; init; }
+    /// <summary>
+    /// The requestId returned by the gateway when node pairing is required.
+    /// Used by setup flows to approve the specific pairing request via CLI.
+    /// </summary>
+    public string? NodePairingRequestId { get; init; }
 
     // ─── Gateway ───
     public string? GatewayId { get; init; }

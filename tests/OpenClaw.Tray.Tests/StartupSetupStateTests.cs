@@ -28,6 +28,16 @@ public class StartupSetupStateTests
     }
 
     [Fact]
+    public void RequiresSetup_ReturnsFalse_WhenOperatorTokenExistsForOperatorMode()
+    {
+        using var temp = TempSettings.Create();
+        StoreDeviceToken(temp.Path);
+        var settings = new SettingsManager(temp.Path);
+
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path));
+    }
+
+    [Fact]
     public void RequiresSetup_ReturnsFalse_WhenMcpOnlyModeIsEnabled()
     {
         using var temp = TempSettings.Create();

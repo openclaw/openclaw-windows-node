@@ -286,7 +286,10 @@ internal sealed class ConnectionStateMachine
                 RoleConnectionState.PairingRejected => OpenClaw.Shared.PairingStatus.Rejected,
                 RoleConnectionState.Connected => OpenClaw.Shared.PairingStatus.Paired,
                 _ => OpenClaw.Shared.PairingStatus.Unknown
-            }
+            },
+            // Clear requestId when no longer in PairingRequired to prevent stale reads
+            NodePairingRequestId = _nodeState == RoleConnectionState.PairingRequired
+                ? Current.NodePairingRequestId : null
         };
     }
 }

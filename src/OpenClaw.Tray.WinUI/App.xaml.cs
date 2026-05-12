@@ -172,6 +172,7 @@ public partial class App : Application
     private GatewaySelfInfo? _lastGatewaySelf;
     private PairingListInfo? _lastNodePairList;
     private DevicePairingListInfo? _lastDevicePairList;
+    private string? _lastNodePairingRequestId;
     private ModelsListInfo? _lastModelsList;
     private PresenceEntry[]? _lastPresence;
     private readonly List<AgentEventInfo> _agentEventsCache = new();
@@ -2574,6 +2575,7 @@ public partial class App : Application
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
+                _lastNodePairingRequestId = args.RequestId;
                 // Bug #2 (manual test 2026-05-05): suppress the "copy pairing command"
                 // toast while the local-setup engine is mid-Phase-14 node-role PairAsync.
                 // The loopback gateway parks the role-upgrade as Pending for ~100ms before
@@ -2587,10 +2589,11 @@ public partial class App : Application
                     Logger.Info($"Suppressing pairing-pending toast: autopair Phase 14 in progress for {args.DeviceId}");
                     return;
                 }
-                ShowPairingPendingNotification(args.DeviceId);
+                ShowPairingPendingNotification(args.DeviceId, PairingApprovalCommand.Build(args.RequestId));
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
+                _lastNodePairingRequestId = null;
                 // Bug 3: idempotency guard — only show "Node paired" toast/activity once
                 // per device per session. WS reconnects re-fire Paired; suppress duplicates.
                 var deviceKey = args.DeviceId ?? string.Empty;
@@ -2610,6 +2613,7 @@ public partial class App : Application
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
             {
+                _lastNodePairingRequestId = null;
                 AddRecentActivity("Node pairing rejected", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId, details: args.Message ?? LocalizationHelper.GetString("Toast_PairingRejectedDetail"));
                 ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_PairingRejected"))
@@ -2634,6 +2638,7 @@ public partial class App : Application
             _hubWindow.NodeIsConnected = _nodeService.IsConnected;
             _hubWindow.NodeIsPaired = _nodeService.IsPaired;
             _hubWindow.NodeIsPendingApproval = _nodeService.IsPendingApproval;
+            _hubWindow.NodePairingRequestId = _lastNodePairingRequestId;
             _hubWindow.NodeShortDeviceId = _nodeService.ShortDeviceId;
             _hubWindow.NodeFullDeviceId = _nodeService.FullDeviceId;
             _hubWindow.VoiceServiceInstance = _nodeService.VoiceService;
@@ -2643,15 +2648,16 @@ public partial class App : Application
             _hubWindow.NodeIsConnected = false;
             _hubWindow.NodeIsPaired = false;
             _hubWindow.NodeIsPendingApproval = false;
+            _hubWindow.NodePairingRequestId = null;
         }
     }
 
-    public static string BuildPairingApprovalCommand(string deviceId) =>
-        $"openclaw devices approve {deviceId}";
+    public static string BuildPairingApprovalCommand(string? requestId) =>
+        PairingApprovalCommand.Build(requestId);
 
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
-        var command = approvalCommand ?? BuildPairingApprovalCommand(deviceId);
+        var command = approvalCommand ?? BuildPairingApprovalCommand(null);
         var shortDeviceId = deviceId.Length > 16 ? deviceId[..16] : deviceId;
 
         AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: deviceId);

@@ -205,47 +205,17 @@ public sealed partial class ConnectionPage : Page
 
     private void UpdatePairingGuidance(GatewayConnectionSnapshot snapshot)
     {
-        // Get device ID from snapshot or from the identity file
-        var deviceId = snapshot.OperatorDeviceId ?? snapshot.NodeDeviceId;
-        if (string.IsNullOrEmpty(deviceId))
-        {
-            // Try reading from identity file
-            try
-            {
-                var activeGw = _gatewayRegistry?.GetActive();
-                if (activeGw != null && _gatewayRegistry != null)
-                {
-                    var idDir = _gatewayRegistry.GetIdentityDirectory(activeGw.Id);
-                    var keyPath = System.IO.Path.Combine(idDir, "device-key-ed25519.json");
-                    if (System.IO.File.Exists(keyPath))
-                    {
-                        var json = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(keyPath));
-                        if (json.RootElement.TryGetProperty("DeviceId", out var did))
-                            deviceId = did.GetString();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ConnectionPage] Failed to read device ID from identity file: {ex.Message}");
-            }
-        }
-
         if (snapshot.OperatorState == RoleConnectionState.PairingRequired)
         {
             PairingGuidanceCard.Visibility = Visibility.Visible;
             PairingGuidanceText.Text = "🔐 Operator: Awaiting approval from gateway";
-            PairingApproveCommandText.Text = !string.IsNullOrEmpty(deviceId)
-                ? $"openclaw devices approve {deviceId}"
-                : "openclaw devices approve <deviceId>";
+            PairingApproveCommandText.Text = PairingApprovalCommand.Build(snapshot.OperatorPairingRequestId);
         }
         else if (snapshot.NodeState == RoleConnectionState.PairingRequired)
         {
             PairingGuidanceCard.Visibility = Visibility.Visible;
             PairingGuidanceText.Text = "🔐 Node: Awaiting approval from gateway";
-            PairingApproveCommandText.Text = !string.IsNullOrEmpty(deviceId)
-                ? $"openclaw devices approve {deviceId}"
-                : "openclaw devices approve <deviceId>";
+            PairingApproveCommandText.Text = PairingApprovalCommand.Build(snapshot.NodePairingRequestId);
         }
         else
         {
@@ -444,8 +414,7 @@ public sealed partial class ConnectionPage : Page
             {
                 PairingStatusText.Text = "Pairing: ⏳ Pending approval";
                 ApprovalHelpPanel.Visibility = Visibility.Visible;
-                var deviceRef = fullId ?? shortId ?? "";
-                ApprovalCommandText.Text = $"openclaw devices approve {deviceRef}";
+                ApprovalCommandText.Text = PairingApprovalCommand.Build(_hub.NodePairingRequestId);
             }
             else
             {

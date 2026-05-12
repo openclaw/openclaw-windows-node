@@ -694,7 +694,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _stateMachine.Current = _stateMachine.Current with
                 {
                     NodePairingStatus = _nodeConnector.PairingStatus,
-                    NodeDeviceId = _nodeConnector.NodeDeviceId
+                    NodeDeviceId = _nodeConnector.NodeDeviceId,
+                    NodePairingRequestId = e.Status == PairingStatus.Pending ? e.RequestId : null
                 };
             }
 

@@ -711,12 +711,11 @@ public class WindowsNodeClient : WebSocketClientBase
                         _isPendingApproval = true;
                         _isPaired = false;
                         _pairingBlocked = true;
-                        _logger.Info("Not yet paired - check 'openclaw devices list' for pending approval");
-                        _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
+                        _logger.Info("Not yet paired - check 'openclaw devices list' for the pending requestId, then approve it");
                         EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                             PairingStatus.Pending, 
                             _deviceIdentity.DeviceId,
-                            $"Run: openclaw devices approve {ShortDeviceId}..."));
+                            "Run: openclaw devices list"));
                     }
                 }
                 else
@@ -771,6 +770,10 @@ public class WindowsNodeClient : WebSocketClientBase
             }
             if (errorProp.TryGetProperty("details", out var detailsProp))
             {
+                if (TryGetString(detailsProp, "code", out var detailCode) && errorCode == "none")
+                {
+                    errorCode = detailCode!;
+                }
                 if (TryGetString(detailsProp, "reason", out var reason))
                 {
                     pairingReason = reason;
@@ -780,11 +783,24 @@ public class WindowsNodeClient : WebSocketClientBase
                     pairingRequestId = requestId;
                 }
             }
+            if (errorProp.TryGetProperty("data", out var dataProp) &&
+                dataProp.TryGetProperty("details", out var dataDetailsProp))
+            {
+                if (errorCode == "none" && TryGetString(dataDetailsProp, "code", out var dataDetailCode))
+                {
+                    errorCode = dataDetailCode!;
+                }
+                if (string.IsNullOrWhiteSpace(pairingRequestId) && TryGetString(dataDetailsProp, "requestId", out var dataRequestId))
+                {
+                    pairingRequestId = dataRequestId;
+                }
+            }
         }
 
         _logger.Info($"[HANDSHAKE] Connect error: message=\"{error}\", code={errorCode}");
 
-        if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(errorCode, "PAIRING_REQUIRED", StringComparison.OrdinalIgnoreCase))
         {
             if (_isPendingApproval)
             {
@@ -797,10 +813,12 @@ public class WindowsNodeClient : WebSocketClientBase
             _pairingApprovedAwaitingReconnect = false;
 
             var detail = !string.IsNullOrWhiteSpace(pairingRequestId)
-                ? $"Device {ShortDeviceId} requires approval (request {pairingRequestId})"
-                : $"Run: openclaw devices approve {ShortDeviceId}...";
+                ? $"Run: openclaw devices approve {pairingRequestId}"
+                : "Run: openclaw devices list";
             _logger.Info($"[NODE] Pairing required for this device; reason={pairingReason ?? "unknown"}, requestId={pairingRequestId ?? "none"}");
-            _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
+            _logger.Info(!string.IsNullOrWhiteSpace(pairingRequestId)
+                ? $"To approve, run: openclaw devices approve {pairingRequestId}"
+                : "To approve, run: openclaw devices list and approve the pending requestId");
             EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                 PairingStatus.Pending,
                 _deviceIdentity.DeviceId,

@@ -335,8 +335,110 @@ public class WindowsNodeClientTests
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
+            Assert.Equal("req-123", pairingEvents[0].RequestId);
             Assert.Contains("req-123", pairingEvents[0].Message);
             Assert.DoesNotContain(ConnectionStatus.Error, statusChanges);
+            Assert.True(client.IsPendingApproval);
+            Assert.False(client.IsPaired);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void HandleResponse_PairingRequiredInDetailsCode_EmitsPendingPairingRequest()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            var statusChanges = new List<ConnectionStatus>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+            client.StatusChanged += (_, s) => statusChanges.Add(s);
+
+            var json = """
+                {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                        "message": "Device approval required",
+                        "details": {
+                            "code": "PAIRING_REQUIRED",
+                            "reason": "first-connect",
+                            "requestId": "req-456"
+                        }
+                    }
+                }
+                """;
+            var root = JsonDocument.Parse(json).RootElement;
+
+            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
+                "HandleResponse",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            handleResponseMethod!.Invoke(client, [root]);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
+            Assert.Equal("req-456", pairingEvents[0].RequestId);
+            Assert.Contains("req-456", pairingEvents[0].Message);
+            Assert.DoesNotContain(ConnectionStatus.Error, statusChanges);
+            Assert.True(client.IsPendingApproval);
+            Assert.False(client.IsPaired);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+
+    [Fact]
+    public void HandleResponse_PairingRequiredInDataDetails_EmitsPendingPairingRequestId()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+
+            var json = """
+                {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                        "message": "Device approval required",
+                        "data": {
+                            "details": {
+                                "code": "PAIRING_REQUIRED",
+                                "requestId": "req-789"
+                            }
+                        }
+                    }
+                }
+                """;
+            var root = JsonDocument.Parse(json).RootElement;
+
+            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
+                "HandleResponse",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            handleResponseMethod!.Invoke(client, [root]);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
+            Assert.Equal("req-789", pairingEvents[0].RequestId);
+            Assert.Contains("req-789", pairingEvents[0].Message);
             Assert.True(client.IsPendingApproval);
             Assert.False(client.IsPaired);
         }

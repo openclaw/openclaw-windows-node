@@ -46,10 +46,11 @@ public class PairingFlowTests : IDisposable
 
         // Node: Connecting → PairingRequired
         var snapshot = await FireAndWait(manager, () =>
-            _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending));
+            _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, "node-request-123"));
 
         Assert.Equal(RoleConnectionState.PairingRequired, snapshot.NodeState);
         Assert.Equal(PairingStatus.Pending, snapshot.NodePairingStatus);
+        Assert.Equal("node-request-123", snapshot.NodePairingRequestId);
     }
 
     [Fact]
