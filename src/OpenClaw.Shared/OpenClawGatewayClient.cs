@@ -463,7 +463,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return TrySendTrackedRequestAsync("cron.update", new { id, patch });
     }
 
-    public async Task RequestCronRunsAsync(string? id = null, int limit = 50, int offset = 0)
+    public async Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0)
     {
         // Wire format uses "id" consistently with cron.run / cron.remove
         await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
