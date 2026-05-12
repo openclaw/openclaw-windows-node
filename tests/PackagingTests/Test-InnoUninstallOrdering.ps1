@@ -78,7 +78,6 @@
     Date:   2026-05-07
     Author: Bostick (Tester / Quality / Validation)
     Branch: feat/wsl-gateway-uninstall
-    Commit: 7 of 7 per .squad/decisions/inbox/kranz-uninstall-plan-v3.md
 
     Style mirrors validate-wsl-gateway-uninstall.ps1:
       - Set-StrictMode -Version Latest

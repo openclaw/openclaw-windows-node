@@ -276,9 +276,7 @@ public class QuickSendCoordinatorTests
         //      clipboard pairing-remediation toast fires.
         //
         // The integration this validates is the same one Mike's manual e2e
-        // exercises after the fix lands. A documented manual harness step
-        // is in .squad/decisions/inbox/aaron-bug3-implementation.md §Manual
-        // E2E for tray-process verification.
+        // exercises after the fix lands.
         var bootstrapClientA = new FakeGateway("bootstrap-A")
         {
             SendThrows = new InvalidOperationException("NOT_PAIRED"),

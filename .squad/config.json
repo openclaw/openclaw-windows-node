@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "defaultModel": "claude-opus-4.7",
-  "agentModelOverrides": {
-    "rubberducky": "gpt-5.5"
-  }
-}

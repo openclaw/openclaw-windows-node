@@ -104,7 +104,6 @@
     Date:   2026-05-07
     Author: Aaron (Backend / Infrastructure Engineer)
     Branch: feat/wsl-gateway-uninstall
-    Commit: 6 of 7 per .squad/decisions/inbox/kranz-uninstall-plan-v3.md
 
     File I/O against WSL is via `wsl bash -c` only.
     NEVER use \\wsl$ / \\wsl.localhost paths.
