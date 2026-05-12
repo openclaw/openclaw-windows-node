@@ -24,7 +24,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BootstrapMessageInjector.cs" Link="Services\BootstrapMessageInjector.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayCredentialResolver.cs" Link="Services\GatewayCredentialResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
@@ -67,6 +67,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\ConnectionDiagnosticEvent.cs" Link="Services\Connection\ConnectionDiagnosticEvent.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\IGatewayConnectionManager.cs" Link="Services\Connection\IGatewayConnectionManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\GatewayConnectionManager.cs" Link="Services\Connection\GatewayConnectionManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\ChatNavigationReadiness.cs" Link="Services\Connection\ChatNavigationReadiness.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\IGatewayClientFactory.cs" Link="Services\Connection\IGatewayClientFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\GatewayClientFactory.cs" Link="Services\Connection\GatewayClientFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\ConnectionErrorCategory.cs" Link="Services\Connection\ConnectionErrorCategory.cs" />

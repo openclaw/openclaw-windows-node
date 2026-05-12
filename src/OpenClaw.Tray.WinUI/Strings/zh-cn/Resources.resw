@@ -2748,4 +2748,7 @@
   <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
     <value>▶ 预览语音</value>
   </data>
+  <data name="VoiceSettingsPage_TestVoiceButtonText.Text" xml:space="preserve">
+    <value>测试语音输入</value>
+  </data>
 </root>

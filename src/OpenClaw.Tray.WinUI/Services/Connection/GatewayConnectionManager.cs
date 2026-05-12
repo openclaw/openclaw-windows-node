@@ -19,6 +19,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly INodeConnector? _nodeConnector;
     private readonly ISshTunnelManager? _tunnelManager;
     private readonly Func<bool>? _isNodeEnabled;
+    private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
 
     private long _generation;
@@ -44,7 +45,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         INodeConnector? nodeConnector = null,
         Func<bool>? isNodeEnabled = null,
         ConnectionDiagnostics? diagnostics = null,
-        ISshTunnelManager? tunnelManager = null)
+        ISshTunnelManager? tunnelManager = null,
+        Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -54,6 +56,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _nodeConnector = nodeConnector;
         _tunnelManager = tunnelManager;
         _isNodeEnabled = isNodeEnabled;
+        _shouldStartNodeConnection = shouldStartNodeConnection;
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -467,7 +470,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
 
         // Start node connection outside the semaphore to avoid deadlocks
-        if (_nodeConnector != null && (_isNodeEnabled?.Invoke() ?? false))
+        if (_nodeConnector != null && ShouldStartNodeConnection())
         {
             await StartNodeConnectionAsync();
         }
@@ -527,6 +530,21 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     }
 
     // ─── Node Connection ───
+
+    private bool ShouldStartNodeConnection()
+    {
+        if (_activeGatewayRecordId == null || _activeIdentityPath == null)
+            return _isNodeEnabled?.Invoke() ?? false;
+
+        var record = _registry.GetById(_activeGatewayRecordId);
+        if (record == null)
+            return false;
+
+        if (_shouldStartNodeConnection != null)
+            return _shouldStartNodeConnection(record, _activeIdentityPath);
+
+        return _isNodeEnabled?.Invoke() ?? false;
+    }
 
     private async Task StartNodeConnectionAsync()
     {

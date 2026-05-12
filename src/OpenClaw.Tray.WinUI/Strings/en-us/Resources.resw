@@ -2747,4 +2747,7 @@ On your gateway host (Mac/Linux), run:
   <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
     <value>▶ Preview Voice</value>
   </data>
+  <data name="VoiceSettingsPage_TestVoiceButtonText.Text" xml:space="preserve">
+    <value>Test Voice Input</value>
+  </data>
 </root>

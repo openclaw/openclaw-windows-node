@@ -648,7 +648,8 @@ public partial class App : Application
             nodeConnector: nodeConnector,
             isNodeEnabled: ShouldInitializeNodeService,
             diagnostics: diagnostics,
-            tunnelManager: tunnelManager);
+            tunnelManager: tunnelManager,
+            shouldStartNodeConnection: ShouldInitializeNodeService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
 
@@ -2356,6 +2357,27 @@ public partial class App : Application
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
     }
 
+    private bool ShouldInitializeNodeService(GatewayRecord activeGateway, string managerIdentityPath)
+    {
+        if (!ShouldInitializeNodeService()) return false;
+
+        if (LocalNodeServiceOwnsIdentityFor(activeGateway))
+        {
+            Logger.Info("[ConnMgr] Suppressing manager-owned NodeConnector because local NodeService owns the active local gateway identity");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool LocalNodeServiceOwnsIdentityFor(GatewayRecord activeGateway)
+    {
+        if (!activeGateway.IsLocal || _settings == null) return false;
+        if (!StartupSetupState.HasStoredNodeDeviceToken(IdentityDataPath)) return false;
+
+        return EnsureNodeServiceForLocalGatewaySetup(_settings) != null;
+    }
+
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
     {
         Logger.Info($"Node status: {status}");
@@ -3206,6 +3228,7 @@ public partial class App : Application
             _hubWindow.QuickSendAction = () => ShowQuickSend();
             _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;
+            _hubWindow.OpenVoiceAction = () => ShowVoiceOverlay();
             _hubWindow.ConnectionManager = _connectionManager;
             _hubWindow.GatewayRegistry = _gatewayRegistry;
             _hubWindow.ConnectAction = () =>

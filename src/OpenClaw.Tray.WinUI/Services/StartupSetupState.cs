@@ -5,7 +5,7 @@ namespace OpenClawTray.Services;
 internal static class StartupSetupState
 {
     public static bool HasStoredNodeDeviceToken(string dataPath) =>
-        DeviceIdentity.HasStoredDeviceToken(dataPath, NullLogger.Instance);
+        DeviceIdentity.HasStoredDeviceTokenForRole(dataPath, "node", NullLogger.Instance);
 
     public static bool CanStartNodeGateway(SettingsManager settings, string dataPath)
     {
