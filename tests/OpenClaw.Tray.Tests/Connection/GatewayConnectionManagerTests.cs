@@ -210,6 +210,9 @@ public class GatewayConnectionManagerTests : IDisposable
         public void SimulateAuthFailed(string msg) =>
             AuthenticationFailed?.Invoke(this, msg);
 
+        public void SimulateHandshake() =>
+            _client.SimulateHandshakeSucceeded();
+
         public void Dispose() { }
     }
 
@@ -217,5 +220,72 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         public MockGatewayClient(string url)
             : base(url, "mock-token", NullLogger.Instance) { }
+
+        /// <summary>Simulate a successful hello-ok handshake for testing.</summary>
+        public void SimulateHandshakeSucceeded()
+        {
+            // Fire the HandshakeSucceeded event to trigger the manager's handler
+            OnHandshakeSucceeded();
+        }
+
+        // Protected invoker — OpenClawGatewayClient.HandshakeSucceeded is a public event.
+        // We use reflection because the event doesn't have a virtual invoker.
+        private void OnHandshakeSucceeded()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(HandshakeSucceeded),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            // Events compiled as backing fields in C# are named the same as the event.
+            // In case the compiler generates a different name, fall back to raising through the base.
+            if (field != null)
+            {
+                var handler = field.GetValue(this) as EventHandler;
+                handler?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_StampsLastConnectedOnGatewayRecord()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+
+        // Simulate successful handshake
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.SimulateHandshake();
+
+        // Allow async handler to complete
+        await Task.Delay(100);
+
+        var record = _registry.GetById("gw-1");
+        Assert.NotNull(record?.LastConnected);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_PreservesOtherRecordFields()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            SharedGatewayToken = "shared-tok",
+            FriendlyName = "TestGW"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.SimulateHandshake();
+        await Task.Delay(100);
+
+        var record = _registry.GetById("gw-1")!;
+        Assert.True(record.LastConnected.HasValue);
+        Assert.Equal("shared-tok", record.SharedGatewayToken);
+        Assert.Equal("TestGW", record.FriendlyName);
     }
 }

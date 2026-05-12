@@ -101,6 +101,29 @@ public sealed class GatewayRegistry
         lock (_lock) _activeId = gatewayId;
     }
 
+    /// <summary>
+    /// Atomically update a record in-place. The <paramref name="updater"/> runs under
+    /// the registry lock so concurrent writes (e.g. clearing BootstrapToken while
+    /// stamping LastConnected) don't overwrite each other.
+    /// Returns the updated record, or null if the record was not found.
+    /// </summary>
+    public GatewayRecord? Update(string id, Func<GatewayRecord, GatewayRecord> updater)
+    {
+        GatewayRecord? updated;
+        List<GatewayRecord> snapshot;
+        lock (_lock)
+        {
+            var idx = _records.FindIndex(r => r.Id == id);
+            if (idx < 0) return null;
+            updated = updater(_records[idx]);
+            ArgumentNullException.ThrowIfNull(updated, nameof(updater));
+            _records[idx] = updated;
+            snapshot = _records.ToList();
+        }
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot));
+        return updated;
+    }
+
     // ─── Persistence ───
 
     public void Save()

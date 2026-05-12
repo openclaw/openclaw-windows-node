@@ -1752,8 +1752,26 @@ public partial class App : Application
         var activeRecord = _gatewayRegistry.GetActive();
         if (activeRecord != null)
         {
-            // Registry has an active gateway — connect directly
-            _ = _connectionManager.ConnectAsync(activeRecord.Id);
+            if (activeRecord.LastConnected.HasValue)
+            {
+                // Previously connected successfully — auto-reconnect
+                Logger.Info($"Auto-connecting to last successful gateway: {activeRecord.Url}");
+                _ = _connectionManager.ConnectAsync(activeRecord.Id);
+            }
+            else if (HasStoredDeviceTokenForGateway(activeRecord))
+            {
+                // Backfill: existing paired install with no LastConnected stamp.
+                // Allow one-time auto-connect; HandleHandshakeSucceeded will stamp LastConnected.
+                Logger.Info($"Backfill auto-connect for paired gateway (no LastConnected): {activeRecord.Url}");
+                _ = _connectionManager.ConnectAsync(activeRecord.Id);
+            }
+            else
+            {
+                Logger.Info($"Active gateway has no previous successful connection — skipping auto-connect");
+                // Still start MCP-only node if enabled — the active record may be stale
+                // and MCP-only mode must work without gateway credentials.
+                TryStartLocalMcpOnlyNode();
+            }
             return;
         }
 
@@ -1835,6 +1853,18 @@ public partial class App : Application
         // Delegate to connection manager — it creates the client, fires OperatorClientChanged,
         // and our handler re-wires the 27 event subscriptions
         _ = _connectionManager.ConnectAsync(migratedRecord.Id);
+    }
+
+    /// <summary>
+    /// Checks whether a stored device token exists for the given gateway record.
+    /// Used as a backfill heuristic: if LastConnected is null but a device token
+    /// exists, the gateway was previously paired and should auto-connect.
+    /// </summary>
+    private bool HasStoredDeviceTokenForGateway(GatewayRecord record)
+    {
+        if (_gatewayRegistry == null) return false;
+        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
+        return DeviceIdentity.HasStoredDeviceToken(identityDir, NullLogger.Instance);
     }
 
     private void TryMigrateLegacyGatewaySettings(string gatewayUrl, IOpenClawLogger logger)
@@ -3419,6 +3449,14 @@ public partial class App : Application
             try { _onboardingWindow.Activate(); return; } catch { _onboardingWindow = null; }
         }
 
+        // Disconnect existing gateway connection for a clean setup flow.
+        // ActiveId is preserved so it can be restored if setup is cancelled.
+        if (_connectionManager?.CurrentSnapshot.OverallState is not OverallConnectionState.Idle)
+        {
+            Logger.Info("Disconnecting existing gateway connection for clean setup");
+            await _connectionManager.DisconnectAsync();
+        }
+
         _onboardingWindow = new OnboardingWindow(_settings, IdentityDataPath);
         _onboardingWindow.OnboardingCompleted += (s, e) =>
         {
@@ -3432,8 +3470,18 @@ public partial class App : Application
                 return;
             }
 
-            // Otherwise reinitialize with saved settings
-            _ = _connectionManager?.ReconnectAsync();
+            // Reconnect only if there's an active gateway with credentials —
+            // don't blindly reconnect a pre-setup gateway the user may be replacing.
+            var activeRecord = _gatewayRegistry?.GetActive();
+            if (activeRecord != null && (activeRecord.LastConnected.HasValue || HasStoredDeviceTokenForGateway(activeRecord)))
+            {
+                Logger.Info("Reconnecting to active gateway after onboarding");
+                _ = _connectionManager?.ConnectAsync(activeRecord.Id);
+            }
+            else
+            {
+                Logger.Info("No previously connected gateway after onboarding — skipping reconnect");
+            }
 
             // Keep hub window in sync with new client
             if (_hubWindow != null && !_hubWindow.IsClosed)

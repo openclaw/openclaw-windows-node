@@ -181,6 +181,53 @@ public class GatewayRegistryTests : IDisposable
         Assert.Equal(18789, loaded.SshTunnel.RemotePort);
     }
 
+    [Fact]
+    public void SaveAndLoad_WithLastConnected_RoundTrips()
+    {
+        var stamp = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        var record = MakeRecord("gw-1", "wss://test1") with { LastConnected = stamp };
+        _registry.AddOrUpdate(record);
+        _registry.Save();
+
+        var registry2 = new GatewayRegistry(_tempDir);
+        registry2.Load();
+
+        var loaded = registry2.GetById("gw-1")!;
+        Assert.Equal(stamp, loaded.LastConnected);
+    }
+
+    [Fact]
+    public void Update_ModifiesRecordAtomically()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1") with { SharedGatewayToken = "tok" });
+
+        var updated = _registry.Update("gw-1", r => r with { LastConnected = DateTime.UtcNow });
+
+        Assert.NotNull(updated);
+        Assert.True(updated.LastConnected.HasValue);
+        Assert.Equal("tok", updated.SharedGatewayToken); // other fields preserved
+    }
+
+    [Fact]
+    public void Update_ReturnsNullForMissingRecord()
+    {
+        var result = _registry.Update("nonexistent", r => r with { LastConnected = DateTime.UtcNow });
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Update_FiresChangedEvent()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
+        GatewayRegistryChangedEventArgs? args = null;
+        _registry.Changed += (s, e) => args = e;
+
+        _registry.Update("gw-1", r => r with { FriendlyName = "Updated" });
+
+        Assert.NotNull(args);
+        Assert.Equal("Updated", args.Records[0].FriendlyName);
+    }
+
     private static GatewayRecord MakeRecord(string id, string url) => new()
     {
         Id = id,

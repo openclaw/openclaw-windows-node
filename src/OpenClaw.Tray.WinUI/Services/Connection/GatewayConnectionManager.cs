@@ -19,6 +19,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly INodeConnector? _nodeConnector;
     private readonly ISshTunnelManager? _tunnelManager;
     private readonly Func<bool>? _isNodeEnabled;
+    private readonly IClock _clock;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
 
     private long _generation;
@@ -54,6 +55,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _nodeConnector = nodeConnector;
         _tunnelManager = tunnelManager;
         _isNodeEnabled = isNodeEnabled;
+        _clock = clock ?? SystemClock.Instance;
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -460,6 +462,22 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
 
             EmitStateChanged(prev);
+
+            // Stamp LastConnected so auto-reconnect on next startup can use this gateway.
+            // Uses the atomic Update helper to avoid overwriting concurrent registry changes.
+            if (_activeGatewayRecordId != null)
+            {
+                try
+                {
+                    _registry.Update(_activeGatewayRecordId, r => r with { LastConnected = _clock.UtcNow });
+                    _registry.Save();
+                    _diagnostics.Record("state", "Stamped LastConnected on gateway record");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"[ConnMgr] Failed to stamp LastConnected: {ex.Message}");
+                }
+            }
         }
         finally
         {
