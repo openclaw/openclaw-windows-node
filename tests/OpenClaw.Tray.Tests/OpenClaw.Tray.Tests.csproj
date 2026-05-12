@@ -24,7 +24,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BootstrapMessageInjector.cs" Link="Services\BootstrapMessageInjector.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayCredentialResolver.cs" Link="Services\GatewayCredentialResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
@@ -46,6 +46,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalGatewayApprover.cs" Link="Imported\LocalGatewayApprover.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\SetupCodeDecoder.cs" Link="Imported\SetupCodeDecoder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewaySetup.cs" Link="Imported\LocalGatewaySetup.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewayUninstall.cs" Link="Imported\LocalGatewayUninstall.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\GatewayHealthCheck.cs" Link="Imported\GatewayHealthCheck.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\InputValidator.cs" Link="Imported\InputValidator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardStepParser.cs" Link="Imported\WizardStepParser.cs" />
@@ -66,6 +67,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\ConnectionDiagnosticEvent.cs" Link="Services\Connection\ConnectionDiagnosticEvent.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\IGatewayConnectionManager.cs" Link="Services\Connection\IGatewayConnectionManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\GatewayConnectionManager.cs" Link="Services\Connection\GatewayConnectionManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\ChatNavigationReadiness.cs" Link="Services\Connection\ChatNavigationReadiness.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\IGatewayClientFactory.cs" Link="Services\Connection\IGatewayClientFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\GatewayClientFactory.cs" Link="Services\Connection\GatewayClientFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Connection\ConnectionErrorCategory.cs" Link="Services\Connection\ConnectionErrorCategory.cs" />

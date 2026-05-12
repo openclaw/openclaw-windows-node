@@ -92,6 +92,47 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Local Gateway — hidden when no local gateway is installed (gated in code-behind) -->
+                <Expander x:Name="LocalGatewayExpander"
+                          IsExpanded="False"
+                          Visibility="Collapsed"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="LocalGatewayExpander">
+                    <Expander.Header>
+                        <TextBlock Text="&#x1F5D1;&#xFE0F; Local Gateway" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+
+                        <!-- Row A: MSIX warning (shown when PackageHelper.IsPackaged AND local gateway installed) -->
+                        <InfoBar x:Name="MsixWarningBar"
+                                 Severity="Warning"
+                                 IsOpen="False"
+                                 IsClosable="False"
+                                 Title="MSIX installation detected"
+                                 Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
+
+                        <!-- Row B: Body description — text swaps to in-progress copy while engine runs -->
+                        <TextBlock x:Name="GatewayBodyText"
+                                   Text="Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Row C: Action button — code-behind morphs Content/Visibility through
+                             Idle → InProgress (ProgressRing+label inside Button) → Success (hidden) / Failure (re-enabled) -->
+                        <Button x:Name="RemoveGatewayButton"
+                                HorizontalAlignment="Right"
+                                Content="Remove Local Gateway"
+                                Click="OnRemoveGateway"
+                                AutomationProperties.AutomationId="RemoveLocalGatewayButton"/>
+
+                        <!-- Row D: Result InfoBar — revealed after operation completes -->
+                        <InfoBar x:Name="UninstallResultBar"
+                                 IsOpen="False"
+                                 IsClosable="True"/>
+                    </StackPanel>
+                </Expander>
+
             </StackPanel>
         </ScrollViewer>
 

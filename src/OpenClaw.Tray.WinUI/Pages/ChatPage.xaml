@@ -56,7 +56,23 @@
 
         <!-- Loading -->
         <ProgressRing x:Name="LoadingRing" Grid.Row="1" IsActive="False"
-                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+        <StackPanel x:Name="WaitingPanel" Grid.Row="1"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+            <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
+            <TextBlock Text="Waiting for chat to start…"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="WaitingStatusText"
+                       Text="The gateway is connected; the chat surface is still coming online."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360"/>
+            <Button x:Name="RetryChatButton" Content="Retry" Click="OnRetryChat" Visibility="Collapsed"
+                    HorizontalAlignment="Center"/>
+        </StackPanel>
 
         <!-- Placeholder (shown when not connected) -->
         <StackPanel x:Name="PlaceholderPanel" Grid.Row="1"

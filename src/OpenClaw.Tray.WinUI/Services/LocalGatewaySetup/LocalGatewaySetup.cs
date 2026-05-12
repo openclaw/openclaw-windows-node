@@ -90,11 +90,9 @@ public sealed class ProcessLocalGatewaySetupEnvironment : ILocalGatewaySetupEnvi
 
 public sealed record LocalGatewaySetupRuntimeConfiguration(
     string? DistroName,
-    string? InstanceInstallLocation,
     bool AllowExistingDistro)
 {
     public const string DistroNameVariable = "OPENCLAW_WSL_DISTRO_NAME";
-    public const string InstanceInstallLocationVariable = "OPENCLAW_WSL_INSTALL_LOCATION";
     public const string AllowExistingDistroVariable = "OPENCLAW_WSL_ALLOW_EXISTING_DISTRO";
 
     public static LocalGatewaySetupRuntimeConfiguration FromEnvironment(ILocalGatewaySetupEnvironment? environment = null)
@@ -106,7 +104,6 @@ public sealed record LocalGatewaySetupRuntimeConfiguration(
 #else
             null,
 #endif
-            NullIfWhiteSpace(environment.GetVariable(InstanceInstallLocationVariable)),
             IsTruthy(environment.GetVariable(AllowExistingDistroVariable)));
     }
 
@@ -2973,7 +2970,6 @@ public static class LocalGatewaySetupEngineFactory
         NodeService? nodeService = null,
 #endif
         string? distroName = null,
-        string? instanceInstallLocation = null,
         bool allowExistingDistro = false,
         bool replaceExistingConfigurationConfirmed = false,
         string? identityDataPath = null,
@@ -3012,7 +3008,6 @@ public static class LocalGatewaySetupEngineFactory
         {
             GatewayUrl = settings.GetEffectiveGatewayUrl(),
             DistroName = ResolveDistroName(runtime, distroName),
-            InstanceInstallLocation = string.IsNullOrWhiteSpace(instanceInstallLocation) ? runtime.InstanceInstallLocation : instanceInstallLocation,
             AllowExistingDistro = allowExistingDistro || runtime.AllowExistingDistro || replaceExistingConfigurationConfirmed,
 #if OPENCLAW_TRAY_TESTS
             EnableWindowsTrayNodeByDefault = settings.EnableNodeMode

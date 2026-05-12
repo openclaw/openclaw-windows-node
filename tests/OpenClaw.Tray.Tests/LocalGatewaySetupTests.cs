@@ -70,14 +70,12 @@ public class LocalGatewaySetupTests
         var environment = new FakeSetupEnvironment(new Dictionary<string, string?>
         {
             [LocalGatewaySetupRuntimeConfiguration.DistroNameVariable] = "OpenClawGatewayE2E",
-            [LocalGatewaySetupRuntimeConfiguration.InstanceInstallLocationVariable] = @"C:\openclaw\wsl",
             [LocalGatewaySetupRuntimeConfiguration.AllowExistingDistroVariable] = "1"
         });
 
         var config = LocalGatewaySetupRuntimeConfiguration.FromEnvironment(environment);
 
         Assert.Equal("OpenClawGatewayE2E", config.DistroName);
-        Assert.Equal(@"C:\openclaw\wsl", config.InstanceInstallLocation);
         Assert.True(config.AllowExistingDistro);
     }
 

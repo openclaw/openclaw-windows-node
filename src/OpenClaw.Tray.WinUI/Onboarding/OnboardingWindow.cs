@@ -446,7 +446,6 @@ public sealed class OnboardingWindow : WindowEx
                             })();
                         ");
 
-                        _ = SendBootstrapMessageAsync();
                     }
                 });
             };
@@ -515,25 +514,6 @@ public sealed class OnboardingWindow : WindowEx
         {
             _chatRetryButton.Visibility = Visibility.Visible;
         }
-    }
-
-    private bool _bootstrapSent;
-
-    /// <summary>
-    /// Auto-sends the bootstrap kickoff message after the web chat loads.
-    /// Delegates to <see cref="BootstrapMessageInjector"/> so the same gated
-    /// kickoff fires from both the (legacy) onboarding chat overlay and from
-    /// post-wizard HubWindow chat navigation — guarded by
-    /// <see cref="SettingsManager.HasInjectedFirstRunBootstrap"/>.
-    /// </summary>
-    private async Task SendBootstrapMessageAsync()
-    {
-        if (_bootstrapSent || _chatWebView?.CoreWebView2 == null) return;
-        _bootstrapSent = true;
-
-        await BootstrapMessageInjector.InjectAsync(
-            script => _chatWebView.CoreWebView2.ExecuteScriptAsync(script).AsTask(),
-            _settings);
     }
 
     /// <summary>

@@ -59,6 +59,14 @@
 
                     <ProgressBar x:Name="DownloadProgress" Visibility="Collapsed"
                                  Minimum="0" Maximum="100"/>
+
+                    <Button x:Name="TestVoiceButton" Click="OnTestVoiceClick"
+                            Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE720;" FontSize="14"/>
+                            <TextBlock x:Uid="VoiceSettingsPage_TestVoiceButtonText" x:Name="TestVoiceButtonText" Text="Test Voice Input"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Border>
 

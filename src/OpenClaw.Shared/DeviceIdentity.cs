@@ -81,6 +81,81 @@ public class DeviceIdentity
 
     public static bool HasStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
         !string.IsNullOrWhiteSpace(TryReadStoredDeviceTokenForRole(dataPath, role, logger));
+
+    /// <summary>
+    /// Sets the operator <c>DeviceToken</c> field to <c>null</c> in
+    /// <c>device-key-ed25519.json</c> without deleting the file.
+    /// Preserves all other fields (Ed25519 keypair, algorithm, timestamps,
+    /// NodeDeviceToken).
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if the token was cleared; <c>false</c> if the file was
+    /// absent or the <c>DeviceToken</c> field was already null/empty
+    /// (idempotent skip).
+    /// </returns>
+    public static bool TryClearDeviceToken(string dataPath, IOpenClawLogger? logger = null) =>
+        TryClearDeviceTokenForRole(dataPath, "operator", logger);
+
+    /// <summary>
+    /// Sets the role-specific device token field to <c>null</c> in
+    /// <c>device-key-ed25519.json</c> without deleting the file. Preserves the
+    /// Ed25519 keypair and unrelated role tokens.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if the token was cleared; <c>false</c> if the file was
+    /// absent or the role token was already null/empty.
+    /// </returns>
+    public static bool TryClearDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null)
+    {
+        var tokenRole = ParseDeviceTokenRole(role);
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath))
+            return false;
+
+        try
+        {
+            var json = File.ReadAllText(keyPath);
+            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
+            if (data == null)
+                return false;
+
+            var token = tokenRole == DeviceTokenRole.Node
+                ? data.NodeDeviceToken
+                : data.DeviceToken;
+            if (string.IsNullOrEmpty(token))
+                return false; // already null — idempotent
+
+            if (tokenRole == DeviceTokenRole.Node)
+            {
+                data.NodeDeviceToken = null;
+                data.NodeDeviceTokenScopes = null;
+            }
+            else
+            {
+                data.DeviceToken = null;
+                data.DeviceTokenScopes = null;
+            }
+
+            AtomicWriteKeyFile(keyPath, data);
+            logger?.Info($"{(tokenRole == DeviceTokenRole.Node ? "NodeDeviceToken" : "DeviceToken")} cleared from device-key-ed25519.json (file preserved).");
+            return true;
+        }
+        catch (IOException ex)
+        {
+            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            return false;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            return false;
+        }
+    }
     
     public DeviceIdentity(string dataPath, IOpenClawLogger? logger = null)
     {
@@ -172,8 +247,10 @@ public class DeviceIdentity
         if (!string.IsNullOrEmpty(dir))
             McpAuthToken.TryRestrictDataDirectoryAcl(dir);
         
-        File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
-        McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
+        // Save to disk via atomic temp+rename so a process-kill or power-loss
+        // mid-write cannot leave a torn/zero-byte key file that the next
+        // LoadOrCreate would treat as invalid and silently rotate the identity.
+        AtomicWriteKeyFile(_keyPath, data);
         _logger.Info($"Generated new Ed25519 device identity: {_deviceId}");
     }
     
@@ -377,8 +454,7 @@ public class DeviceIdentity
                 {
                     data.DeviceToken = token;
                     data.DeviceTokenScopes = scopes;
-                    File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
-                    McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
+                    AtomicWriteKeyFile(_keyPath, data);
                     _logger.Info("Device token stored");
                 }
             }
@@ -407,7 +483,7 @@ public class DeviceIdentity
                 {
                     data.NodeDeviceToken = token;
                     data.NodeDeviceTokenScopes = scopes;
-                    File.WriteAllText(_keyPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+                    AtomicWriteKeyFile(_keyPath, data);
                     _logger.Info("Node device token stored");
                 }
             }
@@ -416,6 +492,36 @@ public class DeviceIdentity
         {
             _logger.Error($"Failed to store node device token: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Atomic write of device-key JSON: serialize to a sibling temp file
+    /// (<c>.&lt;name&gt;.&lt;guid&gt;.tmp</c>), lock its ACL, then
+    /// <see cref="File.Move(string,string,bool)"/> with overwrite=true. The
+    /// rename is atomic on NTFS — a process-kill or power-loss mid-write
+    /// either leaves the existing key file intact or replaces it wholesale,
+    /// never a torn/zero-byte file that the next LoadOrCreate would silently
+    /// rotate the identity over.
+    /// Same shape as <see cref="OpenClaw.Shared.Mcp.McpAuthToken"/>.
+    /// </summary>
+    private static void AtomicWriteKeyFile(string path, DeviceKeyData data)
+    {
+        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        var dir = Path.GetDirectoryName(path);
+        var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
+        var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(tempPath, json);
+            McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort cleanup */ }
+            throw;
+        }
+        McpAuthToken.TryRestrictSensitiveFileAcl(path);
     }
 
     private static string[]? NormalizeScopes(IEnumerable<string>? scopes)

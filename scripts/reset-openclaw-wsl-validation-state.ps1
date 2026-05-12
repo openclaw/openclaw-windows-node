@@ -30,6 +30,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot\_uninstall-helpers.ps1"
+
 # Production-locked WSL distro name (Phase 3 constant). This script will
 # refuse to act on any other distro, even via -DistroName overrides
 # (which are intentionally absent).

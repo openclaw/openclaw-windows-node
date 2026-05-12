@@ -2749,4 +2749,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
     <value>▶ Voorbeeld van stem</value>
   </data>
+  <data name="VoiceSettingsPage_TestVoiceButtonText.Text" xml:space="preserve">
+    <value>Spraakinvoer testen</value>
+  </data>
 </root>

@@ -19,6 +19,8 @@ using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Updatum;
@@ -311,6 +313,156 @@ public partial class App : Application
         }
         catch { /* Ignore logging failures */ }
     }
+
+    // -----------------------------------------------------------------------
+    // CLI uninstall path
+    // Invoked when --uninstall is present in argv. Runs headlessly without
+    // creating the tray UI. Attaches to the parent console so stdout/stderr
+    // are visible when invoked from PowerShell or cmd.
+    // -----------------------------------------------------------------------
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AttachConsole(int dwProcessId);
+
+    private const int AttachParentProcess = -1;
+
+    private static async Task RunCliUninstallAsync(string[] args)
+    {
+        // Attach to parent console so output is visible when invoked from
+        // PowerShell or cmd.  Fails silently if no parent console exists.
+        AttachConsole(AttachParentProcess);
+
+        bool dryRun            = args.Contains("--dry-run",            StringComparer.OrdinalIgnoreCase);
+        bool confirmDestructive = args.Contains("--confirm-destructive", StringComparer.OrdinalIgnoreCase);
+
+        // Locate --json-output <path> argument
+        string? jsonOutputPath = null;
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--json-output", StringComparison.OrdinalIgnoreCase))
+            {
+                jsonOutputPath = args[i + 1];
+                break;
+            }
+        }
+
+        if (!confirmDestructive && !dryRun)
+        {
+            Console.Error.WriteLine(
+                "ERROR: --uninstall requires --confirm-destructive (or --dry-run).");
+            Environment.Exit(2);
+            return;
+        }
+
+        var settings = new SettingsManager();
+        var engine   = LocalGatewayUninstall.Build(settings, logger: new AppLogger());
+
+        LocalGatewayUninstallResult result;
+        try
+        {
+            result = await engine.RunAsync(new LocalGatewayUninstallOptions
+            {
+                DryRun             = dryRun,
+                ConfirmDestructive = confirmDestructive
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"ERROR: Uninstall engine threw: {ex.Message}");
+            Environment.Exit(1);
+            return;
+        }
+
+        // Human-readable summary (tokens already redacted inside engine steps)
+        Console.WriteLine("OpenClaw Local Gateway Uninstall");
+        Console.WriteLine($"DryRun:   {dryRun}");
+        Console.WriteLine($"Success:  {result.Success}");
+        Console.WriteLine($"Steps:    {result.Steps.Count} ({result.SkippedSteps.Count} skipped)");
+        Console.WriteLine($"Errors:   {result.Errors.Count}");
+        foreach (var e in result.Errors)
+            Console.Error.WriteLine($"  ERROR: {CliRedact(e)}");
+        Console.WriteLine("Postconditions:");
+        Console.WriteLine($"  WslDistroAbsent:    {result.Postconditions.WslDistroAbsent}");
+        Console.WriteLine($"  AutostartCleared:   {result.Postconditions.AutostartCleared}");
+        Console.WriteLine($"  SetupStateAbsent:   {result.Postconditions.SetupStateAbsent}");
+        Console.WriteLine($"  DeviceTokenCleared: {result.Postconditions.DeviceTokenCleared}");
+        Console.WriteLine($"  McpTokenPreserved:  {result.Postconditions.McpTokenPreserved}");
+        Console.WriteLine($"  KeepalivesAbsent:   {result.Postconditions.KeepalivesAbsent}");
+        Console.WriteLine($"  VhdDirAbsent:       {result.Postconditions.VhdDirAbsent}");
+        Console.WriteLine($"  LocalGatewayRecordsAbsent:      {result.Postconditions.LocalGatewayRecordsAbsent}");
+        Console.WriteLine($"  LocalGatewayIdentityDirsAbsent: {result.Postconditions.LocalGatewayIdentityDirsAbsent}");
+
+        // JSON output — redaction applied to step details and error strings
+        if (jsonOutputPath != null)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(jsonOutputPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var payload = new
+                {
+                    success = result.Success,
+                    dry_run = dryRun,
+                    steps   = result.Steps.Select(s => new
+                    {
+                        name   = s.Name,
+                        status = s.Status.ToString(),
+                        detail = CliRedact(s.Detail)
+                    }),
+                    errors       = result.Errors.Select(CliRedact),
+                    skipped_steps = result.SkippedSteps,
+                    postconditions = new
+                    {
+                        wsl_distro_absent     = result.Postconditions.WslDistroAbsent,
+                        autostart_cleared     = result.Postconditions.AutostartCleared,
+                        setup_state_absent    = result.Postconditions.SetupStateAbsent,
+                        device_token_cleared  = result.Postconditions.DeviceTokenCleared,
+                        mcp_token_preserved   = result.Postconditions.McpTokenPreserved,
+                        keepalives_absent     = result.Postconditions.KeepalivesAbsent,
+                        vhd_dir_absent        = result.Postconditions.VhdDirAbsent,
+                        local_gateway_records_absent = result.Postconditions.LocalGatewayRecordsAbsent,
+                        local_gateway_identity_dirs_absent = result.Postconditions.LocalGatewayIdentityDirsAbsent
+                    }
+                };
+
+                File.WriteAllText(jsonOutputPath, JsonSerializer.Serialize(
+                    payload, new JsonSerializerOptions { WriteIndented = true }));
+
+                Console.WriteLine($"JSON result: {jsonOutputPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"WARNING: Failed to write JSON output to '{jsonOutputPath}': {ex.Message}");
+            }
+        }
+
+        Environment.Exit(result.Success ? 0 : 1);
+    }
+
+    /// <summary>
+    /// Redacts token/key material from a string before writing it to CLI
+    /// stdout or a JSON output file.  Mirrors the PowerShell Invoke-Redact
+    /// pattern in validate-wsl-gateway-uninstall.ps1.
+    /// </summary>
+    private static string? CliRedact(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        // Redact JSON field values for known secret fields.
+        value = System.Text.RegularExpressions.Regex.Replace(
+            value,
+            @"(""(?i:deviceToken|device_token|token|bootstrapToken|bootstrap_token|PrivateKeyBase64|PublicKeyBase64)""\s*:\s*"")[^""]+("")",
+            "$1<redacted>$2");
+        // Redact bare key=value / key: value patterns.
+        value = System.Text.RegularExpressions.Regex.Replace(
+            value,
+            @"(?i)((?:device|bootstrap|gateway|auth|mcp)[_-]?token\s*[:=]\s*)[^\s,""'}{]+",
+            "$1<redacted>");
+        return value;
+    }
     
     private static void CheckPreviousRun()
     {
@@ -372,6 +524,19 @@ public partial class App : Application
         _startupArgs = Environment.GetCommandLineArgs();
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
+        // -----------------------------------------------------------------------
+        // CLI uninstall path — headless; never shows tray or any windows.
+        // Approach: detect in OnLaunched before any UI is created (WinUI3 Main
+        // is auto-generated; earliest interception point is OnLaunched).
+        // Bypasses the single-instance mutex so the Inno uninstaller can invoke
+        // this even while the tray is running.
+        // -----------------------------------------------------------------------
+        if (_startupArgs.Contains("--uninstall", StringComparer.OrdinalIgnoreCase))
+        {
+            await RunCliUninstallAsync(_startupArgs);
+            return; // Environment.Exit called inside; defensive return
+        }
+
         // Check for protocol activation (MSIX packaged apps receive deep links this way)
         string? protocolUri = GetProtocolActivationUri();
 
@@ -382,6 +547,11 @@ public partial class App : Application
         // two test runs against the same data dir would otherwise pick different
         // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
         // SHA-256 prefix instead.
+        // NOTE: The bare "OpenClawTray" mutex name is also referenced by
+        // installer.iss `AppMutex=` for install/uninstall race coordination
+        // (round 2, Scott #5). The suffixed test-isolation variant is
+        // intentionally not covered by AppMutex — production installs only
+        // ever use the unsuffixed name.
         var mutexName = "OpenClawTray";
         if (DataDirOverride is not null)
         {
@@ -482,7 +652,8 @@ public partial class App : Application
             nodeConnector: nodeConnector,
             isNodeEnabled: ShouldInitializeNodeService,
             diagnostics: diagnostics,
-            tunnelManager: tunnelManager);
+            tunnelManager: tunnelManager,
+            shouldStartNodeConnection: ShouldInitializeNodeService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
 
@@ -1819,6 +1990,7 @@ public partial class App : Application
             {
                 Id = recordId,
                 Url = gatewayUrl,
+                IsLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl),
                 SshTunnel = _settings.UseSshTunnel
                     ? new SshTunnelConfig(
                         _settings.SshTunnelUser ?? "",
@@ -2217,6 +2389,27 @@ public partial class App : Application
     {
         if (_suppressNodeDuringSetup) return false;
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
+    }
+
+    private bool ShouldInitializeNodeService(GatewayRecord activeGateway, string managerIdentityPath)
+    {
+        if (!ShouldInitializeNodeService()) return false;
+
+        if (LocalNodeServiceOwnsIdentityFor(activeGateway))
+        {
+            Logger.Info("[ConnMgr] Suppressing manager-owned NodeConnector because local NodeService owns the active local gateway identity");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool LocalNodeServiceOwnsIdentityFor(GatewayRecord activeGateway)
+    {
+        if (!activeGateway.IsLocal || _settings == null) return false;
+        if (!StartupSetupState.HasStoredNodeDeviceToken(IdentityDataPath)) return false;
+
+        return EnsureNodeServiceForLocalGatewaySetup(_settings) != null;
     }
 
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
@@ -3069,6 +3262,7 @@ public partial class App : Application
             _hubWindow.QuickSendAction = () => ShowQuickSend();
             _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;
+            _hubWindow.OpenVoiceAction = () => ShowVoiceOverlay();
             _hubWindow.ConnectionManager = _connectionManager;
             _hubWindow.GatewayRegistry = _gatewayRegistry;
             _hubWindow.ConnectAction = () =>

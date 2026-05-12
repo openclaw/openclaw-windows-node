@@ -35,6 +35,7 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
+    event EventHandler<AgentEventInfo>? ChatEventReceived;
 
     // ─── Query ───
     string? OperatorDeviceId { get; }
@@ -53,6 +54,7 @@ public interface IOperatorGatewayClient
 
     // ─── Request Methods ───
     Task SendChatMessageAsync(string message, string? sessionKey = null);
+    Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null);
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();

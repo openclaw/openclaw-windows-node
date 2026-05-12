@@ -21,6 +21,7 @@ public sealed partial class CronPage : Page
     private Border? _editingCard = null; // card hidden during inline edit
     private string? _historyJobId = null; // job whose history is currently displayed
     private HashSet<string> _runningJobIds = new(); // jobs currently being triggered
+    private HashSet<string> _removedJobIds = new(); // jobs user explicitly removed (suppress auto-delete notification)
     private HashSet<string> _expandedJobIds = new(); // persisted expanded state
     private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
 
@@ -82,8 +83,7 @@ public sealed partial class CronPage : Page
     {
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId) || _hub?.GatewayClient == null) return;
-        var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm != null && !vm.IsEnabled) return;
+        _removedJobIds.Add(jobId);
         // Gateway client's HandleKnownResponse refreshes the list automatically on cron.remove
         _ = _hub.GatewayClient.RemoveCronJobAsync(jobId);
     }
@@ -695,10 +695,12 @@ public sealed partial class CronPage : Page
             var newIds = new HashSet<string>(jobs.Select(j => j.Id));
             foreach (var oldVm in _jobs)
             {
-                if (!newIds.Contains(oldVm.Id) && oldVm.DeleteAfterRun)
+                if (!newIds.Contains(oldVm.Id) && oldVm.DeleteAfterRun && !_removedJobIds.Contains(oldVm.Id))
                 {
                     ShowJobCompletedNotification(oldVm.Name);
                 }
+                if (!newIds.Contains(oldVm.Id))
+                    _removedJobIds.Remove(oldVm.Id);
             }
 
             _jobs = jobs;
@@ -1167,7 +1169,6 @@ public sealed partial class CronPage : Page
         buttonsPanel.Children.Add(histBtn);
 
         var removeBtn = MakeActionButton("\uE711", "Remove", vm.Id, OnRemoveClick);
-        if (jobDisabled) removeBtn.Opacity = 0.4;
         buttonsPanel.Children.Add(removeBtn);
 
         panel.Children.Add(buttonsPanel);
@@ -1624,7 +1625,7 @@ public sealed partial class CronPage : Page
         public string DeliveryText { get; set; } = "";
         public Visibility DeliveryVisibility { get; set; } = Visibility.Collapsed;
         public string ToggleEnabledLabel => IsEnabled ? "⏸ Disable" : "▶ Enable";
-        public string ToggleEnabledGlyph => IsEnabled ? "\uE7E8" : "\uE7E8";
+        public string ToggleEnabledGlyph => IsEnabled ? "\uE7E8" : "\uE768";
         public string ToggleEnabledText => IsEnabled ? "Disable" : "Enable";
         public string Description { get; set; } = "";
         public Visibility DescriptionVisibility { get; set; } = Visibility.Collapsed;

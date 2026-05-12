@@ -22,6 +22,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
     private readonly VoiceService _voiceService;
     private readonly IOpenClawLogger _logger;
     private readonly DispatcherQueue _dispatcherQueue;
+    private readonly bool _testOnly;
     private bool _isMuted;
 
     /// <summary>Fired when the user submits transcribed text to the agent.</summary>
@@ -31,16 +32,25 @@ public sealed partial class VoiceOverlayWindow : WindowEx
     /// navigate to the Voice & Audio page (e.g. via <c>ShowHub("voice")</c>).</summary>
     public event Action? SettingsRequested;
 
-    public VoiceOverlayWindow(VoiceService voiceService, IOpenClawLogger logger)
+    /// <param name="testOnly">When true, transcription is displayed but never
+    /// submitted to the agent — used for mic/model verification from Settings.</param>
+    public VoiceOverlayWindow(VoiceService voiceService, IOpenClawLogger logger, bool testOnly = false)
     {
         InitializeComponent();
         _voiceService = voiceService;
         _logger = logger;
+        _testOnly = testOnly;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         // Modern custom title bar
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+
+        if (_testOnly)
+        {
+            Title = "Test Voice Input";
+            IsAlwaysOnTop = false;
+        }
 
         _voiceService.TranscriptionReceived += OnTranscriptionReceived;
         _voiceService.UtteranceCompleted += OnUtteranceCompleted;
@@ -91,6 +101,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
         // Fire once per silence-bounded utterance. The visual bubble already
         // shows the streamed text; here we just hand the complete sentence
         // to the gateway exactly once.
+        if (_testOnly) return; // Test mode: transcribe only, don't submit
         _dispatcherQueue.TryEnqueue(() =>
         {
             if (!string.IsNullOrWhiteSpace(utterance.Text))
