@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,15 +55,18 @@ public static class OnboardingChatBootstrapper
             if (settings.HasInjectedFirstRunBootstrap)
                 return true;
 
+            var timeout = completionTimeout ?? TimeSpan.FromSeconds(90);
+            var timeoutAt = DateTimeOffset.UtcNow + timeout;
+            using var runCompletion = new RunCompletionObserver(client);
+
             Logger.Info("[OnboardingChatBootstrapper] Sending hatching bootstrap through gateway chat.send");
             var result = await client.SendChatMessageForRunAsync(Message).ConfigureAwait(true);
             if (settings.HasInjectedFirstRunBootstrap)
                 return true;
 
-            var completed = await WaitForRunCompletionAsync(
-                client,
+            var completed = await runCompletion.WaitForCompletionAsync(
                 result.RunId,
-                completionTimeout ?? TimeSpan.FromSeconds(90),
+                timeoutAt,
                 cancellationToken).ConfigureAwait(true);
 
             if (!completed)
@@ -90,35 +94,81 @@ public static class OnboardingChatBootstrapper
         }
     }
 
-    private static async Task<bool> WaitForRunCompletionAsync(
-        IOperatorGatewayClient client,
-        string? runId,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
+    private sealed class RunCompletionObserver : IDisposable
     {
-        if (string.IsNullOrWhiteSpace(runId))
-            return true;
+        private readonly IOperatorGatewayClient _client;
+        private readonly object _gate = new();
+        private readonly HashSet<string> _completedRunIds = new(StringComparer.Ordinal);
+        private readonly TaskCompletionSource<bool> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private string? _runId;
 
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Handler(object? sender, AgentEventInfo evt)
+        public RunCompletionObserver(IOperatorGatewayClient client)
         {
-            if (!string.Equals(evt.RunId, runId, StringComparison.Ordinal))
+            _client = client;
+            _client.AgentEventReceived += OnEventReceived;
+            _client.ChatEventReceived += OnEventReceived;
+        }
+
+        public async Task<bool> WaitForCompletionAsync(
+            string? runId,
+            DateTimeOffset timeoutAt,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(runId))
+                return true;
+
+            lock (_gate)
+            {
+                _runId = runId;
+                if (_completedRunIds.Contains(runId))
+                {
+                    _completion.TrySetResult(true);
+                }
+            }
+
+            if (_completion.Task.IsCompleted)
+                return await _completion.Task.ConfigureAwait(true);
+
+            var remaining = timeoutAt - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                return false;
+
+            var completed = await Task.WhenAny(_completion.Task, Task.Delay(remaining, cancellationToken)).ConfigureAwait(true);
+            if (completed != _completion.Task)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return false;
+            }
+
+            return await _completion.Task.ConfigureAwait(true);
+        }
+
+        public void Dispose()
+        {
+            _client.AgentEventReceived -= OnEventReceived;
+            _client.ChatEventReceived -= OnEventReceived;
+        }
+
+        private void OnEventReceived(object? sender, AgentEventInfo evt)
+        {
+            if (string.IsNullOrWhiteSpace(evt.RunId))
                 return;
-            if (IsFinalAssistantEvent(evt) || IsLifecycleFinalEvent(evt))
-                completion.TrySetResult(true);
-        }
+            if (!IsFinalAssistantEvent(evt) && !IsLifecycleFinalEvent(evt))
+                return;
 
-        client.AgentEventReceived += Handler;
-        client.ChatEventReceived += Handler;
-        try
-        {
-            var completed = await Task.WhenAny(completion.Task, Task.Delay(timeout, cancellationToken)).ConfigureAwait(true);
-            return completed == completion.Task && await completion.Task.ConfigureAwait(true);
-        }
-        finally
-        {
-            client.AgentEventReceived -= Handler;
-            client.ChatEventReceived -= Handler;
+            lock (_gate)
+            {
+                if (_runId == null)
+                {
+                    _completedRunIds.Add(evt.RunId);
+                    return;
+                }
+
+                if (string.Equals(evt.RunId, _runId, StringComparison.Ordinal))
+                {
+                    _completion.TrySetResult(true);
+                }
+            }
         }
     }
 
