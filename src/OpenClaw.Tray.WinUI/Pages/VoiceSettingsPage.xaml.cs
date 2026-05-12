@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
@@ -276,30 +277,106 @@ public sealed partial class VoiceSettingsPage : Page
             try { await _voiceService.StopAsync(); } catch { }
         }
 
-        // Use the existing voice service — it's already initialized with the
-        // correct model and settings.
         var voiceService = _voiceService ?? new VoiceService(new AppLogger(), _hub.Settings);
+        var ownsVoiceService = voiceService != _voiceService;
 
-        var transcriptText = new TextBlock
+        // ── Transcript area (matches Companion Voice overlay style) ──
+        var emptyStateIcon = new FontIcon
         {
-            Text = "Press Start, then speak. Your words will appear here.",
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 8, 0, 0)
+            Glyph = "\uE720",
+            FontSize = 32,
+            Opacity = 0.3,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        var emptyStateText = new TextBlock
+        {
+            Text = "Press Start and begin speaking",
+            FontSize = 13,
+            Opacity = 0.4,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        var emptyState = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Spacing = 8,
+            Margin = new Thickness(0, 40, 0, 40),
+        };
+        emptyState.Children.Add(emptyStateIcon);
+        emptyState.Children.Add(emptyStateText);
+
+        var transcriptPanel = new StackPanel { Spacing = 8 };
+        transcriptPanel.Children.Add(emptyState);
+
+        var transcriptScroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Padding = new Thickness(12),
+            MaxHeight = 220,
+            Content = transcriptPanel
         };
 
+        var transcriptBorder = new Border
+        {
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+            CornerRadius = new CornerRadius(8),
+            Child = transcriptScroll
+        };
+
+        // ── Audio level bar ──
+        var levelBarBg = new Border
+        {
+            Background = (Brush)Application.Current.Resources["ControlStrongFillColorDefaultBrush"],
+            CornerRadius = new CornerRadius(2),
+            Opacity = 0.3
+        };
+        var levelBarFill = new Border
+        {
+            Background = new SolidColorBrush((global::Windows.UI.Color)Application.Current.Resources["SystemAccentColor"]),
+            CornerRadius = new CornerRadius(2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Width = 0
+        };
+        var levelBarGrid = new Grid
+        {
+            Height = 4,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        levelBarGrid.Children.Add(levelBarBg);
+        levelBarGrid.Children.Add(levelBarFill);
+
+        // ── Status text ──
         var statusText = new TextBlock
         {
-            Text = "",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray)
+            Text = "Press Start to begin",
+            FontSize = 12,
+            Opacity = 0.5,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 10)
         };
 
-        var startButton = new Button { Content = "Start Listening" };
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(startButton);
+        // ── Start/Stop button (accent style, matches overlay) ──
+        var btnIcon = new FontIcon { Glyph = "\uE768", FontSize = 14 };
+        var btnLabel = new TextBlock { Text = "Start Listening", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+        var btnContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        btnContent.Children.Add(btnIcon);
+        btnContent.Children.Add(btnLabel);
+
+        var startButton = new Button
+        {
+            Content = btnContent,
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Height = 40
+        };
+
+        // ── Layout ──
+        var panel = new StackPanel { Spacing = 0, Width = 340 };
+        panel.Children.Add(transcriptBorder);
+        panel.Children.Add(new Border { Height = 12 });
+        panel.Children.Add(levelBarGrid);
         panel.Children.Add(statusText);
-        panel.Children.Add(transcriptText);
+        panel.Children.Add(startButton);
 
         var dialog = new ContentDialog
         {
@@ -310,16 +387,67 @@ public sealed partial class VoiceSettingsPage : Page
         };
 
         var listening = false;
+        TextBlock? lastBubbleText = null;
+
+        void AddBubble(string text)
+        {
+            // Hide empty state on first transcription
+            if (emptyState.Visibility == Visibility.Visible)
+                emptyState.Visibility = Visibility.Collapsed;
+
+            // Consolidate rapid segments into the same bubble
+            if (lastBubbleText != null)
+            {
+                lastBubbleText.Text += " " + text;
+            }
+            else
+            {
+                var bubble = new Border
+                {
+                    Background = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue),
+                    CornerRadius = new CornerRadius(12, 12, 4, 12),
+                    Padding = new Thickness(12, 10, 12, 10),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(24, 4, 0, 4)
+                };
+
+                var grid = new Grid { ColumnSpacing = 8 };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var icon = new FontIcon
+                {
+                    Glyph = "\uE77B",
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, 3, 0, 0),
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
+                };
+                Grid.SetColumn(icon, 0);
+                grid.Children.Add(icon);
+
+                lastBubbleText = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 13,
+                    IsTextSelectionEnabled = true,
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
+                };
+                Grid.SetColumn(lastBubbleText, 1);
+                grid.Children.Add(lastBubbleText);
+
+                bubble.Child = grid;
+                transcriptPanel.Children.Add(bubble);
+            }
+
+            transcriptScroll.UpdateLayout();
+            transcriptScroll.ChangeView(null, transcriptScroll.ScrollableHeight, null);
+        }
 
         void OnTranscription(string text)
         {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (transcriptText.Text == "Listening..." || transcriptText.Text.StartsWith("Press Start"))
-                    transcriptText.Text = text;
-                else
-                    transcriptText.Text += " " + text;
-            });
+            DispatcherQueue.TryEnqueue(() => AddBubble(text));
         }
 
         void OnDiagnostic(string msg)
@@ -327,35 +455,73 @@ public sealed partial class VoiceSettingsPage : Page
             DispatcherQueue.TryEnqueue(() => statusText.Text = msg);
         }
 
+        void OnSpeaking(bool isSpeaking)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (isSpeaking)
+                {
+                    statusText.Text = "\U0001f3a4 Listening...";
+                    // New speech utterance → new bubble
+                    lastBubbleText = null;
+                }
+                else
+                {
+                    statusText.Text = "Speak now";
+                }
+            });
+        }
+
+        void OnAudioLevel(float level)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                var maxWidth = levelBarGrid.ActualWidth > 0 ? levelBarGrid.ActualWidth : 340;
+                levelBarFill.Width = Math.Max(0, level * maxWidth);
+            });
+        }
+
         startButton.Click += async (_, _) =>
         {
             if (!listening)
             {
                 listening = true;
-                startButton.Content = "Stop Listening";
-                transcriptText.Text = "Listening...";
+                btnIcon.Glyph = "\uE71A";
+                btnLabel.Text = "Stop Listening";
                 voiceService.TranscriptionReceived += OnTranscription;
                 voiceService.DiagnosticMessage += OnDiagnostic;
+                voiceService.SpeakingChanged += OnSpeaking;
+                voiceService.AudioLevelChanged += OnAudioLevel;
                 try
                 {
                     await voiceService.StartVoiceChatAsync();
-                    statusText.Text = "Voice chat started — speak now";
+                    statusText.Text = "Speak now";
                 }
                 catch (Exception ex)
                 {
                     statusText.Text = $"Error: {ex.Message}";
                     listening = false;
-                    startButton.Content = "Start Listening";
+                    btnIcon.Glyph = "\uE768";
+                    btnLabel.Text = "Start Listening";
+                    voiceService.TranscriptionReceived -= OnTranscription;
+                    voiceService.DiagnosticMessage -= OnDiagnostic;
+                    voiceService.SpeakingChanged -= OnSpeaking;
+                    voiceService.AudioLevelChanged -= OnAudioLevel;
                 }
             }
             else
             {
                 listening = false;
-                startButton.Content = "Start Listening";
+                btnIcon.Glyph = "\uE768";
+                btnLabel.Text = "Start Listening";
+                statusText.Text = "Processing...";
+                levelBarFill.Width = 0;
+                await voiceService.StopAsync();
                 voiceService.TranscriptionReceived -= OnTranscription;
                 voiceService.DiagnosticMessage -= OnDiagnostic;
-                await voiceService.StopAsync();
-                statusText.Text = "Stopped";
+                voiceService.SpeakingChanged -= OnSpeaking;
+                voiceService.AudioLevelChanged -= OnAudioLevel;
+                statusText.Text = "Done — check your transcript above";
             }
         };
 
@@ -364,9 +530,18 @@ public sealed partial class VoiceSettingsPage : Page
         // Clean up when dialog closes
         if (listening)
         {
+            listening = false;
+            levelBarFill.Width = 0;
+            await voiceService.StopAsync();
             voiceService.TranscriptionReceived -= OnTranscription;
             voiceService.DiagnosticMessage -= OnDiagnostic;
-            await voiceService.StopAsync();
+            voiceService.SpeakingChanged -= OnSpeaking;
+            voiceService.AudioLevelChanged -= OnAudioLevel;
+        }
+
+        if (ownsVoiceService)
+        {
+            await voiceService.DisposeAsync();
         }
     }
 
