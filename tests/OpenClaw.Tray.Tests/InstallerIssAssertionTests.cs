@@ -43,4 +43,23 @@ public sealed class InstallerIssAssertionTests
             GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         Assert.Contains("var mutexName = \"OpenClawTray\";", appXamlCs);
     }
+
+    /// <summary>
+    /// Round 2 (Bot B2) — the keepalive process killer must use
+    /// entireProcessTree:true. wsl.exe spawns wslhost.exe and in-distro
+    /// processes; killing only the parent leaves children holding distro
+    /// state and blocks wsl --unregister. Spawning a real WSL process tree
+    /// in a unit test is brittle, so we pin the source contract instead.
+    /// </summary>
+    [Fact]
+    public void StopKeepalive_KillsEntireProcessTree_SourceAssertion()
+    {
+        var src = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "LocalGatewaySetup",
+            "LocalGatewayUninstall.cs"));
+
+        Assert.Contains("proc.Kill(entireProcessTree: true)", src);
+        Assert.DoesNotContain("proc.Kill(entireProcessTree: false)", src);
+    }
 }

@@ -241,7 +241,11 @@ public sealed class LocalGatewayUninstall
                 try
                 {
                     using var proc = Process.GetProcessById(pid);
-                    proc.Kill(entireProcessTree: false);
+                    // Round 2 (Bot B2): wsl.exe spawns wslhost.exe + the
+                    // in-distro init/sleep processes. Killing only the parent
+                    // PID leaves child WSL services holding distro state,
+                    // which prevents `wsl --unregister` from completing.
+                    proc.Kill(entireProcessTree: true);
                     stopped++;
                     _logger.Info($"[Uninstall] Stopped WSL keepalive PID {pid}.");
                 }
