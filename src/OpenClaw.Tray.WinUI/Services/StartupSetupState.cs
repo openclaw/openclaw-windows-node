@@ -19,11 +19,10 @@ internal static class StartupSetupState
 
     public static bool RequiresSetup(SettingsManager settings, string dataPath)
     {
-        if (settings.EnableNodeMode && HasStoredNodeDeviceToken(dataPath))
-        {
+        var hasOperatorToken = DeviceIdentity.HasStoredDeviceToken(dataPath);
+        var hasNodeToken = HasStoredNodeDeviceToken(dataPath);
+        if (hasOperatorToken || hasNodeToken)
             return false;
-        }
-
-        return !settings.EnableMcpServer;
+        return true;
     }
 }
