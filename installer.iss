@@ -27,6 +27,11 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 SetupIconFile=src\OpenClaw.Tray.WinUI\Assets\openclaw.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; Round 2 (Scott #5): block install/uninstall while the tray is running.
+; Mutex name matches App.xaml.cs (`new Mutex(true, "OpenClawTray", …)`).
+; Tray and Inno run in the same user session, so the bare name resolves
+; against Local\OpenClawTray — no Global\ prefix needed.
+AppMutex=OpenClawTray
 #if MyAppArch == "arm64"
 ArchitecturesInstallIn64BitMode=arm64
 ArchitecturesAllowed=arm64

@@ -543,6 +543,11 @@ public partial class App : Application
         // two test runs against the same data dir would otherwise pick different
         // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
         // SHA-256 prefix instead.
+        // NOTE: The bare "OpenClawTray" mutex name is also referenced by
+        // installer.iss `AppMutex=` for install/uninstall race coordination
+        // (round 2, Scott #5). The suffixed test-isolation variant is
+        // intentionally not covered by AppMutex — production installs only
+        // ever use the unsuffixed name.
         var mutexName = "OpenClawTray";
         if (DataDirOverride is not null)
         {
