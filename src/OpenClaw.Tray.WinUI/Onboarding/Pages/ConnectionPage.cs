@@ -83,6 +83,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             GetDetectedLocalUrl);
         var (url, setUrl) = UseState(initialUrl);
         var (token, setToken) = UseState("");
+        var (gotBootstrapToken, setGotBootstrapToken) = UseState(false);
         var (nodeMode, setNodeMode) = UseState(Props.Settings.EnableNodeMode);
         var (setupCode, setSetupCode) = UseState("");
 
@@ -161,7 +162,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             if (result.Token != null)
             {
                 setToken(result.Token);
-                // Bootstrap token stored in GatewayRegistry via ApplySetupCodeAsync
+                setGotBootstrapToken(true);
             }
             setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
         }
@@ -176,6 +177,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
         void OnTokenChanged(string v)
         {
+            setGotBootstrapToken(false);
             setToken(v);
             Props.ConnectionTested = false;
             setStatusMsg("");
@@ -293,11 +295,14 @@ public sealed class ConnectionPage : Component<OnboardingState>
                     var sshConfig = useSshTunnel
                         ? new OpenClawTray.Services.Connection.SshTunnelConfig(sshUser, sshHost, sshRemotePort, sshLocalPort)
                         : null;
+                    var isBootstrap = !string.IsNullOrWhiteSpace(setupCode)
+                        && SetupCodeDecoder.Decode(setupCode) is { Success: true };
                     var record = new OpenClawTray.Services.Connection.GatewayRecord
                     {
                         Id = recordId,
                         Url = normalizedUrl,
-                        SharedGatewayToken = !string.IsNullOrWhiteSpace(token) ? token : null,
+                        BootstrapToken = isBootstrap && !string.IsNullOrWhiteSpace(token) ? token : null,
+                        SharedGatewayToken = !isBootstrap && !string.IsNullOrWhiteSpace(token) ? token : null,
                         SshTunnel = sshConfig,
                     };
                     registry.AddOrUpdate(record);
@@ -314,6 +319,8 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 bool connected = false;
                 bool pairingRequired = false;
                 bool authFailed = false;
+                int consecutiveErrors = 0;
+                const int maxTransientErrors = 3;
 
                 for (int attempt = 0; attempt < 30; attempt++)
                 {
@@ -328,7 +335,15 @@ public sealed class ConnectionPage : Component<OnboardingState>
                     if (snapshot.OverallState == OpenClawTray.Services.Connection.OverallConnectionState.PairingRequired)
                     { pairingRequired = true; break; }
                     if (snapshot.OverallState == OpenClawTray.Services.Connection.OverallConnectionState.Error)
-                    { authFailed = true; break; }
+                    {
+                        consecutiveErrors++;
+                        if (consecutiveErrors >= maxTransientErrors)
+                        { authFailed = true; break; }
+                    }
+                    else
+                    {
+                        consecutiveErrors = 0;
+                    }
                 }
 
                 if (connected)
