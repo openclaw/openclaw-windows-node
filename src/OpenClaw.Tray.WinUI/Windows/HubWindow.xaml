@@ -144,6 +144,9 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_136" Tag="permissions" Content="Permissions">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D7;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Tag="sandbox" Content="Sandbox">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE72E;"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_139" Tag="activity" Content="Activity">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xEA95;"/></NavigationViewItem.Icon>
             </NavigationViewItem>

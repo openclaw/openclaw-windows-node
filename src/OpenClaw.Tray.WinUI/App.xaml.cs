@@ -642,6 +642,24 @@ public partial class App : Application
         var appLogger = new AppLogger();
         var diagnostics = new ConnectionDiagnostics();
         var nodeConnector = new NodeConnector(appLogger, diagnostics);
+        // Bridge: whenever NodeConnector creates a fresh WindowsNodeClient (initial
+        // connect or reconnect), register the node's capabilities on it BEFORE the
+        // outbound "connect" handshake runs. Without this hookup the gateway sees
+        // the node as having no advertised commands and the agent cannot invoke
+        // anything on it. _nodeService may be null at app startup (constructed
+        // lazily); when null we no-op and the gateway will see an empty caps list
+        // until the next reconnect after _nodeService becomes available.
+        nodeConnector.ClientCreated += (_, args) =>
+        {
+            try
+            {
+                _nodeService?.AttachClient(args.Client, args.BearerToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[App] NodeConnector.ClientCreated handler failed: {ex.Message}");
+            }
+        };
         // Wrap the SSH tunnel service so the connection manager can start/stop the tunnel
         var tunnelManager = _sshTunnelService != null
             ? new SshTunnelManager(_sshTunnelService, appLogger)
@@ -656,6 +674,18 @@ public partial class App : Application
             shouldStartNodeConnection: ShouldInitializeNodeService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+
+        // Ensure NodeService is constructed BEFORE InitializeGatewayClient triggers a
+        // NodeConnector connect. The NodeConnector.ClientCreated event subscription
+        // above relies on _nodeService being non-null to register capabilities on the
+        // new WindowsNodeClient. If we don't pre-construct here, the first connect
+        // happens with empty caps and the gateway records this node as having no
+        // advertised commands (which leaves the agent unable to invoke anything on it).
+        // The method is idempotent — safe to call here AND later if first-run setup runs.
+        if (ShouldInitializeNodeService() && _settings != null)
+        {
+            EnsureNodeServiceForLocalGatewaySetup(_settings);
+        }
 
         // Initialize connections — always create operator client for UI data,
         // additionally create node service for gateway node mode or local MCP.

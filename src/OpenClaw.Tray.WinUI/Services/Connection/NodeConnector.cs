@@ -16,6 +16,7 @@ public sealed class NodeConnector : INodeConnector
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+    public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 
     public NodeConnector(IOpenClawLogger logger, ConnectionDiagnostics? diagnostics = null)
     {
@@ -61,6 +62,24 @@ public sealed class NodeConnector : INodeConnector
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)
             _client.UseV2Signature = true;
+
+        // CRITICAL: fire ClientCreated BEFORE await _client.ConnectAsync() so subscribers
+        // (NodeService) can register capabilities synchronously. WindowsNodeClient
+        // serializes _registration.Capabilities/Commands into the outbound "connect"
+        // message during the connect handshake — registering after that point means
+        // the gateway sees an empty caps array for this session.
+        try
+        {
+            ClientCreated?.Invoke(
+                this,
+                new NodeClientCreatedEventArgs(
+                    _client,
+                    credential.IsBootstrapToken ? null : credential.Token));
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[NodeConnector] ClientCreated handler threw: {ex.Message}");
+        }
 
         _client.StatusChanged += (s, e) => StatusChanged?.Invoke(this, e);
         _client.PairingStatusChanged += (s, e) => PairingStatusChanged?.Invoke(this, e);

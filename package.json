@@ -1,0 +1,9 @@
+{
+  "name": "openclaw-windows-node-mxc",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Node bridge dependencies for the OpenClaw tray's MXC sandbox integration. The C# tray spawns node.exe with scripts under tools/mxc/ that consume the @microsoft/mxc-sdk to drive wxc-exec.exe.",
+  "dependencies": {
+    "@microsoft/mxc-sdk": "^0.1.8"
+  }
+}

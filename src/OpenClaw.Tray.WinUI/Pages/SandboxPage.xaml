@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="OpenClawTray.Pages.SandboxPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
+
+            <!-- Header: unified sandbox status (availability + state + master toggle) -->
+            <Grid x:Name="SandboxStatusCard" ColumnSpacing="16" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="SandboxStatusIcon"
+                           Grid.Column="0"
+                           Text="🛡"
+                           FontSize="32"
+                           VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock x:Name="SandboxStatusTitle"
+                               Text="Sandbox is on"
+                               Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock x:Name="SandboxStatusSubtext"
+                               Text="Restricts what agent-started Windows commands can see. Doesn't cover commands run inside WSL or files you paste into chat."
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <ToggleSwitch x:Name="SandboxEnabledToggle"
+                              Grid.Column="2"
+                              VerticalAlignment="Center"
+                              MinWidth="0"
+                              OffContent=""
+                              OnContent=""
+                              AutomationProperties.Name="Sandbox enabled"
+                              Toggled="OnSandboxEnabledToggled" />
+            </Grid>
+
+            <!-- Prominent error + fix action when MXC sandboxing is unavailable -->
+            <InfoBar x:Name="UnavailableActionBar"
+                     IsOpen="False"
+                     IsClosable="False"
+                     Severity="Error"
+                     Title="Sandbox unavailable">
+                <InfoBar.Content>
+                    <StackPanel Spacing="8" Margin="0,4,0,12">
+                        <TextBlock x:Name="UnavailableActionMessage" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="UnavailablePrimaryButton" Click="OnUnavailableActionClick" Style="{ThemeResource AccentButtonStyle}" />
+                            <HyperlinkButton Content="Learn more about MXC sandboxing"
+                                             NavigateUri="https://github.com/microsoft/mxc" />
+                        </StackPanel>
+                    </StackPanel>
+                </InfoBar.Content>
+            </InfoBar>
+
+            <!-- Preset cards -->
+            <StackPanel x:Name="PresetSection" Spacing="6">
+                <TextBlock Text="Security level"
+                           Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="One click to set every control below. Custom folders stay as you set them."
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Grid ColumnSpacing="12" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="PresetLockedButton"
+                            Grid.Column="0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            VerticalContentAlignment="Top"
+                            Padding="20,18"
+                            MinHeight="130"
+                            CornerRadius="8"
+                            Click="OnPresetLockedClick">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="🔒 Locked Down"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="No internet, no clipboard, no standard user folders."
+                                       TextWrapping="Wrap"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button x:Name="PresetBalancedButton"
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            VerticalContentAlignment="Top"
+                            Padding="20,18"
+                            MinHeight="130"
+                            CornerRadius="8"
+                            Click="OnPresetBalancedClick">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="⚖ Balanced"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Internet on. Read-only on Documents, Downloads, Desktop. Clipboard read."
+                                       TextWrapping="Wrap"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button x:Name="PresetPermissiveButton"
+                            Grid.Column="2"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            VerticalContentAlignment="Top"
+                            Padding="20,18"
+                            MinHeight="130"
+                            CornerRadius="8"
+                            Click="OnPresetPermissiveClick">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="🔓 Permissive"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Internet on. Read+write on Documents, Downloads, Desktop. Clipboard read+write."
+                                       TextWrapping="Wrap"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <!-- Inline warning shown when a preset is applied but custom folder grants remain -->
+                <InfoBar x:Name="PresetCustomFoldersWarning"
+                         IsOpen="False"
+                         IsClosable="True"
+                         Severity="Warning"
+                         Title="Custom folder grants still active"
+                         Margin="0,8,0,0" />
+            </StackPanel>
+
+            <!-- Detail sections: gated by SandboxControlsContainer's IsEnabled (off when sandbox unavailable or master toggle off) -->
+            <StackPanel x:Name="SandboxControlsContainer" Spacing="16">
+
+                <!-- Files (highest privacy risk — appears first) -->
+                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Text="📁 Files" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <TextBlock Text="By default the agent only has a temporary workspace folder it can read and write. Grant access to user folders below. SSH keys, browser profiles, and OpenClaw's own settings are always blocked."
+                                   TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                        <Grid ColumnSpacing="8" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Documents" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="DocsAccessCombo" Grid.Row="0" Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnDocsAccessChanged">
+                                <ComboBoxItem Content="🚫 Blocked" Tag="None" />
+                                <ComboBoxItem Content="🔒 Read only" Tag="ReadOnly" />
+                                <ComboBoxItem Content="✏️ Read &amp; write" Tag="ReadWrite" />
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Downloads" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="DownloadsAccessCombo" Grid.Row="1" Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnDownloadsAccessChanged">
+                                <ComboBoxItem Content="🚫 Blocked" Tag="None" />
+                                <ComboBoxItem Content="🔒 Read only" Tag="ReadOnly" />
+                                <ComboBoxItem Content="✏️ Read &amp; write" Tag="ReadWrite" />
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Desktop" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="DesktopAccessCombo" Grid.Row="2" Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnDesktopAccessChanged">
+                                <ComboBoxItem Content="🚫 Blocked" Tag="None" />
+                                <ComboBoxItem Content="🔒 Read only" Tag="ReadOnly" />
+                                <ComboBoxItem Content="✏️ Read &amp; write" Tag="ReadWrite" />
+                            </ComboBox>
+                        </Grid>
+
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="8">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Custom folders" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock Text="Custom grants are added on top of the rules above. Adding a folder inside Documents/Downloads/Desktop with broader access will override the row-level setting for that path."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ListView x:Name="CustomFoldersList"
+                                          MaxHeight="220"
+                                          SelectionMode="None"
+                                          Visibility="Collapsed">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="8" Padding="2,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="170"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Path}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"
+                                                           ToolTipService.ToolTip="{Binding Path}" />
+                                                <ComboBox Grid.Column="1"
+                                                          HorizontalAlignment="Stretch"
+                                                          SelectedIndex="{Binding AccessIndex, Mode=TwoWay}"
+                                                          SelectionChanged="OnCustomFolderAccessChanged"
+                                                          Tag="{Binding Path}">
+                                                    <ComboBoxItem Content="🚫 Blocked" />
+                                                    <ComboBoxItem Content="🔒 Read only" />
+                                                    <ComboBoxItem Content="✏️ Read &amp; write" />
+                                                </ComboBox>
+                                                <Button Grid.Column="2" Content="✕" Tag="{Binding Path}"
+                                                        Click="OnRemoveCustomFolder"
+                                                        Padding="6,2" MinWidth="0" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <TextBlock x:Name="CustomFoldersEmpty"
+                                           Text="No custom folders added."
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="➕ Add folder" Click="OnAddCustomFolder" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Clipboard -->
+                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Text="📋 Clipboard" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="8" Padding="4">
+                        <TextBlock Text="Clipboard often contains passwords, tokens, and private text. Read access may leak this to the agent (and over the internet, if enabled)."
+                                   TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <RadioButton x:Name="ClipboardNoneRadio" Content="🚫 None (default)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="None" />
+                        <RadioButton x:Name="ClipboardReadRadio" Content="👁 Read — agent can see what you copied" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Read" />
+                        <RadioButton x:Name="ClipboardWriteRadio" Content="✍ Write — agent can replace your clipboard (cannot read it)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Write" />
+                        <RadioButton x:Name="ClipboardBothRadio" Content="🔁 Read &amp; Write — both" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Both" />
+                    </StackPanel>
+                </Expander>
+
+                <!-- Network -->
+                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Text="📡 Network" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <ToggleSwitch x:Name="NetInternetToggle"
+                                      Header="Allow internet"
+                                      OffContent="Off — agent cannot reach the internet"
+                                      OnContent="On — agent can connect to public internet endpoints"
+                                      Toggled="OnNetInternetToggled" />
+                        <TextBlock Text="If file or clipboard read access is enabled, the agent may send that data over the internet."
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="Local network devices and shares are not included yet."
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Expander>
+
+                <!-- Limits -->
+                <Expander IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Text="⏱ Limits" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Name="TimeoutLabel" Text="Command timeout: 30 sec"/>
+                            <Slider x:Name="TimeoutSlider" Minimum="5" Maximum="300" StepFrequency="5"
+                                    Value="30" SmallChange="5" LargeChange="15"
+                                    ValueChanged="OnTimeoutChanged" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Maximum captured output (truncates beyond this; does not limit disk, memory, or CPU):" TextWrapping="Wrap"/>
+                            <ComboBox x:Name="MaxOutputCombo"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnMaxOutputChanged">
+                                <ComboBoxItem Content="1 MiB" Tag="1048576" />
+                                <ComboBoxItem Content="4 MiB (default)" Tag="4194304" />
+                                <ComboBoxItem Content="16 MiB" Tag="16777216" />
+                                <ComboBoxItem Content="64 MiB" Tag="67108864" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

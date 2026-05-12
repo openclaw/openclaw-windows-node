@@ -8,6 +8,7 @@ using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mcp;
+using OpenClaw.Shared.Mxc;
 using OpenClawTray.A2UI.Actions;
 using OpenClawTray.A2UI.Rendering;
 using OpenClawTray.Helpers;
@@ -279,7 +280,7 @@ public sealed class NodeService : IDisposable
         // System capability (notifications + command execution)
         _systemCapability = new SystemCapability(_logger);
         _systemCapability.NotifyRequested += OnSystemNotify;
-        _systemCapability.SetCommandRunner(new LocalCommandRunner(_logger));
+        _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
         _systemCapability.SetPromptHandler(new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger));
         Register(_systemCapability);
@@ -392,6 +393,145 @@ public sealed class NodeService : IDisposable
         _capabilities.Add(capability);
         _nodeClient?.RegisterCapability(capability);
     }
+
+    /// <summary>
+    /// Adopt a <see cref="WindowsNodeClient"/> created by an outside party
+    /// (typically <see cref="OpenClawTray.Services.Connection.NodeConnector"/>)
+    /// and register all current capabilities on it. Called via
+    /// <see cref="OpenClawTray.Services.Connection.INodeConnector.ClientCreated"/>
+    /// every time the connector spins up a fresh client (initial connect AND
+    /// reconnect). Idempotent on the capability list — the same capability
+    /// objects get registered against the new client; <c>WindowsNodeClient</c>
+    /// dedupes by category+command into its <c>_registration</c> structure.
+    ///
+    /// Must run synchronously before the client's outbound "connect" message
+    /// is serialized — otherwise the gateway sees this node as having no
+    /// advertised commands and the agent can't invoke anything.
+    /// </summary>
+    public void AttachClient(WindowsNodeClient client, string? bearerToken = null)
+    {
+        if (client is null) return;
+
+        _token = bearerToken;
+        _nodeClient = client;
+        bool capabilitiesBuilt;
+        lock (_capabilitiesLock)
+        {
+            capabilitiesBuilt = _capabilities.Count > 0;
+        }
+
+        // First connect after app startup may not have built capability objects yet.
+        // RegisterCapabilities() populates _capabilities and registers them on _nodeClient.
+        if (!capabilitiesBuilt)
+        {
+            _logger.Info("[NodeService] AttachClient: capabilities not yet built, calling RegisterCapabilities()");
+            RegisterCapabilities();
+        }
+        else
+        {
+            // Reconnect path: capabilities already exist, just re-bind to the new client.
+            lock (_capabilitiesLock)
+            {
+                foreach (var capability in _capabilities)
+                {
+                    try
+                    {
+                        client.RegisterCapability(capability);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"[NodeService] AttachClient: failed to register {capability.Category}: {ex.Message}");
+                    }
+                }
+            }
+            _logger.Info($"[NodeService] AttachClient: re-registered {_capabilities.Count} capabilities on new client");
+        }
+    }
+
+    /// <summary>
+    /// Build the <see cref="ICommandRunner"/> for system.run. Picks
+    /// <see cref="MxcCommandRunner"/> wrapping a one-shot AppContainer when MXC is
+    /// available; falls back to <see cref="LocalCommandRunner"/> with an explanatory
+    /// log when it isn't. The choice respects <see cref="SettingsData.SystemRunSandboxMode"/>:
+    /// Required (default) fail-closes; BestEffort uses a host fallback inside MxcCommandRunner;
+    /// Off bypasses MXC entirely.
+    /// </summary>
+    private ICommandRunner BuildSystemRunRunner()
+    {
+        var availability = _mxcAvailability ??= MxcAvailability.Probe(_logger);
+        var hostRunner = new LocalCommandRunner(_logger);
+
+        ISandboxExecutor executor;
+        if (!availability.HasAnyBackend || availability.RunCommandScriptPath is null)
+        {
+            // No MXC on this host. We still route through MxcCommandRunner so the
+            // SystemRunSandboxEnabled toggle is honored: when ON, invocation is
+            // denied (fail-closed); when OFF, the inner runner falls back to host.
+            var reason = !availability.HasAnyBackend
+                ? string.Join("; ", availability.UnsupportedReasons)
+                : "tools/mxc/run-command.cjs not found";
+            executor = new UnavailableSandboxExecutor(reason);
+            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable: {reason})");
+        }
+        else
+        {
+            executor = new OneShotAppContainerExecutor(
+                availability,
+                availability.RunCommandScriptPath,
+                _logger);
+            _logger.Info(
+                $"[mxc] system.run runner = MxcCommandRunner " +
+                $"(executor={executor.Name}, sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
+        }
+
+        var settingsDirectory = SettingsManager.SettingsDirectoryPath;
+        return new MxcCommandRunner(
+            executor,
+            hostRunner,
+            () => SnapshotSettings(),
+            () => settingsDirectory,
+            // Re-probe on demand if the cache was invalidated by a prior
+            // SandboxUnavailableException (see invalidateAvailability below).
+            () => (_mxcAvailability ??= MxcAvailability.Probe(_logger)).HasAnyBackend,
+            invalidateAvailability: () => _mxcAvailability = null,
+            _logger);
+    }
+
+    /// <summary>
+    /// Snapshot the live <see cref="SettingsManager"/> into the wire-shaped
+    /// <see cref="SettingsData"/> that MxcCommandRunner / MxcPolicyBuilder consume.
+    /// Defensive default keeps sandbox enabled if _settings is null.
+    /// </summary>
+    private SettingsData SnapshotSettings()
+    {
+        if (_settings is null)
+            return new SettingsData
+            {
+                SystemRunSandboxEnabled = true,
+                SystemRunAllowOutbound = false,
+            };
+
+        return new SettingsData
+        {
+            SystemRunSandboxEnabled = _settings.SystemRunSandboxEnabled,
+            SystemRunAllowOutbound = _settings.SystemRunAllowOutbound,
+            // Sandbox page fields — read by MxcPolicyBuilder.ForSystemRun.
+            SandboxClipboard = _settings.SandboxClipboard,
+            SandboxDocumentsAccess = _settings.SandboxDocumentsAccess,
+            SandboxDownloadsAccess = _settings.SandboxDownloadsAccess,
+            SandboxDesktopAccess = _settings.SandboxDesktopAccess,
+            // Deep-copy each SandboxCustomFolder so a concurrent UI thread mutation of
+            // Access (between snapshot and policy build) can't race with us. The class
+            // is mutable so a shallow copy of the list would share references.
+            SandboxCustomFolders = _settings.SandboxCustomFolders is { Count: > 0 } src
+                ? src.Select(f => new SandboxCustomFolder { Path = f.Path, Access = f.Access }).ToList()
+                : null,
+            SandboxTimeoutMs = _settings.SandboxTimeoutMs,
+            SandboxMaxOutputBytes = _settings.SandboxMaxOutputBytes,
+        };
+    }
+
+    private MxcAvailability? _mxcAvailability;
 
     private void StartMcpServer()
     {

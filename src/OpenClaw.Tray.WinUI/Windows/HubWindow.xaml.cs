@@ -655,6 +655,7 @@ public sealed partial class HubWindow : WindowEx
                 break;
             case PermissionsPage permissions: permissions.Initialize(this); break;
             case CapabilitiesPage capabilities: capabilities.Initialize(this); break;
+            case SandboxPage sandbox: sandbox.Initialize(this); break;
             case VoiceSettingsPage voice: voice.Initialize(this, VoiceServiceInstance); break;
             case ConversationsPage convos: convos.Initialize(this); break;
             case ActivityPage activity: activity.Initialize(this); break;
@@ -706,6 +707,7 @@ public sealed partial class HubWindow : WindowEx
         "capabilities" => typeof(CapabilitiesPage),
         "voice" => typeof(VoiceSettingsPage),
         "permissions" => typeof(PermissionsPage),
+        "sandbox" => typeof(SandboxPage),
         "activity" => typeof(ActivityPage),
         "settings" => typeof(SettingsPage),
         "debug" => typeof(DebugPage),

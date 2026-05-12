@@ -112,6 +112,21 @@ public class SettingsManager
     public string SkippedUpdateTag { get; set; } = "";
     public string? PreferredGatewayId { get; set; }
 
+    // ── MXC sandbox ─────────────────────────────────────────────────────
+    /// <summary>Master switch for system.run containment. When true (default), system.run runs sandboxed and is denied if MXC is unavailable. When false, system.run runs on host like before.</summary>
+    public bool SystemRunSandboxEnabled { get; set; } = true;
+    /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
+    public bool SystemRunAllowOutbound { get; set; } = false;
+
+    // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
+    public SandboxClipboardMode SandboxClipboard { get; set; } = SandboxClipboardMode.None;
+    public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
+    public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
+    public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
+    public List<SandboxCustomFolder> SandboxCustomFolders { get; set; } = new();
+    public int SandboxTimeoutMs { get; set; } = 30_000;
+    public long SandboxMaxOutputBytes { get; set; } = 4 * 1024 * 1024;
+
     public SettingsManager() : this(GetDefaultSettingsDirectory())
     {
     }
@@ -211,6 +226,21 @@ public class SettingsManager
                     PreferStructuredCategories = loaded.PreferStructuredCategories;
                     if (loaded.UserRules != null)
                         UserRules = loaded.UserRules;
+
+                    // MXC sandbox settings
+                    SystemRunSandboxEnabled = loaded.SystemRunSandboxEnabled;
+                    SystemRunAllowOutbound = loaded.SystemRunAllowOutbound;
+
+                    // MXC sandbox settings (Sandbox page)
+                    SandboxClipboard = loaded.SandboxClipboard;
+                    SandboxDocumentsAccess = loaded.SandboxDocumentsAccess;
+                    SandboxDownloadsAccess = loaded.SandboxDownloadsAccess;
+                    SandboxDesktopAccess = loaded.SandboxDesktopAccess;
+                    SandboxCustomFolders = loaded.SandboxCustomFolders ?? new();
+                    if (loaded.SandboxTimeoutMs > 0)
+                        SandboxTimeoutMs = loaded.SandboxTimeoutMs;
+                    if (loaded.SandboxMaxOutputBytes > 0)
+                        SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes;
                 }
             }
         }
@@ -302,7 +332,18 @@ public class SettingsManager
         PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
         NotifyChatResponses = NotifyChatResponses,
         PreferStructuredCategories = PreferStructuredCategories,
-        UserRules = UserRules
+        UserRules = UserRules,
+        // MXC sandbox settings
+        SystemRunSandboxEnabled = SystemRunSandboxEnabled,
+        SystemRunAllowOutbound = SystemRunAllowOutbound,
+        // MXC sandbox settings (Sandbox page)
+        SandboxClipboard = SandboxClipboard,
+        SandboxDocumentsAccess = SandboxDocumentsAccess,
+        SandboxDownloadsAccess = SandboxDownloadsAccess,
+        SandboxDesktopAccess = SandboxDesktopAccess,
+        SandboxCustomFolders = SandboxCustomFolders.Count == 0 ? null : new List<SandboxCustomFolder>(SandboxCustomFolders),
+        SandboxTimeoutMs = SandboxTimeoutMs,
+        SandboxMaxOutputBytes = SandboxMaxOutputBytes
     };
 
     public void Save()

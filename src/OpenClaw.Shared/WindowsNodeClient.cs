@@ -159,7 +159,10 @@ public class WindowsNodeClient : WebSocketClientBase
     /// </summary>
     public void RegisterCapability(INodeCapability capability)
     {
-        _capabilities.Add(capability);
+        if (!_capabilities.Contains(capability))
+        {
+            _capabilities.Add(capability);
+        }
         
         // Update registration
         if (!_registration.Capabilities.Contains(capability.Category))

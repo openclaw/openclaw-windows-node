@@ -71,6 +71,77 @@
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <OpenClawRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</OpenClawRepoRoot>
+  </PropertyGroup>
+
+  <Target Name="RestoreMxcNodeBridge"
+          BeforeTargets="Build;Publish"
+          Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
+    <Message Importance="high" Text="Restoring MXC node bridge dependencies with npm ci" />
+    <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(OpenClawRepoRoot)" />
+  </Target>
+
+  <Target Name="CopyMxcNodeBridgeToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_MxcBridgeFiles Include="$(OpenClawRepoRoot)tools\mxc\**\*" />
+      <_MxcSdkFiles Include="$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\**\*" />
+      <_MxcNodePtyFiles Include="$(OpenClawRepoRoot)node_modules\node-pty\**\*" />
+      <_MxcNodeAddonApiFiles Include="$(OpenClawRepoRoot)node_modules\node-addon-api\**\*" />
+      <_MxcSemverFiles Include="$(OpenClawRepoRoot)node_modules\semver\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MxcBridgeFiles)"
+          DestinationFiles="@(_MxcBridgeFiles->'$(TargetDir)tools\mxc\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcBridgeFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcSdkFiles)"
+          DestinationFiles="@(_MxcSdkFiles->'$(TargetDir)node_modules\@microsoft\mxc-sdk\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcSdkFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcNodePtyFiles)"
+          DestinationFiles="@(_MxcNodePtyFiles->'$(TargetDir)node_modules\node-pty\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcNodePtyFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcNodeAddonApiFiles)"
+          DestinationFiles="@(_MxcNodeAddonApiFiles->'$(TargetDir)node_modules\node-addon-api\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcNodeAddonApiFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcSemverFiles)"
+          DestinationFiles="@(_MxcSemverFiles->'$(TargetDir)node_modules\semver\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcSemverFiles)' != ''" />
+  </Target>
+
+  <Target Name="CopyMxcNodeBridgeToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_MxcPublishBridgeFiles Include="$(OpenClawRepoRoot)tools\mxc\**\*" />
+      <_MxcPublishSdkFiles Include="$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\**\*" />
+      <_MxcPublishNodePtyFiles Include="$(OpenClawRepoRoot)node_modules\node-pty\**\*" />
+      <_MxcPublishNodeAddonApiFiles Include="$(OpenClawRepoRoot)node_modules\node-addon-api\**\*" />
+      <_MxcPublishSemverFiles Include="$(OpenClawRepoRoot)node_modules\semver\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MxcPublishBridgeFiles)"
+          DestinationFiles="@(_MxcPublishBridgeFiles->'$(PublishDir)tools\mxc\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcPublishBridgeFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcPublishSdkFiles)"
+          DestinationFiles="@(_MxcPublishSdkFiles->'$(PublishDir)node_modules\@microsoft\mxc-sdk\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcPublishSdkFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcPublishNodePtyFiles)"
+          DestinationFiles="@(_MxcPublishNodePtyFiles->'$(PublishDir)node_modules\node-pty\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcPublishNodePtyFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcPublishNodeAddonApiFiles)"
+          DestinationFiles="@(_MxcPublishNodeAddonApiFiles->'$(PublishDir)node_modules\node-addon-api\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcPublishNodeAddonApiFiles)' != ''" />
+    <Copy SourceFiles="@(_MxcPublishSemverFiles)"
+          DestinationFiles="@(_MxcPublishSemverFiles->'$(PublishDir)node_modules\semver\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MxcPublishSemverFiles)' != ''" />
+  </Target>
+
   <!-- Copy WebView2Loader.dll to output root for unpackaged app (not needed for MSIX) -->
   <Target Name="CopyWebView2Loader" AfterTargets="Build" Condition="'$(PackageMsix)' != 'true'">
     <PropertyGroup>

@@ -367,6 +367,7 @@ public class GatewayConnectionManagerTests : IDisposable
 #pragma warning disable CS0067 // Events required by interface but not fired in tests
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 
         public Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)

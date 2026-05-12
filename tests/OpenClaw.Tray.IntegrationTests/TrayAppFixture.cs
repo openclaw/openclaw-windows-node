@@ -144,10 +144,14 @@ public sealed class TrayAppFixture : IAsyncLifetime
     {
         // HasSeenActivityStreamTip suppresses the first-run UI tip. EnableMcpServer
         // + !EnableNodeMode routes through StartLocalOnlyAsync (no gateway WebSocket).
+        // Disable the MXC sandbox for these tray/MCP wiring smokes because hosted
+        // CI does not provide MXC; fail-closed sandbox behavior is covered by
+        // OpenClaw.Shared.Tests.Mxc.
         var settings = new SettingsData
         {
             EnableMcpServer = true,
             EnableNodeMode = false,
+            SystemRunSandboxEnabled = false,
             AutoStart = false,
             GlobalHotkeyEnabled = false,
             ShowNotifications = false,
