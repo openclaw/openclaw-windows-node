@@ -781,7 +781,8 @@ public class WindowsNodeClient : WebSocketClientBase
 
         _logger.Info($"[HANDSHAKE] Connect error: message=\"{error}\", code={errorCode}");
 
-        if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(errorCode, "PAIRING_REQUIRED", StringComparison.OrdinalIgnoreCase))
         {
             if (_isPendingApproval)
             {
