@@ -118,11 +118,7 @@ public abstract class WebSocketClientBase : IDisposable
             _webSocket = new ClientWebSocket();
             _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
 
-            // Set Origin header (convert ws/wss to http/https)
             var uri = new Uri(_gatewayUrl);
-            var originScheme = uri.Scheme == "wss" ? "https" : "http";
-            var origin = $"{originScheme}://{uri.Host}:{uri.Port}";
-            _webSocket.Options.SetRequestHeader("Origin", origin);
 
             if (!string.IsNullOrEmpty(_credentials))
             {
