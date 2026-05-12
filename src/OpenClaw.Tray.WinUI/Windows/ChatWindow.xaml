@@ -6,9 +6,7 @@
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw Chat">
 
-    <!-- SystemBackdrop is set in code-behind from ChatExplorationState.BackdropMode
-         so it tracks the active preset. Do NOT set it here in XAML — the XAML
-         value would override the code-behind set on first paint. -->
+    <!-- SystemBackdrop is set in code-behind so the unpackaged window can use Mica. -->
 
     <Grid>
         <Grid.RowDefinitions>
@@ -50,7 +48,7 @@
             </StackPanel>
         </Grid>
 
-        <!-- Reactor host -->
+        <!-- FunctionalUI chat host -->
         <Border x:Name="ChatHost" Grid.Row="1"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->

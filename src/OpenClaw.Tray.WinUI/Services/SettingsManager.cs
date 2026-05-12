@@ -72,7 +72,7 @@ public class SettingsManager
     // User interface
     /// <summary>
     /// When true, host the legacy WebView2 gateway chat UI instead of the
-    /// native Reactor surface in both the Hub Chat tab and tray Chat popup.
+    /// native FunctionalUI surface in both the Hub Chat tab and tray Chat popup.
     /// Default false (native).
     /// </summary>
     public bool UseLegacyWebChat { get; set; } = false;

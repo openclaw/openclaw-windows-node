@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace OpenClaw.Chat;
 
 public static class ChatTimelineReducer

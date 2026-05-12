@@ -103,7 +103,7 @@
 
             <!-- Debug Overrides — process-wide, per-surface chat UI override.
                  Lets engineers compare the legacy WebView and the native
-                 Reactor chat surfaces side-by-side without flipping the
+                 FunctionalUI chat surfaces side-by-side without flipping the
                  user-facing "Use standard Gateway Chat interface" setting. -->
             <Expander x:Name="OverridesExpander" IsExpanded="True"
                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -163,8 +163,6 @@
                     <Button x:Uid="DebugPage_Button_114" Content="📋 Copy Support Context" Click="OnCopySupportContext"
                             Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch"/>
                     <Button Content="🔄 Relaunch First-Run Setup" Click="OnRelaunchOnboarding" HorizontalAlignment="Stretch"/>
-                    <Button Content="🎨 Open Chat Explorations" Click="OnOpenChatExplorations" HorizontalAlignment="Stretch"
-                            AutomationProperties.AutomationId="DebugPageOpenChatExplorations"/>
                 </StackPanel>
             </Expander>
 

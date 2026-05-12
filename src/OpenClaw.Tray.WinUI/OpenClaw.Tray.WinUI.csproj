@@ -45,7 +45,6 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
-    <ProjectReference Include="..\..\external\reactor\src\Reactor\Reactor.csproj" />
     <ProjectReference Include="..\OpenClaw.Chat\OpenClaw.Chat.csproj" />
   </ItemGroup>
 

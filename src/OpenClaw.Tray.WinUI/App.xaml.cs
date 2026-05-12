@@ -65,7 +65,7 @@ public partial class App : Application
     /// Raised after the tray-wide settings have been saved (either via the
     /// SettingsPage Save button or a direct toggle from the tray menu).
     /// Subscribers can refresh UI that depends on a setting (e.g. switching
-    /// the chat surface between native Reactor and WebView2).
+    /// the chat surface between native FunctionalUI and WebView2).
     /// </summary>
     public event EventHandler? SettingsChanged;
     public event EventHandler? ChatProviderChanged;
@@ -427,7 +427,7 @@ public partial class App : Application
             new AppLogger(),
             _dispatcherQueue is null
                 ? null
-                : OpenClawTray.Chat.ReactorChatHostExtensions.AsPost(_dispatcherQueue));
+                : action => _dispatcherQueue.TryEnqueue(() => action()));
         DiagnosticsJsonlService.Configure(DataPath);
         DiagnosticsJsonlService.Write("app.start", new
         {
@@ -464,9 +464,6 @@ public partial class App : Application
         // propagate through `await ShowOnboardingAsync()` and abort OnLaunched
         // before the tray ever initializes.
         InitializeTrayIcon();
-        // Apply the user's saved default chat preset (if any) before any chat
-        // surface mounts so initial render uses their preferred styling.
-        OpenClawTray.Chat.Explorations.ChatExplorationPresetStore.ApplyDefaultIfPresent();
         ShowSurfaceImprovementsTipIfNeeded();
 
         // First-run check (also supports forced onboarding for testing).

@@ -5,7 +5,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
-using OpenClawTray.Chat.Explorations;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -21,7 +20,7 @@ public sealed partial class ChatWindow : WindowEx
     private string _gatewayUrl;
     private string _token;
     private string _chatUrl;
-    private IDisposable? _reactorHost;
+    private IDisposable? _chatHost;
     private IChatDataProvider? _mountedProvider;
     private bool _webViewInitialized;
     private bool _webViewMode;
@@ -80,7 +79,7 @@ public sealed partial class ChatWindow : WindowEx
         // Auto-hide when clicking outside the panel
         Activated += OnWindowActivated;
 
-        // Hide instead of close — preserves Reactor state for instant reopen
+        // Hide instead of close — preserves native chat state for instant reopen
         Closed += OnWindowClosing;
 
         // a11y: Esc to hide the popup + try to focus composer on first show.
@@ -113,13 +112,8 @@ public sealed partial class ChatWindow : WindowEx
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed += OnDebugOverrideChanged;
 
-        // ChatExploration backdrop / theme — re-apply when toggled live.
-        ChatExplorationState.Changed -= OnExplorationChanged;
-        ChatExplorationState.Changed += OnExplorationChanged;
-
         ApplyChatSurface();
         ApplySystemBackdrop();
-        ApplyPreviewTheme();
     }
 
     private void OnAppSettingsChanged(object? sender, EventArgs e) => ApplyChatSurface();
@@ -140,39 +134,9 @@ public sealed partial class ChatWindow : WindowEx
 
     private void OnDebugOverrideChanged(object? sender, EventArgs e) => ApplyChatSurface();
 
-    private void OnExplorationChanged(object? sender, EventArgs e)
-    {
-        // Marshal back to UI thread — Changed may fire from anywhere.
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            ApplySystemBackdrop();
-            ApplyPreviewTheme();
-        });
-    }
-
-    /// <summary>
-    /// Swap <see cref="Window.SystemBackdrop"/> based on
-    /// <see cref="ChatExplorationState.BackdropMode"/>. When
-    /// <see cref="ChatExplorationState.UsesHostBackdrop"/> is true (embedded
-    /// chat scenarios), leave whatever the host already set in place.
-    /// </summary>
     private void ApplySystemBackdrop()
     {
-        if (ChatExplorationState.UsesHostBackdrop) return;
-
-        SystemBackdrop = ChatExplorationState.BackdropMode switch
-        {
-            ChatBackdropMode.Mica     => new MicaBackdrop { Kind = MicaKind.Base },
-            ChatBackdropMode.MicaAlt  => new MicaBackdrop { Kind = MicaKind.BaseAlt },
-            ChatBackdropMode.Acrylic  => new DesktopAcrylicBackdrop(),
-            _ /* Solid */             => null!,
-        };
-    }
-
-    private void ApplyPreviewTheme()
-    {
-        if (Content is FrameworkElement root)
-            root.RequestedTheme = ChatVisualResolver.ResolvePreviewTheme();
+        SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
     }
 
     private void ApplyChatSurface()
@@ -184,25 +148,25 @@ public sealed partial class ChatWindow : WindowEx
         if (useLegacy)
             ShowWebViewSurface();
         else
-            ShowReactorSurface();
+            ShowFunctionalSurface();
     }
 
-    private void ShowReactorSurface()
+    private void ShowFunctionalSurface()
     {
         _webViewMode = false;
         WebView.Visibility = Visibility.Collapsed;
         LoadingRing.IsActive = false;
         LoadingRing.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
-        TryMountReactorChat();
+        TryMountFunctionalChat();
     }
 
     private void ShowWebViewSurface()
     {
         _webViewMode = true;
 
-        // Tear down Reactor so the WebView2 owns the row.
-        DisposeReactorHost();
+        // Tear down native chat so the WebView2 owns the row.
+        DisposeChatHost();
 
         ChatHost.Visibility = Visibility.Collapsed;
         PlaceholderPanel.Visibility = Visibility.Collapsed;
@@ -241,7 +205,7 @@ public sealed partial class ChatWindow : WindowEx
         // If WebView2 is already up, navigate it to the refreshed URL so the user gets a
         // working chat instead of the pre-warmed (auth-failed) view.
         // BUT only when we're actively in webview mode — otherwise this would
-        // un-hide the WebView on top of the active Reactor surface (e.g. when
+        // un-hide the WebView on top of the active native surface (e.g. when
         // the Debug Overrides force the Companion Chat UI on the Tray popup).
         if (_webViewMode && _webViewInitialized && WebView?.CoreWebView2 != null)
         {
@@ -365,20 +329,20 @@ public sealed partial class ChatWindow : WindowEx
         WebView.CoreWebView2?.Navigate(_chatUrl);
     }
 
-    private void TryMountReactorChat()
+    private void TryMountFunctionalChat()
     {
         var app = App.Current as App;
         var provider = app?.ChatProvider;
         Func<string, Task>? readAloud = app is null ? null : app.SpeakChatTextAsync;
 
-        if (_reactorHost is not null && ReferenceEquals(_mountedProvider, provider))
+        if (_chatHost is not null && ReferenceEquals(_mountedProvider, provider))
         {
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
             return;
         }
 
-        DisposeReactorHost();
+        DisposeChatHost();
 
         if (provider is null)
         {
@@ -389,17 +353,17 @@ public sealed partial class ChatWindow : WindowEx
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
-        _reactorHost = ((Window)this).MountReactorChat(
+        _chatHost = ((Window)this).MountFunctionalChat(
             ChatHost,
             provider,
             onReadAloud: readAloud);
         _mountedProvider = provider;
     }
 
-    private void DisposeReactorHost()
+    private void DisposeChatHost()
     {
-        var host = _reactorHost;
-        _reactorHost = null;
+        var host = _chatHost;
+        _chatHost = null;
         _mountedProvider = null;
         try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
     }
@@ -429,7 +393,7 @@ public sealed partial class ChatWindow : WindowEx
 
             // a11y: place keyboard focus on the composer text box so the user
             // can start typing immediately. Defer to next dispatcher pass so
-            // Reactor has finished mounting the composer.
+            // FunctionalUI has finished mounting the composer.
             DispatcherQueue?.TryEnqueue(() =>
             {
                 if (this.Content is FrameworkElement root && FindFirstFocusableTextBox(root) is { } tb)
@@ -438,8 +402,7 @@ public sealed partial class ChatWindow : WindowEx
             return;
         }
 
-        // Pinned via Chat exploration panel — keep open so the user can
-        // preview backdrop/composer changes side-by-side.
+        // Pinned by debug automation — keep open for side-by-side manual testing.
         if (ChatWindowPinState.IsPinned) return;
         this.Hide();
     }
@@ -488,7 +451,7 @@ public sealed partial class ChatWindow : WindowEx
         this.SetWindowSize(480, 640);
 
         // Provider may have arrived after construction — re-apply surface so
-        // a Reactor-mode window swaps placeholder → live tree on first show.
+        // a native-mode window swaps placeholder → live tree on first show.
         ApplyChatSurface();
 
         this.Show();
@@ -496,12 +459,12 @@ public sealed partial class ChatWindow : WindowEx
         RequestChatInputFocus();
     }
 
-    /// <summary>Show near tray. Reactor renders synchronously so no animation gating needed.</summary>
+    /// <summary>Show near tray. FunctionalUI renders synchronously so no animation gating needed.</summary>
     public void ShowNearTrayAnimated() => ShowNearTray();
 
     private void OnWindowClosing(object sender, WindowEventArgs args)
     {
-        // Intercept close → hide instead (keeps Reactor state warm).
+        // Intercept close → hide instead (keeps native chat state warm).
         args.Handled = true;
         this.Hide();
     }
@@ -516,9 +479,8 @@ public sealed partial class ChatWindow : WindowEx
             app.ChatProviderChanged -= OnAppChatProviderChanged;
         }
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
-        ChatExplorationState.Changed -= OnExplorationChanged;
         IsClosed = true;
-        DisposeReactorHost();
+        DisposeChatHost();
         Close();
     }
 

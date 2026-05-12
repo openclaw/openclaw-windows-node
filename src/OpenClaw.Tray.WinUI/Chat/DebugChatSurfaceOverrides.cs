@@ -5,7 +5,7 @@ namespace OpenClawTray.Chat;
 /// <summary>
 /// Per-chat-surface override of the user's Settings.UseLegacyWebChat toggle.
 /// Picked from the Debug page so engineers can compare the legacy WebView and
-/// the native Reactor chat side-by-side without flipping the global setting.
+/// the native FunctionalUI chat side-by-side without flipping the global setting.
 /// </summary>
 public enum ChatSurfaceOverride
 {
@@ -13,13 +13,13 @@ public enum ChatSurfaceOverride
     NoOverride,
     /// <summary>Force the legacy WebView (gateway HTML chat).</summary>
     ForceLegacy,
-    /// <summary>Force the native Reactor chat (Companion Chat UI).</summary>
+    /// <summary>Force the native FunctionalUI chat (Companion Chat UI).</summary>
     ForceNative,
 }
 
 /// <summary>
 /// Process-wide debug overrides for which chat surface (legacy WebView or
-/// native Reactor) renders inside each chat container. Not persisted — these
+/// native FunctionalUI) renders inside each chat container. Not persisted — these
 /// reset every app launch and are intended only for engineering A/B tests.
 ///
 /// Subscribers (<see cref="OpenClawTray.Pages.ChatPage"/>,

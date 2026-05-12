@@ -11,7 +11,7 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar — Home/Refresh/DevTools only meaningful when WebView2 mode is active.
-             Collapsed by default in Reactor mode so the chat surface starts at the very top. -->
+             Collapsed by default in native mode so the chat surface starts at the very top. -->
         <Border x:Name="ToolbarBorder" Grid.Row="0"
                 Visibility="Collapsed"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -57,7 +57,7 @@
             </StackPanel>
         </Border>
 
-        <!-- Reactor host: native chat surface mounts its tree into this Border (default UI). -->
+        <!-- FunctionalUI host: native chat surface mounts its tree into this Border (default UI). -->
         <Border x:Name="ChatHost" Grid.Row="1"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->

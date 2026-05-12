@@ -72,8 +72,8 @@ public class ChatMarkdownSanitizerTests
         var input = "Hello\n[ref]: https://attacker.example\nWorld";
         var result = ChatMarkdownSanitizer.Sanitize(input);
         Assert.Contains("ref: https://attacker.example", result);
-        // The original link-definition syntax must not survive — without
-        // the bracket-colon prefix Reactor's md4c can't resolve [x][ref].
+        // The original link-definition syntax must not survive; downstream
+        // renderers should only see inert text.
         Assert.DoesNotContain("[ref]:", result);
     }
 
@@ -223,8 +223,8 @@ public class ChatMarkdownSanitizerTests
 
     // ── chat rubber-duck round 2 MEDIUM 3: LinkBuilder hook safety ──
     //
-    // These exercise the pure plain-text helper that the WinUI
-    // OpenClawChatTimeline wires into MarkdownOptions.LinkBuilder. The
+    // These exercise the pure plain-text helper used by the native chat
+    // surface when it converts sanitized markdown to inert text. The
     // contract: no matter what shape the parser produces (autolink,
     // bare URL, full ``[text](url)`` after sanitization, nested image
     // inside a link), the LinkBuilder collapses it to inert text

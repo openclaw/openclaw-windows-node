@@ -27,19 +27,17 @@ namespace OpenClawTray.Chat;
 /// (SSRF, tracking pixels, beacon attacks) and (b) attach
 /// click-to-navigate hyperlinks that look like trusted assistant prose.
 /// Rendering URL-bearing constructs as inert text breaks both vectors at
-/// the source without modifying the vendored Reactor parser.
+/// the source before the native chat surface renders message text.
 /// </remarks>
 internal static class ChatMarkdownSanitizer
 {
     /// <summary>
     /// Flatten a parsed Markdown link's display text + destination URI
     /// into a single inert plain-text string. Used by the
-    /// <c>OpenClawChatTimeline</c> Reactor <c>LinkBuilder</c> hook so
-    /// that links the parser DOES emit (bare URLs, autolinks
-    /// <c>&lt;https://…&gt;</c>) collapse to non-clickable text instead
-    /// of <see cref="System.Windows.Documents.Hyperlink"/>-style runs.
-    /// Pure function — kept here so it can be unit-tested without a
-    /// dependency on the WinUI / Reactor projects.
+    /// FunctionalUI native chat surface so links that a richer renderer might
+    /// emit (bare URLs, autolinks <c>&lt;https://…&gt;</c>) collapse to
+    /// non-clickable text instead of hyperlink-style runs. Pure function —
+    /// kept here so it can be unit-tested without a WinUI dependency.
     /// </summary>
     /// <remarks>
     /// Output rules:
@@ -211,7 +209,7 @@ internal static class ChatMarkdownSanitizer
                     // ``[![alt](http://img)](http://other)``) is also
                     // flattened. Without this the inner ``![alt](src)``
                     // syntax would be preserved verbatim and re-parsed
-                    // by Reactor as a real image fetch.
+                    // by a richer renderer as a real image fetch.
                     sb.Append(Sanitize(linkText));
                     if (!string.IsNullOrEmpty(url))
                     {

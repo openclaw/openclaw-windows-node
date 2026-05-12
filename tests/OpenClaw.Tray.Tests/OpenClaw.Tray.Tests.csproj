@@ -16,12 +16,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
-    <!-- OpenClaw.Chat is now Windows-targeted (it includes the Reactor UI
-         types). The test project targets pure net10.0, so we cannot take a
-         ProjectReference. Compile only the model-layer files directly.
-         Also vendor a tiny GlobalUsings shim (just System.Text.Json.Nodes,
-         which the model uses) so we don't pull in the WinUI/Reactor usings
-         from src\OpenClaw.Chat\GlobalUsings.cs. -->
+    <!-- Compile the model-layer files directly so these tests can stay focused
+         on tray helpers without depending on the WinUI tray project. -->
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatTimelineReducer.cs" Link="Chat\ChatTimelineReducer.cs" />
     <Using Include="System.Text.Json.Nodes" />

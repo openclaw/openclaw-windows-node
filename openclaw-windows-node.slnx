@@ -23,13 +23,7 @@
       <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
   </Folder>
-  <Folder Name="/external/reactor/">
-    <Project Path="external/reactor/src/Reactor/Reactor.csproj">
-      <Platform Solution="*|Any CPU" Project="x64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-    </Project>
-    <Project Path="external/reactor/src/Reactor.Localization.Generator/Reactor.Localization.Generator.csproj" />
+  <Folder Name="/src/chat/">
     <Project Path="src/OpenClaw.Chat/OpenClaw.Chat.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
       <Platform Solution="*|x64" Project="x64" />

@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace OpenClaw.Chat;
 
 public enum ChatThreadStatus

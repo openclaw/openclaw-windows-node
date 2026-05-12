@@ -88,7 +88,7 @@ public class SettingsData
     public bool PreferStructuredCategories { get; set; } = true;
     /// <summary>
     /// When true, the Hub Chat tab and tray Chat popup host the legacy
-    /// WebView2-based gateway chat UI instead of the native Reactor surface.
+    /// WebView2-based gateway chat UI instead of the native FunctionalUI surface.
     /// Default false (native chat). Surfaced as a toggle in SettingsPage's
     /// "User interface" section.
     /// </summary>

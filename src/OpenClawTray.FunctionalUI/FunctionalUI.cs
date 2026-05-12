@@ -5,7 +5,6 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Windows.UI.Text;
-using OpenClawTray.Services;
 using WinGrid = Microsoft.UI.Xaml.Controls.Grid;
 
 namespace OpenClawTray.FunctionalUI.Core
@@ -13,6 +12,7 @@ namespace OpenClawTray.FunctionalUI.Core
 
 public abstract record Element
 {
+    public string? Key { get; set; }
     public ElementModifiers Modifiers { get; } = new();
     public GridPosition? GridPosition { get; set; }
     public List<Delegate> Setters { get; } = new();
@@ -32,6 +32,9 @@ public sealed class ElementModifiers
     public VerticalAlignment? VerticalAlignment { get; set; }
     public Brush? Background { get; set; }
     public string? BackgroundResourceKey { get; set; }
+    public string? ForegroundResourceKey { get; set; }
+    public string? BorderBrushResourceKey { get; set; }
+    public Thickness? BorderThickness { get; set; }
     public CornerRadius? CornerRadius { get; set; }
     public double? FontSize { get; set; }
     public FontWeight? FontWeight { get; set; }
@@ -69,6 +72,7 @@ public sealed record PasswordBoxElement(string Password, Action<string>? OnChang
 public sealed record ButtonElement(string Label, Action? OnClick, Element? ContentElement = null) : Element;
 public sealed record RadioButtonElement(string Label, bool IsChecked, Action<bool>? OnChecked, string? GroupName) : Element;
 public sealed record RadioButtonsElement(string[] Items, int SelectedIndex, Action<int>? OnSelectionChanged) : Element;
+public sealed record ComboBoxElement(string[] Items, int SelectedIndex, Action<int>? OnSelectionChanged, string? Header) : Element;
 public sealed record CheckBoxElement(bool IsChecked, Action<bool>? OnChanged, string? Label) : Element;
 public sealed record ToggleSwitchElement(bool IsOn, Action<bool>? OnChanged, string? OnContent, string? OffContent, string? Header) : Element;
 public sealed record ProgressRingElement(double? Value) : Element;
@@ -231,6 +235,16 @@ public sealed class RenderContext
         });
     }
 
+    internal void DisposeEffects()
+    {
+        foreach (var hook in _hooks.OfType<EffectHookState>())
+        {
+            hook.Cleanup?.Invoke();
+            hook.Cleanup = null;
+            hook.Dependencies = null;
+        }
+    }
+
     public OpenClawTray.FunctionalUI.Navigation.NavigationHandle<TRoute> UseNavigation<TRoute>(TRoute initial)
         where TRoute : notnull
     {
@@ -322,6 +336,8 @@ public static class Factories
         new(label, isChecked, onChecked, groupName);
     public static RadioButtonsElement RadioButtons(string[] items, int selectedIndex = -1, Action<int>? onSelectionChanged = null) =>
         new(items, selectedIndex, onSelectionChanged);
+    public static ComboBoxElement ComboBox(string[] items, int selectedIndex = -1, Action<int>? onSelectionChanged = null, string? header = null) =>
+        new(items, selectedIndex, onSelectionChanged, header);
     public static CheckBoxElement CheckBox(bool isChecked, Action<bool>? onChanged = null, string? label = null) =>
         new(isChecked, onChanged, label);
     public static ToggleSwitchElement ToggleSwitch(bool isOn, Action<bool>? onChanged = null, string? onContent = null, string? offContent = null, string? header = null) =>
@@ -347,6 +363,8 @@ public static class Factories
 
 public static class ElementExtensions
 {
+    public static T Key<T>(this T element, string key) where T : Element =>
+        element.Apply(e => e.Key = key);
     public static T Margin<T>(this T element, double uniform) where T : Element =>
         element.Apply(e => e.Modifiers.Margin = new Thickness(uniform));
     public static T Margin<T>(this T element, double left, double top, double right, double bottom) where T : Element =>
@@ -377,6 +395,14 @@ public static class ElementExtensions
         element.Apply(e => e.Modifiers.Background = new SolidColorBrush(color));
     public static T BackgroundResource<T>(this T element, string resourceKey) where T : Element =>
         element.Apply(e => e.Modifiers.BackgroundResourceKey = resourceKey);
+    public static T ForegroundResource<T>(this T element, string resourceKey) where T : Element =>
+        element.Apply(e => e.Modifiers.ForegroundResourceKey = resourceKey);
+    public static T BorderBrushResource<T>(this T element, string resourceKey) where T : Element =>
+        element.Apply(e => e.Modifiers.BorderBrushResourceKey = resourceKey);
+    public static T BorderThickness<T>(this T element, double uniform) where T : Element =>
+        element.Apply(e => e.Modifiers.BorderThickness = new Thickness(uniform));
+    public static T BorderThickness<T>(this T element, double left, double top, double right, double bottom) where T : Element =>
+        element.Apply(e => e.Modifiers.BorderThickness = new Thickness(left, top, right, bottom));
     public static T CornerRadius<T>(this T element, double value) where T : Element =>
         element.Apply(e => e.Modifiers.CornerRadius = new CornerRadius(value));
     public static T FontSize<T>(this T element, double value) where T : Element =>
@@ -405,6 +431,7 @@ public static class ElementExtensions
     public static PasswordBoxElement Set(this PasswordBoxElement element, Action<PasswordBox> setter) => element.AddSetter(setter);
     public static ButtonElement Set(this ButtonElement element, Action<Button> setter) => element.AddSetter(setter);
     public static RadioButtonsElement Set(this RadioButtonsElement element, Action<RadioButtons> setter) => element.AddSetter(setter);
+    public static ComboBoxElement Set(this ComboBoxElement element, Action<ComboBox> setter) => element.AddSetter(setter);
     public static RadioButtonElement Set(this RadioButtonElement element, Action<RadioButton> setter) => element.AddSetter(setter);
     public static CheckBoxElement Set(this CheckBoxElement element, Action<CheckBox> setter) => element.AddSetter(setter);
     public static ToggleSwitchElement Set(this ToggleSwitchElement element, Action<ToggleSwitch> setter) => element.AddSetter(setter);
@@ -483,7 +510,12 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
+        _rootComponent?.Context.DisposeEffects();
+        _rootContext?.DisposeEffects();
+        _renderer.Dispose();
+        Content = null;
     }
 
     private void RequestRender()
@@ -538,7 +570,7 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
     }
 }
 
-internal sealed class UiRenderer(Action requestRender)
+internal sealed class UiRenderer(Action requestRender) : IDisposable
 {
     private readonly Dictionary<string, UIElement> _controls = new();
     private readonly Dictionary<string, Component> _components = new();
@@ -546,6 +578,15 @@ internal sealed class UiRenderer(Action requestRender)
     public UIElement Render(Element element, string path, List<Action> effects)
     {
         return RenderElement(element, path, effects);
+    }
+
+    public void Dispose()
+    {
+        foreach (var component in _components.Values)
+            component.Context.DisposeEffects();
+
+        _components.Clear();
+        _controls.Clear();
     }
 
     private UIElement RenderElement(Element element, string path, List<Action> effects)
@@ -558,6 +599,7 @@ internal sealed class UiRenderer(Action requestRender)
             ButtonElement e => ConfigureButton(GetOrCreate<Button>(path), e, path, effects),
             RadioButtonElement e => ConfigureRadioButton(GetOrCreate<RadioButton>(path), e),
             RadioButtonsElement e => ConfigureRadioButtons(GetOrCreate<RadioButtons>(path), e),
+            ComboBoxElement e => ConfigureComboBox(GetOrCreate<ComboBox>(path), e),
             CheckBoxElement e => ConfigureCheckBox(GetOrCreate<CheckBox>(path), e),
             ToggleSwitchElement e => ConfigureToggleSwitch(GetOrCreate<ToggleSwitch>(path), e),
             ProgressRingElement e => ConfigureProgressRing(GetOrCreate<ProgressRing>(path), e),
@@ -711,6 +753,31 @@ internal sealed class UiRenderer(Action requestRender)
         return control;
     }
 
+    private ComboBox ConfigureComboBox(ComboBox control, ComboBoxElement element)
+    {
+        control.SelectionChanged -= ComboBoxSelectionChanged;
+        control.Tag = element;
+
+        var currentItems = control.ItemsSource as string[];
+        var needsItemUpdate = currentItems == null
+            || currentItems.Length != element.Items.Length
+            || !currentItems.AsSpan().SequenceEqual(element.Items);
+
+        if (needsItemUpdate)
+        {
+            control.ItemsSource = element.Items;
+        }
+
+        control.Header = element.Header;
+        control.SelectedIndex = element.SelectedIndex >= 0 && element.SelectedIndex < element.Items.Length
+            ? element.SelectedIndex
+            : -1;
+        control.SelectionChanged += ComboBoxSelectionChanged;
+        ApplyModifiers(control, element);
+        ApplySetters(control, element);
+        return control;
+    }
+
     private CheckBox ConfigureCheckBox(CheckBox control, CheckBoxElement element)
     {
         control.Checked -= CheckBoxChanged;
@@ -817,7 +884,7 @@ internal sealed class UiRenderer(Action requestRender)
     private void SyncChildren(Panel panel, IReadOnlyList<Element?> elements, string path, List<Action> effects)
     {
         var renderedChildren = elements
-            .Select((e, i) => e is null ? null : new RenderedChild(e, RenderElement(e, $"{path}.{i}", effects)))
+            .Select((e, i) => e is null ? null : new RenderedChild(e, RenderElement(e, BuildChildPath(path, i, e), effects)))
             .Where(child => child is not null)
             .Cast<RenderedChild>()
             .ToList();
@@ -842,6 +909,11 @@ internal sealed class UiRenderer(Action requestRender)
     }
 
     private sealed record RenderedChild(Element Element, UIElement Control);
+
+    private static string BuildChildPath(string path, int index, Element element) =>
+        element.Key is { Length: > 0 } key
+            ? $"{path}.key:{key.Replace("\\", "\\\\").Replace(".", "\\.")}"
+            : $"{path}.{index}";
 
     private void SetChild(Border wrapper, UIElement child)
     {
@@ -932,6 +1004,7 @@ internal sealed class UiRenderer(Action requestRender)
                 if (m.FontSize is { } textSize) tb.FontSize = textSize;
                 if (m.FontWeight is { } textWeight) tb.FontWeight = textWeight;
                 if (m.FontFamily is { } textFamily) tb.FontFamily = textFamily;
+                if (m.ForegroundResourceKey is { } textFg) tb.Foreground = ThemeResources.ResolveBrush(textFg);
                 if (m.TextWrapping is { } wrapping) tb.TextWrapping = wrapping;
                 if (m.Padding is { } textPadding) tb.Padding = textPadding;
                 break;
@@ -940,6 +1013,7 @@ internal sealed class UiRenderer(Action requestRender)
                 if (m.FontSize is { } controlSize) c.FontSize = controlSize;
                 if (m.FontWeight is { } controlWeight) c.FontWeight = controlWeight;
                 if (m.FontFamily is { } controlFamily) c.FontFamily = controlFamily;
+                if (m.ForegroundResourceKey is { } controlFg) c.Foreground = ThemeResources.ResolveBrush(controlFg);
                 break;
             case Border b:
                 if (m.Padding is { } borderPadding) b.Padding = borderPadding;
@@ -947,6 +1021,8 @@ internal sealed class UiRenderer(Action requestRender)
                     b.Background = ThemeResources.ResolveBrush(backgroundResourceKey);
                 else if (m.Background is { } bg)
                     b.Background = bg;
+                if (m.BorderBrushResourceKey is { } borderBrush) b.BorderBrush = ThemeResources.ResolveBrush(borderBrush);
+                if (m.BorderThickness is { } borderThickness) b.BorderThickness = borderThickness;
                 if (m.CornerRadius is { } radius) b.CornerRadius = radius;
                 break;
         }
@@ -992,9 +1068,15 @@ internal sealed class UiRenderer(Action requestRender)
     {
         if (sender is RadioButtons { Tag: RadioButtonsElement element } rb)
         {
-            Logger.Debug($"[WizardDiag] RadioButtons.SelectionChanged: idx={rb.SelectedIndex} itemCount={rb.Items?.Count ?? 0}");
+            global::System.Diagnostics.Debug.WriteLine($"[WizardDiag] RadioButtons.SelectionChanged: idx={rb.SelectedIndex} itemCount={rb.Items?.Count ?? 0}");
             element.OnSelectionChanged?.Invoke(rb.SelectedIndex);
         }
+    }
+
+    private static void ComboBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox { Tag: ComboBoxElement element } cb)
+            element.OnSelectionChanged?.Invoke(cb.SelectedIndex);
     }
 
     private static void CheckBoxChanged(object sender, RoutedEventArgs e)

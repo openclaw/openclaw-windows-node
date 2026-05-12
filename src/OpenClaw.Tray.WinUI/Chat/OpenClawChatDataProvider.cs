@@ -25,8 +25,7 @@ internal static class LocalizationHelper
 /// <summary>
 /// Adapts <see cref="IChatGatewayBridge"/> (which wraps a live
 /// <see cref="OpenClawGatewayClient"/>) into the
-/// <see cref="IChatDataProvider"/> contract consumed by the vendored
-/// <c>Chat.UI</c> Reactor components.
+/// <see cref="IChatDataProvider"/> contract consumed by the native chat surface.
 /// </summary>
 /// <remarks>
 /// Maps gateway signals into <see cref="ChatTimelineState"/> events:
@@ -86,7 +85,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// Optional UI-thread marshaling callback. Pass
     /// <c>action =&gt; dispatcherQueue.TryEnqueue(() =&gt; action())</c> from
     /// production code so that <see cref="Changed"/>/<see cref="NotificationRequested"/>
-    /// callbacks observed by Reactor components fire on the UI thread.
+    /// callbacks observed by FunctionalUI components fire on the UI thread.
     /// When <c>null</c>, callbacks fire on whatever thread the gateway raised
     /// the source event on (acceptable in unit tests).
     /// </param>
@@ -1193,9 +1192,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// truncated at a code-point boundary and a marker is appended.
     /// </summary>
     /// <remarks>
-    /// SECURITY (chat rubber-duck MEDIUM 4): Reactor's MarkdownBuilder
-    /// throws above 4 MiB (see <c>MarkdownBuilder.cs:139-148</c>) and a
-    /// multi-MB string can hang the reducer / virtualized list. 256 KiB is
+    /// SECURITY (chat rubber-duck MEDIUM 4): a multi-MB string can hang the
+    /// reducer / timeline list and degrade the UI. 256 KiB is
     /// well above any reasonable chat message (a typical book chapter is
     /// ~50 KB). Truncation events are logged at <c>Debug</c> level so they
     /// don't dominate the operator log under normal use.
