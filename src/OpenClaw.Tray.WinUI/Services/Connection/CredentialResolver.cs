@@ -37,13 +37,13 @@ public sealed class CredentialResolver : ICredentialResolver
         if (!string.IsNullOrWhiteSpace(storedToken))
             return new GatewayCredential(storedToken!, false, SourceDeviceToken);
 
-        // 2. Shared gateway token — works for any device, full scopes
-        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
-            return new GatewayCredential(record.SharedGatewayToken!, false, SourceSharedGatewayToken);
-
-        // 3. Bootstrap token — one-time setup, limited scopes
+        // 2. Bootstrap token
         if (!string.IsNullOrWhiteSpace(record.BootstrapToken))
             return new GatewayCredential(record.BootstrapToken!, true, SourceBootstrapToken);
+
+        // 3. Shared gateway token
+        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
+            return new GatewayCredential(record.SharedGatewayToken!, false, SourceSharedGatewayToken);
 
         return null;
     }
@@ -57,13 +57,13 @@ public sealed class CredentialResolver : ICredentialResolver
         if (!string.IsNullOrWhiteSpace(storedToken))
             return new GatewayCredential(storedToken!, false, SourceNodeDeviceToken);
 
-        // 2. Shared gateway token
-        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
-            return new GatewayCredential(record.SharedGatewayToken!, false, SourceSharedGatewayToken);
-
-        // 3. Bootstrap token
+        // 2. Bootstrap token
         if (!string.IsNullOrWhiteSpace(record.BootstrapToken))
             return new GatewayCredential(record.BootstrapToken!, true, SourceBootstrapToken);
+
+        // 3. Shared gateway token
+        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
+            return new GatewayCredential(record.SharedGatewayToken!, false, SourceSharedGatewayToken);
 
         return null;
     }
