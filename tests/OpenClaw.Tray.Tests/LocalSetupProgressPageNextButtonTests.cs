@@ -5,8 +5,7 @@ namespace OpenClaw.Tray.Tests;
 
 /// <summary>
 /// Locks down the per-engine-status mapping that <see cref="LocalSetupProgressPolicy"/>
-/// pushes to <see cref="OnboardingState.NextButtonState"/>. See Phase 5 final
-/// Next/Back-button policy in <c>.squad/decisions.md</c>.
+/// pushes to <see cref="OnboardingState.NextButtonState"/>.
 /// </summary>
 public class LocalSetupProgressPageNextButtonTests
 {
