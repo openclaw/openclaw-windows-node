@@ -59,7 +59,7 @@
 
 .PARAMETER DistroName
     WSL distro name to target.  Default: OpenClawGateway.
-    Rejected if Test-IsOpenClawOwnedDistroName returns false.
+    Must be exactly "OpenClawGateway" (no prefix variants).
 
 .PARAMETER PreserveLogs
     When $true (default), gateway logs are not deleted in Full mode.
@@ -164,7 +164,7 @@ MODES (required):
 
 OPTIONS:
   -ConfirmDestructive     Required for Full mode (unless -DryRun is also set).
-  -DistroName <name>      Default: OpenClawGateway
+  -DistroName <name>      Default: OpenClawGateway (must be exact match)
   -PreserveLogs <bool>    Default: $true  (do not delete gateway logs)
   -PreserveExecPolicy <bool>  Default: $true  (do not delete exec-policy.json)
   -OutputDir <path>       Default: .\uninstall-validation-output\<utc-timestamp>\
@@ -210,7 +210,7 @@ if ($Mode -notin $validModes) {
 }
 
 if (-not (Test-IsOpenClawOwnedDistroName -Name $DistroName)) {
-    Write-Host "ERROR: Refusing to operate on distro '$DistroName': name must be 'OpenClawGateway' or start with 'OpenClawGateway'. Pass -DistroName OpenClawGateway." -ForegroundColor Red
+    Write-Host "ERROR: Refusing to operate on distro '$DistroName': name must be exactly 'OpenClawGateway'. Pass -DistroName OpenClawGateway." -ForegroundColor Red
     exit 2
 }
 

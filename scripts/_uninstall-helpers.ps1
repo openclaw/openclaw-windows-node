@@ -10,12 +10,16 @@
 
 # ---------------------------------------------------------------------------
 # Distro-name guard
+# Exact-match guard. Mirrors C# LocalGatewayUninstall.AllowedDistroName.
+# Round 2 (Scott #4): prefix matching was dead allowance that let test
+# distros like "OpenClawGateway-test" pass param validation and then strand
+# at the final unregister guard (which is exact-match). Exact-everywhere.
 # ---------------------------------------------------------------------------
 
 function Test-IsOpenClawOwnedDistroName {
     param([string]$Name)
 
-    return $Name -eq "OpenClawGateway" -or $Name.StartsWith("OpenClawGateway", [System.StringComparison]::Ordinal)
+    return $Name -eq "OpenClawGateway"
 }
 
 # ---------------------------------------------------------------------------

@@ -115,7 +115,7 @@ function Add-Step {
 
 function Test-IsOpenClawOwnedDistroName {
     param([string]$Name)
-    return $Name -eq "OpenClawGateway" -or $Name.StartsWith("OpenClawGateway", [System.StringComparison]::Ordinal)
+    return $Name -eq "OpenClawGateway"
 }
 
 function Assert-DestructiveSafety {
@@ -123,7 +123,7 @@ function Assert-DestructiveSafety {
         throw "-ConfirmDestructiveClean is required when -Scenario is $Scenario (will unregister WSL distro '$DistroName')."
     }
     if ($Scenario -in @("FreshMachine", "Recreate") -and -not (Test-IsOpenClawOwnedDistroName -Name $DistroName)) {
-        throw "Refusing destructive action for non-OpenClaw distro '$DistroName'. Distro name must start with 'OpenClawGateway'."
+        throw "Refusing destructive action for non-OpenClaw distro '$DistroName'. Distro name must be exactly 'OpenClawGateway'."
     }
 }
 
