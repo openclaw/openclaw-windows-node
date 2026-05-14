@@ -61,12 +61,16 @@ public static class LoopbackClassifier
             return extractedHost.Length > 0;
         }
 
+        // Bare IP literals, including unbracketed IPv6, should not go through
+        // hostname:port stripping.
         if (IPAddress.TryParse(trimmed, out _))
         {
             extractedHost = trimmed;
             return true;
         }
 
+        // A single colon means hostname:port or IPv4:port; multiple colons
+        // indicate an unbracketed IPv6-like value, which we leave intact.
         var colon = trimmed.LastIndexOf(':');
         if (colon > 0 && trimmed.IndexOf(':') == colon)
             trimmed = trimmed.Substring(0, colon).Trim();
@@ -83,11 +87,13 @@ public static class LoopbackClassifier
         var bytes = address.GetAddressBytes();
         if (address.AddressFamily == AddressFamily.InterNetwork)
         {
+            // RFC 1918 private IPv4 ranges.
             return bytes[0] == 10 ||
                 (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
                 (bytes[0] == 192 && bytes[1] == 168);
         }
 
+        // RFC 4193 IPv6 unique local addresses (fc00::/7).
         return address.AddressFamily == AddressFamily.InterNetworkV6 &&
             (bytes[0] & 0xFE) == 0xFC;
     }
