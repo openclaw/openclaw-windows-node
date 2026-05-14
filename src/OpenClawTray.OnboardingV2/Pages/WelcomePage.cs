@@ -58,7 +58,8 @@ public sealed class WelcomePage : Component<OnboardingV2State>
         var infoCardWrap = new BorderElement(infoCard)
             .Background("#2C2C2C")
             .Padding(20, 18, 20, 18)
-            .Set(b => b.CornerRadius = new CornerRadius(8));
+            .Set(b => b.CornerRadius = new CornerRadius(8))
+            .WithEntranceFadeIn(durationMs: 360, delayMs: 200);
 
         var accentButton = Button("Set up locally", () => Props.RequestAdvance())
             .HAlign(HorizontalAlignment.Stretch)
@@ -115,7 +116,8 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                 Image("ms-appx:///Assets/Setup/Lobster.png")
                     .Width(170)
                     .Height(170)
-                    .HAlign(HorizontalAlignment.Center),
+                    .HAlign(HorizontalAlignment.Center)
+                    .WithBreathe(maxScale: 1.025, durationMs: 4200),
                 TextBlock("Get started with OpenClaw")
                     .FontSize(28)
                     .SemiBold()

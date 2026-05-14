@@ -35,7 +35,8 @@ public sealed class AllSetPage : Component<OnboardingV2State>
             Image("ms-appx:///Assets/Setup/PartyPopper.png")
                 .Width(120)
                 .Height(120)
-                .HAlign(HorizontalAlignment.Center),
+                .HAlign(HorizontalAlignment.Center)
+                .WithEntrancePopIn(durationMs: 520),
 
             TextBlock("All set!")
                 .FontSize(32)

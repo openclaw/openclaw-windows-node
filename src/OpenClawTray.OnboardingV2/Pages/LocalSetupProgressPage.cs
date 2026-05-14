@@ -200,7 +200,8 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             .Background("#3D1818")
             .Padding(20, 18, 20, 18)
             .Margin(0, -8, 0, 0)
-            .Set(b => b.CornerRadius = new CornerRadius(8));
+            .Set(b => b.CornerRadius = new CornerRadius(8))
+            .WithSlideInFromBelow(distance: 14, durationMs: 320);
     }
 }
 

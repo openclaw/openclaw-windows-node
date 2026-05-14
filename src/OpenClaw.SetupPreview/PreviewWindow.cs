@@ -74,6 +74,10 @@ internal sealed class PreviewWindow : WindowEx
         _captureMode = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_CAPTURE") == "1";
         _capturePath = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_CAPTURE_PATH");
 
+        // In headless capture mode, suppress all V2 entrance/idle animations
+        // so RenderTargetBitmap never snapshots an in-flight transform.
+        OpenClawTray.Onboarding.V2.V2Animations.DisableForCapture = _captureMode;
+
         Title = "OpenClaw Setup";
         ExtendsContentIntoTitleBar = true;
 
