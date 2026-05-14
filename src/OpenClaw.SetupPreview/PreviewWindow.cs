@@ -69,6 +69,13 @@ internal sealed class PreviewWindow : WindowEx
     private Grid? _titleBar;
     private TextBlock? _titleText;
 
+    // System-theme tracking. Stored as fields (not locals) so the
+    // ColorValuesChanged subscription can be unhooked on window close —
+    // otherwise the COM event holds a strong reference to the lambda
+    // (and via it the window), preventing GC.
+    private Windows.UI.ViewManagement.UISettings? _themeUiSettings;
+    private Windows.Foundation.TypedEventHandler<Windows.UI.ViewManagement.UISettings, object>? _themeColorValuesChangedHandler;
+
     public PreviewWindow()
     {
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -198,14 +205,32 @@ internal sealed class PreviewWindow : WindowEx
             // No app-level RequestedTheme change event is reliably surfaced
             // in unpackaged WinUI 3 apps, but UISettings raises ColorValuesChanged
             // when Windows app-mode flips. Forward it.
+            //
+            // Both the UISettings instance and the handler delegate are
+            // stored as fields so we can unhook in Closed — without this,
+            // the COM event keeps a strong reference to the lambda (and
+            // via it, this window), preventing GC of the window when it
+            // closes.
             try
             {
-                var ui = new Windows.UI.ViewManagement.UISettings();
-                ui.ColorValuesChanged += (_, _) =>
+                _themeUiSettings = new Windows.UI.ViewManagement.UISettings();
+                _themeColorValuesChangedHandler = (_, _) =>
                     _dispatcherQueue.TryEnqueue(() => ApplyResolvedTheme());
+                _themeUiSettings.ColorValuesChanged += _themeColorValuesChangedHandler;
             }
             catch { /* non-fatal */ }
         }
+
+        Closed += (_, _) =>
+        {
+            if (_themeUiSettings is not null && _themeColorValuesChangedHandler is not null)
+            {
+                try { _themeUiSettings.ColorValuesChanged -= _themeColorValuesChangedHandler; }
+                catch { /* ignore */ }
+            }
+            _themeColorValuesChangedHandler = null;
+            _themeUiSettings = null;
+        };
 
         // F2 cycles theme mode (System -> Light -> Dark -> System) for live design feedback.
         // Only honoured in interactive mode; capture mode never sees keyboard input.

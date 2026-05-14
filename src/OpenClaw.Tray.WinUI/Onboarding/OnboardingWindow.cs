@@ -186,21 +186,7 @@ public sealed class OnboardingWindow : WindowEx
                     OpenClawTray.Onboarding.V2.OnboardingV2State>(s);
             });
 
-            _v2Bridge = new OpenClawTray.Onboarding.V2.OnboardingV2Bridge(
-                state: _v2State,
-                settings: settings,
-                dispatcher: _dispatcherQueue,
-                engineFactory: replaceConfirmed =>
-                    ((App)Application.Current).CreateLocalGatewaySetupEngine(replaceConfirmed));
-            _v2Bridge.AdvancedSetupRequested += (_, _) => OpenLegacyAdvancedSetup();
-            _v2Bridge.Finished += (_, _) =>
-            {
-                if (TryCompleteOnboarding())
-                {
-                    Close();
-                }
-            };
-            _v2Bridge.Start();
+            CreateAndStartV2Bridge(settings);
         }
         else
         {
@@ -369,6 +355,39 @@ public sealed class OnboardingWindow : WindowEx
         throw new InvalidOperationException($"Brush resource '{resourceKey}' was not found.");
     }
 
+    /// <summary>
+    /// Build a fresh <see cref="OpenClawTray.Onboarding.V2.OnboardingV2Bridge"/>
+    /// against the current <see cref="_v2State"/>, wire its host-facing
+    /// events, and start it. Idempotent: disposes a prior bridge first.
+    /// Called from the initial V2 mount and from the
+    /// <c>OnRouteChanged</c> bridge-back path so V2 always has a live
+    /// bridge when it's the visible flow — without this, the
+    /// Advanced -> V2 round-trip would leave V2 with no Finished /
+    /// AutoStart-persist / Refresh / engine wiring.
+    /// </summary>
+    private void CreateAndStartV2Bridge(SettingsManager settings)
+    {
+        if (_v2State is null) return;
+
+        try { _v2Bridge?.Dispose(); } catch { /* ignore */ }
+
+        _v2Bridge = new OpenClawTray.Onboarding.V2.OnboardingV2Bridge(
+            state: _v2State,
+            settings: settings,
+            dispatcher: _dispatcherQueue,
+            engineFactory: replaceConfirmed =>
+                ((App)Application.Current).CreateLocalGatewaySetupEngine(replaceConfirmed));
+        _v2Bridge.AdvancedSetupRequested += (_, _) => OpenLegacyAdvancedSetup();
+        _v2Bridge.Finished += (_, _) =>
+        {
+            if (TryCompleteOnboarding())
+            {
+                Close();
+            }
+        };
+        _v2Bridge.Start();
+    }
+
     private void OnRouteChanged(object? sender, OnboardingRoute route)
     {
         _dispatcherQueue.TryEnqueue(() =>
@@ -401,6 +420,12 @@ public sealed class OnboardingWindow : WindowEx
                         OpenClawTray.Onboarding.V2.OnboardingV2App,
                         OpenClawTray.Onboarding.V2.OnboardingV2State>(s);
                 });
+                // Spin up a fresh bridge so the V2 tail (Permissions ->
+                // AllSet) has live engine / settings / Finished wiring.
+                // Without this, Finish on AllSet would no-op (the prior
+                // bridge was disposed in OpenLegacyAdvancedSetup) and the
+                // launch-at-startup toggle would not persist.
+                CreateAndStartV2Bridge(_settings);
                 _chatOverlay.Visibility = Visibility.Collapsed;
                 return;
             }

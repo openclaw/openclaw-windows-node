@@ -237,13 +237,18 @@ public sealed class OnboardingV2State
     /// <summary>Raised specifically when <see cref="LaunchAtStartup"/> changes (so the host can persist Settings.AutoStart without subscribing to all StateChanged events).</summary>
     public event EventHandler? LaunchAtStartupChanged;
 
+    private IReadOnlyList<PermissionRowSnapshot>? _permissions;
     /// <summary>
     /// Per-permission row, replacing the all-granted hard-coded list in
     /// the page. Real PermissionChecker output flows here at cutover.
     /// Only populated then; pages fall back to the bundled all-granted
     /// preview rows when this is null.
     /// </summary>
-    public IReadOnlyList<PermissionRowSnapshot>? Permissions { get; set; }
+    public IReadOnlyList<PermissionRowSnapshot>? Permissions
+    {
+        get => _permissions;
+        set { _permissions = value; NotifyChanged(); }
+    }
 
     public sealed record PermissionRowSnapshot(
         string CapabilityId,
@@ -279,9 +284,13 @@ public sealed class OnboardingV2State
     /// <summary>Raised by Permissions' "Refresh status" button — host re-runs PermissionChecker.</summary>
     public event EventHandler? PermissionsRefreshRequested;
 
+    /// <summary>Raised by LocalSetupProgress's "Try again" button after a retryable engine failure — host resets engine state and re-runs the local setup.</summary>
+    public event EventHandler? RetryRequested;
+
     public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
     public void RequestBack() => BackRequested?.Invoke(this, EventArgs.Empty);
     public void RaiseFinished() => Finished?.Invoke(this, EventArgs.Empty);
     public void RequestAdvancedSetup() => AdvancedSetupRequested?.Invoke(this, EventArgs.Empty);
     public void RequestPermissionsRefresh() => PermissionsRefreshRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestRetry() => RetryRequested?.Invoke(this, EventArgs.Empty);
 }

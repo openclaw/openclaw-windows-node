@@ -56,7 +56,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             // The error card sits immediately under the failed row in Dialog-6.
             if (rowState == RowState.Failed && Props.LocalSetupErrorMessage is { } msg)
             {
-                rowChildren.Add(BuildErrorCard(theme, msg));
+                rowChildren.Add(BuildErrorCard(theme, msg, () => Props.RequestRetry()));
             }
         }
 
@@ -167,7 +167,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
         return new BorderElement(null).Width(24).Height(24);
     }
 
-    private static Element BuildErrorCard(ElementTheme theme, string message)
+    private static Element BuildErrorCard(ElementTheme theme, string message, Action onTryAgain)
     {
         var inner = Grid(
             new[] { "*", "auto" },
@@ -179,7 +179,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .Set(t => t.Foreground = V2Theme.ErrorCardForeground(theme))
                 .Grid(row: 0, column: 0),
 
-            Button(V2Strings.Get("V2_Progress_TryAgain"), () => { /* page-progress wiring later */ })
+            Button(V2Strings.Get("V2_Progress_TryAgain"), onTryAgain)
                 .HAlign(HorizontalAlignment.Right)
                 .VAlign(VerticalAlignment.Center)
                 .Margin(16, 0, 0, 0)

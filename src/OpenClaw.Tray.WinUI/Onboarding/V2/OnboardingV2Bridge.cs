@@ -102,6 +102,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         _state.Finished += OnFinished;
         _state.AdvanceRequested += OnAdvanceRequested;
         _state.PermissionsRefreshRequested += OnPermissionsRefreshRequested;
+        _state.RetryRequested += OnRetryRequested;
     }
 
     private void ApplyResolvedTheme()
@@ -117,6 +118,34 @@ public sealed class OnboardingV2Bridge : IDisposable
 
     private void OnPermissionsRefreshRequested(object? sender, EventArgs e) =>
         _ = RefreshPermissionsAsync();
+
+    /// <summary>
+    /// "Try again" handler from the LocalSetupProgress error card. Resets
+    /// the engine bookkeeping (so EnsureEngineStarted() is allowed to
+    /// construct a fresh engine), clears the V2 error message, and
+    /// re-runs the engine. Mirrors v1's retry-via-setRetryCount path.
+    /// </summary>
+    private void OnRetryRequested(object? sender, EventArgs e)
+    {
+        Logger.Info("[V2Bridge] RetryRequested — resetting engine state");
+        // Detach the prior engine's StateChanged handler so the next run's
+        // events don't double-fire through the old subscription.
+        if (_engine is not null)
+        {
+            try { _engine.StateChanged -= OnEngineStateChanged; } catch { /* ignore */ }
+            _engine = null;
+        }
+        _engineStarted = false;
+        _advanceFiredForCompletion = false;
+        _runTask = null;
+        _lastRunningPhase = LocalGatewaySetupPhase.NotStarted;
+        DispatchToUi(() =>
+        {
+            _state.LocalSetupErrorMessage = null;
+            MarkAllStagesIdle();
+        });
+        EnsureEngineStarted();
+    }
 
     /// <summary>
     /// Wire-up after construction. Starts the engine immediately if the V2
@@ -307,8 +336,10 @@ public sealed class OnboardingV2Bridge : IDisposable
             _state.LocalSetupRows = rows;
             _state.LocalSetupErrorMessage = errorMessage;
             // Engine flips Settings.EnableNodeMode mid-run (PairAsync). Mirror
-            // it to V2 state so AllSet renders the Node-Mode card correctly.
-            _state.NodeModeActive = _settings.EnableNodeMode || _state.NodeModeActive;
+            // it directly to V2 state so AllSet renders the Node-Mode card
+            // correctly. Direct assignment (not an OR latch) so the AllSet
+            // page reflects the current setting if it ever flips back.
+            _state.NodeModeActive = _settings.EnableNodeMode;
 
             if (status == LocalGatewaySetupStatus.Complete && !_advanceFiredForCompletion)
             {
@@ -381,16 +412,39 @@ public sealed class OnboardingV2Bridge : IDisposable
         }, TaskScheduler.Default);
     }
 
+    /// <summary>
+    /// Explicit V2 stage ordering. Indices line up with
+    /// <see cref="LegacyStage.VisibleStages"/> 1:1 — we keep this fixed
+    /// array (rather than casting from <c>(V2Stage)i</c>) so reordering
+    /// either list surfaces a compile-time mismatch instead of silently
+    /// shifting badge state across rows.
+    /// </summary>
+    private static readonly V2Stage[] StageOrder =
+    {
+        V2Stage.CheckSystem,
+        V2Stage.InstallingUbuntu,
+        V2Stage.ConfiguringInstance,
+        V2Stage.InstallingOpenClaw,
+        V2Stage.PreparingGateway,
+        V2Stage.StartingGateway,
+        V2Stage.GeneratingSetupCode,
+    };
+
     private static IReadOnlyDictionary<V2Stage, V2RowState> MapToV2Rows(
         LocalGatewaySetupPhase phase,
         LocalGatewaySetupStatus status,
         LocalGatewaySetupPhase lastRunningPhase)
     {
         var visibleStages = LegacyStage.VisibleStages;
+        if (visibleStages.Count != StageOrder.Length)
+        {
+            throw new InvalidOperationException(
+                $"V2Bridge stage count mismatch: LegacyStage.VisibleStages has {visibleStages.Count} but StageOrder has {StageOrder.Length}. Update both in lockstep.");
+        }
         var rows = new Dictionary<V2Stage, V2RowState>();
         for (int i = 0; i < visibleStages.Count; i++)
         {
-            var stage = (V2Stage)i;
+            var stage = StageOrder[i];
             var stageState = LegacyStage.ComputeStageState(
                 visibleStages[i].Phases,
                 phase,
@@ -528,6 +582,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         _state.Finished -= OnFinished;
         _state.AdvanceRequested -= OnAdvanceRequested;
         _state.PermissionsRefreshRequested -= OnPermissionsRefreshRequested;
+        _state.RetryRequested -= OnRetryRequested;
 
         if (_uiSettings is not null)
         {
