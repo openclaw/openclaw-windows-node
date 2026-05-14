@@ -35,6 +35,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private volatile bool _pairingBlocked;
     private volatile bool _rateLimited;
     private const int InitialV2SignatureProbeThreshold = 3;
+    private const int MaxV2SignatureProbeThreshold = 192;
     private bool _useV2Signature; // true after v3 signature rejected by gateway
     private bool _lastConnectUsedV2Signature;
     private bool _v2SignatureProbeInProgress;
@@ -881,7 +882,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 if (_v2SignatureProbeInProgress)
                 {
                     _v2SignatureProbeInProgress = false;
-                    _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, 192);
+                    _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, MaxV2SignatureProbeThreshold);
                     _logger.Warn($"[NODE] v3 signature probe rejected, will use v2 on reconnect; next probe after {_v2SignatureProbeThreshold} successful v2 handshakes");
                 }
                 else

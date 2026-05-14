@@ -100,9 +100,13 @@ public class GatewayConnectionManagerTests : IDisposable
             await _manager.ReconnectAsync();
             var lifecycle = _factory.CreatedClients[^1];
             Assert.True(lifecycle.DataClient.UseV2Signature);
+            var handshakeRecorded = WaitForDiagnosticAsync(e =>
+                e.Category == "handshake" &&
+                e.Message == "v2 device signature handshake succeeded" &&
+                e.Detail?.Contains($"consecutiveV2Successes={i + 1}/3") == true);
             lifecycle.SetLastConnectUsedV2Signature();
             lifecycle.SimulateHandshake();
-            await Task.Delay(100);
+            await handshakeRecorded;
         }
 
         await _manager.ReconnectAsync();
@@ -110,6 +114,20 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.False(_factory.CreatedClients[^1].DataClient.UseV2Signature);
         Assert.Contains(events, e => e.Category == "handshake" && e.Detail?.Contains("fallbacks=1") == true);
         Assert.Contains(events, e => e.Category == "handshake" && e.Message.Contains("next reconnect will try v3"));
+    }
+
+    private Task<ConnectionDiagnosticEvent> WaitForDiagnosticAsync(Func<ConnectionDiagnosticEvent, bool> predicate)
+    {
+        var completion = new TaskCompletionSource<ConnectionDiagnosticEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<ConnectionDiagnosticEvent>? handler = null;
+        handler = (_, e) =>
+        {
+            if (!predicate(e)) return;
+            _manager.DiagnosticEvent -= handler;
+            completion.TrySetResult(e);
+        };
+        _manager.DiagnosticEvent += handler;
+        return completion.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     [Fact]
@@ -332,7 +350,7 @@ public class GatewayConnectionManagerTests : IDisposable
         public void SimulateV2SignatureFallback()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
-                nameof(V2SignatureFallback),
+                "V2SignatureFallback",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
             var handler = field?.GetValue(this) as EventHandler;
             handler?.Invoke(this, EventArgs.Empty);

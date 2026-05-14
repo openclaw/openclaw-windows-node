@@ -30,6 +30,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
     private bool _disposed;
     private const int InitialV2SignatureProbeThreshold = 3;
+    private const int MaxV2SignatureProbeThreshold = 192;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
     private bool _v2SignatureProbeInProgress;
     private int _successfulV2SignatureHandshakes;
@@ -513,7 +514,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (_v2SignatureProbeInProgress)
         {
             _v2SignatureProbeInProgress = false;
-            _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, 192);
+            _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, MaxV2SignatureProbeThreshold);
             _diagnostics.Record("handshake", "v3 device signature probe rejected; using v2 fallback",
                 $"fallbacks={_v2SignatureFallbackCount}, nextProbeAfter={_v2SignatureProbeThreshold} v2 handshakes");
             return;
