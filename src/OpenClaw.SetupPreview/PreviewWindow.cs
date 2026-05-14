@@ -273,10 +273,30 @@ internal sealed class PreviewWindow : WindowEx
             await Task.Yield();
             await Task.Delay(250);
 
+            // Clear keyboard focus so the system focus visual (cyan ring)
+            // doesn't leak into deterministic captures. Re-enabling
+            // UseSystemFocusVisuals on V2 buttons (a11y improvement) means
+            // the first focusable in tab order would otherwise carry an
+            // initial focus ring. Park focus on a hidden, zero-size sentinel
+            // and let it settle for one more frame.
+            var sentinel = new ContentControl
+            {
+                IsTabStop = true,
+                Width = 0,
+                Height = 0,
+                Opacity = 0,
+                IsHitTestVisible = false,
+            };
+            _rootGrid.Children.Add(sentinel);
+            sentinel.Focus(FocusState.Programmatic);
+            await Task.Delay(50);
+
             var rtb = new RenderTargetBitmap();
             await rtb.RenderAsync(_rootGrid);
             var pixels = await rtb.GetPixelsAsync();
             var pixelBytes = pixels.ToArray();
+
+            _rootGrid.Children.Remove(sentinel);
 
             using var stream = new InMemoryRandomAccessStream();
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
