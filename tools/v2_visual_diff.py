@@ -288,10 +288,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--page", choices=sorted(PAGES.keys()))
     p.add_argument("--all", action="store_true")
     p.add_argument("--open", action="store_true", help="Open diff.png after generating")
+    p.add_argument("--theme", choices=["System", "Light", "Dark"], default=None,
+                   help="Force a specific theme via OPENCLAW_PREVIEW_THEME (default: app default)")
     args = p.parse_args(argv)
 
     if not args.all and not args.page:
         p.error("provide --page <name> or --all")
+
+    if args.theme:
+        os.environ["OPENCLAW_PREVIEW_THEME"] = args.theme
 
     pages = list(PAGES.values()) if args.all else [PAGES[args.page]]
     failed = 0

@@ -65,6 +65,10 @@ internal sealed class PreviewWindow : WindowEx
     private readonly string? _capturePath;
     private bool _captureCompleted;
 
+    // Theme-aware chrome elements (mutated by ApplyTheme when the user / system theme changes).
+    private Grid? _titleBar;
+    private TextBlock? _titleText;
+
     public PreviewWindow()
     {
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -108,22 +112,8 @@ internal sealed class PreviewWindow : WindowEx
         // restores the rounded look without bringing back the Mica fill.
         TryApplyRoundedCorners();
 
-        // Make the system min/max/close buttons match our dark palette.
-        if (AppWindow.TitleBar is { } systemTitleBar)
-        {
-            var dark = ColorHelper.FromArgb(255, 0x20, 0x20, 0x20);
-            var hover = ColorHelper.FromArgb(255, 0x2C, 0x2C, 0x2C);
-            var pressed = ColorHelper.FromArgb(255, 0x38, 0x38, 0x38);
-            var fg = ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0);
-            systemTitleBar.ButtonBackgroundColor = dark;
-            systemTitleBar.ButtonInactiveBackgroundColor = dark;
-            systemTitleBar.ButtonForegroundColor = fg;
-            systemTitleBar.ButtonInactiveForegroundColor = ColorHelper.FromArgb(255, 0x70, 0x70, 0x70);
-            systemTitleBar.ButtonHoverBackgroundColor = hover;
-            systemTitleBar.ButtonHoverForegroundColor = fg;
-            systemTitleBar.ButtonPressedBackgroundColor = pressed;
-            systemTitleBar.ButtonPressedForegroundColor = fg;
-        }
+        // Make the system min/max/close buttons follow the current theme below;
+        // the actual button colours are applied in ApplyTheme().
 
         _host = new FunctionalHostControl();
         _host.Mount(ctx =>
@@ -134,7 +124,7 @@ internal sealed class PreviewWindow : WindowEx
 
         _rootGrid = new Grid
         {
-            Background = new SolidColorBrush(ColorHelper.FromArgb(255, 0x20, 0x20, 0x20))
+            Background = V2Theme.WindowBackground(_state.EffectiveTheme)
         };
         _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TitleBarHeight) });
         _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -145,9 +135,10 @@ internal sealed class PreviewWindow : WindowEx
         // convert to DIPs using XamlRoot.RasterizationScale (set after
         // the host has loaded). Fall back to a sensible default at 100%
         // DPI (~138 DIP) until the first SizeChanged.
-        var titleBar = new Grid { Padding = new Thickness(14, 0, 138, 0) };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleBar, "OpenClaw Setup title bar");
+        _titleBar = new Grid { Padding = new Thickness(14, 0, 138, 0) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_titleBar, "OpenClaw Setup title bar");
 
+        var titleBar = _titleBar;
         void UpdateTitleBarPadding()
         {
             try
@@ -174,27 +165,62 @@ internal sealed class PreviewWindow : WindowEx
             Stretch = Stretch.Uniform
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(lobster, "OpenClaw");
-        var titleText = new TextBlock
+        _titleText = new TextBlock
         {
             Text = Title,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0))
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleText, "OpenClaw Setup");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_titleText, "OpenClaw Setup");
         var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
         titleStack.Children.Add(lobster);
-        titleStack.Children.Add(titleText);
-        titleBar.Children.Add(titleStack);
-        Grid.SetRow(titleBar, 0);
-        _rootGrid.Children.Add(titleBar);
-        SetTitleBar(titleBar);
+        titleStack.Children.Add(_titleText);
+        _titleBar.Children.Add(titleStack);
+        Grid.SetRow(_titleBar, 0);
+        _rootGrid.Children.Add(_titleBar);
+        SetTitleBar(_titleBar);
 
         Grid.SetRow(_host, 1);
         _rootGrid.Children.Add(_host);
         Content = _rootGrid;
 
         _host.Loaded += (_, _) => UpdateTitleBarPadding();
+
+        // Wire theme resolution and re-application. The state's ThemeMode
+        // (System / Light / Dark) is the user's preference; EffectiveTheme
+        // is what the V2 pages actually render against. ApplyResolvedTheme
+        // reads the preference, picks Light or Dark (System => follow the
+        // host Application.RequestedTheme), and pushes the result back
+        // onto the state + the chrome.
+        ApplyResolvedTheme();
+        if (Application.Current is { } app)
+        {
+            // No app-level RequestedTheme change event is reliably surfaced
+            // in unpackaged WinUI 3 apps, but UISettings raises ColorValuesChanged
+            // when Windows app-mode flips. Forward it.
+            try
+            {
+                var ui = new Windows.UI.ViewManagement.UISettings();
+                ui.ColorValuesChanged += (_, _) =>
+                    _dispatcherQueue.TryEnqueue(() => ApplyResolvedTheme());
+            }
+            catch { /* non-fatal */ }
+        }
+
+        // F2 cycles theme mode (System -> Light -> Dark -> System) for live design feedback.
+        // Only honoured in interactive mode; capture mode never sees keyboard input.
+        if (!_captureMode)
+        {
+            _host.KeyDown += (_, e) =>
+            {
+                if (e.Key == Windows.System.VirtualKey.F2)
+                {
+                    _state.ThemeMode = (V2ThemeMode)(((int)_state.ThemeMode + 1) % 3);
+                    ApplyResolvedTheme();
+                    e.Handled = true;
+                }
+            };
+        }
 
         if (_captureMode)
         {
@@ -217,6 +243,64 @@ internal sealed class PreviewWindow : WindowEx
             }
         }
     }
+
+    /// <summary>
+    /// Resolves <see cref="OnboardingV2State.ThemeMode"/> to a concrete
+    /// <see cref="ElementTheme"/> and pushes it onto state + chrome.
+    /// Called on startup, on F2 cycle, and on Windows app-mode change.
+    /// </summary>
+    private void ApplyResolvedTheme()
+    {
+        var resolved = ResolveEffectiveTheme(_state.ThemeMode);
+        _state.EffectiveTheme = resolved;
+
+        // Window background — V2 pages re-render through StateChanged, but the
+        // root Grid background is owned here so update it directly too.
+        _rootGrid.Background = V2Theme.WindowBackground(resolved);
+
+        // Push the same theme into the visual tree so WinUI's built-in controls
+        // (ToggleSwitch thumb, ProgressRing, focus visuals) pick up matching defaults.
+        _rootGrid.RequestedTheme = resolved;
+
+        if (_titleText is not null)
+        {
+            _titleText.Foreground = V2Theme.TextPrimary(resolved);
+        }
+
+        if (AppWindow?.TitleBar is { } systemTitleBar)
+        {
+            // The system caption buttons (min/max/close) live above our XAML
+            // and need their colours set explicitly. Match the window bg so
+            // they blend into the chrome rather than showing a dark bar above
+            // a light window (or vice versa).
+            var bg = ((SolidColorBrush)V2Theme.WindowBackground(resolved)).Color;
+            var hover = ((SolidColorBrush)V2Theme.CardBackground(resolved)).Color;
+            var pressed = ((SolidColorBrush)V2Theme.CardBackgroundPressed(resolved)).Color;
+            var fg = ((SolidColorBrush)V2Theme.TextPrimary(resolved)).Color;
+            var inactiveFg = ((SolidColorBrush)V2Theme.TextSubtle(resolved)).Color;
+            systemTitleBar.ButtonBackgroundColor = bg;
+            systemTitleBar.ButtonInactiveBackgroundColor = bg;
+            systemTitleBar.ButtonForegroundColor = fg;
+            systemTitleBar.ButtonInactiveForegroundColor = inactiveFg;
+            systemTitleBar.ButtonHoverBackgroundColor = hover;
+            systemTitleBar.ButtonHoverForegroundColor = fg;
+            systemTitleBar.ButtonPressedBackgroundColor = pressed;
+            systemTitleBar.ButtonPressedForegroundColor = fg;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a user theme preference to a concrete <see cref="ElementTheme"/>.
+    /// <see cref="V2ThemeMode.System"/> reads the host
+    /// <see cref="Microsoft.UI.Xaml.Application.RequestedTheme"/> (which in turn
+    /// follows the Windows app-mode color setting via UISettings).
+    /// </summary>
+    private static ElementTheme ResolveEffectiveTheme(V2ThemeMode mode) => mode switch
+    {
+        V2ThemeMode.Light => ElementTheme.Light,
+        V2ThemeMode.Dark => ElementTheme.Dark,
+        _ => Application.Current.RequestedTheme == ApplicationTheme.Light ? ElementTheme.Light : ElementTheme.Dark,
+    };
 
     /// <summary>
     /// Apply Windows 11 rounded-corner preference via DWM. No-op (and silent)
@@ -320,6 +404,13 @@ internal sealed class PreviewWindow : WindowEx
             Enum.TryParse<V2Route>(page, ignoreCase: true, out var route))
         {
             state.CurrentRoute = route;
+        }
+
+        var theme = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_THEME");
+        if (!string.IsNullOrWhiteSpace(theme) &&
+            Enum.TryParse<V2ThemeMode>(theme, ignoreCase: true, out var mode))
+        {
+            state.ThemeMode = mode;
         }
 
         var nodeMode = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_NODE_MODE");

@@ -1,7 +1,6 @@
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using static OpenClawTray.FunctionalUI.Factories;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Stage = OpenClawTray.Onboarding.V2.OnboardingV2State.LocalSetupStage;
@@ -27,6 +26,8 @@ namespace OpenClawTray.Onboarding.V2.Pages;
 /// which the preview populates from env vars (PROGRESS_FROZEN_STAGE,
 /// FAIL_STAGE) and the real engine populates from
 /// LocalGatewaySetupEngine progress events at cutover.
+///
+/// Colours come from <see cref="V2Theme"/> keyed on <see cref="OnboardingV2State.EffectiveTheme"/>.
 /// </summary>
 public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
 {
@@ -43,18 +44,19 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
 
     public override Element Render()
     {
+        var theme = Props.EffectiveTheme;
         var rowChildren = new List<Element>();
         foreach (var (stage, labelKey) in StageLabels)
         {
             var rowState = Props.LocalSetupRows.TryGetValue(stage, out var s)
                 ? s
                 : RowState.Idle;
-            rowChildren.Add(BuildStageRow(V2Strings.Get(labelKey), rowState));
+            rowChildren.Add(BuildStageRow(theme, V2Strings.Get(labelKey), rowState));
 
             // The error card sits immediately under the failed row in Dialog-6.
             if (rowState == RowState.Failed && Props.LocalSetupErrorMessage is { } msg)
             {
-                rowChildren.Add(BuildErrorCard(msg));
+                rowChildren.Add(BuildErrorCard(theme, msg));
             }
         }
 
@@ -65,13 +67,14 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             TextBlock(V2Strings.Get("V2_Progress_Title"))
                 .FontSize(28)
                 .SemiBold()
-                .HAlign(HorizontalAlignment.Center),
+                .HAlign(HorizontalAlignment.Center)
+                .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
 
             TextBlock(V2Strings.Get("V2_Progress_Subtitle"))
                 .FontSize(14)
                 .HAlign(HorizontalAlignment.Center)
                 .Margin(0, 8, 0, 0)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xA0, 0xA0, 0xA0))),
+                .Set(t => t.Foreground = V2Theme.TextSubtle(theme)),
 
             // Spacer between header and list.
             new BorderElement(null).Height(48),
@@ -84,7 +87,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
         .VAlign(VerticalAlignment.Top);
     }
 
-    private static Element BuildStageRow(string label, RowState state)
+    private static Element BuildStageRow(ElementTheme theme, string label, RowState state)
     {
         return Grid(
             new[] { "*", "auto" },
@@ -92,6 +95,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             TextBlock(label)
                 .FontSize(18)
                 .VAlign(VerticalAlignment.Center)
+                .Set(t => t.Foreground = V2Theme.TextPrimary(theme))
                 .Grid(row: 0, column: 0),
 
             BuildStatusBadge(state)
@@ -118,9 +122,9 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center)
                 .VAlign(VerticalAlignment.Center)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.Colors.White))
+                .Set(t => t.Foreground = V2Theme.White())
         )
-        .Background("#2BC36F")
+        .Background(V2Theme.BadgeCheckGreen())
         .Width(24)
         .Height(24)
         .Set(b => b.CornerRadius = new CornerRadius(12));
@@ -136,7 +140,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             {
                 p.IsActive = true;
                 p.IsIndeterminate = true;
-                p.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
+                p.Foreground = V2Theme.AccentCyan();
             });
     }
 
@@ -149,9 +153,9 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center)
                 .VAlign(VerticalAlignment.Center)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x44, 0x10, 0x10)))
+                .Set(t => t.Foreground = V2Theme.OnAccentText())
         )
-        .Background("#F4A6B0")
+        .Background(V2Theme.BadgeErrorPink())
         .Width(24)
         .Height(24)
         .Set(b => b.CornerRadius = new CornerRadius(12));
@@ -163,7 +167,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
         return new BorderElement(null).Width(24).Height(24);
     }
 
-    private static Element BuildErrorCard(string message)
+    private static Element BuildErrorCard(ElementTheme theme, string message)
     {
         var inner = Grid(
             new[] { "*", "auto" },
@@ -172,7 +176,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .FontSize(14)
                 .TextWrapping()
                 .VAlign(VerticalAlignment.Center)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE8, 0xE0, 0xE0)))
+                .Set(t => t.Foreground = V2Theme.ErrorCardForeground(theme))
                 .Grid(row: 0, column: 0),
 
             Button(V2Strings.Get("V2_Progress_TryAgain"), () => { /* page-progress wiring later */ })
@@ -183,25 +187,24 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .Height(40)
                 .Set(b =>
                 {
-                    b.Foreground = new SolidColorBrush(Microsoft.UI.Colors.White);
+                    b.Foreground = V2Theme.White();
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Progress_TryAgain");
-                    b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x55, 0x1B, 0x20));
-                    b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x65, 0x25, 0x2A));
-                    b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x45, 0x15, 0x18));
-                    b.Resources["ButtonBorderBrush"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                    b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.Colors.White);
-                    b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.Colors.White);
-                    b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.Colors.White);
+                    b.Resources["ButtonBackground"] = V2Theme.ErrorButtonBackground(theme);
+                    b.Resources["ButtonBackgroundPointerOver"] = V2Theme.ErrorButtonHover(theme);
+                    b.Resources["ButtonBackgroundPressed"] = V2Theme.ErrorButtonPressed(theme);
+                    b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                    b.Resources["ButtonForeground"] = V2Theme.White();
+                    b.Resources["ButtonForegroundPointerOver"] = V2Theme.White();
+                    b.Resources["ButtonForegroundPressed"] = V2Theme.White();
                 })
                 .Grid(row: 0, column: 1)
         );
 
         return new BorderElement(inner)
-            .Background("#3D1818")
+            .Background(V2Theme.ErrorCardBackground(theme))
             .Padding(20, 18, 20, 18)
             .Margin(0, -8, 0, 0)
             .Set(b => b.CornerRadius = new CornerRadius(8))
             .WithSlideInFromBelow(distance: 14, durationMs: 320);
     }
 }
-

@@ -125,14 +125,14 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
             new[] { "*" },
             new[] { "*", "auto" },
             pageHost.Grid(row: 0, column: 0),
-            BuildNavBar(pageIndex, isLast, GoBack, GoNext, showNavBar).Grid(row: 1, column: 0)
+            BuildNavBar(Props.EffectiveTheme, pageIndex, isLast, GoBack, GoNext, showNavBar).Grid(row: 1, column: 0)
         )
-        .Background("#202020")
+        .Background(V2Theme.WindowBackground(Props.EffectiveTheme))
         .HAlign(HorizontalAlignment.Stretch)
         .VAlign(VerticalAlignment.Stretch);
     }
 
-    private static Element BuildNavBar(int pageIndex, bool isLast, Action onBack, Action onNext, bool visible)
+    private static Element BuildNavBar(ElementTheme theme, int pageIndex, bool isLast, Action onBack, Action onNext, bool visible)
     {
         var nextLabel = isLast ? V2Strings.Get("V2_Nav_Finish") : V2Strings.Get("V2_Nav_Next");
 
@@ -151,7 +151,7 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
         var bar = Grid(
             new[] { "auto", "*", "auto" },
             new[] { "auto" },
-            Component<StepDots, StepDotsProps>(new StepDotsProps(dotCount, dotActive))
+            Component<StepDots, StepDotsProps>(new StepDotsProps(dotCount, dotActive, theme))
                 .HAlign(HorizontalAlignment.Left)
                 .VAlign(VerticalAlignment.Center)
                 .Grid(row: 0, column: 0),
@@ -168,14 +168,14 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
                     .Set(b =>
                     {
                         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, isLast ? "V2_Nav_Finish" : "V2_Nav_Next");
-                        b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
+                        b.Foreground = V2Theme.OnAccentText();
                         b.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
-                        b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
-                        b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x52, 0xB0, 0xDA));
-                        b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x46, 0x99, 0xBC));
-                        b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
-                        b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
-                        b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
+                        b.Resources["ButtonBackground"] = V2Theme.AccentCyan();
+                        b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanHover();
+                        b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanPressed();
+                        b.Resources["ButtonForeground"] = V2Theme.OnAccentText();
+                        b.Resources["ButtonForegroundPointerOver"] = V2Theme.OnAccentText();
+                        b.Resources["ButtonForegroundPressed"] = V2Theme.OnAccentText();
                     })
             )
             .HAlign(HorizontalAlignment.Right)

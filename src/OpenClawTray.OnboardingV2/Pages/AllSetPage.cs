@@ -21,12 +21,22 @@ namespace OpenClawTray.Onboarding.V2.Pages;
 ///
 /// The Finish button at the bottom of the nav bar is rendered by the
 /// shell (OnboardingV2App swaps Next → Finish on the last page).
+///
+/// Colours come from <see cref="V2Theme"/> keyed on <see cref="OnboardingV2State.EffectiveTheme"/>.
 /// </summary>
 public sealed class AllSetPage : Component<OnboardingV2State>
 {
     public override Element Render()
     {
-        var (launchAtStartup, setLaunchAtStartup) = UseState(true);
+        var theme = Props.EffectiveTheme;
+        var (launchAtStartup, setLaunchAtStartup) = UseState(Props.LaunchAtStartup);
+
+        // Two-way bridge: when the page-local state changes, push to the shared
+        // OnboardingV2State so the host can persist Settings.AutoStart at finish.
+        if (Props.LaunchAtStartup != launchAtStartup)
+        {
+            Props.LaunchAtStartup = launchAtStartup;
+        }
 
         var children = new List<Element?>
         {
@@ -42,31 +52,32 @@ public sealed class AllSetPage : Component<OnboardingV2State>
                 .FontSize(32)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center)
-                .Margin(0, 16, 0, 0),
+                .Margin(0, 16, 0, 0)
+                .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
 
             TextBlock(V2Strings.Get("V2_AllSet_Subtitle"))
                 .FontSize(14)
                 .HAlign(HorizontalAlignment.Center)
                 .Margin(0, 8, 0, 0)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xA0, 0xA0, 0xA0))),
+                .Set(t => t.Foreground = V2Theme.TextSubtle(theme)),
 
             new BorderElement(null).Height(40),
         };
 
         if (Props.NodeModeActive)
         {
-            children.Add(BuildNodeModeWarning().Margin(48, 0, 48, 0));
+            children.Add(BuildNodeModeWarning(theme).Margin(48, 0, 48, 0));
             children.Add(new BorderElement(null).Height(28));
         }
 
-        children.Add(BuildStartupRow(launchAtStartup, setLaunchAtStartup).Margin(48, 0, 48, 0));
+        children.Add(BuildStartupRow(theme, launchAtStartup, setLaunchAtStartup).Margin(48, 0, 48, 0));
 
         return VStack(0, children.ToArray())
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Top);
     }
 
-    private static Element BuildNodeModeWarning()
+    private static Element BuildNodeModeWarning(ElementTheme theme)
     {
         var warningBadge = new BorderElement(
             TextBlock("!")
@@ -74,9 +85,9 @@ public sealed class AllSetPage : Component<OnboardingV2State>
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center)
                 .VAlign(VerticalAlignment.Center)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x33, 0x28, 0x10)))
+                .Set(t => t.Foreground = V2Theme.WarningCardHover(theme))
         )
-        .Background("#E0A422")
+        .Background(V2Theme.BadgeWarningAmber())
         .Width(20)
         .Height(20)
         .VAlign(VerticalAlignment.Top)
@@ -90,22 +101,23 @@ public sealed class AllSetPage : Component<OnboardingV2State>
             VStack(10,
                 TextBlock(V2Strings.Get("V2_AllSet_NodeMode_Title"))
                     .FontSize(15)
-                    .SemiBold(),
+                    .SemiBold()
+                    .Set(t => t.Foreground = V2Theme.WarningCardForeground(theme)),
                 TextBlock(V2Strings.Get("V2_AllSet_NodeMode_Body"))
                     .FontSize(13)
                     .TextWrapping()
-                    .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE8, 0xE0, 0xCC)))
+                    .Set(t => t.Foreground = V2Theme.WarningCardForeground(theme))
             )
             .Grid(row: 0, column: 1)
         );
 
         return new BorderElement(inner)
-            .Background("#5C4413")
+            .Background(V2Theme.WarningCardBackground(theme))
             .Padding(20, 18, 20, 18)
             .Set(b => b.CornerRadius = new CornerRadius(8));
     }
 
-    private static Element BuildStartupRow(bool isOn, Action<bool> onToggle)
+    private static Element BuildStartupRow(ElementTheme theme, bool isOn, Action<bool> onToggle)
     {
         return Grid(
             new[] { "*", "auto", "auto" },
@@ -113,13 +125,14 @@ public sealed class AllSetPage : Component<OnboardingV2State>
             TextBlock(V2Strings.Get("V2_AllSet_StartupQuestion"))
                 .FontSize(15)
                 .VAlign(VerticalAlignment.Center)
+                .Set(t => t.Foreground = V2Theme.TextPrimary(theme))
                 .Grid(row: 0, column: 0),
 
             TextBlock(isOn ? V2Strings.Get("V2_AllSet_On") : V2Strings.Get("V2_AllSet_Off"))
                 .FontSize(14)
                 .VAlign(VerticalAlignment.Center)
                 .Margin(0, 0, 12, 0)
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD8, 0xD8, 0xD8)))
+                .Set(t => t.Foreground = V2Theme.TextSecondary(theme))
                 .Grid(row: 0, column: 1),
 
             ToggleSwitch(isOn, v => onToggle(v), onContent: "", offContent: "")
@@ -135,4 +148,3 @@ public sealed class AllSetPage : Component<OnboardingV2State>
         );
     }
 }
-

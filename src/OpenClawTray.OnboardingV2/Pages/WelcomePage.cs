@@ -23,11 +23,16 @@ namespace OpenClawTray.Onboarding.V2.Pages;
 ///
 /// The page has no nav bar (OnboardingV2App hides chrome on the Welcome
 /// route — the design's first impression keeps focus on the two CTAs).
+///
+/// Colours come from <see cref="V2Theme"/> keyed on <see cref="OnboardingV2State.EffectiveTheme"/>
+/// so light + dark + system modes all render correctly.
 /// </summary>
 public sealed class WelcomePage : Component<OnboardingV2State>
 {
     public override Element Render()
     {
+        var theme = Props.EffectiveTheme;
+
         var infoCard = Grid(
             new[] { "auto", "*" },
             new[] { "auto" },
@@ -38,9 +43,9 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                     .FontSize(13)
                     .HAlign(HorizontalAlignment.Center)
                     .VAlign(VerticalAlignment.Center)
-                    .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.Colors.White))
+                    .Set(t => t.Foreground = V2Theme.White())
             )
-            .Background("#60C8F8")
+            .Background(V2Theme.AccentCyan())
             .Width(20)
             .Height(20)
             .VAlign(VerticalAlignment.Top)
@@ -51,12 +56,12 @@ public sealed class WelcomePage : Component<OnboardingV2State>
             TextBlock(V2Strings.Get("V2_Welcome_InfoCard"))
                 .FontSize(13)
                 .TextWrapping()
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD0, 0xD0, 0xD0)))
+                .Set(t => t.Foreground = V2Theme.TextSecondary(theme))
                 .Grid(row: 0, column: 1)
         );
 
         var infoCardWrap = new BorderElement(infoCard)
-            .Background("#2C2C2C")
+            .Background(V2Theme.CardBackground(theme))
             .Padding(20, 18, 20, 18)
             .Set(b => b.CornerRadius = new CornerRadius(8))
             .WithEntranceFadeIn(durationMs: 360, delayMs: 200);
@@ -66,41 +71,42 @@ public sealed class WelcomePage : Component<OnboardingV2State>
             .Height(44)
             .Set(b =>
             {
-                b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
+                b.Foreground = V2Theme.OnAccentText();
                 b.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
                 b.FontSize = 14;
                 b.HorizontalContentAlignment = HorizontalAlignment.Center;
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Welcome_SetUpLocally");
                 b.BorderThickness = new Thickness(0);
-                b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x52, 0xB0, 0xDA));
-                b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x46, 0x99, 0xBC));
-                b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
-                b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
-                b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
-                b.Resources["ButtonBorderBrush"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBorderBrushPointerOver"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBorderBrushPressed"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                b.Resources["ButtonBackground"] = V2Theme.AccentCyan();
+                b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanHover();
+                b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanPressed();
+                b.Resources["ButtonForeground"] = V2Theme.OnAccentText();
+                b.Resources["ButtonForegroundPointerOver"] = V2Theme.OnAccentText();
+                b.Resources["ButtonForegroundPressed"] = V2Theme.OnAccentText();
+                b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
+                b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
                 b.Resources["ButtonBorderThemeThickness"] = new Thickness(0);
             });
 
-        var advancedLink = Button(V2Strings.Get("V2_Welcome_AdvancedLink"), () => { /* page-welcome wiring lands later */ })
+        var advancedLink = Button(V2Strings.Get("V2_Welcome_AdvancedLink"), () => Props.RequestAdvancedSetup())
             .HAlign(HorizontalAlignment.Center)
             .Set(b =>
             {
-                b.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
+                b.Background = V2Theme.Transparent();
+                b.BorderBrush = V2Theme.Transparent();
+                b.Foreground = V2Theme.AccentCyan();
                 b.Padding = new Thickness(8, 4, 8, 4);
-                b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(60, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonBorderBrush"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBorderBrushPointerOver"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBorderBrushPressed"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x52, 0xB0, 0xDA));
-                b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x46, 0x99, 0xBC));
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Welcome_AdvancedSetup");
+                b.Resources["ButtonBackground"] = V2Theme.Transparent();
+                b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanGlowHover();
+                b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanGlowPressed();
+                b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
+                b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
+                b.Resources["ButtonForeground"] = V2Theme.AccentCyan();
+                b.Resources["ButtonForegroundPointerOver"] = V2Theme.AccentCyanHover();
+                b.Resources["ButtonForegroundPressed"] = V2Theme.AccentCyanPressed();
             });
 
         // Outer Grid: rows are [hero spacer | hero/title/body | flex spacer | bottom cluster]
@@ -122,7 +128,8 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                     .FontSize(28)
                     .SemiBold()
                     .HAlign(HorizontalAlignment.Center)
-                    .Margin(0, 12, 0, 0),
+                    .Margin(0, 12, 0, 0)
+                    .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
                 TextBlock(V2Strings.Get("V2_Welcome_Body"))
                     .FontSize(14)
                     .HAlign(HorizontalAlignment.Center)
@@ -130,7 +137,7 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                     .MaxWidth(440)
                     .Set(t =>
                     {
-                        t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xC0, 0xC0, 0xC0));
+                        t.Foreground = V2Theme.TextSecondary(theme);
                         t.TextAlignment = TextAlignment.Center;
                     })
             )

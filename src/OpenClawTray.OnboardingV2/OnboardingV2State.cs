@@ -1,5 +1,21 @@
 namespace OpenClawTray.Onboarding.V2;
 
+using Microsoft.UI.Xaml;
+
+/// <summary>
+/// User-facing theme preference. <see cref="System"/> follows the host's
+/// <see cref="Microsoft.UI.Xaml.Application.RequestedTheme"/> (which in
+/// turn tracks the Windows app-mode color setting). The bridge in
+/// OnboardingWindow resolves this to a concrete <see cref="ElementTheme"/>
+/// (Light or Dark) and writes it to <see cref="OnboardingV2State.EffectiveTheme"/>.
+/// </summary>
+public enum V2ThemeMode
+{
+    System = 0,
+    Light = 1,
+    Dark = 2,
+}
+
 /// <summary>
 /// Mutable state shared across the V2 onboarding flow. Lightweight on
 /// purpose — pages only read the bits they need and write back through
@@ -45,6 +61,36 @@ public sealed class OnboardingV2State
     {
         get => _nodeModeActive;
         set { if (_nodeModeActive != value) { _nodeModeActive = value; NotifyChanged(); } }
+    }
+
+    private V2ThemeMode _themeMode = V2ThemeMode.System;
+    /// <summary>
+    /// User's theme preference. <c>System</c> means "follow the host's
+    /// resolved <see cref="ElementTheme"/>", which the bridge writes into
+    /// <see cref="EffectiveTheme"/>.
+    /// </summary>
+    public V2ThemeMode ThemeMode
+    {
+        get => _themeMode;
+        set { if (_themeMode != value) { _themeMode = value; NotifyChanged(); } }
+    }
+
+    private ElementTheme _effectiveTheme = ElementTheme.Dark;
+    /// <summary>
+    /// Resolved theme that pages should use when looking up brushes via
+    /// <see cref="V2Theme"/>. Always concrete (Light or Dark, never Default).
+    /// Bridge code is responsible for writing this whenever <see cref="ThemeMode"/>
+    /// is <see cref="V2ThemeMode.System"/> and the host theme changes.
+    /// </summary>
+    public ElementTheme EffectiveTheme
+    {
+        get => _effectiveTheme;
+        set
+        {
+            // Coerce Default away — pages can rely on Light/Dark only.
+            var coerced = value == ElementTheme.Default ? ElementTheme.Dark : value;
+            if (_effectiveTheme != coerced) { _effectiveTheme = coerced; NotifyChanged(); }
+        }
     }
 
     /// <summary>
@@ -102,22 +148,37 @@ public sealed class OnboardingV2State
     // without re-touching the V2 lib.
     // ---------------------------------------------------------------------
 
+    private string _gatewayUrl = "http://localhost:18789";
     /// <summary>
     /// URL the GatewayWelcome "Open in browser" link should resolve to.
     /// Defaults to the dev gateway port; real Settings.GetEffectiveGatewayUrl
     /// overrides this at cutover.
     /// </summary>
-    public string GatewayUrl { get; set; } = "http://localhost:18789";
+    public string GatewayUrl
+    {
+        get => _gatewayUrl;
+        set { if (_gatewayUrl != value) { _gatewayUrl = value; NotifyChanged(); } }
+    }
 
+    private bool _gatewayHealthy;
     /// <summary>
     /// True when the gateway is reachable + ready (set by a real
     /// GatewayHealthCheck at cutover). Pages may use this to enable the
     /// "Open in browser" link or auto-advance.
     /// </summary>
-    public bool GatewayHealthy { get; set; }
+    public bool GatewayHealthy
+    {
+        get => _gatewayHealthy;
+        set { if (_gatewayHealthy != value) { _gatewayHealthy = value; NotifyChanged(); } }
+    }
 
+    private bool _launchAtStartup = true;
     /// <summary>Initial value for the AllSet "Launch at startup?" toggle.</summary>
-    public bool LaunchAtStartup { get; set; } = true;
+    public bool LaunchAtStartup
+    {
+        get => _launchAtStartup;
+        set { if (_launchAtStartup != value) { _launchAtStartup = value; NotifyChanged(); } }
+    }
 
     /// <summary>
     /// Per-permission row, replacing the all-granted hard-coded list in
@@ -155,7 +216,11 @@ public sealed class OnboardingV2State
     /// <summary>Raised by the Finish button on AllSet (terminal state).</summary>
     public event EventHandler? Finished;
 
+    /// <summary>Raised by Welcome's "Advanced setup" link — host routes to the legacy Connection page.</summary>
+    public event EventHandler? AdvancedSetupRequested;
+
     public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
     public void RequestBack() => BackRequested?.Invoke(this, EventArgs.Empty);
     public void RaiseFinished() => Finished?.Invoke(this, EventArgs.Empty);
+    public void RequestAdvancedSetup() => AdvancedSetupRequested?.Invoke(this, EventArgs.Empty);
 }

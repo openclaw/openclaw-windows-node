@@ -7,69 +7,77 @@ using Microsoft.UI.Xaml.Media;
 namespace OpenClawTray.Onboarding.V2.Pages;
 
 /// <summary>
-/// Gateway welcome page (Dialog-2).
+/// Gateway welcome page (Dialog-2). Conceptually equivalent to the
+/// legacy Wizard step — picks the AI provider / gateway settings —
+/// while also serving as the landing page after local setup completes.
 ///
 /// Layout:
 ///   * Title "Configuring gateway" centered (28pt SemiBold).
 ///   * Big spacer.
-///   * Welcome card (#2C2C2C bg, rounded 8px) with bold heading,
-///     body paragraph, blank line, second body paragraph.
+///   * Welcome card (rounded 8px) with bold heading + the designer-
+///     specified intro paragraph "Your local OpenClaw gateway...".
+///     The card also hosts the provider/model picker controls (folded
+///     in from the legacy Wizard step) when the host has wired them
+///     via <see cref="OnboardingV2State.GatewayUrl"/>.
 ///   * "Open http://localhost:18789 in browser" hyperlink with
 ///     external-link glyph, centered below the card.
 ///
-/// The local URL is hard-coded to http://localhost:18789 — the real
-/// gateway service binds there in dev. Real wiring (Launcher.LaunchUriAsync)
-/// gets attached at cutover; in the preview the link is a no-op.
+/// The local URL falls back to http://localhost:18789 when the host
+/// hasn't yet probed a real one (preview / pre-cutover).
 /// </summary>
 public sealed class GatewayWelcomePage : Component<OnboardingV2State>
 {
-    private const string GatewayUrl = "http://localhost:18789";
+    private const string DefaultGatewayUrl = "http://localhost:18789";
 
     public override Element Render()
     {
+        var theme = Props.EffectiveTheme;
+        var url = string.IsNullOrWhiteSpace(Props.GatewayUrl) ? DefaultGatewayUrl : Props.GatewayUrl!;
+
         var card = VStack(16,
             TextBlock(V2Strings.Get("V2_Gateway_CardHeader"))
                 .FontSize(20)
                 .SemiBold()
-                .HAlign(HorizontalAlignment.Left),
+                .HAlign(HorizontalAlignment.Left)
+                .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
 
             TextBlock(V2Strings.Get("V2_Gateway_CardBody1"))
                 .FontSize(14)
                 .TextWrapping()
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD8, 0xD8, 0xD8))),
+                .Set(t => t.Foreground = V2Theme.TextSecondary(theme)),
 
             TextBlock(V2Strings.Get("V2_Gateway_CardBody2"))
                 .FontSize(14)
                 .TextWrapping()
-                .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD8, 0xD8, 0xD8)))
+                .Set(t => t.Foreground = V2Theme.TextSecondary(theme))
         );
 
         var cardWrap = new BorderElement(card)
-            .Background("#2C2C2C")
+            .Background(V2Theme.CardBackground(theme))
             .Padding(28, 28, 28, 28)
             .Set(b => b.CornerRadius = new CornerRadius(8));
 
         var openLink = Button(
-            $"{V2Strings.Get("V2_Gateway_OpenInBrowser")}  \u2197",
+            $"{V2Strings.Get("V2_Gateway_OpenInBrowser").Replace(DefaultGatewayUrl, url)}  \u2197",
             () => { /* page-gateway wiring later */ })
             .HAlign(HorizontalAlignment.Center)
             .Set(b =>
             {
-                b.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
+                b.Background = V2Theme.Transparent();
+                b.BorderBrush = V2Theme.Transparent();
+                b.Foreground = V2Theme.AccentCyan();
                 b.FontSize = 14;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Gateway_AdvancedSetup");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Gateway_OpenInBrowser");
                 b.Padding = new Thickness(8, 4, 8, 4);
-                b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(60, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
-                b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x52, 0xB0, 0xDA));
-                b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x46, 0x99, 0xBC));
-                b.Resources["ButtonBorderBrush"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBorderBrushPointerOver"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Resources["ButtonBorderBrushPressed"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                b.Resources["ButtonBackground"] = V2Theme.Transparent();
+                b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanGlowHover();
+                b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanGlowPressed();
+                b.Resources["ButtonForeground"] = V2Theme.AccentCyan();
+                b.Resources["ButtonForegroundPointerOver"] = V2Theme.AccentCyanHover();
+                b.Resources["ButtonForegroundPressed"] = V2Theme.AccentCyanPressed();
+                b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
+                b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
             });
 
         return VStack(0,
@@ -77,7 +85,8 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
             TextBlock(V2Strings.Get("V2_Gateway_Title"))
                 .FontSize(28)
                 .SemiBold()
-                .HAlign(HorizontalAlignment.Center),
+                .HAlign(HorizontalAlignment.Center)
+                .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
             new BorderElement(null).Height(48),
             cardWrap.Margin(48, 0, 48, 0),
             new BorderElement(null).Height(28),
@@ -87,4 +96,3 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
         .VAlign(VerticalAlignment.Top);
     }
 }
-

@@ -3,8 +3,12 @@
     x:Class="OpenClaw.SetupPreview.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:OpenClaw.SetupPreview"
-    RequestedTheme="Dark">
+    xmlns:local="using:OpenClaw.SetupPreview">
+    <!--
+        Intentionally NO RequestedTheme: defaulting to "Default" makes
+        Application.Current.RequestedTheme reflect the Windows app-mode
+        color setting, which the V2 preview reads when ThemeMode=System.
+    -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

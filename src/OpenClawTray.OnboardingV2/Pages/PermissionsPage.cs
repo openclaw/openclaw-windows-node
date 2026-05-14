@@ -80,11 +80,12 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
 
     public override Element Render()
     {
+        var theme = Props.EffectiveTheme;
         var rows = AllGranted; // env-var scenarios land in fake-services/F1 overlay later.
         var rowEls = new List<Element>();
         foreach (var row in rows)
         {
-            rowEls.Add(BuildRow(row));
+            rowEls.Add(BuildRow(theme, row));
         }
 
         var refreshLink = Button(
@@ -97,20 +98,20 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
                 // 16pt, paired with the label, so the glyph reads at the
                 // same size as the comp instead of the tiny U+21BB.
                 b.Content = GlyphButtonContent.Build("\uE72C", V2Strings.Get("V2_Permissions_Refresh"), glyphSize: 16);
-                b.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x2C, 0x2C, 0x2C));
-                b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
+                b.Background = V2Theme.CardBackground(theme);
+                b.BorderBrush = V2Theme.Transparent();
+                b.Foreground = V2Theme.TextPrimary(theme);
                 b.FontSize = 14;
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Permissions_Refresh");
                 b.Padding = new Thickness(20, 10, 20, 10);
                 b.CornerRadius = new CornerRadius(8);
-                b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x2C, 0x2C, 0x2C));
-                b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x36, 0x36, 0x36));
-                b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x42, 0x42, 0x42));
-                b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
-                b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xF0, 0xF0, 0xF0));
-                b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xF0, 0xF0, 0xF0));
-                b.Resources["ButtonBorderBrush"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                b.Resources["ButtonBackground"] = V2Theme.CardBackground(theme);
+                b.Resources["ButtonBackgroundPointerOver"] = V2Theme.CardBackgroundHover(theme);
+                b.Resources["ButtonBackgroundPressed"] = V2Theme.CardBackgroundPressed(theme);
+                b.Resources["ButtonForeground"] = V2Theme.TextPrimary(theme);
+                b.Resources["ButtonForegroundPointerOver"] = V2Theme.TextStrong(theme);
+                b.Resources["ButtonForegroundPressed"] = V2Theme.TextStrong(theme);
+                b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
             });
 
         return VStack(0,
@@ -118,7 +119,8 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
             TextBlock(V2Strings.Get("V2_Permissions_Title"))
                 .FontSize(28)
                 .SemiBold()
-                .HAlign(HorizontalAlignment.Center),
+                .HAlign(HorizontalAlignment.Center)
+                .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
             new BorderElement(null).Height(16),
             TextBlock(V2Strings.Get("V2_Permissions_Body"))
                 .FontSize(14)
@@ -127,7 +129,7 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
                 .MaxWidth(480)
                 .Set(t =>
                 {
-                    t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xC8, 0xC8, 0xC8));
+                    t.Foreground = V2Theme.TextSecondary(theme);
                     t.TextAlignment = TextAlignment.Center;
                 }),
             new BorderElement(null).Height(28),
@@ -140,28 +142,42 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
         .VAlign(VerticalAlignment.Top);
     }
 
-    private static Element BuildRow(PermissionRow row)
+    private static Element BuildRow(ElementTheme theme, PermissionRow row)
     {
-        var statusBrush = new SolidColorBrush(row.StatusIsAccent
-            ? Microsoft.UI.ColorHelper.FromArgb(255, 0x6D, 0xC8, 0x68) // accent green for Enabled / Available
-            : Microsoft.UI.ColorHelper.FromArgb(255, 0xA0, 0xA0, 0xA0));
+        var statusBrush = row.StatusIsAccent
+            ? V2Theme.AccentGreen()
+            : V2Theme.TextSubtle(theme);
 
         var inner = Grid(
             new[] { "auto", "*", "auto" },
             new[] { "auto" },
-            // Icon column
-            Image(row.IconAsset)
-                .Width(28)
-                .Height(28)
-                .VAlign(VerticalAlignment.Center)
-                .Margin(4, 0, 16, 0)
-                .Grid(row: 0, column: 0),
+            // Icon column — the designer PNGs are white/light line art that
+            // disappears on a light card, so wrap them in a dark constant-
+            // colour badge that works in both themes. The badge size matches
+            // the design (40dp circle with 24dp icon).
+            new BorderElement(
+                Image(row.IconAsset)
+                    .Width(24)
+                    .Height(24)
+                    .HAlign(HorizontalAlignment.Center)
+                    .VAlign(VerticalAlignment.Center)
+            )
+            .Width(40)
+            .Height(40)
+            .VAlign(VerticalAlignment.Center)
+            .Margin(0, 0, 16, 0)
+            .Background(theme == ElementTheme.Light
+                ? new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x33, 0x33, 0x33))
+                : V2Theme.Transparent())
+            .Set(b => b.CornerRadius = new CornerRadius(20))
+            .Grid(row: 0, column: 0),
 
             // Title + status
             VStack(2,
                 TextBlock(row.Title)
                     .FontSize(15)
-                    .SemiBold(),
+                    .SemiBold()
+                    .Set(t => t.Foreground = V2Theme.TextPrimary(theme)),
                 TextBlock(row.Status)
                     .FontSize(13)
                     .Set(t => t.Foreground = statusBrush)
@@ -179,19 +195,19 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
                       // Segoe Fluent Icons "OpenInNewWindow" (\uE8A7) —
                       // square-with-arrow icon that matches Dialog-5.
                       b.Content = GlyphButtonContent.Build("\uE8A7", V2Strings.Get("V2_Permissions_OpenSettings"), glyphSize: 16);
-                      b.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                      b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                      b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
+                      b.Background = V2Theme.Transparent();
+                      b.BorderBrush = V2Theme.Transparent();
+                      b.Foreground = V2Theme.TextPrimary(theme);
                       b.FontSize = 14;
                       Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Permissions_OpenSettings");
                       b.Padding = new Thickness(8, 6, 8, 6);
-                      b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                      b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 0xFF, 0xFF, 0xFF));
-                      b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(70, 0xFF, 0xFF, 0xFF));
-                      b.Resources["ButtonForeground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
-                      b.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xFF, 0xFF, 0xFF));
-                      b.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xFF, 0xFF, 0xFF));
-                      b.Resources["ButtonBorderBrush"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                      b.Resources["ButtonBackground"] = V2Theme.Transparent();
+                      b.Resources["ButtonBackgroundPointerOver"] = V2Theme.ButtonOverlayHover(theme);
+                      b.Resources["ButtonBackgroundPressed"] = V2Theme.ButtonOverlayPressed(theme);
+                      b.Resources["ButtonForeground"] = V2Theme.TextPrimary(theme);
+                      b.Resources["ButtonForegroundPointerOver"] = V2Theme.TextStrong(theme);
+                      b.Resources["ButtonForegroundPressed"] = V2Theme.TextStrong(theme);
+                      b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
                   })
                   .HAlign(HorizontalAlignment.Right)
                   .VAlign(VerticalAlignment.Center)
@@ -200,9 +216,8 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
         );
 
         return new BorderElement(inner)
-            .Background("#2C2C2C")
+            .Background(V2Theme.CardBackground(theme))
             .Padding(20, 18, 20, 18)
             .Set(b => b.CornerRadius = new CornerRadius(8));
     }
 }
-
