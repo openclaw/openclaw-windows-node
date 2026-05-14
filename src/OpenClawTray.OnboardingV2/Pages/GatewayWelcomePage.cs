@@ -80,19 +80,33 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
                 b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
             });
 
-        return VStack(0,
+        var children = new List<Element?>
+        {
             new BorderElement(null).Height(40),
             TextBlock(V2Strings.Get("V2_Gateway_Title"))
                 .FontSize(28)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center)
                 .Set(t => t.Foreground = V2Theme.TextStrong(theme)),
-            new BorderElement(null).Height(48),
+            new BorderElement(null).Height(32),
             cardWrap.Margin(48, 0, 48, 0),
-            new BorderElement(null).Height(28),
-            openLink
-        )
-        .HAlign(HorizontalAlignment.Stretch)
-        .VAlign(VerticalAlignment.Top);
+        };
+
+        // Embed the legacy WizardPage (provider/model RPC picker) inside
+        // the V2 Gateway card area when the host provided a factory. This
+        // keeps the existing wizard flow functional while the V2 chrome
+        // still owns the page header + welcome card.
+        if (Props.GatewayWizardChildFactory is { } childFactory)
+        {
+            children.Add(new BorderElement(null).Height(16));
+            children.Add(childFactory().Margin(48, 0, 48, 0));
+        }
+
+        children.Add(new BorderElement(null).Height(20));
+        children.Add(openLink);
+
+        return VStack(0, children.ToArray())
+            .HAlign(HorizontalAlignment.Stretch)
+            .VAlign(VerticalAlignment.Top);
     }
 }

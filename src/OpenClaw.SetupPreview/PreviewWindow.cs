@@ -291,16 +291,11 @@ internal sealed class PreviewWindow : WindowEx
 
     /// <summary>
     /// Resolves a user theme preference to a concrete <see cref="ElementTheme"/>.
-    /// <see cref="V2ThemeMode.System"/> reads the host
-    /// <see cref="Microsoft.UI.Xaml.Application.RequestedTheme"/> (which in turn
-    /// follows the Windows app-mode color setting via UISettings).
+    /// <see cref="V2ThemeMode.System"/> uses <see cref="V2SystemTheme.IsDark"/>
+    /// (UISettings-based) since <see cref="Application.RequestedTheme"/>
+    /// returns Light on unpackaged WinUI 3 apps regardless of system setting.
     /// </summary>
-    private static ElementTheme ResolveEffectiveTheme(V2ThemeMode mode) => mode switch
-    {
-        V2ThemeMode.Light => ElementTheme.Light,
-        V2ThemeMode.Dark => ElementTheme.Dark,
-        _ => Application.Current.RequestedTheme == ApplicationTheme.Light ? ElementTheme.Light : ElementTheme.Dark,
-    };
+    private static ElementTheme ResolveEffectiveTheme(V2ThemeMode mode) => V2SystemTheme.Resolve(mode);
 
     /// <summary>
     /// Apply Windows 11 rounded-corner preference via DWM. No-op (and silent)

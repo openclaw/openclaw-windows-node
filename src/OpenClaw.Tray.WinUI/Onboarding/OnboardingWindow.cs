@@ -26,6 +26,7 @@ namespace OpenClawTray.Onboarding;
 public sealed class OnboardingWindow : WindowEx
 {
     private bool _useV2;
+    private bool _v2BridgeBackPending;
     private OpenClawTray.Onboarding.V2.OnboardingV2State? _v2State;
     private OpenClawTray.Onboarding.V2.OnboardingV2Bridge? _v2Bridge;
 
@@ -146,7 +147,14 @@ public sealed class OnboardingWindow : WindowEx
             // so the new UI renders against real data without touching any
             // service code.
             _v2State = new OpenClawTray.Onboarding.V2.OnboardingV2State();
-            _v2State.NodeModeActive = settings.EnableNodeMode;
+            // Hand the legacy OnboardingState to V2 so the Gateway page can
+            // embed the legacy WizardPage component (provider/model RPC
+            // picker) inside the V2 chrome until that step is itself
+            // redesigned. V2 sees this as opaque object?, only the host
+            // (here) and the GatewayWelcome page know the concrete type.
+            _v2State.LegacyState = _state;
+            _v2State.GatewayWizardChildFactory = () =>
+                Factories.Component<OpenClawTray.Onboarding.Pages.WizardPage, OnboardingState>(_state);
 
             // Route V2Strings through the existing LocalizationHelper so V2
             // text comes from the same .resw resources as legacy strings.
@@ -349,6 +357,35 @@ public sealed class OnboardingWindow : WindowEx
     {
         _dispatcherQueue.TryEnqueue(() =>
         {
+            // Advanced -> V2 round-trip: when we kicked the user out to the
+            // legacy Connection page (Welcome's "Advanced setup" link), we
+            // arm _v2BridgeBackPending. As soon as legacy navigates past
+            // Connection (next is Wizard / Permissions / Ready depending on
+            // ConnectionMode), pull them back into the V2 chrome at the
+            // closest equivalent route.
+            if (_v2BridgeBackPending && _v2State is { } v2 && route != OnboardingRoute.Connection)
+            {
+                var v2Next = route switch
+                {
+                    OnboardingRoute.Wizard => OpenClawTray.Onboarding.V2.V2Route.GatewayWelcome,
+                    OnboardingRoute.Permissions => OpenClawTray.Onboarding.V2.V2Route.Permissions,
+                    OnboardingRoute.Ready => OpenClawTray.Onboarding.V2.V2Route.AllSet,
+                    _ => OpenClawTray.Onboarding.V2.V2Route.AllSet,
+                };
+                _v2BridgeBackPending = false;
+                _useV2 = true;
+                v2.CurrentRoute = v2Next;
+                _host.Mount(ctx =>
+                {
+                    var (s, _) = ctx.UseState(v2);
+                    return Factories.Component<
+                        OpenClawTray.Onboarding.V2.OnboardingV2App,
+                        OpenClawTray.Onboarding.V2.OnboardingV2State>(s);
+                });
+                _chatOverlay.Visibility = Visibility.Collapsed;
+                return;
+            }
+
             if (route == OnboardingRoute.Chat)
             {
                 _chatOverlay.Visibility = Visibility.Visible;
@@ -660,8 +697,10 @@ public sealed class OnboardingWindow : WindowEx
     {
         try { _v2Bridge?.Dispose(); } catch { /* ignore */ }
         _v2Bridge = null;
-        _v2State = null;
+        // Keep _v2State alive so we can bridge back to V2 once the legacy
+        // Connection page completes (RouteChanged fires past Connection).
         _useV2 = false;
+        _v2BridgeBackPending = true;
 
         _state.SetupPath = SetupPath.Advanced;
         _state.CurrentRoute = OnboardingRoute.Connection;

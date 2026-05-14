@@ -172,6 +172,26 @@ public sealed class OnboardingV2State
         set { if (_gatewayHealthy != value) { _gatewayHealthy = value; NotifyChanged(); } }
     }
 
+    /// <summary>
+    /// Opaque reference to the legacy <c>OnboardingState</c> object owned by
+    /// the host. The V2 Gateway page reads this to embed the legacy
+    /// WizardPage component (provider/model RPC picker) inside the V2
+    /// chrome until the wizard step is itself redesigned. Pages should
+    /// treat the type as <c>object?</c> — only the legacy host knows the
+    /// concrete type.
+    /// </summary>
+    public object? LegacyState { get; set; }
+
+    /// <summary>
+    /// Optional factory that produces the legacy provider/model wizard as
+    /// a FunctionalUI <see cref="OpenClawTray.FunctionalUI.Core.Element"/>.
+    /// V2 GatewayWelcomePage calls this (when non-null) to embed the
+    /// legacy <c>WizardPage</c> component inside the V2 chrome — the host
+    /// project is the only place that can construct it (avoids a circular
+    /// project reference from OnboardingV2 -> Tray.WinUI).
+    /// </summary>
+    public Func<OpenClawTray.FunctionalUI.Core.Element>? GatewayWizardChildFactory { get; set; }
+
     private bool _launchAtStartup = true;
     /// <summary>Initial value for the AllSet "Launch at startup?" toggle.</summary>
     public bool LaunchAtStartup
@@ -230,8 +250,12 @@ public sealed class OnboardingV2State
     /// <summary>Raised by Welcome's "Advanced setup" link — host routes to the legacy Connection page.</summary>
     public event EventHandler? AdvancedSetupRequested;
 
+    /// <summary>Raised by Permissions' "Refresh status" button — host re-runs PermissionChecker.</summary>
+    public event EventHandler? PermissionsRefreshRequested;
+
     public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
     public void RequestBack() => BackRequested?.Invoke(this, EventArgs.Empty);
     public void RaiseFinished() => Finished?.Invoke(this, EventArgs.Empty);
     public void RequestAdvancedSetup() => AdvancedSetupRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestPermissionsRefresh() => PermissionsRefreshRequested?.Invoke(this, EventArgs.Empty);
 }

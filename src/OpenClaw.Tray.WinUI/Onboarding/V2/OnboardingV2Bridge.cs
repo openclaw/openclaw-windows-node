@@ -12,7 +12,6 @@ using OpenClawTray.Services.LocalGatewaySetup;
 using LegacyStage = OpenClawTray.Onboarding.Services.LocalSetupProgressStageMap;
 using V2Stage = OpenClawTray.Onboarding.V2.OnboardingV2State.LocalSetupStage;
 using V2RowState = OpenClawTray.Onboarding.V2.OnboardingV2State.LocalSetupRowState;
-
 namespace OpenClawTray.Onboarding.V2;
 
 /// <summary>
@@ -42,6 +41,7 @@ public sealed class OnboardingV2Bridge : IDisposable
     private LocalGatewaySetupPhase _lastRunningPhase = LocalGatewaySetupPhase.NotStarted;
     private CancellationTokenSource? _permissionsRefreshCts;
     private Action? _permissionsUnsubscribe;
+    private global::Windows.UI.ViewManagement.UISettings? _uiSettings;
     private bool _disposed;
     private bool _engineStarted;
 
@@ -74,12 +74,48 @@ public sealed class OnboardingV2Bridge : IDisposable
         _state.GatewayUrl = NormalizeGatewayUrl(_settings.GetEffectiveGatewayUrl());
         _state.LaunchAtStartup = _settings.AutoStart;
 
+        // Local easy-setup defaults to Node Mode (the gateway pairs the tray
+        // as both operator + node on the loopback gateway it just stood up).
+        // The engine flips Settings.EnableNodeMode mid-onboarding (PairAsync);
+        // until then we seed the V2 state to the design's expected default
+        // so the AllSet page shows the amber Node-Mode card on the local path.
+        _state.NodeModeActive = true;
+
+        // Resolve initial theme from system + subscribe to Windows app-mode
+        // changes so the V2 UI flips when the user changes their preference
+        // while onboarding is open.
+        ApplyResolvedTheme();
+        try
+        {
+            _uiSettings = new global::Windows.UI.ViewManagement.UISettings();
+            _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[V2Bridge] UISettings.ColorValuesChanged subscribe failed: {ex.Message}");
+        }
+
         // Two-way bindings: V2 → tray.
         _state.LaunchAtStartupChanged += OnLaunchAtStartupChanged;
         _state.AdvancedSetupRequested += OnAdvancedSetupRequested;
         _state.Finished += OnFinished;
         _state.AdvanceRequested += OnAdvanceRequested;
+        _state.PermissionsRefreshRequested += OnPermissionsRefreshRequested;
     }
+
+    private void ApplyResolvedTheme()
+    {
+        DispatchToUi(() => _state.EffectiveTheme = V2SystemTheme.Resolve(_state.ThemeMode));
+    }
+
+    private void OnSystemColorValuesChanged(global::Windows.UI.ViewManagement.UISettings sender, object args)
+    {
+        // Fired on the UI thread already in WinUI 3, but guard anyway.
+        ApplyResolvedTheme();
+    }
+
+    private void OnPermissionsRefreshRequested(object? sender, EventArgs e) =>
+        _ = RefreshPermissionsAsync();
 
     /// <summary>
     /// Wire-up after construction. Starts the engine immediately if the V2
@@ -191,6 +227,12 @@ public sealed class OnboardingV2Bridge : IDisposable
         {
             _state.LocalSetupRows = rows;
             _state.LocalSetupErrorMessage = errorMessage;
+
+            // The engine may have flipped Settings.EnableNodeMode mid-run
+            // (PairAsync sets it to true once node-pair completes). Mirror
+            // that into V2 state so the AllSet page renders the correct
+            // Node-Mode warning state regardless of when we sample.
+            _state.NodeModeActive = _settings.EnableNodeMode || _state.NodeModeActive;
 
             if (routeAfterComplete is { } next && _state.CurrentRoute == V2Route.LocalSetupProgress)
             {
@@ -346,6 +388,13 @@ public sealed class OnboardingV2Bridge : IDisposable
         _state.AdvancedSetupRequested -= OnAdvancedSetupRequested;
         _state.Finished -= OnFinished;
         _state.AdvanceRequested -= OnAdvanceRequested;
+        _state.PermissionsRefreshRequested -= OnPermissionsRefreshRequested;
+
+        if (_uiSettings is not null)
+        {
+            try { _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged; } catch { /* ignore */ }
+            _uiSettings = null;
+        }
 
         if (_engine is not null)
         {
