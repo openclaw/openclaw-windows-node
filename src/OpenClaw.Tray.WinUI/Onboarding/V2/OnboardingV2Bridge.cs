@@ -39,6 +39,7 @@ public sealed class OnboardingV2Bridge : IDisposable
     private LocalGatewaySetupEngine? _engine;
     private Task<LocalGatewaySetupState>? _runTask;
     private LocalGatewaySetupPhase _lastRunningPhase = LocalGatewaySetupPhase.NotStarted;
+    private bool _advanceFiredForCompletion;
     private CancellationTokenSource? _permissionsRefreshCts;
     private Action? _permissionsUnsubscribe;
     private global::Windows.UI.ViewManagement.UISettings? _uiSettings;
@@ -183,22 +184,53 @@ public sealed class OnboardingV2Bridge : IDisposable
         if (_engineStarted) return;
         _engineStarted = true;
 
-        try
+        // Defense-in-depth (parity with legacy LocalSetupProgressPage): if
+        // existing configuration is detected and the user did not explicitly
+        // confirm replacement via the V2 Welcome warn-and-confirm flow,
+        // surface a synthetic Block state instead of starting the engine.
+        // The primary gate is the V2 Welcome page; this catches future
+        // callers that bypass it.
+        if (!_state.ReplaceExistingConfigurationConfirmed
+            && _state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacyForGuard
+            && legacyForGuard.ExistingConfigGuard?.HasExistingConfiguration() == true)
         {
-            _engine = _engineFactory(/* replaceExistingConfigConfirmed */ true);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"[V2Bridge] Failed to construct LocalGatewaySetupEngine: {ex.Message}");
+            Logger.Warn("[V2Bridge] Existing configuration detected without replace-confirm; blocking setup");
             DispatchToUi(() =>
             {
                 MarkAllStagesIdle();
-                _state.LocalSetupErrorMessage = ex.Message;
+                _state.LocalSetupErrorMessage = "Existing configuration detected. Use Advanced Setup to reconnect, or confirm replacement on the previous page.";
             });
             return;
         }
 
-        Logger.Info($"[V2Bridge] Subscribing to engine.StateChanged + starting RunLocalOnlyAsync");
+        // Forward V2 replace-confirmed flag to legacy state (the engine
+        // factory reads it via App, which holds the legacy OnboardingState).
+        if (_state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacyForFlag)
+        {
+            legacyForFlag.ReplaceExistingConfigurationConfirmed = _state.ReplaceExistingConfigurationConfirmed;
+        }
+
+        try
+        {
+            // Pass through the user's actual replace-confirm choice rather
+            // than hard-coding true (matches v1 LocalSetupProgressPage).
+            _engine = _engineFactory(_state.ReplaceExistingConfigurationConfirmed);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"[V2Bridge] Failed to construct LocalGatewaySetupEngine: {ex.Message}");
+            // Surface engine_construct_failed as a user-facing error on the
+            // V2 progress page (parity with v1: legacy renders a synthetic
+            // Block state with this code so the Try-again button is offered).
+            DispatchToUi(() =>
+            {
+                MarkAllStagesIdle();
+                _state.LocalSetupErrorMessage = $"Could not start setup engine: {ex.Message}";
+            });
+            return;
+        }
+
+        Logger.Info($"[V2Bridge] Subscribing to engine.StateChanged + starting RunLocalOnlyAsync (replaceConfirmed={_state.ReplaceExistingConfigurationConfirmed})");
         _engine.StateChanged += OnEngineStateChanged;
         try
         {
@@ -207,7 +239,9 @@ public sealed class OnboardingV2Bridge : IDisposable
             // best-effort (cross-thread, multiple subscribers). Watch the
             // run task itself so we always advance V2 when the engine
             // finishes, even if a transient StateChanged subscription
-            // problem swallowed the final Complete tick.
+            // problem swallowed the final Complete tick. The
+            // _advanceFiredForCompletion guard inside OnEngineStateChanged
+            // makes this idempotent with the regular event path.
             _runTask.ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully && t.Result is { } finalState)
@@ -239,42 +273,112 @@ public sealed class OnboardingV2Bridge : IDisposable
             ? st.UserMessage
             : null;
 
-        if (status == LocalGatewaySetupStatus.Running &&
-            phase != LocalGatewaySetupPhase.Failed &&
-            phase != LocalGatewaySetupPhase.Cancelled)
+        // Parity with v1 Capture: lastRunningPhase is reconstructed from
+        // History (most recent non-Failed/Cancelled/NotStarted phase) so
+        // the failure stage marker pins to the right row even after the
+        // engine has rolled Phase to Failed. While running, the current
+        // phase IS the last running phase.
+        var lastRunningPhase = LocalGatewaySetupPhase.NotStarted;
+        for (int i = st.History.Count - 1; i >= 0; i--)
         {
-            _lastRunningPhase = phase;
+            var rec = st.History[i];
+            if (rec.Phase != LocalGatewaySetupPhase.Failed
+                && rec.Phase != LocalGatewaySetupPhase.Cancelled
+                && rec.Phase != LocalGatewaySetupPhase.NotStarted)
+            {
+                lastRunningPhase = rec.Phase;
+                break;
+            }
         }
+        if (status == LocalGatewaySetupStatus.Running
+            && phase != LocalGatewaySetupPhase.Failed
+            && phase != LocalGatewaySetupPhase.Cancelled
+            && phase != LocalGatewaySetupPhase.NotStarted)
+        {
+            lastRunningPhase = phase;
+        }
+        _lastRunningPhase = lastRunningPhase;
 
-        var rows = MapToV2Rows(phase, status, _lastRunningPhase);
-        var routeAfterComplete = status == LocalGatewaySetupStatus.Complete
-            ? V2Route.GatewayWelcome
-            : (V2Route?)null;
-
-        Logger.Info($"[V2Bridge] OnEngineStateChanged: phase={phase} status={status} routeAfterComplete={routeAfterComplete}");
+        var rows = MapToV2Rows(phase, status, lastRunningPhase);
+        Logger.Info($"[V2Bridge] OnEngineStateChanged: phase={phase} status={status} lastRunning={lastRunningPhase}");
 
         DispatchToUi(() =>
         {
-            var routeBefore = _state.CurrentRoute;
             _state.LocalSetupRows = rows;
             _state.LocalSetupErrorMessage = errorMessage;
+            // Engine flips Settings.EnableNodeMode mid-run (PairAsync). Mirror
+            // it to V2 state so AllSet renders the Node-Mode card correctly.
             _state.NodeModeActive = _settings.EnableNodeMode || _state.NodeModeActive;
 
-            if (routeAfterComplete is { } next)
+            if (status == LocalGatewaySetupStatus.Complete && !_advanceFiredForCompletion)
             {
-                Logger.Info($"[V2Bridge] Engine complete; CurrentRoute before advance = {routeBefore}");
-                if (_state.CurrentRoute == V2Route.LocalSetupProgress
-                    || _state.CurrentRoute == V2Route.Welcome)
+                _advanceFiredForCompletion = true;
+                ScheduleAdvanceAfterCompletion();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Parity with v1 LocalSetupProgressPage Status=Complete handler:
+    ///
+    /// 1. Eagerly (re)initialize the operator gateway client. PairAsync
+    ///    flips <see cref="SettingsManager.EnableNodeMode"/> to true mid-
+    ///    onboarding (LocalGatewaySetup.cs:2147), and App startup only
+    ///    initializes <c>App.GatewayClient</c> when EnableNodeMode==false.
+    ///    Without this re-init the WizardPage would sit in "loading" for
+    ///    30s then save an "offline" state.
+    /// 2. Seed legacy <c>OnboardingState.GatewayClient</c> from
+    ///    <c>App.GatewayClient</c> so the embedded WizardPage finds it.
+    /// 3. 1-second pause for visual settling before advancing (Mike's UX
+    ///    decision in v1).
+    /// 4. Guard the advance on still being on LocalSetupProgress so a user
+    ///    who clicked through doesn't get over-advanced past their current
+    ///    page.
+    /// </summary>
+    private void ScheduleAdvanceAfterCompletion()
+    {
+        Logger.Info("[V2Bridge] Status=Complete observed; reseeding gateway client + scheduling advance");
+        try
+        {
+            if (Application.Current is App app)
+            {
+                if (app.GatewayClient == null || !app.GatewayClient.IsConnectedToGateway)
                 {
-                    Logger.Info($"[V2Bridge] Auto-advancing V2 to {next}");
-                    _state.CurrentRoute = next;
+                    if (app.ConnectionManager is { } cm)
+                    {
+                        // Fire-and-forget: the wizard's 30s polling loop is
+                        // tolerant of a connect that completes during the
+                        // 1-second settling delay below.
+                        _ = cm.ReconnectAsync();
+                    }
+                }
+                if (_state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacy)
+                {
+                    legacy.GatewayClient = app.GatewayClient;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[V2Bridge] Reseeding gateway client before advance failed: {ex.Message}");
+        }
+
+        const int delayMs = 1000;
+        Task.Delay(TimeSpan.FromMilliseconds(delayMs)).ContinueWith(_ =>
+        {
+            _dispatcher.TryEnqueue(() =>
+            {
+                if (_state.CurrentRoute == V2Route.LocalSetupProgress)
+                {
+                    Logger.Info("[V2Bridge] Advancing V2 from LocalSetupProgress -> GatewayWelcome");
+                    _state.CurrentRoute = V2Route.GatewayWelcome;
                 }
                 else
                 {
-                    Logger.Info($"[V2Bridge] Skipping auto-advance; user is on {_state.CurrentRoute}");
+                    Logger.Info($"[V2Bridge] Skipping advance; user already on {_state.CurrentRoute}");
                 }
-            }
-        });
+            });
+        }, TaskScheduler.Default);
     }
 
     private static IReadOnlyDictionary<V2Stage, V2RowState> MapToV2Rows(
