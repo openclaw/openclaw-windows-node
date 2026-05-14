@@ -129,11 +129,12 @@ internal sealed class PreviewWindow : WindowEx
         var titleBar = new Grid { Padding = new Thickness(16, 0, 138, 0) };
         var lobster = new Image
         {
-            Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/Chrome/TitleBarIcon.png")),
-            Width = 16,
-            Height = 16,
+            Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/Lobster.png")),
+            Width = 18,
+            Height = 18,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0)
+            Margin = new Thickness(0, 0, 10, 0),
+            Stretch = Stretch.UniformToFill
         };
         var titleText = new TextBlock
         {
