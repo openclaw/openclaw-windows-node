@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <UseWinUI>true</UseWinUI>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OpenClaw.SetupPreview</RootNamespace>
+    <AssemblyName>OpenClaw.SetupPreview</AssemblyName>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <!-- We provide our own static Main in Program.cs so we don't need
+         EnableMsixTooling / a Package.appxmanifest. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">
+    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+    <PackageReference Include="WinUIEx" Version="2.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
+    <ProjectReference Include="..\OpenClawTray.OnboardingV2\OpenClawTray.OnboardingV2.csproj" />
+  </ItemGroup>
+
+  <!-- Reuse the same Setup assets shipped in the Tray project so the preview
+       and the real onboarding window render from byte-identical PNG files. -->
+  <ItemGroup>
+    <Content Include="..\OpenClaw.Tray.WinUI\Assets\Setup\**\*"
+             Link="Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Copy WebView2Loader.dll for the unpackaged exe (mirrors the Tray rule;
+       not strictly needed by the preview today, but keeps parity if any
+       FunctionalUI element later embeds a WebView2). -->
+  <Target Name="CopyWebView2Loader" AfterTargets="Build">
+    <PropertyGroup>
+      <IsArm64Build Condition="'$(Platform)' == 'ARM64' OR '$(RuntimeIdentifier)' == 'win-arm64' OR '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">true</IsArm64Build>
+      <WebView2LoaderSource Condition="'$(IsArm64Build)' == 'true'">$(OutputPath)runtimes\win-arm64\native\WebView2Loader.dll</WebView2LoaderSource>
+      <WebView2LoaderSource Condition="'$(WebView2LoaderSource)' == ''">$(OutputPath)runtimes\win-x64\native\WebView2Loader.dll</WebView2LoaderSource>
+    </PropertyGroup>
+    <Copy SourceFiles="$(WebView2LoaderSource)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(WebView2LoaderSource)')" />
+  </Target>
+
+</Project>
