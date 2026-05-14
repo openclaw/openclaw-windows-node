@@ -907,7 +907,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             @params = new
             {
                 minProtocol = 3,
-                maxProtocol = 3,
+                maxProtocol = 4,
                 client = new
                 {
                     id = OperatorClientId,  // Native client ID

@@ -589,7 +589,7 @@ public class WindowsNodeClient : WebSocketClientBase
             @params = new
             {
                 minProtocol = 3,
-                maxProtocol = 3,
+                maxProtocol = 4,
                 client = new
                 {
                     id = ClientId,  // Must match what we sign in payload
