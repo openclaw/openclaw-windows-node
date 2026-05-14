@@ -36,11 +36,11 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
 
     private static IReadOnlyList<PermissionRow> AllGranted = new[]
     {
-        new PermissionRow("ms-appx:///Assets/Setup/PermNotifications.png", "Notifications", "Enabled", true, true),
-        new PermissionRow("ms-appx:///Assets/Setup/PermCamera.png", "Camera", "Enabled", true, true),
-        new PermissionRow("ms-appx:///Assets/Setup/PermMicrophone.png", "Microphone", "Enabled", true, true),
-        new PermissionRow("ms-appx:///Assets/Setup/PermLocation.png", "Location (optional)", "Enabled", true, true),
-        new PermissionRow("ms-appx:///Assets/Setup/PermScreenCapture.png", "Screen Capture", "Available \u2013 uses picker per capture", false, true),
+        new PermissionRow("ms-appx:///Assets/Setup/PermNotifications.png", V2Strings.Get("V2_Permissions_Row_Notifications"), V2Strings.Get("V2_Permissions_Status_Enabled"), true, true),
+        new PermissionRow("ms-appx:///Assets/Setup/PermCamera.png", V2Strings.Get("V2_Permissions_Row_Camera"), V2Strings.Get("V2_Permissions_Status_Enabled"), true, true),
+        new PermissionRow("ms-appx:///Assets/Setup/PermMicrophone.png", V2Strings.Get("V2_Permissions_Row_Microphone"), V2Strings.Get("V2_Permissions_Status_Enabled"), true, true),
+        new PermissionRow("ms-appx:///Assets/Setup/PermLocation.png", V2Strings.Get("V2_Permissions_Row_Location"), V2Strings.Get("V2_Permissions_Status_Enabled"), true, true),
+        new PermissionRow("ms-appx:///Assets/Setup/PermScreenCapture.png", V2Strings.Get("V2_Permissions_Row_ScreenCapture"), V2Strings.Get("V2_Permissions_Status_Available"), false, true),
     };
 
     public override Element Render()
@@ -53,7 +53,7 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
         }
 
         var refreshLink = Button(
-            "\u21BB  Refresh status",
+            $"\u21BB  {V2Strings.Get("V2_Permissions_Refresh")}",
             () => { /* page-permissions wiring later */ })
             .HAlign(HorizontalAlignment.Right)
             .Set(b =>
@@ -76,12 +76,12 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
 
         return VStack(0,
             new BorderElement(null).Height(36),
-            TextBlock("Grant permissions")
+            TextBlock(V2Strings.Get("V2_Permissions_Title"))
                 .FontSize(28)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center),
             new BorderElement(null).Height(16),
-            TextBlock("OpenClaw works best when it can send notifications, access your camera and microphone, capture your screen, and know your location. Grant permissions below.")
+            TextBlock(V2Strings.Get("V2_Permissions_Body"))
                 .FontSize(14)
                 .HAlign(HorizontalAlignment.Center)
                 .TextWrapping()
@@ -133,7 +133,7 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
             // Open Settings link (omitted for Screen Capture per design)
             row.ShowOpenSettings
                 ? Button(
-                    "\u2197  Open Settings",
+                    $"\u2197  {V2Strings.Get("V2_Permissions_OpenSettings")}",
                     () => { /* page-permissions wiring later */ })
                   .Set(b =>
                   {

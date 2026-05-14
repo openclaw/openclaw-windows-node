@@ -122,7 +122,7 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
 
     private static Element BuildNavBar(int pageIndex, bool isLast, Action onBack, Action onNext, bool visible)
     {
-        var nextLabel = isLast ? "Finish" : "Next";
+        var nextLabel = isLast ? V2Strings.Get("V2_Nav_Finish") : V2Strings.Get("V2_Nav_Next");
 
         // The dot indicator counts only the chromed pages (Welcome has no
         // chrome and no dot — see Dialog.png vs Dialog-1..Dialog-5). With
@@ -143,7 +143,7 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
                 .Grid(row: 0, column: 0),
 
             HStack(12,
-                Button("Back", onBack)
+                Button(V2Strings.Get("V2_Nav_Back"), onBack)
                     .Width(120)
                     .Height(40)
                     .Disabled(pageIndex == 0),

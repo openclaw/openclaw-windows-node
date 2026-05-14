@@ -30,26 +30,26 @@ namespace OpenClawTray.Onboarding.V2.Pages;
 /// </summary>
 public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
 {
-    private static readonly (Stage Stage, string Label)[] StageLabels =
+    private static readonly (Stage Stage, string LabelKey)[] StageLabels =
     {
-        (Stage.CheckSystem, "Check system"),
-        (Stage.InstallingUbuntu, "Installing Ubuntu"),
-        (Stage.ConfiguringInstance, "Configuring instance"),
-        (Stage.InstallingOpenClaw, "Installing OpenClaw"),
-        (Stage.PreparingGateway, "Preparing gateway"),
-        (Stage.StartingGateway, "Starting gateway"),
-        (Stage.GeneratingSetupCode, "Generating setup code"),
+        (Stage.CheckSystem, "V2_Progress_Stage_CheckSystem"),
+        (Stage.InstallingUbuntu, "V2_Progress_Stage_InstallingUbuntu"),
+        (Stage.ConfiguringInstance, "V2_Progress_Stage_ConfiguringInstance"),
+        (Stage.InstallingOpenClaw, "V2_Progress_Stage_InstallingOpenClaw"),
+        (Stage.PreparingGateway, "V2_Progress_Stage_PreparingGateway"),
+        (Stage.StartingGateway, "V2_Progress_Stage_StartingGateway"),
+        (Stage.GeneratingSetupCode, "V2_Progress_Stage_GeneratingSetupCode"),
     };
 
     public override Element Render()
     {
         var rowChildren = new List<Element>();
-        foreach (var (stage, label) in StageLabels)
+        foreach (var (stage, labelKey) in StageLabels)
         {
             var rowState = Props.LocalSetupRows.TryGetValue(stage, out var s)
                 ? s
                 : RowState.Idle;
-            rowChildren.Add(BuildStageRow(label, rowState));
+            rowChildren.Add(BuildStageRow(V2Strings.Get(labelKey), rowState));
 
             // The error card sits immediately under the failed row in Dialog-6.
             if (rowState == RowState.Failed && Props.LocalSetupErrorMessage is { } msg)
@@ -62,12 +62,12 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             // Top spacer pushes the title down from the title bar.
             new BorderElement(null).Height(40),
 
-            TextBlock("Setting up locally")
+            TextBlock(V2Strings.Get("V2_Progress_Title"))
                 .FontSize(28)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center),
 
-            TextBlock("Creating OpenClaw Gateway WSL instance")
+            TextBlock(V2Strings.Get("V2_Progress_Subtitle"))
                 .FontSize(14)
                 .HAlign(HorizontalAlignment.Center)
                 .Margin(0, 8, 0, 0)
@@ -175,7 +175,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE8, 0xE0, 0xE0)))
                 .Grid(row: 0, column: 0),
 
-            Button("Try again", () => { /* page-progress wiring later */ })
+            Button(V2Strings.Get("V2_Progress_TryAgain"), () => { /* page-progress wiring later */ })
                 .HAlign(HorizontalAlignment.Right)
                 .VAlign(VerticalAlignment.Center)
                 .Margin(16, 0, 0, 0)

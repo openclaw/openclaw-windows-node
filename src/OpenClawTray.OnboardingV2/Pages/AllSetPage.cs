@@ -38,13 +38,13 @@ public sealed class AllSetPage : Component<OnboardingV2State>
                 .HAlign(HorizontalAlignment.Center)
                 .WithEntrancePopIn(durationMs: 520),
 
-            TextBlock("All set!")
+            TextBlock(V2Strings.Get("V2_AllSet_Title"))
                 .FontSize(32)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center)
                 .Margin(0, 16, 0, 0),
 
-            TextBlock("OpenClaw is ready to go")
+            TextBlock(V2Strings.Get("V2_AllSet_Subtitle"))
                 .FontSize(14)
                 .HAlign(HorizontalAlignment.Center)
                 .Margin(0, 8, 0, 0)
@@ -88,10 +88,10 @@ public sealed class AllSetPage : Component<OnboardingV2State>
             new[] { "auto" },
             warningBadge.Grid(row: 0, column: 0),
             VStack(10,
-                TextBlock("Node Mode Active")
+                TextBlock(V2Strings.Get("V2_AllSet_NodeMode_Title"))
                     .FontSize(15)
                     .SemiBold(),
-                TextBlock("This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine.")
+                TextBlock(V2Strings.Get("V2_AllSet_NodeMode_Body"))
                     .FontSize(13)
                     .TextWrapping()
                     .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE8, 0xE0, 0xCC)))
@@ -110,12 +110,12 @@ public sealed class AllSetPage : Component<OnboardingV2State>
         return Grid(
             new[] { "*", "auto", "auto" },
             new[] { "auto" },
-            TextBlock("Launch OpenClaw at startup?")
+            TextBlock(V2Strings.Get("V2_AllSet_StartupQuestion"))
                 .FontSize(15)
                 .VAlign(VerticalAlignment.Center)
                 .Grid(row: 0, column: 0),
 
-            TextBlock(isOn ? "On" : "Off")
+            TextBlock(isOn ? V2Strings.Get("V2_AllSet_On") : V2Strings.Get("V2_AllSet_Off"))
                 .FontSize(14)
                 .VAlign(VerticalAlignment.Center)
                 .Margin(0, 0, 12, 0)

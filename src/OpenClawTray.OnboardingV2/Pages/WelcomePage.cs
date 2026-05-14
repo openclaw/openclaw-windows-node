@@ -48,7 +48,7 @@ public sealed class WelcomePage : Component<OnboardingV2State>
             .Set(b => b.CornerRadius = new CornerRadius(10))
             .Grid(row: 0, column: 0),
 
-            TextBlock("This local setup installs a small WSL Linux instance dedicated to OpenClaw. If you'd rather connect to an existing or remote gateway, choose Advanced setup.")
+            TextBlock(V2Strings.Get("V2_Welcome_InfoCard"))
                 .FontSize(13)
                 .TextWrapping()
                 .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD0, 0xD0, 0xD0)))
@@ -61,7 +61,7 @@ public sealed class WelcomePage : Component<OnboardingV2State>
             .Set(b => b.CornerRadius = new CornerRadius(8))
             .WithEntranceFadeIn(durationMs: 360, delayMs: 200);
 
-        var accentButton = Button("Set up locally", () => Props.RequestAdvance())
+        var accentButton = Button(V2Strings.Get("V2_Welcome_PrimaryButton"), () => Props.RequestAdvance())
             .HAlign(HorizontalAlignment.Stretch)
             .Height(44)
             .Set(b =>
@@ -84,7 +84,7 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                 b.Resources["ButtonBorderThemeThickness"] = new Thickness(0);
             });
 
-        var advancedLink = Button("Advanced setup", () => { /* page-welcome wiring lands later */ })
+        var advancedLink = Button(V2Strings.Get("V2_Welcome_AdvancedLink"), () => { /* page-welcome wiring lands later */ })
             .HAlign(HorizontalAlignment.Center)
             .Set(b =>
             {
@@ -118,12 +118,12 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                     .Height(170)
                     .HAlign(HorizontalAlignment.Center)
                     .WithBreathe(maxScale: 1.025, durationMs: 4200),
-                TextBlock("Get started with OpenClaw")
+                TextBlock(V2Strings.Get("V2_Welcome_Title"))
                     .FontSize(28)
                     .SemiBold()
                     .HAlign(HorizontalAlignment.Center)
                     .Margin(0, 12, 0, 0),
-                TextBlock("OpenClaw lets agents run commands, read and write files, and capture screenshots on this PC. Only set it up on a computer you trust.")
+                TextBlock(V2Strings.Get("V2_Welcome_Body"))
                     .FontSize(14)
                     .HAlign(HorizontalAlignment.Center)
                     .TextWrapping()

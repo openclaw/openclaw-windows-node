@@ -28,17 +28,17 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
     public override Element Render()
     {
         var card = VStack(16,
-            TextBlock("Welcome to OpenClaw gateway")
+            TextBlock(V2Strings.Get("V2_Gateway_CardHeader"))
                 .FontSize(20)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Left),
 
-            TextBlock($"Your local OpenClaw gateway is running at {GatewayUrl} \u2014 visit it to add your first AI provider and configure your agent.")
+            TextBlock(V2Strings.Get("V2_Gateway_CardBody1"))
                 .FontSize(14)
                 .TextWrapping()
                 .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD8, 0xD8, 0xD8))),
 
-            TextBlock("All requests are processed on this PC. Your data stays local.")
+            TextBlock(V2Strings.Get("V2_Gateway_CardBody2"))
                 .FontSize(14)
                 .TextWrapping()
                 .Set(t => t.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xD8, 0xD8, 0xD8)))
@@ -50,7 +50,7 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
             .Set(b => b.CornerRadius = new CornerRadius(8));
 
         var openLink = Button(
-            $"Open {GatewayUrl} in browser  \u2197",
+            $"{V2Strings.Get("V2_Gateway_OpenInBrowser")}  \u2197",
             () => { /* page-gateway wiring later */ })
             .HAlign(HorizontalAlignment.Center)
             .Set(b =>
@@ -74,7 +74,7 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
 
         return VStack(0,
             new BorderElement(null).Height(40),
-            TextBlock("Configuring gateway")
+            TextBlock(V2Strings.Get("V2_Gateway_Title"))
                 .FontSize(28)
                 .SemiBold()
                 .HAlign(HorizontalAlignment.Center),
