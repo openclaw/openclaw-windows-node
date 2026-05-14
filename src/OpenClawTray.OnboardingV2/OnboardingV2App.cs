@@ -46,12 +46,23 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
         var (pageIndex, setPageIndex) = UseState(initialIdx);
         var (renderTick, setRenderTick) = UseState(0);
 
-        // Keep Props.CurrentRoute in sync with the visible page so the host
-        // window can react (e.g., to swap title-bar styling) without owning
-        // navigation state itself.
-        if (!Equals(Props.CurrentRoute, PageOrder[pageIndex]))
+        // Track the previous Props.CurrentRoute so we can detect external
+        // navigation requests (e.g., the host re-mounted us at GatewayWelcome
+        // after the legacy Advanced/Connection flow). Earlier versions
+        // pushed pageIndex back onto Props.CurrentRoute on every render —
+        // that overwrote external changes and broke the bridge-back from
+        // legacy. Now V2 is the source of truth for its own pageIndex,
+        // but it re-syncs from Props.CurrentRoute when the host nudges it.
+        var (lastRouteSeen, setLastRouteSeen) = UseState(Props.CurrentRoute);
+        if (!Equals(Props.CurrentRoute, lastRouteSeen))
         {
-            Props.CurrentRoute = PageOrder[pageIndex];
+            setLastRouteSeen(Props.CurrentRoute);
+            var requested = Array.IndexOf(PageOrder, Props.CurrentRoute);
+            if (requested >= 0 && requested != pageIndex)
+            {
+                setPageIndex(requested);
+                nav.Navigate(PageOrder[requested]);
+            }
         }
 
         void GoNext()

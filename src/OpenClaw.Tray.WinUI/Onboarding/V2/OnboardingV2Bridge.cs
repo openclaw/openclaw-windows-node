@@ -159,11 +159,21 @@ public sealed class OnboardingV2Bridge : IDisposable
     private void OnAdvanceRequested(object? sender, EventArgs e)
     {
         // The V2 shell handles page-to-page navigation itself. The bridge
-        // only piggy-backs on this event to kick off the engine the first
-        // time the user moves past the Welcome page (i.e., when they click
-        // "Set up locally"). All subsequent advances are pure UI navigation.
+        // only piggy-backs on this event to (a) kick off the engine the
+        // first time the user moves past the Welcome page (i.e., when they
+        // click "Set up locally") and (b) forward the V2 Welcome page's
+        // "Replace my setup" confirmation back into the legacy state so
+        // the LocalGatewaySetupEngine guard accepts the run.
         if (_state.CurrentRoute == V2Route.Welcome)
         {
+            // Forward the V2 replace-confirmed flag to legacy OnboardingState
+            // (when the host wired one) so the engine's existing-config
+            // guard knows the user explicitly approved overwriting their
+            // previous setup. Without this, the engine refuses to run.
+            if (_state.ReplaceExistingConfigurationConfirmed && _state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacy)
+            {
+                legacy.ReplaceExistingConfigurationConfirmed = true;
+            }
             EnsureEngineStarted();
         }
     }

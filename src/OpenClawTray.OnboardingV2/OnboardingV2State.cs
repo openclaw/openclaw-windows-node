@@ -192,6 +192,32 @@ public sealed class OnboardingV2State
     /// </summary>
     public Func<OpenClawTray.FunctionalUI.Core.Element>? GatewayWizardChildFactory { get; set; }
 
+    /// <summary>
+    /// Snapshot of pre-existing OpenClaw configuration on this host, so the
+    /// V2 Welcome page can render a "replace existing setup?" warn-and-confirm
+    /// UI matching the legacy SetupWarningPage. The host populates this from
+    /// <c>OnboardingExistingConfigGuard.GetSummary()</c> at mount time; pages
+    /// read it but never mutate.
+    /// </summary>
+    public sealed record ExistingConfigSnapshot(
+        bool HasAny,
+        bool HasToken,
+        bool HasBootstrapToken,
+        bool HasOperatorDeviceToken,
+        bool HasNodeDeviceToken,
+        bool HasNonDefaultGatewayUrl);
+
+    /// <summary>Pre-existing configuration snapshot. Null when no probe ran.</summary>
+    public ExistingConfigSnapshot? ExistingConfig { get; set; }
+
+    /// <summary>
+    /// True once the user has explicitly confirmed they want to replace
+    /// existing configuration (V2 Welcome's "Replace my setup" button).
+    /// The bridge forwards this to legacy
+    /// <c>OnboardingState.ReplaceExistingConfigurationConfirmed</c>.
+    /// </summary>
+    public bool ReplaceExistingConfigurationConfirmed { get; set; }
+
     private bool _launchAtStartup = true;
     /// <summary>Initial value for the AllSet "Launch at startup?" toggle.</summary>
     public bool LaunchAtStartup

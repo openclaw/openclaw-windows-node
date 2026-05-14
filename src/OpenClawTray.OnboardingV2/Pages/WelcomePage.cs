@@ -32,6 +32,8 @@ public sealed class WelcomePage : Component<OnboardingV2State>
     public override Element Render()
     {
         var theme = Props.EffectiveTheme;
+        var hasExisting = Props.ExistingConfig is { HasAny: true };
+        var (confirmingReplace, setConfirmingReplace) = UseState(hasExisting && !Props.ReplaceExistingConfigurationConfirmed);
 
         var infoCard = Grid(
             new[] { "auto", "*" },
@@ -66,48 +68,121 @@ public sealed class WelcomePage : Component<OnboardingV2State>
             .Set(b => b.CornerRadius = new CornerRadius(8))
             .WithEntranceFadeIn(durationMs: 360, delayMs: 200);
 
-        var accentButton = Button(V2Strings.Get("V2_Welcome_PrimaryButton"), () => Props.RequestAdvance())
-            .HAlign(HorizontalAlignment.Stretch)
-            .Height(44)
-            .Set(b =>
-            {
-                b.Foreground = V2Theme.OnAccentText();
-                b.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
-                b.FontSize = 14;
-                b.HorizontalContentAlignment = HorizontalAlignment.Center;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Welcome_SetUpLocally");
-                b.BorderThickness = new Thickness(0);
-                b.Resources["ButtonBackground"] = V2Theme.AccentCyan();
-                b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanHover();
-                b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanPressed();
-                b.Resources["ButtonForeground"] = V2Theme.OnAccentText();
-                b.Resources["ButtonForegroundPointerOver"] = V2Theme.OnAccentText();
-                b.Resources["ButtonForegroundPressed"] = V2Theme.OnAccentText();
-                b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
-                b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
-                b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
-                b.Resources["ButtonBorderThemeThickness"] = new Thickness(0);
-            });
+        Element BuildAccentButton(string label, Action onClick, string automationId)
+        {
+            return Button(label, onClick)
+                .HAlign(HorizontalAlignment.Stretch)
+                .Height(44)
+                .Set(b =>
+                {
+                    b.Foreground = V2Theme.OnAccentText();
+                    b.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                    b.FontSize = 14;
+                    b.HorizontalContentAlignment = HorizontalAlignment.Center;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, automationId);
+                    b.BorderThickness = new Thickness(0);
+                    b.Resources["ButtonBackground"] = V2Theme.AccentCyan();
+                    b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanHover();
+                    b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanPressed();
+                    b.Resources["ButtonForeground"] = V2Theme.OnAccentText();
+                    b.Resources["ButtonForegroundPointerOver"] = V2Theme.OnAccentText();
+                    b.Resources["ButtonForegroundPressed"] = V2Theme.OnAccentText();
+                    b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                    b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
+                    b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
+                    b.Resources["ButtonBorderThemeThickness"] = new Thickness(0);
+                });
+        }
 
-        var advancedLink = Button(V2Strings.Get("V2_Welcome_AdvancedLink"), () => Props.RequestAdvancedSetup())
-            .HAlign(HorizontalAlignment.Center)
-            .Set(b =>
+        Element BuildLinkButton(string label, Action onClick, string automationId)
+        {
+            return Button(label, onClick)
+                .HAlign(HorizontalAlignment.Center)
+                .Set(b =>
+                {
+                    b.Background = V2Theme.Transparent();
+                    b.BorderBrush = V2Theme.Transparent();
+                    b.Foreground = V2Theme.AccentCyan();
+                    b.Padding = new Thickness(8, 4, 8, 4);
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, automationId);
+                    b.Resources["ButtonBackground"] = V2Theme.Transparent();
+                    b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanGlowHover();
+                    b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanGlowPressed();
+                    b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                    b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
+                    b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
+                    b.Resources["ButtonForeground"] = V2Theme.AccentCyan();
+                    b.Resources["ButtonForegroundPointerOver"] = V2Theme.AccentCyanHover();
+                    b.Resources["ButtonForegroundPressed"] = V2Theme.AccentCyanPressed();
+                });
+        }
+
+        Element bottomCluster;
+        if (confirmingReplace)
+        {
+            // Existing-config warn-and-confirm: matches the legacy
+            // SetupWarningPage UX but rendered with V2 theme + spacing.
+            var lost = new List<string>();
+            if (Props.ExistingConfig is { } ec)
             {
-                b.Background = V2Theme.Transparent();
-                b.BorderBrush = V2Theme.Transparent();
-                b.Foreground = V2Theme.AccentCyan();
-                b.Padding = new Thickness(8, 4, 8, 4);
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Welcome_AdvancedSetup");
-                b.Resources["ButtonBackground"] = V2Theme.Transparent();
-                b.Resources["ButtonBackgroundPointerOver"] = V2Theme.AccentCyanGlowHover();
-                b.Resources["ButtonBackgroundPressed"] = V2Theme.AccentCyanGlowPressed();
-                b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
-                b.Resources["ButtonBorderBrushPointerOver"] = V2Theme.Transparent();
-                b.Resources["ButtonBorderBrushPressed"] = V2Theme.Transparent();
-                b.Resources["ButtonForeground"] = V2Theme.AccentCyan();
-                b.Resources["ButtonForegroundPointerOver"] = V2Theme.AccentCyanHover();
-                b.Resources["ButtonForegroundPressed"] = V2Theme.AccentCyanPressed();
-            });
+                if (ec.HasToken) lost.Add("gateway token");
+                if (ec.HasOperatorDeviceToken || ec.HasNodeDeviceToken) lost.Add("device pairing");
+                if (ec.HasNonDefaultGatewayUrl) lost.Add("current gateway URL");
+                if (ec.HasBootstrapToken) lost.Add("bootstrap token");
+            }
+            var body = V2Strings.Get("V2_Welcome_Replace_Body");
+            if (lost.Count > 0)
+            {
+                body += $" This will overwrite: {string.Join(", ", lost)}.";
+            }
+
+            var warnCard = new BorderElement(
+                VStack(8,
+                    TextBlock(V2Strings.Get("V2_Welcome_Replace_Heading"))
+                        .FontSize(16)
+                        .SemiBold()
+                        .HAlign(HorizontalAlignment.Center)
+                        .TextWrapping()
+                        .Set(t => t.Foreground = V2Theme.WarningCardForeground(theme)),
+                    TextBlock(body)
+                        .FontSize(13)
+                        .HAlign(HorizontalAlignment.Center)
+                        .TextWrapping()
+                        .Set(t =>
+                        {
+                            t.Foreground = V2Theme.WarningCardForeground(theme);
+                            t.TextAlignment = TextAlignment.Center;
+                        })
+                )
+            )
+            .Background(V2Theme.WarningCardBackground(theme))
+            .Padding(20, 18, 20, 18)
+            .Set(b => b.CornerRadius = new CornerRadius(8));
+
+            void ConfirmReplace()
+            {
+                Props.ReplaceExistingConfigurationConfirmed = true;
+                setConfirmingReplace(false);
+                Props.RequestAdvance();
+            }
+
+            void KeepSetup() => setConfirmingReplace(false);
+
+            bottomCluster = VStack(12,
+                warnCard,
+                BuildAccentButton(V2Strings.Get("V2_Welcome_Replace_Confirm"), ConfirmReplace, "V2_Welcome_ReplaceConfirm"),
+                BuildLinkButton(V2Strings.Get("V2_Welcome_Replace_Keep"), KeepSetup, "V2_Welcome_ReplaceKeep"),
+                BuildLinkButton(V2Strings.Get("V2_Welcome_AdvancedLink"), () => Props.RequestAdvancedSetup(), "V2_Welcome_AdvancedSetup")
+            );
+        }
+        else
+        {
+            bottomCluster = VStack(16,
+                infoCardWrap,
+                BuildAccentButton(V2Strings.Get("V2_Welcome_PrimaryButton"), () => Props.RequestAdvance(), "V2_Welcome_SetUpLocally"),
+                BuildLinkButton(V2Strings.Get("V2_Welcome_AdvancedLink"), () => Props.RequestAdvancedSetup(), "V2_Welcome_AdvancedSetup")
+            );
+        }
 
         // Outer Grid: rows are [hero spacer | hero/title/body | flex spacer | bottom cluster]
         // pushes the hero into the upper third and the CTAs into the lower third,
@@ -147,13 +222,9 @@ public sealed class WelcomePage : Component<OnboardingV2State>
             // Flex spacer fills the middle so the bottom cluster pins to the bottom.
             new BorderElement(null).Grid(row: 2, column: 0),
 
-            VStack(16,
-                infoCardWrap,
-                accentButton,
-                advancedLink
-            )
-            .Margin(40, 0, 40, 40)
-            .Grid(row: 3, column: 0)
+            bottomCluster
+                .Margin(40, 0, 40, 40)
+                .Grid(row: 3, column: 0)
         )
         .HAlign(HorizontalAlignment.Stretch)
         .VAlign(VerticalAlignment.Stretch);

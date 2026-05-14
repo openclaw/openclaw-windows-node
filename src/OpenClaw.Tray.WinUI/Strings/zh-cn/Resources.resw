@@ -3197,4 +3197,16 @@
   <data name="V2_AllSet_Off" xml:space="preserve">
     <value>Off</value>
   </data>
+  <data name="V2_Welcome_Replace_Heading" xml:space="preserve">
+    <value>Existing setup detected</value>
+  </data>
+  <data name="V2_Welcome_Replace_Body" xml:space="preserve">
+    <value>Setting up locally will overwrite your existing OpenClaw configuration.</value>
+  </data>
+  <data name="V2_Welcome_Replace_Confirm" xml:space="preserve">
+    <value>Replace my setup</value>
+  </data>
+  <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
+    <value>Keep my setup</value>
+  </data>
 </root>

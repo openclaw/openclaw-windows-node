@@ -156,6 +156,22 @@ public sealed class OnboardingWindow : WindowEx
             _v2State.GatewayWizardChildFactory = () =>
                 Factories.Component<OpenClawTray.Onboarding.Pages.WizardPage, OnboardingState>(_state);
 
+            // Mirror the legacy existing-config probe into V2 state so the V2
+            // Welcome page can render the "replace existing setup?" warn-and-
+            // confirm UI. The probe is synchronous and lightweight (reads
+            // saved tokens / settings flags from disk + memory).
+            if (_state.ExistingConfigGuard is { } guard)
+            {
+                var summary = guard.GetSummary();
+                _v2State.ExistingConfig = new OpenClawTray.Onboarding.V2.OnboardingV2State.ExistingConfigSnapshot(
+                    HasAny: summary.HasAny,
+                    HasToken: summary.HasToken,
+                    HasBootstrapToken: summary.HasBootstrapToken,
+                    HasOperatorDeviceToken: summary.HasOperatorDeviceToken,
+                    HasNodeDeviceToken: summary.HasNodeDeviceToken,
+                    HasNonDefaultGatewayUrl: summary.HasNonDefaultGatewayUrl);
+            }
+
             // Route V2Strings through the existing LocalizationHelper so V2
             // text comes from the same .resw resources as legacy strings.
             // Falls back to V2Strings.DefaultEnUs when a key is missing or
@@ -360,17 +376,20 @@ public sealed class OnboardingWindow : WindowEx
             // Advanced -> V2 round-trip: when we kicked the user out to the
             // legacy Connection page (Welcome's "Advanced setup" link), we
             // arm _v2BridgeBackPending. As soon as legacy navigates past
-            // Connection (next is Wizard / Permissions / Ready depending on
-            // ConnectionMode), pull them back into the V2 chrome at the
-            // closest equivalent route.
+            // Connection, pull them back into V2 — but **skip the legacy
+            // Wizard step** because Advanced users are pointing at an
+            // already-configured gateway. Advanced is for "I have a
+            // gateway, just connect me", not "I need to walk through model
+            // setup again". So all of Wizard/Permissions/Ready land on
+            // V2 Permissions next.
             if (_v2BridgeBackPending && _v2State is { } v2 && route != OnboardingRoute.Connection)
             {
                 var v2Next = route switch
                 {
-                    OnboardingRoute.Wizard => OpenClawTray.Onboarding.V2.V2Route.GatewayWelcome,
+                    OnboardingRoute.Wizard => OpenClawTray.Onboarding.V2.V2Route.Permissions,
                     OnboardingRoute.Permissions => OpenClawTray.Onboarding.V2.V2Route.Permissions,
                     OnboardingRoute.Ready => OpenClawTray.Onboarding.V2.V2Route.AllSet,
-                    _ => OpenClawTray.Onboarding.V2.V2Route.AllSet,
+                    _ => OpenClawTray.Onboarding.V2.V2Route.Permissions,
                 };
                 _v2BridgeBackPending = false;
                 _useV2 = true;

@@ -80,6 +80,10 @@ public static class V2Strings
             "This local setup installs a small WSL Linux instance dedicated to OpenClaw. If you'd rather connect to an existing or remote gateway, choose Advanced setup.",
         ["V2_Welcome_PrimaryButton"] = "Set up locally",
         ["V2_Welcome_AdvancedLink"] = "Advanced setup",
+        ["V2_Welcome_Replace_Heading"] = "Existing setup detected",
+        ["V2_Welcome_Replace_Body"] = "Setting up locally will overwrite your existing OpenClaw configuration.",
+        ["V2_Welcome_Replace_Confirm"] = "Replace my setup",
+        ["V2_Welcome_Replace_Keep"] = "Keep my setup",
 
         // ---- LocalSetupProgress page ----
         ["V2_Progress_Title"] = "Setting up locally",
