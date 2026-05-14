@@ -465,24 +465,108 @@ public sealed class OnboardingV2Bridge : IDisposable
     private void ScheduleAdvanceAfterCompletion()
     {
         Logger.Info("[V2Bridge] Status=Complete observed; reseeding gateway client + scheduling advance");
+        // Capture engine generation now so a Retry mid-reconnect can invalidate
+        // this in-flight reseed (Hanselman pass-3 finding #1: stampede). Also
+        // captured for the post-dispose check (finding #2): _disposed is read
+        // inside the continuation, but generation gives us a tighter signal
+        // when the user clicked Retry instead of closing onboarding.
+        var capturedGeneration = _engineGeneration;
         try
         {
             if (Application.Current is App app)
             {
-                if (app.GatewayClient == null || !app.GatewayClient.IsConnectedToGateway)
+                // Diagnose the pre-reseed state so the log explains why we
+                // are (or aren't) reconnecting. After PairAsync mid-flow,
+                // GatewayClient may be non-null but pointing at the engine's
+                // temporary pairing client whose websocket is about to be
+                // torn down (Phase 14/15 disposes the engine's lifecycle).
+                // We were skipping ReconnectAsync because IsConnectedToGateway
+                // still returned true at that instant, then the underlying
+                // socket closed and the wizard saw an offline client.
+                var gc = app.GatewayClient;
+                Logger.Info($"[V2Bridge] Pre-reseed: GatewayClient={(gc is null ? "<null>" : "present")}, IsConnectedToGateway={(gc is null ? "n/a" : gc.IsConnectedToGateway.ToString())}, generation={capturedGeneration}");
+
+                if (app.ConnectionManager is { } cm)
                 {
-                    if (app.ConnectionManager is { } cm)
+                    // ALWAYS force a fresh manager-owned operator lifecycle
+                    // after setup completes. The engine's bootstrap pairing
+                    // ran a temporary lifecycle that's about to die; the
+                    // wizard needs the persistent manager-owned client with
+                    // the saved operator device token credential. Skipping
+                    // this when the engine's lifecycle is still 'connected'
+                    // leaves a stale client visible to the wizard, which
+                    // then falls through to its "offline" branch after the
+                    // 30-second poll.
+                    Logger.Info("[V2Bridge] Forcing ConnectionManager.ReconnectAsync to materialize a fresh operator lifecycle for the wizard");
+                    _ = Task.Run(async () =>
                     {
-                        // Fire-and-forget: the wizard's 30s polling loop is
-                        // tolerant of a connect that completes during the
-                        // 1-second settling delay below.
-                        _ = cm.ReconnectAsync();
-                    }
+                        try
+                        {
+                            await cm.ReconnectAsync();
+
+                            // Race / dispose guards (Hanselman pass-3 #1, #2):
+                            //  - Bail if the bridge has been disposed (window
+                            //    closed) — touching _state would mutate a
+                            //    disposed OnboardingState whose GatewayClient
+                            //    setter disposes the previous value, leaking
+                            //    the new client and possibly double-disposing.
+                            //  - Bail if the engine generation has been bumped
+                            //    (user clicked Try-again mid-reconnect) — a
+                            //    later ScheduleAdvanceAfterCompletion will own
+                            //    the post-reseed for the new run; this stale
+                            //    one must NOT race the new one to write
+                            //    legacy.GatewayClient.
+                            if (_disposed)
+                            {
+                                Logger.Info($"[V2Bridge] Post-reseed: bridge disposed, skipping legacy.GatewayClient seed (generation={capturedGeneration})");
+                                return;
+                            }
+                            if (capturedGeneration != _engineGeneration)
+                            {
+                                Logger.Info($"[V2Bridge] Post-reseed: stale (captured={capturedGeneration}, current={_engineGeneration}); skipping legacy.GatewayClient seed");
+                                return;
+                            }
+
+                            var post = app.GatewayClient;
+                            Logger.Info($"[V2Bridge] Post-reseed: GatewayClient={(post is null ? "<null>" : "present")}, IsConnectedToGateway={(post is null ? "n/a" : post.IsConnectedToGateway.ToString())}");
+                            // Re-seed the legacy state object after the
+                            // reconnect has materialized the new operator
+                            // client. The wizard's 30s poll watches
+                            // App.GatewayClient directly, so this is belt-
+                            // and-braces — but it lets non-V2 callers find
+                            // the new client without re-resolving App.
+                            _dispatcher.TryEnqueue(() =>
+                            {
+                                // Re-check guards on the UI thread — the
+                                // dispatcher continuation can run after
+                                // dispose/retry too.
+                                if (_disposed) return;
+                                if (capturedGeneration != _engineGeneration) return;
+                                if (_state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacy)
+                                {
+                                    legacy.GatewayClient = app.GatewayClient;
+                                }
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warn($"[V2Bridge] Forced ReconnectAsync failed: {ex.Message}");
+                        }
+                    });
                 }
-                if (_state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacy)
+                else
                 {
-                    legacy.GatewayClient = app.GatewayClient;
+                    Logger.Warn("[V2Bridge] No ConnectionManager available — wizard will fall back to offline state");
                 }
+
+                // NOTE (Hanselman pass-3 #5): we deliberately do NOT seed
+                // legacy.GatewayClient with the current (pre-reconnect) value.
+                // The pre-reconnect value is exactly the zombie pairing client
+                // whose socket is about to die — seeding it just gives non-V2
+                // consumers the same broken client we're trying to replace.
+                // The post-reseed dispatcher continuation above is the single
+                // point where legacy.GatewayClient gets the fresh manager-
+                // owned operator client.
             }
         }
         catch (Exception ex)
@@ -495,6 +579,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         {
             _dispatcher.TryEnqueue(() =>
             {
+                if (_disposed) return;
                 if (_state.CurrentRoute == V2Route.LocalSetupProgress)
                 {
                     Logger.Info("[V2Bridge] Advancing V2 from LocalSetupProgress -> GatewayWelcome");

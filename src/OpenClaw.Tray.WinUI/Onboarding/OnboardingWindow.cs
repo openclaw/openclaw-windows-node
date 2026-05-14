@@ -420,20 +420,33 @@ public sealed class OnboardingWindow : WindowEx
             // Advanced -> V2 round-trip: when we kicked the user out to the
             // legacy Connection page (Welcome's "Advanced setup" link), we
             // arm _v2BridgeBackPending. As soon as legacy navigates past
-            // Connection, pull them back into V2 — but **skip the legacy
-            // Wizard step** because Advanced users are pointing at an
-            // already-configured gateway. Advanced is for "I have a
-            // gateway, just connect me", not "I need to walk through model
-            // setup again". So all of Wizard/Permissions/Ready land on
-            // V2 Permissions next.
+            // Connection, pull them back into V2.
+            //
+            // Two directions out of Connection:
+            //   - FORWARD (user filled out connection, advanced to Wizard/
+            //     Permissions/Ready): bring them back into V2 at the matching
+            //     post-Connection page (V2 Permissions, since Advanced is
+            //     "I have a gateway, just connect me"). The legacy Wizard
+            //     step is intentionally skipped here.
+            //   - BACKWARD (user hit Back on legacy Connection to bail out):
+            //     route is SetupWarning, and we should land back on V2
+            //     Welcome so the user can pick again. (The catch-all used
+            //     to fall through to V2 Permissions, which surfaced as
+            //     "Back from Advanced goes to Permissions instead of start".)
             if (_v2BridgeBackPending && _v2State is { } v2 && route != OnboardingRoute.Connection)
             {
                 var v2Next = route switch
                 {
+                    OnboardingRoute.SetupWarning => OpenClawTray.Onboarding.V2.V2Route.Welcome,
                     OnboardingRoute.Wizard => OpenClawTray.Onboarding.V2.V2Route.Permissions,
                     OnboardingRoute.Permissions => OpenClawTray.Onboarding.V2.V2Route.Permissions,
                     OnboardingRoute.Ready => OpenClawTray.Onboarding.V2.V2Route.AllSet,
-                    _ => OpenClawTray.Onboarding.V2.V2Route.Permissions,
+                    // Legacy Chat is the post-completion handoff (the user is
+                    // effectively done with onboarding). Treat it as AllSet so
+                    // we never demote a completed user back to V2 Welcome.
+                    // (Hanselman pass-3 finding #4.)
+                    OnboardingRoute.Chat => OpenClawTray.Onboarding.V2.V2Route.AllSet,
+                    _ => LogAndFallbackToV2Welcome(route),
                 };
                 _v2BridgeBackPending = false;
                 _useV2 = true;
@@ -466,6 +479,17 @@ public sealed class OnboardingWindow : WindowEx
                 _chatOverlay.Visibility = Visibility.Collapsed;
             }
         });
+    }
+
+    /// <summary>
+    /// Catch-all fallback for the V2 bridge-back route map. Logs a warning so
+    /// future legacy enum additions surface during testing instead of silently
+    /// landing the user on V2 Welcome. (Hanselman pass-3 finding #6.)
+    /// </summary>
+    private static OpenClawTray.Onboarding.V2.V2Route LogAndFallbackToV2Welcome(OnboardingRoute route)
+    {
+        Logger.Warn($"[OnboardingWindow] Unmapped legacy route '{route}' encountered while V2 bridge-back armed; falling back to V2 Welcome");
+        return OpenClawTray.Onboarding.V2.V2Route.Welcome;
     }
 
     private async Task InitializeChatWebViewAsync()
