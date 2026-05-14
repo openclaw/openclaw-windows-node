@@ -389,6 +389,27 @@ public sealed class OnboardingWindow : WindowEx
                 Close();
             }
         };
+        _v2Bridge.Dismissed += (_, _) =>
+        {
+            // V2 Welcome's "Keep my setup" — user has existing configuration
+            // and wants to keep it. Close the window without firing the
+            // completion pipeline so existing settings + gateway connection
+            // are preserved untouched. Reuses the legacy
+            // _dismissedWithoutCompletion flag so OnClosed skips
+            // TryCompleteOnboarding the same way it does for legacy
+            // SetupWarningPage's "Keep my setup" path (PR #340).
+            Logger.Info("[OnboardingWindow] V2 Dismissed — closing without completing");
+            _dismissedWithoutCompletion = true;
+            try
+            {
+                Close();
+            }
+            catch (Exception ex)
+            {
+                _dismissedWithoutCompletion = false;
+                Logger.Warn($"[OnboardingWindow] V2 Dismissed Close() failed: {ex.Message}");
+            }
+        };
         _v2Bridge.Start();
     }
 

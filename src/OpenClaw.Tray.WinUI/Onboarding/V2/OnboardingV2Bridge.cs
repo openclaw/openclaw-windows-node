@@ -60,6 +60,15 @@ public sealed class OnboardingV2Bridge : IDisposable
     /// </summary>
     public event EventHandler? Finished;
 
+    /// <summary>
+    /// Raised when the V2 Welcome page's "Keep my setup" button fires
+    /// (existing-config warn-and-confirm flow). The host should close the
+    /// V2 window without firing <see cref="Finished"/> or running the
+    /// completion pipeline so existing settings + gateway connection are
+    /// preserved untouched. Mirrors legacy <c>OnboardingState.Dismissed</c>.
+    /// </summary>
+    public event EventHandler? Dismissed;
+
     public OnboardingV2Bridge(
         OnboardingV2State state,
         SettingsManager settings,
@@ -100,6 +109,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         _state.LaunchAtStartupChanged += OnLaunchAtStartupChanged;
         _state.AdvancedSetupRequested += OnAdvancedSetupRequested;
         _state.Finished += OnFinished;
+        _state.Dismissed += OnDismissed;
         _state.AdvanceRequested += OnAdvanceRequested;
         _state.PermissionsRefreshRequested += OnPermissionsRefreshRequested;
         _state.RetryRequested += OnRetryRequested;
@@ -184,6 +194,11 @@ public sealed class OnboardingV2Bridge : IDisposable
     private void OnFinished(object? sender, EventArgs e)
     {
         Finished?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnDismissed(object? sender, EventArgs e)
+    {
+        Dismissed?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnAdvanceRequested(object? sender, EventArgs e)
@@ -580,6 +595,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         _state.LaunchAtStartupChanged -= OnLaunchAtStartupChanged;
         _state.AdvancedSetupRequested -= OnAdvancedSetupRequested;
         _state.Finished -= OnFinished;
+        _state.Dismissed -= OnDismissed;
         _state.AdvanceRequested -= OnAdvanceRequested;
         _state.PermissionsRefreshRequested -= OnPermissionsRefreshRequested;
         _state.RetryRequested -= OnRetryRequested;

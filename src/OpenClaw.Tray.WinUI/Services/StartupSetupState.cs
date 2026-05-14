@@ -6,7 +6,7 @@ namespace OpenClawTray.Services;
 internal static class StartupSetupState
 {
     public static bool HasStoredNodeDeviceToken(string dataPath) =>
-        DeviceIdentity.HasStoredDeviceTokenForRole(dataPath, "node", NullLogger.Instance);
+        OnboardingExistingConfigGuard.HasAnyDeviceTokenForRole(dataPath, "node");
 
     /// <summary>
     /// True if the user has an operator device token (root or any per-gateway dir)

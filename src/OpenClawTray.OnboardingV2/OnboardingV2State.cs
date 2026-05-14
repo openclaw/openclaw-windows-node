@@ -278,6 +278,17 @@ public sealed class OnboardingV2State
     /// <summary>Raised by the Finish button on AllSet (terminal state).</summary>
     public event EventHandler? Finished;
 
+    /// <summary>
+    /// Raised when the user explicitly dismisses the V2 wizard without
+    /// completing it (e.g., clicks "Keep my setup" on the V2 Welcome
+    /// page when existing configuration is detected). The host closes
+    /// the window without firing <see cref="Finished"/> or running the
+    /// completion pipeline — existing settings and gateway connection
+    /// are preserved untouched. Mirrors legacy
+    /// <c>OnboardingState.Dismissed</c>.
+    /// </summary>
+    public event EventHandler? Dismissed;
+
     /// <summary>Raised by Welcome's "Advanced setup" link — host routes to the legacy Connection page.</summary>
     public event EventHandler? AdvancedSetupRequested;
 
@@ -293,4 +304,18 @@ public sealed class OnboardingV2State
     public void RequestAdvancedSetup() => AdvancedSetupRequested?.Invoke(this, EventArgs.Empty);
     public void RequestPermissionsRefresh() => PermissionsRefreshRequested?.Invoke(this, EventArgs.Empty);
     public void RequestRetry() => RetryRequested?.Invoke(this, EventArgs.Empty);
+
+    private bool _dismissed;
+    /// <summary>
+    /// Raises <see cref="Dismissed"/>. Idempotent — subsequent calls are
+    /// no-ops so a double-click or repeated handler invocation cannot
+    /// fire the lifecycle signal twice. Mirrors legacy
+    /// <c>OnboardingState.Dismiss</c>.
+    /// </summary>
+    public void Dismiss()
+    {
+        if (_dismissed) return;
+        _dismissed = true;
+        Dismissed?.Invoke(this, EventArgs.Empty);
+    }
 }

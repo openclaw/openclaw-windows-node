@@ -166,7 +166,19 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                 Props.RequestAdvance();
             }
 
-            void KeepSetup() => setConfirmingReplace(false);
+            void KeepSetup()
+            {
+                // "Keep my setup" — the user has existing configuration and wants
+                // to keep it. Dismiss the V2 wizard entirely (which closes the
+                // onboarding window without firing Finished or running the
+                // completion pipeline) so existing settings and gateway
+                // connection are preserved untouched. Mirrors the legacy
+                // SetupWarningPage CancelReplace handler post-PR-#340.
+                // Deliberately do NOT setConfirmingReplace(false) first —
+                // the window is about to close and the redundant state change
+                // would briefly re-render the "Set up locally" button.
+                Props.Dismiss();
+            }
 
             bottomCluster = VStack(12,
                 warnCard,

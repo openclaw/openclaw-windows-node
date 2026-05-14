@@ -57,7 +57,7 @@ public sealed class OnboardingExistingConfigGuard
             HasNonDefaultGatewayUrl: !string.IsNullOrWhiteSpace(_settings.GatewayUrl)
                 && !string.Equals(_settings.GatewayUrl, DefaultGatewayUrl, StringComparison.OrdinalIgnoreCase),
             HasOperatorDeviceToken: HasAnyOperatorDeviceToken(_identityDataPath),
-            HasNodeDeviceToken: DeviceIdentity.HasStoredDeviceTokenForRole(_identityDataPath, "node"),
+            HasNodeDeviceToken: HasAnyDeviceTokenForRole(_identityDataPath, "node"),
             HasCompletedOrRunningSetupState: ReadSetupStateIsActive(_setupStatePath),
             HasWslDistro: false);
     }
@@ -71,9 +71,22 @@ public sealed class OnboardingExistingConfigGuard
     /// <c>StartupSetupState</c> so the startup auto-launch decision and the
     /// in-wizard "existing configuration" warning agree.
     /// </summary>
-    public static bool HasAnyOperatorDeviceToken(string dataPath)
+    public static bool HasAnyOperatorDeviceToken(string dataPath) =>
+        HasAnyDeviceTokenForRole(dataPath, "operator");
+
+    /// <summary>
+    /// Scans both the legacy root identity and per-gateway identity directories
+    /// for a device token for the specified role. Symmetric across operator and
+    /// node roles so both the in-wizard guard and the startup auto-launch
+    /// decision agree on whether a returning user is paired (Scott Hanselman
+    /// repro: a local node-mode profile with the node token stored only under
+    /// <c>gateways/&lt;id&gt;/device-key-ed25519.json</c> incorrectly re-opened
+    /// onboarding on every relaunch because only the operator side was checked
+    /// per-gateway).
+    /// </summary>
+    public static bool HasAnyDeviceTokenForRole(string dataPath, string role)
     {
-        if (DeviceIdentity.HasStoredDeviceToken(dataPath, NullLogger.Instance))
+        if (DeviceIdentity.HasStoredDeviceTokenForRole(dataPath, role, NullLogger.Instance))
         {
             return true;
         }
@@ -88,7 +101,7 @@ public sealed class OnboardingExistingConfigGuard
         {
             foreach (var dir in Directory.EnumerateDirectories(gatewaysDir))
             {
-                if (DeviceIdentity.HasStoredDeviceToken(dir, NullLogger.Instance))
+                if (DeviceIdentity.HasStoredDeviceTokenForRole(dir, role, NullLogger.Instance))
                 {
                     return true;
                 }
