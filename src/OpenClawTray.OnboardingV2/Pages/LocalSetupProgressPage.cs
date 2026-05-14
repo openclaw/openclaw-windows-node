@@ -54,9 +54,12 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             rowChildren.Add(BuildStageRow(theme, V2Strings.Get(labelKey), rowState));
 
             // The error card sits immediately under the failed row in Dialog-6.
+            // The Try-again button only renders when the failure is retryable
+            // (FailedRetryable). Terminal/Blocked failures show only the message.
             if (rowState == RowState.Failed && Props.LocalSetupErrorMessage is { } msg)
             {
-                rowChildren.Add(BuildErrorCard(theme, msg, () => Props.RequestRetry()));
+                Action? onRetry = Props.LocalSetupCanRetry ? (() => Props.RequestRetry()) : null;
+                rowChildren.Add(BuildErrorCard(theme, msg, onRetry));
             }
         }
 
@@ -167,38 +170,51 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
         return new BorderElement(null).Width(24).Height(24);
     }
 
-    private static Element BuildErrorCard(ElementTheme theme, string message, Action onTryAgain)
+    /// <summary>
+    /// Renders the inline error card under a failed row. When
+    /// <paramref name="onTryAgain"/> is null, the Try-again button is omitted
+    /// (terminal/blocked failures); when non-null, it renders as the
+    /// right-aligned action button.
+    /// </summary>
+    private static Element BuildErrorCard(ElementTheme theme, string message, Action? onTryAgain)
     {
-        var inner = Grid(
-            new[] { "*", "auto" },
-            new[] { "auto" },
+        var children = new List<Element>
+        {
             TextBlock(message)
                 .FontSize(14)
                 .TextWrapping()
                 .VAlign(VerticalAlignment.Center)
                 .Set(t => t.Foreground = V2Theme.ErrorCardForeground(theme))
                 .Grid(row: 0, column: 0),
+        };
 
-            Button(V2Strings.Get("V2_Progress_TryAgain"), onTryAgain)
-                .HAlign(HorizontalAlignment.Right)
-                .VAlign(VerticalAlignment.Center)
-                .Margin(16, 0, 0, 0)
-                .Width(120)
-                .Height(40)
-                .Set(b =>
-                {
-                    b.Foreground = V2Theme.White();
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Progress_TryAgain");
-                    b.Resources["ButtonBackground"] = V2Theme.ErrorButtonBackground(theme);
-                    b.Resources["ButtonBackgroundPointerOver"] = V2Theme.ErrorButtonHover(theme);
-                    b.Resources["ButtonBackgroundPressed"] = V2Theme.ErrorButtonPressed(theme);
-                    b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
-                    b.Resources["ButtonForeground"] = V2Theme.White();
-                    b.Resources["ButtonForegroundPointerOver"] = V2Theme.White();
-                    b.Resources["ButtonForegroundPressed"] = V2Theme.White();
-                })
-                .Grid(row: 0, column: 1)
-        );
+        if (onTryAgain is not null)
+        {
+            children.Add(
+                Button(V2Strings.Get("V2_Progress_TryAgain"), onTryAgain)
+                    .HAlign(HorizontalAlignment.Right)
+                    .VAlign(VerticalAlignment.Center)
+                    .Margin(16, 0, 0, 0)
+                    .Width(120)
+                    .Height(40)
+                    .Set(b =>
+                    {
+                        b.Foreground = V2Theme.White();
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Progress_TryAgain");
+                        b.Resources["ButtonBackground"] = V2Theme.ErrorButtonBackground(theme);
+                        b.Resources["ButtonBackgroundPointerOver"] = V2Theme.ErrorButtonHover(theme);
+                        b.Resources["ButtonBackgroundPressed"] = V2Theme.ErrorButtonPressed(theme);
+                        b.Resources["ButtonBorderBrush"] = V2Theme.Transparent();
+                        b.Resources["ButtonForeground"] = V2Theme.White();
+                        b.Resources["ButtonForegroundPointerOver"] = V2Theme.White();
+                        b.Resources["ButtonForegroundPressed"] = V2Theme.White();
+                    })
+                    .Grid(row: 0, column: 1));
+        }
+
+        // Single column when no retry button — error message expands to full width.
+        var columns = onTryAgain is not null ? new[] { "*", "auto" } : new[] { "*" };
+        var inner = Grid(columns, new[] { "auto" }, children.ToArray());
 
         return new BorderElement(inner)
             .Background(V2Theme.ErrorCardBackground(theme))

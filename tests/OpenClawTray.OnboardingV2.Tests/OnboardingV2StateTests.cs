@@ -59,4 +59,44 @@ public class OnboardingV2StateTests
         var ex = Record.Exception(() => state.Dismiss());
         Assert.Null(ex);
     }
+
+    // -----------------------------------------------------------------------
+    // LocalSetupCanRetry — controls the Try-again button on the error card.
+    // Hanselman review: terminal/blocked failures must not show retry; only
+    // FailedRetryable errors should expose the affordance.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void LocalSetupCanRetry_DefaultsToFalse()
+    {
+        var state = new OnboardingV2State();
+        Assert.False(state.LocalSetupCanRetry);
+    }
+
+    [Fact]
+    public void LocalSetupCanRetry_SetTrue_FiresStateChanged()
+    {
+        var state = new OnboardingV2State();
+        var changed = 0;
+        state.StateChanged += (_, _) => changed++;
+
+        state.LocalSetupCanRetry = true;
+
+        Assert.Equal(1, changed);
+        Assert.True(state.LocalSetupCanRetry);
+    }
+
+    [Fact]
+    public void LocalSetupCanRetry_SetSameValue_DoesNotFireStateChanged()
+    {
+        // Idempotent setter avoids redundant page re-renders when the bridge
+        // re-emits the same status (e.g. multiple Running ticks).
+        var state = new OnboardingV2State { LocalSetupCanRetry = true };
+        var changed = 0;
+        state.StateChanged += (_, _) => changed++;
+
+        state.LocalSetupCanRetry = true;
+
+        Assert.Equal(0, changed);
+    }
 }

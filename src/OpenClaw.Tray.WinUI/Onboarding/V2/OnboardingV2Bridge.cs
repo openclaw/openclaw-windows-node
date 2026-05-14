@@ -47,6 +47,18 @@ public sealed class OnboardingV2Bridge : IDisposable
     private bool _engineStarted;
 
     /// <summary>
+    /// Monotonically incremented every time the engine bookkeeping is reset
+    /// (currently: <see cref="OnRetryRequested"/>). Captured by the
+    /// <c>RunLocalOnlyAsync().ContinueWith(...)</c> continuation in
+    /// <see cref="EnsureEngineStarted"/> so a stale continuation from a
+    /// previous run cannot reach into <see cref="OnEngineStateChanged"/>
+    /// and auto-advance the V2 flow after the user has clicked "Try again".
+    /// Also gates direct synthetic state ticks in <see cref="OnRetryRequested"/>'s
+    /// no-op path.
+    /// </summary>
+    private int _engineGeneration;
+
+    /// <summary>
     /// Raised when the V2 Welcome page asks for the legacy "Advanced setup"
     /// flow. The host should close the V2 window and surface
     /// <see cref="OnboardingWindow"/> with start route = Connection.
@@ -137,7 +149,24 @@ public sealed class OnboardingV2Bridge : IDisposable
     /// </summary>
     private void OnRetryRequested(object? sender, EventArgs e)
     {
+        // Defense-in-depth (Hanselman review): silently ignore retry events
+        // when the last engine outcome was terminal (FailedTerminal / Blocked).
+        // The page should not render a Try-again button in that state, but a
+        // stale UI event (queued before the page re-rendered) could still
+        // arrive here. Re-running a terminal failure spins the engine again
+        // for no benefit and confuses the user.
+        if (!_state.LocalSetupCanRetry)
+        {
+            Logger.Warn("[V2Bridge] RetryRequested ignored: LocalSetupCanRetry=false (terminal/blocked failure)");
+            return;
+        }
+
         Logger.Info("[V2Bridge] RetryRequested — resetting engine state");
+        // Bump the generation FIRST. This invalidates any in-flight
+        // RunLocalOnlyAsync().ContinueWith(...) from the previous run so a
+        // stale completion can't auto-advance V2 after the user clicked retry.
+        _engineGeneration++;
+
         // Detach the prior engine's StateChanged handler so the next run's
         // events don't double-fire through the old subscription.
         if (_engine is not null)
@@ -152,6 +181,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         DispatchToUi(() =>
         {
             _state.LocalSetupErrorMessage = null;
+            _state.LocalSetupCanRetry = false;
             MarkAllStagesIdle();
         });
         EnsureEngineStarted();
@@ -233,7 +263,6 @@ public sealed class OnboardingV2Bridge : IDisposable
     private void EnsureEngineStarted()
     {
         if (_engineStarted) return;
-        _engineStarted = true;
 
         // Defense-in-depth (parity with legacy LocalSetupProgressPage): if
         // existing configuration is detected and the user did not explicitly
@@ -241,18 +270,36 @@ public sealed class OnboardingV2Bridge : IDisposable
         // surface a synthetic Block state instead of starting the engine.
         // The primary gate is the V2 Welcome page; this catches future
         // callers that bypass it.
+        //
+        // IMPORTANT (Hanselman review): _engineStarted MUST stay false on
+        // this guarded early return. Otherwise a later call after the user
+        // sets ReplaceExistingConfigurationConfirmed would hit the top
+        // `if (_engineStarted) return;` line and never construct the engine,
+        // permanently locking the user out of the local setup path.
         if (!_state.ReplaceExistingConfigurationConfirmed
             && _state.LegacyState is OpenClawTray.Onboarding.Services.OnboardingState legacyForGuard
             && legacyForGuard.ExistingConfigGuard?.HasExistingConfiguration() == true)
         {
-            Logger.Warn("[V2Bridge] Existing configuration detected without replace-confirm; blocking setup");
+            Logger.Warn("[V2Bridge] Existing configuration detected without replace-confirm; blocking setup (engine NOT marked started so retry/confirm path can recover)");
             DispatchToUi(() =>
             {
                 MarkAllStagesIdle();
                 _state.LocalSetupErrorMessage = "Existing configuration detected. Use Advanced Setup to reconnect, or confirm replacement on the previous page.";
+                // The block is recoverable: if the user backs up to Welcome,
+                // confirms replace, and Sets up locally again, the second
+                // EnsureEngineStarted() call should reach the engine factory.
+                // Mark the synthetic block as retryable so the page surfaces
+                // a Try-again affordance (which calls OnRetryRequested →
+                // EnsureEngineStarted again with the new flag).
+                _state.LocalSetupCanRetry = true;
             });
             return;
         }
+
+        // All preflight guards passed — commit to starting the engine.
+        // This MUST happen after the guards so a guarded early return leaves
+        // the bridge in a recoverable state.
+        _engineStarted = true;
 
         // Forward V2 replace-confirmed flag to legacy state (the engine
         // factory reads it via App, which holds the legacy OnboardingState).
@@ -270,6 +317,9 @@ public sealed class OnboardingV2Bridge : IDisposable
         catch (Exception ex)
         {
             Logger.Error($"[V2Bridge] Failed to construct LocalGatewaySetupEngine: {ex.Message}");
+            // Engine construction failure is recoverable (e.g. transient
+            // resource issue). Reset _engineStarted so a retry can try again.
+            _engineStarted = false;
             // Surface engine_construct_failed as a user-facing error on the
             // V2 progress page (parity with v1: legacy renders a synthetic
             // Block state with this code so the Try-again button is offered).
@@ -277,14 +327,21 @@ public sealed class OnboardingV2Bridge : IDisposable
             {
                 MarkAllStagesIdle();
                 _state.LocalSetupErrorMessage = $"Could not start setup engine: {ex.Message}";
+                _state.LocalSetupCanRetry = true;
             });
             return;
         }
 
-        Logger.Info($"[V2Bridge] Subscribing to engine.StateChanged + starting RunLocalOnlyAsync (replaceConfirmed={_state.ReplaceExistingConfigurationConfirmed})");
+        Logger.Info($"[V2Bridge] Subscribing to engine.StateChanged + starting RunLocalOnlyAsync (replaceConfirmed={_state.ReplaceExistingConfigurationConfirmed}, generation={_engineGeneration})");
         _engine.StateChanged += OnEngineStateChanged;
         try
         {
+            // Capture the current generation. The continuation below MUST
+            // ignore its callback if the generation has been bumped (i.e. a
+            // retry kicked off a fresh run); otherwise the OLD run's final
+            // state could call OnEngineStateChanged after the new run has
+            // started and erroneously auto-advance the V2 flow.
+            var capturedGeneration = _engineGeneration;
             _runTask = _engine.RunLocalOnlyAsync();
             // Belt-and-braces auto-advance: the StateChanged event chain is
             // best-effort (cross-thread, multiple subscribers). Watch the
@@ -295,6 +352,11 @@ public sealed class OnboardingV2Bridge : IDisposable
             // makes this idempotent with the regular event path.
             _runTask.ContinueWith(t =>
             {
+                if (capturedGeneration != _engineGeneration)
+                {
+                    Logger.Info($"[V2Bridge] Stale RunLocalOnlyAsync continuation ignored (captured gen={capturedGeneration}, current gen={_engineGeneration})");
+                    return;
+                }
                 if (t.IsCompletedSuccessfully && t.Result is { } finalState)
                 {
                     Logger.Info($"[V2Bridge] RunLocalOnlyAsync completed: phase={finalState.Phase} status={finalState.Status}");
@@ -309,7 +371,11 @@ public sealed class OnboardingV2Bridge : IDisposable
         catch (Exception ex)
         {
             Logger.Error($"[V2Bridge] RunLocalOnlyAsync threw synchronously: {ex.Message}");
-            DispatchToUi(() => _state.LocalSetupErrorMessage = ex.Message);
+            DispatchToUi(() =>
+            {
+                _state.LocalSetupErrorMessage = ex.Message;
+                _state.LocalSetupCanRetry = true;
+            });
         }
     }
 
@@ -323,6 +389,13 @@ public sealed class OnboardingV2Bridge : IDisposable
                          || status == LocalGatewaySetupStatus.Blocked)
             ? st.UserMessage
             : null;
+
+        // Hanselman review: only FailedRetryable should expose Try-again.
+        // FailedTerminal and Blocked surface the error message but no retry
+        // button — terminal failures are not recoverable by re-running the
+        // same engine, and Blocked usually requires user action elsewhere
+        // (e.g. confirm replace, grant admin) before a retry would succeed.
+        var canRetry = status == LocalGatewaySetupStatus.FailedRetryable;
 
         // Parity with v1 Capture: lastRunningPhase is reconstructed from
         // History (most recent non-Failed/Cancelled/NotStarted phase) so
@@ -357,6 +430,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         {
             _state.LocalSetupRows = rows;
             _state.LocalSetupErrorMessage = errorMessage;
+            _state.LocalSetupCanRetry = canRetry;
             // Engine flips Settings.EnableNodeMode mid-run (PairAsync). Mirror
             // it directly to V2 state so AllSet renders the Node-Mode card
             // correctly. Direct assignment (not an OR latch) so the AllSet

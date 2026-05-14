@@ -134,12 +134,26 @@ public sealed class OnboardingV2State
     private string? _localSetupErrorMessage;
     /// <summary>
     /// When non-null, the LocalSetupProgress page renders the inline error
-    /// card (Dialog-6) with this message and a "Try again" button.
+    /// card (Dialog-6) with this message. The "Try again" button only
+    /// appears when <see cref="LocalSetupCanRetry"/> is also true.
     /// </summary>
     public string? LocalSetupErrorMessage
     {
         get => _localSetupErrorMessage;
         set { if (_localSetupErrorMessage != value) { _localSetupErrorMessage = value; NotifyChanged(); } }
+    }
+
+    private bool _localSetupCanRetry;
+    /// <summary>
+    /// Whether the LocalSetupProgress error card should expose a "Try again"
+    /// button. Mirrors LocalGatewaySetupStatus.FailedRetryable; terminal
+    /// failures and Blocked statuses leave this false so the user is not
+    /// offered a retry that cannot succeed without external action.
+    /// </summary>
+    public bool LocalSetupCanRetry
+    {
+        get => _localSetupCanRetry;
+        set { if (_localSetupCanRetry != value) { _localSetupCanRetry = value; NotifyChanged(); } }
     }
 
     // ---------------------------------------------------------------------
