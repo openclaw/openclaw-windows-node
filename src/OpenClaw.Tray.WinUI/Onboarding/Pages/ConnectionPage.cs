@@ -98,6 +98,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             ? $"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDetected")}"
             : LocalizationHelper.GetString("Onboarding_Connection_Ready");
         var (statusMsg, setStatusMsg) = UseState(Props.Mode == ConnectionMode.Local ? detectedMsg : LocalizationHelper.GetString("Onboarding_Connection_Ready"));
+        var (statusIsWarning, setStatusIsWarning) = UseState(false);
         var (testing, setTesting) = UseState(false);
         var (pairingDeviceId, setPairingDeviceId) = UseState(visualPairingDeviceId);
         var (pairingCommand, setPairingCommand) = UseState(string.IsNullOrEmpty(visualPairingDeviceId) ? "" : App.BuildPairingApprovalCommand(visualPairingDeviceId));
@@ -105,6 +106,12 @@ public sealed class ConnectionPage : Component<OnboardingState>
         var (copyFailed, setCopyFailed) = UseState(false);
 
         var urlReadOnly = ConnectionPageModeSelector.IsGatewayUrlReadOnly(mode); // Ssh mode pins the local-forward URL
+
+        void SetStatus(string message, bool isWarning = false)
+        {
+            setStatusMsg(message);
+            setStatusIsWarning(isWarning);
+        }
 
         void SelectMode(ConnectionMode m)
         {
@@ -119,7 +126,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             setMode(m);
             Props.Mode = m;
             Props.ConnectionTested = result.ConnectionTested;
-            setStatusMsg(result.StatusMessage);
+            SetStatus(result.StatusMessage);
             setPairingDeviceId(result.PairingDeviceId);
             setPairingCommand("");
             setCopied(false);
@@ -163,9 +170,10 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 setToken(result.Token);
                 // Bootstrap token stored in GatewayRegistry via ApplySetupCodeAsync
             }
-            setStatusMsg(GatewayUrlHelper.TryGetInsecureGatewayWarning(result.Url, out var warning)
-                ? $"⚠️ {warning}"
-                : $"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
+            if (GatewayUrlHelper.TryGetInsecureGatewayWarning(result.Url, out var warning))
+                SetStatus($"⚠️ {warning}", isWarning: true);
+            else
+                SetStatus($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
         }
 
         void OnUrlChanged(string v)
@@ -173,16 +181,17 @@ public sealed class ConnectionPage : Component<OnboardingState>
             setUrl(v);
             Props.Settings.GatewayUrl = v;
             Props.ConnectionTested = false;
-            setStatusMsg(GatewayUrlHelper.TryGetInsecureGatewayWarning(v, out var warning)
-                ? $"⚠️ {warning}"
-                : "");
+            if (GatewayUrlHelper.TryGetInsecureGatewayWarning(v, out var warning))
+                SetStatus($"⚠️ {warning}", isWarning: true);
+            else
+                SetStatus("");
         }
 
         void OnTokenChanged(string v)
         {
             setToken(v);
             Props.ConnectionTested = false;
-            setStatusMsg("");
+            SetStatus("");
         }
 
         void OnNodeModeToggled(bool v)
@@ -214,12 +223,12 @@ public sealed class ConnectionPage : Component<OnboardingState>
             {
                 if (string.IsNullOrWhiteSpace(sshUser))
                 {
-                    setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_SshUserInvalid")}");
+                    SetStatus($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_SshUserInvalid")}", isWarning: true);
                     return;
                 }
                 if (string.IsNullOrWhiteSpace(sshHost))
                 {
-                    setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_SshHostInvalid")}");
+                    SetStatus($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_SshHostInvalid")}", isWarning: true);
                     return;
                 }
                 Props.Settings.UseSshTunnel       = true;
@@ -237,7 +246,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 catch (Exception ex)
                 {
                     Logger.Warn($"[Connection] SSH tunnel start failed: {ex.Message}");
-                    setStatusMsg($"❌ {ex.Message}");
+                    SetStatus($"❌ {ex.Message}");
                     return;
                 }
             }
@@ -248,18 +257,18 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
             if (!GatewayUrlHelper.TryValidateGatewayUrl(url, out _, out var validationError))
             {
-                setStatusMsg($"⚠️ {validationError}");
+                SetStatus($"⚠️ {validationError}", isWarning: true);
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_StatusTokenRequired")}");
+                SetStatus($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_StatusTokenRequired")}", isWarning: true);
                 return;
             }
 
             setTesting(true);
-            setStatusMsg(LocalizationHelper.GetString("Onboarding_Connection_StatusConnecting"));
+            SetStatus(LocalizationHelper.GetString("Onboarding_Connection_StatusConnecting"));
             setPairingDeviceId("");
             setPairingCommand("");
             setCopied(false);
@@ -273,13 +282,13 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 if (!healthResult.Success)
                 {
                     Logger.Warn($"[Connection] Health check failed: {healthResult.Error}");
-                    setStatusMsg($"❌ {healthResult.Error}");
+                    SetStatus($"❌ {healthResult.Error}");
                     setTesting(false);
                     return;
                 }
 
                 // Phase 2: Connect via GatewayConnectionManager (same as Direct Connect flow)
-                setStatusMsg($"🔄 {LocalizationHelper.GetString("Onboarding_Connection_StatusAuthenticating")}");
+                SetStatus($"🔄 {LocalizationHelper.GetString("Onboarding_Connection_StatusAuthenticating")}");
                 Props.Settings.Save();
 
                 var app = (App)Microsoft.UI.Xaml.Application.Current;
@@ -337,7 +346,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
 
                 if (connected)
                 {
-                    setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusConnected")}");
+                    SetStatus($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusConnected")}");
                     Props.ConnectionTested = true;
                 }
                 else if (pairingRequired)
@@ -349,7 +358,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                     identity.Initialize();
                     var deviceId = identity.DeviceId;
 
-                    setStatusMsg($"⏳ {LocalizationHelper.GetString("Onboarding_Connection_StatusPairing")}");
+                    SetStatus($"⏳ {LocalizationHelper.GetString("Onboarding_Connection_StatusPairing")}");
                     setPairingDeviceId(deviceId);
                     var cmd = App.BuildPairingApprovalCommand(deviceId);
                     setPairingCommand(cmd);
@@ -361,17 +370,17 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 else if (authFailed)
                 {
                     Logger.Warn("[Connection] Auth failed (all signature modes exhausted)");
-                    setStatusMsg($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusFailed")}");
+                    SetStatus($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusFailed")}");
                 }
                 else
                 {
-                    setStatusMsg($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusTimeout")}");
+                    SetStatus($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusTimeout")}");
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error($"[Connection] Test exception: {ex}");
-                setStatusMsg($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusFailed")}");
+                SetStatus($"❌ {LocalizationHelper.GetString("Onboarding_Connection_StatusFailed")}");
             }
             finally
             {
@@ -459,7 +468,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                     var decoded = QrSetupCodeReader.Decode(stream);
                     if (string.IsNullOrWhiteSpace(decoded))
                     {
-                        setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_QrDecodeFailed")}");
+                        SetStatus($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_QrDecodeFailed")}", isWarning: true);
                         return;
                     }
                     setSetupCode(decoded);
@@ -468,7 +477,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 catch (Exception ex)
                 {
                     Logger.Warn($"[Connection] QR import failed: {ex.Message}");
-                    setStatusMsg($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_QrDecodeFailed")}");
+                    SetStatus($"⚠️ {LocalizationHelper.GetString("Onboarding_Connection_QrDecodeFailed")}", isWarning: true);
                 }
             }
 
@@ -695,7 +704,6 @@ public sealed class ConnectionPage : Component<OnboardingState>
             );
 
             // Status display — always visible
-            var statusIsWarning = fullStatus.StartsWith("⚠️", StringComparison.Ordinal);
             cardChildren.Add(
                 Border(
                     TextBlock(string.IsNullOrEmpty(fullStatus) ? LocalizationHelper.GetString("Onboarding_Connection_Ready") : fullStatus)

@@ -6,7 +6,8 @@ namespace OpenClaw.Shared;
 
 public static class GatewayUrlHelper
 {
-    public const string ValidationMessage = "Gateway URL must be a valid URL (ws://, wss://, http://, or https://).";
+    public const string InvalidFormatMessage = "Gateway URL must be a valid URL (ws://, wss://, http://, or https://).";
+    public const string ValidationMessage = InvalidFormatMessage;
     public const string AllowInsecureGatewayEnvironmentVariable = "OPENCLAW_ALLOW_INSECURE_GATEWAY";
     public const string InsecureGatewayWarningMessage = "This gateway uses plain ws:// without TLS. Only continue on trusted local networks; LAN attackers may intercept or inject chat content.";
     public const string InsecureGatewayBlockedMessage = "Plain ws:// gateways outside loopback/private networks require TLS (wss://). Set OPENCLAW_ALLOW_INSECURE_GATEWAY=1 to allow this insecure connection.";
@@ -22,14 +23,14 @@ public static class GatewayUrlHelper
         errorMessage = string.Empty;
         if (!TryNormalizeWebSocketUrl(gatewayUrl, out normalizedUrl))
         {
-            errorMessage = ValidationMessage;
+            errorMessage = InvalidFormatMessage;
             return false;
         }
 
         if (!Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri))
         {
             normalizedUrl = string.Empty;
-            errorMessage = ValidationMessage;
+            errorMessage = InvalidFormatMessage;
             return false;
         }
 
@@ -238,9 +239,9 @@ public static class GatewayUrlHelper
         var bytes = address.GetAddressBytes();
         if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
         {
-            return bytes[0] == 10 ||
-                (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
-                (bytes[0] == 192 && bytes[1] == 168);
+            return bytes[0] == 10 || // 10.0.0.0/8
+                (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) || // 172.16.0.0/12
+                (bytes[0] == 192 && bytes[1] == 168); // 192.168.0.0/16
         }
 
         return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 &&
