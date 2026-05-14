@@ -42,6 +42,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeInvokeActivityFormatter.cs" Link="Services\NodeInvokeActivityFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeCapabilityGating.cs" Link="Services\NodeCapabilityGating.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateSignatureVerifier.cs" Link="Services\UpdateSignatureVerifier.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayStateSnapshot.cs" Link="Services\TrayStateSnapshot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayTooltipBuilder.cs" Link="Services\TrayTooltipBuilder.cs" />

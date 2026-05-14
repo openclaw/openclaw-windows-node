@@ -4826,6 +4826,25 @@ public partial class App : Application
                 return false;
             }
 
+            var signatureVerification = UpdateSignatureVerifier.VerifyUpdatePackage(downloadedAsset.FilePath);
+            if (!signatureVerification.IsTrusted)
+            {
+                Logger.Error($"Update signature verification failed: {signatureVerification.Message}");
+                _lastUpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    LatestVersion = downloadedAsset.TagVersionStr,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "signature verification failed"
+                };
+                ShowToast(new ToastContentBuilder()
+                    .AddText("Update blocked")
+                    .AddText("OpenClaw could not verify the downloaded update publisher."));
+                return false;
+            }
+
+            Logger.Info($"Update signature verified for publisher: {signatureVerification.PublisherSubject}");
             Logger.Info("Installing update and restarting...");
             await AppUpdater.InstallUpdateAsync(downloadedAsset);
             return true;
