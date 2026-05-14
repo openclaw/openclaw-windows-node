@@ -514,10 +514,19 @@ public sealed class SetupWizardWindow : WindowEx
                 return false;
             }
 
+            if (!GatewayUrlHelper.TryValidateGatewayUrl(_draftGatewayUrl, out _, out var validationError))
+            {
+                _connectionTested = false;
+                _testStatusLabel.Text = $"❌ {validationError}";
+                return false;
+            }
+
             // Show manual fields so user can see what was decoded
             _manualEntryPanel.Visibility = Visibility.Visible;
-            _testStatusLabel.Text = successMessage;
-            _connectionTested = GatewayUrlHelper.IsValidGatewayUrl(_draftGatewayUrl);
+            _testStatusLabel.Text = GatewayUrlHelper.TryGetInsecureGatewayWarning(_draftGatewayUrl, out var warning)
+                ? $"⚠️ {warning}"
+                : successMessage;
+            _connectionTested = true;
             Logger.Info($"[Setup] Setup code decoded: gateway={GatewayUrlHelper.SanitizeForDisplay(_draftGatewayUrl)}");
             return true;
         }
@@ -721,9 +730,9 @@ public sealed class SetupWizardWindow : WindowEx
         _draftToken = _tokenBox.Text;
         UpdatePairingStatusText();
 
-        if (!GatewayUrlHelper.IsValidGatewayUrl(_draftGatewayUrl))
+        if (!GatewayUrlHelper.TryValidateGatewayUrl(_draftGatewayUrl, out _, out var validationError))
         {
-            _testStatusLabel.Text = $"❌ {GatewayUrlHelper.ValidationMessage}";
+            _testStatusLabel.Text = $"❌ {validationError}";
             return;
         }
 

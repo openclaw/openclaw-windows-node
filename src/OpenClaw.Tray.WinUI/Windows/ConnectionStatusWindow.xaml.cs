@@ -344,7 +344,13 @@ public sealed partial class ConnectionStatusWindow : WindowEx
             return;
         }
 
-        url = GatewayUrlHelper.NormalizeForWebSocket(url);
+        if (!GatewayUrlHelper.TryValidateGatewayUrl(url, out var normalizedUrl, out var validationError))
+        {
+            DirectConnectResult.Text = validationError;
+            return;
+        }
+
+        url = normalizedUrl;
 
         // Parse SSH config
         var useSsh = DiagSshToggle.IsOn;

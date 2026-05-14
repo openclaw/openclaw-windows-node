@@ -89,6 +89,16 @@ public class GatewayChatHelperTests
     }
 
     [Fact]
+    public void TryBuildChatUrl_PrivatePlaintext_Rejected()
+    {
+        var ok = GatewayChatUrlBuilder.TryBuildChatUrl(
+            "ws://192.168.1.10:18789", "tok", out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("secure", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildChatUrl_LocalhostHttp_Accepted()
     {
         var ok = GatewayChatUrlBuilder.TryBuildChatUrl(

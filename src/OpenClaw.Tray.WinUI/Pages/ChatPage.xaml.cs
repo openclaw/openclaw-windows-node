@@ -508,23 +508,7 @@ public sealed partial class ChatPage : Page
     }
 
     private static bool TryBuildChatUrl(string gatewayUrl, string token, out string url, out string errorMessage)
-    {
-        url = string.Empty;
-        errorMessage = string.Empty;
-
-        if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(gatewayUrl, out var normalizedUrl) ||
-            !Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var gatewayUri))
-        {
-            errorMessage = $"Invalid gateway URL: {gatewayUrl}";
-            return false;
-        }
-
-        var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
-        var builder = new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port };
-        var baseUrl = builder.Uri.GetLeftPart(UriPartial.Authority);
-        url = $"{baseUrl}?token={Uri.EscapeDataString(token)}";
-        return true;
-    }
+        => GatewayChatUrlBuilder.TryBuildChatUrl(gatewayUrl, token, out url, out errorMessage);
 
     private void OnHome(object sender, RoutedEventArgs e)
     {

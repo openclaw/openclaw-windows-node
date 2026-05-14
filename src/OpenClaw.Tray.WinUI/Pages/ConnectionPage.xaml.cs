@@ -528,7 +528,13 @@ public sealed partial class ConnectionPage : Page
             return;
         }
 
-        url = GatewayUrlHelper.NormalizeForWebSocket(url);
+        if (!GatewayUrlHelper.TryValidateGatewayUrl(url, out var normalizedUrl, out var validationError))
+        {
+            DirectConnectResultText.Text = validationError;
+            return;
+        }
+
+        url = normalizedUrl;
 
         // Validate SSH config upfront before mutating any state
         var useSsh = SshToggle.IsOn;

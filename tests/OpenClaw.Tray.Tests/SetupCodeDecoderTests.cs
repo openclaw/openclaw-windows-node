@@ -81,6 +81,18 @@ public class SetupCodeDecoderTests
         Assert.Equal("http://localhost:18789", result.Url);
     }
 
+    [Fact]
+    public void Decode_PrivatePlaintextUrl_Succeeds()
+    {
+        var json = """{"url":"ws://192.168.1.10:18789","bootstrapToken":"tok"}""";
+        var code = ToBase64Url(json);
+
+        var result = SetupCodeDecoder.Decode(code);
+
+        Assert.True(result.Success);
+        Assert.Equal("ws://192.168.1.10:18789", result.Url);
+    }
+
     #endregion
 
     #region Size limits
@@ -159,6 +171,18 @@ public class SetupCodeDecoderTests
     public void Decode_InvalidGatewayUrl_ReturnsError()
     {
         var json = """{"url":"ftp://bad-scheme.example.com","bootstrapToken":"tok"}""";
+        var code = ToBase64Url(json);
+
+        var result = SetupCodeDecoder.Decode(code);
+
+        Assert.False(result.Success);
+        Assert.Contains("Invalid gateway URL", result.Error);
+    }
+
+    [Fact]
+    public void Decode_PublicPlaintextUrl_ReturnsError()
+    {
+        var json = """{"url":"ws://gateway.example.com:18789","bootstrapToken":"tok"}""";
         var code = ToBase64Url(json);
 
         var result = SetupCodeDecoder.Decode(code);

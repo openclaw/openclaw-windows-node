@@ -139,6 +139,12 @@ public class GatewayUrlHelperTests
 
     [Theory]
     [InlineData("ws://localhost:18789")]
+    [InlineData("ws://127.0.0.1:18789")]
+    [InlineData("ws://192.168.1.10:18789")]
+    [InlineData("ws://10.0.0.5:18789")]
+    [InlineData("ws://172.16.0.5:18789")]
+    [InlineData("ws://172.31.255.255:18789")]
+    [InlineData("ws://[fc00::1]:18789")]
     [InlineData("wss://host.tailnet.ts.net")]
     [InlineData("http://localhost:18789")]
     [InlineData("https://host.tailnet.ts.net")]
@@ -153,9 +159,47 @@ public class GatewayUrlHelperTests
     [InlineData("   ")]
     [InlineData("localhost:18789")]
     [InlineData("ftp://example.com")]
+    [InlineData("ws://gateway.example.com:18789")]
+    [InlineData("http://gateway.example.com:18789")]
+    [InlineData("ws://172.32.0.1:18789")]
     public void IsValidGatewayUrl_ReturnsFalseForInvalidUrls(string? url)
     {
         Assert.False(GatewayUrlHelper.IsValidGatewayUrl(url));
+    }
+
+    [Fact]
+    public void IsValidGatewayUrl_AllowsRemotePlaintextWithEscapeHatch()
+    {
+        var previous = Environment.GetEnvironmentVariable(GatewayUrlHelper.AllowInsecureGatewayEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(GatewayUrlHelper.AllowInsecureGatewayEnvironmentVariable, "1");
+
+            Assert.True(GatewayUrlHelper.IsValidGatewayUrl("ws://gateway.example.com:18789"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(GatewayUrlHelper.AllowInsecureGatewayEnvironmentVariable, previous);
+        }
+    }
+
+    [Theory]
+    [InlineData("ws://192.168.1.10:18789", true)]
+    [InlineData("ws://10.0.0.5:18789", true)]
+    [InlineData("ws://localhost:18789", false)]
+    [InlineData("ws://127.0.0.1:18789", false)]
+    [InlineData("wss://gateway.example.com", false)]
+    [InlineData("ws://gateway.example.com:18789", false)]
+    public void TryGetInsecureGatewayWarning_WarnsOnlyForAllowedNonLoopbackPlaintext(string url, bool expected)
+    {
+        var warned = GatewayUrlHelper.TryGetInsecureGatewayWarning(url, out var warning);
+
+        Assert.Equal(expected, warned);
+        if (expected)
+        {
+            Assert.NotEmpty(warning);
+            Assert.Contains("plain ws://", warning);
+        }
     }
 
     [Theory]

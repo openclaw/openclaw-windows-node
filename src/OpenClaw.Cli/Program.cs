@@ -54,6 +54,12 @@ internal static class Program
             return 2;
         }
 
+        if (!GatewayUrlHelper.TryValidateGatewayUrl(gatewayUrl, out gatewayUrl, out var validationError))
+        {
+            Console.Error.WriteLine(validationError);
+            return 2;
+        }
+
         Console.WriteLine($"Settings file: {options.SettingsPath}");
         Console.WriteLine($"Gateway URL: {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
         Console.WriteLine($"Token source: {(options.TokenOverride is null ? "settings" : "--token override")}");

@@ -163,7 +163,9 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 setToken(result.Token);
                 // Bootstrap token stored in GatewayRegistry via ApplySetupCodeAsync
             }
-            setStatusMsg($"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
+            setStatusMsg(GatewayUrlHelper.TryGetInsecureGatewayWarning(result.Url, out var warning)
+                ? $"⚠️ {warning}"
+                : $"✅ {LocalizationHelper.GetString("Onboarding_Connection_StatusDecoded")}");
         }
 
         void OnUrlChanged(string v)
@@ -171,7 +173,9 @@ public sealed class ConnectionPage : Component<OnboardingState>
             setUrl(v);
             Props.Settings.GatewayUrl = v;
             Props.ConnectionTested = false;
-            setStatusMsg("");
+            setStatusMsg(GatewayUrlHelper.TryGetInsecureGatewayWarning(v, out var warning)
+                ? $"⚠️ {warning}"
+                : "");
         }
 
         void OnTokenChanged(string v)
@@ -242,9 +246,9 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 Props.Settings.UseSshTunnel = false;
             }
 
-            if (!GatewayUrlHelper.IsValidGatewayUrl(url))
+            if (!GatewayUrlHelper.TryValidateGatewayUrl(url, out _, out var validationError))
             {
-                setStatusMsg($"⚠️ {GatewayUrlHelper.ValidationMessage}");
+                setStatusMsg($"⚠️ {validationError}");
                 return;
             }
 
@@ -691,6 +695,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
             );
 
             // Status display — always visible
+            var statusIsWarning = fullStatus.StartsWith("⚠️", StringComparison.Ordinal);
             cardChildren.Add(
                 Border(
                     TextBlock(string.IsNullOrEmpty(fullStatus) ? LocalizationHelper.GetString("Onboarding_Connection_Ready") : fullStatus)
@@ -700,7 +705,7 @@ public sealed class ConnectionPage : Component<OnboardingState>
                 )
                 .MinHeight(40)
                 .CornerRadius(4)
-                .BackgroundResource("CardBackgroundFillColorDefaultBrush")
+                .BackgroundResource(statusIsWarning ? "SystemFillColorCautionBackgroundBrush" : "CardBackgroundFillColorDefaultBrush")
             );
         }
         else
