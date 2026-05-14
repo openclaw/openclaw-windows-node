@@ -198,7 +198,14 @@ public sealed class OnboardingV2Bridge : IDisposable
 
     private void OnDismissed(object? sender, EventArgs e)
     {
-        Dismissed?.Invoke(this, EventArgs.Empty);
+        // Marshal to the UI thread before re-firing. Today Dismiss is only
+        // raised from a UI button click (V2 Welcome's "Keep my setup"), so
+        // this is a no-op fast path — but a future code path that raises
+        // Dismiss from a background thread (engine event, watchdog, etc.)
+        // would otherwise call Window.Close() off-thread and crash WinUI.
+        // Defensive marshalling keeps the contract "Dismissed always fires
+        // on the UI thread for the host" regardless of caller thread.
+        DispatchToUi(() => Dismissed?.Invoke(this, EventArgs.Empty));
     }
 
     private void OnAdvanceRequested(object? sender, EventArgs e)
