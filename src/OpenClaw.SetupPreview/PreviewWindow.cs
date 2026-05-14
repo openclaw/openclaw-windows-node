@@ -45,11 +45,15 @@ internal sealed class PreviewWindow : WindowEx
 {
     /// <summary>
     /// Logical preview window size in DIPs. Picked to closely match the
-    /// designer mocks (which are exported at 1568×2106; aspect 0.745).
-    /// 720 × 966 → aspect 0.745, identical to the design canvas.
+    /// designer mocks (which are exported at 2010×2472; aspect 0.813).
+    /// 720 × 885 → aspect 0.813, identical to the design canvas, so the
+    /// rendered PNG can be diffed pixel-for-pixel against the references.
     /// </summary>
     private const int PreviewWidthDip = 720;
-    private const int PreviewHeightDip = 966;
+    private const int PreviewHeightDip = 885;
+
+    /// <summary>Height in DIPs of the custom XAML title bar (lobster + "OpenClaw Setup").</summary>
+    private const int TitleBarHeight = 40;
 
     private readonly Grid _rootGrid;
     private readonly FunctionalHostControl _host;
@@ -70,15 +74,39 @@ internal sealed class PreviewWindow : WindowEx
         _captureMode = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_CAPTURE") == "1";
         _capturePath = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_CAPTURE_PATH");
 
-        Title = "OpenClaw Setup (preview)";
+        Title = "OpenClaw Setup";
         ExtendsContentIntoTitleBar = true;
-        SystemBackdrop = new MicaBackdrop();
+
+        // Use a flat dark background that matches the designer mocks
+        // (#202020) instead of MicaBackdrop. RenderTargetBitmap does not
+        // see Mica composition (it lives below the XAML layer), so the
+        // captures would otherwise show transparent/black behind the UI.
+        // A solid color guarantees byte-identical captures across runs.
+        SystemBackdrop = null;
+
         this.SetWindowSize(PreviewWidthDip, PreviewHeightDip);
         this.CenterOnScreen();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.IsResizable = false;
             presenter.IsMaximizable = false;
+        }
+
+        // Make the system min/max/close buttons match our dark palette.
+        if (AppWindow.TitleBar is { } systemTitleBar)
+        {
+            var dark = ColorHelper.FromArgb(255, 0x20, 0x20, 0x20);
+            var hover = ColorHelper.FromArgb(255, 0x2C, 0x2C, 0x2C);
+            var pressed = ColorHelper.FromArgb(255, 0x38, 0x38, 0x38);
+            var fg = ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0);
+            systemTitleBar.ButtonBackgroundColor = dark;
+            systemTitleBar.ButtonInactiveBackgroundColor = dark;
+            systemTitleBar.ButtonForegroundColor = fg;
+            systemTitleBar.ButtonInactiveForegroundColor = ColorHelper.FromArgb(255, 0x70, 0x70, 0x70);
+            systemTitleBar.ButtonHoverBackgroundColor = hover;
+            systemTitleBar.ButtonHoverForegroundColor = fg;
+            systemTitleBar.ButtonPressedBackgroundColor = pressed;
+            systemTitleBar.ButtonPressedForegroundColor = fg;
         }
 
         _host = new FunctionalHostControl();
@@ -88,7 +116,41 @@ internal sealed class PreviewWindow : WindowEx
             return Factories.Component<OnboardingV2App, OnboardingV2State>(s);
         });
 
-        _rootGrid = new Grid();
+        _rootGrid = new Grid
+        {
+            Background = new SolidColorBrush(ColorHelper.FromArgb(255, 0x20, 0x20, 0x20))
+        };
+        _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TitleBarHeight) });
+        _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        // Custom title bar: small lobster icon (16px) + "OpenClaw Setup"
+        // text. The right-hand 138 DIPs are reserved for the system min/
+        // max/close buttons (CaptionButton width is ~46 each at 100% DPI).
+        var titleBar = new Grid { Padding = new Thickness(16, 0, 138, 0) };
+        var lobster = new Image
+        {
+            Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/Chrome/TitleBarIcon.png")),
+            Width = 16,
+            Height = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        var titleText = new TextBlock
+        {
+            Text = Title,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0))
+        };
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
+        titleStack.Children.Add(lobster);
+        titleStack.Children.Add(titleText);
+        titleBar.Children.Add(titleStack);
+        Grid.SetRow(titleBar, 0);
+        _rootGrid.Children.Add(titleBar);
+        SetTitleBar(titleBar);
+
+        Grid.SetRow(_host, 1);
         _rootGrid.Children.Add(_host);
         Content = _rootGrid;
 
@@ -188,4 +250,5 @@ internal sealed class PreviewWindow : WindowEx
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern void ExitProcess(uint uExitCode);
+
 }

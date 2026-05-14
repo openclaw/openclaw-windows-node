@@ -59,4 +59,19 @@ public sealed class OnboardingV2State
     /// card (Dialog-6) with this message and a "Try again" button.
     /// </summary>
     public string? LocalSetupErrorMessage { get; set; }
+
+    // ----- Navigation events (raised by pages, handled by OnboardingV2App) -----
+
+    /// <summary>Raised by a page that wants to advance to the next route.</summary>
+    public event EventHandler? AdvanceRequested;
+
+    /// <summary>Raised by a page that wants to go back to the previous route.</summary>
+    public event EventHandler? BackRequested;
+
+    /// <summary>Raised by the Finish button on AllSet (terminal state).</summary>
+    public event EventHandler? Finished;
+
+    public void RequestAdvance() => AdvanceRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestBack() => BackRequested?.Invoke(this, EventArgs.Empty);
+    public void RaiseFinished() => Finished?.Invoke(this, EventArgs.Empty);
 }
