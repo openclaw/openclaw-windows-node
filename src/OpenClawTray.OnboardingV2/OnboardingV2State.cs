@@ -177,8 +177,19 @@ public sealed class OnboardingV2State
     public bool LaunchAtStartup
     {
         get => _launchAtStartup;
-        set { if (_launchAtStartup != value) { _launchAtStartup = value; NotifyChanged(); } }
+        set
+        {
+            if (_launchAtStartup != value)
+            {
+                _launchAtStartup = value;
+                LaunchAtStartupChanged?.Invoke(this, EventArgs.Empty);
+                NotifyChanged();
+            }
+        }
     }
+
+    /// <summary>Raised specifically when <see cref="LaunchAtStartup"/> changes (so the host can persist Settings.AutoStart without subscribing to all StateChanged events).</summary>
+    public event EventHandler? LaunchAtStartupChanged;
 
     /// <summary>
     /// Per-permission row, replacing the all-granted hard-coded list in

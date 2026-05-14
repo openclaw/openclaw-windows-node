@@ -25,6 +25,10 @@ namespace OpenClawTray.Onboarding;
 /// </summary>
 public sealed class OnboardingWindow : WindowEx
 {
+    private bool _useV2;
+    private OpenClawTray.Onboarding.V2.OnboardingV2State? _v2State;
+    private OpenClawTray.Onboarding.V2.OnboardingV2Bridge? _v2Bridge;
+
     public event EventHandler? OnboardingCompleted;
     public bool Completed { get; private set; }
 
@@ -69,6 +73,15 @@ public sealed class OnboardingWindow : WindowEx
         {
             LocalizationHelper.SetLanguageOverride(testLocale);
         }
+
+        // V2 onboarding redesign: mount OnboardingV2App + a bridge to existing
+        // services. Set OPENCLAW_USE_V2_SETUP=0 to force the legacy flow (kept
+        // as the Advanced-setup fallback and as a kill-switch for one cycle).
+        // The legacy fields below are still initialised so the legacy fallback
+        // (open-on-Connection from Welcome's Advanced link) works without
+        // re-running this constructor.
+        _useV2 = Environment.GetEnvironmentVariable("OPENCLAW_USE_V2_SETUP") != "0"
+              && Environment.GetEnvironmentVariable("OPENCLAW_ONBOARDING_START_ROUTE") != "Connection";
 
         Title = LocalizationHelper.GetString("Onboarding_Title");
         ExtendsContentIntoTitleBar = true;
@@ -126,11 +139,53 @@ public sealed class OnboardingWindow : WindowEx
         }
 
         _host = new FunctionalHostControl();
-        _host.Mount(ctx =>
+        if (_useV2)
         {
-            var (s, _) = ctx.UseState(_state);
-            return Factories.Component<OnboardingApp, OnboardingState>(s);
-        });
+            // Mount the V2 onboarding component tree. The bridge below wires
+            // engine + permission-checker + settings into the V2 state object
+            // so the new UI renders against real data without touching any
+            // service code.
+            _v2State = new OpenClawTray.Onboarding.V2.OnboardingV2State();
+            _v2State.NodeModeActive = settings.EnableNodeMode;
+
+            // Route V2Strings through the existing LocalizationHelper so V2
+            // text comes from the same .resw resources as legacy strings.
+            // Falls back to V2Strings.DefaultEnUs when a key is missing or
+            // the resource resolver returns the key itself (treated as miss).
+            OpenClawTray.Onboarding.V2.V2Strings.Resolver = LocalizationHelper.GetString;
+
+            _host.Mount(ctx =>
+            {
+                var (s, _) = ctx.UseState(_v2State);
+                return Factories.Component<
+                    OpenClawTray.Onboarding.V2.OnboardingV2App,
+                    OpenClawTray.Onboarding.V2.OnboardingV2State>(s);
+            });
+
+            _v2Bridge = new OpenClawTray.Onboarding.V2.OnboardingV2Bridge(
+                state: _v2State,
+                settings: settings,
+                dispatcher: _dispatcherQueue,
+                engineFactory: replaceConfirmed =>
+                    ((App)Application.Current).CreateLocalGatewaySetupEngine(replaceConfirmed));
+            _v2Bridge.AdvancedSetupRequested += (_, _) => OpenLegacyAdvancedSetup();
+            _v2Bridge.Finished += (_, _) =>
+            {
+                if (TryCompleteOnboarding())
+                {
+                    Close();
+                }
+            };
+            _v2Bridge.Start();
+        }
+        else
+        {
+            _host.Mount(ctx =>
+            {
+                var (s, _) = ctx.UseState(_state);
+                return Factories.Component<OnboardingApp, OnboardingState>(s);
+            });
+        }
 
         // Build the chat overlay (hidden by default)
         // Leave bottom 60px uncovered so the functional UI nav bar (Back/Next/dots) is visible and clickable
@@ -579,6 +634,9 @@ public sealed class OnboardingWindow : WindowEx
         // launch when a model has been configured, matching the Finish-button behavior.
         _ = TryCompleteOnboarding();
 
+        try { _v2Bridge?.Dispose(); } catch { /* ignore */ }
+        _v2Bridge = null;
+
         if (_stateDisposed) return;
         _stateDisposed = true;
         _state.Finished -= OnOnboardingFinished;
@@ -588,6 +646,31 @@ public sealed class OnboardingWindow : WindowEx
             _state.GatewayClient = null;
         }
         _state.Dispose();
+    }
+
+    /// <summary>
+    /// Called when V2 Welcome page's "Advanced setup" link fires. Tears down
+    /// the V2 mount, swaps the host to the legacy <see cref="OnboardingApp"/>,
+    /// jumps straight to the Connection page (Phase 6 of the legacy flow),
+    /// and from there the user follows the existing Advanced flow to
+    /// completion. The legacy <see cref="OnboardingState"/> remains valid (it
+    /// was constructed up-front).
+    /// </summary>
+    private void OpenLegacyAdvancedSetup()
+    {
+        try { _v2Bridge?.Dispose(); } catch { /* ignore */ }
+        _v2Bridge = null;
+        _v2State = null;
+        _useV2 = false;
+
+        _state.SetupPath = SetupPath.Advanced;
+        _state.CurrentRoute = OnboardingRoute.Connection;
+
+        _host.Mount(ctx =>
+        {
+            var (s, _) = ctx.UseState(_state);
+            return Factories.Component<OnboardingApp, OnboardingState>(s);
+        });
     }
 
     /// <summary>
@@ -604,7 +687,10 @@ public sealed class OnboardingWindow : WindowEx
     private bool TryCompleteOnboarding()
     {
         if (_completionDispatched) return true;
-        var finishedFromReady = _state.CurrentRoute == OnboardingRoute.Ready;
+        // V2 path: AllSet replaces legacy Ready as the "finish was clicked from
+        // the terminal page" gate.
+        var finishedFromReady = _state.CurrentRoute == OnboardingRoute.Ready
+            || (_useV2 && _v2State?.CurrentRoute == OpenClawTray.Onboarding.V2.V2Route.AllSet);
         var dataPath = _identityDataPath ?? SettingsManager.SettingsDirectoryPath;
         var setupStillRequired = StartupSetupState.RequiresSetup(_settings, dataPath);
         if (OnboardingCompletionPolicy.Decide(_state.CurrentRoute, setupStillRequired) == OnboardingCompletionOutcome.BlockIncompleteReady)
