@@ -198,10 +198,28 @@ public sealed class OnboardingV2Bridge : IDisposable
             return;
         }
 
+        Logger.Info($"[V2Bridge] Subscribing to engine.StateChanged + starting RunLocalOnlyAsync");
         _engine.StateChanged += OnEngineStateChanged;
         try
         {
             _runTask = _engine.RunLocalOnlyAsync();
+            // Belt-and-braces auto-advance: the StateChanged event chain is
+            // best-effort (cross-thread, multiple subscribers). Watch the
+            // run task itself so we always advance V2 when the engine
+            // finishes, even if a transient StateChanged subscription
+            // problem swallowed the final Complete tick.
+            _runTask.ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully && t.Result is { } finalState)
+                {
+                    Logger.Info($"[V2Bridge] RunLocalOnlyAsync completed: phase={finalState.Phase} status={finalState.Status}");
+                    OnEngineStateChanged(finalState);
+                }
+                else if (t.IsFaulted)
+                {
+                    Logger.Error($"[V2Bridge] RunLocalOnlyAsync faulted: {t.Exception?.GetBaseException().Message}");
+                }
+            }, TaskScheduler.Default);
         }
         catch (Exception ex)
         {
@@ -233,21 +251,28 @@ public sealed class OnboardingV2Bridge : IDisposable
             ? V2Route.GatewayWelcome
             : (V2Route?)null;
 
+        Logger.Info($"[V2Bridge] OnEngineStateChanged: phase={phase} status={status} routeAfterComplete={routeAfterComplete}");
+
         DispatchToUi(() =>
         {
+            var routeBefore = _state.CurrentRoute;
             _state.LocalSetupRows = rows;
             _state.LocalSetupErrorMessage = errorMessage;
-
-            // The engine may have flipped Settings.EnableNodeMode mid-run
-            // (PairAsync sets it to true once node-pair completes). Mirror
-            // that into V2 state so the AllSet page renders the correct
-            // Node-Mode warning state regardless of when we sample.
             _state.NodeModeActive = _settings.EnableNodeMode || _state.NodeModeActive;
 
-            if (routeAfterComplete is { } next && _state.CurrentRoute == V2Route.LocalSetupProgress)
+            if (routeAfterComplete is { } next)
             {
-                _state.CurrentRoute = next;
-                _state.RequestAdvance();
+                Logger.Info($"[V2Bridge] Engine complete; CurrentRoute before advance = {routeBefore}");
+                if (_state.CurrentRoute == V2Route.LocalSetupProgress
+                    || _state.CurrentRoute == V2Route.Welcome)
+                {
+                    Logger.Info($"[V2Bridge] Auto-advancing V2 to {next}");
+                    _state.CurrentRoute = next;
+                }
+                else
+                {
+                    Logger.Info($"[V2Bridge] Skipping auto-advance; user is on {_state.CurrentRoute}");
+                }
             }
         });
     }
