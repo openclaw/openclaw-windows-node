@@ -70,7 +70,7 @@ public sealed class WelcomePage : Component<OnboardingV2State>
                 b.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
                 b.FontSize = 14;
                 b.HorizontalContentAlignment = HorizontalAlignment.Center;
-                b.UseSystemFocusVisuals = false;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Welcome_SetUpLocally");
                 b.BorderThickness = new Thickness(0);
                 b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
                 b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x52, 0xB0, 0xDA));

@@ -184,7 +184,7 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .Set(b =>
                 {
                     b.Foreground = new SolidColorBrush(Microsoft.UI.Colors.White);
-                    b.UseSystemFocusVisuals = false;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Progress_TryAgain");
                     b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x55, 0x1B, 0x20));
                     b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x65, 0x25, 0x2A));
                     b.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x45, 0x15, 0x18));

@@ -125,7 +125,12 @@ public sealed class AllSetPage : Component<OnboardingV2State>
             ToggleSwitch(isOn, v => onToggle(v), onContent: "", offContent: "")
                 .HAlign(HorizontalAlignment.Right)
                 .VAlign(VerticalAlignment.Center)
-                .Set(t => t.MinWidth = 0)
+                .Set(t =>
+                {
+                    t.MinWidth = 0;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(t, "V2_AllSet_LaunchAtStartup");
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(t, V2Strings.Get("V2_AllSet_StartupQuestion"));
+                })
                 .Grid(row: 0, column: 2)
         );
     }

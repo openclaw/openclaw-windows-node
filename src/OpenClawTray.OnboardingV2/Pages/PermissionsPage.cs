@@ -62,7 +62,7 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
                 b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                 b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
                 b.FontSize = 14;
-                b.UseSystemFocusVisuals = false;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Permissions_Refresh");
                 b.Padding = new Thickness(20, 10, 20, 10);
                 b.CornerRadius = new CornerRadius(8);
                 b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x2C, 0x2C, 0x2C));
@@ -141,7 +141,7 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
                       b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                       b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
                       b.FontSize = 14;
-                      b.UseSystemFocusVisuals = false;
+                      Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Permissions_OpenSettings");
                       b.Padding = new Thickness(8, 6, 8, 6);
                       b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                       b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 0xFF, 0xFF, 0xFF));

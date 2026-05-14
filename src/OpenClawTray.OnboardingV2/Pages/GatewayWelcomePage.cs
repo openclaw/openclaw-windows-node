@@ -59,7 +59,7 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
                 b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                 b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));
                 b.FontSize = 14;
-                b.UseSystemFocusVisuals = false;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Gateway_AdvancedSetup");
                 b.Padding = new Thickness(8, 4, 8, 4);
                 b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                 b.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 0x60, 0xC8, 0xF8));

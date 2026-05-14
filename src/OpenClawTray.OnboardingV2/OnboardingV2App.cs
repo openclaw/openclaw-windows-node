@@ -158,12 +158,14 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
                 Button(V2Strings.Get("V2_Nav_Back"), onBack)
                     .Width(120)
                     .Height(40)
-                    .Disabled(pageIndex == 0),
+                    .Disabled(pageIndex == 0)
+                    .Set(b => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, "V2_Nav_Back")),
                 Button(nextLabel, onNext)
                     .Width(120)
                     .Height(40)
                     .Set(b =>
                     {
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(b, isLast ? "V2_Nav_Finish" : "V2_Nav_Next");
                         b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0, 0, 0));
                         b.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
                         b.Resources["ButtonBackground"] = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x60, 0xC8, 0xF8));

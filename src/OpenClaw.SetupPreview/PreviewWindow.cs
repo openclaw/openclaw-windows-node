@@ -128,10 +128,30 @@ internal sealed class PreviewWindow : WindowEx
         _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         // Custom title bar: small lobster icon + "OpenClaw Setup"
-        // text. The right-hand 138 DIPs are reserved for the system min/
-        // max/close buttons (CaptionButton width is ~46 each at 100% DPI).
+        // text. Reserve the right-hand inset for the system caption
+        // buttons. AppWindow.TitleBar.RightInset is in physical pixels;
+        // convert to DIPs using XamlRoot.RasterizationScale (set after
+        // the host has loaded). Fall back to a sensible default at 100%
+        // DPI (~138 DIP) until the first SizeChanged.
         var titleBar = new Grid { Padding = new Thickness(14, 0, 138, 0) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleBar, "OpenClaw Setup title bar");
+
+        void UpdateTitleBarPadding()
+        {
+            try
+            {
+                var rightInsetPx = AppWindow?.TitleBar?.RightInset ?? 0;
+                var scale = _host?.XamlRoot?.RasterizationScale ?? 1.0;
+                if (scale <= 0) scale = 1.0;
+                var rightInsetDip = rightInsetPx > 0 ? rightInsetPx / scale : 138;
+                titleBar.Padding = new Thickness(14, 0, rightInsetDip, 0);
+            }
+            catch
+            {
+                // Non-fatal: leave the fallback padding.
+            }
+        }
+        AppWindow.Changed += (_, _) => UpdateTitleBarPadding();
         var lobster = new Image
         {
             Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/Lobster.png")),
@@ -161,6 +181,8 @@ internal sealed class PreviewWindow : WindowEx
         Grid.SetRow(_host, 1);
         _rootGrid.Children.Add(_host);
         Content = _rootGrid;
+
+        _host.Loaded += (_, _) => UpdateTitleBarPadding();
 
         if (_captureMode)
         {
