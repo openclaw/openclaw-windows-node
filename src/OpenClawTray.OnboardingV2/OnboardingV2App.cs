@@ -41,28 +41,26 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
 
     public override Element Render()
     {
-        var initialIdx = Math.Max(0, Array.IndexOf(PageOrder, Props.CurrentRoute));
-        var nav = UseNavigation(PageOrder[initialIdx]);
-        var (pageIndex, setPageIndex) = UseState(initialIdx);
+        // Props.CurrentRoute is the SINGLE source of truth for V2 navigation.
+        // pageIndex is derived from it on every render, so external mutations
+        // (the host bridge advancing on engine completion, or the
+        // bridge-back from legacy Advanced) drive V2 re-render correctly,
+        // and V2 self-navigation (GoNext/GoBack) writes back to
+        // Props.CurrentRoute so the bridge can observe what page V2 is
+        // currently showing. Earlier versions used a separate UseState for
+        // pageIndex which created two sources of truth and broke both
+        // directions of sync intermittently.
+        var pageIndex = Math.Max(0, Array.IndexOf(PageOrder, Props.CurrentRoute));
+        var nav = UseNavigation(PageOrder[pageIndex]);
         var (renderTick, setRenderTick) = UseState(0);
 
-        // Track the previous Props.CurrentRoute so we can detect external
-        // navigation requests (e.g., the host re-mounted us at GatewayWelcome
-        // after the legacy Advanced/Connection flow). Earlier versions
-        // pushed pageIndex back onto Props.CurrentRoute on every render —
-        // that overwrote external changes and broke the bridge-back from
-        // legacy. Now V2 is the source of truth for its own pageIndex,
-        // but it re-syncs from Props.CurrentRoute when the host nudges it.
-        var (lastRouteSeen, setLastRouteSeen) = UseState(Props.CurrentRoute);
-        if (!Equals(Props.CurrentRoute, lastRouteSeen))
+        // Drive nav transitions when Props.CurrentRoute changes (either via
+        // GoNext/GoBack below or from outside V2).
+        var (lastNavRoute, setLastNavRoute) = UseState(Props.CurrentRoute);
+        if (!Equals(lastNavRoute, Props.CurrentRoute))
         {
-            setLastRouteSeen(Props.CurrentRoute);
-            var requested = Array.IndexOf(PageOrder, Props.CurrentRoute);
-            if (requested >= 0 && requested != pageIndex)
-            {
-                setPageIndex(requested);
-                nav.Navigate(PageOrder[requested]);
-            }
+            setLastNavRoute(Props.CurrentRoute);
+            nav.Navigate(Props.CurrentRoute);
         }
 
         void GoNext()
@@ -72,17 +70,13 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
                 Props.RaiseFinished();
                 return;
             }
-            var next = pageIndex + 1;
-            setPageIndex(next);
-            nav.Navigate(PageOrder[next]);
+            Props.CurrentRoute = PageOrder[pageIndex + 1];
         }
 
         void GoBack()
         {
             if (pageIndex == 0) return;
-            var prev = pageIndex - 1;
-            setPageIndex(prev);
-            nav.GoBack();
+            Props.CurrentRoute = PageOrder[pageIndex - 1];
         }
 
         // Subscribe to programmatic navigation requests from pages.
