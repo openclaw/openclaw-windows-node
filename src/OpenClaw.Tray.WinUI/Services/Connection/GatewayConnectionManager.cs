@@ -31,6 +31,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private bool _disposed;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
     private string? _lastAutoApprovedRequestId; // prevent auto-approve loops
+    private string? _autoApproveInFlight; // atomic guard against concurrent approval of same requestId
 
     public event EventHandler<GatewayConnectionSnapshot>? StateChanged;
     public event EventHandler<ConnectionDiagnosticEvent>? DiagnosticEvent;
@@ -709,39 +710,52 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
             && e.RequestId != _lastAutoApprovedRequestId)
         {
-            var operatorClient = _activeLifecycle?.DataClient;
-            if (operatorClient?.IsConnectedToGateway == true)
+            // Atomic guard: only one approval in-flight at a time.
+            // If another approval is already running, skip this one entirely.
+            if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
             {
-                var scopes = operatorClient.GrantedOperatorScopes;
-                var canApprove = scopes.Any(s =>
-                    s.Equals("operator.admin", StringComparison.OrdinalIgnoreCase) ||
-                    s.Equals("operator.pairing", StringComparison.OrdinalIgnoreCase));
+                return;
+            }
 
-                if (canApprove)
+            try
+            {
+                var operatorClient = _activeLifecycle?.DataClient;
+                if (operatorClient?.IsConnectedToGateway == true)
                 {
-                    _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
-                    try
+                    var scopes = operatorClient.GrantedOperatorScopes;
+                    var canApprove = scopes.Any(s =>
+                        s.Equals("operator.admin", StringComparison.OrdinalIgnoreCase) ||
+                        s.Equals("operator.pairing", StringComparison.OrdinalIgnoreCase));
+
+                    if (canApprove)
                     {
-                        var approved = await operatorClient.DevicePairApproveAsync(e.RequestId);
-                        if (approved)
+                        _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
+                        try
                         {
-                            // Only set guard after confirmed success to allow retry on transient failure
-                            _lastAutoApprovedRequestId = e.RequestId;
-                            _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
-                            await Task.Delay(1000); // brief delay for gateway to process
-                            await StartNodeConnectionAsync();
+                            var approved = await operatorClient.NodePairApproveAsync(e.RequestId);
+                            if (approved)
+                            {
+                                _lastAutoApprovedRequestId = e.RequestId;
+                                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
+                                await Task.Delay(1000); // brief delay for gateway to process
+                                await StartNodeConnectionAsync();
+                            }
+                            else
+                            {
+                                _diagnostics.Record("node", "Node auto-approval failed");
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            _diagnostics.Record("node", "Node auto-approval failed");
+                            _logger.Warn($"[ConnMgr] Node auto-approve failed: {ex.Message}");
+                            _diagnostics.Record("node", $"Auto-approve error: {ex.Message}");
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Warn($"[ConnMgr] Node auto-approve failed: {ex.Message}");
-                        _diagnostics.Record("node", $"Auto-approve error: {ex.Message}");
                     }
                 }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _autoApproveInFlight, null);
             }
         }
     }
@@ -805,6 +819,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var old = _activeLifecycle;
         _activeLifecycle = null;
         _activeGatewayRecordId = null;
+        _lastAutoApprovedRequestId = null;
+        Interlocked.Exchange(ref _autoApproveInFlight, null);
         if (old != null)
         {
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs

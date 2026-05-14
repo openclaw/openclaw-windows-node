@@ -420,6 +420,8 @@ public sealed class NodeService : IDisposable
             capabilitiesBuilt = _capabilities.Count > 0;
         }
 
+        _logger.Info($"[NodeService] AttachClient: capabilitiesBuilt={capabilitiesBuilt}, _capabilities.Count={_capabilities.Count}");
+
         // First connect after app startup may not have built capability objects yet.
         // RegisterCapabilities() populates _capabilities and registers them on _nodeClient.
         if (!capabilitiesBuilt)
@@ -446,6 +448,9 @@ public sealed class NodeService : IDisposable
             }
             _logger.Info($"[NodeService] AttachClient: re-registered {_capabilities.Count} capabilities on new client");
         }
+
+        // Log final registration state for diagnostics
+        _logger.Info($"[NodeService] AttachClient DONE: client.Registration.Capabilities={client.RegisteredCapabilityCount}, client.Registration.Commands={client.RegisteredCommandCount}");
     }
 
     /// <summary>

@@ -196,7 +196,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
-    public bool IsConnectedToGateway => IsConnected;
+    public virtual bool IsConnectedToGateway => IsConnected;
 
     public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null)
         : base(gatewayUrl, token, logger)
@@ -686,7 +686,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         await SendTrackedRequestAsync("node.pair.list");
     }
 
-    public Task<bool> NodePairApproveAsync(string requestId)
+    public virtual Task<bool> NodePairApproveAsync(string requestId)
     {
         return TrySendTrackedRequestAsync("node.pair.approve", new { requestId });
     }
@@ -797,7 +797,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         await SendTrackedRequestAsync("device.pair.list");
     }
 
-    public Task<bool> DevicePairApproveAsync(string requestId)
+    public virtual Task<bool> DevicePairApproveAsync(string requestId)
     {
         return TrySendTrackedRequestAsync("device.pair.approve", new { requestId });
     }

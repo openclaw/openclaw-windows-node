@@ -153,7 +153,11 @@ public sealed partial class HubWindow : WindowEx
             if (item is NavigationViewItem navItem)
             {
                 if (navItem.Tag as string == tag) { NavView.SelectedItem = navItem; return true; }
-                if (navItem.MenuItems.Count > 0 && FindAndSelectNavItem(navItem.MenuItems, tag)) return true;
+                if (navItem.MenuItems.Count > 0 && FindAndSelectNavItem(navItem.MenuItems, tag))
+                {
+                    navItem.IsExpanded = true;
+                    return true;
+                }
             }
         }
         return false;
