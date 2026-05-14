@@ -70,6 +70,11 @@ internal sealed class PreviewWindow : WindowEx
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _state = new OnboardingV2State();
 
+        // Non-functional preview defaults: show the Node-Mode-Active warning
+        // on the All Set page (the design's default state). Env vars below
+        // can override this for capture scenarios that test the no-node variant.
+        _state.NodeModeActive = true;
+
         ApplyEnvOverrides(_state);
         _captureMode = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_CAPTURE") == "1";
         _capturePath = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_CAPTURE_PATH");
@@ -95,6 +100,13 @@ internal sealed class PreviewWindow : WindowEx
             presenter.IsResizable = false;
             presenter.IsMaximizable = false;
         }
+
+        // Force Windows 11 rounded corners on the window. Setting
+        // SystemBackdrop = null above unhooks the default Mica path that
+        // normally rounds the frame, leaving square corners. DWM's
+        // WINDOW_CORNER_PREFERENCE attribute (Windows 11 build 22000+)
+        // restores the rounded look without bringing back the Mica fill.
+        TryApplyRoundedCorners();
 
         // Make the system min/max/close buttons match our dark palette.
         if (AppWindow.TitleBar is { } systemTitleBar)
@@ -191,6 +203,114 @@ internal sealed class PreviewWindow : WindowEx
                 await CaptureAndExitAsync();
             };
         }
+        else
+        {
+            // Interactive preview: drive a fake stage progression so designers
+            // can walk through the LocalSetupProgress checklist without a real
+            // gateway install. Skipped if a frozen / failed stage env override
+            // is set (those are deterministic capture scenarios).
+            var hasFrozen = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_PROGRESS_FROZEN_STAGE"));
+            var hasFail = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_FAIL_STAGE"));
+            if (!hasFrozen && !hasFail)
+            {
+                _host.Loaded += (_, _) => StartFakeStageProgression();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Apply Windows 11 rounded-corner preference via DWM. No-op (and silent)
+    /// on Windows 10 — the attribute simply isn't recognised.
+    /// </summary>
+    private void TryApplyRoundedCorners()
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            int pref = DWMWCP_ROUND;
+            _ = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
+        }
+        catch
+        {
+            // Non-fatal: square corners are an acceptable fallback.
+        }
+    }
+
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_ROUND = 2;
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int pvAttribute, int cbAttribute);
+
+    private DispatcherQueueTimer? _fakeStageTimer;
+
+    /// <summary>
+    /// Walk the LocalSetupProgress checklist by promoting one row at a time:
+    /// the current spinner row turns into a checkmark, then the next idle
+    /// row spins. Loops at the end so a designer can keep watching without
+    /// restarting the app. ~900 ms per transition feels close to a real WSL
+    /// install but fast enough for design feedback.
+    /// </summary>
+    private void StartFakeStageProgression()
+    {
+        if (_fakeStageTimer is not null) return;
+
+        // Seed: first stage spinning, the rest idle.
+        var stages = Enum.GetValues<OnboardingV2State.LocalSetupStage>();
+        var seed = new Dictionary<OnboardingV2State.LocalSetupStage, OnboardingV2State.LocalSetupRowState>();
+        for (int i = 0; i < stages.Length; i++)
+        {
+            seed[stages[i]] = i == 0
+                ? OnboardingV2State.LocalSetupRowState.Running
+                : OnboardingV2State.LocalSetupRowState.Idle;
+        }
+        _state.LocalSetupRows = seed;
+
+        _fakeStageTimer = _dispatcherQueue.CreateTimer();
+        _fakeStageTimer.Interval = TimeSpan.FromMilliseconds(900);
+        _fakeStageTimer.IsRepeating = true;
+        _fakeStageTimer.Tick += (_, _) => AdvanceFakeStage();
+        _fakeStageTimer.Start();
+    }
+
+    private void AdvanceFakeStage()
+    {
+        var stages = Enum.GetValues<OnboardingV2State.LocalSetupStage>();
+        var rows = new Dictionary<OnboardingV2State.LocalSetupStage, OnboardingV2State.LocalSetupRowState>(_state.LocalSetupRows);
+
+        // Find the currently-running row (if any) and promote it to Done; then
+        // start the next idle row spinning. If there's no idle row left, loop
+        // by resetting back to "stage 0 spinning, rest idle" after a brief pause.
+        int runningIndex = -1;
+        for (int i = 0; i < stages.Length; i++)
+        {
+            if (rows[stages[i]] == OnboardingV2State.LocalSetupRowState.Running)
+            {
+                runningIndex = i;
+                break;
+            }
+        }
+
+        if (runningIndex == -1)
+        {
+            // Loop back to the start so the demo keeps going.
+            for (int i = 0; i < stages.Length; i++)
+            {
+                rows[stages[i]] = i == 0
+                    ? OnboardingV2State.LocalSetupRowState.Running
+                    : OnboardingV2State.LocalSetupRowState.Idle;
+            }
+            _state.LocalSetupRows = rows;
+            return;
+        }
+
+        rows[stages[runningIndex]] = OnboardingV2State.LocalSetupRowState.Done;
+        var nextIndex = runningIndex + 1;
+        if (nextIndex < stages.Length)
+        {
+            rows[stages[nextIndex]] = OnboardingV2State.LocalSetupRowState.Running;
+        }
+        _state.LocalSetupRows = rows;
     }
 
     private static void ApplyEnvOverrides(OnboardingV2State state)

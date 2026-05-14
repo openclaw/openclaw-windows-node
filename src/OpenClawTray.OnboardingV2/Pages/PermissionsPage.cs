@@ -2,9 +2,44 @@ using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using static OpenClawTray.FunctionalUI.Factories;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
 namespace OpenClawTray.Onboarding.V2.Pages;
+
+/// <summary>
+/// Helper: build a button content panel with a Segoe Fluent Icons glyph
+/// followed by a label. Used by the Permissions page's "Open Settings"
+/// and "Refresh status" affordances so the icons are crisp and properly
+/// sized (matches Dialog-5 — Unicode-symbol fallbacks render too small).
+/// </summary>
+internal static class GlyphButtonContent
+{
+    public static StackPanel Build(string glyph, string label, double glyphSize = 16, double spacing = 8)
+    {
+        var stack = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var glyphTb = new TextBlock
+        {
+            Text = glyph,
+            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontSize = glyphSize,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, spacing, 0),
+        };
+        var labelTb = new TextBlock
+        {
+            Text = label,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        stack.Children.Add(glyphTb);
+        stack.Children.Add(labelTb);
+        return stack;
+    }
+}
 
 /// <summary>
 /// Grant permissions page (Dialog-5).
@@ -53,11 +88,15 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
         }
 
         var refreshLink = Button(
-            $"\u21BB  {V2Strings.Get("V2_Permissions_Refresh")}",
+            V2Strings.Get("V2_Permissions_Refresh"),
             () => { /* page-permissions wiring later */ })
             .HAlign(HorizontalAlignment.Right)
             .Set(b =>
             {
+                // Segoe Fluent Icons "Refresh" (\uE72C) — circular arrow at
+                // 16pt, paired with the label, so the glyph reads at the
+                // same size as the comp instead of the tiny U+21BB.
+                b.Content = GlyphButtonContent.Build("\uE72C", V2Strings.Get("V2_Permissions_Refresh"), glyphSize: 16);
                 b.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0x2C, 0x2C, 0x2C));
                 b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                 b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));
@@ -133,10 +172,13 @@ public sealed class PermissionsPage : Component<OnboardingV2State>
             // Open Settings link (omitted for Screen Capture per design)
             row.ShowOpenSettings
                 ? Button(
-                    $"\u2197  {V2Strings.Get("V2_Permissions_OpenSettings")}",
+                    V2Strings.Get("V2_Permissions_OpenSettings"),
                     () => { /* page-permissions wiring later */ })
                   .Set(b =>
                   {
+                      // Segoe Fluent Icons "OpenInNewWindow" (\uE8A7) —
+                      // square-with-arrow icon that matches Dialog-5.
+                      b.Content = GlyphButtonContent.Build("\uE8A7", V2Strings.Get("V2_Permissions_OpenSettings"), glyphSize: 16);
                       b.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                       b.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
                       b.Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0));

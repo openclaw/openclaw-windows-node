@@ -145,13 +145,15 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
         int dotActive = Math.Max(0, pageIndex - 1);
 
         // Three-column grid: dots (left, auto), spacer (star), buttons (right, auto).
+        // Outer Padding pulls the chrome ~60 DIP in from each window edge so the
+        // dots and Back/Next buttons sit visually inside the dialog instead of
+        // hugging the window border.
         var bar = Grid(
             new[] { "auto", "*", "auto" },
             new[] { "auto" },
             Component<StepDots, StepDotsProps>(new StepDotsProps(dotCount, dotActive))
                 .HAlign(HorizontalAlignment.Left)
                 .VAlign(VerticalAlignment.Center)
-                .Margin(40, 0, 0, 0)
                 .Grid(row: 0, column: 0),
 
             HStack(12,
@@ -178,11 +180,10 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
             )
             .HAlign(HorizontalAlignment.Right)
             .VAlign(VerticalAlignment.Center)
-            .Margin(0, 0, 40, 0)
             .Grid(row: 0, column: 2)
         )
         .HAlign(HorizontalAlignment.Stretch)
-        .Padding(0, 24, 0, 32);
+        .Padding(60, 24, 60, 32);
 
         return bar.Set(s =>
         {
