@@ -13,7 +13,13 @@ namespace OpenClawTray.Onboarding.Services;
 /// </summary>
 public sealed class OnboardingExistingConfigGuard
 {
-    private const string DefaultGatewayUrl = "ws://localhost:18789";
+    /// <summary>
+    /// Default loopback gateway URL. Single source of truth — also referenced by
+    /// <c>StartupSetupState.HasNonDefaultGatewayUrl</c>. If you change this, the
+    /// invariant test <c>StartupSetupStateTests.DefaultGatewayUrl_MatchesGuardConstant</c>
+    /// will catch drift.
+    /// </summary>
+    public const string DefaultGatewayUrl = "ws://localhost:18789";
     private readonly SettingsManager _settings;
     private readonly string _identityDataPath;
     private readonly string _setupStatePath;
@@ -50,10 +56,51 @@ public sealed class OnboardingExistingConfigGuard
             HasBootstrapToken: false,
             HasNonDefaultGatewayUrl: !string.IsNullOrWhiteSpace(_settings.GatewayUrl)
                 && !string.Equals(_settings.GatewayUrl, DefaultGatewayUrl, StringComparison.OrdinalIgnoreCase),
-            HasOperatorDeviceToken: DeviceIdentity.HasStoredDeviceToken(_identityDataPath),
+            HasOperatorDeviceToken: HasAnyOperatorDeviceToken(_identityDataPath),
             HasNodeDeviceToken: DeviceIdentity.HasStoredDeviceTokenForRole(_identityDataPath, "node"),
             HasCompletedOrRunningSetupState: ReadSetupStateIsActive(_setupStatePath),
             HasWslDistro: false);
+    }
+
+    /// <summary>
+    /// Scans both the legacy root identity and per-gateway identity directories
+    /// for an operator device token. Modern pairings (post-GatewayRegistry)
+    /// write tokens to <c>&lt;dataPath&gt;/gateways/&lt;gatewayId&gt;/device-key-ed25519.json</c>
+    /// via <c>DeviceIdentityStore</c>; the legacy root file is kept by migration
+    /// but is NOT created by fresh pairings. Single source of truth shared with
+    /// <c>StartupSetupState</c> so the startup auto-launch decision and the
+    /// in-wizard "existing configuration" warning agree.
+    /// </summary>
+    public static bool HasAnyOperatorDeviceToken(string dataPath)
+    {
+        if (DeviceIdentity.HasStoredDeviceToken(dataPath, NullLogger.Instance))
+        {
+            return true;
+        }
+
+        var gatewaysDir = Path.Combine(dataPath, "gateways");
+        if (!Directory.Exists(gatewaysDir))
+        {
+            return false;
+        }
+
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories(gatewaysDir))
+            {
+                if (DeviceIdentity.HasStoredDeviceToken(dir, NullLogger.Instance))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort scan — IO/permission failure should not silently allow
+            // the wizard to be skipped, so fall through to "no usable token".
+        }
+
+        return false;
     }
 
     /// <summary>

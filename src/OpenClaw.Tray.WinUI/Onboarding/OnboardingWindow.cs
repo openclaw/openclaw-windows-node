@@ -100,17 +100,21 @@ public sealed class OnboardingWindow : WindowEx
         _state = new OnboardingState(settings);
         _state.Finished += OnOnboardingFinished;
         _state.RouteChanged += OnRouteChanged;
+        _state.Dismissed += OnOnboardingDismissed;
 
-        // Construct the existing-config guard and apply returning-user defaults.
-        // When existing config is detected, default SetupPath to Advanced so the
-        // user lands on the SetupWarning page with Next enabled (→ Connection page)
-        // rather than the local setup path. The warn-and-confirm gate on
-        // SetupWarningPage protects the "Set up locally" button.
+        // Construct the existing-config guard for returning users. The
+        // <see cref="SetupWarningPage"/> uses this to render the warn-and-confirm
+        // ("Replace my setup" / "Keep my setup") section when prior credentials,
+        // a non-default gateway URL, or a completed setup-state file is present.
+        //
+        // We intentionally do NOT preselect SetupPath here. Leaving it null keeps
+        // the global nav-bar Next button disabled on SetupWarning so the user MUST
+        // pick one of the three explicit choices ("Replace my setup", "Keep my
+        // setup", or "Advanced setup") — eliminating the accidental Next-into-setup
+        // path Scott Hanselman hit when clicking "Keep my setup".
         if (identityDataPath != null)
         {
             _state.ExistingConfigGuard = new OnboardingExistingConfigGuard(settings, identityDataPath);
-            if (_state.ExistingConfigGuard.HasExistingConfiguration())
-                _state.SetupPath = SetupPath.Advanced;
         }
 
         // Optional override for visual tests / engineering: jump straight to a route.
@@ -708,12 +712,47 @@ public sealed class OnboardingWindow : WindowEx
         _ = ShowIncompleteSetupDialogAsync();
     }
 
+    /// <summary>
+    /// Set when the user explicitly dismisses the wizard via
+    /// <see cref="OnboardingState.Dismiss"/> (e.g., "Keep my setup" on the
+    /// SetupWarning page). <see cref="OnClosed"/> consults this to skip the
+    /// completion pipeline so existing settings and gateway connection are
+    /// preserved untouched.
+    /// </summary>
+    private bool _dismissedWithoutCompletion;
+
+    private void OnOnboardingDismissed(object? sender, EventArgs e)
+    {
+        Logger.Info("[OnboardingWindow] Dismissed by user (keep-existing-setup) — closing without completing");
+        _dismissedWithoutCompletion = true;
+        try
+        {
+            Close();
+        }
+        catch (Exception ex)
+        {
+            // If Close() fails the window is still alive. Reset the guard so a
+            // subsequent X-button or normal Finish path is NOT permanently
+            // suppressed (otherwise TryCompleteOnboarding becomes unreachable
+            // for the lifetime of this window).
+            _dismissedWithoutCompletion = false;
+            Logger.Warn($"[OnboardingWindow] Close after dismiss threw: {ex.Message}");
+        }
+    }
+
     private void OnClosed(object sender, WindowEventArgs args)
     {
         // X button path: also runs TryCompleteOnboarding (idempotent via _completionDispatched)
         // so a user who clicks the title-bar X on the Ready page still gets the chat-window
         // launch when a model has been configured, matching the Finish-button behavior.
-        _ = TryCompleteOnboarding();
+        //
+        // Skipped entirely when the user explicitly dismissed via "Keep my setup" — that
+        // path must NOT mark onboarding complete, must NOT fire OnboardingCompleted, and
+        // must NOT touch settings/AutoStart so the prior gateway connection is preserved.
+        if (!_dismissedWithoutCompletion)
+        {
+            _ = TryCompleteOnboarding();
+        }
 
         try { _v2Bridge?.Dispose(); } catch { /* ignore */ }
         _v2Bridge = null;
@@ -722,6 +761,7 @@ public sealed class OnboardingWindow : WindowEx
         _stateDisposed = true;
         _state.Finished -= OnOnboardingFinished;
         _state.RouteChanged -= OnRouteChanged;
+        _state.Dismissed -= OnOnboardingDismissed;
         if (Completed)
         {
             _state.GatewayClient = null;
