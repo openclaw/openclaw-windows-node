@@ -124,11 +124,19 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
     {
         var nextLabel = isLast ? "Finish" : "Next";
 
+        // The dot indicator counts only the chromed pages (Welcome has no
+        // chrome and no dot — see Dialog.png vs Dialog-1..Dialog-5). With
+        // PageOrder = [Welcome, LocalSetupProgress, GatewayWelcome,
+        // Permissions, AllSet], that's 4 dots and pageIndex-1 is the
+        // active one (clamped to 0 for the never-rendered Welcome case).
+        int dotCount = PageOrder.Length - 1;
+        int dotActive = Math.Max(0, pageIndex - 1);
+
         // Three-column grid: dots (left, auto), spacer (star), buttons (right, auto).
         var bar = Grid(
             new[] { "auto", "*", "auto" },
             new[] { "auto" },
-            Component<StepDots, StepDotsProps>(new StepDotsProps(PageOrder.Length, pageIndex))
+            Component<StepDots, StepDotsProps>(new StepDotsProps(dotCount, dotActive))
                 .HAlign(HorizontalAlignment.Left)
                 .VAlign(VerticalAlignment.Center)
                 .Margin(40, 0, 0, 0)

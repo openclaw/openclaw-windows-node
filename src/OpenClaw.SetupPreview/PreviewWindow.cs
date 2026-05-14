@@ -180,6 +180,56 @@ internal sealed class PreviewWindow : WindowEx
                 nodeMode.Equals("1", StringComparison.OrdinalIgnoreCase) ||
                 nodeMode.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
+
+        // OPENCLAW_PREVIEW_PROGRESS_FROZEN_STAGE freezes the LocalSetupProgress
+        // page on a specific stage: every stage strictly before this one is
+        // marked Done, the named stage is Running (spinner), and every stage
+        // strictly after is Idle.
+        //
+        // OPENCLAW_PREVIEW_FAIL_STAGE additionally marks the named stage as
+        // Failed (overrides the Running marking) and populates
+        // LocalSetupErrorMessage so the inline error card renders.
+        var frozen = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_PROGRESS_FROZEN_STAGE");
+        var failStage = Environment.GetEnvironmentVariable("OPENCLAW_PREVIEW_FAIL_STAGE");
+
+        if (!string.IsNullOrWhiteSpace(frozen) &&
+            Enum.TryParse<OnboardingV2State.LocalSetupStage>(frozen, ignoreCase: true, out var frozenStage))
+        {
+            var rows = new Dictionary<OnboardingV2State.LocalSetupStage, OnboardingV2State.LocalSetupRowState>();
+            foreach (var stage in Enum.GetValues<OnboardingV2State.LocalSetupStage>())
+            {
+                if (stage < frozenStage)
+                {
+                    rows[stage] = OnboardingV2State.LocalSetupRowState.Done;
+                }
+                else if (stage == frozenStage)
+                {
+                    rows[stage] = OnboardingV2State.LocalSetupRowState.Running;
+                }
+                else
+                {
+                    rows[stage] = OnboardingV2State.LocalSetupRowState.Idle;
+                }
+            }
+            state.LocalSetupRows = rows;
+        }
+
+        if (!string.IsNullOrWhiteSpace(failStage) &&
+            Enum.TryParse<OnboardingV2State.LocalSetupStage>(failStage, ignoreCase: true, out var fStage))
+        {
+            var rows = new Dictionary<OnboardingV2State.LocalSetupStage, OnboardingV2State.LocalSetupRowState>(state.LocalSetupRows);
+            // Mark every stage strictly before the failed one Done (in case
+            // the frozen stage env var was unset or set to the same stage).
+            foreach (var stage in Enum.GetValues<OnboardingV2State.LocalSetupStage>())
+            {
+                if (stage < fStage) rows[stage] = OnboardingV2State.LocalSetupRowState.Done;
+                else if (stage == fStage) rows[stage] = OnboardingV2State.LocalSetupRowState.Failed;
+                else rows[stage] = OnboardingV2State.LocalSetupRowState.Idle;
+            }
+            state.LocalSetupRows = rows;
+            state.LocalSetupErrorMessage =
+                "The OpenClaw gateway service started, but did not report ready status. Follow aka.ms/wsllogs for WSL diagnostic collection instructions.";
+        }
     }
 
     private async Task CaptureAndExitAsync()
