@@ -4734,6 +4734,15 @@ public partial class App : Application
         _gatewayDataStore.SetLastUpdateInfo(info);
     }
 
+    private void SetLastUpdateDetail(string detail) => SetLastUpdateInfo(new UpdateCommandCenterInfo
+    {
+        Status = _lastUpdateInfo.Status,
+        CurrentVersion = _lastUpdateInfo.CurrentVersion,
+        LatestVersion = _lastUpdateInfo.LatestVersion,
+        CheckedAt = _lastUpdateInfo.CheckedAt,
+        Detail = detail
+    });
+
     private async Task<bool> CheckForUpdatesAsync()
     {
         try
@@ -4787,8 +4796,7 @@ public partial class App : Application
                 string.Equals(_settings.SkippedUpdateTag, release.TagName, StringComparison.OrdinalIgnoreCase))
             {
                 Logger.Info($"Skipping update prompt for remembered version {release.TagName}");
-                _lastUpdateInfo.Detail = "skipped by user";
-                _gatewayDataStore.SetLastUpdateInfo(_lastUpdateInfo);
+                SetLastUpdateDetail("skipped by user");
                 return true;
             }
 
@@ -4797,8 +4805,7 @@ public partial class App : Application
 
             if (result == UpdateDialogResult.Download)
             {
-                _lastUpdateInfo.Detail = "download requested";
-                _gatewayDataStore.SetLastUpdateInfo(_lastUpdateInfo);
+                SetLastUpdateDetail("download requested");
                 if (_settings != null)
                 {
                     _settings.SkippedUpdateTag = string.Empty;
@@ -4812,8 +4819,7 @@ public partial class App : Application
             {
                 _settings.SkippedUpdateTag = release.TagName ?? string.Empty;
                 _settings.Save();
-                _lastUpdateInfo.Detail = "skipped by user";
-                _gatewayDataStore.SetLastUpdateInfo(_lastUpdateInfo);
+                SetLastUpdateDetail("skipped by user");
             }
 
             return true; // RemindLater or Skip - continue
