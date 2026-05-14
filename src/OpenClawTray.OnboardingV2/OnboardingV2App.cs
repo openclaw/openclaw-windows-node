@@ -44,6 +44,7 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
         var initialIdx = Math.Max(0, Array.IndexOf(PageOrder, Props.CurrentRoute));
         var nav = UseNavigation(PageOrder[initialIdx]);
         var (pageIndex, setPageIndex) = UseState(initialIdx);
+        var (renderTick, setRenderTick) = UseState(0);
 
         // Keep Props.CurrentRoute in sync with the visible page so the host
         // window can react (e.g., to swap title-bar styling) without owning
@@ -86,6 +87,17 @@ public sealed class OnboardingV2App : Component<OnboardingV2State>
                 Props.BackRequested -= back;
             };
         }, pageIndex);
+
+        // Real services (LocalGatewaySetupEngine, PermissionChecker, etc.)
+        // mutate state from the bridge in OnboardingWindow at cutover. We
+        // bump a render tick on StateChanged so the page tree re-renders
+        // even though Props is the same object reference.
+        UseEffect(() =>
+        {
+            EventHandler onChange = (_, _) => setRenderTick(renderTick + 1);
+            Props.StateChanged += onChange;
+            return () => Props.StateChanged -= onChange;
+        }, renderTick);
 
         var currentRoute = PageOrder[pageIndex];
         bool showNavBar = currentRoute != V2Route.Welcome;

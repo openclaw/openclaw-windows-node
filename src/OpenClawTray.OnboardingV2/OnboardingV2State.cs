@@ -10,17 +10,42 @@ namespace OpenClawTray.Onboarding.V2;
 /// here is set by either the F1 debug overlay or by env vars in headless
 /// capture mode. Real services (LocalGatewaySetup, PermissionChecker,
 /// GatewayHealthCheck) only get bound at cutover — see plan.md.
+///
+/// Re-render contract:
+///   * Property setters raise <see cref="StateChanged"/> when they mutate
+///     a value. The root component subscribes and bumps a render tick so
+///     the page tree re-renders. Callers driving updates from a
+///     non-UI thread MUST marshal to the UI thread before invoking these
+///     setters (the bridge in OnboardingWindow does this at cutover).
+///   * Reads remain plain property getters — no synchronisation. This is
+///     a single-writer-single-reader contract.
 /// </summary>
 public sealed class OnboardingV2State
 {
-    public V2Route CurrentRoute { get; set; } = V2Route.Welcome;
+    /// <summary>Raised whenever any tracked field on this state object changes.</summary>
+    public event EventHandler? StateChanged;
 
+    /// <summary>Public accessor so a host can force a re-render after a batched update.</summary>
+    public void NotifyChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
+
+    private V2Route _currentRoute = V2Route.Welcome;
+    public V2Route CurrentRoute
+    {
+        get => _currentRoute;
+        set { if (_currentRoute != value) { _currentRoute = value; NotifyChanged(); } }
+    }
+
+    private bool _nodeModeActive;
     /// <summary>
     /// True when the All Set page should display the amber "Node Mode Active"
     /// warning bar (matches Dialog-4). Driven by the OPENCLAW_PREVIEW_NODE_MODE
     /// env var in capture mode and by the F1 overlay otherwise.
     /// </summary>
-    public bool NodeModeActive { get; set; }
+    public bool NodeModeActive
+    {
+        get => _nodeModeActive;
+        set { if (_nodeModeActive != value) { _nodeModeActive = value; NotifyChanged(); } }
+    }
 
     /// <summary>
     /// Stages in the local-setup checklist (Dialog-1 / Dialog-6). Mirrors
@@ -47,18 +72,77 @@ public sealed class OnboardingV2State
         Failed = 3,
     }
 
+    private IReadOnlyDictionary<LocalSetupStage, LocalSetupRowState> _localSetupRows
+        = Enum.GetValues<LocalSetupStage>().ToDictionary(s => s, _ => LocalSetupRowState.Idle);
+
     /// <summary>
     /// Per-stage row state for the LocalSetupProgress page. Default: all idle.
     /// Replaced wholesale on each progress event so consumers re-render.
     /// </summary>
-    public IReadOnlyDictionary<LocalSetupStage, LocalSetupRowState> LocalSetupRows { get; set; }
-        = Enum.GetValues<LocalSetupStage>().ToDictionary(s => s, _ => LocalSetupRowState.Idle);
+    public IReadOnlyDictionary<LocalSetupStage, LocalSetupRowState> LocalSetupRows
+    {
+        get => _localSetupRows;
+        set { _localSetupRows = value; NotifyChanged(); }
+    }
 
+    private string? _localSetupErrorMessage;
     /// <summary>
     /// When non-null, the LocalSetupProgress page renders the inline error
     /// card (Dialog-6) with this message and a "Try again" button.
     /// </summary>
-    public string? LocalSetupErrorMessage { get; set; }
+    public string? LocalSetupErrorMessage
+    {
+        get => _localSetupErrorMessage;
+        set { if (_localSetupErrorMessage != value) { _localSetupErrorMessage = value; NotifyChanged(); } }
+    }
+
+    // ---------------------------------------------------------------------
+    // Cutover-staged shape (not yet wired by real services). Keeping these
+    // here so the Tray-side bridge can populate them in the cutover PR
+    // without re-touching the V2 lib.
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// URL the GatewayWelcome "Open in browser" link should resolve to.
+    /// Defaults to the dev gateway port; real Settings.GetEffectiveGatewayUrl
+    /// overrides this at cutover.
+    /// </summary>
+    public string GatewayUrl { get; set; } = "http://localhost:18789";
+
+    /// <summary>
+    /// True when the gateway is reachable + ready (set by a real
+    /// GatewayHealthCheck at cutover). Pages may use this to enable the
+    /// "Open in browser" link or auto-advance.
+    /// </summary>
+    public bool GatewayHealthy { get; set; }
+
+    /// <summary>Initial value for the AllSet "Launch at startup?" toggle.</summary>
+    public bool LaunchAtStartup { get; set; } = true;
+
+    /// <summary>
+    /// Per-permission row, replacing the all-granted hard-coded list in
+    /// the page. Real PermissionChecker output flows here at cutover.
+    /// Only populated then; pages fall back to the bundled all-granted
+    /// preview rows when this is null.
+    /// </summary>
+    public IReadOnlyList<PermissionRowSnapshot>? Permissions { get; set; }
+
+    public sealed record PermissionRowSnapshot(
+        string CapabilityId,
+        string IconAsset,
+        string Label,
+        string StatusLabel,
+        PermissionSeverity Severity,
+        bool ShowOpenSettings,
+        Uri? SettingsUri = null);
+
+    public enum PermissionSeverity
+    {
+        Granted = 0,
+        Denied = 1,
+        NoDevice = 2,
+        Unknown = 3,
+    }
 
     // ----- Navigation events (raised by pages, handled by OnboardingV2App) -----
 

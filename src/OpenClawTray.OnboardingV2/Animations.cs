@@ -15,12 +15,16 @@ namespace OpenClawTray.Onboarding.V2;
 /// pulse on the lobster — and are designed to make the UI feel alive without
 /// distracting from the content.
 ///
-/// Capture mode discipline:
-///   <see cref="DisableForCapture"/> can be set to true by a caller (the
-///   SetupPreview headless capture path does this) to skip all animations and
-///   leave each visual at its final steady state. This keeps the side-by-side
-///   diff PNGs deterministic regardless of the animation phase, so the LLM
-///   visual-eval loop is not flaky.
+/// Suppression discipline:
+///   * <see cref="DisableForCapture"/> is the explicit kill switch the
+///     SetupPreview headless capture path sets to true so screenshots
+///     stay deterministic regardless of animation phase. Tests can flip
+///     this for their own determinism.
+///   * Beyond capture mode we honour the user's system "Show animations
+///     in Windows" / "Reduce motion" preference at runtime via
+///     <see cref="Windows.UI.ViewManagement.UISettings.AnimationsEnabled"/>.
+///     If a user has motion reduced, V2 animations no-op even outside
+///     capture mode.
 /// </summary>
 public static class V2Animations
 {
@@ -30,6 +34,23 @@ public static class V2Animations
     /// transform.
     /// </summary>
     public static bool DisableForCapture { get; set; }
+
+    private static readonly Lazy<Windows.UI.ViewManagement.UISettings> _uiSettings = new(
+        () => new Windows.UI.ViewManagement.UISettings());
+
+    /// <summary>
+    /// Final gating predicate used by every Hook* method. Animations run
+    /// only when neither capture nor reduce-motion are in effect.
+    /// </summary>
+    private static bool ShouldAnimate
+    {
+        get
+        {
+            if (DisableForCapture) return false;
+            try { return _uiSettings.Value.AnimationsEnabled; }
+            catch { return true; } // UISettings can throw in unpackaged contexts
+        }
+    }
 
     /// <summary>
     /// Fade an element from 0 → 1 opacity on Loaded. Returns the element so it
@@ -82,7 +103,7 @@ public static class V2Animations
 
     private static void HookFadeIn(FrameworkElement fe, double durationMs, double delayMs)
     {
-        if (DisableForCapture) return;
+        if (!ShouldAnimate) return;
         fe.Opacity = 0;
         fe.Loaded += (_, _) =>
         {
@@ -101,7 +122,7 @@ public static class V2Animations
 
     private static void HookPopIn(FrameworkElement fe, double durationMs, double delayMs)
     {
-        if (DisableForCapture) return;
+        if (!ShouldAnimate) return;
         fe.Opacity = 0;
         fe.Loaded += (_, _) =>
         {
@@ -136,7 +157,7 @@ public static class V2Animations
 
     private static void HookSlideInFromBelow(FrameworkElement fe, double distance, double durationMs, double delayMs)
     {
-        if (DisableForCapture) return;
+        if (!ShouldAnimate) return;
         fe.Opacity = 0;
         ElementCompositionPreview.SetIsTranslationEnabled(fe, true);
         fe.Loaded += (_, _) =>
@@ -167,7 +188,7 @@ public static class V2Animations
 
     private static void HookBreathe(FrameworkElement fe, double maxScale, double durationMs)
     {
-        if (DisableForCapture) return;
+        if (!ShouldAnimate) return;
         fe.Loaded += (_, _) =>
         {
             var visual = ElementCompositionPreview.GetElementVisual(fe);

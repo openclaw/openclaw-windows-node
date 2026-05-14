@@ -44,7 +44,18 @@ public static class V2Strings
     /// </summary>
     public static Func<string, string> Resolver { get; set; } = LookupDefault;
 
-    public static string Get(string key) => Resolver(key) ?? key;
+    public static string Get(string key)
+    {
+        var resolved = Resolver(key);
+        // Resolver-not-found contract: every implementation we ship returns
+        // the key string itself when the lookup misses. Fall back to the
+        // built-in English so V2 pages never display raw keys to the user.
+        if (string.IsNullOrEmpty(resolved) || string.Equals(resolved, key, StringComparison.Ordinal))
+        {
+            return DefaultEnUs.TryGetValue(key, out var v) ? v : key;
+        }
+        return resolved;
+    }
 
     private static string LookupDefault(string key) =>
         DefaultEnUs.TryGetValue(key, out var value) ? value : key;
