@@ -84,6 +84,35 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task V2SignatureFallback_AfterThreeV2Handshakes_ProbesV3OnNextReconnect()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        var events = new List<ConnectionDiagnosticEvent>();
+        _manager.DiagnosticEvent += (_, e) => events.Add(e);
+
+        await _manager.ConnectAsync("gw-1");
+        _factory.CreatedClients[0].SimulateV2SignatureFallback();
+
+        for (var i = 0; i < 3; i++)
+        {
+            await _manager.ReconnectAsync();
+            var lifecycle = _factory.CreatedClients[^1];
+            Assert.True(lifecycle.DataClient.UseV2Signature);
+            lifecycle.SetLastConnectUsedV2Signature();
+            lifecycle.SimulateHandshake();
+            await Task.Delay(100);
+        }
+
+        await _manager.ReconnectAsync();
+
+        Assert.False(_factory.CreatedClients[^1].DataClient.UseV2Signature);
+        Assert.Contains(events, e => e.Category == "handshake" && e.Detail?.Contains("fallbacks=1") == true);
+        Assert.Contains(events, e => e.Category == "handshake" && e.Message.Contains("next reconnect will try v3"));
+    }
+
+    [Fact]
     public async Task DisconnectAsync_TransitionsToIdle()
     {
         SetupGateway("gw-1", "wss://test");
@@ -279,6 +308,12 @@ public class GatewayConnectionManagerTests : IDisposable
         public void SimulateHandshake() =>
             _client.SimulateHandshakeSucceeded();
 
+        public void SimulateV2SignatureFallback() =>
+            _client.SimulateV2SignatureFallback();
+
+        public void SetLastConnectUsedV2Signature() =>
+            _client.SetLastConnectUsedV2Signature();
+
         public void Dispose() { }
     }
 
@@ -292,6 +327,23 @@ public class GatewayConnectionManagerTests : IDisposable
         {
             // Fire the HandshakeSucceeded event to trigger the manager's handler
             OnHandshakeSucceeded();
+        }
+
+        public void SimulateV2SignatureFallback()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(V2SignatureFallback),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            var handler = field?.GetValue(this) as EventHandler;
+            handler?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void SetLastConnectUsedV2Signature()
+        {
+            typeof(OpenClawGatewayClient).GetField(
+                "_lastConnectUsedV2Signature",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .SetValue(this, true);
         }
 
         // Protected invoker — OpenClawGatewayClient.HandshakeSucceeded is a public event.

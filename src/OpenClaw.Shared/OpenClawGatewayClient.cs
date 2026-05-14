@@ -48,10 +48,20 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
+    private const int InitialV2SignatureProbeThreshold = 3;
     private bool _useV2Signature; // true after v3 signature rejected by gateway
+    private bool _lastConnectUsedV2Signature;
+    private bool _v2SignatureProbeInProgress;
+    private int _successfulV2SignatureHandshakes;
+    private int _v2SignatureProbeThreshold = InitialV2SignatureProbeThreshold;
+    private int _v2SignatureFallbackCount;
 
     /// <summary>Set to true to skip v3 and use v2 signatures directly (for gateways that don't support v3).</summary>
     public bool UseV2Signature { get => _useV2Signature; set => _useV2Signature = value; }
+    public bool LastConnectUsedV2Signature => _lastConnectUsedV2Signature;
+    public int ConsecutiveV2SignatureSuccesses => _successfulV2SignatureHandshakes;
+    public int V2SignatureProbeThreshold => _v2SignatureProbeThreshold;
+    public int V2SignatureFallbackCount => _v2SignatureFallbackCount;
     private long? _challengeTimestampMs;
     private string? _currentChallengeNonce;
     private bool _usageStatusUnsupported;
@@ -866,6 +876,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         var connectNonce = nonce ?? string.Empty;
         var signatureToken = GetSignatureToken();
         var authPayload = BuildAuthPayload();
+        _lastConnectUsedV2Signature = _useV2Signature;
 
         // Log complete handshake details for diagnostics
         _logger.Info($"[HANDSHAKE] → Sending connect:");
@@ -876,9 +887,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         _logger.Info($"  nonce={(!string.IsNullOrEmpty(connectNonce) ? connectNonce[..Math.Min(12, connectNonce.Length)] + "..." : "(empty)")}");
         _logger.Info($"  signedAt={signedAt}");
         _logger.Info($"  sigToken(len)={signatureToken.Length}, preview=[REDACTED]");
-        _logger.Info($"  signature format={(_useV2Signature ? "v2" : "v3")}, platform={OperatorPlatform}, family={OperatorDeviceFamily}");
+        _logger.Info($"  signature format={(_lastConnectUsedV2Signature ? "v2" : "v3")}, platform={OperatorPlatform}, family={OperatorDeviceFamily}");
 
-        var signedPayload = _useV2Signature
+        var signedPayload = _lastConnectUsedV2Signature
             ? _deviceIdentity.BuildConnectPayloadV2(connectNonce, signedAt, OperatorClientId, OperatorClientMode, role, requestedScopes, signatureToken)
             : _deviceIdentity.BuildConnectPayloadV3(connectNonce, signedAt, OperatorClientId, OperatorClientMode, role, requestedScopes, signatureToken, OperatorPlatform, OperatorDeviceFamily);
         _logger.Info($"[HANDSHAKE] signed: {TokenSanitizer.Sanitize(signedPayload)}");
@@ -889,7 +900,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         _logger.Info($"[HANDSHAKE] auth: {RedactAuthPayload(authJson)}");
 
         // Try v3 first (matches reference client). Fall back to v2 if gateway rejects v3.
-        var signature = _useV2Signature
+        var signature = _lastConnectUsedV2Signature
             ? _deviceIdentity.SignConnectPayloadV2(
                 connectNonce, signedAt, OperatorClientId, OperatorClientMode,
                 role, requestedScopes, signatureToken)
@@ -1284,6 +1295,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(newDeviceToken, deviceTokenScopes, "operator"));
             }
 
+            RecordSignatureHandshakeSuccess();
             _logger.Info("Handshake complete (hello-ok)");
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
             if (!string.IsNullOrWhiteSpace(_operatorDeviceId))
@@ -1336,6 +1348,28 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         {
             ParseNodeList(nodes);
         }
+    }
+
+    private void RecordSignatureHandshakeSuccess()
+    {
+        if (_lastConnectUsedV2Signature)
+        {
+            _successfulV2SignatureHandshakes++;
+            _logger.Info($"[HANDSHAKE] v2 signature handshake succeeded ({_successfulV2SignatureHandshakes}/{_v2SignatureProbeThreshold})");
+            if (_successfulV2SignatureHandshakes >= _v2SignatureProbeThreshold)
+            {
+                _useV2Signature = false;
+                _successfulV2SignatureHandshakes = 0;
+                _v2SignatureProbeInProgress = true;
+                _logger.Warn("[HANDSHAKE] v2 signature fallback probe threshold reached; next reconnect will try v3");
+            }
+            return;
+        }
+
+        _useV2Signature = false;
+        _successfulV2SignatureHandshakes = 0;
+        _v2SignatureProbeInProgress = false;
+        _v2SignatureProbeThreshold = InitialV2SignatureProbeThreshold;
     }
 
     private bool HandleKnownResponse(string method, JsonElement payload)
@@ -1497,7 +1531,18 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 // Don't retry on this socket — gateway closes it after rejection.
                 // The auto-reconnect will use v2 on the fresh connection.
                 _useV2Signature = true;
-                _logger.Warn($"[HANDSHAKE] v3 signature rejected, will use v2 on reconnect");
+                _successfulV2SignatureHandshakes = 0;
+                _v2SignatureFallbackCount++;
+                if (_v2SignatureProbeInProgress)
+                {
+                    _v2SignatureProbeInProgress = false;
+                    _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, 192);
+                    _logger.Warn($"[HANDSHAKE] v3 signature probe rejected, will use v2 on reconnect; next probe after {_v2SignatureProbeThreshold} successful v2 handshakes");
+                }
+                else
+                {
+                    _logger.Warn($"[HANDSHAKE] v3 signature rejected, will use v2 on reconnect");
+                }
                 V2SignatureFallback?.Invoke(this, EventArgs.Empty);
                 return;
             }

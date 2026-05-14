@@ -29,7 +29,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _activeIdentityPath; // identity directory for the active connection
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
     private bool _disposed;
+    private const int InitialV2SignatureProbeThreshold = 3;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
+    private bool _v2SignatureProbeInProgress;
+    private int _successfulV2SignatureHandshakes;
+    private int _v2SignatureProbeThreshold = InitialV2SignatureProbeThreshold;
+    private int _v2SignatureFallbackCount;
     private string? _lastAutoApprovedRequestId; // prevent auto-approve loops
     private string? _autoApproveInFlight; // atomic guard against concurrent approval of same requestId
 
@@ -234,12 +239,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             };
             lifecycle.DataClient.V2SignatureFallback += (s, _) =>
             {
-                _gatewayNeedsV2Signature = true;
+                HandleV2SignatureFallback();
             };
 
             // If we already know this gateway needs v2, tell the client upfront
             if (_gatewayNeedsV2Signature)
+            {
                 lifecycle.DataClient.UseV2Signature = true;
+                _diagnostics.Record("handshake", "Using v2 device signature fallback",
+                    $"fallbacks={_v2SignatureFallbackCount}, consecutiveV2Successes={_successfulV2SignatureHandshakes}/{_v2SignatureProbeThreshold}");
+            }
 
             // Connect (fire and forget — the event handlers will drive state transitions)
             var ct = _operationCts!.Token;
@@ -315,7 +324,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 }
                 catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error on gateway switch: {ex.Message}"); }
             }
-            _gatewayNeedsV2Signature = false; // new gateway might support v3
+            ResetV2SignatureFallbackState(); // new gateway might support v3
             _registry.SetActive(gatewayId);
             await ConnectCoreAsync(gatewayId);
         }
@@ -346,7 +355,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // New gateway URL → reset v2 signature flag (new gateway might support v3)
         var isNewGateway = _registry.FindByUrl(gatewayUrl) == null;
         if (isNewGateway)
-            _gatewayNeedsV2Signature = false;
+            ResetV2SignatureFallbackState();
 
         // 4. Create or update gateway record
         var existing = _registry.FindByUrl(gatewayUrl);
@@ -453,6 +462,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("state", "Handshake succeeded (hello-ok)");
+            RecordSignatureHandshakeSuccess();
             _stateMachine.TryTransition(ConnectionTrigger.HandshakeSucceeded);
             _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
 
@@ -493,6 +503,54 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             await StartNodeConnectionAsync();
         }
+    }
+
+    private void HandleV2SignatureFallback()
+    {
+        _gatewayNeedsV2Signature = true;
+        _successfulV2SignatureHandshakes = 0;
+        _v2SignatureFallbackCount++;
+        if (_v2SignatureProbeInProgress)
+        {
+            _v2SignatureProbeInProgress = false;
+            _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, 192);
+            _diagnostics.Record("handshake", "v3 device signature probe rejected; using v2 fallback",
+                $"fallbacks={_v2SignatureFallbackCount}, nextProbeAfter={_v2SignatureProbeThreshold} v2 handshakes");
+            return;
+        }
+
+        _diagnostics.Record("handshake", "v3 device signature rejected; using v2 fallback",
+            $"fallbacks={_v2SignatureFallbackCount}, nextProbeAfter={_v2SignatureProbeThreshold} v2 handshakes");
+    }
+
+    private void RecordSignatureHandshakeSuccess()
+    {
+        if (_activeLifecycle?.DataClient.LastConnectUsedV2Signature == true || _gatewayNeedsV2Signature)
+        {
+            _successfulV2SignatureHandshakes++;
+            _diagnostics.Record("handshake", "v2 device signature handshake succeeded",
+                $"consecutiveV2Successes={_successfulV2SignatureHandshakes}/{_v2SignatureProbeThreshold}, fallbacks={_v2SignatureFallbackCount}");
+            if (_successfulV2SignatureHandshakes >= _v2SignatureProbeThreshold)
+            {
+                _gatewayNeedsV2Signature = false;
+                _successfulV2SignatureHandshakes = 0;
+                _v2SignatureProbeInProgress = true;
+                _diagnostics.Record("handshake", "v2 fallback probe threshold reached; next reconnect will try v3",
+                    $"fallbacks={_v2SignatureFallbackCount}, nextProbeAfter={_v2SignatureProbeThreshold} v2 handshakes");
+            }
+            return;
+        }
+
+        ResetV2SignatureFallbackState();
+    }
+
+    private void ResetV2SignatureFallbackState()
+    {
+        _gatewayNeedsV2Signature = false;
+        _successfulV2SignatureHandshakes = 0;
+        _v2SignatureProbeInProgress = false;
+        _v2SignatureProbeThreshold = InitialV2SignatureProbeThreshold;
+        _v2SignatureFallbackCount = 0;
     }
 
     private void HandleDeviceTokenReceived(DeviceTokenReceivedEventArgs e)

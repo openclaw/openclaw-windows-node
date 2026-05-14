@@ -34,8 +34,18 @@ public class WindowsNodeClient : WebSocketClientBase
     // even after OnDisconnected clears _isPendingApproval.
     private volatile bool _pairingBlocked;
     private volatile bool _rateLimited;
+    private const int InitialV2SignatureProbeThreshold = 3;
     private bool _useV2Signature; // true after v3 signature rejected by gateway
+    private bool _lastConnectUsedV2Signature;
+    private bool _v2SignatureProbeInProgress;
+    private int _successfulV2SignatureHandshakes;
+    private int _v2SignatureProbeThreshold = InitialV2SignatureProbeThreshold;
+    private int _v2SignatureFallbackCount;
     public bool UseV2Signature { get => _useV2Signature; set => _useV2Signature = value; }
+    public bool LastConnectUsedV2Signature => _lastConnectUsedV2Signature;
+    public int ConsecutiveV2SignatureSuccesses => _successfulV2SignatureHandshakes;
+    public int V2SignatureProbeThreshold => _v2SignatureProbeThreshold;
+    public int V2SignatureFallbackCount => _v2SignatureFallbackCount;
     // Bug 3: source-side idempotency for PairingStatusChanged. HandleHelloOk runs on every
     // WS reconnect and re-fires PairingStatus.Paired even when nothing changed, causing a
     // toast storm in the tray UI. Track the last emitted status and only fire on transitions.
@@ -554,6 +564,7 @@ public class WindowsNodeClient : WebSocketClientBase
         var (auth, tokenForSig) = BuildConnectAuth();
         var authType = auth.ContainsKey("deviceToken") ? "deviceToken"
             : auth.ContainsKey("bootstrapToken") ? "bootstrapToken" : "token";
+        _lastConnectUsedV2Signature = _useV2Signature;
 
         _logger.Info($"[HANDSHAKE] → Sending connect:");
         _logger.Info($"[HANDSHAKE]   role=node, clientId={ClientId}, mode=node");
@@ -562,7 +573,7 @@ public class WindowsNodeClient : WebSocketClientBase
         _logger.Info($"[HANDSHAKE]   isBootstrap={usingBootstrap}, hasNodeDeviceToken={isPaired}");
         _logger.Info($"[HANDSHAKE]   deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
         _logger.Info($"[HANDSHAKE]   nonce={nonce?[..Math.Min(15, nonce?.Length ?? 0)]}...");
-        _logger.Info($"[HANDSHAKE]   signature format={(_useV2Signature ? "v2" : "v3")}, platform=windows, family=desktop");
+        _logger.Info($"[HANDSHAKE]   signature format={(_lastConnectUsedV2Signature ? "v2" : "v3")}, platform=windows, family=desktop");
         _logger.Info($"[HANDSHAKE]   auth: {{{authType}}}");
 
         await SendRawAsync(BuildNodeConnectMessage(nonce, ts));
@@ -579,7 +590,7 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             try
             {
-                signature = _useV2Signature
+                signature = _lastConnectUsedV2Signature
                     ? _deviceIdentity.SignConnectPayloadV2(
                         nonce, signedAt, ClientId, "node", "node",
                         Array.Empty<string>(), tokenForSignature)
@@ -745,9 +756,32 @@ public class WindowsNodeClient : WebSocketClientBase
                 }
             }
             
+            RecordSignatureHandshakeSuccess();
             RaiseStatusChanged(ConnectionStatus.Connected);
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private void RecordSignatureHandshakeSuccess()
+    {
+        if (_lastConnectUsedV2Signature)
+        {
+            _successfulV2SignatureHandshakes++;
+            _logger.Info($"[NODE] v2 signature handshake succeeded ({_successfulV2SignatureHandshakes}/{_v2SignatureProbeThreshold})");
+            if (_successfulV2SignatureHandshakes >= _v2SignatureProbeThreshold)
+            {
+                _useV2Signature = false;
+                _successfulV2SignatureHandshakes = 0;
+                _v2SignatureProbeInProgress = true;
+                _logger.Warn("[NODE] v2 signature fallback probe threshold reached; next reconnect will try v3");
+            }
+            return;
+        }
+
+        _useV2Signature = false;
+        _successfulV2SignatureHandshakes = 0;
+        _v2SignatureProbeInProgress = false;
+        _v2SignatureProbeThreshold = InitialV2SignatureProbeThreshold;
     }
 
     /// <summary>
@@ -842,7 +876,18 @@ public class WindowsNodeClient : WebSocketClientBase
             if (!_useV2Signature)
             {
                 _useV2Signature = true;
-                _logger.Warn("[NODE] v3 signature rejected, will use v2 on reconnect");
+                _successfulV2SignatureHandshakes = 0;
+                _v2SignatureFallbackCount++;
+                if (_v2SignatureProbeInProgress)
+                {
+                    _v2SignatureProbeInProgress = false;
+                    _v2SignatureProbeThreshold = Math.Min(_v2SignatureProbeThreshold * 2, 192);
+                    _logger.Warn($"[NODE] v3 signature probe rejected, will use v2 on reconnect; next probe after {_v2SignatureProbeThreshold} successful v2 handshakes");
+                }
+                else
+                {
+                    _logger.Warn("[NODE] v3 signature rejected, will use v2 on reconnect");
+                }
             }
         }
 

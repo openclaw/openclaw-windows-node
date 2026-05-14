@@ -368,6 +368,22 @@ public class OpenClawGatewayClientTests
             methodInfo!.Invoke(_client, new object[] { requestId, method });
         }
 
+        public void SetLastConnectUsedV2Signature(bool value) =>
+            SetPrivateField("_lastConnectUsedV2Signature", value);
+
+        public void ProcessHelloOk(string requestId)
+        {
+            ProcessRawMessage($$"""
+            {
+                "type": "res",
+                "id": "{{requestId}}",
+                "payload": {
+                    "type": "hello-ok"
+                }
+            }
+            """);
+        }
+
         public bool GetPairingRequiredFlag() =>
             GetPrivateField<bool>("_pairingRequiredAwaitingApproval");
 
@@ -2075,6 +2091,78 @@ public class OpenClawGatewayClientTests
 
         Assert.False(helper.GetAuthFailedFlag());
         Assert.Empty(authEvents);
+        Assert.True(helper.Client.UseV2Signature);
+    }
+
+    [Fact]
+    public void HandleHelloOk_V2FallbackAfterThreeSuccesses_ProbesV3OnNextReconnect()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.Client.UseV2Signature = true;
+
+        for (var i = 1; i <= 2; i++)
+        {
+            helper.SetLastConnectUsedV2Signature(true);
+            helper.ProcessHelloOk($"req-v2-ok-{i}");
+        }
+
+        Assert.True(helper.Client.UseV2Signature);
+        Assert.Equal(2, helper.Client.ConsecutiveV2SignatureSuccesses);
+        Assert.Equal(3, helper.Client.V2SignatureProbeThreshold);
+
+        helper.SetLastConnectUsedV2Signature(true);
+        helper.ProcessHelloOk("req-v2-ok-3");
+
+        Assert.False(helper.Client.UseV2Signature);
+        Assert.Equal(0, helper.Client.ConsecutiveV2SignatureSuccesses);
+    }
+
+    [Fact]
+    public void HandleRequestError_V3ProbeRejected_DoublesNextV2SuccessThreshold()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.Client.UseV2Signature = true;
+
+        for (var i = 1; i <= 3; i++)
+        {
+            helper.SetLastConnectUsedV2Signature(true);
+            helper.ProcessHelloOk($"req-v2-probe-ok-{i}");
+        }
+
+        Assert.False(helper.Client.UseV2Signature);
+
+        helper.TrackPendingRequest("req-v3-probe", "connect");
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-v3-probe",
+            "ok": false,
+            "error": {
+                "message": "device signature invalid",
+                "code": "DEVICE_AUTH_SIGNATURE_INVALID"
+            }
+        }
+        """);
+
+        Assert.True(helper.Client.UseV2Signature);
+        Assert.False(helper.GetAuthFailedFlag());
+        Assert.Empty(authEvents);
+        Assert.Equal(6, helper.Client.V2SignatureProbeThreshold);
+        Assert.Equal(1, helper.Client.V2SignatureFallbackCount);
+
+        for (var i = 1; i <= 5; i++)
+        {
+            helper.SetLastConnectUsedV2Signature(true);
+            helper.ProcessHelloOk($"req-v2-backoff-ok-{i}");
+        }
+
+        Assert.True(helper.Client.UseV2Signature);
+
+        helper.SetLastConnectUsedV2Signature(true);
+        helper.ProcessHelloOk("req-v2-backoff-ok-6");
+
+        Assert.False(helper.Client.UseV2Signature);
     }
 
     [Fact]
