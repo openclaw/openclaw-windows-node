@@ -127,19 +127,21 @@ internal sealed class PreviewWindow : WindowEx
         _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TitleBarHeight) });
         _rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        // Custom title bar: small lobster icon (16px) + "OpenClaw Setup"
+        // Custom title bar: small lobster icon + "OpenClaw Setup"
         // text. The right-hand 138 DIPs are reserved for the system min/
         // max/close buttons (CaptionButton width is ~46 each at 100% DPI).
-        var titleBar = new Grid { Padding = new Thickness(16, 0, 138, 0) };
+        var titleBar = new Grid { Padding = new Thickness(14, 0, 138, 0) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleBar, "OpenClaw Setup title bar");
         var lobster = new Image
         {
             Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/Lobster.png")),
-            Width = 18,
-            Height = 18,
+            Width = 14,
+            Height = 14,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0),
-            Stretch = Stretch.UniformToFill
+            Margin = new Thickness(0, 0, 8, 0),
+            Stretch = Stretch.Uniform
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(lobster, "OpenClaw");
         var titleText = new TextBlock
         {
             Text = Title,
@@ -147,6 +149,7 @@ internal sealed class PreviewWindow : WindowEx
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 0xE0, 0xE0, 0xE0))
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleText, "OpenClaw Setup");
         var titleStack = new StackPanel { Orientation = Orientation.Horizontal };
         titleStack.Children.Add(lobster);
         titleStack.Children.Add(titleText);
