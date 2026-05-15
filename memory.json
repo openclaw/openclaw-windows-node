@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-05-14T19:41:55Z",
-  "run_id": "25881465721",
+  "last_run": "2026-05-15T01:14:07Z",
+  "run_id": "25894771496",
   "comments_made": {
     "pr_327": {"date": "2026-05-13", "run": "25800798536"},
     "pr_296": {"date": "2026-05-13", "run": "25800798536", "note": "superseded by PR #327"},
@@ -14,23 +14,25 @@
     "issue_99": {"date": "2026-05-10", "run": "25628892354"},
     "issue_246": {"date": "2026-05-01", "run": "25197516078"},
     "issue_191": {"date": "2026-04-21", "run": "24698532801"},
-    "issue_357": {"date": "2026-05-14", "run": "25881465721", "note": "CT contract violation confirmed, PR created"},
-    "issue_350": {"date": "2026-05-14", "run": "25881465721", "note": "v3->v2 sticky downgrade code paths verified"},
-    "issue_363": {"date": "2026-05-14", "run": "25881465721", "note": "head-of-line blocking verified, fire-and-forget approach proposed"}
+    "issue_357": {"date": "2026-05-14", "run": "25881465721"},
+    "issue_350": {"date": "2026-05-14", "run": "25881465721"},
+    "issue_363": {"date": "2026-05-14", "run": "25881465721"},
+    "issue_365": {"date": "2026-05-15", "run": "25894771496", "note": "SafeDispatch/SafeEventInvoke PR created, partial migration"}
   },
   "fix_attempts": {
+    "pr_365_safe_dispatch": {"status": "pr_created_pending", "branch": "repo-assist/fix-safe-dispatch-empty-catches-365", "date": "2026-05-15"},
     "pr_357_ct_propagation": {"status": "pr_created_pending", "branch": "repo-assist/fix-ct-propagation-windowsnodeclient-357", "date": "2026-05-14"},
     "pr_343_card_background": {"status": "pr_created_pending", "pr": 380, "branch": "repo-assist/fix-a2ui-card-background-343", "date": "2026-05-14"},
     "pr_328_canvas_jsonlpath": {"status": "open", "branch": "repo-assist/fix-canvas-jsonlpath-exmessage-leak-2026-05-13", "date": "2026-05-13"},
     "pr_306_exmessage": {"status": "open", "pr": 306, "branch": "repo-assist/fix-ex-message-leaks-remaining-2026-05-11-83f5733e4978f96a", "date": "2026-05-11"},
     "pr_301_wsl": {"status": "open", "pr": 301, "branch": "repo-assist/fix-wsl-conf-2026-05-09", "date": "2026-05-09"},
-    "pr_296_evaluator": {"status": "open-superseded", "pr": 296, "branch": "repo-assist/feat-exec-approvals-evaluator-c0279fa0892414f5", "date": "2026-05-08", "note": "superseded by PR #327"}
+    "pr_296_evaluator": {"status": "open-superseded", "pr": 296, "branch": "repo-assist/feat-exec-approvals-evaluator-c0279fa0892414f5", "date": "2026-05-08"}
   },
-  "backlog_cursor": "issue_363",
-  "notes": "Active open Repo Assist PRs: #380 (CardBackground #343), #306 (ex.Message leaks), #301 (wsl.conf). New this run: PR for #357 (CT propagation - branch repo-assist/fix-ct-propagation-windowsnodeclient-357). PR #378 by AlexAlves87 fixes #342. PR #379 by AlexAlves87 fixes #347. New open PRs from maintainers: #381 (V2 onboarding), #383 (tray menu redesign), #384 (protocol v4), #385 (gateway page consolidation), #386 (WIP CI fix). Future deep-review bugs to fix: #350 (v3->v2 downgrade, needs GCM changes), #365 (empty try/catch SafeDispatch helpers), #363 (head-of-line blocking).",
+  "backlog_cursor": "issue_365",
+  "notes": "This run: Task 3 (fix #365 partial migration - SafeDispatch helpers, HubWindow 15 catch removals, AudioPipeline 11 SafeInvoke migrations) + Task 9 (9 new SafeEventInvoke tests). Active open Repo Assist PRs: #380 (CardBackground #343), #306 (ex.Message leaks), #301 (wsl.conf), branch for #357 (CT propagation), branch for #365 (SafeDispatch). Future deep-review bugs: #350 (v3->v2 downgrade), #363 (head-of-line blocking), remaining ~80 empty catch sites across 39 files.",
   "test_baseline": {
-    "shared_tests": "exit 0 (1541 passed, 28 skipped, 7 pre-existing failures)",
-    "tray_tests": "exit 0 (1143 passed, 47 skipped, 7 pre-existing failures)",
-    "note": "Both test suites run on Linux. build.ps1 requires Windows. Baselines from 2026-05-14."
+    "shared_tests": "exit 0 (1565 passed, 28 skipped, 7 pre-existing failures)",
+    "tray_tests": "exit 0 (1165 passed, 47 skipped, 7 pre-existing failures)",
+    "note": "Both test suites run on Linux. build.ps1 requires Windows. Baselines from 2026-05-15. +9 new SafeEventInvoke tests."
   }
 }
