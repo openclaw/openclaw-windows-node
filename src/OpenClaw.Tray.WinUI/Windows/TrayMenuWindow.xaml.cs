@@ -516,6 +516,12 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public void AddHeader(string text)
     {
+        // First header in a flyout already has 8 px of panel padding above
+        // it, so its own top padding can be smaller. Later section headers
+        // need a bigger top gap to create a clear visual break from the
+        // preceding content.
+        var isFirst = MenuPanel.Children.Count == 0;
+        var topPad = isFirst ? 4 : 14;
         var tb = new TextBlock
         {
             Text = text,
@@ -523,7 +529,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             // Horizontal padding 12 matches BuildItemRow's leftPad and the
             // sub-flyout cards (KvRow/statusCard) so headers don't appear
             // indented 2 px further right than the body below them.
-            Padding = new Thickness(12, 12, 12, 8),
+            Padding = new Thickness(12, topPad, 12, 8),
             Opacity = 0.7
         };
         AutomationProperties.SetHeadingLevel(tb, AutomationHeadingLevel.Level2);
