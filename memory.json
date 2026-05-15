@@ -1,38 +1,126 @@
 {
-  "last_run": "2026-05-15T01:14:07Z",
-  "run_id": "25894771496",
+  "last_run": "2026-05-15T12:56:24Z",
+  "run_id": "25918910618",
   "comments_made": {
-    "pr_327": {"date": "2026-05-13", "run": "25800798536"},
-    "pr_296": {"date": "2026-05-13", "run": "25800798536", "note": "superseded by PR #327"},
-    "pr_325": {"date": "2026-05-13", "run": "25775356295"},
-    "pr_324": {"date": "2026-05-13", "run": "25775356295"},
-    "pr_313": {"date": "2026-05-12", "run": "25706948178"},
-    "pr_310": {"date": "2026-05-11", "run": "25672662361"},
-    "pr_288": {"date": "2026-05-07", "run": "25497143196"},
-    "pr_259": {"date": "2026-05-04", "run": "25320065239"},
-    "issue_281": {"date": "2026-05-06", "run": "25410959577"},
-    "issue_99": {"date": "2026-05-10", "run": "25628892354"},
-    "issue_246": {"date": "2026-05-01", "run": "25197516078"},
-    "issue_191": {"date": "2026-04-21", "run": "24698532801"},
-    "issue_357": {"date": "2026-05-14", "run": "25881465721"},
-    "issue_350": {"date": "2026-05-14", "run": "25881465721"},
-    "issue_363": {"date": "2026-05-14", "run": "25881465721"},
-    "issue_365": {"date": "2026-05-15", "run": "25894771496", "note": "SafeDispatch/SafeEventInvoke PR created, partial migration"}
+    "pr_327": {
+      "date": "2026-05-13",
+      "run": "25800798536"
+    },
+    "pr_296": {
+      "date": "2026-05-13",
+      "run": "25800798536",
+      "note": "superseded by PR #327"
+    },
+    "pr_325": {
+      "date": "2026-05-13",
+      "run": "25775356295"
+    },
+    "pr_324": {
+      "date": "2026-05-13",
+      "run": "25775356295"
+    },
+    "pr_313": {
+      "date": "2026-05-12",
+      "run": "25706948178"
+    },
+    "pr_310": {
+      "date": "2026-05-11",
+      "run": "25672662361"
+    },
+    "pr_288": {
+      "date": "2026-05-07",
+      "run": "25497143196"
+    },
+    "pr_259": {
+      "date": "2026-05-04",
+      "run": "25320065239"
+    },
+    "issue_281": {
+      "date": "2026-05-06",
+      "run": "25410959577"
+    },
+    "issue_99": {
+      "date": "2026-05-10",
+      "run": "25628892354"
+    },
+    "issue_246": {
+      "date": "2026-05-01",
+      "run": "25197516078"
+    },
+    "issue_191": {
+      "date": "2026-04-21",
+      "run": "24698532801"
+    },
+    "issue_357": {
+      "date": "2026-05-14",
+      "run": "25881465721"
+    },
+    "issue_350": {
+      "date": "2026-05-15",
+      "run": "25918910618",
+      "note": "v3 probe PR created"
+    },
+    "issue_363": {
+      "date": "2026-05-14",
+      "run": "25881465721"
+    },
+    "issue_365": {
+      "date": "2026-05-15",
+      "run": "25894771496",
+      "note": "SafeDispatch/SafeEventInvoke PR created, partial migration"
+    }
   },
   "fix_attempts": {
-    "pr_365_safe_dispatch": {"status": "pr_created_pending", "branch": "repo-assist/fix-safe-dispatch-empty-catches-365", "date": "2026-05-15"},
-    "pr_357_ct_propagation": {"status": "pr_created_pending", "branch": "repo-assist/fix-ct-propagation-windowsnodeclient-357", "date": "2026-05-14"},
-    "pr_343_card_background": {"status": "pr_created_pending", "pr": 380, "branch": "repo-assist/fix-a2ui-card-background-343", "date": "2026-05-14"},
-    "pr_328_canvas_jsonlpath": {"status": "open", "branch": "repo-assist/fix-canvas-jsonlpath-exmessage-leak-2026-05-13", "date": "2026-05-13"},
-    "pr_306_exmessage": {"status": "open", "pr": 306, "branch": "repo-assist/fix-ex-message-leaks-remaining-2026-05-11-83f5733e4978f96a", "date": "2026-05-11"},
-    "pr_301_wsl": {"status": "open", "pr": 301, "branch": "repo-assist/fix-wsl-conf-2026-05-09", "date": "2026-05-09"},
-    "pr_296_evaluator": {"status": "open-superseded", "pr": 296, "branch": "repo-assist/feat-exec-approvals-evaluator-c0279fa0892414f5", "date": "2026-05-08"}
+    "pr_365_safe_dispatch": {
+      "status": "pr_created_pending",
+      "branch": "repo-assist/fix-safe-dispatch-empty-catches-365",
+      "date": "2026-05-15"
+    },
+    "pr_357_ct_propagation": {
+      "status": "pr_created_pending",
+      "branch": "repo-assist/fix-ct-propagation-windowsnodeclient-357",
+      "date": "2026-05-14"
+    },
+    "pr_343_card_background": {
+      "status": "pr_created_pending",
+      "pr": 380,
+      "branch": "repo-assist/fix-a2ui-card-background-343",
+      "date": "2026-05-14"
+    },
+    "pr_328_canvas_jsonlpath": {
+      "status": "open",
+      "branch": "repo-assist/fix-canvas-jsonlpath-exmessage-leak-2026-05-13",
+      "date": "2026-05-13"
+    },
+    "pr_306_exmessage": {
+      "status": "open",
+      "pr": 306,
+      "branch": "repo-assist/fix-ex-message-leaks-remaining-2026-05-11-83f5733e4978f96a",
+      "date": "2026-05-11"
+    },
+    "pr_301_wsl": {
+      "status": "open",
+      "pr": 301,
+      "branch": "repo-assist/fix-wsl-conf-2026-05-09",
+      "date": "2026-05-09"
+    },
+    "pr_296_evaluator": {
+      "status": "open-superseded",
+      "pr": 296,
+      "branch": "repo-assist/feat-exec-approvals-evaluator-c0279fa0892414f5",
+      "date": "2026-05-08"
+    },
+    "pr_350_v2_downgrade": {
+      "status": "pr_created_pending",
+      "branch": "repo-assist/fix-v2-signature-downgrade-350",
+      "date": "2026-05-15"
+    }
   },
   "backlog_cursor": "issue_365",
-  "notes": "This run: Task 3 (fix #365 partial migration - SafeDispatch helpers, HubWindow 15 catch removals, AudioPipeline 11 SafeInvoke migrations) + Task 9 (9 new SafeEventInvoke tests). Active open Repo Assist PRs: #380 (CardBackground #343), #306 (ex.Message leaks), #301 (wsl.conf), branch for #357 (CT propagation), branch for #365 (SafeDispatch). Future deep-review bugs: #350 (v3->v2 downgrade), #363 (head-of-line blocking), remaining ~80 empty catch sites across 39 files.",
+  "notes": "This run: Task 7 (no stale PRs, skipped) + Task 3 (fix #350: v3->v2 sticky downgrade - GCM exponential backoff probe, 4 new tests). Active open Repo Assist PRs: #380 (CardBackground #343), #306 (ex.Message leaks), #301 (wsl.conf), #406 (SafeDispatch #365), new PR for #350. Note: Copilot PR #400 also addresses #350 - maintainer should compare. Future deep-review bugs: #363 (head-of-line blocking), remaining ~80 empty catch sites across 39 files.",
   "test_baseline": {
     "shared_tests": "exit 0 (1565 passed, 28 skipped, 7 pre-existing failures)",
-    "tray_tests": "exit 0 (1165 passed, 47 skipped, 7 pre-existing failures)",
+    "tray_tests": "exit 0 (1160 passed, 47 skipped, 7 pre-existing failures) [+4 new v2 signature probe tests]",
     "note": "Both test suites run on Linux. build.ps1 requires Windows. Baselines from 2026-05-15. +9 new SafeEventInvoke tests."
   }
 }
