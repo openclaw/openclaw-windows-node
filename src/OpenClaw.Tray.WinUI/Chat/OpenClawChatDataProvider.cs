@@ -1,3 +1,6 @@
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 #if !OPENCLAW_TRAY_TESTS
@@ -61,6 +64,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly object _gate = new();
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
     private readonly Dictionary<string, string> _activeRunIds = new();   // sessionKey → runId
+    private readonly Dictionary<string, int> _pendingAbortCounts = new(); // threads → count of pending aborts waiting for lifecycle.start
+    private readonly HashSet<string> _abortedRunIds = new();             // runIds whose events should be suppressed
+    private readonly HashSet<string> _abortedThreads = new();            // threads with active abort — suppress chat messages (no runId on those)
+    private Dictionary<string, HashSet<string>> _persistedAbortedIds;    // threadId → set of __openclaw.id values (loaded from disk)
+    private readonly SemaphoreSlim _persistLock = new(1, 1);             // serialize persist calls to avoid races
+
+    /// <summary>Whether any thread is in an aborted state (suppress TTS/notifications).</summary>
+    public bool IsResponseSuppressed { get { lock (_gate) return _abortedThreads.Count > 0; } }
+
     private readonly Dictionary<string, string> _sessionIds = new();      // sessionKey → immutable sessionId
     private readonly HashSet<string> _historyLoaded = new();              // sessionKey
     private readonly HashSet<string> _historyInFlight = new();            // sessionKey
@@ -94,6 +106,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
         _status = bridge.CurrentStatus;
+        _persistedAbortedIds = LoadAbortedIds();
 
         // Seed models from whatever the bridge already knows about (a connect
         // that completed before the provider was constructed will have its
@@ -143,14 +156,35 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return Task.FromResult(thread);
     }
 
-    public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
+    // Explicit interface implementation (no attachments).
+    Task IChatDataProvider.SendMessageAsync(string threadId, string message, CancellationToken cancellationToken)
+        => SendMessageAsync(threadId, message, cancellationToken, attachments: null);
+
+    public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(message))
-            throw new ArgumentException("Message cannot be empty.", nameof(message));
+
+        var hasAttachments = attachments is { Count: > 0 };
+        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
+            throw new ArgumentException("Message or attachment is required.", nameof(message));
 
         var trimmed = message.Trim();
         var nonce = Guid.NewGuid().ToString("N");
+
+        // Build the display text for the user bubble. When attachments are
+        // present, append a human-readable indicator so the bubble is never
+        // blank even if the typed message was empty.
+        var displayText = trimmed;
+        if (hasAttachments)
+        {
+            var chips = string.Join(", ", attachments!.Select(a =>
+                a.Type == "image"
+                    ? $"🖼️ {a.FileName}"
+                    : $"📎 {a.FileName}"));
+            displayText = string.IsNullOrEmpty(trimmed)
+                ? chips
+                : $"{trimmed}\n{chips}";
+        }
 
         // 1. Optimistically add the user message + flag turn active.
         ChatDataSnapshot snapshot;
@@ -159,8 +193,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             var current = GetOrCreateTimelineLocked(threadId);
             var beforeNextId = current.NextId;
-            _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, trimmed, nonce);
+            _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, displayText, nonce);
             _sessionIds.TryGetValue(threadId, out sessionId);
+
+            // Clear abort suppression — the user is starting a new interaction.
+            // Do NOT clear _pendingAbortCounts here: the user may send multiple
+            // messages rapidly with stops between; the count must accumulate
+            // until lifecycle.start fires and drains all pending aborts.
+            _abortedThreads.Remove(threadId);
 
             // Capture metadata for the just-added user entry.
             var meta = BuildLiveMetaLocked(threadId);
@@ -174,7 +214,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // 2. Send to gateway.
         try
         {
-            await _bridge.SendChatMessageAsync(trimmed, threadId, sessionId);
+            await _bridge.SendChatMessageAsync(trimmed, threadId, sessionId, attachments);
         }
         catch (Exception ex)
         {
@@ -198,13 +238,28 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             _activeRunIds.TryGetValue(threadId, out runId);
             hadActiveTurn = _timelines.TryGetValue(threadId, out var tl) && tl.TurnActive;
+
+            // Suppress all incoming messages for this thread until the next user send.
+            _abortedThreads.Add(threadId);
+
+            if (!string.IsNullOrEmpty(runId))
+                _abortedRunIds.Add(runId);
+            else
+            {
+                _pendingAbortCounts.TryGetValue(threadId, out var count);
+                _pendingAbortCounts[threadId] = count + 1;
+            }
         }
+
+        Logger.Info($"[ABORT] StopResponseAsync threadId='{threadId}' runId='{runId ?? "(null)"}' hadActiveTurn={hadActiveTurn} deferred={string.IsNullOrEmpty(runId)}");
 
         if (!string.IsNullOrEmpty(runId))
         {
             try
             {
-                await _bridge.SendChatAbortAsync(runId);
+                Logger.Info($"[ABORT] Sending chat.abort for runId='{runId}'");
+                await _bridge.SendChatAbortAsync(runId, threadId);
+                Logger.Info($"[ABORT] chat.abort sent successfully");
             }
             catch (Exception ex)
             {
@@ -212,6 +267,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_AbortFailed"), ex.Message));
             }
         }
+        else
+        {
+            Logger.Info($"[ABORT] No runId yet — queued pending abort for threadId='{threadId}'");
+        }
+
+        // Persist is handled by the deferred abort path (lifecycle.start or
+        // lifecycle.end) which runs after the gateway has recorded the message.
 
         // If there was a real in-flight turn, mark the partial assistant text
         // as aborted so users can tell it isn't a complete response (per spec
@@ -276,21 +338,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 var session = Array.Find(_sessions, s => s.Key == threadId);
                 var modelAtLoad = session?.Model;
 
-                ChatTimelineState ApplyAndCaptureMeta(ChatTimelineState s, ChatEvent e, ChatEntryMetadata meta)
+                ChatTimelineState ApplyAndCaptureMeta(ChatTimelineState s, ChatEvent e, ChatEntryMetadata? meta)
                 {
                     var beforeIds = new HashSet<string>(s.Entries.Count);
                     for (int i = 0; i < s.Entries.Count; i++) beforeIds.Add(s.Entries[i].Id);
                     var nextState = ChatTimelineReducer.Apply(s, e);
-                    for (int i = 0; i < nextState.Entries.Count; i++)
+                    if (meta is not null)
                     {
-                        var id = nextState.Entries[i].Id;
-                        if (!beforeIds.Contains(id) && !rebuiltMeta.ContainsKey(id))
-                            rebuiltMeta[id] = meta;
+                        for (int i = 0; i < nextState.Entries.Count; i++)
+                        {
+                            var id = nextState.Entries[i].Id;
+                            if (!beforeIds.Contains(id) && !rebuiltMeta.ContainsKey(id))
+                                rebuiltMeta[id] = meta;
+                        }
                     }
                     return nextState;
                 }
 
                 Logger.Info($"[ChatHistory] Loading thread '{threadId}' — {ordered.Count} messages from gateway");
+
+                bool nextAssistantIsAborted = false;
 
                 foreach (var msg in ordered)
                 {
@@ -307,11 +374,29 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     // (chat rubber-duck MEDIUM 4).
                     var text = TruncateForChatEntry(msg.Text);
 
+                    // Check if this user message was aborted (persisted __openclaw.id match)
+                    if (roleLower == "user")
+                    {
+                        Logger.Debug($"[ChatHistory] user msg OpenClawId='{msg.OpenClawId ?? "(null)"}' seq={msg.OpenClawSeq}");
+                        if (IsMessageAborted(threadId, msg.OpenClawId))
+                            nextAssistantIsAborted = true;
+                    }
+
+                    // Check if the gateway itself flagged this as an aborted response
+                    bool gatewayAborted = roleLower == "assistant" &&
+                        !string.IsNullOrEmpty(msg.StopReason) &&
+                        !string.Equals(msg.StopReason, "stop", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(msg.StopReason, "toolUse", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(msg.StopReason, "end_turn", StringComparison.OrdinalIgnoreCase);
+
+                    bool shouldMarkAborted = (roleLower == "assistant" && nextAssistantIsAborted) || gatewayAborted;
+                    if (roleLower == "assistant") nextAssistantIsAborted = false; // reset after consuming
+
                     // Diagnostic: log shape (role + length + heuristic flags) only.
                     // Never log the message text — see HIGH 4 logging audit.
                     var isFlat = LooksLikeFlattenedToolOutput(text);
                     var isSys  = LooksLikeSystemControlNote(text);
-                    Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys}");
+                    Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys} aborted={shouldMarkAborted}");
 
                     switch (roleLower)
                     {
@@ -339,6 +424,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             break;
 
                         case "assistant":
+                            // If this assistant response was aborted, show a placeholder
+                            // instead of the actual (partial) content.
+                            if (shouldMarkAborted)
+                            {
+                                Logger.Debug($"[ChatHistory]   → routed: ABORTED (response was stopped)");
+                                rebuilt = ApplyAndCaptureMeta(
+                                    rebuilt,
+                                    new ChatStatusEvent("Response was stopped", ChatTone.Warning),
+                                    msgMeta);
+                                rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
+                                break;
+                            }
                             // ── Heuristic recovery for history-flattened tool calls ──
                             // The gateway strips ``stream:"item"`` / ``command_output``
                             // detail server-side when serving ``chat.history`` —
@@ -420,6 +517,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             break;
                     }
                 }
+                // If the last user message was aborted but there's no subsequent
+                // assistant message in history (gateway didn't record one), synthesize
+                // the "Response was stopped" indicator so the user sees it.
+                if (nextAssistantIsAborted)
+                {
+                    Logger.Debug("[ChatHistory] Trailing aborted user message with no assistant response — synthesizing abort indicator");
+                    rebuilt = ApplyAndCaptureMeta(
+                        rebuilt,
+                        new ChatStatusEvent("Response was stopped", ChatTone.Warning),
+                        null);
+                    rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
+                }
+
                 // Final safety: ensure no lingering active turn after history load.
                 rebuilt = rebuilt with { TurnActive = false, ActiveAssistantId = null, ActiveReasoningId = null };
 
@@ -569,10 +679,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return Task.CompletedTask; // Not supported by gateway — no-op.
     }
 
-    public Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default)
+    public async Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.CompletedTask; // Not supported by gateway today.
+        await _bridge.PatchSessionModelAsync(threadId, model);
+    }
+
+    public async Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await _bridge.PatchSessionThinkingLevelAsync(threadId, thinkingLevel);
     }
 
     public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default)
@@ -709,15 +825,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private static string[] ExtractModelNames(ModelsListInfo info)
     {
         if (info?.Models is null || info.Models.Count == 0) return Array.Empty<string>();
-        // Prefer DisplayName (which already falls back to Id when Name is null).
-        // Filter out duplicates and empty entries deterministically.
+        // Use model Id (wire format, e.g. "claude-opus-4.5") so the composer
+        // can match against SessionInfo.Model (which is also the wire Id).
+        // The ComboBox will show Ids directly; a future pass could introduce
+        // a separate display-name array if prettier labels are desired.
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var list = new List<string>(info.Models.Count);
         foreach (var m in info.Models)
         {
-            var n = m.DisplayName;
-            if (string.IsNullOrEmpty(n)) continue;
-            if (seen.Add(n)) list.Add(n);
+            var id = m.Id;
+            if (string.IsNullOrEmpty(id)) continue;
+            if (seen.Add(id)) list.Add(id);
         }
         return list.ToArray();
     }
@@ -725,6 +843,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private void OnChatMessageReceived(object? sender, ChatMessageInfo message)
     {
         if (message is null) return;
+
+        // Suppress chat messages for threads that were aborted by the user.
+        // Chat messages don't carry a runId, so we use thread-level suppression.
+        var msgThreadId = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+        lock (_gate)
+        {
+            if (_abortedThreads.Contains(msgThreadId))
+            {
+                Logger.Debug($"[ABORT] Suppressed ChatMessage for threadId='{msgThreadId}' (role={message.Role})");
+                return;
+            }
+        }
 
         var role = message.Role ?? "";
         var roleLower = role.ToLowerInvariant();
@@ -815,9 +945,43 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (evt is null) return;
         var threadId = string.IsNullOrEmpty(evt.SessionKey) ? "main" : evt.SessionKey;
 
-        // Track the active runId per session for chat.abort. Lifecycle.start
-        // sets it; lifecycle.end/error clears it.
+        // Always update run tracking first (state maintenance must not be skipped).
         UpdateActiveRunId(evt, threadId);
+
+        // Fire deferred chat.abort and persist if pending aborts were queued.
+        var deferredRunId = _deferredAbortRunId;
+        var shouldPersist = _deferredAbortCount > 0;
+        if (deferredRunId is not null || shouldPersist)
+        {
+            _ = Task.Run(async () =>
+            {
+                if (deferredRunId is not null)
+                {
+                    try
+                    {
+                        Logger.Info($"[ABORT] Sending deferred chat.abort for runId='{deferredRunId}'");
+                        await _bridge.SendChatAbortAsync(deferredRunId, threadId);
+                        Logger.Info($"[ABORT] Deferred chat.abort sent successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"[ABORT] Deferred chat.abort failed: {ex.Message}");
+                    }
+                }
+                // Always persist — scan history for user messages with missing/truncated responses.
+                await PersistAbortedMessageIdAsync(threadId);
+            });
+        }
+
+        // Suppress rendering for aborted runs/threads (but lifecycle events
+        // already ran above for state cleanup).
+        lock (_gate)
+        {
+            if (!string.IsNullOrEmpty(evt.RunId) && _abortedRunIds.Contains(evt.RunId))
+                return;
+            if (_abortedThreads.Contains(threadId))
+                return;
+        }
 
         ChatEvent? mapped = MapAgentEvent(evt);
         if (mapped is null) return;
@@ -830,8 +994,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ApplyEventAndPublish(threadId, mapped, meta);
     }
 
+    private string? _deferredAbortRunId; // set inside lock when pending abort fires; read outside lock to send RPC
+    private int _deferredAbortCount;     // how many user messages to force-persist as aborted
+
     private void UpdateActiveRunId(AgentEventInfo evt, string threadId)
     {
+        _deferredAbortRunId = null;
+        _deferredAbortCount = 0;
+
         if (string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) &&
             evt.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
             evt.Data.TryGetProperty("phase", out var phaseProp))
@@ -840,9 +1010,38 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             lock (_gate)
             {
                 if (phase == "start" && !string.IsNullOrEmpty(evt.RunId))
+                {
                     _activeRunIds[threadId] = evt.RunId;
+
+                    // Deferred abort: if user clicked stop before lifecycle.start,
+                    // fire chat.abort now that we have the runId.
+                    if (_pendingAbortCounts.TryGetValue(threadId, out var pendingCount) && pendingCount > 0)
+                    {
+                        _pendingAbortCounts.Remove(threadId);
+                        _abortedRunIds.Add(evt.RunId);
+                        _deferredAbortRunId = evt.RunId;
+                        _deferredAbortCount = pendingCount;
+                        Logger.Info($"[ABORT] Deferred abort fired — lifecycle.start arrived with runId='{evt.RunId}' for threadId='{threadId}' (pendingCount={pendingCount})");
+                    }
+                }
                 else if (phase == "end" || phase == "error")
+                {
+                    // Clean up: remove aborted runId tracking on terminal events.
+                    if (!string.IsNullOrEmpty(evt.RunId))
+                        _abortedRunIds.Remove(evt.RunId);
                     _activeRunIds.Remove(threadId);
+
+                    // Edge case: if we have pending aborts but never saw lifecycle.start
+                    // (gateway responded so fast start+end were batched), fire the
+                    // deferred abort now so the persist still runs.
+                    if (_pendingAbortCounts.TryGetValue(threadId, out var lateCount) && lateCount > 0)
+                    {
+                        _pendingAbortCounts.Remove(threadId);
+                        _deferredAbortRunId = evt.RunId; // may be null, that's ok — persist doesn't need it
+                        _deferredAbortCount = lateCount;
+                        Logger.Info($"[ABORT] Late deferred abort — lifecycle.end arrived with pending aborts for threadId='{threadId}' (pendingCount={lateCount})");
+                    }
+                }
             }
         }
         // Also catch lifecycle via legacy job stream.
@@ -854,7 +1053,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             lock (_gate)
             {
                 if ((state == "done" || state == "error") && !string.IsNullOrEmpty(evt.RunId))
+                {
+                    _abortedRunIds.Remove(evt.RunId);
                     _activeRunIds.Remove(threadId);
+                }
             }
         }
     }
@@ -1606,6 +1808,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Activity = string.IsNullOrEmpty(s.CurrentActivity) ? ChatActivity.Idle : ChatActivity.Working,
             Workspace = s.Channel,
             Model = s.Model,
+            ThinkingLevel = s.ThinkingLevel,
             CreatedAt = s.StartedAt is { } st ? ToOffset(st) : null,
             UpdatedAt = s.UpdatedAt is { } ut ? ToOffset(ut) : null,
         };
@@ -1645,5 +1848,143 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
         _post(() => NotificationRequested?.Invoke(this, args));
+    }
+
+    // ── Abort persistence ──────────────────────────────────────────────
+
+    private static readonly string AbortedIdsFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpenClawTray", "aborted-messages.json");
+
+    private static Dictionary<string, HashSet<string>> LoadAbortedIds()
+    {
+        try
+        {
+            if (!File.Exists(AbortedIdsFilePath))
+                return new();
+            var json = File.ReadAllText(AbortedIdsFilePath);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+            if (dict is null) return new();
+            var result = new Dictionary<string, HashSet<string>>();
+            foreach (var (k, v) in dict)
+                result[k] = new HashSet<string>(v);
+            return result;
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    private void SaveAbortedIds()
+    {
+        try
+        {
+            Dictionary<string, HashSet<string>> snapshot;
+            lock (_gate) snapshot = new Dictionary<string, HashSet<string>>(_persistedAbortedIds);
+
+            var dir = Path.GetDirectoryName(AbortedIdsFilePath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+            // Convert HashSet to List for JSON serialization
+            var serializable = new Dictionary<string, List<string>>();
+            foreach (var (k, v) in snapshot)
+                serializable[k] = new List<string>(v);
+
+            var json = System.Text.Json.JsonSerializer.Serialize(serializable,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(AbortedIdsFilePath, json);
+        }
+        catch { /* best-effort persistence */ }
+    }
+
+    /// <summary>
+    /// After a successful abort, reload chat.history to capture the __openclaw.id
+    /// of the aborted user message and persist it for future sessions.
+    /// </summary>
+    private async Task PersistAbortedMessageIdAsync(string threadId)
+    {
+        await _persistLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await Task.Delay(500).ConfigureAwait(false); // let gateway finalize
+            var history = await _bridge.RequestChatHistoryAsync(threadId).ConfigureAwait(false);
+
+            var newAbortedIds = new List<string>();
+            var msgs = history.Messages;
+
+            // Scan for user messages with missing/truncated assistant responses
+            for (int i = 0; i < msgs.Count; i++)
+            {
+                var msg = msgs[i];
+                if (!string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (msg.OpenClawId is null) continue;
+                if (IsMessageAborted(threadId, msg.OpenClawId)) continue;
+                if (newAbortedIds.Contains(msg.OpenClawId)) continue;
+
+                ChatMessageInfo? nextAssistant = null;
+                for (int j = i + 1; j < msgs.Count; j++)
+                {
+                    var candidate = msgs[j];
+                    var role = candidate.Role?.ToLowerInvariant();
+                    if (role == "assistant") { nextAssistant = candidate; break; }
+                    if (role == "user") break;
+                }
+
+                if (nextAssistant is null)
+                {
+                    newAbortedIds.Add(msg.OpenClawId);
+                }
+                else if (!string.IsNullOrEmpty(nextAssistant.StopReason) &&
+                         !string.Equals(nextAssistant.StopReason, "stop", StringComparison.OrdinalIgnoreCase) &&
+                         !string.Equals(nextAssistant.StopReason, "end_turn", StringComparison.OrdinalIgnoreCase) &&
+                         !string.Equals(nextAssistant.StopReason, "toolUse", StringComparison.OrdinalIgnoreCase))
+                {
+                    newAbortedIds.Add(msg.OpenClawId);
+                }
+            }
+
+            if (newAbortedIds.Count == 0)
+            {
+                Logger.Debug($"[ABORT-PERSIST] No new aborted message IDs found for thread {threadId}");
+                return;
+            }
+
+            lock (_gate)
+            {
+                if (!_persistedAbortedIds.TryGetValue(threadId, out var set))
+                {
+                    set = new HashSet<string>();
+                    _persistedAbortedIds[threadId] = set;
+                }
+                foreach (var id in newAbortedIds)
+                    set.Add(id);
+            }
+
+            SaveAbortedIds();
+            Logger.Info($"[ABORT-PERSIST] Persisted {newAbortedIds.Count} aborted IDs for thread {threadId}: {string.Join(", ", newAbortedIds)}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[ABORT-PERSIST] Failed to persist abort for thread {threadId}: {ex.Message}");
+        }
+        finally
+        {
+            _persistLock.Release();
+        }
+    }
+
+    /// <summary>Check if a user message's __openclaw.id is in the persisted aborted set.</summary>
+    private bool IsMessageAborted(string threadId, string? openClawId)
+    {
+        if (openClawId is null) return false;
+        lock (_gate)
+        {
+            var found = _persistedAbortedIds.TryGetValue(threadId, out var set);
+            var contains = found && set!.Contains(openClawId);
+            Logger.Debug($"[IsMessageAborted] thread='{threadId}' id='{openClawId}' dictHasThread={found} setCount={set?.Count ?? 0} match={contains}");
+            return contains;
+        }
     }
 }

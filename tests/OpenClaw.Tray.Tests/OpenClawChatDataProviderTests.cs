@@ -24,7 +24,7 @@ public class OpenClawChatDataProviderTests
         public SessionInfo[] GetSessionList() => Sessions;
         public ModelsListInfo? GetCurrentModelsList() => CurrentModels;
 
-        public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId)
+        public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
         {
             SentMessages.Add(message);
             SentSessionKeys.Add(sessionKey);
@@ -32,13 +32,16 @@ public class OpenClawChatDataProviderTests
             return SendBehavior?.Invoke(message, sessionKey, sessionId) ?? Task.CompletedTask;
         }
 
+        public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
+        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
+
         public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
         {
             return HistoryBehavior?.Invoke(sessionKey)
                 ?? Task.FromResult(new ChatHistoryInfo { SessionKey = sessionKey ?? "" });
         }
 
-        public Task SendChatAbortAsync(string runId)
+        public Task SendChatAbortAsync(string runId, string? sessionKey = null)
         {
             AbortedRunIds.Add(runId);
             return AbortBehavior?.Invoke(runId) ?? Task.CompletedTask;
@@ -1016,7 +1019,7 @@ public class OpenClawChatDataProviderTests
         });
 
         Assert.Equal(
-            new[] { "GPT-5.4", "Claude Sonnet 4.6", "ollama-only-id" },
+            new[] { "gpt-5.4", "claude-sonnet-4.6", "ollama-only-id" },
             snapshots[^1].AvailableModels);
     }
 
@@ -1035,8 +1038,10 @@ public class OpenClawChatDataProviderTests
             }
         });
 
-        Assert.Single(snapshots[^1].AvailableModels);
-        Assert.Equal("GPT-5.4", snapshots[^1].AvailableModels[0]);
+        // IDs are distinct ("gpt-5.4" vs "gpt-5.4-mirror"), so both appear.
+        Assert.Equal(2, snapshots[^1].AvailableModels.Length);
+        Assert.Equal("gpt-5.4", snapshots[^1].AvailableModels[0]);
+        Assert.Equal("gpt-5.4-mirror", snapshots[^1].AvailableModels[1]);
     }
 
     [Fact]
@@ -1054,7 +1059,7 @@ public class OpenClawChatDataProviderTests
 
         var snap = await provider.LoadAsync();
 
-        Assert.Equal(new[] { "X" }, snap.AvailableModels);
+        Assert.Equal(new[] { "x" }, snap.AvailableModels);
     }
 
     // ── Iteration 4: per-entry metadata (timestamp + model) ──

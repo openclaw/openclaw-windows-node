@@ -1,6 +1,7 @@
 using OpenClaw.Chat;
 using OpenClawTray.Helpers;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI;
@@ -83,6 +84,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             .Set(t =>
             {
                 t.TextWrapping = TextWrapping.Wrap;
+                t.IsTextSelectionEnabled = true;
                 ApplySafeMarkdownInlines(t, text);
             });
 
@@ -704,24 +706,113 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         Element RenderUserEntry(ChatTimelineItem entry, bool startsBurst, bool endsBurst)
         {
-            // User bubble — Microsoft accent fill with white-on-accent text.
-            // Kenny's Calm variation has no border on the user bubble — the
-            // accent fill is bold enough to read on its own.
-            var bubble = Border(
-                TextBlock(entry.Text)
-                    .Set(t =>
+            // Detect attachment indicators injected by the send path.
+            // Format: "🖼️ filename.png" or "📎 file.md" on its own line.
+            // When present, split into message text + attachment cards.
+            var text = entry.Text ?? "";
+            var lines = text.Split('\n');
+            var messageLines = new List<string>();
+            var attachmentNames = new List<(string Icon, string Name, bool IsImage)>();
+
+            foreach (var line in lines)
+            {
+                var trimLine = line.Trim();
+                if (trimLine.StartsWith("🖼️ "))
+                    attachmentNames.Add(("🖼️", trimLine.Substring(3).Trim(), true));
+                else if (trimLine.StartsWith("📎 "))
+                    attachmentNames.Add(("📎", trimLine.Substring(2).Trim(), false));
+                else
+                    messageLines.Add(line);
+            }
+
+            var messageText = string.Join('\n', messageLines).Trim();
+            var hasMessage = !string.IsNullOrEmpty(messageText);
+            var hasAttachments = attachmentNames.Count > 0;
+
+            // Build attachment card(s) — distinct from the text bubble with
+            // a subtle background, file icon, and filename. Right-aligned
+            // like user bubbles but visually differentiated.
+            Element attachmentCards = Empty();
+            if (hasAttachments)
+            {
+                var cards = new List<Element>();
+                foreach (var (icon, name, isImage) in attachmentNames)
+                {
+                    var fileGlyph = isImage ? "\uEB9F" : "\uE8A5"; // Photo / Page
+                    var card = Border(
+                        Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                            Border(
+                                TextBlock(fileGlyph)
+                                    .Set(t =>
+                                    {
+                                        t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                                        t.FontSize = 16;
+                                        t.Foreground = userBubbleFg;
+                                        t.VerticalAlignment = VerticalAlignment.Center;
+                                        t.HorizontalAlignment = HorizontalAlignment.Center;
+                                    })
+                            ).Size(32, 32)
+                             .CornerRadius(6)
+                             .Background(new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)))
+                             .Grid(row: 0, column: 0),
+                            TextBlock(name)
+                                .Set(t =>
+                                {
+                                    t.TextWrapping = TextWrapping.NoWrap;
+                                    t.TextTrimming = TextTrimming.CharacterEllipsis;
+                                    t.FontSize = 13;
+                                    t.Foreground = userBubbleFg;
+                                    t.VerticalAlignment = VerticalAlignment.Center;
+                                    t.Margin = new Thickness(8, 0, 0, 0);
+                                    t.MaxWidth = 240;
+                                })
+                                .Grid(row: 0, column: 1)
+                        )
+                    ).Set(b =>
                     {
-                        t.TextWrapping = TextWrapping.Wrap;
-                        t.FontSize = 14;
-                        t.Foreground = userBubbleFg;
-                    })
-            ).Background(userBubbleBg)
-             .Set(b =>
-             {
-                 b.CornerRadius = bubbleRadius;
-                 b.Padding = bubblePadding;
-                 b.VerticalAlignment = VerticalAlignment.Center;
-             });
+                        b.CornerRadius = bubbleRadius;
+                        b.Padding = new Thickness(10, 8, 14, 8);
+                        b.VerticalAlignment = VerticalAlignment.Center;
+                        b.BorderThickness = new Thickness(1);
+                        b.BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+                    }).Background(ChatVisualResolver.UserBubbleBrush(
+                        themeBrush("AccentFillColorSecondaryBrush")));
+
+                    cards.Add(card.HAlign(HorizontalAlignment.Right));
+                }
+                attachmentCards = VStack(4, cards.ToArray());
+            }
+
+            // Standard text bubble (only when there's actual text).
+            Element bubble = Empty();
+            if (hasMessage)
+            {
+                bubble = Border(
+                    TextBlock(messageText)
+                        .Set(t =>
+                        {
+                            t.TextWrapping = TextWrapping.Wrap;
+                            t.FontSize = 14;
+                            t.Foreground = userBubbleFg;
+                            t.IsTextSelectionEnabled = true;
+                        })
+                ).Background(userBubbleBg)
+                 .Set(b =>
+                 {
+                     b.CornerRadius = bubbleRadius;
+                     b.Padding = bubblePadding;
+                     b.VerticalAlignment = VerticalAlignment.Center;
+                 });
+            }
+
+            // Combine: text bubble above attachment card(s).
+            Element content;
+            if (hasMessage && hasAttachments)
+                content = VStack(4, bubble.HAlign(HorizontalAlignment.Right), attachmentCards);
+            else if (hasAttachments)
+                content = attachmentCards;
+            else
+                content = bubble.HAlign(HorizontalAlignment.Right);
 
             // Avatar shown only on the LAST entry of a same-sender burst,
             // and only when ChatExplorationState.AvatarMode allows. When
@@ -736,7 +827,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var bubbleRow = Grid(
                 [GridSize.Star(), GridSize.Auto],
                 [GridSize.Auto],
-                bubble.HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 0),
+                content.HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 0),
                 rightSlot.Grid(row: 0, column: 1).Margin(bubbleSideMargin, 0, 0, 0)
             ).HAlign(HorizontalAlignment.Stretch);
 
@@ -1628,10 +1719,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                     if (entryCount > 0)
                     {
-                        if (Props.SessionId is not null && sessionOffsetsRef.Current.TryGetValue(Props.SessionId, out var savedOffset))
-                            QueueScrollToOffset(sv, Props.SessionId, savedOffset, disableAnimation: true, suppressAutoFollow: true);
-                        else
-                            QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);
+                        // Always scroll to bottom when switching sessions
+                        QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);
                     }
                 }
                 else if (prependedHistory)

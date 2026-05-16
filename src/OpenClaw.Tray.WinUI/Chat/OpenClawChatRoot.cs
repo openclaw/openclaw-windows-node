@@ -1,10 +1,13 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
+using System;
+using System.Threading.Tasks;
 using static OpenClawTray.FunctionalUI.Factories;
 using static OpenClawTray.FunctionalUI.Core.Theme;
 
@@ -21,15 +24,59 @@ public sealed class OpenClawChatRoot : Component
     private readonly IChatDataProvider _provider;
     private readonly string? _initialThreadId;
     private readonly Func<string, Task>? _onReadAloud;
+    private readonly Func<CancellationToken, Task<string?>>? _onVoiceRequest;
+    private readonly Action? _onAttachClick;
+    private readonly Action? _onSettingsClick;
+    private readonly Action<bool>? _onSpeakerMuteChanged;
+    private Action<ChatAttachment>? _onFileAttached;
+    private Action<string?>? _setVoiceTranscript;
+    private Action<float>? _setVoiceAudioLevel;
+
+    /// <summary>
+    /// Callback invoked by the host window/page after a file is selected.
+    /// Sets the pending attachment and triggers a re-render.
+    /// </summary>
+    public Action<ChatAttachment>? OnFileAttached
+    {
+        get => _onFileAttached;
+        set => _onFileAttached = value;
+    }
+
+    /// <summary>
+    /// Push streaming voice transcript text into the composer UI.
+    /// Set to null when recording stops to clear the display.
+    /// </summary>
+    public Action<string?>? SetVoiceTranscript
+    {
+        get => _setVoiceTranscript;
+        set => _setVoiceTranscript = value;
+    }
+
+    /// <summary>
+    /// Push the current audio input level (0.0–1.0) into the composer UI.
+    /// </summary>
+    public Action<float>? SetVoiceAudioLevel
+    {
+        get => _setVoiceAudioLevel;
+        set => _setVoiceAudioLevel = value;
+    }
 
     public OpenClawChatRoot(
         IChatDataProvider provider,
         string? initialThreadId = null,
-        Func<string, Task>? onReadAloud = null)
+        Func<string, Task>? onReadAloud = null,
+        Func<CancellationToken, Task<string?>>? onVoiceRequest = null,
+        Action? onAttachClick = null,
+        Action? onSettingsClick = null,
+        Action<bool>? onSpeakerMuteChanged = null)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _initialThreadId = initialThreadId;
         _onReadAloud = onReadAloud;
+        _onVoiceRequest = onVoiceRequest;
+        _onAttachClick = onAttachClick;
+        _onSettingsClick = onSettingsClick;
+        _onSpeakerMuteChanged = onSpeakerMuteChanged;
     }
 
     public override Element Render()
@@ -39,6 +86,16 @@ public sealed class OpenClawChatRoot : Component
         // they receive don't change. Bumping this Root's state invalidates
         // the whole tree so toggles always show in the live preview.
         var explorationRev = UseState(0, threadSafe: true);
+        var pendingAttachment = UseState<ChatAttachment?>(null, threadSafe: true);
+        var speakerMuted = UseState(false, threadSafe: true);
+        var voiceTranscript = UseState<string?>(null, threadSafe: true);
+        var voiceAudioLevel = UseState(0f, threadSafe: true);
+
+        // Wire the OnFileAttached callback so the host window/page can set the
+        // pending attachment after the file picker completes.
+        _onFileAttached = att => pendingAttachment.Set(att);
+        _setVoiceTranscript = voiceTranscript.Set;
+        _setVoiceAudioLevel = voiceAudioLevel.Set;
         UseEffect((Func<Action>)(() =>
         {
             // Defer the re-render via DispatcherQueue. When the user picks an
@@ -62,21 +119,27 @@ public sealed class OpenClawChatRoot : Component
 
         var snapshotState = UseState<ChatDataSnapshot?>(null, threadSafe: true);
         var selectedIdState = UseState<string?>(_initialThreadId, threadSafe: true);
+        // UseRef tracks the selected ID across renders so that closures captured
+        // inside UseEffect always read the latest value (UseState structs go stale).
+        var selectedIdRef = UseRef<string?>(_initialThreadId);
+        selectedIdRef.Current = selectedIdState.Value;
 
         UseEffect((Func<Action>)(() =>
         {
             var setSnapshot = snapshotState.Set;
             var setSelected = selectedIdState.Set;
-            var getSelected = (Func<string?>)(() => selectedIdState.Value);
 
             EventHandler<ChatDataChangedEventArgs> onChanged = (_, e) =>
             {
                 setSnapshot(e.Snapshot);
-                if (getSelected() is null && e.Snapshot.DefaultThreadId is { } d)
+                if (selectedIdRef.Current is null && e.Snapshot.DefaultThreadId is { } d)
+                {
                     setSelected(d);
+                    selectedIdRef.Current = d;
+                }
             };
             _provider.Changed += onChanged;
-            _ = LoadAsync(_provider, setSnapshot, getSelected, setSelected);
+            _ = LoadAsync(_provider, setSnapshot, () => selectedIdRef.Current, v => { setSelected(v); selectedIdRef.Current = v; });
             return () => _provider.Changed -= onChanged;
         }));
 
@@ -239,7 +302,7 @@ public sealed class OpenClawChatRoot : Component
             ? RenderZeroState(suggestion =>
                 {
                     if (selectedThread is { } t)
-                        OnSend(t.Id, suggestion);
+                        OnSend(t.Id, suggestion, null);
                 })
             : Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(new(
                 SessionId: selectedThread.Id,
@@ -251,14 +314,18 @@ public sealed class OpenClawChatRoot : Component
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: selectedThread.Model,
                 ShowThinkingIndicator: showThinking,
-                OnReadAloud: _onReadAloud)));
+                OnReadAloud: _onReadAloud is not null
+                    ? (text => speakerMuted.Value ? Task.CompletedTask : _onReadAloud(text))
+                    : null)));
 
         // Distinct list of channel labels (= thread titles) — feeds the
         // composer's first ComboBox so the user can switch chats from the
-        // composer, not just the side rail.
+        // composer, not just the side rail.  Exclude cron sessions which
+        // are automated/background and shouldn't appear in the chat switcher.
         var channelTitles = snapshot.Threads
+            .Where(t => !string.IsNullOrEmpty(t.Title)
+                     && !t.Id.Contains(":cron:", StringComparison.Ordinal))
             .Select(t => t.Title)
-            .Where(t => !string.IsNullOrEmpty(t))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
@@ -271,16 +338,40 @@ public sealed class OpenClawChatRoot : Component
                 AvailableChannels: channelTitles,
                 AvailableModels: snapshot.AvailableModels,
                 CurrentModel: selectedThread.Model,
-                OnSend: msg => OnSend(selectedThread.Id, msg),
+                CurrentThinkingLevel: selectedThread.ThinkingLevel,
+                OnSend: (msg, att) =>
+                {
+                    pendingAttachment.Set(null);
+                    OnSend(selectedThread.Id, msg, att);
+                },
                 OnStop: () => OnStop(selectedThread.Id),
                 OnPermissionResponse: (rid, allow) => OnPermission(selectedThread.Id, rid, allow),
                 OnChannelChanged: title =>
                 {
                     var match = Array.Find(snapshot.Threads, t => t.Title == title);
-                    if (match is not null) selectedIdState.Set(match.Id);
+                    if (match is not null)
+                    {
+                        selectedIdState.Set(match.Id);
+                        selectedIdRef.Current = match.Id;
+                    }
                 },
                 OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(selectedThread.Id, model, ct)),
-                OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(selectedThread.Id, allowAll, ct))))
+                OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(selectedThread.Id, level, ct)),
+                OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(selectedThread.Id, allowAll, ct)),
+                OnVoiceRequest: _onVoiceRequest,
+                OnAttachClick: _onAttachClick,
+                PendingAttachment: pendingAttachment.Value,
+                OnAttachmentRemoved: () => pendingAttachment.Set(null),
+                IsSpeakerMuted: speakerMuted.Value,
+                OnSpeakerToggle: () =>
+                {
+                    var newMuted = !speakerMuted.Value;
+                    speakerMuted.Set(newMuted);
+                    _onSpeakerMuteChanged?.Invoke(newMuted);
+                },
+                OnSettingsClick: _onSettingsClick,
+                VoiceTranscript: voiceTranscript.Value,
+                VoiceAudioLevel: voiceAudioLevel.Value))
             : Empty();
 
         var divider = Empty();
@@ -392,9 +483,15 @@ public sealed class OpenClawChatRoot : Component
         );
     }
 
-    private void OnSend(string threadId, string message)
+    private void OnSend(string threadId, string message, ChatAttachment? attachment)
     {
-        RunFireAndForget(ct => _provider.SendMessageAsync(threadId, message, ct));
+        IReadOnlyList<ChatAttachment>? attachments = attachment is not null
+            ? new[] { attachment }
+            : null;
+        if (attachments is not null && _provider is OpenClawChatDataProvider concreteProvider)
+            RunFireAndForget(ct => concreteProvider.SendMessageAsync(threadId, message, ct, attachments));
+        else
+            RunFireAndForget(ct => _provider.SendMessageAsync(threadId, message, ct));
     }
 
     private void OnStop(string threadId)

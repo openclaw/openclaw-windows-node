@@ -155,7 +155,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task RequestUsageStatusAsync() => Task.CompletedTask;
         public Task RequestUsageCostAsync(int days = 30) => Task.CompletedTask;
         public Task RequestSessionPreviewAsync(string[] keys, int limit = 12, int maxChars = 240) => Task.CompletedTask;
-        public Task<bool> PatchSessionAsync(string key, string? thinkingLevel = null, string? verboseLevel = null) => Task.FromResult(false);
+        public Task<bool> PatchSessionAsync(string key, string? model = null, string? thinkingLevel = null, string? verboseLevel = null) => Task.FromResult(false);
         public Task<bool> ResetSessionAsync(string key) => Task.FromResult(false);
         public Task<bool> DeleteSessionAsync(string key, bool deleteTranscript = true) => Task.FromResult(false);
         public Task<bool> CompactSessionAsync(string key, int maxLines = 400) => Task.FromResult(false);

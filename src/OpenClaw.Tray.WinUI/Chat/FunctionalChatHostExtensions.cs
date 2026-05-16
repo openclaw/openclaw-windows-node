@@ -1,8 +1,11 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI.Hosting;
+using System;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Chat;
 
@@ -35,33 +38,54 @@ public static class FunctionalChatHostExtensions
 
     /// <summary>
     /// Mount <see cref="OpenClawChatRoot"/> into <paramref name="target"/>.
-    /// Returns an <see cref="IDisposable"/> that releases the FunctionalUI host
-    /// when the page/window unloads.
+    /// Returns a <see cref="MountedFunctionalChat"/> that releases the FunctionalUI host
+    /// when the page/window unloads and exposes the chat root for file attachment.
     /// </summary>
-    public static IDisposable MountFunctionalChat(
+    public static MountedFunctionalChat MountFunctionalChat(
         this Window window,
         Border target,
         IChatDataProvider provider,
         string? initialThreadId = null,
-        Func<string, Task>? onReadAloud = null)
+        Func<string, Task>? onReadAloud = null,
+        Func<CancellationToken, Task<string?>>? onVoiceRequest = null,
+        Action? onAttachClick = null,
+        Action? onSettingsClick = null,
+        Action<bool>? onSpeakerMuteChanged = null)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(provider);
 
+        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged);
         var host = new FunctionalHostControl();
-        host.Mount(new OpenClawChatRoot(provider, initialThreadId, onReadAloud));
+        host.Mount(root);
         target.Child = host;
-        return new MountedFunctionalHost(target, host);
+        return new MountedFunctionalChat(target, host, root);
     }
+}
 
-    private sealed class MountedFunctionalHost(Border target, FunctionalHostControl host) : IDisposable
+/// <summary>
+/// Handle returned by <see cref="FunctionalChatHostExtensions.MountFunctionalChat"/>.
+/// Exposes the <see cref="ChatRoot"/> so the host window/page can push file
+/// attachments into the composer.
+/// </summary>
+public sealed class MountedFunctionalChat(Border target, FunctionalHostControl host, OpenClawChatRoot root) : IDisposable
+{
+    public OpenClawChatRoot ChatRoot => root;
+
+    /// <summary>Push a picked file into the composer as a pending attachment.</summary>
+    public void AttachFile(ChatAttachment attachment) => root.OnFileAttached?.Invoke(attachment);
+
+    /// <summary>Push streaming voice transcript text into the composer.</summary>
+    public void SetVoiceTranscript(string? text) => root.SetVoiceTranscript?.Invoke(text);
+
+    /// <summary>Push voice audio input level (0.0–1.0) into the composer.</summary>
+    public void SetVoiceAudioLevel(float level) => root.SetVoiceAudioLevel?.Invoke(level);
+
+    public void Dispose()
     {
-        public void Dispose()
-        {
-            host.Dispose();
-            if (ReferenceEquals(target.Child, host))
-                target.Child = null;
-        }
+        host.Dispose();
+        if (ReferenceEquals(target.Child, host))
+            target.Child = null;
     }
 }

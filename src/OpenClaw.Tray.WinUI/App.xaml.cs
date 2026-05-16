@@ -885,6 +885,13 @@ public partial class App : Application
     private VoiceOverlayWindow? _voiceOverlayWindow;
     private VoiceService? _standaloneVoiceService;
 
+    /// <summary>
+    /// Gets the current VoiceService instance (from the node service or standalone).
+    /// Returns null if STT is not enabled.
+    /// </summary>
+    public VoiceService? VoiceServiceInstance =>
+        _nodeService?.VoiceService ?? _standaloneVoiceService;
+
     private void ShowVoiceOverlay()
     {
         var voiceService = _nodeService?.VoiceService ?? EnsureStandaloneVoiceService();
@@ -974,7 +981,7 @@ public partial class App : Application
             case "reconnect": _ = _connectionManager?.ReconnectAsync(); break;
             case "dashboard": OpenDashboard(); break;
             case "canvas": ShowCanvasWindow(); break;
-            case "openchat": ShowChatWindow(); break;
+            case "openchat": ShowHub("chat"); break;
             case "voice": ShowVoiceOverlay(); break;
             case "webchat": ShowWebChat(); break;
             case "hub": ShowHub(); break;
@@ -3106,6 +3113,10 @@ public partial class App : Application
         // chat reply now that voice and text chat will eventually share one UI.
         if (notification.IsChat && !string.IsNullOrEmpty(notification.Message))
         {
+            // Suppress TTS/voice overlay when the user has aborted the response.
+            if (ChatProvider?.IsResponseSuppressed == true)
+                return;
+
             if (_voiceOverlayWindow != null)
             {
                 _dispatcherQueue?.TryEnqueue(() =>
@@ -4429,6 +4440,11 @@ public partial class App : Application
 
     public Task SpeakChatTextAsync(string text) =>
         _chatCoordinator?.SpeakChatTextAsync(text) ?? Task.CompletedTask;
+
+    public void SetChatSpeakerMuted(bool muted)
+    {
+        if (_chatCoordinator is { } c) c.IsMuted = muted;
+    }
 
     private static void SendDeepLinkToRunningInstance(string uri)
     {

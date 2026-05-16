@@ -14,9 +14,11 @@ public interface IChatGatewayBridge : IDisposable
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
 
-    Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId);
+    Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null);
+    Task PatchSessionModelAsync(string sessionKey, string model);
+    Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
-    Task SendChatAbortAsync(string runId);
+    Task SendChatAbortAsync(string runId, string? sessionKey = null);
 
     event EventHandler<ConnectionStatus>? StatusChanged;
     event EventHandler<SessionInfo[]>? SessionsUpdated;
@@ -47,6 +49,13 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         {
             _currentStatus = e;
             StatusChanged?.Invoke(s, e);
+            // Fetch the available models list whenever we connect so the
+            // chat composer dropdown is populated without needing to open
+            // the Hub's SessionsPage first.
+            if (e == ConnectionStatus.Connected)
+            {
+                _ = _client.RequestModelsListAsync();
+            }
         };
         _sessionsUpdatedHandler = (s, e) => SessionsUpdated?.Invoke(s, e);
         _chatMessageReceivedHandler = (s, e) => ChatMessageReceived?.Invoke(s, e);
@@ -69,13 +78,19 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public SessionInfo[] GetSessionList() => _client.GetSessionList();
     public ModelsListInfo? GetCurrentModelsList() => _currentModels;
 
-    public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId) =>
-        _client.SendChatMessageAsync(message, sessionKey, sessionId);
+    public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) =>
+        _client.SendChatMessageAsync(message, sessionKey, sessionId, attachments);
+
+    public Task PatchSessionModelAsync(string sessionKey, string model) =>
+        _client.PatchSessionAsync(sessionKey, model: model);
+
+    public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) =>
+        _client.PatchSessionAsync(sessionKey, thinkingLevel: thinkingLevel);
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);
 
-    public Task SendChatAbortAsync(string runId) => _client.SendChatAbortAsync(runId);
+    public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;

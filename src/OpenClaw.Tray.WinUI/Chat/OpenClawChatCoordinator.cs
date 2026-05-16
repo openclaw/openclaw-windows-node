@@ -22,6 +22,27 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private int _ttsMuteCount;
     private bool _disposed;
 
+    /// <summary>
+    /// When true, all TTS playback (manual Read Aloud and auto-response speech) is suppressed.
+    /// Toggled by the speaker mute button in the chat composer.
+    /// Setting to true also interrupts any currently playing speech.
+    /// </summary>
+    private bool _isMuted;
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set
+        {
+            _isMuted = value;
+            if (value)
+            {
+                // Stop any currently playing speech immediately
+                try { (_nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService()).StopSpeaking(); }
+                catch { /* best effort */ }
+            }
+        }
+    }
+
     public OpenClawChatCoordinator(
         SettingsManager settings,
         Func<NodeService?> nodeServiceAccessor,
@@ -90,6 +111,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
     private async Task SpeakConfiguredTextAsync(string text, bool muteVoiceCapture)
     {
+        if (IsMuted) return;
         var voiceService = _nodeServiceAccessor()?.VoiceService;
         var mutedVoiceCapture = false;
 

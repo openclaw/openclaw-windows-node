@@ -258,17 +258,19 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    public async Task SendChatMessageAsync(string message, string? sessionKey = null, string? sessionId = null)
+    public async Task SendChatMessageAsync(string message, string? sessionKey = null, string? sessionId = null, IReadOnlyList<ChatAttachment>? attachments = null)
     {
-        _ = await SendChatMessageForRunAsync(message, sessionKey, sessionId).ConfigureAwait(false);
+        _ = await SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments).ConfigureAwait(false);
     }
 
-    public async Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null, string? sessionId = null)
+    public async Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null, string? sessionId = null, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
-        if (string.IsNullOrWhiteSpace(message))
-            throw new ArgumentException("Message is required", nameof(message));
+
+        var hasAttachments = attachments is { Count: > 0 };
+        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
+            throw new ArgumentException("Message or attachment is required", nameof(message));
 
         var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey)
             ? _mainSessionKey
@@ -284,17 +286,23 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         // ("unexpected property"). The `sessionId` parameter is therefore only
         // tracked client-side (used for display correlation) and not forwarded.
         _ = sessionId; // reserved for future protocol versions
+
+        var chatParams = new Dictionary<string, object?>
+        {
+            ["sessionKey"] = effectiveSessionKey,
+            ["message"] = message,
+            ["idempotencyKey"] = Guid.NewGuid().ToString()
+        };
+
+        if (hasAttachments)
+            chatParams["attachments"] = attachments;
+
         var req = new
         {
             type = "req",
             id = requestId,
             method = "chat.send",
-            @params = new
-            {
-                sessionKey = effectiveSessionKey,
-                message,
-                idempotencyKey = Guid.NewGuid().ToString()
-            }
+            @params = chatParams
         };
 
         await SendRawAsync(JsonSerializer.Serialize(req));
@@ -307,7 +315,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
 
         var result = await completion.Task.ConfigureAwait(false);
-        _logger.Info($"Sent chat message ({message.Length} chars)");
+        _logger.Info($"Sent chat message ({message.Length} chars{(hasAttachments ? $", {attachments!.Count} attachment(s)" : "")})");
         return result;
     }
 
@@ -341,11 +349,14 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     /// still be visible after the abort and is persisted into the transcript
     /// with abort metadata.
     /// </summary>
-    public async Task SendChatAbortAsync(string runId, int timeoutMs = 5000)
+    public async Task SendChatAbortAsync(string runId, string? sessionKey = null, int timeoutMs = 5000)
     {
         if (string.IsNullOrWhiteSpace(runId))
             throw new ArgumentException("runId is required", nameof(runId));
-        await SendWizardRequestAsync("chat.abort", new { runId }, timeoutMs);
+        var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey)
+            ? _mainSessionKey
+            : sessionKey.Trim();
+        await SendWizardRequestAsync("chat.abort", new { runId, sessionKey = effectiveSessionKey }, timeoutMs);
     }
 
     private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
@@ -372,6 +383,22 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             else if (m.TryGetProperty("ts", out var tsProp2) && tsProp2.ValueKind == JsonValueKind.Number)
                 ts = tsProp2.GetInt64();
 
+            // __openclaw metadata: unique message ID + sequence number
+            string? openClawId = null;
+            int? openClawSeq = null;
+            if (m.TryGetProperty("__openclaw", out var oc) && oc.ValueKind == JsonValueKind.Object)
+            {
+                if (oc.TryGetProperty("id", out var ocId))
+                    openClawId = ocId.GetString();
+                if (oc.TryGetProperty("seq", out var ocSeq) && ocSeq.ValueKind == JsonValueKind.Number)
+                    openClawSeq = ocSeq.GetInt32();
+            }
+
+            // stopReason on assistant messages (e.g. "stop", "toolUse", possibly "abort")
+            string? stopReason = null;
+            if (m.TryGetProperty("stopReason", out var sr))
+                stopReason = sr.GetString();
+
             // content can be a plain string OR an array of {type:"text", text:"..."} blocks
             string text = ExtractMessageText(m);
             if (string.IsNullOrEmpty(text)) continue;
@@ -383,7 +410,10 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 Role = role,
                 Text = text,
                 State = "final",
-                Ts = ts
+                Ts = ts,
+                OpenClawId = openClawId,
+                OpenClawSeq = openClawSeq,
+                StopReason = stopReason
             });
         }
         info.Messages = list;
@@ -466,6 +496,14 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             await SendTrackedRequestAsync("sessions.list");
     }
 
+    /// <summary>Subscribe to session change events so the gateway pushes
+    /// <c>sessions.changed</c> notifications when sessions are mutated.</summary>
+    public async Task SubscribeSessionEventsAsync()
+    {
+        var ok = await TrySendTrackedRequestAsync("sessions.subscribe", new { });
+        _logger.Info($"[SUBSCRIBE] sessions.subscribe sent, result={ok}");
+    }
+
     /// <summary>Request usage/context info from gateway (may not be supported on all gateways).</summary>
     public async Task RequestUsageAsync()
     {
@@ -525,7 +563,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         });
     }
 
-    public Task<bool> PatchSessionAsync(string key, string? thinkingLevel = null, string? verboseLevel = null)
+    public Task<bool> PatchSessionAsync(string key, string? model = null, string? thinkingLevel = null, string? verboseLevel = null)
     {
         if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(false);
 
@@ -533,6 +571,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         {
             ["key"] = key
         };
+        if (model is not null)
+            payload["model"] = model;
         if (thinkingLevel is not null)
             payload["thinkingLevel"] = thinkingLevel;
         if (verboseLevel is not null)
@@ -1304,6 +1344,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 await Task.Delay(500);
                 await CheckHealthAsync();
                 await RequestSessionsAsync();
+                await SubscribeSessionEventsAsync();
                 await RequestUsageAsync();
                 await RequestNodesAsync();
                 await RequestAgentsListAsync();
@@ -2010,6 +2051,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     {
         if (!root.TryGetProperty("event", out var eventProp)) return;
         var eventType = eventProp.GetString();
+        _logger.Info($"[EVENT] Received event: {eventType}");
 
         switch (eventType)
         {
@@ -2052,6 +2094,12 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 // Presence snapshot broadcast when clients connect/disconnect
                 if (root.TryGetProperty("payload", out var presPayload))
                     TryParsePresenceFromBroadcast(presPayload);
+                break;
+            case "sessions.changed":
+                // Gateway broadcasts this after session mutations (patch, send, etc.).
+                // Re-request the full sessions list so we pick up model/thinking changes.
+                _logger.Info("[EVENT] sessions.changed received — refreshing sessions list");
+                _ = RequestSessionsAsync();
                 break;
             case "cron":
                 // Gateway pushes cron events when jobs run/change — refresh the list
@@ -2639,7 +2687,12 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         if (item.TryGetProperty("status", out var status))
             session.Status = status.GetString() ?? "active";
         if (item.TryGetProperty("model", out var model))
-            session.Model = model.GetString();
+        {
+            var newModel = model.GetString();
+            if (session.Model != newModel)
+                _logger.Info($"[SESSION] {session.Key}: model changed '{session.Model}' → '{newModel}'");
+            session.Model = newModel;
+        }
         if (item.TryGetProperty("channel", out var channel))
             session.Channel = channel.GetString();
         if (item.TryGetProperty("displayName", out var displayName))

@@ -259,6 +259,9 @@ public sealed class TextToSpeechService : IDisposable
         }
     }
 
+    /// <summary>Stops any currently playing TTS audio immediately.</summary>
+    public void StopSpeaking() => InterruptActivePlayback();
+
     public void Dispose()
     {
         InterruptActivePlayback();

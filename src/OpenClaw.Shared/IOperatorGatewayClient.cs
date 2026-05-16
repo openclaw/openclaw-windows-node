@@ -62,7 +62,7 @@ public interface IOperatorGatewayClient
     Task RequestUsageStatusAsync();
     Task RequestUsageCostAsync(int days = 30);
     Task RequestSessionPreviewAsync(string[] keys, int limit = 12, int maxChars = 240);
-    Task<bool> PatchSessionAsync(string key, string? thinkingLevel = null, string? verboseLevel = null);
+    Task<bool> PatchSessionAsync(string key, string? model = null, string? thinkingLevel = null, string? verboseLevel = null);
     Task<bool> ResetSessionAsync(string key);
     Task<bool> DeleteSessionAsync(string key, bool deleteTranscript = true);
     Task<bool> CompactSessionAsync(string key, int maxLines = 400);

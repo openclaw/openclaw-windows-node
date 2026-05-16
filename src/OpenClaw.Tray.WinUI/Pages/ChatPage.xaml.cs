@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -22,7 +23,7 @@ namespace OpenClawTray.Pages;
 public sealed partial class ChatPage : Page
 {
     private HubWindow? _hub;
-    private IDisposable? _functionalHost;
+    private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
     private string? _chatUrl;
     private bool _webViewInitialized;
@@ -192,7 +193,11 @@ public sealed partial class ChatPage : Page
         _functionalHost = ((Window)_hub!).MountFunctionalChat(
             ChatHost,
             provider,
-            onReadAloud: readAloud);
+            onReadAloud: readAloud,
+            onVoiceRequest: VoiceTranscribeAsync,
+            onAttachClick: OnAttachClicked,
+            onSettingsClick: () => _hub?.NavigateTo("voice"),
+            onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted));
         _mountedProvider = provider;
     }
 
@@ -565,5 +570,71 @@ public sealed partial class ChatPage : Page
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
         _ = NavigateWhenChatReadyAsync(_connectionManager, _hub?.GatewayRegistry?.GetById(_hub.GatewayRegistry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
+    }
+
+    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken)
+    {
+        var voiceService = _hub?.VoiceServiceInstance;
+        var host = _functionalHost;
+        if (voiceService is null) return null;
+
+        // Subscribe to streaming events during recording
+        void OnTranscription(string text) => host?.SetVoiceTranscript(text);
+        void OnAudioLevel(float level) => host?.SetVoiceAudioLevel(level);
+
+        voiceService.TranscriptionReceived += OnTranscription;
+        voiceService.AudioLevelChanged += OnAudioLevel;
+        try
+        {
+            var args = new SttListenArgs
+            {
+                TimeoutMs = 10_000,
+                Language = ""
+            };
+            var result = await voiceService.ListenOnceAsync(args, cancellationToken);
+            return result?.Text;
+        }
+        finally
+        {
+            voiceService.TranscriptionReceived -= OnTranscription;
+            voiceService.AudioLevelChanged -= OnAudioLevel;
+            host?.SetVoiceTranscript(null);
+            host?.SetVoiceAudioLevel(0f);
+        }
+    }
+
+    private void OnAttachClicked()
+    {
+        Logger.Info("[ChatPage] OnAttachClicked invoked");
+        _ = PickAndAttachFileAsync();
+    }
+
+    private async Task PickAndAttachFileAsync()
+    {
+        try
+        {
+            if (_hub is null)
+            {
+                Logger.Warn("[ChatPage] PickAndAttachFileAsync: _hub is null, cannot open picker");
+                return;
+            }
+
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle((Window)_hub!);
+            var path = await Win32FilePickerHelper.PickSingleFileAsync(hwnd, "Attach file");
+
+            if (path is null)
+            {
+                Logger.Info("[ChatPage] File picker cancelled by user");
+                return;
+            }
+
+            Logger.Info($"[ChatPage] File selected: {path}");
+            var attachment = ChatAttachment.FromFile(path);
+            _functionalHost?.AttachFile(attachment);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"[ChatPage] File picker error: {ex}");
+        }
     }
 }

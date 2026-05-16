@@ -116,6 +116,7 @@ public sealed class FakeChatDataProvider : IChatDataProvider
     public Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default)             => Task.CompletedTask;
     public Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default)   => Task.CompletedTask;
+    public Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task RespondToPermissionAsync(string threadId, string requestId, bool allow, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

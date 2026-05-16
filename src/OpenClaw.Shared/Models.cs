@@ -1624,6 +1624,18 @@ public class ChatMessageInfo
     /// <c>23% ctx</c> in the footer.
     /// </summary>
     public int? ContextPercent { get; set; }
+
+    /// <summary>Gateway-assigned unique message ID from the <c>__openclaw.id</c> field.</summary>
+    public string? OpenClawId { get; set; }
+
+    /// <summary>Monotonic sequence number within the session from <c>__openclaw.seq</c>.</summary>
+    public int? OpenClawSeq { get; set; }
+
+    /// <summary>
+    /// Stop reason for assistant messages (e.g. "stop", "toolUse", possibly "abort").
+    /// Only present on assistant messages in <c>chat.history</c>.
+    /// </summary>
+    public string? StopReason { get; set; }
 }
 
 /// <summary>

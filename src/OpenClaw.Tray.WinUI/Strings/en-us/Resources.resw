@@ -2957,6 +2957,12 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>Voice</value>
   </data>
+  <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
+    <value>Listening…</value>
+  </data>
+  <data name="Chat_Voice_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="Chat_Composer_Tooltip_More" xml:space="preserve">
     <value>More</value>
   </data>
