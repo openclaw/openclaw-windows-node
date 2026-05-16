@@ -308,7 +308,8 @@ internal sealed class TrayMenuStateBuilder
         menu.AddMenuItem("Dashboard", FluentIconCatalog.Build(FluentIconCatalog.Dashboard), "dashboard");
         menu.AddMenuItem("Chat", FluentIconCatalog.Build(FluentIconCatalog.Chat), "openchat");
         menu.AddMenuItem("Canvas", FluentIconCatalog.Build(FluentIconCatalog.CanvasAct), "canvas");
-        menu.AddMenuItem("Voice", FluentIconCatalog.Build(FluentIconCatalog.VoiceAct), "voice");
+        // Voice overlay disabled — inline chat voice mode is used instead.
+        // menu.AddMenuItem("Voice", FluentIconCatalog.Build(FluentIconCatalog.VoiceAct), "voice");
         menu.AddMenuItem(
             LocalizationHelper.GetString("Menu_QuickSend"),
             FluentIconCatalog.Build(FluentIconCatalog.QuickSend),

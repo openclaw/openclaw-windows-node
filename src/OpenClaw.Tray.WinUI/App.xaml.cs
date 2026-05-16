@@ -2242,6 +2242,48 @@ public partial class App : Application
         if (status == ConnectionStatus.Connected)
         {
             _ = RunHealthCheckAsync();
+            // For local gateways, the NodeConnector is suppressed because NodeService
+            // owns the identity. Connect the NodeService directly after operator connects.
+            _ = TryConnectLocalNodeServiceAsync();
+        }
+    }
+
+    /// <summary>
+    /// Connects the local NodeService to the active gateway when the operator connection
+    /// is established. This handles the restart case where the NodeConnector is suppressed
+    /// for local gateways (LocalNodeServiceOwnsIdentityFor returns true) but the NodeService
+    /// was never told to connect.
+    /// </summary>
+    private async Task TryConnectLocalNodeServiceAsync()
+    {
+        if (_nodeService == null || _nodeService.IsConnected || _gatewayRegistry == null)
+            return;
+
+        var record = _gatewayRegistry.GetActive();
+        if (record == null || !record.IsLocal)
+            return;
+
+        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
+        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+        var nodeCredential = resolver.ResolveNode(record, identityDir);
+        if (nodeCredential == null)
+        {
+            Logger.Info("[App] No node credential for local NodeService — skipping auto-connect");
+            return;
+        }
+
+        var nodeUrl = record.SshTunnel != null
+            ? $"ws://localhost:{record.SshTunnel.LocalPort}"
+            : record.Url;
+
+        Logger.Info($"[App] Auto-connecting local NodeService to {nodeUrl}");
+        try
+        {
+            await _nodeService.ConnectAsync(nodeUrl, nodeCredential.Token);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"[App] Local NodeService auto-connect failed: {ex.Message}");
         }
     }
 
