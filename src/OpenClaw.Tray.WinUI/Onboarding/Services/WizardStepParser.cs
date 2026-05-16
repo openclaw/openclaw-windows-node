@@ -6,7 +6,7 @@ namespace OpenClawTray.Onboarding.Services;
 
 /// <summary>
 /// Parses wizard step JSON payloads from gateway wizard.start/wizard.next responses.
-/// Extracted from WizardPage.ApplyStep for testability.
+/// Extracted from GatewayWizardPage.ApplyStep for testability.
 /// </summary>
 public static class WizardStepParser
 {

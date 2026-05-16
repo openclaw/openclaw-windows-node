@@ -2,301 +2,916 @@
 <Page
     x:Class="OpenClawTray.Pages.ConnectionPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:helpers="using:OpenClawTray.Helpers">
+
+    <!--
+        Resources declared FIRST so StaticResource lookups in the content
+        below (e.g. saved-gateway ListView item container style) resolve
+        during XAML parse. WinUI processes elements top-to-bottom; resources
+        defined in a Page.Resources block at the END of the file fail to
+        resolve for any earlier StaticResource references at runtime.
+    -->
+    <Page.Resources>
+        <Style x:Key="GatewayRowItemContainerStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+        </Style>
+    </Page.Resources>
+
+    <!--
+        ╔════════════════════════════════════════════════════════════════════╗
+        ║  Connection page — Lobby & Cockpit & Recovery                      ║
+        ║                                                                    ║
+        ║  This page renders three layouts gated by connection state:        ║
+        ║   • Lobby   — no active gateway / never paired / switching / add   ║
+        ║   • Cockpit — connected (incl. connecting / degraded)              ║
+        ║   • Recovery — active gateway is failing; help fix THIS one        ║
+        ║                                                                    ║
+        ║  All status accents use a 4-px colored LEFT border on cards,       ║
+        ║  no trailing dots. The accent brush is set in code-behind.         ║
+        ║                                                                    ║
+        ║  Connection-layer types/services are NEVER mutated from here;      ║
+        ║  this page only renders and forwards user intent.                  ║
+        ║                                                                    ║
+        ║  Layout note: the inner StackPanel is wrapped in a Grid so the     ║
+        ║  ScrollViewer measures the content with a finite available width   ║
+        ║  (the Grid honors Stretch and reports the viewport width during    ║
+        ║  measure). Without the Grid, ScrollViewer measures its direct      ║
+        ║  StackPanel child with infinity for the horizontal dimension,      ║
+        ║  which makes Stretch+MaxWidth=900 collapse to the children's       ║
+        ║  natural desired width and arrange right-shifted instead of        ║
+        ║  centering. PermissionsPage/SandboxPage happen to dodge this       ║
+        ║  because their initial visible content is a wide TextBlock that    ║
+        ║  drives the StackPanel's desired width up to the cap; this page    ║
+        ║  starts in modes whose initial content is narrower than the cap.   ║
+        ╚════════════════════════════════════════════════════════════════════╝
+    -->
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+        <Grid HorizontalAlignment="Stretch">
+            <StackPanel Padding="24" Spacing="8"
+                        HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="ConnectionPage_TextBlock_10" Text="🔗 Connection" Style="{StaticResource TitleTextBlockStyle}"/>
-            <TextBlock x:Uid="ConnectionPage_TextBlock_11" Text="Gateway endpoint used by both the operator client and node service."
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+            <!-- ═════════════════════════════════════════════════════════
+                 PINNED MODIFIERS — render across every mode
+                 ═════════════════════════════════════════════════════════ -->
 
-            <!-- ═══ Auth Error ═══ -->
-            <InfoBar x:Uid="AuthErrorBar" x:Name="AuthErrorBar" Title="Connection Error"
-                     Severity="Error" IsOpen="False" IsClosable="True"
-                     Margin="0,0,0,0"/>
+            <!-- Auth error (legacy, kept) -->
+            <InfoBar x:Name="AuthErrorBar"
+                     x:Uid="AuthErrorBar"
+                     Title="Connection Error"
+                     Severity="Error" IsOpen="False" IsClosable="True"/>
 
-            <!-- ═══ Section 1: Status Card ═══ -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Pending approvals (others waiting on the user's decision) -->
+            <Border x:Name="PendingApprovalsBanner"
+                    Visibility="Collapsed"
+                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="8">
-                    <!-- Row 1: Status + Buttons -->
-                    <Grid>
+                    BorderThickness="1" CornerRadius="8" Padding="12"
+                    AutomationProperties.AutomationId="PendingApprovalsBanner">
+                <Expander HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          IsExpanded="False"
+                          Background="Transparent" BorderThickness="0" Padding="0">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Approvals, Mode=OneTime}" FontSize="14"
+                                      Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <TextBlock x:Name="PendingApprovalsHeaderText"
+                                       Text="Approvals waiting on you"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Spacing="8" Margin="0,8,0,0">
+                        <!-- Device pairing requests -->
+                        <StackPanel x:Name="DevicePairingListPanel" Spacing="6"/>
+                        <!-- Operator/node pairing requests -->
+                        <StackPanel x:Name="NodePairingListPanel" Spacing="6"/>
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <!-- ═════════════════════════════════════════════════════════
+                 GATEWAY CARD — status header (top) + Operator content
+                 (below a divider). When connected, the gateway card IS the
+                 operator card; we don't need to label that explicitly.
+                 ═════════════════════════════════════════════════════════ -->
+
+            <Border x:Name="StatusStripCard"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16"
+                    AutomationProperties.AutomationId="StatusStrip"
+                    AutomationProperties.Name="Gateway">
+                <StackPanel Spacing="12">
+                    <!-- Status header row -->
+                    <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                            <Ellipse x:Name="StatusDot" Width="12" Height="12" VerticalAlignment="Center" Fill="Gray"/>
-                            <TextBlock x:Uid="StatusText" x:Name="StatusText" Text="Disconnected" VerticalAlignment="Center"
-                                       Style="{StaticResource SubtitleTextBlockStyle}"/>
+
+                        <!-- Glyph / progress / circle dot.
+                             Three exclusive children; ApplyStripVisuals shows
+                             the right one for the current state. -->
+                        <Grid Grid.Column="0" Width="40" Height="40" VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw">
+                            <FontIcon x:Name="StripGlyph"
+                                      Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}"
+                                      FontSize="28"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <ProgressRing x:Name="StripProgress" Width="32" Height="32"
+                                          IsActive="False" Visibility="Collapsed"/>
+                            <!-- Filled circle for the "connected" state — feels
+                                 more like a presence indicator than a checkmark. -->
+                            <Ellipse x:Name="StripDot" Width="14" Height="14"
+                                     Fill="{ThemeResource SystemFillColorSuccessBrush}"
+                                     Visibility="Collapsed"/>
+                        </Grid>
+
+                        <!-- Headline + sub + glance chips -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="StripHeadline" Text="Not connected"
+                                       Style="{StaticResource SubtitleTextBlockStyle}"
+                                       AutomationProperties.HeadingLevel="Level1"
+                                       AutomationProperties.LiveSetting="Polite"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock x:Name="StripSub" Text=""
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"/>
+                            <!-- Glance chips: presence count, channels, $ today.
+                                 Visible only when connected; populated in code-behind. -->
+                            <ItemsRepeater x:Name="GlanceChipsHost" Margin="0,4,0,0">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Horizontal" Spacing="6"/>
+                                </ItemsRepeater.Layout>
+                            </ItemsRepeater>
                         </StackPanel>
-                        <Button x:Uid="ReconnectButton" x:Name="ReconnectButton" Grid.Column="1" Content="Reconnect"
-                                VerticalAlignment="Center" Click="OnReconnect" IsEnabled="False" Margin="0,0,8,0"/>
-                        <Button x:Name="DisconnectButton" Grid.Column="2" Content="Disconnect"
-                                VerticalAlignment="Center" Click="OnDisconnect" Visibility="Collapsed"/>
-                        <Button x:Name="DiagnosticsButton" Grid.Column="3" Content="🔍"
-                                ToolTipService.ToolTip="Open Connection Diagnostics"
-                                VerticalAlignment="Center" Click="OnOpenDiagnostics"
-                                Padding="8,4" Margin="4,0,0,0" FontSize="14"
-                                Background="Transparent"/>
+
+                        <!-- Right-side action cluster -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                    VerticalAlignment="Center">
+                            <Button x:Name="StripPrimaryButton"
+                                    Content="Connect"
+                                    Style="{ThemeResource AccentButtonStyle}"
+                                    Visibility="Collapsed"
+                                    Click="OnStripPrimaryClicked"
+                                    AutomationProperties.AutomationId="StripPrimaryAction"/>
+                            <!-- Disconnect/connect toggle. ON = connection is live (or attempting).
+                                 Tap OFF → disconnect; tap ON (from off) → reconnect. -->
+                            <Button x:Name="StripDashboardButton"
+                                    Width="32" Height="32" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    Visibility="Collapsed"
+                                    Click="OnOpenDashboard"
+                                    ToolTipService.ToolTip="Open dashboard (in browser)"
+                                    AutomationProperties.Name="Open dashboard"
+                                    AutomationProperties.AutomationId="StripDashboardAction">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}" FontSize="14"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Button>
+                            <ToggleSwitch x:Name="ConnectionToggle"
+                                          MinWidth="0" MinHeight="0"
+                                          OnContent="" OffContent=""
+                                          Visibility="Collapsed"
+                                          Toggled="OnConnectionToggled"
+                                          ToolTipService.ToolTip="Disconnect / reconnect"
+                                          AutomationProperties.Name="Disconnect or reconnect"
+                                          AutomationProperties.AutomationId="ConnectionToggle"/>
+                        </StackPanel>
                     </Grid>
-                    <!-- Row 2: Gateway details -->
-                    <TextBlock x:Name="GatewayDetailText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextWrapping="Wrap"/>
-                    <!-- Row 3: URL + auth mode -->
-                    <TextBlock x:Name="GatewayUrlDetail"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextWrapping="Wrap"/>
-                    <!-- Row 4: State Machine Pills -->
-                    <Grid Margin="0,4,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
 
-                        <!-- Operator flow -->
-                        <StackPanel Grid.Row="0" Margin="0,0,0,4">
-                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2">
-                                <TextBlock Text="OPERATOR" FontSize="9" FontWeight="Bold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="80" VerticalAlignment="Center" Width="70"/>
-                                <Border x:Name="CpOpOff" CornerRadius="3" Padding="6,2"><TextBlock Text="Off" FontSize="10"/></Border>
-                                <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <Border x:Name="CpOpConnecting" CornerRadius="3" Padding="6,2"><TextBlock Text="Connecting" FontSize="10"/></Border>
-                                <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <Border x:Name="CpOpConnected" CornerRadius="3" Padding="6,2"><TextBlock Text="Connected" FontSize="10"/></Border>
+                    <!-- Operator section — visible only when there's an active operator session.
+                         Mirrors the Permissions Node card pattern: 22-px icon
+                         column + title + small description, then a status
+                         sub-row with a colored 12-px dot.  -->
+                    <StackPanel x:Name="OperatorSection" Spacing="10" Visibility="Collapsed">
+                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,0,0,4"/>
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="36"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="{x:Bind helpers:FluentIconCatalog.Operator, Mode=OneTime}"
+                                      FontSize="22"
+                                      VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Operator"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           AutomationProperties.HeadingLevel="Level2"/>
+                                <TextBlock Text="Send commands and view sessions on this gateway from this PC."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="74,0,0,0">
-                                <Border x:Name="CpOpPairing" CornerRadius="3" Padding="6,2"><TextBlock Text="Pairing" FontSize="10"/></Border>
-                                <Border x:Name="CpOpError" CornerRadius="3" Padding="6,2"><TextBlock Text="Error" FontSize="10"/></Border>
-                            </StackPanel>
-                            <TextBlock x:Name="CpOpDetailText" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="74,2,0,0" TextWrapping="Wrap"/>
+                        </Grid>
+
+                        <!-- Live status sub-row (mirrors PermissionsPage NodeStatusDot pattern). -->
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="36"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0" x:Name="OperatorStatusIcon"
+                                      Glyph="{x:Bind helpers:FluentIconCatalog.StatusOk, Mode=OneTime}"
+                                      FontSize="14"
+                                      Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                      VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <TextBlock Grid.Column="1" x:Name="OperatorStatusText"
+                                       Text="Inactive"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <HyperlinkButton x:Name="OperatorSessionsLink"
+                                             Content="See sessions ›"
+                                             Padding="0" FontSize="13"
+                                             Click="OnOpenSessions"
+                                             AutomationProperties.Name="See sessions"/>
+                            <HyperlinkButton x:Name="OperatorInstancesLink"
+                                             Content="See instances ›"
+                                             Padding="0" FontSize="13"
+                                             Click="OnOpenInstances"
+                                             AutomationProperties.Name="See instances"/>
                         </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
-                        <!-- Node flow -->
-                        <StackPanel Grid.Row="1">
-                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2">
-                                <TextBlock Text="NODE" FontSize="9" FontWeight="Bold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="80" VerticalAlignment="Center" Width="70"/>
-                                <Border x:Name="CpNodeOff" CornerRadius="3" Padding="6,2"><TextBlock Text="Off" FontSize="10"/></Border>
-                                <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <Border x:Name="CpNodeConnecting" CornerRadius="3" Padding="6,2"><TextBlock Text="Connecting" FontSize="10"/></Border>
-                                <TextBlock Text="→" VerticalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <Border x:Name="CpNodeConnected" CornerRadius="3" Padding="6,2"><TextBlock Text="Connected" FontSize="10"/></Border>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="74,0,0,0">
-                                <Border x:Name="CpNodePairing" CornerRadius="3" Padding="6,2"><TextBlock Text="Pairing" FontSize="10"/></Border>
-                                <Border x:Name="CpNodeError" CornerRadius="3" Padding="6,2"><TextBlock Text="Error" FontSize="10"/></Border>
-                            </StackPanel>
-                            <TextBlock x:Name="CpNodeDetailText" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="74,2,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Grid>
+            <!-- ═════════════════════════════════════════════════════════
+                 NODE CARD — the "expose this machine" banner
+                 ═════════════════════════════════════════════════════════ -->
 
-                    <!-- Row 5: Pairing guidance (shown when awaiting approval) -->
-                    <Border x:Name="PairingGuidanceCard" Visibility="Collapsed"
-                            Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
-                            CornerRadius="6" Padding="12" Margin="0,4,0,0">
-                        <StackPanel Spacing="6">
-                            <TextBlock x:Name="PairingGuidanceText" TextWrapping="Wrap"
-                                       FontSize="12" FontWeight="SemiBold"/>
-                            <TextBlock Text="Run this command on the gateway host to approve:"
-                                       Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8"/>
+            <StackPanel x:Name="CockpitPanel" Spacing="8" Visibility="Collapsed">
+                <!-- (The merged gateway+operator card lives ABOVE this panel.
+                     CockpitPanel now contains only the Node card so its
+                     visibility independently controls the Node section.) -->
+
+                <!-- Node card — mirrors the PermissionsPage NodeStatusCard pattern:
+                     22-px PC icon + title + small description + master toggle,
+                     then a divider, then a status sub-row with a colored dot. -->
+                <Border x:Name="NodeCardBorder"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16"
+                        AutomationProperties.AutomationId="NodeCard"
+                        AutomationProperties.Name="Node role">
+                    <StackPanel Spacing="12">
+                        <!-- Master row -->
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="36"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}"
+                                      FontSize="22"
+                                      VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Node mode"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           AutomationProperties.HeadingLevel="Level2"/>
+                                <TextBlock Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="2"
+                                          x:Name="NodeModeToggle"
+                                          MinWidth="0" MinHeight="0"
+                                          OnContent="" OffContent=""
+                                          Toggled="OnNodeModeToggled"
+                                          ToolTipService.ToolTip="Enable/disable Node Mode"
+                                          AutomationProperties.Name="Enable node mode"
+                                          AutomationProperties.AutomationId="NodeModeToggle"/>
+                        </Grid>
+
+                        <!-- Subtle divider between master switch and status sub-row -->
+                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                        <!-- Live status sub-row -->
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="36"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0" x:Name="NodeStatusIcon"
+                                      Glyph="{x:Bind helpers:FluentIconCatalog.StatusOk, Mode=OneTime}"
+                                      FontSize="14"
+                                      Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                      VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock x:Name="NodeStatusText"
+                                           Text="Node mode disabled"
+                                           Style="{StaticResource BodyTextBlockStyle}"/>
+                                <!-- Canonical capability list per design naming.md:
+                                     "Providing N capabilities: browser, camera, …"
+                                     Replaces the prior chip strip. -->
+                                <TextBlock x:Name="NodeCapabilityText"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="NodeBodyText" Text=""
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Pairing approve command (only when OnNodePairingRequired) -->
+                        <Border x:Name="NodeApproveCmdBox" Visibility="Collapsed"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="8">
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="PairingApproveCommandText" Grid.Column="0"
-                                           IsTextSelectionEnabled="True" FontFamily="Consolas" FontSize="12"
-                                           TextWrapping="Wrap" VerticalAlignment="Center"/>
-                                <Button x:Name="CopyApproveCommandButton" Grid.Column="1" Content="Copy"
-                                        Click="OnCopyApproveCommand" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0"
+                                           x:Name="NodeApproveCmdText"
+                                           FontFamily="Consolas" FontSize="12"
+                                           IsTextSelectionEnabled="True"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Copy"
+                                        Click="OnCopyNodeApproveCommand"
+                                        AutomationProperties.AutomationId="NodeApproveCopyAction"/>
                             </Grid>
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <Button x:Name="ReconnectAfterApprovalButton" Content="Connect (once approved)"
-                                        Style="{ThemeResource AccentButtonStyle}"
-                                        Click="OnReconnectAfterApproval"/>
-                                <Button Content="Disconnect" Click="OnDisconnect"/>
-                            </StackPanel>
+                        </Border>
+
+                        <!-- Capability chips removed in favor of NodeCapabilityText
+                             above. Element kept for back-compat with code-behind
+                             that may still reference it (currently inert). -->
+                        <ItemsRepeater x:Name="NodeCapabilityChipsHost" Visibility="Collapsed">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="6"/>
+                            </ItemsRepeater.Layout>
+                        </ItemsRepeater>
+
+                        <!-- Deep link to per-capability config -->
+                        <StackPanel x:Name="NodeDeepLinks" Orientation="Horizontal" Spacing="12">
+                            <HyperlinkButton x:Name="NodePermissionsLink"
+                                             Content="Manage permissions ›"
+                                             Padding="0" FontSize="13"
+                                             Click="OnOpenPermissions"
+                                             AutomationProperties.Name="Manage permissions"/>
                         </StackPanel>
-                    </Border>
-                    <!-- Row 5: Connection attempts (shown when connecting) -->
-                    <TextBlock x:Name="ConnectionAttemptsText"
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+
+            <!-- ═════════════════════════════════════════════════════════
+                 RECOVERY body — fix THIS gateway, escape into Lobby explicit
+                 ═════════════════════════════════════════════════════════ -->
+
+            <StackPanel x:Name="RecoveryPanel" Spacing="12" Visibility="Collapsed">
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16"
+                        AutomationProperties.AutomationId="RecoveryCard">
+                    <StackPanel Spacing="10">
+                        <TextBlock x:Name="RecoveryHelpHeaderText"
+                                   Text="Help us fix this connection:"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+
+                        <!-- Bullets — populated in code-behind by category -->
+                        <StackPanel x:Name="RecoveryBulletsPanel" Spacing="6"/>
+
+                        <!-- Tunnel diag block (only when SSH tunnel involved) -->
+                        <Border x:Name="RecoveryTunnelBlock" Visibility="Collapsed"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="10">
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Name="RecoveryTunnelDetailText"
+                                           Text="SSH tunnel is down."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Restart tunnel" Click="OnRestartTunnel"
+                                            AutomationProperties.AutomationId="RecoveryRestartTunnel"/>
+                                    <Button Content="Edit tunnel settings" Click="OnEditTunnelSettings"
+                                            AutomationProperties.AutomationId="RecoveryEditTunnel"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Re-pair paste block (Auth recovery) -->
+                        <Border x:Name="RecoveryAuthPasteBlock" Visibility="Collapsed"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="10">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Paste a new setup code from the gateway host."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap"/>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0"
+                                             x:Name="RecoveryRepairCodeBox"
+                                             PlaceholderText="Paste setup code here…"/>
+                                    <Button Grid.Column="1" Content="Apply"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            Click="OnApplyRepairCode"
+                                            AutomationProperties.AutomationId="RecoveryApplyRepair"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Approve command block (Pairing recovery) -->
+                        <Border x:Name="RecoveryApproveCmdBlock" Visibility="Collapsed"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="10">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Run on the gateway host:"
+                                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               x:Name="RecoveryApproveCmdText"
+                                               FontFamily="Consolas" FontSize="12"
+                                               IsTextSelectionEnabled="True"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Copy"
+                                            Click="OnCopyApproveCommand"
+                                            AutomationProperties.AutomationId="RecoveryCopyApprove"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Escape hatch: just disconnect; the always-visible
+                             gateways list below offers switching by one click. -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                            <Button Content="Disconnect" Click="OnDisconnect"
+                                    AutomationProperties.AutomationId="RecoveryDisconnect"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Saved list collapsed; user can browse, but it's not pushed at them -->
+                <Expander x:Name="RecoverySavedExpander"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          IsExpanded="False">
+                    <Expander.Header>
+                        <TextBlock x:Name="RecoverySavedHeaderText"
+                                   Text="Saved gateways"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <ListView x:Name="RecoverySavedList"
+                              SelectionMode="None"
+                              ItemContainerStyle="{StaticResource GatewayRowItemContainerStyle}"
+                              AutomationProperties.Name="Saved gateways"/>
+                </Expander>
+            </StackPanel>
+
+            <!-- ═════════════════════════════════════════════════════════
+                 BOTTOM SECTION — gateways list (default), Add-gateway form
+                 (when adding), and Welcome tiles (when registry empty).
+                 ═════════════════════════════════════════════════════════ -->
+
+            <!-- ═════════════════════════════════════════════════════════
+                 GATEWAYS LIST — always visible (except in Welcome and
+                 AddGateway modes). Active gateway highlighted with the
+                 ACTIVE badge and a different action set on its row.
+                 ═════════════════════════════════════════════════════════ -->
+
+            <Border x:Name="SavedGatewaysCard"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16"
+                    AutomationProperties.AutomationId="SavedGatewaysCard"
+                    AutomationProperties.Name="Gateways">
+                <StackPanel Spacing="10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Gateways"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   AutomationProperties.HeadingLevel="Level2"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                x:Name="GatewaysScanButton"
+                                Click="OnScanGatewaysClicked"
+                                Margin="0,0,8,0"
+                                AutomationProperties.AutomationId="GatewaysScanAction"
+                                AutomationProperties.Name="Scan for gateways">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}" FontSize="12"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock x:Name="GatewaysScanButtonText" Text="Scan" FontSize="13"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="2"
+                                x:Name="AddGatewayHeaderButton"
+                                Click="OnEnterAddGateway"
+                                AutomationProperties.AutomationId="AddGatewayHeaderAction"
+                                AutomationProperties.Name="Add gateway">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Add, Mode=OneTime}" FontSize="12"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock Text="Add gateway" FontSize="13"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <TextBlock x:Name="SavedGatewaysEmptyText"
+                               Text="No saved gateways yet."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Visibility="Collapsed"/>
+
+                    <ListView x:Name="SavedGatewaysList"
+                              SelectionMode="None"
+                              ItemContainerStyle="{StaticResource GatewayRowItemContainerStyle}"
+                              AutomationProperties.Name="Saved gateways list"/>
+
+                    <!-- Discovered gateways sub-section. Visible only after a
+                         scan starts (in-progress) or completes with results. -->
+                    <StackPanel x:Name="GatewaysDiscoveredSection" Spacing="8" Visibility="Collapsed">
+                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,4,0,0"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       x:Name="GatewaysDiscoveredHeader"
+                                       Text="Discovered on your network"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                            <ProgressRing Grid.Column="1"
+                                          x:Name="GatewaysDiscoveredProgress"
+                                          Width="14" Height="14"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          Margin="0,0,4,0"/>
+                        </Grid>
+                        <StackPanel x:Name="GatewaysDiscoveredList" Spacing="6"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
-            <!-- ═══ Section 1.5: Pending Device Pairing ═══ -->
-            <Border x:Name="DevicePairingCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            <!-- ═════════════════════════════════════════════════════════
+                 WELCOME — only in Welcome mode (registry empty).
+                 Three tiles route into the AddGateway sub-view with the
+                 corresponding method preselected.
+                 ═════════════════════════════════════════════════════════ -->
+
+            <Border x:Name="WelcomeAddTilesCard"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16"
-                    Visibility="Collapsed">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="📋 Pending Device Pairing" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock Text="Devices waiting for approval to connect to this gateway."
+                    Visibility="Collapsed"
+                    AutomationProperties.AutomationId="WelcomeAddTilesCard">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Add a gateway"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               AutomationProperties.HeadingLevel="Level2"/>
+
+                    <!-- Get-started CTA: lead with local-WSL install for
+                         first-run users with no saved gateway and nothing
+                         discovered on the network yet. Hidden when the
+                         hub doesn't expose OpenSetupAction (no WSL tooling
+                         on this machine). Uses InfoBar (Informational) as
+                         the WinUI-canonical "featured callout" surface —
+                         soft blue tint + info icon are theme-aware and
+                         match tokens.md guidance (no custom brushes). -->
+                    <InfoBar x:Name="WelcomeLocalWslSetupCard"
+                             Severity="Informational"
+                             IsOpen="True"
+                             IsClosable="False"
+                             Visibility="Collapsed"
+                             Title="Get started — install a local gateway"
+                             Message="The fastest way to start: sets up a WSL-hosted gateway on this PC and makes it the active connection.">
+                        <InfoBar.ActionButton>
+                            <Button Content="Install"
+                                    Click="OnInstallLocalWslGateway"
+                                    AutomationProperties.AutomationId="WelcomeInstallLocalGateway"/>
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+
+                    <TextBlock x:Name="WelcomeOrDivider"
+                               Text="Or connect to an existing one:"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel x:Name="DevicePairingListPanel" Spacing="6"/>
-                </StackPanel>
-            </Border>
 
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-            <!-- ═══ Section 3: Setup Code ═══ -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="8">
-                    <TextBlock x:Uid="ConnectionPage_TextBlock_128" Text="🔑 Setup Code" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock x:Uid="ConnectionPage_TextBlock_129" Text="Paste a setup code from openclaw qr"
+                        <!-- Direct tile (default) -->
+                        <Button Grid.Column="0"
+                                x:Name="LobbyDirectTile"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Padding="16" Height="120"
+                                Click="OnEnterAddGatewayDirect"
+                                AutomationProperties.AutomationId="LobbyDirectTile"
+                                AutomationProperties.Name="Add gateway via direct URL and token">
+                            <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Plug, Mode=OneTime}" FontSize="24"
+                                          HorizontalAlignment="Center"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock Text="Direct"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="URL + token"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Setup code tile -->
+                        <Button Grid.Column="1"
+                                x:Name="LobbySetupCodeTile"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Padding="16" Height="120"
+                                Click="OnEnterAddGatewaySetupCode"
+                                AutomationProperties.AutomationId="LobbySetupCodeTile"
+                                AutomationProperties.Name="Add gateway via setup code">
+                            <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Lock, Mode=OneTime}" FontSize="24"
+                                          HorizontalAlignment="Center"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock Text="Setup code"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="Paste QR payload"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <TextBlock Text="Each method supports an optional SSH tunnel."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <Grid ColumnSpacing="8">
+
+                    <!-- Inline scan — also surfaces here for first-run users
+                         since the Gateways section isn't visible in Welcome. -->
+                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,4,0,0"/>
+                    <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Uid="SetupCodeTextBox" x:Name="SetupCodeTextBox" Grid.Column="0"
-                                 PlaceholderText="Paste setup code here…" TextChanged="OnSetupCodeTextChanged"/>
-                        <Button x:Uid="ApplySetupCodeButton" x:Name="ApplySetupCodeButton" Grid.Column="1" Content="Apply"
-                                Style="{ThemeResource AccentButtonStyle}"
-                                Click="OnApplySetupCode" VerticalAlignment="Bottom"/>
+                        <TextBlock Grid.Column="0"
+                                   Text="Or look for one on your network."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                x:Name="WelcomeScanButton"
+                                Click="OnScanGatewaysClicked"
+                                AutomationProperties.AutomationId="WelcomeScanAction"
+                                AutomationProperties.Name="Scan for gateways">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}" FontSize="12"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock x:Name="WelcomeScanButtonText" Text="Scan" FontSize="13"/>
+                            </StackPanel>
+                        </Button>
                     </Grid>
-                    <!-- Decoded preview (shown after pasting) -->
-                    <StackPanel x:Name="SetupCodePreviewPanel" Spacing="4" Visibility="Collapsed">
-                        <TextBlock x:Name="SetupCodePreviewUrl"
+                    <StackPanel x:Name="WelcomeDiscoveredSection" Spacing="6" Visibility="Collapsed">
+                        <TextBlock Text="Discovered on your network"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="SetupCodePreviewToken"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <StackPanel x:Name="WelcomeDiscoveredList" Spacing="6"/>
                     </StackPanel>
-                    <TextBlock x:Name="SetupCodeResultText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
             </Border>
 
-            <!-- ═══ Section 3.5: Recent Gateways ═══ -->
-            <Border x:Name="RecentGatewaysCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            <!-- ═════════════════════════════════════════════════════════
+                 ADD-GATEWAY sub-view (AddGateway mode)
+                 Replaces the gateways list. Status/Operator/Node stay
+                 visible above so the user keeps context.
+                 Default tab: Direct
+                 ═════════════════════════════════════════════════════════ -->
+
+            <Border x:Name="AddGatewayPanel"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16"
-                    Visibility="Collapsed">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="📡 Recent Gateways" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock Text="Switch between previously paired gateways."
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel x:Name="RecentGatewayListPanel" Spacing="6"/>
-                </StackPanel>
-            </Border>
+                    Visibility="Collapsed"
+                    AutomationProperties.AutomationId="AddGatewayPanel">
+                <StackPanel Spacing="12">
 
-            <!-- ═══ Section 4: Direct Connect ═══ -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="🔗 Direct Connect" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock Text="Connect with a gateway URL and shared token (admin scope, no pairing required for node)."
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <TextBox x:Name="GatewayUrlTextBox" Header="Gateway URL"
-                             PlaceholderText="ws://localhost:18790" Text="ws://localhost:18790"/>
-                    <TextBox x:Name="TokenTextBox" Header="Token"
-                             PlaceholderText="Shared gateway token"/>
-                    <TextBlock x:Name="DirectConnectResultText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                        <Button Content="Connect" Style="{ThemeResource AccentButtonStyle}" Click="OnDirectConnect"/>
+                    <HyperlinkButton x:Name="AddBackButton"
+                                     Padding="0" FontSize="13"
+                                     Click="OnAddBack"
+                                     AutomationProperties.AutomationId="AddGatewayBack">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}" FontSize="10" VerticalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <TextBlock Text="Back" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </HyperlinkButton>
+
+                    <TextBlock Text="Add a gateway"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               AutomationProperties.HeadingLevel="Level1"/>
+
+                    <controls:SelectorBar x:Name="AddMethodSelectorBar"
+                                          SelectionChanged="OnAddMethodChanged"
+                                          AutomationProperties.AutomationId="AddMethodSelector">
+                        <controls:SelectorBarItem x:Name="AddDirectItem"
+                                                  Text="Direct"
+                                                  IsSelected="True"
+                                                  Tag="direct"/>
+                        <controls:SelectorBarItem x:Name="AddSetupCodeItem"
+                                                  Text="Setup code"
+                                                  Tag="setup"/>
+                        <controls:SelectorBarItem x:Name="AddLocalWslItem"
+                                                  Text="Local WSL"
+                                                  Tag="local"
+                                                  Visibility="Collapsed"/>
+                    </controls:SelectorBar>
+
+                    <!-- Direct pane (default selected) -->
+                    <StackPanel x:Name="AddDirectPane" Spacing="8">
+                        <TextBox x:Name="DirectUrlBox"
+                                 Header="Gateway URL"
+                                 PlaceholderText="ws://host.local:18790"
+                                 AutomationProperties.AutomationId="AddDirectUrl"/>
+                        <PasswordBox x:Name="DirectTokenBox"
+                                     Header="Shared token"
+                                     PlaceholderText="Paste shared gateway token"
+                                     AutomationProperties.AutomationId="AddDirectToken"/>
+                        <TextBox x:Name="DirectNameBox"
+                                 Header="Name (optional)"
+                                 PlaceholderText="My gateway"
+                                 AutomationProperties.AutomationId="AddDirectName"/>
                     </StackPanel>
 
-                    <!-- SSH Tunnel -->
-                    <ToggleSwitch x:Uid="SshToggle" x:Name="SshToggle" Header="SSH Tunnel"
-                                  Toggled="OnSshToggled" Margin="0,4,0,0"/>
-                    <StackPanel x:Name="SshDetailsPanel" Spacing="8" Visibility="Collapsed">
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Uid="SshUserBox" x:Name="SshUserBox" Grid.Column="0" Header="SSH User" PlaceholderText="user"/>
-                            <TextBox x:Uid="SshHostBox" x:Name="SshHostBox" Grid.Column="1" Header="SSH Host" PlaceholderText="machine-name"/>
-                        </Grid>
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Uid="SshRemotePortBox" x:Name="SshRemotePortBox" Grid.Column="0" Header="Remote Port" PlaceholderText="18789"/>
-                            <TextBox x:Uid="SshLocalPortBox" x:Name="SshLocalPortBox" Grid.Column="1" Header="Local Port" PlaceholderText="18789"/>
-                        </Grid>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
-            <!-- ═══ Section 5: Device Identity ═══ -->
-            <Border x:Name="DeviceIdentityCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16" Visibility="Collapsed">
-                <StackPanel Spacing="8">
-                    <TextBlock x:Uid="ConnectionPage_TextBlock_200" Text="🪪 This Device" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Uid="ConnectionPage_TextBlock_207" Grid.Column="0" Text="Device ID:" VerticalAlignment="Center"
-                                   Style="{StaticResource CaptionTextBlockStyle}"/>
-                        <TextBlock x:Name="DeviceIdText" Grid.Column="1" VerticalAlignment="Center"
-                                   Style="{StaticResource BodyTextBlockStyle}" IsTextSelectionEnabled="True"/>
-                        <Button x:Uid="CopyDeviceIdButton" x:Name="CopyDeviceIdButton" Grid.Column="2" Content="Copy"
-                                Click="OnCopyDeviceId" VerticalAlignment="Center"/>
-                    </Grid>
-                    <TextBlock x:Name="PairingStatusText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <!-- Pending approval help -->
-                    <StackPanel x:Name="ApprovalHelpPanel" Spacing="4" Visibility="Collapsed">
-                        <TextBlock x:Uid="ConnectionPage_TextBlock_219" Text="Run this command on the gateway host to approve:"
+                    <!-- Setup code pane -->
+                    <StackPanel x:Name="AddSetupCodePane" Spacing="8" Visibility="Collapsed">
+                        <TextBlock Text="Paste a setup code from the gateway's QR or `openclaw qr` output."
                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="ApprovalCommandText" Grid.Column="0"
-                                       IsTextSelectionEnabled="True"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       FontFamily="Consolas" TextWrapping="Wrap"/>
-                            <Button x:Uid="CopyApprovalButton" x:Name="CopyApprovalButton" Grid.Column="1" Content="Copy"
-                                    Click="OnCopyApprovalCommand" VerticalAlignment="Top"/>
+                            <TextBox Grid.Column="0"
+                                     x:Name="AddSetupCodeBox"
+                                     PlaceholderText="Paste setup code here…"
+                                     TextChanged="OnSetupCodeTextChanged"
+                                     AutomationProperties.AutomationId="AddSetupCodeInput"/>
+                            <Button Grid.Column="1" Content="Decode"
+                                    Click="OnAddSetupCodeDecode"
+                                    AutomationProperties.AutomationId="AddSetupCodeDecode"/>
                         </Grid>
+                        <StackPanel x:Name="AddSetupCodePreviewPanel" Spacing="2" Visibility="Collapsed">
+                            <TextBlock x:Name="AddSetupCodePreviewUrl"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="AddSetupCodePreviewToken"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
                     </StackPanel>
+
+                    <!-- Scan pane removed — scan now lives in the Gateways
+                         section header (and inline in Welcome). Discovered
+                         gateways pre-fill the Direct pane via [Add]. -->
+                    <StackPanel x:Name="AddScanPane" Spacing="8" Visibility="Collapsed">
+                        <TextBlock x:Name="AddScanStatusText" Visibility="Collapsed"/>
+                        <Button x:Name="AddScanStartButton" Visibility="Collapsed"/>
+                        <ProgressBar x:Name="AddScanProgressBar" Visibility="Collapsed"/>
+                        <StackPanel x:Name="AddScanResultsPanel" Visibility="Collapsed"/>
+                    </StackPanel>
+
+                    <!-- Local WSL pane — third method. Hands off to the V2
+                         setup flow via OpenSetupAction. No URL/token form
+                         needed: the install wizard creates the gateway,
+                         pairs this PC into it, and saves the record. -->
+                    <StackPanel x:Name="AddLocalWslPane" Spacing="12" Visibility="Collapsed">
+                        <TextBlock Text="Install a new WSL gateway on this PC and make it the active connection. The setup wizard will install WSL if needed, provision the gateway, and pair this device automatically."
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap"/>
+                        <Button x:Name="AddLocalWslInstallButton"
+                                Content="Install local gateway"
+                                HorizontalAlignment="Left"
+                                Click="OnInstallLocalWslGateway"
+                                AutomationProperties.AutomationId="AddInstallLocalGateway"/>
+                        <TextBlock x:Name="AddLocalWslUnavailableText"
+                                   Text="Local-WSL setup isn't available on this machine — the install wizard couldn't be initialized."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+
+                    <!-- Per-gateway SSH tunnel — saved with the gateway record -->
+                    <Expander x:Name="AddSshExpander"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              IsExpanded="False">
+                        <Expander.Header>
+                            <TextBlock Text="Use SSH tunnel (optional)"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Spacing="8" Padding="4">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         x:Name="AddSshUserBox"
+                                         Header="SSH user"
+                                         PlaceholderText="user"/>
+                                <TextBox Grid.Column="1"
+                                         x:Name="AddSshHostBox"
+                                         Header="SSH host"
+                                         PlaceholderText="machine-name"/>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         x:Name="AddSshRemotePortBox"
+                                         Header="Remote port"
+                                         PlaceholderText="18789"/>
+                                <TextBox Grid.Column="1"
+                                         x:Name="AddSshLocalPortBox"
+                                         Header="Local port"
+                                         PlaceholderText="18789"/>
+                            </Grid>
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- Add result line -->
+                    <TextBlock x:Name="AddResultText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+
+                    <!-- Save / Cancel row -->
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="1"
+                                x:Name="AddSaveButton"
+                                Content="Save &amp; connect"
+                                Click="OnAddSave"
+                                AutomationProperties.AutomationId="AddSave"/>
+                        <Button Grid.Column="2"
+                                Content="Cancel"
+                                Click="OnAddBack"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 
-            <!-- ═══ Section 6: Connection Log ═══ -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="8">
-                    <TextBlock x:Uid="ConnectionPage_TextBlock_243" Text="📋 Connection Log" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <StackPanel x:Name="ConnectionLogPanel" Spacing="2"/>
-                    <TextBlock x:Uid="ConnectionLogEmpty" x:Name="ConnectionLogEmpty" Text="No recent connection events."
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </StackPanel>
-            </Border>
+            <!-- (Legacy global SSH expander removed — SSH tunnel config is
+                 now per-gateway and lives inside the Add Gateway flow.
+                 Pre-existing SettingsManager.UseSshTunnel values are still
+                 honored by the connection layer for back-compat.) -->
 
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

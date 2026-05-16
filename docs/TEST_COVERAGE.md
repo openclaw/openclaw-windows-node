@@ -82,7 +82,7 @@
 
 #### Onboarding Tests
 
-- **OnboardingStateTests** (19) — Page order, mode logic, route changes, wizard state persistence, completion, disposal
+- **GatewayWizardStateTests** — Gateway wizard state persistence defaults and disposal
 - **GatewayChatHelperTests** (11) — URL scheme conversion, token encoding, localhost checks, session keys
 - **LocalGatewayApproverTests** (13) — IsLocalGateway for localhost/remote/edge cases
 - **SetupCodeDecoderTests** (14) — Base64url decode, size limits, JSON validation, URL/token extraction

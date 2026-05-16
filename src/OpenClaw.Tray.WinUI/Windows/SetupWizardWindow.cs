@@ -919,9 +919,7 @@ public sealed class SetupWizardWindow : WindowEx
             var fullId = _copyDeviceIdButton.Tag?.ToString();
             if (string.IsNullOrEmpty(fullId)) return;
 
-            var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-            dataPackage.SetText(fullId);
-            global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+            ClipboardHelper.CopyText(fullId);
             _copyDeviceIdButton.Content = LocalizationHelper.GetString("Setup_DeviceIdCopied");
             Logger.Info("[Setup] Device ID copied to clipboard");
 

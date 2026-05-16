@@ -48,6 +48,27 @@ public static class LocalizationHelper
         }
     }
 
+    /// <summary>
+    /// Localized <see cref="string.Format(string, object[])"/>. Use for resw values that
+    /// contain placeholders like "{0}". Catches <see cref="FormatException"/> caused by
+    /// malformed translations (e.g., a translator writing "{2}" with one arg, or "{a}")
+    /// so the UI thread can't crash on a translator typo.
+    /// </summary>
+    public static string Format(string resourceKey, params object?[] args)
+    {
+        var template = GetString(resourceKey);
+        try
+        {
+            return string.Format(template, args);
+        }
+        catch (FormatException)
+        {
+            // Surface the unformatted template instead of crashing. The raw "{0}"
+            // is still useful debugging signal but doesn't kill the page.
+            return template;
+        }
+    }
+
     public static string GetConnectionStatusText(ConnectionStatus status) => status switch
     {
         ConnectionStatus.Connected => GetString("StatusDisplay_Connected"),

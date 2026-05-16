@@ -387,21 +387,21 @@ internal sealed class CommandCenterStateBuilder
             return null;
         }
 
-        var localPort = _snapshot.SshTunnelService is { CurrentLocalPort: > 0 }
-            ? _snapshot.SshTunnelService.CurrentLocalPort
+        var localPort = _snapshot.SshTunnelSnapshot is { CurrentLocalPort: > 0 }
+            ? _snapshot.SshTunnelSnapshot.CurrentLocalPort
             : _snapshot.Settings.SshTunnelLocalPort;
-        var remotePort = _snapshot.SshTunnelService is { CurrentRemotePort: > 0 }
-            ? _snapshot.SshTunnelService.CurrentRemotePort
+        var remotePort = _snapshot.SshTunnelSnapshot is { CurrentRemotePort: > 0 }
+            ? _snapshot.SshTunnelSnapshot.CurrentRemotePort
             : _snapshot.Settings.SshTunnelRemotePort;
-        var host = string.IsNullOrWhiteSpace(_snapshot.SshTunnelService?.CurrentHost)
+        var host = string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.CurrentHost)
             ? _snapshot.Settings.SshTunnelHost
-            : _snapshot.SshTunnelService!.CurrentHost!;
-        var user = string.IsNullOrWhiteSpace(_snapshot.SshTunnelService?.CurrentUser)
+            : _snapshot.SshTunnelSnapshot!.CurrentHost!;
+        var user = string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.CurrentUser)
             ? _snapshot.Settings.SshTunnelUser
-            : _snapshot.SshTunnelService!.CurrentUser!;
-        var status = _snapshot.SshTunnelService?.Status is TunnelStatus.Up or TunnelStatus.Starting or TunnelStatus.Restarting or TunnelStatus.Failed
-            ? _snapshot.SshTunnelService.Status
-            : string.IsNullOrWhiteSpace(_snapshot.SshTunnelService?.LastError)
+            : _snapshot.SshTunnelSnapshot!.CurrentUser!;
+        var status = _snapshot.SshTunnelSnapshot?.Status is TunnelStatus.Up or TunnelStatus.Starting or TunnelStatus.Restarting or TunnelStatus.Failed
+            ? _snapshot.SshTunnelSnapshot.Status
+            : string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.LastError)
                 ? TunnelStatus.Stopped
                 : TunnelStatus.Failed;
 
@@ -412,18 +412,18 @@ internal sealed class CommandCenterStateBuilder
             RemoteEndpoint = string.IsNullOrWhiteSpace(host)
                 ? $"127.0.0.1:{remotePort}"
                 : $"{host}:127.0.0.1:{remotePort}",
-            BrowserProxyLocalEndpoint = _snapshot.SshTunnelService?.CurrentBrowserProxyLocalPort > 0
-                ? $"127.0.0.1:{_snapshot.SshTunnelService.CurrentBrowserProxyLocalPort}"
+            BrowserProxyLocalEndpoint = _snapshot.SshTunnelSnapshot?.CurrentBrowserProxyLocalPort > 0
+                ? $"127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyLocalPort}"
                 : "",
-            BrowserProxyRemoteEndpoint = _snapshot.SshTunnelService?.CurrentBrowserProxyRemotePort > 0
+            BrowserProxyRemoteEndpoint = _snapshot.SshTunnelSnapshot?.CurrentBrowserProxyRemotePort > 0
                 ? string.IsNullOrWhiteSpace(host)
-                    ? $"127.0.0.1:{_snapshot.SshTunnelService.CurrentBrowserProxyRemotePort}"
-                    : $"{host}:127.0.0.1:{_snapshot.SshTunnelService.CurrentBrowserProxyRemotePort}"
+                    ? $"127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyRemotePort}"
+                    : $"{host}:127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyRemotePort}"
                 : "",
             Host = host,
             User = user,
-            LastError = _snapshot.SshTunnelService?.LastError,
-            StartedAt = _snapshot.SshTunnelService?.StartedAtUtc
+            LastError = _snapshot.SshTunnelSnapshot?.LastError,
+            StartedAt = _snapshot.SshTunnelSnapshot?.StartedAtUtc
         };
     }
 }

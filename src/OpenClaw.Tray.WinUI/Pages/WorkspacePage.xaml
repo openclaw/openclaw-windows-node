@@ -38,8 +38,15 @@
 
         <!-- Loading / Info -->
         <StackPanel Grid.Row="1" Padding="24,0">
-            <ProgressRing x:Name="LoadingRing" IsActive="False" Width="32" Height="32"
-                          HorizontalAlignment="Center"/>
+            <StackPanel x:Name="LoadingPanel" Visibility="Collapsed"
+                        HorizontalAlignment="Center" Spacing="8" Margin="0,24,0,0">
+                <ProgressRing x:Name="LoadingRing" IsActive="False" Width="24" Height="24"
+                              HorizontalAlignment="Center"/>
+                <TextBlock Text="Loading workspace files…"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
             <InfoBar x:Uid="FallbackInfoBar" x:Name="FallbackInfoBar"
                      IsOpen="False" IsClosable="False"
                      Severity="Informational"

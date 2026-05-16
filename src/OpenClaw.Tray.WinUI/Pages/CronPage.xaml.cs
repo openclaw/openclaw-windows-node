@@ -1055,7 +1055,7 @@ public sealed partial class CronPage : Page
         {
             var resultBadge = new Border
             {
-                CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(4, 0, 0, 0),
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 2, 5, 2), Margin = new Thickness(4, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Background = vm.ResultBadgeBackground
             };
@@ -1449,7 +1449,7 @@ public sealed partial class CronPage : Page
         // Status badge
         var statusBadge = new Border
         {
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 2, 5, 2),
             Background = statusBg, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left
         };
         statusBadge.Child = new TextBlock { Text = status, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = statusFg };

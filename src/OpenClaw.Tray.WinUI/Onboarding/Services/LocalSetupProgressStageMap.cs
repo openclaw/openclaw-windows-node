@@ -6,7 +6,7 @@ namespace OpenClawTray.Onboarding.Services;
 
 /// <summary>
 /// Pure helpers for <c>LocalSetupProgressPage</c>'s stage-list rendering
-/// (Phase 5). Lives in the Services namespace (no WinUI / FunctionalUI
+/// Lives in the Services namespace (no WinUI / FunctionalUI
 /// dependencies) so unit tests in <c>OpenClaw.Tray.Tests</c> can import
 /// it directly via the project's selective <c>&lt;Compile Include&gt;</c> list.
 ///

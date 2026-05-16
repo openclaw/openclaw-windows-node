@@ -57,13 +57,26 @@
                 </AutoSuggestBox.ItemTemplate>
             </AutoSuggestBox>
 
-            <!-- Status indicator on the right -->
-            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Ellipse x:Name="TitleStatusDot" Width="8" Height="8" VerticalAlignment="Center"
-                         Fill="Gray"/>
-                <TextBlock x:Uid="TitleStatusText" x:Name="TitleStatusText" Text="Disconnected"
-                           FontSize="11" VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            <!-- Status indicator on the right (clickable → navigates to Connection page) -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
+                        Tapped="OnTitleBarStatusTapped">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Ellipse x:Name="TitleStatusDot" Width="8" Height="8" VerticalAlignment="Center" Fill="Gray"/>
+                    <TextBlock x:Name="TitleStatusText" Text="Disconnected"
+                               FontSize="11" VerticalAlignment="Center" MinWidth="80"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <Border Background="{ThemeResource DividerStrokeColorDefaultBrush}" Width="1" Height="14" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Ellipse x:Name="TitleOpDot" Width="6" Height="6" VerticalAlignment="Center" Fill="Gray"/>
+                    <TextBlock x:Name="TitleOpLabel" Text="Op" FontSize="10" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Ellipse x:Name="TitleNodeDot" Width="6" Height="6" VerticalAlignment="Center" Fill="Gray"/>
+                    <TextBlock x:Name="TitleNodeLabel" Text="Node" FontSize="10" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                </StackPanel>
             </StackPanel>
         </Grid>
 
@@ -78,9 +91,6 @@
             SelectionChanged="NavView_SelectionChanged">
 
         <NavigationView.MenuItems>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_79" Tag="home" Content="Home">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" Tag="chat" Content="Chat">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
@@ -93,48 +103,47 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_91" Tag="sessions" Content="Sessions">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F2;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="ConversationsNavItem" Tag="conversations" Content="Conversations">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F2;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_94" Tag="agentevents" Content="Agent Events">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_97" Tag="skills" Content="Skills">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE945;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <!-- Agents — each agent is a direct nav item showing workspace -->
-            <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
-                <NavigationViewItem.MenuItems>
-                    <NavigationViewItem x:Uid="DefaultAgentNavItem" x:Name="DefaultAgentNavItem" Content="main" Tag="agent:main">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
-                    </NavigationViewItem>
-                </NavigationViewItem.MenuItems>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" Tag="channels" Content="Channels">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xEC05;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" Tag="nodes" Content="Nodes">
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" Tag="instances" Content="Instances">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE977;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_115" Tag="bindings" Content="Bindings">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AD;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" Tag="config" Content="Config">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" Tag="usage" Content="Usage">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" Tag="cron" Content="Cron">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;"/></NavigationViewItem.Icon>
+            <!-- Advanced — consolidates gateway-oriented pages -->
+            <NavigationViewItem Content="Advanced" SelectsOnInvoked="False">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE950;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.MenuItems>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_94" Tag="agentevents" Content="Agent Events">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.MenuItems>
+                            <NavigationViewItem x:Uid="DefaultAgentNavItem" x:Name="DefaultAgentNavItem" Content="main" Tag="agent:main">
+                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                        </NavigationViewItem.MenuItems>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_115" Tag="bindings" Content="Bindings">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AD;"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" Tag="config" Content="Config">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" Tag="usage" Content="Usage">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" Tag="cron" Content="Cron">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                </NavigationViewItem.MenuItems>
             </NavigationViewItem>
             <NavigationViewItemSeparator/>
 
             <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_130" Tag="capabilities" Content="Capabilities">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE964;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem Tag="voice" Content="Voice &amp; Audio">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE720;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
@@ -142,7 +151,7 @@
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_136" Tag="permissions" Content="Permissions">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D7;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xEA18;"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem Tag="sandbox" Content="Sandbox">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE72E;"/></NavigationViewItem.Icon>

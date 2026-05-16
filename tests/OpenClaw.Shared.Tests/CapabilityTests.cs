@@ -591,6 +591,47 @@ public class SystemCapabilityTests
         }
     }
 
+    [Theory]
+    [InlineData(@"C:\Users\Public\evil.exe")]
+    [InlineData(@"C:\Windows\System32\cmd.exe")]
+    [InlineData(@"D:/tools/run.exe")]
+    [InlineData(@"\\server\share\tool.exe")]
+    [InlineData(@"\\?\C:\evil.exe")]
+    [InlineData(@"""C:\Users\Public\evil.exe""")]
+    [InlineData(@"'C:\Users\Public\evil.exe'")]
+    [InlineData(@"""\\server\share\tool.exe""")]
+    [InlineData(@"""\\?\C:\evil.exe""")]
+    [InlineData(@"//server/share/tool.exe")]
+    [InlineData(@"//?/C:/evil.exe")]
+    public async Task ExecApprovalsSet_RejectsAbsolutePathAllowRules(string pattern)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+
+            var jsonPattern = System.Text.Json.JsonSerializer.Serialize(pattern)[1..^1];
+            var req = new NodeInvokeRequest
+            {
+                Id = "ea-path-allow",
+                Command = "system.execApprovals.set",
+                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"{{jsonPattern}}","action":"allow","enabled":true}],"defaultAction":"deny"}""")
+            };
+
+            var res = await cap.ExecuteAsync(req);
+
+            Assert.False(res.Ok);
+            Assert.Contains("allow rule", res.Error, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
     [Fact]
     public async Task Run_BlockedEnvVar_ReturnsError()
     {
@@ -1489,7 +1530,7 @@ public class CanvasCapabilityTests
         };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("temp directory", res.Error);
+        Assert.Equal("Failed to read jsonlPath", res.Error);
     }
     
     [Fact]
@@ -1506,7 +1547,7 @@ public class CanvasCapabilityTests
         };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("temp directory", res.Error);
+        Assert.Equal("Failed to read jsonlPath", res.Error);
     }
 
     [Fact]
@@ -1813,7 +1854,7 @@ public class DeviceCapabilityTests
         Assert.True(res.Ok);
         var battery = GetPayload(res).GetProperty("battery");
         Assert.NotEqual(JsonValueKind.Undefined, battery.GetProperty("error").ValueKind);
-        Assert.Contains("No battery hardware", battery.GetProperty("error").GetString());
+        Assert.Equal("collection failed", battery.GetProperty("error").GetString());
         // Legacy fields must still be present for backward compat
         Assert.True(battery.TryGetProperty("level", out _), "battery.level missing on failure path");
         Assert.Equal("unknown", battery.GetProperty("state").GetString());

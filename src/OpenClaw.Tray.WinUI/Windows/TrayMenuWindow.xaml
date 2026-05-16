@@ -19,7 +19,7 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           VerticalScrollMode="Auto"
                           HorizontalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="MenuPanel" AutomationProperties.AutomationId="TrayMenuPanel" Padding="6,8">
+                <StackPanel x:Name="MenuPanel" AutomationProperties.AutomationId="TrayMenuPanel" Padding="6,8,6,4">
                     <!-- Menu items will be added programmatically -->
                 </StackPanel>
             </ScrollViewer>

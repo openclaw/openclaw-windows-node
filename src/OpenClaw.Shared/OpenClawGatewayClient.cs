@@ -68,6 +68,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private bool _pairingRequiredAwaitingApproval;
     private string? _pairingRequiredRequestId;
     private bool _authFailed;
+    private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
 
@@ -195,7 +196,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
-    public bool IsConnectedToGateway => IsConnected;
+    public virtual bool IsConnectedToGateway => IsConnected;
 
     public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null)
         : base(gatewayUrl, token, logger)
@@ -642,8 +643,10 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     public async Task RequestSkillsStatusAsync(string? agentId = null)
     {
-        if (!string.IsNullOrEmpty(agentId))
-            await SendTrackedRequestAsync("skills.status", new { agentId });
+        _lastSkillsStatusAgentId = string.IsNullOrWhiteSpace(agentId) ? null : agentId;
+
+        if (_lastSkillsStatusAgentId is not null)
+            await SendTrackedRequestAsync("skills.status", new { agentId = _lastSkillsStatusAgentId });
         else
             await SendTrackedRequestAsync("skills.status");
     }
@@ -653,9 +656,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return TrySendTrackedRequestAsync("skills.install", new { id = skillId });
     }
 
-    public Task<bool> UpdateSkillAsync(string skillId)
+    public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled)
     {
-        return TrySendTrackedRequestAsync("skills.update", new { id = skillId });
+        return TrySendTrackedRequestAsync("skills.update", new { skillKey, enabled });
     }
 
     // Gateway config management
@@ -723,7 +726,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         await SendTrackedRequestAsync("node.pair.list");
     }
 
-    public Task<bool> NodePairApproveAsync(string requestId)
+    public virtual Task<bool> NodePairApproveAsync(string requestId)
     {
         return TrySendTrackedRequestAsync("node.pair.approve", new { requestId });
     }
@@ -834,7 +837,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         await SendTrackedRequestAsync("device.pair.list");
     }
 
-    public Task<bool> DevicePairApproveAsync(string requestId)
+    public virtual Task<bool> DevicePairApproveAsync(string requestId)
     {
         return TrySendTrackedRequestAsync("device.pair.approve", new { requestId });
     }
@@ -944,7 +947,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             @params = new
             {
                 minProtocol = 3,
-                maxProtocol = 3,
+                maxProtocol = 4,
                 client = new
                 {
                     id = OperatorClientId,  // Native client ID
@@ -1432,6 +1435,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 return true;
             case "skills.install":
             case "skills.update":
+                // Re-fetch the same skills scope so filtered views do not jump back to all agents.
+                _ = RequestSkillsStatusAsync(_lastSkillsStatusAgentId);
                 return true;
             case "config.get":
                 ConfigUpdated?.Invoke(this, payload.Clone());

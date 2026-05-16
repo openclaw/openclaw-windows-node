@@ -298,7 +298,7 @@ public class CanvasCapability : NodeCapabilityBase
             catch (Exception ex)
             {
                 Logger.Error($"{request.Command}: failed to read jsonlPath", ex);
-                return Error($"Failed to read jsonlPath: {ex.Message}");
+                return Error("Failed to read jsonlPath");
             }
         }
 

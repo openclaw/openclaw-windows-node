@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Onboarding.Services;
 #if !OPENCLAW_TRAY_TESTS
@@ -696,9 +697,52 @@ public sealed class WslStoreInstanceInstaller : IWslInstanceInstaller
         var distros = await _wsl.ListDistrosAsync(cancellationToken);
         if (distros.Any(d => string.Equals(d.Name, options.DistroName, StringComparison.OrdinalIgnoreCase) && d.Version == 2))
         {
-            return options.AllowExistingDistro
-                ? new WslInstanceInstallResult(true, installLocation, ["wsl_instance_already_exists"])
-                : new WslInstanceInstallResult(false, installLocation, ErrorCode: "distro_exists", ErrorMessage: $"A WSL distro named {options.DistroName} already exists.");
+            if (!options.AllowExistingDistro)
+            {
+                return new WslInstanceInstallResult(false, installLocation, ErrorCode: "distro_exists", ErrorMessage: $"A WSL distro named {options.DistroName} already exists.");
+            }
+
+            var probe = await _wsl.RunAsync(["-d", options.DistroName, "-u", "root", "--", "true"], cancellationToken);
+            if (probe.Success)
+            {
+                return new WslInstanceInstallResult(true, installLocation, ["wsl_instance_already_exists"]);
+            }
+
+            if (!IsMissingRegisteredDiskFailure(probe))
+            {
+                var existingDiagnostics = new List<string> { $"wsl_existing_distro_probe_exit_code={probe.ExitCode}" };
+                AddDiagnosticOutput(existingDiagnostics, "wsl_existing_distro_probe_stdout", probe.StandardOutput);
+                AddDiagnosticOutput(existingDiagnostics, "wsl_existing_distro_probe_stderr", probe.StandardError);
+                return new WslInstanceInstallResult(
+                    false,
+                    installLocation,
+                    existingDiagnostics,
+                    "wsl_existing_distro_unavailable",
+                    WslLogsHelp($"The existing {options.DistroName} WSL instance could not be started."));
+            }
+
+            var unregister = await _wsl.UnregisterDistroAsync(options.DistroName, cancellationToken);
+            if (!unregister.Success)
+            {
+                var remainingDistros = await _wsl.ListDistrosAsync(cancellationToken);
+                if (!remainingDistros.Any(d => string.Equals(d.Name, options.DistroName, StringComparison.OrdinalIgnoreCase) && d.Version == 2))
+                {
+                    // Another actor may have completed the unregister even though
+                    // wsl.exe returned a failure. Continue with a clean install.
+                }
+                else
+                {
+                    var unregisterDiagnostics = new List<string> { $"wsl_unregister_exit_code={unregister.ExitCode}" };
+                    AddDiagnosticOutput(unregisterDiagnostics, "wsl_unregister_stdout", unregister.StandardOutput);
+                    AddDiagnosticOutput(unregisterDiagnostics, "wsl_unregister_stderr", unregister.StandardError);
+                    return new WslInstanceInstallResult(
+                        false,
+                        installLocation,
+                        unregisterDiagnostics,
+                        "wsl_broken_distro_unregister_failed",
+                        WslLogsHelp($"The existing {options.DistroName} WSL registration points to a missing disk, but setup could not remove it."));
+                }
+            }
         }
 
         _createDirectory(installLocation);
@@ -745,6 +789,19 @@ public sealed class WslStoreInstanceInstaller : IWslInstanceInstaller
         var sanitized = SanitizeForDiagnostic(value);
         if (!string.IsNullOrWhiteSpace(sanitized))
             diagnostics.Add($"{name}={sanitized}");
+    }
+
+    internal static bool IsMissingRegisteredDiskFailure(WslCommandResult result)
+    {
+        var output = $"{result.StandardOutput}\n{result.StandardError}".Replace("\0", string.Empty, StringComparison.Ordinal);
+        var pathNotFound = output.Contains("ERROR_PATH_NOT_FOUND", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("The system cannot find the path specified", StringComparison.OrdinalIgnoreCase);
+        if (!pathNotFound)
+            return false;
+
+        return output.Contains("Failed to attach disk", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("CreateInstance/MountDisk", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("ext4.vhdx", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string WslLogsHelp(string message) => message + " Follow aka.ms/wsllogs for WSL diagnostic collection instructions.";
@@ -802,6 +859,7 @@ public sealed class WslFirstBootConfigurator : IWslInstanceConfigurator
             "",
             "[automount]",
             "enabled=false",
+            "mountFsTab=false",
             "",
             "[interop]",
             "enabled=false",
@@ -809,6 +867,9 @@ public sealed class WslFirstBootConfigurator : IWslInstanceConfigurator
             "",
             "[user]",
             "default=openclaw",
+            "",
+            "[time]",
+            "useWindowsTimezone=true",
             "EOF",
             "cat >/etc/wsl-distribution.conf <<'EOF'",
             "[oobe]",
@@ -847,16 +908,27 @@ public sealed class WslFirstBootConfigurator : IWslInstanceConfigurator
 
     private async Task<bool> IsAlreadyConfiguredAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken)
     {
+        // The awk probe is section-aware: it verifies each setting is present in the correct
+        // section, and checks all seven expected keys (including the two added in the wsl.conf
+        // template update: mountFsTab=false and [time] useWindowsTimezone=true).
+        // A distro configured with the old template (missing these keys) returns exit 1,
+        // triggering a full reconfigure.
         var script = string.Join("\n", new[]
         {
             "set -euo pipefail",
             "id -u openclaw >/dev/null",
             "test -d /home/openclaw/.openclaw",
             "test -d " + ShellQuote(options.OpenClawInstallPrefix),
-            "grep -q '^systemd=true$' /etc/wsl.conf",
-            "grep -q '^enabled=false$' /etc/wsl.conf",
-            "grep -q '^appendWindowsPath=false$' /etc/wsl.conf",
-            "grep -q '^default=openclaw$' /etc/wsl.conf"
+            "awk 'BEGIN{sec=\"\"}" +
+                " /^\\[/{sec=substr($0,2,index($0,\"]\")-2)}" +
+                " sec==\"boot\"&&$0==\"systemd=true\"{b=1}" +
+                " sec==\"automount\"&&$0==\"enabled=false\"{ae=1}" +
+                " sec==\"automount\"&&$0==\"mountFsTab=false\"{af=1}" +
+                " sec==\"interop\"&&$0==\"enabled=false\"{ie=1}" +
+                " sec==\"interop\"&&$0==\"appendWindowsPath=false\"{ip=1}" +
+                " sec==\"user\"&&$0==\"default=openclaw\"{u=1}" +
+                " sec==\"time\"&&$0==\"useWindowsTimezone=true\"{t=1}" +
+                " END{exit !(b&&ae&&af&&ie&&ip&&u&&t)}' /etc/wsl.conf"
         });
 
         var probe = await _wsl.RunAsync(["-d", options.DistroName, "-u", "root", "--", "bash", "-lc", script], cancellationToken);
@@ -1561,9 +1633,9 @@ public interface ILocalGatewaySetupSettings
 public sealed class SettingsManagerLocalGatewaySetupSettings : ILocalGatewaySetupSettings
 {
     private readonly SettingsManager _settings;
-    private readonly OpenClawTray.Services.Connection.GatewayRegistry? _registry;
+    private readonly OpenClaw.Connection.GatewayRegistry? _registry;
 
-    public SettingsManagerLocalGatewaySetupSettings(SettingsManager settings, OpenClawTray.Services.Connection.GatewayRegistry? registry = null)
+    public SettingsManagerLocalGatewaySetupSettings(SettingsManager settings, OpenClaw.Connection.GatewayRegistry? registry = null)
     {
         _settings = settings;
         _registry = registry;
@@ -1584,7 +1656,7 @@ public sealed class SettingsManagerLocalGatewaySetupSettings : ILocalGatewaySetu
         {
             var existing = _registry.FindByUrl(GatewayUrl);
             var recordId = existing?.Id ?? System.Guid.NewGuid().ToString();
-            var record = new OpenClawTray.Services.Connection.GatewayRecord
+            var record = new OpenClaw.Connection.GatewayRecord
             {
                 Id = recordId,
                 Url = GatewayUrl,
@@ -2786,8 +2858,8 @@ public sealed class LocalGatewaySetupEngine
         state.DistroName = _options.DistroName;
         state.GatewayUrl = LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(_options);
         var distroExists = await HasDistroAsync(cancellationToken);
-        var resumingAfterInstanceStarted = IsCreateOrLater(state.Phase) && distroExists;
-        var preflightOptions = _options with { AllowExistingDistro = _options.AllowExistingDistro || resumingAfterInstanceStarted };
+        var allowExistingDistroForRun = ShouldAllowExistingDistroForRun(state, distroExists, _options.AllowExistingDistro);
+        var preflightOptions = _options with { AllowExistingDistro = allowExistingDistroForRun };
 
         await RunPhaseAsync(state, LocalGatewaySetupPhase.Preflight, "Checking your PC", async () =>
         {
@@ -2820,7 +2892,7 @@ public sealed class LocalGatewaySetupEngine
 
         await RunPhaseAsync(state, LocalGatewaySetupPhase.CreateWslInstance, "Creating OpenClaw Gateway WSL instance", async () =>
         {
-            var installOptions = _options with { AllowExistingDistro = _options.AllowExistingDistro || resumingAfterInstanceStarted };
+            var installOptions = _options with { AllowExistingDistro = allowExistingDistroForRun };
             var result = await _wslInstanceInstaller.EnsureInstalledAsync(installOptions, cancellationToken);
             if (!result.Success)
             {
@@ -2956,6 +3028,28 @@ public sealed class LocalGatewaySetupEngine
         }
 
         return state;
+    }
+
+    internal static bool ShouldAllowExistingDistroForRun(
+        LocalGatewaySetupState state,
+        bool distroExists,
+        bool configuredAllowExistingDistro)
+    {
+        if (configuredAllowExistingDistro)
+            return true;
+
+        if (!distroExists)
+            return false;
+
+        if (state.Phase == LocalGatewaySetupPhase.NotStarted
+            || IsCreateOrLater(state.Phase))
+        {
+            return true;
+        }
+
+        return state.Phase == LocalGatewaySetupPhase.Failed
+            && state.FailureCode == "preflight_blocked"
+            && state.Issues.Any(issue => string.Equals(issue.Code, "distro_exists", StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task RunGatewayCliStartPhaseAsync(LocalGatewaySetupState state, CancellationToken cancellationToken)
@@ -3197,7 +3291,7 @@ public static class LocalGatewaySetupEngineFactory
         bool replaceExistingConfigurationConfirmed = false,
         string? identityDataPath = null,
         string? setupStatePath = null,
-        OpenClawTray.Services.Connection.GatewayRegistry? gatewayRegistry = null,
+        OpenClaw.Connection.GatewayRegistry? gatewayRegistry = null,
         IGatewayOperatorConnector? operatorConnectorOverride = null)
     {
         // Defense-in-depth fail-closed: refuse to construct the engine if any of the
@@ -3208,7 +3302,7 @@ public static class LocalGatewaySetupEngineFactory
         // factory is a synchronous constructor path, and the WSL distro check is async-only.
         // Forcing it async would cascade to all callers. The page-level gate
         // (LocalSetupProgressPage) performs the full 7-predicate check including the WSL probe.
-        // Default is false (safe). Pass true only from the confirmed SetupWarningPage flow.
+        // Default is false (safe). Pass true only after the V2 setup warning is confirmed.
         if (!replaceExistingConfigurationConfirmed)
         {
             var resolvedIdentityDataPath = identityDataPath ?? Path.Combine(

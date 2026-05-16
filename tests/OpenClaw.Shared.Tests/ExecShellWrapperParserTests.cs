@@ -267,6 +267,16 @@ public class ExecShellWrapperParserTests
     [InlineData("bash.exe -c echo hello")]
     [InlineData("sh -c echo hello")]
     [InlineData("sh.exe -c echo hello")]
+    [InlineData("zsh -c echo hello")]
+    [InlineData("zsh.exe -c echo hello")]
+    [InlineData("dash -c echo hello")]
+    [InlineData("dash.exe -c echo hello")]
+    [InlineData("ash -c echo hello")]
+    [InlineData("ash.exe -c echo hello")]
+    [InlineData("ksh -c echo hello")]
+    [InlineData("ksh.exe -c echo hello")]
+    [InlineData("fish -c echo hello")]
+    [InlineData("fish.exe -c echo hello")]
     public void Expand_Bash_C_ExtractsPayload(string command)
     {
         var result = Expand(command);

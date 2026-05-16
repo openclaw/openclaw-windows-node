@@ -6,13 +6,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
-using OpenClawTray.Services.Connection;
+using OpenClaw.Connection;
 using System;
 using System.IO;
 using System.Text;
 using WinUIEx;
-using WinDataTransfer = global::Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClawTray.Windows;
 
@@ -382,27 +382,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
 
             // Clear stored device tokens so the shared token is used
             var identityDir = _registry.GetIdentityDirectory(recordId);
-            var keyPath = Path.Combine(identityDir, "device-key-ed25519.json");
-            if (File.Exists(keyPath))
-            {
-                try
-                {
-                    var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(keyPath));
-                    using var ms = new MemoryStream();
-                    using var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true });
-                    writer.WriteStartObject();
-                    foreach (var prop in json.RootElement.EnumerateObject())
-                    {
-                        if (prop.Name is "DeviceToken" or "DeviceTokenScopes" or "NodeDeviceToken" or "NodeDeviceTokenScopes")
-                            continue;
-                        prop.WriteTo(writer);
-                    }
-                    writer.WriteEndObject();
-                    writer.Flush();
-                    File.WriteAllBytes(keyPath, ms.ToArray());
-                }
-                catch { }
-            }
+            DeviceIdentityStore.ClearStoredTokens(identityDir);
 
             // Start SSH tunnel and save settings
             if (useSsh && sshConfig != null)
@@ -529,9 +509,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
 
     private void OnCopyTimeline(object sender, RoutedEventArgs e)
     {
-        var dp = new WinDataTransfer.DataPackage();
-        dp.SetText(_plainBuffer.ToString());
-        WinDataTransfer.Clipboard.SetContent(dp);
+        ClipboardHelper.CopyText(_plainBuffer.ToString());
     }
 
     private void OnClearTimeline(object sender, RoutedEventArgs e)

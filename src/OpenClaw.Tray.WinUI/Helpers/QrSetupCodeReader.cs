@@ -12,7 +12,7 @@ namespace OpenClawTray.Helpers;
 
 /// <summary>
 /// Decodes an OpenClaw setup code from a QR-encoded image. Shared by the
-    /// legacy SetupWizardWindow and the onboarding ConnectionPage.
+    /// setup-code entry points.
 /// </summary>
 public static class QrSetupCodeReader
 {

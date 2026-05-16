@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Services;
@@ -20,6 +21,6 @@ internal sealed record AppStateSnapshot
     public UpdateCommandCenterInfo LastUpdateInfo { get; init; } = new();
     public SettingsManager? Settings            { get; init; }
     public NodeService? NodeService             { get; init; }
-    public SshTunnelService? SshTunnelService   { get; init; }
+    public SshTunnelSnapshot? SshTunnelSnapshot   { get; init; }
     public bool HasGatewayClient               { get; init; }
 }

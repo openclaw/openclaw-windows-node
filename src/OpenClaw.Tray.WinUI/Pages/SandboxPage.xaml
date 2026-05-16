@@ -5,7 +5,12 @@
     <ScrollViewer Padding="24">
         <StackPanel Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <!-- Header: unified sandbox status (availability + state + master toggle) -->
+            <!-- Prominent status header: big shield icon + Title-styled name +
+                 secondary subtitle + master toggle. Restored from the pre-L2
+                 layout because the SettingsExpander.Header rendered the name in
+                 BodyStrong (small) which lost the visual weight users expected
+                 at the top of the page. The architectural breakdown lives in a
+                 separate, less-prominent SettingsExpander below. -->
             <Grid x:Name="SandboxStatusCard" ColumnSpacing="16" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -16,15 +21,16 @@
                 <TextBlock x:Name="SandboxStatusIcon"
                            Grid.Column="0"
                            Text="🛡"
-                           FontSize="32"
+                           FontSize="28"
                            VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="SandboxStatusTitle"
-                               Text="Sandbox is on"
-                               Style="{StaticResource TitleTextBlockStyle}" />
+                               Text="Node sandbox is on"
+                               Style="{StaticResource TitleTextBlockStyle}"
+                               TextWrapping="Wrap" />
                     <TextBlock x:Name="SandboxStatusSubtext"
-                               Text="Restricts what agent-started Windows commands can see. Doesn't cover commands run inside WSL or files you paste into chat."
+                               Text="Programs the agent runs on this PC are contained."
                                TextWrapping="Wrap"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
@@ -38,6 +44,76 @@
                               AutomationProperties.Name="Sandbox enabled"
                               Toggled="OnSandboxEnabledToggled" />
             </Grid>
+
+            <!-- Architectural scope: stock WinUI 3 Expander with custom content.
+                 Replaces the previous SettingsExpander/SettingsCard combo because
+                 SettingsExpander.Items baked in a child-row indent that pushed
+                 the inner icons ~50px right of the parent header icon. Stock
+                 Expander gives full control over Header + Content layout so both
+                 icons line up at the same x. Also replaces the previous blue
+                 scope-clarity InfoBar and the separate "How sandboxing works"
+                 ContentDialog — the architectural breakdown of which execution
+                 paths are contained vs not is inline, on-demand. -->
+            <Expander HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      IsExpanded="False">
+                <Expander.Header>
+                    <Grid ColumnSpacing="14" Padding="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  Glyph="&#xE946;"
+                                  VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="What gets contained"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="See which commands this page covers — and which need different controls."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Expander.Header>
+
+                <StackPanel Spacing="12" Padding="0,4,0,4">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  Glyph="&#xE73E;"
+                                  Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                  VerticalAlignment="Top"
+                                  Margin="0,2,0,0" />
+                        <TextBlock Grid.Column="1" TextWrapping="Wrap">
+                            <Run Text="Commands the agent runs through the Windows node (" />
+                            <Run Text="system.run" FontFamily="Consolas" />
+                            <Run Text=") are contained by the settings below." />
+                        </TextBlock>
+                    </Grid>
+
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  Glyph="&#xE711;"
+                                  Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                  VerticalAlignment="Top"
+                                  Margin="0,2,0,0" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network — use the gateway's exec approvals."
+                                   TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+            </Expander>
 
             <!-- Prominent error + fix action when MXC sandboxing is unavailable -->
             <InfoBar x:Name="UnavailableActionBar"
@@ -57,92 +133,100 @@
                 </InfoBar.Content>
             </InfoBar>
 
-            <!-- Preset cards -->
-            <StackPanel x:Name="PresetSection" Spacing="6">
-                <TextBlock Text="Security level"
-                           Style="{StaticResource SubtitleTextBlockStyle}" />
-                <TextBlock Text="One click to set every control below. Custom folders stay as you set them."
-                           TextWrapping="Wrap"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Grid ColumnSpacing="12" Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+            <!-- Preset cards— wrapped in a subtle filled Border so the whole region
+                 reads as the master control region. -->
+            <Border x:Name="PresetCard"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Security level"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="One click to set every control below. Custom folders stay as you set them."
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Grid ColumnSpacing="12" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-                    <Button x:Name="PresetLockedButton"
-                            Grid.Column="0"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            VerticalContentAlignment="Top"
-                            Padding="20,18"
-                            MinHeight="130"
-                            CornerRadius="8"
-                            Click="OnPresetLockedClick">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="🔒 Locked Down"
-                                       FontSize="18"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="No internet, no clipboard, no standard user folders."
-                                       TextWrapping="Wrap"
-                                       FontSize="13"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Button>
+                        <Button x:Name="PresetLockedButton"
+                                Grid.Column="0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                VerticalContentAlignment="Top"
+                                Padding="20,18"
+                                MinHeight="130"
+                                CornerRadius="8"
+                                Click="OnPresetLockedClick">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="🔒 Locked Down"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="No internet, no clipboard, no standard user folders."
+                                           TextWrapping="Wrap"
+                                           FontSize="13"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Button>
 
-                    <Button x:Name="PresetBalancedButton"
-                            Grid.Column="1"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            VerticalContentAlignment="Top"
-                            Padding="20,18"
-                            MinHeight="130"
-                            CornerRadius="8"
-                            Click="OnPresetBalancedClick">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="⚖ Balanced"
-                                       FontSize="18"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Internet on. Read-only on Documents, Downloads, Desktop. Clipboard read."
-                                       TextWrapping="Wrap"
-                                       FontSize="13"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Button>
+                        <Button x:Name="PresetBalancedButton"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                VerticalContentAlignment="Top"
+                                Padding="20,18"
+                                MinHeight="130"
+                                CornerRadius="8"
+                                Click="OnPresetBalancedClick">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="🛡 Recommended"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Internet on. Read-only on Documents, Downloads, Desktop. Clipboard read."
+                                           TextWrapping="Wrap"
+                                           FontSize="13"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Button>
 
-                    <Button x:Name="PresetPermissiveButton"
-                            Grid.Column="2"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            VerticalContentAlignment="Top"
-                            Padding="20,18"
-                            MinHeight="130"
-                            CornerRadius="8"
-                            Click="OnPresetPermissiveClick">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="🔓 Permissive"
-                                       FontSize="18"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Internet on. Read+write on Documents, Downloads, Desktop. Clipboard read+write."
-                                       TextWrapping="Wrap"
-                                       FontSize="13"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Button>
-                </Grid>
+                        <Button x:Name="PresetPermissiveButton"
+                                Grid.Column="2"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                VerticalContentAlignment="Top"
+                                Padding="20,18"
+                                MinHeight="130"
+                                CornerRadius="8"
+                                Click="OnPresetPermissiveClick">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="⚠ Unprotected"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Internet on. Read+write on Documents, Downloads, Desktop. Clipboard read+write."
+                                           TextWrapping="Wrap"
+                                           FontSize="13"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
 
-                <!-- Inline warning shown when a preset is applied but custom folder grants remain -->
-                <InfoBar x:Name="PresetCustomFoldersWarning"
-                         IsOpen="False"
-                         IsClosable="True"
-                         Severity="Warning"
-                         Title="Custom folder grants still active"
-                         Margin="0,8,0,0" />
-            </StackPanel>
+                    <!-- Inline warning shown when a preset is applied but custom folder grants remain -->
+                    <InfoBar x:Name="PresetCustomFoldersWarning"
+                             IsOpen="False"
+                             IsClosable="True"
+                             Severity="Warning"
+                             Title="Custom folder grants still active"
+                             Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
 
             <!-- Detail sections: gated by SandboxControlsContainer's IsEnabled (off when sandbox unavailable or master toggle off) -->
             <StackPanel x:Name="SandboxControlsContainer" Spacing="16">
@@ -172,27 +256,27 @@
                             <ComboBox x:Name="DocsAccessCombo" Grid.Row="0" Grid.Column="1"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="OnDocsAccessChanged">
-                                <ComboBoxItem Content="🚫 Blocked" Tag="None" />
-                                <ComboBoxItem Content="🔒 Read only" Tag="ReadOnly" />
-                                <ComboBoxItem Content="✏️ Read &amp; write" Tag="ReadWrite" />
+                                <ComboBoxItem Content="Blocked" Tag="None" />
+                                <ComboBoxItem Content="Read only" Tag="ReadOnly" />
+                                <ComboBoxItem Content="Read &amp; write" Tag="ReadWrite" />
                             </ComboBox>
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Downloads" VerticalAlignment="Center"/>
                             <ComboBox x:Name="DownloadsAccessCombo" Grid.Row="1" Grid.Column="1"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="OnDownloadsAccessChanged">
-                                <ComboBoxItem Content="🚫 Blocked" Tag="None" />
-                                <ComboBoxItem Content="🔒 Read only" Tag="ReadOnly" />
-                                <ComboBoxItem Content="✏️ Read &amp; write" Tag="ReadWrite" />
+                                <ComboBoxItem Content="Blocked" Tag="None" />
+                                <ComboBoxItem Content="Read only" Tag="ReadOnly" />
+                                <ComboBoxItem Content="Read &amp; write" Tag="ReadWrite" />
                             </ComboBox>
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Desktop" VerticalAlignment="Center"/>
                             <ComboBox x:Name="DesktopAccessCombo" Grid.Row="2" Grid.Column="1"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="OnDesktopAccessChanged">
-                                <ComboBoxItem Content="🚫 Blocked" Tag="None" />
-                                <ComboBoxItem Content="🔒 Read only" Tag="ReadOnly" />
-                                <ComboBoxItem Content="✏️ Read &amp; write" Tag="ReadWrite" />
+                                <ComboBoxItem Content="Blocked" Tag="None" />
+                                <ComboBoxItem Content="Read only" Tag="ReadOnly" />
+                                <ComboBoxItem Content="Read &amp; write" Tag="ReadWrite" />
                             </ComboBox>
                         </Grid>
 
@@ -229,9 +313,9 @@
                                                           SelectedIndex="{Binding AccessIndex, Mode=TwoWay}"
                                                           SelectionChanged="OnCustomFolderAccessChanged"
                                                           Tag="{Binding Path}">
-                                                    <ComboBoxItem Content="🚫 Blocked" />
-                                                    <ComboBoxItem Content="🔒 Read only" />
-                                                    <ComboBoxItem Content="✏️ Read &amp; write" />
+                                                    <ComboBoxItem Content="Blocked" />
+                                                    <ComboBoxItem Content="Read only" />
+                                                    <ComboBoxItem Content="Read &amp; write" />
                                                 </ComboBox>
                                                 <Button Grid.Column="2" Content="✕" Tag="{Binding Path}"
                                                         Click="OnRemoveCustomFolder"
@@ -245,7 +329,7 @@
                                            FontSize="12"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="➕ Add folder" Click="OnAddCustomFolder" />
+                                    <Button Content="Add folder" Click="OnAddCustomFolder" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -261,10 +345,10 @@
                         <TextBlock Text="Clipboard often contains passwords, tokens, and private text. Read access may leak this to the agent (and over the internet, if enabled)."
                                    TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <RadioButton x:Name="ClipboardNoneRadio" Content="🚫 None (default)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="None" />
-                        <RadioButton x:Name="ClipboardReadRadio" Content="👁 Read — agent can see what you copied" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Read" />
-                        <RadioButton x:Name="ClipboardWriteRadio" Content="✍ Write — agent can replace your clipboard (cannot read it)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Write" />
-                        <RadioButton x:Name="ClipboardBothRadio" Content="🔁 Read &amp; Write — both" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Both" />
+                        <RadioButton x:Name="ClipboardNoneRadio" Content="None (default)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="None" />
+                        <RadioButton x:Name="ClipboardReadRadio" Content="Read — agent can see what you copied" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Read" />
+                        <RadioButton x:Name="ClipboardWriteRadio" Content="Write — agent can replace your clipboard (cannot read it)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Write" />
+                        <RadioButton x:Name="ClipboardBothRadio" Content="Read &amp; write" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Both" />
                     </StackPanel>
                 </Expander>
 

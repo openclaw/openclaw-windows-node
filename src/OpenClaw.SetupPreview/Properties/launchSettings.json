@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "OpenClaw.SetupPreview": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    },
+    "Capture-Welcome": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "OPENCLAW_PREVIEW_CAPTURE": "1",
+        "OPENCLAW_PREVIEW_PAGE": "Welcome",
+        "OPENCLAW_PREVIEW_CAPTURE_PATH": "$(MSBuildProjectDirectory)\\..\\..\\out\\v2-visual\\welcome\\actual.png"
+      }
+    }
+  }
+}

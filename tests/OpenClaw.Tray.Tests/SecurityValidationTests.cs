@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClawTray.Onboarding.Services;
 
 namespace OpenClaw.Tray.Tests;

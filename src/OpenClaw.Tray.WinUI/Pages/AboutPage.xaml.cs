@@ -1,9 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
 using System;
 using System.Diagnostics;
-using WinDataTransfer = global::Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClawTray.Pages;
 
@@ -83,9 +83,7 @@ public sealed partial class AboutPage : Page
                 + $"Connection: {_hub?.CurrentStatus}\n"
                 + $"Gateway: {_hub?.Settings?.GetEffectiveGatewayUrl() ?? "n/a"}\n";
 
-            var dataPackage = new WinDataTransfer.DataPackage();
-            dataPackage.SetText(context);
-            WinDataTransfer.Clipboard.SetContent(dataPackage);
+            ClipboardHelper.CopyText(context);
         }
         catch (Exception ex)
         {

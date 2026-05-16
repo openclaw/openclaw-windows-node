@@ -44,7 +44,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
+    <ProjectReference Include="..\OpenClawTray.OnboardingV2\OpenClawTray.OnboardingV2.csproj" />
     <ProjectReference Include="..\OpenClaw.Chat\OpenClaw.Chat.csproj" />
   </ItemGroup>
 

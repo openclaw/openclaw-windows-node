@@ -8,8 +8,8 @@ public enum OnboardingCompletionOutcome
 
 public static class OnboardingCompletionPolicy
 {
-    public static OnboardingCompletionOutcome Decide(OnboardingRoute currentRoute, bool setupStillRequired) =>
-        currentRoute == OnboardingRoute.Ready && setupStillRequired
+    public static OnboardingCompletionOutcome Decide(bool atTerminalPage, bool setupStillRequired) =>
+        atTerminalPage && setupStillRequired
             ? OnboardingCompletionOutcome.BlockIncompleteReady
             : OnboardingCompletionOutcome.Complete;
 }

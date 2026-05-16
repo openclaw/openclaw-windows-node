@@ -6,7 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
-using OpenClawTray.Services.Connection;
+using OpenClaw.Connection;
 using OpenClawTray.Services.LocalGatewaySetup;
 
 namespace OpenClaw.Tray.Tests;
@@ -1048,6 +1048,33 @@ public sealed class LocalGatewayUninstallTests
         Assert.True(Directory.Exists(Path.Combine(env.DataDir, "gateways", "remote-1")));
         Assert.False(Directory.Exists(Path.Combine(env.DataDir, "gateways", "local-1")));
         Assert.True(result.Postconditions.LocalGatewayRecordsAbsent);
+    }
+
+    [WindowsFact]
+    public async Task Run_PreservesRootDeviceTokens_WhenExternalGatewayRecordsRemainAndOptionEnabled()
+    {
+        using var env = new UninstallTestEnv();
+        env.WriteDeviceKey("legacy-external-operator-token", "legacy-external-node-token");
+        var registry = env.SeedRegistry([
+            LocalRecord("local-1"),
+            RemoteRecord("remote-1"),
+        ]);
+
+        var engine = env.BuildEngine(registry: registry);
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true,
+            PreserveRootDeviceTokensWhenExternalGatewaysExist = true
+        });
+
+        Assert.True(result.Success, "expected Success=true; errors=" + string.Join(" | ", result.Errors));
+        Assert.Equal("legacy-external-operator-token", DeviceIdentity.TryReadStoredDeviceToken(env.DataDir));
+        Assert.True(DeviceIdentity.HasStoredDeviceTokenForRole(env.DataDir, "node"));
+        Assert.True(result.Postconditions.DeviceTokenCleared);
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Null device tokens");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
     }
 
     // -----------------------------------------------------------------------

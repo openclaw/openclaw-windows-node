@@ -3,14 +3,10 @@ using System.Xml.Linq;
 namespace OpenClaw.Tray.Tests;
 
 /// <summary>
-/// Pins that the STT/TTS card controls in CapabilitiesPage.xaml are localized
-/// (have an x:Uid) and that en-us\Resources.resw provides matching keys.
-///
-/// LocalizationValidationTests catches drift between locales, but does not
-/// catch the case where a developer adds a control with hardcoded English
-/// text and never registers it. This test closes that hole for the new
-/// privacy-sensitive voice surface (the engine picker, the language input,
-/// the ElevenLabs panel, and the deep-link to VoiceSettingsPage).
+/// Pins that the STT/TTS card controls on PermissionsPage are localized (have an
+/// x:Uid) and that en-us\Resources.resw provides matching keys. LocalizationValidationTests
+/// catches drift between locales but not the case where a developer adds a control with
+/// hardcoded English text and never registers it.
 /// </summary>
 public sealed class CapabilitiesPageLocalizationCoverageTests
 {
@@ -37,7 +33,7 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     }
 
     private static string GetCapabilitiesXamlPath() =>
-        Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "CapabilitiesPage.xaml");
+        Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml");
 
     private static string GetEnUsReswPath() =>
         Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
@@ -61,26 +57,24 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     }
 
     /// <summary>
-    /// Contract for the STT/TTS surface introduced by the audio merge.
-    /// Each entry: x:Uid + the resw key suffixes that MUST exist in en-us.
+    /// Contract for the STT/TTS surface. Each entry: x:Uid + the resw key suffixes that
+    /// MUST exist in en-us. The legacy STT/TTS card-header/description x:Uids are no
+    /// longer rendered in the merged Permissions page (they used to live on the standalone
+    /// CapabilitiesPage); the orphaned resw entries are left in place but not pinned here.
     /// </summary>
     public static IEnumerable<object[]> SttAndTtsCardUids => new[]
     {
         // STT card (deep-link to dedicated voice settings)
-        new object[] { "CapabilitiesPage_SttCardHeader",        new[] { ".Text" } },
-        new object[] { "CapabilitiesPage_SttCardDescription",   new[] { ".Text" } },
-        new object[] { "CapabilitiesPage_SttMoreSettingsLink",  new[] { ".Content" } },
+        new object[] { "PermissionsPage_SttMoreSettingsLink",  new[] { ".Content" } },
         // TTS card (provider picker, ElevenLabs sub-panel)
-        new object[] { "CapabilitiesPage_TtsCardHeader",        new[] { ".Text" } },
-        new object[] { "CapabilitiesPage_TtsCardDescription",   new[] { ".Text" } },
-        new object[] { "CapabilitiesPage_TtsProviderComboBox",  new[] { ".Header" } },
-        new object[] { "CapabilitiesPage_TtsProviderPiper",     new[] { ".Content" } },
-        new object[] { "CapabilitiesPage_TtsProviderWindows",   new[] { ".Content" } },
-        new object[] { "CapabilitiesPage_TtsProviderElevenLabs",new[] { ".Content" } },
-        new object[] { "CapabilitiesPage_TtsElevenLabsApiKey",  new[] { ".Header" } },
-        new object[] { "CapabilitiesPage_TtsElevenLabsVoiceId", new[] { ".Header" } },
-        new object[] { "CapabilitiesPage_TtsElevenLabsModel",   new[] { ".Header", ".PlaceholderText" } },
-        new object[] { "CapabilitiesPage_TtsElevenLabsHelp",    new[] { ".Text" } },
+        new object[] { "PermissionsPage_TtsProviderComboBox",  new[] { ".Header" } },
+        new object[] { "PermissionsPage_TtsProviderPiper",     new[] { ".Content" } },
+        new object[] { "PermissionsPage_TtsProviderWindows",   new[] { ".Content" } },
+        new object[] { "PermissionsPage_TtsProviderElevenLabs",new[] { ".Content" } },
+        new object[] { "PermissionsPage_TtsElevenLabsApiKey",  new[] { ".Header" } },
+        new object[] { "PermissionsPage_TtsElevenLabsVoiceId", new[] { ".Header" } },
+        new object[] { "PermissionsPage_TtsElevenLabsModel",   new[] { ".Header", ".PlaceholderText" } },
+        new object[] { "PermissionsPage_TtsElevenLabsHelp",    new[] { ".Text" } },
     };
 
     [Theory]

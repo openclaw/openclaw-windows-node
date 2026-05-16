@@ -99,7 +99,7 @@ internal sealed class UrlNavigationApprovalService
             catch (Exception ex)
             {
                 _logger.Warn($"[NavigationApproval] Prompt failed: {ex.Message}");
-                return UrlNavigationApprovalDecision.Deny($"Prompt failed: {ex.Message}");
+                return UrlNavigationApprovalDecision.Deny("Approval prompt failed");
             }
         }, cancellationToken);
     }

@@ -87,7 +87,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
             catch (Exception ex)
             {
                 _logger.Warn($"[ExecApproval] Prompt failed: {ex.Message}");
-                tcs.TrySetResult(ExecApprovalPromptDecision.Deny($"Prompt failed: {ex.Message}"));
+                tcs.TrySetResult(ExecApprovalPromptDecision.Deny("Approval prompt failed"));
             }
         }))
         {

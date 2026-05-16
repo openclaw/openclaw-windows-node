@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using OpenClaw.Shared;
-using OpenClawTray.Services.Connection;
+using OpenClaw.Connection;
 
 namespace OpenClawTray.Services.LocalGatewaySetup;
 
@@ -80,6 +80,12 @@ public sealed record LocalGatewayUninstallOptions
 
     /// <summary>When true (default per Q-E), exec-policy.json is not deleted.</summary>
     public bool PreserveExecPolicy { get; init; } = true;
+
+    /// <summary>
+    /// When true, replacement flows preserve root legacy device tokens if
+    /// non-local gateway records remain after local records are removed.
+    /// </summary>
+    public bool PreserveRootDeviceTokensWhenExternalGatewaysExist { get; init; }
 
     // NO KeepMcpToken — mcp-token.txt is preserved unconditionally (v3 §F).
     // NO InstallLocation — knob is gone; path is fixed at
@@ -491,6 +497,13 @@ public sealed class LocalGatewayUninstall
         // ------------------------------------------------------------------
         await RunStepAsync("Null device tokens", options, ct, () =>
         {
+            if (ShouldPreserveRootDeviceTokens(options))
+            {
+                RecordStep("Null device tokens", UninstallStepStatus.Skipped,
+                    "Preserving root device tokens because external gateway records remain.");
+                return Task.CompletedTask;
+            }
+
             var operatorCleared = DeviceIdentity.TryClearDeviceTokenForRole(_dataPath, "operator", _logger);
             var nodeCleared = DeviceIdentity.TryClearDeviceTokenForRole(_dataPath, "node", _logger);
             var cleared = operatorCleared || nodeCleared;
@@ -750,7 +763,8 @@ public sealed class LocalGatewayUninstall
         }
 
         bool setupStateAbsent = !File.Exists(Path.Combine(_localDataPath, "setup-state.json"));
-        bool deviceTokenCleared = !DeviceIdentity.HasStoredDeviceToken(_dataPath, _logger)
+        bool deviceTokenCleared = ShouldPreserveRootDeviceTokens(options)
+            || !DeviceIdentity.HasStoredDeviceToken(_dataPath, _logger)
             && !DeviceIdentity.HasStoredDeviceTokenForRole(_dataPath, "node", _logger);
 
         // mcp-token.txt is never touched, so it's always "preserved" from our POV.
@@ -818,6 +832,10 @@ public sealed class LocalGatewayUninstall
         return record.SshTunnel is null
             && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
     }
+
+    private bool ShouldPreserveRootDeviceTokens(LocalGatewayUninstallOptions options) =>
+        options.PreserveRootDeviceTokensWhenExternalGatewaysExist
+        && _registry.GetAll().Any(record => !IsLocalGatewayRecordForUninstall(record));
 
     private void AppendPostconditionErrors(LocalGatewayUninstallPostconditions p)
     {

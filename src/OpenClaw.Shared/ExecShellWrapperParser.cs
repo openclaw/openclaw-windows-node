@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClaw.Shared;
 
@@ -78,12 +79,11 @@ internal static class ExecShellWrapperParser
         if (tokens.Length < 2)
             return default;
 
-        var executable = Path.GetFileName(tokens[0]);
+        var executable = ExecCommandToken.NormalizedBasename(tokens[0]);
         if (string.IsNullOrWhiteSpace(executable))
             return default;
 
-        if (executable.Equals("cmd", StringComparison.OrdinalIgnoreCase) ||
-            executable.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase))
+        if (executable == "cmd")
         {
             for (var i = 1; i < tokens.Length; i++)
             {
@@ -98,22 +98,13 @@ internal static class ExecShellWrapperParser
             }
         }
 
-        if (executable.Equals("powershell", StringComparison.OrdinalIgnoreCase) ||
-            executable.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase))
-        {
+        if (executable == "powershell")
             return ParsePowerShellPayload(tokens, "powershell");
-        }
 
-        if (executable.Equals("pwsh", StringComparison.OrdinalIgnoreCase) ||
-            executable.Equals("pwsh.exe", StringComparison.OrdinalIgnoreCase))
-        {
+        if (executable == "pwsh")
             return ParsePowerShellPayload(tokens, "pwsh");
-        }
 
-        if (executable.Equals("bash", StringComparison.OrdinalIgnoreCase) ||
-            executable.Equals("bash.exe", StringComparison.OrdinalIgnoreCase) ||
-            executable.Equals("sh", StringComparison.OrdinalIgnoreCase) ||
-            executable.Equals("sh.exe", StringComparison.OrdinalIgnoreCase))
+        if (executable is "bash" or "sh" or "zsh" or "dash" or "ash" or "ksh" or "fish")
         {
             for (var i = 1; i < tokens.Length; i++)
             {

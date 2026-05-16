@@ -2,127 +2,409 @@
 <Page x:Class="OpenClawTray.Pages.PermissionsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="16" HorizontalAlignment="Stretch">
 
-            <TextBlock x:Uid="PermissionsPage_TextBlock_8" Text="🔐 Permissions" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
+    <Page.Resources>
+        <Thickness x:Key="PermSectionHeaderMargin">4,18,4,4</Thickness>
+    </Page.Resources>
 
-            <!-- Exec Policy -->
-            <Expander x:Name="ExecPolicyExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_14" Text="Exec Policy" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="12" Padding="4">
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_17" Text="Controls which commands the agent can execute on this node. Rules are matched against the full command line."
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
+
+            <!-- ───────── Page header ───────── -->
+            <TextBlock Text="Permissions"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       Margin="0,0,0,2"/>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,2">
+                <FontIcon Glyph="&#xE977;" FontSize="14" VerticalAlignment="Center"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <TextBlock x:Name="HostnameText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock x:Uid="PermissionsPage_IntroText"
+                       Text="Capabilities this PC offers to agents through the gateway, plus what each agent is allowed to do once connected."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+            <!-- ═════════ Node Mode + Node Status ═════════ -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8"
+                    Padding="16"
+                    AutomationProperties.AutomationId="NodeStatusCard">
+                <StackPanel Spacing="12">
+                    <!-- Node Mode master toggle row -->
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE839;" FontSize="22"
+                                  VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="Node mode"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="2" x:Name="NodeModeToggle"
+                                      MinWidth="0" OnContent="" OffContent=""
+                                      Toggled="OnNodeModeToggled"
+                                      AutomationProperties.AutomationId="CapabilitiesNodeModeToggle"
+                                      AutomationProperties.Name="Node mode"/>
+                    </Grid>
+
+                    <!-- Subtle divider between master switch and status sub-row -->
+                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                    <!-- Live status sub-row -->
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Ellipse Grid.Column="0" x:Name="NodeStatusDot" Width="12" Height="12"
+                                 Fill="Gray" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="NodeStatusText" x:Name="NodeStatusText" Text="Node mode disabled"
+                                       Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Name="NodeDetailsText"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ═════════ Capability features ═════════ -->
+            <TextBlock x:Name="FeaturesSectionHeader" Text="Capabilities" Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="{StaticResource PermSectionHeaderMargin}"/>
+            <TextBlock x:Name="FeaturesSectionDescription"
+                       Text="Toggle individual features that agents may request from this PC."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" Margin="4,0,4,4"/>
+
+            <!-- Capability rows are built in code-behind so each gets icon + name + description + toggle. -->
+            <ItemsRepeater x:Name="CapabilityRepeater">
+                <ItemsRepeater.Layout>
+                    <StackLayout Spacing="8"/>
+                </ItemsRepeater.Layout>
+            </ItemsRepeater>
+
+            <!-- ═════════ Speech-to-text engine details (only when STT capability is on) ═════════ -->
+            <Border x:Name="SttCard" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16,10,16,12" Margin="0,-4,0,0"
+                    Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon Glyph="&#xE946;" FontSize="14" VerticalAlignment="Top" Margin="0,3,0,0"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="SttEngineHint"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                        <HyperlinkButton x:Name="SttMoreSettingsLink"
+                                         x:Uid="PermissionsPage_SttMoreSettingsLink"
+                                         Content="More voice settings…"
+                                         Click="OnSttMoreSettingsClick"
+                                         Padding="0"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ═════════ Text-to-speech engine details (only when TTS capability is on) ═════════ -->
+            <Border x:Name="TtsCard" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16,10,16,12" Margin="0,-4,0,0"
+                    Visibility="Collapsed">
+                <StackPanel Spacing="8">
+                    <ComboBox x:Name="TtsProviderComboBox" x:Uid="PermissionsPage_TtsProviderComboBox" Header="Provider"
+                              SelectionChanged="OnTtsProviderSelectionChanged">
+                        <ComboBoxItem x:Uid="PermissionsPage_TtsProviderPiper" Content="Piper (local ML, recommended)" Tag="piper"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_TtsProviderWindows" Content="Windows built-in speech" Tag="windows"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_TtsProviderElevenLabs" Content="ElevenLabs" Tag="elevenlabs"/>
+                    </ComboBox>
+                    <StackPanel x:Name="TtsElevenLabsPanel" Spacing="6" Visibility="Collapsed">
+                        <PasswordBox x:Name="TtsElevenLabsApiKeyBox"
+                                     x:Uid="PermissionsPage_TtsElevenLabsApiKey"
+                                     Header="ElevenLabs API key"
+                                     LostFocus="OnTtsElevenLabsCommitted"/>
+                        <TextBox x:Name="TtsElevenLabsVoiceIdBox"
+                                 x:Uid="PermissionsPage_TtsElevenLabsVoiceId"
+                                 Header="ElevenLabs voice ID"
+                                 LostFocus="OnTtsElevenLabsCommitted"/>
+                        <TextBox x:Name="TtsElevenLabsModelBox"
+                                 x:Uid="PermissionsPage_TtsElevenLabsModel"
+                                 Header="ElevenLabs model"
+                                 PlaceholderText="eleven_multilingual_v2"
+                                 LostFocus="OnTtsElevenLabsCommitted"/>
+                        <TextBlock x:Uid="PermissionsPage_TtsElevenLabsHelp"
+                                   Text="API key is encrypted at rest with Windows DPAPI. Leave blank to keep the previously saved value when you change other fields."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <TextBlock x:Name="TtsStatusText"
                                Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
 
-                    <ComboBox x:Uid="DefaultActionCombo" x:Name="DefaultActionCombo" Header="Default Action" Width="200"
+            <!-- ═════════ Integrations ═════════ -->
+            <TextBlock Text="Integrations" Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="{StaticResource PermSectionHeaderMargin}"/>
+
+            <Border x:Name="McpCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE968;" FontSize="20" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="PermissionsPage_McpHeader" Text="Local MCP Server"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Uid="PermissionsPage_McpDescription"
+                                       Text="Expose capabilities over HTTP for CLI tools and local integrations."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="2" x:Name="McpToggle" MinWidth="0" OnContent="" OffContent=""
+                                      Toggled="OnMcpToggled"
+                                      AutomationProperties.Name="Local MCP Server"/>
+                    </Grid>
+                    <StackPanel x:Name="McpDetailsPanel" Spacing="8" Visibility="Collapsed" Margin="50,0,0,0">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Uid="PermissionsPage_McpEndpointLabel" Grid.Column="0" Text="Endpoint:" VerticalAlignment="Center"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="McpEndpointText" Grid.Column="1" IsTextSelectionEnabled="True"
+                                       VerticalAlignment="Center" FontFamily="Consolas"
+                                       Style="{StaticResource CaptionTextBlockStyle}"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Uid="CopyMcpTokenButton" x:Name="CopyMcpTokenButton" Content="Copy token" Click="OnCopyMcpToken"/>
+                            <Button x:Uid="CopyMcpUrlButton" x:Name="CopyMcpUrlButton" Content="Copy URL" Click="OnCopyMcpUrl"/>
+                        </StackPanel>
+                        <TextBlock x:Name="McpStatusText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ═════════ Exec Policy ═════════ -->
+            <TextBlock x:Uid="PermissionsPage_TextBlock_14" Text="Exec policy" Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="{StaticResource PermSectionHeaderMargin}"/>
+            <TextBlock x:Uid="PermissionsPage_TextBlock_17"
+                       Text="Controls which shell commands agents can execute on this node. Rules match against the full command line."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                       Margin="4,0,4,4"/>
+
+            <!-- Default action — its own row card (matches the Settings row pattern) -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16,14,16,14">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="Default action" Style="{StaticResource BodyTextBlockStyle}"/>
+                        <TextBlock Text="What happens when a command doesn't match any rule below."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <ComboBox Grid.Column="1" x:Uid="DefaultActionCombo" x:Name="DefaultActionCombo"
+                              MinWidth="140"
                               SelectionChanged="OnDefaultActionChanged">
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_23" Content="Deny" Tag="deny"/>
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_24" Content="Allow" Tag="allow"/>
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="ask"/>
                     </ComboBox>
+                </Grid>
+            </Border>
 
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0"/>
+            <!-- Rules card -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8">
+                <StackPanel>
+                    <!-- Card header: title + rule count badge + auto-save hint -->
+                    <Grid Padding="16,12,16,12" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock Text="Patterns are matched left-to-right against the full command line. Use * as a wildcard. Changes save automatically."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" x:Name="ExecPolicySavedHint"
+                                   Text="Saved"
+                                   VerticalAlignment="Center"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                   Visibility="Collapsed"
+                                   Margin="0,0,8,0"/>
+                        <Border Grid.Column="2"
+                                Background="{ThemeResource ControlAltFillColorSecondaryBrush}"
+                                CornerRadius="10" Padding="10,2"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="RulesCountBadge" Text="0 rules"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+                    </Grid>
 
-                    <ListView x:Name="PolicyRulesList" SelectionMode="None" MaxHeight="300">
+                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                    <!-- Empty state — visible when there are no rules -->
+                    <TextBlock x:Name="RulesEmptyState"
+                               Text="No rules yet. Add a pattern below to allow or deny specific commands."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="16,20,16,20"
+                               Visibility="Collapsed"/>
+
+                    <!-- Rules list -->
+                    <ListView x:Name="PolicyRulesList" SelectionMode="None"
+                              MaxHeight="320"
+                              ItemContainerTransitions="{x:Null}">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <Grid Padding="8,6" ColumnSpacing="8">
+                                <Grid Padding="16,8,12,8" ColumnSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Pattern}" FontFamily="Consolas" VerticalAlignment="Center"/>
-                                    <Border Grid.Column="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Center"
+                                    <TextBlock Grid.Column="0" Text="{Binding Pattern}"
+                                               FontFamily="Consolas" FontSize="13"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <Border Grid.Column="1"
+                                            CornerRadius="10" Padding="10,2"
+                                            MinWidth="56"
+                                            VerticalAlignment="Center"
                                             Background="{Binding ActionBrush}">
-                                        <TextBlock Text="{Binding Action}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                        <TextBlock Text="{Binding Action}"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="White"
+                                                   HorizontalAlignment="Center"/>
                                     </Border>
-                                    <Button Grid.Column="2" Content="✕" Click="OnRemoveRule" Tag="{Binding Index}"
-                                            Padding="4,2" MinWidth="0" Background="Transparent"/>
+                                    <Button Grid.Column="2"
+                                            Click="OnRemoveRule" Tag="{Binding Index}"
+                                            Background="Transparent" BorderThickness="0"
+                                            Padding="6" MinWidth="0"
+                                            ToolTipService.ToolTip="Remove rule">
+                                        <FontIcon Glyph="&#xE74D;" FontSize="14"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </Button>
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
 
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBox x:Uid="NewRulePattern" x:Name="NewRulePattern" PlaceholderText="Command pattern (e.g. echo *)" Width="250"/>
-                        <ComboBox x:Name="NewRuleAction" Width="100" SelectedIndex="0">
-                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="allow"/>
-                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="deny"/>
+                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                    <!-- Add rule row -->
+                    <Grid Padding="16,12,16,12" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Uid="NewRulePattern" x:Name="NewRulePattern"
+                                 PlaceholderText="Command pattern (e.g. echo *)"
+                                 FontFamily="Consolas"/>
+                        <ComboBox Grid.Column="1" x:Name="NewRuleAction" MinWidth="100" SelectedIndex="0">
+                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="allow" Tag="allow"/>
+                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="deny" Tag="deny"/>
                         </ComboBox>
-                        <Button x:Uid="PermissionsPage_Button_57" Content="Add Rule" Click="OnAddRule"/>
-                    </StackPanel>
-
-                    <Button x:Uid="SaveExecPolicyButton" x:Name="SaveExecPolicyButton" Content="Save Exec Policy" Click="OnSaveExecPolicy"
-                            Style="{ThemeResource AccentButtonStyle}"/>
+                        <Button Grid.Column="2" x:Uid="PermissionsPage_Button_57" Content="Add" Click="OnAddRule"/>
+                    </Grid>
                 </StackPanel>
-            </Expander>
+            </Border>
 
-            <!-- Node Allowlist -->
-            <Expander x:Name="AllowlistExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_69" Text="Node Allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="12" Padding="4">
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_72" Text="Commands allowed by the gateway for connected nodes. This list is read-only — edit via the Config page."
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+            <!-- ═════════ Node Allowlist (gateway-side, read-only) ═════════ -->
+            <TextBlock x:Uid="PermissionsPage_TextBlock_69" Text="Node allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="{StaticResource PermSectionHeaderMargin}"/>
+            <TextBlock x:Uid="PermissionsPage_TextBlock_72"
+                       Text="Commands the gateway will accept from connected nodes. Read-only — edit via the Config page."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                       Margin="4,0,4,4"/>
 
-                    <TextBlock x:Uid="AllowlistEmpty" x:Name="AllowlistEmpty" Text="No allowlist data available. Connect to a gateway first."
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Uid="AllowlistEmpty" x:Name="AllowlistEmpty"
+                               Text="No allowlist data available. Connect to a gateway first."
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                Style="{StaticResource CaptionTextBlockStyle}"/>
-
                     <ItemsRepeater x:Name="AllowlistRepeater">
                         <ItemsRepeater.Layout>
                             <StackLayout Spacing="4"/>
                         </ItemsRepeater.Layout>
                     </ItemsRepeater>
                 </StackPanel>
-            </Expander>
+            </Border>
 
-            <!-- System Permissions -->
-            <Expander x:Name="PermissionsExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_92" Text="System Permissions" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="12" Padding="4">
-                    <TextBlock x:Uid="PermissionsPage_TextBlock_95" Text="System permissions for camera, microphone, and screen capture. These are managed by Windows Privacy settings."
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+            <!-- ═════════ Windows-level privacy ═════════ -->
+            <TextBlock Text="Windows privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="{StaticResource PermSectionHeaderMargin}"/>
 
-                    <Grid ColumnSpacing="12" RowSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition/>
-                            <RowDefinition/>
-                            <RowDefinition/>
-                        </Grid.RowDefinitions>
-
-                        <TextBlock x:Uid="PermissionsPage_TextBlock_110" Grid.Row="0" Grid.Column="0" Text="📷 Camera" VerticalAlignment="Center"/>
-                        <TextBlock x:Uid="CameraPermStatus" Grid.Row="0" Grid.Column="1" x:Name="CameraPermStatus" Text="Unknown"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-
-                        <TextBlock x:Uid="PermissionsPage_TextBlock_114" Grid.Row="1" Grid.Column="0" Text="🎤 Microphone" VerticalAlignment="Center"/>
-                        <TextBlock x:Uid="MicPermStatus" Grid.Row="1" Grid.Column="1" x:Name="MicPermStatus" Text="Unknown"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-
-                        <TextBlock x:Uid="PermissionsPage_TextBlock_118" Grid.Row="2" Grid.Column="0" Text="🖥️ Screen Capture" VerticalAlignment="Center"/>
-                        <TextBlock x:Uid="ScreenPermStatus" Grid.Row="2" Grid.Column="1" x:Name="ScreenPermStatus" Text="Available"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Grid>
-
-                    <Button x:Uid="PermissionsPage_Button_123" Content="Open Windows Privacy Settings" Click="OnOpenPrivacySettings"/>
-                </StackPanel>
-            </Expander>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16,14,16,14">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="Camera, microphone &amp; screen access" Style="{StaticResource BodyTextBlockStyle}"/>
+                        <TextBlock Text="System-level privacy permissions are managed by Windows. Open Windows Privacy Settings to grant or revoke OpenClaw access."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" x:Uid="PermissionsPage_Button_123" Content="Open Windows privacy settings" Click="OnOpenPrivacySettings"/>
+                </Grid>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>

@@ -16,7 +16,7 @@ namespace OpenClawTray.Chat;
 /// <summary>
     /// FunctionalUI root component used to render the OpenClaw chat surface (Header
 /// + Timeline + InputBar + StatusBar). The surrounding XAML window/page owns
-/// session navigation (via the existing NavigationView/ConversationsPage) so
+/// session navigation (via the existing NavigationView/SessionsPage) so
 /// no Sidebar is rendered here.
 /// </summary>
 public sealed class OpenClawChatRoot : Component

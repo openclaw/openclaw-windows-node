@@ -394,6 +394,14 @@ public class OpenClawGatewayClientTests
         public bool GetAuthFailedFlag() =>
             GetPrivateField<bool>("_authFailed");
 
+        public string? GetLastSkillsStatusAgentId()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                "_lastSkillsStatusAgentId",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return field!.GetValue(_client) as string;
+        }
+
         public List<string> CaptureAuthenticationFailedEvents()
         {
             var events = new List<string>();
@@ -419,6 +427,20 @@ public class OpenClawGatewayClientTests
         Assert.Equal("test-token", auth["bootstrapToken"]);
         Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public async Task RequestSkillsStatusAsync_RemembersRequestedAgentScope()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        await helper.Client.RequestSkillsStatusAsync("agent-alpha");
+
+        Assert.Equal("agent-alpha", helper.GetLastSkillsStatusAgentId());
+
+        await helper.Client.RequestSkillsStatusAsync();
+
+        Assert.Null(helper.GetLastSkillsStatusAgentId());
     }
 
     [Fact]

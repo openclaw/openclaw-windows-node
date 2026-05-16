@@ -343,9 +343,7 @@ public sealed class QuickSendDialog : WindowEx
 
     private static void CopyTextToClipboard(string text)
     {
-        var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-        data.SetText(text);
-        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        ClipboardHelper.CopyText(text);
     }
 
     private void QueueFocusMessageInput()

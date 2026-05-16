@@ -15,7 +15,7 @@ public sealed partial class SandboxPage : Page
 {
     private HubWindow? _hub;
     private bool _suppress;
-    private bool _confirmDialogOpen;
+    private bool _dialogOpen;
     private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
 
     public ObservableCollection<CustomFolderRow> CustomFolders { get; } = new();
@@ -161,8 +161,8 @@ public sealed partial class SandboxPage : Page
         if (!available)
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Sandbox unavailable — commands blocked";
-            SandboxStatusSubtext.Text = "MXC sandboxing isn't supported on this machine. Agent commands won't run until you fix it — see below.";
+            SandboxStatusTitle.Text = "Node Sandbox unavailable — commands blocked";
+            SandboxStatusSubtext.Text = "Containment isn't available on this PC.";
             SandboxEnabledToggle.Visibility = Visibility.Collapsed;
             return;
         }
@@ -172,14 +172,14 @@ public sealed partial class SandboxPage : Page
         if (enabled)
         {
             SandboxStatusIcon.Text = "🛡";
-            SandboxStatusTitle.Text = "Sandbox is on";
-            SandboxStatusSubtext.Text = "Windows commands started by agents run in a restricted AppContainer with only the access enabled below.";
+            SandboxStatusTitle.Text = "Node Sandbox is on";
+            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
         }
         else
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Sandbox is off — high risk";
-            SandboxStatusSubtext.Text = "Agent-started Windows commands run as your Windows user and can access your files, network, clipboard, and OpenClaw settings.";
+            SandboxStatusTitle.Text = "Node Sandbox is off — high risk";
+            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are not contained.";
         }
     }
 
@@ -280,9 +280,11 @@ public sealed partial class SandboxPage : Page
         SandboxControlsContainer.IsHitTestVisible = active;
         SandboxControlsContainer.Opacity = active ? 1.0 : 0.45;
 
-        // Dim the Security-level section (heading + subtitle + preset cards) too.
-        PresetSection.IsHitTestVisible = active;
-        PresetSection.Opacity = active ? 1.0 : 0.45;
+        // Dim the Security-level card (Border wrapping the preset section) as a single
+        // visual block — the tinted background and content all fade together so the
+        // master-control region reads as a unit when off.
+        PresetCard.IsHitTestVisible = active;
+        PresetCard.Opacity = active ? 1.0 : 0.45;
 
         PresetLockedButton.IsEnabled = active;
         PresetBalancedButton.IsEnabled = active;
@@ -474,8 +476,8 @@ public sealed partial class SandboxPage : Page
         {
             // Re-entrancy guard: rapid toggling could otherwise stack ContentDialog
             // instances, which raises a COMException ("Cannot show another dialog
-            // until the previous one is dismissed"). Snap the toggle back and bail.
-            if (_confirmDialogOpen)
+            // until the previous one is dismissed").
+            if (_dialogOpen)
             {
                 _suppress = true;
                 try { SandboxEnabledToggle.IsOn = true; } finally { _suppress = false; }
@@ -484,7 +486,7 @@ public sealed partial class SandboxPage : Page
 
             var dialog = new ContentDialog
             {
-                Title = "Turn off sandboxing?",
+                Title = "Turn off Node Sandbox?",
                 Content = "Agent-started Windows commands will run as you and may access your files, network, clipboard, and OpenClaw settings.\n\nThis is the high-risk mode. Only do this if you trust the agent and need it for debugging or performance.",
                 PrimaryButtonText = "Turn off",
                 CloseButtonText = "Cancel",
@@ -493,7 +495,7 @@ public sealed partial class SandboxPage : Page
             };
 
             ContentDialogResult result;
-            _confirmDialogOpen = true;
+            _dialogOpen = true;
             try
             {
                 result = await dialog.ShowAsync();
@@ -508,7 +510,7 @@ public sealed partial class SandboxPage : Page
             }
             finally
             {
-                _confirmDialogOpen = false;
+                _dialogOpen = false;
             }
 
             if (result != ContentDialogResult.Primary)

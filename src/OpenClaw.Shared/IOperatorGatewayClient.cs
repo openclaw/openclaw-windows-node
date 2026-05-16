@@ -75,7 +75,7 @@ public interface IOperatorGatewayClient
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
     Task RequestSkillsStatusAsync(string? agentId = null);
     Task<bool> InstallSkillAsync(string skillId);
-    Task<bool> UpdateSkillAsync(string skillId);
+    Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled);
     Task RequestConfigAsync();
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);

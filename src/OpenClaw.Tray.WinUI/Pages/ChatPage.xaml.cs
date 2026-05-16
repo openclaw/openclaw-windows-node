@@ -7,7 +7,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
-using OpenClawTray.Services.Connection;
+using OpenClaw.Connection;
 using OpenClawTray.Windows;
 using System;
 using System.Diagnostics;
@@ -182,10 +182,12 @@ public sealed partial class ChatPage : Page
     private static string? TryComputeChatUrl(SettingsManager settings)
     {
         return InteractiveGatewayCredentialResolver.TryResolve(
-            settings,
             (App.Current as App)?.Registry,
             SettingsManager.SettingsDirectoryPath,
             DeviceIdentityFileReader.Instance,
+            settings.GetEffectiveGatewayUrl(),
+            settings.LegacyToken,
+            settings.LegacyBootstrapToken,
             out var credential) &&
             credential is { IsBootstrapToken: false } &&
             GatewayChatUrlBuilder.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var url, out _)
@@ -341,10 +343,12 @@ public sealed partial class ChatPage : Page
         try
         {
             if (!InteractiveGatewayCredentialResolver.TryResolve(
-                settings,
                 _hub?.GatewayRegistry,
                 SettingsManager.SettingsDirectoryPath,
                 DeviceIdentityFileReader.Instance,
+                settings.GetEffectiveGatewayUrl(),
+                settings.LegacyToken,
+                settings.LegacyBootstrapToken,
                 out var credential) ||
                 credential == null)
             {

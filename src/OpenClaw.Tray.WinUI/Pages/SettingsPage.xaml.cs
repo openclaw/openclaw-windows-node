@@ -9,7 +9,6 @@ using OpenClawTray.Windows;
 using System;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
 
@@ -18,7 +17,7 @@ public sealed partial class SettingsPage : Page
     private HubWindow? _hub;
     private bool _initialized;
     private bool _saving;
-    private bool _isDirty;
+    private bool _loading;
     private bool _localGatewayInstalled;
     private bool _uninstallInitiatedThisSession;
     private CancellationTokenSource? _uninstallCts;
@@ -32,6 +31,8 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     public void Initialize(HubWindow hub)
@@ -39,52 +40,130 @@ public sealed partial class SettingsPage : Page
         _hub = hub;
         if (!_initialized && hub.Settings != null)
         {
+            _loading = true;
             LoadSettings(hub.Settings);
-            hub.Settings.Saved += OnExternalSettingsChanged;
-            RegisterDirtyHandlers();
+            _loading = false;
+            WireAutoSaveHandlers();
             _initialized = true;
         }
         else if (_initialized && hub.Settings != null)
         {
+            _loading = true;
             ScreenRecordingToggle.IsOn = hub.Settings.ScreenRecordingConsentGiven;
             CameraRecordingToggle.IsOn = hub.Settings.CameraRecordingConsentGiven;
+            _loading = false;
         }
     }
 
-    private void RegisterDirtyHandlers()
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        void MarkDirty(object s, RoutedEventArgs e) { if (_initialized) _isDirty = true; }
+        if (_hub?.Settings != null)
+            _hub.Settings.Saved += OnExternalSettingsChanged;
+    }
 
-        AutoStartToggle.Toggled += MarkDirty;
-        GlobalHotkeyToggle.Toggled += MarkDirty;
-        NotificationsToggle.Toggled += MarkDirty;
-        ScreenRecordingToggle.Toggled += MarkDirty;
-        CameraRecordingToggle.Toggled += MarkDirty;
-        NotificationSoundComboBox.SelectionChanged += (s, e) => { if (_initialized) _isDirty = true; };
-        NotifyHealthCb.Checked += MarkDirty; NotifyHealthCb.Unchecked += MarkDirty;
-        NotifyUrgentCb.Checked += MarkDirty; NotifyUrgentCb.Unchecked += MarkDirty;
-        NotifyReminderCb.Checked += MarkDirty; NotifyReminderCb.Unchecked += MarkDirty;
-        NotifyEmailCb.Checked += MarkDirty; NotifyEmailCb.Unchecked += MarkDirty;
-        NotifyCalendarCb.Checked += MarkDirty; NotifyCalendarCb.Unchecked += MarkDirty;
-        NotifyBuildCb.Checked += MarkDirty; NotifyBuildCb.Unchecked += MarkDirty;
-        NotifyStockCb.Checked += MarkDirty; NotifyStockCb.Unchecked += MarkDirty;
-        NotifyInfoCb.Checked += MarkDirty; NotifyInfoCb.Unchecked += MarkDirty;
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_hub?.Settings != null)
+            _hub.Settings.Saved -= OnExternalSettingsChanged;
+    }
+
+    // ── Auto-save wiring ──
+
+    private void WireAutoSaveHandlers()
+    {
+        AutoStartToggle.Toggled += (_, _) => PersistAutoStart();
+        GlobalHotkeyToggle.Toggled += (_, _) => Persist(s => s.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn);
+        UseLegacyWebChatToggle.Toggled += (_, _) => Persist(s => s.UseLegacyWebChat = UseLegacyWebChatToggle.IsOn);
+        NotificationsToggle.Toggled += (_, _) => Persist(s => s.ShowNotifications = NotificationsToggle.IsOn);
+        NotificationSoundComboBox.SelectionChanged += (_, _) =>
+        {
+            if (NotificationSoundComboBox.SelectedItem is ComboBoxItem item)
+                Persist(s => s.NotificationSound = item.Tag?.ToString() ?? "Default");
+        };
+
+        WireCheckBox(NotifyHealthCb, v => _hub!.Settings!.NotifyHealth = v);
+        WireCheckBox(NotifyUrgentCb, v => _hub!.Settings!.NotifyUrgent = v);
+        WireCheckBox(NotifyReminderCb, v => _hub!.Settings!.NotifyReminder = v);
+        WireCheckBox(NotifyEmailCb, v => _hub!.Settings!.NotifyEmail = v);
+        WireCheckBox(NotifyCalendarCb, v => _hub!.Settings!.NotifyCalendar = v);
+        WireCheckBox(NotifyBuildCb, v => _hub!.Settings!.NotifyBuild = v);
+        WireCheckBox(NotifyStockCb, v => _hub!.Settings!.NotifyStock = v);
+        WireCheckBox(NotifyInfoCb, v => _hub!.Settings!.NotifyInfo = v);
+
+        ScreenRecordingToggle.Toggled += (_, _) => Persist(s => s.ScreenRecordingConsentGiven = ScreenRecordingToggle.IsOn);
+        CameraRecordingToggle.Toggled += (_, _) => Persist(s => s.CameraRecordingConsentGiven = CameraRecordingToggle.IsOn);
+    }
+
+    private void WireCheckBox(CheckBox cb, Action<bool> mutate)
+    {
+        RoutedEventHandler handler = (_, _) => Persist(_ => mutate(cb.IsChecked ?? false));
+        cb.Checked += handler;
+        cb.Unchecked += handler;
+    }
+
+    private void Persist(Action<SettingsManager> mutate)
+    {
+        if (_loading || _hub?.Settings == null) return;
+        _saving = true;
+        try
+        {
+            mutate(_hub.Settings);
+            _hub.Settings.Save();
+            _hub.RaiseSettingsSaved();
+            ShowSavedIndicator();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void PersistAutoStart()
+    {
+        if (_loading || _hub?.Settings == null) return;
+        _saving = true;
+        try
+        {
+            _hub.Settings.AutoStart = AutoStartToggle.IsOn;
+            _hub.Settings.Save();
+            AutoStartManager.SetAutoStart(_hub.Settings.AutoStart);
+            _hub.RaiseSettingsSaved();
+            ShowSavedIndicator();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _savedIndicatorTimer;
+    private void ShowSavedIndicator()
+    {
+        SavedInfoBar.IsOpen = true;
+        if (_savedIndicatorTimer == null)
+        {
+            _savedIndicatorTimer = DispatcherQueue.CreateTimer();
+            _savedIndicatorTimer.Interval = TimeSpan.FromSeconds(1.5);
+            _savedIndicatorTimer.Tick += (t, _) => { SavedInfoBar.IsOpen = false; t.Stop(); };
+        }
+        _savedIndicatorTimer.Stop();
+        _savedIndicatorTimer.Start();
     }
 
     private void OnExternalSettingsChanged(object? sender, EventArgs e)
     {
-        if (_hub?.Settings == null || _saving || _isDirty) return;
+        if (_hub?.Settings == null || _saving) return;
         DispatcherQueue.TryEnqueue(() =>
         {
-            ScreenRecordingToggle.IsOn = _hub.Settings.ScreenRecordingConsentGiven;
-            CameraRecordingToggle.IsOn = _hub.Settings.CameraRecordingConsentGiven;
-
-            // Show that the change is already persisted
-            SaveButton.Content = "✓ Saved";
-            var timer = DispatcherQueue.CreateTimer();
-            timer.Interval = TimeSpan.FromSeconds(2);
-            timer.Tick += (t, a) => { SaveButton.Content = "Save"; timer.Stop(); };
-            timer.Start();
+            _loading = true;
+            try
+            {
+                LoadSettings(_hub.Settings);
+            }
+            finally
+            {
+                _loading = false;
+            }
         });
     }
 
@@ -135,7 +214,6 @@ public sealed partial class SettingsPage : Page
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
         // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
-        // TODO(commit-5): soften copy if Bostick's MSIX test confirms Path B (package-virtualized APPDATA).
         MsixWarningBar.IsOpen = PackageHelper.IsPackaged && _localGatewayInstalled;
     }
 
@@ -145,58 +223,12 @@ public sealed partial class SettingsPage : Page
     /// the engine deletes setup-state.json before the result InfoBar is shown.
     /// Resets on page navigation — section hides again on clean Settings re-open.
     /// </summary>
-    private Visibility ComputeLocalGatewaySectionVisibility() =>
-        (_localGatewayInstalled || _uninstallInitiatedThisSession)
+    private Visibility ComputeLocalGatewaySectionVisibility()
+    {
+        var visibility = (_localGatewayInstalled || _uninstallInitiatedThisSession)
             ? Visibility.Visible : Visibility.Collapsed;
-
-    private void OnSave(object sender, RoutedEventArgs e)
-    {
-        if (_hub?.Settings == null) return;
-
-        var s = _hub.Settings;
-        s.AutoStart = AutoStartToggle.IsOn;
-        s.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn;
-        s.UseLegacyWebChat = UseLegacyWebChatToggle.IsOn;
-        s.ShowNotifications = NotificationsToggle.IsOn;
-
-        if (NotificationSoundComboBox.SelectedItem is ComboBoxItem item)
-            s.NotificationSound = item.Tag?.ToString() ?? "Default";
-
-        s.NotifyHealth = NotifyHealthCb.IsChecked ?? true;
-        s.NotifyUrgent = NotifyUrgentCb.IsChecked ?? true;
-        s.NotifyReminder = NotifyReminderCb.IsChecked ?? true;
-        s.NotifyEmail = NotifyEmailCb.IsChecked ?? true;
-        s.NotifyCalendar = NotifyCalendarCb.IsChecked ?? true;
-        s.NotifyBuild = NotifyBuildCb.IsChecked ?? true;
-        s.NotifyStock = NotifyStockCb.IsChecked ?? true;
-        s.NotifyInfo = NotifyInfoCb.IsChecked ?? true;
-
-        s.ScreenRecordingConsentGiven = ScreenRecordingToggle.IsOn;
-        s.CameraRecordingConsentGiven = CameraRecordingToggle.IsOn;
-
-        _saving = true;
-        s.Save();
-        _saving = false;
-        _isDirty = false;
-        AutoStartManager.SetAutoStart(s.AutoStart);
-        _hub.RaiseSettingsSaved();
-
-        SaveButton.Content = "✓ Saved";
-        var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromSeconds(2);
-        timer.Tick += (t, a) => { SaveButton.Content = "Save"; timer.Stop(); };
-        timer.Start();
-    }
-
-    private void OnCancel(object sender, RoutedEventArgs e)
-    {
-        if (_hub?.Settings != null)
-        {
-            _initialized = false;
-            LoadSettings(_hub.Settings);
-            _initialized = true;
-            _isDirty = false;
-        }
+        LocalGatewaySectionHeader.Visibility = visibility;
+        return visibility;
     }
 
     private void OnTestNotification(object sender, RoutedEventArgs e)
@@ -213,7 +245,6 @@ public sealed partial class SettingsPage : Page
 
     private async void OnRemoveGateway(object sender, RoutedEventArgs e)
     {
-        // Build confirmation dialog content
         var dialogContent = new StackPanel { Spacing = 8 };
         dialogContent.Children.Add(new TextBlock
         {
@@ -257,11 +288,9 @@ public sealed partial class SettingsPage : Page
         var dialogResult = await dialog.ShowAsync();
         if (dialogResult != ContentDialogResult.Primary) return;
 
-        // Latch: keeps the section visible even after setup-state.json is deleted by the engine.
         _uninstallInitiatedThisSession = true;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
-        // --- Begin uninstall ---
         ApplyUninstallUiState(UninstallUiState.InProgress);
         UninstallResultBar.IsOpen = false;
 
@@ -373,8 +402,6 @@ public sealed partial class SettingsPage : Page
             }
 
             case UninstallUiState.Success:
-                // Button hidden — success InfoBar carries the message.
-                // MSIX warning is moot once the gateway is gone.
                 RemoveGatewayButton.Visibility = Visibility.Collapsed;
                 MsixWarningBar.IsOpen = false;
                 break;

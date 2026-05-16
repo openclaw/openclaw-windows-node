@@ -12,7 +12,6 @@ using Microsoft.UI.Xaml.Media;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
 using static OpenClawTray.FunctionalUI.Factories;
 using static OpenClawTray.FunctionalUI.Core.Theme;
@@ -590,10 +589,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             if (string.IsNullOrEmpty(text)) return;
             try
             {
-                var data = new DataPackage();
-                data.SetText(text);
-                Clipboard.SetContent(data);
-                Clipboard.Flush();
+                ClipboardHelper.CopyText(text, flush: true);
             }
             catch { /* clipboard contention — silently ignore */ }
         }

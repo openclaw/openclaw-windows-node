@@ -31,8 +31,8 @@ public class LocalizationValidationTests
         // VoiceOverlayWindow window-title key — matches the convention
         // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
-        "CapabilitiesPage_TtsElevenLabsModel.PlaceholderText",
-        "CapabilitiesPage_TtsProviderElevenLabs.Content",
+        "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
+        "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.
         "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
         "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
@@ -44,6 +44,88 @@ public class LocalizationValidationTests
         "NodesPage_Label_Version",
         "NodesPage_Label_Hardware",
         "NodesPage_Label_PathEnv",
+        // PermissionsPage runtime strings — declared in resw for localization
+        // pipeline coverage but seeded English-only across all locales until
+        // translations land. Fetched at runtime via LocalizationHelper.
+        "PermissionsPage_FeaturesDescription_Enabled",
+        "PermissionsPage_FeaturesDescription_Disabled",
+        "PermissionsPage_Cap_Browser_Label",
+        "PermissionsPage_Cap_Browser_Description",
+        "PermissionsPage_Cap_Camera_Label",
+        "PermissionsPage_Cap_Camera_Description",
+        "PermissionsPage_Cap_Canvas_Label",
+        "PermissionsPage_Cap_Canvas_Description",
+        "PermissionsPage_Cap_Screen_Label",
+        "PermissionsPage_Cap_Screen_Description",
+        "PermissionsPage_Cap_Location_Label",
+        "PermissionsPage_Cap_Location_Description",
+        "PermissionsPage_Cap_Tts_Label",
+        "PermissionsPage_Cap_Tts_Description",
+        "PermissionsPage_Cap_Stt_Label",
+        "PermissionsPage_Cap_Stt_Description",
+        "PermissionsPage_SttHint_Ready",
+        "PermissionsPage_SttHint_Downloading",
+        "PermissionsPage_SttHint_FailedFormat",
+        "PermissionsPage_SttHint_NotDownloaded",
+        "PermissionsPage_NodeStatus_Disabled",
+        "PermissionsPage_NodeStatus_DisabledDetails",
+        "PermissionsPage_NodeStatus_Active",
+        "PermissionsPage_NodeStatus_ActiveDetailsFormat",
+        "PermissionsPage_NodeStatus_NoCapabilities",
+        "PermissionsPage_NodeStatus_NotConnected",
+        "PermissionsPage_NodeStatus_NotConnectedDetails",
+        "PermissionsPage_McpStatus_TokenReady",
+        "PermissionsPage_McpStatus_TokenPending",
+        "PermissionsPage_McpStatus_TokenCopied",
+        "PermissionsPage_McpStatus_TokenNotFound",
+        "PermissionsPage_McpStatus_UrlCopied",
+        "PermissionsPage_RulesCount_None",
+        "PermissionsPage_RulesCount_One",
+        "PermissionsPage_RulesCount_ManyFormat",
+        "PermissionsPage_Allowlist_NoConfig",
+        "PermissionsPage_Allowlist_NoCommands",
+        "PermissionsPage_Allowlist_ParseFailed",
+        "PermissionsPage_TtsStatus_DefaultProviderFormat",
+        "PermissionsPage_TtsStatus_ElevenLabsSaved",
+        "PermissionsPage_McpStatus_TokenReadFailedFormat",
+        // InstancesPage / ConnectionPage new strings — seeded English across
+        // all locales until translations land. Same precedent as the
+        // PermissionsPage runtime keys above. The Manage expander body reuses
+        // the existing NodesPage_* resource keys (Rename, Forget, Version,
+        // Hardware, etc.) which already have full translations.
+        "InstancesPage_Title.Text",
+        "InstancesPage_Subtitle.Text",
+        "InstancesPage_RefreshLabel.Text",
+        "InstancesPage_ConnectionWarning.Title",
+        "InstancesPage_ConnectionWarning.Message",
+        "InstancesPage_EmptyTitle.Text",
+        "InstancesPage_Status_Active",
+        "InstancesPage_Status_Idle",
+        "InstancesPage_Status_Inactive",
+        "InstancesPage_Status_Disconnected",
+        "InstancesPage_StatusTooltip_Active_Format",
+        "InstancesPage_StatusTooltip_Idle_Format",
+        "InstancesPage_StatusTooltip_Inactive_Format",
+        "InstancesPage_StatusTooltip_Disconnected",
+        "InstancesPage_Role_AccessibilityFormat",
+        "InstanceManage_CopyNodeId_AccessibilityName",
+        "InstancesPage_Reason_Self",
+        "InstancesPage_Reason_Connect",
+        "InstancesPage_Reason_Disconnect",
+        "InstancesPage_Reason_NodeConnect",
+        "InstancesPage_Reason_NodeDisconnect",
+        "InstancesPage_Reason_Launch",
+        "InstancesPage_Reason_Heartbeat",
+        "InstancesPage_Reason_Refresh",
+        "InstancesPage_Reason_Resync",
+        "InstancesPage_ContextMenu_CopyDebug",
+        "InstancesPage_CapabilitiesCount_Format",
+        "InstancesPage_CommandsCount_Format",
+        "InstancesPage_Presence_AccessibilityFormat",
+        "InstancesPage_UpdateReason_Tooltip_Format",
+        "InstancesPage_UpdateReason_Tooltip_NoReason",
+        "ConnectionPage_NodePairing_Title.Text",
+        "ConnectionPage_NodePairing_Subtitle.Text",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =
@@ -112,7 +194,12 @@ public class LocalizationValidationTests
         value.Contains("~/", StringComparison.Ordinal);
 
     private static bool IsInvariantOrDeferred(string key, string value) =>
-        InvariantOrDeferredResourceKeys.Contains(key) || IsInvariantValue(value);
+        InvariantOrDeferredResourceKeys.Contains(key)
+        || IsInvariantValue(value)
+        // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
+        // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
+        // five .resw files with English values. Translations land in a follow-up.
+        || key.StartsWith("V2_", StringComparison.Ordinal);
 
     [Fact]
     public void AllLocales_HaveExactlySameKeysAsEnUs()
@@ -287,6 +374,33 @@ public class LocalizationValidationTests
             var count = LoadResw(reswPath).Count;
             Assert.Equal(referenceCount, count);
         }
+    }
+
+    /// <summary>
+    /// Catches empty-value drift: an intentionally-cleared translation would surface in
+    /// the UI either as a blank string OR (with LocalizationHelper.GetString's fallback)
+    /// as the raw resource key. Either is a shipping bug; this test makes it a build
+    /// failure instead.
+    /// </summary>
+    [Fact]
+    public void NoLocale_HasEmptyOrWhitespaceValues()
+    {
+        var stringsDir = GetStringsDirectory();
+        var localeDirs = Directory.GetDirectories(stringsDir);
+        var empties = new List<string>();
+        foreach (var localeDir in localeDirs)
+        {
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+            var locale = Path.GetFileName(localeDir);
+            foreach (var (key, value) in LoadResw(reswPath))
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    empties.Add($"{locale}::{key}");
+            }
+        }
+        Assert.True(empties.Count == 0,
+            $"Found {empties.Count} resw entries with empty/whitespace values: {string.Join(", ", empties)}");
     }
 
     [Fact]

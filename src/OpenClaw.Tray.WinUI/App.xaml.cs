@@ -1,6 +1,8 @@
-using Microsoft.Toolkit.Uwp.Notifications;
+﻿using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
 using OpenClawTray.Dialogs;
@@ -8,11 +10,12 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using OpenClawTray.Onboarding;
-using OpenClawTray.Services.Connection;
+using OpenClaw.Connection;
 using OpenClawTray.Services.LocalGatewaySetup;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -23,7 +26,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Updatum;
-using Windows.ApplicationModel.DataTransfer;
 using WinUIEx;
 
 namespace OpenClawTray;
@@ -74,13 +76,38 @@ public partial class App : Application
 
     /// <summary>
     /// Ensures the managed SSH tunnel is started using the current settings.
-    /// Used by the onboarding ConnectionPage when the user picks the SSH topology.
+    /// Used by connection settings when the user picks the SSH topology.
     /// </summary>
-    public void EnsureSshTunnelStarted() => _sshTunnelService?.EnsureStarted(_settings);
+    public void EnsureSshTunnelStarted()
+    {
+        if (_sshTunnelService == null || _settings == null)
+            return;
+
+        if (!_settings.UseSshTunnel)
+        {
+            _sshTunnelService.ResetNotConfigured();
+            return;
+        }
+
+        var includeBrowserProxyForward =
+            _settings.NodeBrowserProxyEnabled &&
+            SshTunnelCommandLine.CanForwardBrowserProxyPort(_settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort);
+        if (_settings.NodeBrowserProxyEnabled && !includeBrowserProxyForward)
+        {
+            Logger.Warn("SSH tunnel browser proxy forward disabled because the derived port would be invalid");
+        }
+
+        _sshTunnelService.EnsureStarted(
+            _settings.SshTunnelUser,
+            _settings.SshTunnelHost,
+            _settings.SshTunnelRemotePort,
+            _settings.SshTunnelLocalPort,
+            includeBrowserProxyForward);
+    }
 
     /// <summary>
     /// Creates the WSL local gateway setup engine using the current tray settings.
-    /// Onboarding pages (Phase 5) call this to drive the local-WSL setup flow;
+    /// The V2 setup bridge calls this to drive the local-WSL setup flow;
     /// the engine pairs the operator + Windows tray node into the gateway it
     /// installs, so we eagerly materialize the NodeService when needed.
     /// </summary>
@@ -145,7 +172,7 @@ public partial class App : Application
             : IntPtr.Zero;
 
     private SettingsManager? _settings;
-    private SettingsData? _previousSettingsSnapshot;
+    private ConnectionSettingsSnapshot? _previousSettingsSnapshot;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
@@ -159,6 +186,8 @@ public partial class App : Application
     /// SSH tunnel errors in EnsureSshTunnelConfigured also write this temporarily (Phase 3 moves tunnel to manager).
     /// </summary>
     private ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
+    private WeakReference<ToggleSwitch>? _connectionToggleRef;
+    private bool _suspendConnectionToggleEvent;
     private AgentActivity? _currentActivity;
     private ChannelHealth[] _lastChannels = Array.Empty<ChannelHealth>();
     private SessionInfo[] _lastSessions = Array.Empty<SessionInfo>();
@@ -511,6 +540,8 @@ public partial class App : Application
         catch { }
     }
 
+    private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
+
     /// <summary>
     /// Check if the app was launched via protocol activation (MSIX deep link).
     /// In WinUI 3, protocol activation is retrieved via AppInstance, not OnActivated.
@@ -590,7 +621,7 @@ public partial class App : Application
 
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
-        _previousSettingsSnapshot = _settings.ToSettingsData();
+        _previousSettingsSnapshot = _settings.ToSettingsData().ToConnectionSnapshot();
         _chatCoordinator = new OpenClawTray.Chat.OpenClawChatCoordinator(
             _settings,
             () => _nodeService,
@@ -639,6 +670,9 @@ public partial class App : Application
         OpenClawTray.Chat.Explorations.ChatExplorationPresetStore.ApplyDefaultIfPresent();
         ShowSurfaceImprovementsTipIfNeeded();
 
+        _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath);
+        _gatewayRegistry.Load();
+
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
         // down the tray; user can retry via the Setup Guide menu item.
@@ -656,8 +690,6 @@ public partial class App : Application
         }
 
         // Initialize connection manager (north star architecture)
-        _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath);
-        _gatewayRegistry.Load();
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
         var clientFactory = new GatewayClientFactory();
         var appLogger = new AppLogger();
@@ -674,24 +706,29 @@ public partial class App : Application
         {
             try
             {
+                diagnostics.Record("node", $"ClientCreated fired, _nodeService null={_nodeService is null}");
                 _nodeService?.AttachClient(args.Client, args.BearerToken);
+                var client = args.Client;
+                diagnostics.Record("node", $"After AttachClient: caps={client.Capabilities.Count}, cmds={client.RegisteredCommandCount}");
+                if (client.RegisteredCommandCount > 0)
+                    diagnostics.Record("node", $"Commands sample: {string.Join(", ", client.RegisteredCommandsSample)}...");
+                else
+                    diagnostics.Record("node", "WARNING: 0 commands registered on node client before connect");
             }
             catch (Exception ex)
             {
                 Logger.Warn($"[App] NodeConnector.ClientCreated handler failed: {ex.Message}");
+                diagnostics.Record("node", $"ClientCreated handler THREW: {ex.Message}");
             }
         };
-        // Wrap the SSH tunnel service so the connection manager can start/stop the tunnel
-        var tunnelManager = _sshTunnelService != null
-            ? new SshTunnelManager(_sshTunnelService, appLogger)
-            : null;
+        // SshTunnelService implements ISshTunnelManager directly — no shim needed
         _connectionManager = new GatewayConnectionManager(
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
             nodeConnector: nodeConnector,
             isNodeEnabled: ShouldInitializeNodeService,
             diagnostics: diagnostics,
-            tunnelManager: tunnelManager,
+            tunnelManager: _sshTunnelService,
             shouldStartNodeConnection: ShouldInitializeNodeService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
@@ -730,6 +767,7 @@ public partial class App : Application
             _globalHotkey = new GlobalHotkeyService();
             _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
             _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
+            _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
             _globalHotkey.Register();
         }
 
@@ -922,7 +960,7 @@ public partial class App : Application
             // Wire Settings button → open the Hub on the Voice & Audio page.
             _voiceOverlayWindow.SettingsRequested += () =>
             {
-                _dispatcherQueue?.TryEnqueue(() => ShowHub("voice"));
+                OnUiThread(() => ShowHub("voice"));
             };
         }
 
@@ -984,6 +1022,12 @@ public partial class App : Application
         {
             case "status": ShowStatusDetail(); break;
             case "reconnect": _ = _connectionManager?.ReconnectAsync(); break;
+            case "disconnect":
+                _ = _connectionManager?.DisconnectAsync();
+                LocalDisconnectCleanup();
+                break;
+            case "connection": ShowHub("connection"); break;
+            case "permissions": ShowHub("permissions"); break;
             case "dashboard": OpenDashboard(); break;
             case "canvas": ShowCanvasWindow(); break;
             case "openchat": ShowHub("chat"); break;
@@ -991,10 +1035,10 @@ public partial class App : Application
             case "webchat": ShowWebChat(); break;
             case "hub": ShowHub(); break;
             case "companion":
-                // If disconnected, open General page (has connection settings + discovery)
+                // If disconnected, open Connection page (status, gateways, add flow)
                 // If connected, open Hub at default page
                 if (_currentStatus != ConnectionStatus.Connected)
-                    ShowHub("general");
+                    ShowHub("connection");
                 else
                     ShowHub();
                 break;
@@ -1024,8 +1068,14 @@ public partial class App : Application
             case "copydeviceid": CopyDeviceIdToClipboard(); break;
             case "copynodesummary": CopyNodeSummaryToClipboard(); break;
             case "exit": ExitApplication(); break;
+            case "about": ShowHub("about"); break;
             default:
-                if (action.StartsWith("session-reset|", StringComparison.Ordinal))
+                if (action.StartsWith("perm-toggle|", StringComparison.Ordinal)
+                    && _permToggleActions.TryGetValue(action, out var permAction))
+                {
+                    permAction();
+                }
+                else if (action.StartsWith("session-reset|", StringComparison.Ordinal))
                     _ = ExecuteSessionActionAsync("reset", action["session-reset|".Length..]);
                 else if (action.StartsWith("session-compact|", StringComparison.Ordinal))
                     _ = ExecuteSessionActionAsync("compact", action["session-compact|".Length..]);
@@ -1064,9 +1114,7 @@ public partial class App : Application
         
         try
         {
-            var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-            dataPackage.SetText(_nodeService.FullDeviceId);
-            global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+            CopyTextToClipboard(_nodeService.FullDeviceId);
             
             // Show toast confirming copy
             ShowToast(new ToastContentBuilder()
@@ -1093,9 +1141,7 @@ public partial class App : Application
             });
             var summary = string.Join(Environment.NewLine, lines);
 
-            var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-            dataPackage.SetText(summary);
-            global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+            CopyTextToClipboard(summary);
 
             ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_NodeSummaryCopied"))
@@ -1196,9 +1242,6 @@ public partial class App : Application
         return result == ContentDialogResult.Primary;
     }
 
-    private static string TruncateMenuText(string text, int maxLength = 96) =>
-        MenuDisplayHelper.TruncateText(text, maxLength);
-
     private void AddRecentActivity(
         string line,
         string category = "general",
@@ -1225,757 +1268,169 @@ public partial class App : Application
             .ToList();
     }
 
+    private void LocalDisconnectCleanup()
+    {
+        _lastSessions = Array.Empty<SessionInfo>();
+        _lastNodes = Array.Empty<GatewayNodeInfo>();
+        _lastPresence = Array.Empty<PresenceEntry>();
+        _lastChannels = Array.Empty<ChannelHealth>();
+        _lastNodePairList = null;
+        _lastDevicePairList = null;
+        _lastModelsList = null;
+        _lastGatewaySelf = null;
+        _agentEventsCache.Clear();
+        UpdateTrayIcon();
+        _hubWindow?.UpdateStatus(ConnectionStatus.Disconnected);
+        RefreshTrayMenuIfOpen();
+    }
+
     private void BuildTrayMenuPopup(TrayMenuWindow menu)
     {
-        var isConnected = _currentStatus == ConnectionStatus.Connected;
-        var statusText = LocalizationHelper.GetConnectionStatusText(_currentStatus);
+        // Preview data must be applied before snapshot capture so the injected
+        // values are visible to the builder without coupling it to App state.
+        ApplyTrayMenuPreviewDataIfRequested();
+        var snapshot = CaptureTrayMenuSnapshot();
+        var callbacks = new TrayMenuCallbacks(
+            DispatchAction: action => OnTrayMenuItemClicked(null, action),
+            SaveAndReconnect: () => { _settings?.Save(); _ = _connectionManager?.ReconnectAsync(); },
+            TrackConnectionToggle: toggle => _connectionToggleRef = new WeakReference<ToggleSwitch>(toggle),
+            IsConnectionToggleSuspended: () => _suspendConnectionToggleEvent);
+        var builder = new TrayMenuStateBuilder(snapshot, _permToggleActions, callbacks);
 
-        // ── Brand Header (non-interactive) ──
-        menu.AddCustomElement(new StackPanel
+        // Render the whole menu inside a single update batch so layout
+        // measures only once instead of once-per-row. Pair with EndUpdate
+        // in finally so an exception mid-build doesn't wedge layout.
+        menu.BeginUpdate();
+        try
         {
-            Padding = new Thickness(14, 10, 14, 6),
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "🦞 OpenClaw",
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                    FontSize = 14
-                }
-            }
-        });
-
-        // ── Gateway Section ──
-        var gwGrid = new Grid
-        {
-            Padding = new Thickness(14, 4, 14, 8),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            ColumnDefinitions =
-            {
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
-                new ColumnDefinition { Width = GridLength.Auto }
-            }
-        };
-
-        var gwInfo = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-
-        // Gateway status line
-        var gwStatusRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        gwStatusRow.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
-        {
-            Width = 8, Height = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                isConnected ? Microsoft.UI.Colors.LimeGreen
-                : _currentStatus == ConnectionStatus.Connecting ? Microsoft.UI.Colors.Orange
-                : Microsoft.UI.Colors.Gray)
-        });
-        gwStatusRow.Children.Add(new TextBlock
-        {
-            Text = $"Gateway · {statusText}",
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        gwInfo.Children.Add(gwStatusRow);
-
-        // Gateway details
-        if (isConnected)
-        {
-            var detailParts = new List<string>();
-            if (_lastGatewaySelf != null && !string.IsNullOrEmpty(_lastGatewaySelf.ServerVersion))
-                detailParts.Add($"v{_lastGatewaySelf.ServerVersion}");
-            var url = _settings?.GetEffectiveGatewayUrl();
-            if (!string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                detailParts.Add($"{uri.Host}:{uri.Port}");
-            if (_lastPresence != null && _lastPresence.Length > 0)
-                detailParts.Add($"{_lastPresence.Length} client{(_lastPresence.Length != 1 ? "s" : "")}");
-            if (detailParts.Count > 0)
-            {
-                gwInfo.Children.Add(new TextBlock
-                {
-                    Text = string.Join(" · ", detailParts),
-                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                    Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                    FontSize = 11
-                });
-            }
+            builder.Build(menu);
         }
-
-        // Node pairing status
-        if (_settings?.EnableNodeMode == true && _nodeService != null)
+        finally
         {
-            var nodeText = _nodeService.IsPaired ? "Node paired"
-                : _nodeService.IsPendingApproval ? "⏳ Node pairing pending"
-                : _nodeService.IsConnected ? "Node connected"
-                : null;
-            if (nodeText != null)
-            {
-                gwInfo.Children.Add(new TextBlock
-                {
-                    Text = nodeText,
-                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                    Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                    FontSize = 11
-                });
-            }
+            menu.EndUpdate();
         }
+    }
 
-        // Auth failure
-        if (!string.IsNullOrEmpty(_authFailureMessage))
-        {
-            gwInfo.Children.Add(new TextBlock
-            {
-                Text = $"⚠️ {_authFailureMessage}",
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.OrangeRed),
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 240
-            });
-        }
-
-        Grid.SetColumn(gwInfo, 0);
-        gwGrid.Children.Add(gwInfo);
-
-        // Gateway connect/disconnect button
-        var connectBtn = new ToggleButton
-        {
-            IsChecked = isConnected,
-            Content = isConnected ? "Connected" : "Disconnected",
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Padding = new Thickness(10, 4, 10, 4),
-            MinHeight = 0,
-            MinWidth = 0,
-            FontSize = 11
-        };
-        ToolTipService.SetToolTip(connectBtn, isConnected ? "Click to disconnect from gateway" : "Click to connect to gateway");
-        connectBtn.Click += (s, ev) =>
-        {
-            var on = connectBtn.IsChecked == true;
-            connectBtn.Content = on ? "Connected" : "Disconnected";
-            ToolTipService.SetToolTip(connectBtn, on ? "Click to disconnect from gateway" : "Click to connect to gateway");
-            if (on)
-            {
-                _ = _connectionManager?.ReconnectAsync();
-            }
-            else
-            {
-                _ = _connectionManager?.DisconnectAsync();
-                // Status is updated by OnManagerStateChanged when disconnect completes.
-                _lastSessions = Array.Empty<SessionInfo>();
-                _lastNodePairList = null;
-                _lastDevicePairList = null;
-                _lastModelsList = null;
-                _agentEventsCache.Clear();
-                UpdateTrayIcon();
-                _hubWindow?.UpdateStatus(ConnectionStatus.Disconnected);
-            }
-            // Dismiss menu after toggle — header will rebuild with correct state on next open
-            _trayMenuWindow?.HideCascade();
-        };
-        Grid.SetColumn(connectBtn, 1);
-        gwGrid.Children.Add(connectBtn);
-
-        // Make gateway info area clickable → opens Connection page
-        gwInfo.Tapped += (s, ev) =>
-        {
-            ShowHub("connection");
-        };
-        menu.AddCustomElement(gwGrid);
-
-        // ── Sessions ──
-        if (_lastSessions.Length > 0)
-        {
-            menu.AddSeparator();
-
-            // Section header: "Sessions  3 active · 45K tokens"
-            var sessionCount = _lastSessions.Length;
-            var activeCount = _lastSessions.Count(s => string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase));
-            var totalTokensAll = _lastSessions.Sum(s => s.InputTokens + s.OutputTokens);
-            var sessionSummaryRight = $"{activeCount} active · {FormatTokenCount(totalTokensAll)} tokens";
-            menu.AddCustomElement(BuildSectionHeader("Sessions", sessionSummaryRight));
-
-            // Individual session cards
-            foreach (var session in _lastSessions.Take(5))
-            {
-                var card = BuildSessionCard(session);
-                var flyoutItems = BuildSessionFlyoutItems(session);
-                menu.AddFlyoutCustomItem(card, flyoutItems, action: "sessions");
-            }
-        }
-
-        // ── Pairing Pending ──
-        var nodePendingCount = _lastNodePairList?.Pending.Count ?? 0;
-        var devicePendingCount = _lastDevicePairList?.Pending.Count ?? 0;
-        if (nodePendingCount + devicePendingCount > 0)
-        {
-            var total = nodePendingCount + devicePendingCount;
-            menu.AddMenuItem($"⚠️ Pairing approval pending ({total})", "🔗", "hub");
-        }
-
-        // ── Connected Devices with inline permission toggles ──
-        // Only show currently-connected nodes; offline/stale paired nodes
-        // remain visible on the full Nodes page where they can be renamed
-        // or forgotten.
-        var connectedNodes = _lastNodes.Where(n => n.IsOnline).ToArray();
-        if (connectedNodes.Length > 0)
-        {
-            menu.AddSeparator();
-
-            var totalCaps = connectedNodes.Sum(n => n.CapabilityCount);
-            var deviceSummaryRight = $"{connectedNodes.Length} online · {totalCaps} caps";
-            menu.AddCustomElement(BuildSectionHeader("Devices", deviceSummaryRight));
-
-            var currentHost = Environment.MachineName;
-
-            foreach (var node in connectedNodes.Take(5))
-            {
-                var card = BuildDeviceCard(node);
-                var flyoutItems = BuildDeviceFlyoutItems(node);
-                menu.AddFlyoutCustomItem(card, flyoutItems, action: "nodes");
-
-                // If this node is the local machine, show capability toggles underneath
-                bool isLocal = node.DisplayName?.Contains(currentHost, StringComparison.OrdinalIgnoreCase) == true
-                    || node.NodeId?.Contains(currentHost, StringComparison.OrdinalIgnoreCase) == true;
-                if (isLocal && _settings != null)
-                {
-                    // Build compact toggle button grid (3 columns)
-                    var capToggles = new Dictionary<string, (Func<bool> Get, Action<bool> Set)>(StringComparer.OrdinalIgnoreCase)
-                    {
-                        ["browser"] = (() => _settings.NodeBrowserProxyEnabled, v => _settings.NodeBrowserProxyEnabled = v),
-                        ["camera"] = (() => _settings.NodeCameraEnabled, v => _settings.NodeCameraEnabled = v),
-                        ["canvas"] = (() => _settings.NodeCanvasEnabled, v => _settings.NodeCanvasEnabled = v),
-                        ["screen"] = (() => _settings.NodeScreenEnabled, v => _settings.NodeScreenEnabled = v),
-                        ["location"] = (() => _settings.NodeLocationEnabled, v => _settings.NodeLocationEnabled = v),
-                        ["tts"] = (() => _settings.NodeTtsEnabled, v => _settings.NodeTtsEnabled = v),
-                        ["system"] = (() => _settings.EnableNodeMode, v => _settings.EnableNodeMode = v),
-                    };
-
-                    // Show ALL possible capability toggles (not just gateway-reported ones)
-                    // so disabled capabilities like TTS appear as "off" buttons
-                    var allCaps = capToggles.Keys.ToList();
-
-                    if (allCaps.Count > 0)
-                    {
-                        var columns = 3;
-                        var grid = new Grid
-                        {
-                            Margin = new Thickness(28, 4, 14, 4),
-                            ColumnSpacing = 4,
-                            RowSpacing = 4,
-                            HorizontalAlignment = HorizontalAlignment.Stretch
-                        };
-                        for (int c = 0; c < columns; c++)
-                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                        var rowCount = (allCaps.Count + columns - 1) / columns;
-                        for (int r = 0; r < rowCount; r++)
-                            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                        for (int i = 0; i < allCaps.Count; i++)
-                        {
-                            var cap = allCaps[i];
-                            var capToggle = capToggles[cap];
-                            var icon = CapabilityIcons.TryGetValue(cap, out var emoji) ? emoji : "▪";
-                            var label = char.ToUpper(cap[0]) + cap[1..];
-                            var isOn = capToggle.Get();
-
-                            var btn = new ToggleButton
-                            {
-                                IsChecked = isOn,
-                                HorizontalAlignment = HorizontalAlignment.Stretch,
-                                HorizontalContentAlignment = HorizontalAlignment.Center,
-                                Padding = new Thickness(6, 5, 6, 5),
-                                MinHeight = 0,
-                                MinWidth = 0,
-                                Content = new TextBlock
-                                {
-                                    Text = $"{icon} {label}",
-                                    FontSize = 11,
-                                    TextTrimming = TextTrimming.CharacterEllipsis
-                                }
-                            };
-                            var capRef = capToggle; // capture for lambda
-                            btn.Click += (s, ev) =>
-                            {
-                                var on = ((ToggleButton)s!).IsChecked == true;
-                                capRef.Set(on); _settings.Save(); _ = _connectionManager?.ReconnectAsync();
-                            };
-                            Grid.SetRow(btn, i / columns);
-                            Grid.SetColumn(btn, i % columns);
-                            grid.Children.Add(btn);
-                        }
-                        menu.AddCustomElement(grid);
-                    }
-                }
-            }
-        }
-
-        // ── Actions ──
-        menu.AddSeparator();
-        menu.AddMenuItem("Dashboard", "🌐", "dashboard");
-        menu.AddMenuItem("Chat", "💬", "openchat");
-        menu.AddMenuItem("Canvas", "🎨", "canvas");
-        // Voice overlay disabled — inline chat voice mode is used instead.
-        // menu.AddMenuItem("Voice", "🎙️", "voice");
-        menu.AddMenuItem("Companion Settings...", "🦞", "companion");
-        menu.AddMenuItem(LocalizationHelper.GetString("Menu_QuickSend"), "📤", "quicksend");
-
-        // Setup Guide / Reconfigure entry (PR #274 must-fix #6) — label flips
-        // based on whether prior config exists. Click dispatches "setup" which
-        // invokes the existing ShowOnboardingAsync handler (case in OnTrayMenuAction).
+    private TrayMenuSnapshot CaptureTrayMenuSnapshot()
+    {
         var setupMenuLabel = _settings != null
             && new OpenClawTray.Onboarding.Services.OnboardingExistingConfigGuard(_settings, IdentityDataPath)
                 .HasExistingConfiguration()
             ? LocalizationHelper.GetString("Menu_Reconfigure")
             : LocalizationHelper.GetString("Menu_SetupGuide");
-        menu.AddMenuItem(setupMenuLabel, "🧭", "setup");
 
-        // ── Exit ──
-        menu.AddSeparator();
-        menu.AddMenuItem(LocalizationHelper.GetString("Menu_Exit"), "❌", "exit");
+        return new TrayMenuSnapshot
+        {
+            CurrentStatus = _currentStatus,
+            AuthFailureMessage = _authFailureMessage,
+            GatewayUrl = _settings?.GetEffectiveGatewayUrl(),
+            GatewaySelf = _lastGatewaySelf,
+            Presence = _lastPresence,
+            EnableNodeMode = _settings?.EnableNodeMode == true && _nodeService != null,
+            NodeIsPaired = _nodeService?.IsPaired ?? false,
+            NodeIsPendingApproval = _nodeService?.IsPendingApproval ?? false,
+            NodeIsConnected = _nodeService?.IsConnected ?? false,
+            NodePairList = _lastNodePairList,
+            DevicePairList = _lastDevicePairList,
+            Nodes = _lastNodes,
+            Sessions = _lastSessions,
+            Usage = _lastUsage,
+            UsageStatus = _lastUsageStatus,
+            UsageCost = _lastUsageCost,
+            Settings = _settings,
+            SetupMenuLabel = setupMenuLabel,
+        };
     }
 
-    private static string FormatTokenCount(long n)
+
+    /// <summary>
+    /// Opt-in design preview: when the <c>OPENCLAW_TRAY_PREVIEW_DATA</c>
+    /// environment variable is set to <c>1</c>, populate the session/usage
+    /// caches with synthetic values so the Sessions and Usage flyouts render
+    /// meaningful progress bars and provider data without a live gateway.
+    /// Real data takes precedence — preview values are only written when the
+    /// corresponding cache is empty/null, so attaching to a real gateway
+    /// after launch immediately replaces the preview.
+    /// </summary>
+    private void ApplyTrayMenuPreviewDataIfRequested()
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:F1}M";
-        if (n >= 1_000) return $"{n / 1_000.0:F1}K";
-        return n.ToString();
-    }
+        var flag = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_PREVIEW_DATA");
+        if (string.IsNullOrEmpty(flag) || flag == "0") return;
 
-    // ── Rich card builder helpers for tray menu ──
-
-    private static readonly FrozenDictionary<string, string> CapabilityIcons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["screen"] = "🖥",
-        ["camera"] = "📷",
-        ["browser"] = "🌐",
-        ["clipboard"] = "📋",
-        ["tts"] = "🔊",
-        ["location"] = "📍",
-        ["canvas"] = "🎨",
-        ["system"] = "⚙",
-        ["device"] = "📱",
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
-    private static Grid BuildSectionHeader(string title, string summary)
-    {
-        var grid = new Grid
         {
-            Padding = new Thickness(12, 8, 12, 4),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        grid.Children.Add(new TextBlock
-        {
-            Text = title,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Opacity = 0.7,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        grid.Children.Add(new TextBlock
-        {
-            Text = summary,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        return grid;
-    }
-
-    private static UIElement BuildSessionCard(SessionInfo session)
-    {
-        var usedTokens = session.InputTokens + session.OutputTokens;
-        var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;
-        var pct = usedTokens > 0 ? (int)(Math.Min(1.0, (double)usedTokens / contextTokens) * 100) : 0;
-        var isActive = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase);
-        var isIdle = string.Equals(session.Status, "idle", StringComparison.OrdinalIgnoreCase);
-
-        var grid = new Grid
-        {
-            Padding = new Thickness(12, 6, 12, 6),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            RowSpacing = 2,
-            ColumnSpacing = 6
-        };
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // status dot
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // name
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // model badge
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // chevron
-
-        // Row 0: status dot
-        var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
-        {
-            Width = 8, Height = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                isActive ? Microsoft.UI.Colors.LimeGreen
-                : isIdle ? Microsoft.UI.Colors.Orange
-                : Microsoft.UI.Colors.Gray)
-        };
-        Grid.SetRow(dot, 0);
-        Grid.SetColumn(dot, 0);
-        grid.Children.Add(dot);
-
-        // Row 0: session name
-        var nameBlock = new TextBlock
-        {
-            Text = session.DisplayName ?? session.Key,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 12,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsTextSelectionEnabled = false
-        };
-        Grid.SetRow(nameBlock, 0);
-        Grid.SetColumn(nameBlock, 1);
-        grid.Children.Add(nameBlock);
-
-        // Row 0: model badge
-        if (!string.IsNullOrEmpty(session.Model))
-        {
-            var modelBadge = BuildBadge(session.Model);
-            Grid.SetRow(modelBadge, 0);
-            Grid.SetColumn(modelBadge, 2);
-            grid.Children.Add(modelBadge);
-        }
-
-        // Row 0: chevron
-        var chevron = new TextBlock
-        {
-            Text = "›",
-            FontSize = 14,
-            Opacity = 0.5,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsTextSelectionEnabled = false
-        };
-        Grid.SetRow(chevron, 0);
-        Grid.SetColumn(chevron, 3);
-        grid.Children.Add(chevron);
-
-        // Row 1: token info + channel badge + status
-        var row1 = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        var tokenText = usedTokens > 0
-            ? $"{FormatTokenCount(usedTokens)}/{FormatTokenCount(contextTokens)} ({pct}%)"
-            : "";
-        if (!string.IsNullOrEmpty(tokenText))
-        {
-            row1.Children.Add(new TextBlock
+            var now = DateTime.UtcNow;
+            _lastSessions = new[]
             {
-                Text = tokenText,
-                FontSize = 11,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                VerticalAlignment = VerticalAlignment.Center,
-                IsTextSelectionEnabled = false
-            });
-        }
-        if (!string.IsNullOrEmpty(session.Channel))
-        {
-            var channelAbbrev = session.Channel!.Length <= 2
-                ? session.Channel.ToUpperInvariant()
-                : session.Channel[..2].ToUpperInvariant();
-            row1.Children.Add(BuildBadge(channelAbbrev));
-        }
-        var statusText = string.IsNullOrEmpty(session.Status) ? "Unknown"
-            : char.ToUpperInvariant(session.Status[0]) + session.Status[1..];
-        row1.Children.Add(new TextBlock
-        {
-            Text = statusText,
-            FontSize = 11,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            VerticalAlignment = VerticalAlignment.Center,
-            IsTextSelectionEnabled = false
-        });
-        Grid.SetRow(row1, 1);
-        Grid.SetColumn(row1, 1);
-        Grid.SetColumnSpan(row1, 3);
-        grid.Children.Add(row1);
-
-        // Row 2: thin progress bar
-        if (usedTokens > 0)
-        {
-            var bar = new ProgressBar
-            {
-                Minimum = 0,
-                Maximum = 100,
-                Value = pct,
-                Height = 3,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                CornerRadius = new CornerRadius(1.5),
-                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                    pct > 80 ? Microsoft.UI.Colors.Red
-                    : pct > 50 ? Microsoft.UI.Colors.Orange
-                    : Microsoft.UI.Colors.LimeGreen)
+                new SessionInfo
+                {
+                    Key = "preview:main", IsMain = true, Status = "active",
+                    Model = "claude-opus-4.7", DisplayName = "Main · preview",
+                    InputTokens = 124_000, OutputTokens = 36_000,
+                    ContextTokens = 200_000,
+                    UpdatedAt = now.AddMinutes(-2), LastSeen = now,
+                },
+                new SessionInfo
+                {
+                    Key = "preview:dashboard", IsMain = false, Status = "idle",
+                    Model = "gpt-5.4", DisplayName = "agent:main:dashboard",
+                    InputTokens = 58_000, OutputTokens = 12_000,
+                    ContextTokens = 128_000,
+                    UpdatedAt = now.AddHours(-1), LastSeen = now,
+                },
+                new SessionInfo
+                {
+                    Key = "preview:scratch", IsMain = false, Status = "idle",
+                    Model = "claude-haiku-4.5", DisplayName = "agent:main:scratch",
+                    InputTokens = 6_400, OutputTokens = 1_200,
+                    ContextTokens = 64_000,
+                    UpdatedAt = now.AddHours(-4), LastSeen = now,
+                },
             };
-            Grid.SetRow(bar, 2);
-            Grid.SetColumn(bar, 0);
-            Grid.SetColumnSpan(bar, 4);
-            grid.Children.Add(bar);
         }
 
-        return grid;
-    }
-
-    private static List<TrayMenuFlyoutItem> BuildSessionFlyoutItems(SessionInfo session)
-    {
-        var usedTokens = session.InputTokens + session.OutputTokens;
-        var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;
-        var pct = usedTokens > 0 ? (int)(Math.Min(1.0, (double)usedTokens / contextTokens) * 100) : 0;
-        var statusIcon = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase) ? "🟢"
-            : string.Equals(session.Status, "done", StringComparison.OrdinalIgnoreCase) ? "✅" : "⚪";
-
-        var items = new List<TrayMenuFlyoutItem>
+        _lastUsage = new GatewayUsageInfo
         {
-            new() { Text = session.DisplayName ?? session.Key, IsHeader = true },
+            InputTokens = 188_400,
+            OutputTokens = 49_200,
+            TotalTokens = 237_600,
+            CostUsd = 4.82,
+            RequestCount = 142,
+            Model = "claude-opus-4.7",
         };
 
-        // Model · Provider
-        var modelParts = new List<string>();
-        if (!string.IsNullOrEmpty(session.Model)) modelParts.Add(session.Model);
-        if (!string.IsNullOrEmpty(session.Provider)) modelParts.Add(session.Provider);
-        if (modelParts.Count > 0) items.Add(new() { Text = string.Join(" · ", modelParts) });
-
-        // Channel
-        if (!string.IsNullOrEmpty(session.Channel))
-            items.Add(new() { Text = $"📡 {session.Channel}" });
-
-        // Status · age
-        items.Add(new() { Text = $"{statusIcon} {session.Status} · {session.AgeText}" });
-
-        // Token usage
-        items.Add(new() { Text = "Token Usage", IsHeader = true });
-        if (usedTokens > 0)
+        _lastUsageStatus = new GatewayUsageStatusInfo
         {
-            items.Add(new() { Text = $"Input     {FormatTokenCount(session.InputTokens)}" });
-            items.Add(new() { Text = $"Output    {FormatTokenCount(session.OutputTokens)}" });
-            items.Add(new() { Text = $"Total     {FormatTokenCount(usedTokens)} / {FormatTokenCount(contextTokens)} ({pct}%)" });
-        }
-        else
-        {
-            items.Add(new() { Text = "No token usage yet" });
-        }
-
-        // Context window
-        if (session.ContextTokens > 0)
-            items.Add(new() { Text = $"Context   {FormatTokenCount(session.ContextTokens)} window" });
-
-        // Thinking / Verbose
-        if (!string.IsNullOrEmpty(session.ThinkingLevel) || !string.IsNullOrEmpty(session.VerboseLevel))
-        {
-            items.Add(new() { Text = "Settings", IsHeader = true });
-            if (!string.IsNullOrEmpty(session.ThinkingLevel))
-                items.Add(new() { Text = $"🧠 Thinking: {session.ThinkingLevel}" });
-            if (!string.IsNullOrEmpty(session.VerboseLevel))
-                items.Add(new() { Text = $"📝 Verbose: {session.VerboseLevel}" });
-        }
-
-        // Subject / Room
-        if (!string.IsNullOrEmpty(session.Subject))
-            items.Add(new() { Text = $"Subject: {session.Subject}" });
-        if (!string.IsNullOrEmpty(session.Room))
-            items.Add(new() { Text = $"Room: {session.Room}" });
-
-        return items;
-    }
-
-    private static UIElement BuildDeviceCard(GatewayNodeInfo node)
-    {
-        var nodeName = !string.IsNullOrWhiteSpace(node.DisplayName) ? node.DisplayName : node.ShortId;
-
-        var grid = new Grid
-        {
-            Padding = new Thickness(12, 6, 12, 6),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            RowSpacing = 2,
-            ColumnSpacing = 6
-        };
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // dot
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // name
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // platform badge
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // chevron
-
-        // Row 0: status dot
-        var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
-        {
-            Width = 8, Height = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                node.IsOnline ? Microsoft.UI.Colors.LimeGreen : Microsoft.UI.Colors.Gray)
-        };
-        Grid.SetRow(dot, 0);
-        Grid.SetColumn(dot, 0);
-        grid.Children.Add(dot);
-
-        // Row 0: device name
-        var nameBlock = new TextBlock
-        {
-            Text = nodeName,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 12,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsTextSelectionEnabled = false
-        };
-        Grid.SetRow(nameBlock, 0);
-        Grid.SetColumn(nameBlock, 1);
-        grid.Children.Add(nameBlock);
-
-        // Row 0: platform badge
-        if (!string.IsNullOrEmpty(node.Platform))
-        {
-            var badge = BuildBadge(node.Platform);
-            Grid.SetRow(badge, 0);
-            Grid.SetColumn(badge, 2);
-            grid.Children.Add(badge);
-        }
-
-        // Row 0: chevron
-        var chevron = new TextBlock
-        {
-            Text = "›",
-            FontSize = 14,
-            Opacity = 0.5,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsTextSelectionEnabled = false
-        };
-        Grid.SetRow(chevron, 0);
-        Grid.SetColumn(chevron, 3);
-        grid.Children.Add(chevron);
-
-        // Row 1: capability icons + count + online/offline
-        var row1 = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        // Capability emoji icons
-        var capIcons = new System.Text.StringBuilder();
-        if (node.Capabilities.Count > 0)
-        {
-            foreach (var cap in node.Capabilities)
+            UpdatedAt = DateTime.UtcNow,
+            Providers = new()
             {
-                if (CapabilityIcons.TryGetValue(cap, out var icon))
-                    capIcons.Append(icon);
-            }
-        }
-        var capText = capIcons.Length > 0
-            ? $"{capIcons} {node.CapabilityCount} caps"
-            : node.CapabilityCount > 0 ? $"{node.CapabilityCount} caps" : "";
-        var statusLabel = node.IsOnline ? "online" : "offline";
-        var row1Text = !string.IsNullOrEmpty(capText) ? $"{capText}  ·  {statusLabel}" : statusLabel;
-
-        row1.Children.Add(new TextBlock
-        {
-            Text = row1Text,
-            FontSize = 11,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            VerticalAlignment = VerticalAlignment.Center,
-            IsTextSelectionEnabled = false
-        });
-        Grid.SetRow(row1, 1);
-        Grid.SetColumn(row1, 1);
-        Grid.SetColumnSpan(row1, 3);
-        grid.Children.Add(row1);
-
-        return grid;
-    }
-
-    private static List<TrayMenuFlyoutItem> BuildDeviceFlyoutItems(GatewayNodeInfo node)
-    {
-        var nodeName = !string.IsNullOrWhiteSpace(node.DisplayName) ? node.DisplayName : node.ShortId;
-        var items = new List<TrayMenuFlyoutItem>
-        {
-            new() { Text = nodeName, IsHeader = true },
-        };
-
-        // Status + platform + mode on one line
-        var statusIcon = node.IsOnline ? "🟢" : "⚪";
-        var statusText = node.IsOnline ? "Online" : "Offline";
-        var infoParts = new List<string> { $"{statusIcon} {statusText}" };
-        if (!string.IsNullOrEmpty(node.Platform)) infoParts.Add(node.Platform);
-        if (!string.IsNullOrEmpty(node.Mode)) infoParts.Add(node.Mode);
-        items.Add(new() { Text = string.Join(" · ", infoParts) });
-
-        // Last seen
-        if (node.LastSeen.HasValue)
-        {
-            var age = DateTime.UtcNow - node.LastSeen.Value;
-            var seenText = age.TotalMinutes < 1 ? "just now"
-                : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}m ago"
-                : age.TotalDays < 1 ? $"{(int)age.TotalHours}h ago"
-                : $"{(int)age.TotalDays}d ago";
-            items.Add(new() { Text = $"Last seen {seenText}" });
-        }
-
-        // Capabilities + Commands merged — capability as header, commands as details
-        if (node.Capabilities.Count > 0 || node.Commands.Count > 0)
-        {
-            items.Add(new() { Text = $"Capabilities ({node.CapabilityCount}) · Commands ({node.CommandCount})", IsHeader = true });
-
-            var cmdGroups = node.Commands
-                .GroupBy(c => c.Contains('.') ? c[..c.IndexOf('.')] : c, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.Select(c => c.Contains('.') ? c[(c.IndexOf('.') + 1)..] : c).ToList(), StringComparer.OrdinalIgnoreCase);
-
-            // Show each capability with its commands on separate lines
-            var shownGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var cap in node.Capabilities)
-            {
-                var icon = CapabilityIcons.TryGetValue(cap, out var emoji) ? emoji : "▪";
-                if (cmdGroups.TryGetValue(cap, out var cmds) && cmds.Count > 0)
+                new GatewayUsageProviderInfo
                 {
-                    items.Add(new() { Text = $"{icon} {cap}" });
-                    items.Add(new() { Text = $"    {string.Join(", ", cmds)}" });
-                    shownGroups.Add(cap);
-                }
-                else
+                    Provider = "anthropic", DisplayName = "Anthropic",
+                    Plan = "Pro",
+                    Windows = new()
+                    {
+                        new() { Label = "5h window", UsedPercent = 64 },
+                        new() { Label = "Weekly",    UsedPercent = 28 },
+                        new() { Label = "Monthly",   UsedPercent = 0 },
+                    },
+                },
+                new GatewayUsageProviderInfo
                 {
-                    items.Add(new() { Text = $"{icon} {cap}" });
-                    shownGroups.Add(cap);
-                }
-            }
-
-            // Show any command groups not covered by a capability
-            foreach (var group in cmdGroups.Where(g => !shownGroups.Contains(g.Key)).OrderBy(g => g.Key))
-            {
-                items.Add(new() { Text = $"▸ {group.Key}" });
-                items.Add(new() { Text = $"    {string.Join(", ", group.Value)}" });
-            }
-        }
-
-        return items;
-    }
-
-    private static Border BuildBadge(string text)
-    {
-        return new Border
-        {
-            Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"],
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(5, 1, 5, 1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = text,
-                FontSize = 10,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                IsTextSelectionEnabled = false
-            }
+                    Provider = "openai", DisplayName = "OpenAI",
+                    Plan = "Tier 4",
+                    Windows = new()
+                    {
+                        new() { Label = "RPM",    UsedPercent = 41 },
+                        new() { Label = "TPM",    UsedPercent = 73 },
+                        new() { Label = "Daily",  UsedPercent = 96 },
+                    },
+                },
+            },
         };
     }
+
+
+    private readonly Dictionary<string, Action> _permToggleActions = new(StringComparer.Ordinal);
 
     #region Gateway Client
 
@@ -2106,7 +1561,7 @@ public partial class App : Application
         return true;
     }
 
-    private OpenClawTray.Services.Connection.GatewayCredential? ResolveStartupOperatorCredential(GatewayRecord record)
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(GatewayRecord record)
     {
         if (_gatewayRegistry == null)
             return null;
@@ -2258,7 +1713,10 @@ public partial class App : Application
             client.AgentFilesListUpdated += OnAgentFilesListUpdated;
             client.AgentFileContentUpdated += OnAgentFileContentUpdated;
 
-            _chatCoordinator?.SetOperatorClient(client);
+            var concreteClient = client as OpenClawGatewayClient;
+            if (concreteClient == null)
+                Logger.Warn("[ConnMgr] NewClient is not OpenClawGatewayClient — chat coordinator disabled");
+            _chatCoordinator?.SetOperatorClient(concreteClient);
         }
         else
         {
@@ -2270,7 +1728,7 @@ public partial class App : Application
         _lastGatewaySelf = null;
 
         // Update UI references
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             if (_hubWindow != null && !_hubWindow.IsClosed)
             {
@@ -2307,10 +1765,15 @@ public partial class App : Application
         };
 
         _currentStatus = mapped;
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateStatus(mapped);
             UpdateTrayIcon();
+            SyncConnectionToggle(mapped);
+            if (mapped is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
+            {
+                RefreshTrayMenuIfOpen();
+            }
         });
     }
 
@@ -2334,6 +1797,7 @@ public partial class App : Application
                 identityDataPath: IdentityDataPath);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
+            _nodeService.ToastRequested += OnNodeToastRequested;
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             _nodeService.ChannelHealthUpdated += OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
@@ -2483,9 +1947,9 @@ public partial class App : Application
         };
     }
 
-    private static bool RequiresSetup(SettingsManager settings)
+    private bool RequiresSetup(SettingsManager settings)
     {
-        return StartupSetupState.RequiresSetup(settings, IdentityDataPath);
+        return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
     }
 
     private bool ShouldInitializeNodeService()
@@ -2526,7 +1990,7 @@ public partial class App : Application
             // Status field is maintained by OnManagerStateChanged — no write needed here.
             _hubWindow?.UpdateStatus(status);
             UpdateTrayIcon();
-            _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+            OnUiThread(UpdateStatusDetailWindow);
         }
 
         // Keep hub node state in sync for ConnectionPage
@@ -2696,6 +2160,10 @@ public partial class App : Application
         }
     }
 
+    private void OnNodeToastRequested(object? sender, Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder builder)
+        => OnUiThread(() =>
+            NonFatalAction.Run(() => ShowToast(builder), msg => Logger.Warn($"Failed to show node toast: {msg}")));
+
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {
         var status = args.Ok ? "completed" : "failed";
@@ -2711,7 +2179,7 @@ public partial class App : Application
             details: details,
             nodeId: args.NodeId);
 
-        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+        OnUiThread(UpdateStatusDetailWindow);
     }
 
     private static string GetNodeInvokePrivacyClass(string command)
@@ -2761,11 +2229,75 @@ public partial class App : Application
         }
 
         UpdateTrayIcon();
-        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+        OnUiThread(() =>
+        {
+            UpdateStatusDetailWindow();
+            SyncConnectionToggle(status);
+            if (status is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
+            {
+                RefreshTrayMenuIfOpen();
+            }
+        });
         
         if (status == ConnectionStatus.Connected)
         {
             _ = RunHealthCheckAsync();
+        }
+    }
+
+    private void RefreshTrayMenuIfOpen()
+    {
+        try
+        {
+            if (_trayMenuWindow == null || !_trayMenuWindow.IsShown)
+                return;
+
+            var openCascadeTag = _trayMenuWindow.ActiveFlyoutTag;
+            _trayMenuWindow.ClearItems();
+            BuildTrayMenuPopup(_trayMenuWindow);
+            _trayMenuWindow.SizeToContentKeepBottom();
+            if (!string.IsNullOrEmpty(openCascadeTag))
+            {
+                _trayMenuWindow.TryRestoreCascade(openCascadeTag);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCrash("RefreshTrayMenuIfOpen", ex);
+        }
+    }
+
+    private void SyncConnectionToggle(ConnectionStatus status)
+    {
+        if (_connectionToggleRef == null)
+            return;
+
+        if (!_connectionToggleRef.TryGetTarget(out var toggle))
+            return;
+
+        if (toggle.XamlRoot == null)
+        {
+            _connectionToggleRef = null;
+            return;
+        }
+
+        var shouldBeOn = status == ConnectionStatus.Connected;
+        var canToggle = status is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error;
+        _suspendConnectionToggleEvent = true;
+        try
+        {
+            if (toggle.IsOn != shouldBeOn)
+                toggle.IsOn = shouldBeOn;
+
+            toggle.IsEnabled = canToggle;
+            ToolTipService.SetToolTip(toggle,
+                shouldBeOn ? "Connected - toggle off to disconnect"
+                    : status == ConnectionStatus.Connecting ? "Connecting..."
+                    : "Disconnected - toggle on to connect");
+        }
+        finally
+        {
+            _suspendConnectionToggleEvent = false;
         }
     }
 
@@ -2851,7 +2383,7 @@ public partial class App : Application
             AddRecentActivity("Channel health updated", category: "channel", dashboardPath: "channels", details: summary);
         }
 
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateChannelHealth(channels);
             _hubWindow?.UpdateStatus(_currentStatus);
@@ -2861,9 +2393,9 @@ public partial class App : Application
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
     {
         _lastSessions = sessions;
-        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+        OnUiThread(UpdateStatusDetailWindow);
 
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateSessions(sessions);
         });
@@ -2889,7 +2421,7 @@ public partial class App : Application
     private void OnUsageUpdated(object? sender, GatewayUsageInfo usage)
     {
         _lastUsage = usage;
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateUsage(usage);
         });
@@ -2898,7 +2430,7 @@ public partial class App : Application
     private void OnUsageStatusUpdated(object? sender, GatewayUsageStatusInfo usageStatus)
     {
         _lastUsageStatus = usageStatus;
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateUsageStatus(usageStatus);
         });
@@ -2907,9 +2439,9 @@ public partial class App : Application
     private void OnUsageCostUpdated(object? sender, GatewayCostUsageInfo usageCost)
     {
         _lastUsageCost = usageCost;
-        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+        OnUiThread(UpdateStatusDetailWindow);
 
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateUsageCost(usageCost);
         });
@@ -2938,7 +2470,7 @@ public partial class App : Application
             stateVersionHealth = _lastGatewaySelf.StateVersionHealth,
             presenceCount = _lastGatewaySelf.PresenceCount
         });
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             UpdateStatusDetailWindow();
             _hubWindow?.UpdateGatewaySelf(_lastGatewaySelf);
@@ -2951,9 +2483,9 @@ public partial class App : Application
         var previousOnline = _lastNodes.Count(n => n.IsOnline);
         var online = nodes.Count(n => n.IsOnline);
         _lastNodes = nodes;
-        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+        OnUiThread(UpdateStatusDetailWindow);
 
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _hubWindow?.UpdateNodes(nodes);
         });
@@ -2976,14 +2508,12 @@ public partial class App : Application
                 _sessionPreviews[preview.Key] = preview;
             }
         }
-        _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+        OnUiThread(UpdateStatusDetailWindow);
     }
 
     private void OnSessionCommandCompleted(object? sender, SessionCommandResult result)
     {
-        if (_dispatcherQueue == null) return;
-
-        _dispatcherQueue.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             try
             {
@@ -3025,32 +2555,32 @@ public partial class App : Application
 
     private void OnCronListUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronList(data));
+        OnUiThread(() => _hubWindow?.UpdateCronList(data));
     }
 
     private void OnCronStatusUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronStatus(data));
+        OnUiThread(() => _hubWindow?.UpdateCronStatus(data));
     }
 
     private void OnCronRunsUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateCronRuns(data));
+        OnUiThread(() => _hubWindow?.UpdateCronRuns(data));
     }
 
     private void OnSkillsStatusUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateSkillsStatus(data));
+        OnUiThread(() => _hubWindow?.UpdateSkillsStatus(data));
     }
 
     private void OnConfigUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateConfig(data));
+        OnUiThread(() => _hubWindow?.UpdateConfig(data));
     }
 
     private void OnConfigSchemaUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateConfigSchema(data));
+        OnUiThread(() => _hubWindow?.UpdateConfigSchema(data));
     }
 
     private System.Text.Json.JsonElement? _lastAgentsList;
@@ -3058,22 +2588,22 @@ public partial class App : Application
     private void OnAgentsListUpdated(object? sender, System.Text.Json.JsonElement data)
     {
         _lastAgentsList = data.Clone();
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentsList(data));
+        OnUiThread(() => _hubWindow?.UpdateAgentsList(data));
     }
 
     private void OnAgentFilesListUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentFilesList(data));
+        OnUiThread(() => _hubWindow?.UpdateAgentFilesList(data));
     }
 
     private void OnAgentFileContentUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateAgentFileContent(data));
+        OnUiThread(() => _hubWindow?.UpdateAgentFileContent(data));
     }
 
     private void OnAgentEventReceived(object? sender, AgentEventInfo evt)
     {
-        _dispatcherQueue?.TryEnqueue(() =>
+        OnUiThread(() =>
         {
             _agentEventsCache.Insert(0, evt);
             if (_agentEventsCache.Count > MaxAppAgentEvents)
@@ -3085,25 +2615,25 @@ public partial class App : Application
     private void OnNodePairListUpdated(object? sender, PairingListInfo data)
     {
         _lastNodePairList = data;
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateNodePairList(data));
+        OnUiThread(() => _hubWindow?.UpdateNodePairList(data));
     }
 
     private void OnDevicePairListUpdated(object? sender, DevicePairingListInfo data)
     {
         _lastDevicePairList = data;
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateDevicePairList(data));
+        OnUiThread(() => _hubWindow?.UpdateDevicePairList(data));
     }
 
     private void OnModelsListUpdated(object? sender, ModelsListInfo data)
     {
         _lastModelsList = data;
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdateModelsList(data));
+        OnUiThread(() => _hubWindow?.UpdateModelsList(data));
     }
 
     private void OnPresenceUpdated(object? sender, PresenceEntry[] data)
     {
         _lastPresence = data;
-        _dispatcherQueue?.TryEnqueue(() => _hubWindow?.UpdatePresence(data));
+        OnUiThread(() => _hubWindow?.UpdatePresence(data));
     }
 
     private void OnNotificationReceived(object? sender, OpenClawNotification notification)
@@ -3126,7 +2656,7 @@ public partial class App : Application
             // Voice overlay disabled — agent responses no longer routed to overlay window.
             // if (_voiceOverlayWindow != null)
             // {
-            //     _dispatcherQueue?.TryEnqueue(() =>
+            //     OnUiThread(() =>
             //     {
             //         try
             //         {
@@ -3232,7 +2762,7 @@ public partial class App : Application
             if (_settings?.EnableNodeMode == true && _nodeService?.IsConnected == true)
             {
                 _lastCheckTime = DateTime.Now;
-                _dispatcherQueue?.TryEnqueue(UpdateStatusDetailWindow);
+                OnUiThread(UpdateStatusDetailWindow);
                 if (userInitiated)
                 {
                     ShowToast(new ToastContentBuilder()
@@ -3280,6 +2810,12 @@ public partial class App : Application
 
     private void UpdateTrayIcon()
     {
+        if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
+        {
+            _dispatcherQueue.TryEnqueue(UpdateTrayIcon);
+            return;
+        }
+
         if (_trayIcon == null) return;
 
         // Tray icon is pinned to the app icon so it visually matches the agent
@@ -3312,45 +2848,20 @@ public partial class App : Application
         _trayIcon.Tooltip = tooltip;
     }
 
-    private string BuildTrayTooltip()
+    private string BuildTrayTooltip() =>
+        new TrayTooltipBuilder(CaptureTraySnapshot()).Build();
+
+    private TrayStateSnapshot CaptureTraySnapshot() => new TrayStateSnapshot
     {
-        var topology = GatewayTopologyClassifier.Classify(
-            _settings?.GatewayUrl,
-            _settings?.UseSshTunnel == true,
-            _settings?.SshTunnelHost,
-            _settings?.SshTunnelLocalPort ?? 0,
-            _settings?.SshTunnelRemotePort ?? 0);
-        var channelReady = _lastChannels.Count(c => ChannelHealth.IsHealthyStatus(c.Status));
-        var nodeOnline = _lastNodes.Count(n => n.IsOnline);
-        var nodeTotal = _lastNodes.Length;
-        if (nodeTotal == 0 && _nodeService?.GetLocalNodeInfo() is { } localNode)
-        {
-            nodeTotal = 1;
-            nodeOnline = localNode.IsOnline ? 1 : 0;
-        }
-
-        var warningCount = 0;
-        if (_currentStatus != ConnectionStatus.Connected)
-            warningCount++;
-        if (_authFailureMessage != null)
-            warningCount++;
-        if (_lastChannels.Length == 0 && _currentStatus == ConnectionStatus.Connected)
-            warningCount++;
-
-        var tooltip = $"OpenClaw Tray - {_currentStatus}; " +
-            $"{topology.DisplayName}; " +
-            $"Channels {channelReady}/{_lastChannels.Length}; " +
-            $"Nodes {nodeOnline}/{nodeTotal}; " +
-            $"Warnings {warningCount}; " +
-            $"Last {_lastCheckTime:HH:mm:ss}";
-
-        if (_currentActivity != null && !string.IsNullOrEmpty(_currentActivity.DisplayText))
-        {
-            tooltip = $"OpenClaw Tray - {_currentActivity.DisplayText}; {_currentStatus}";
-        }
-
-        return TrayTooltipFormatter.FitShellTooltip(tooltip);
-    }
+        Status = _currentStatus,
+        CurrentActivity = _currentActivity,
+        Channels = _lastChannels,
+        Nodes = _lastNodes,
+        LocalNodeFallback = _nodeService?.GetLocalNodeInfo(),
+        AuthFailureMessage = _authFailureMessage,
+        LastCheckTime = _lastCheckTime,
+        Settings = _settings
+    };
 
     #endregion
 
@@ -3483,7 +2994,7 @@ public partial class App : Application
 
     private void OnSettingsSaved(object? sender, EventArgs e)
     {
-        var currentSnapshot = _settings?.ToSettingsData();
+        var currentSnapshot = _settings?.ToSettingsData()?.ToConnectionSnapshot();
         var impact = SettingsChangeClassifier.Classify(_previousSettingsSnapshot, currentSnapshot);
         _previousSettingsSnapshot = currentSnapshot;
         Logger.Info($"[SETTINGS] Change impact: {impact}");
@@ -3532,6 +3043,8 @@ public partial class App : Application
             _globalHotkey ??= new GlobalHotkeyService();
             _globalHotkey.HotkeyPressed -= OnGlobalHotkeyPressed;
             _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
+            _globalHotkey.SettingsHotkeyPressed -= OnSettingsHotkeyPressed;
+            _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
             _globalHotkey.Register();
         }
         else
@@ -3626,7 +3139,7 @@ public partial class App : Application
 
     private void ShowStatusDetail()
     {
-        ShowHub("general");
+        ShowHub("connection");
     }
 
     private void ShowConnectionStatusWindow()
@@ -3728,7 +3241,7 @@ public partial class App : Application
         LastUpdateInfo = _lastUpdateInfo,
         Settings = _settings,
         NodeService = _nodeService,
-        SshTunnelService = _sshTunnelService,
+        SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
         HasGatewayClient = _connectionManager?.OperatorClient != null
     };
 
@@ -3912,10 +3425,12 @@ public partial class App : Application
             return false;
 
         if (!InteractiveGatewayCredentialResolver.TryResolve(
-            _settings,
             _gatewayRegistry,
             SettingsManager.SettingsDirectoryPath,
             DeviceIdentityFileReader.Instance,
+            _settings.GetEffectiveGatewayUrl(),
+            _settings.LegacyToken,
+            _settings.LegacyBootstrapToken,
             out var credential) ||
             credential == null)
         {
@@ -3935,8 +3450,16 @@ public partial class App : Application
     {
         if (_settings == null) return;
         if (!EnsureSshTunnelConfigured()) return;
-        
-        var baseUrl = _settings.GetEffectiveGatewayUrl()
+
+        if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
+        {
+            ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                "Gateway URL or credential is not configured");
+            return;
+        }
+
+        var baseUrl = gatewayUrl
             .Replace("ws://", "http://")
             .Replace("wss://", "https://")
             .TrimEnd('/');
@@ -3945,11 +3468,12 @@ public partial class App : Application
             ? baseUrl
             : $"{baseUrl}/{path.TrimStart('/')}";
 
-        var activeToken = _gatewayRegistry?.GetActive()?.SharedGatewayToken;
-        if (!string.IsNullOrEmpty(activeToken))
+        if (!isBootstrapToken &&
+            credentialSource == CredentialResolver.SourceSharedGatewayToken &&
+            !string.IsNullOrEmpty(token))
         {
             var separator = url.Contains('?') ? "&" : "?";
-            url = $"{url}{separator}token={Uri.EscapeDataString(activeToken)}";
+            url = $"{url}{separator}token={Uri.EscapeDataString(token)}";
         }
 
         try
@@ -4049,140 +3573,45 @@ public partial class App : Application
         }
     }
 
-    private void CopySupportContext()
+    private void CopyDiagnostic(string label, Func<GatewayCommandCenterState, string> format)
     {
         try
         {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildSupportContext(BuildCommandCenterState()));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied support context from deep link");
+            CopyTextToClipboard(format(BuildCommandCenterState()));
+            Logger.Info($"Copied {label} from deep link");
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Failed to copy support context from deep link: {ex.Message}");
+            Logger.Warn($"Failed to copy {label} from deep link: {ex.Message}");
         }
     }
 
-    private void CopyDebugBundle()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildDebugBundle(BuildCommandCenterState()));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied debug bundle from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy debug bundle from deep link: {ex.Message}");
-        }
-    }
+    private void CopySupportContext() =>
+        CopyDiagnostic("support context", CommandCenterTextHelper.BuildSupportContext);
 
-    private void CopyBrowserSetupGuidance()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildBrowserSetupGuidance(BuildCommandCenterState()));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied browser setup guidance from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy browser setup guidance from deep link: {ex.Message}");
-        }
-    }
+    private void CopyDebugBundle() =>
+        CopyDiagnostic("debug bundle", CommandCenterTextHelper.BuildDebugBundle);
 
-    private void CopyPortDiagnostics()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildPortDiagnosticsSummary(BuildCommandCenterState().PortDiagnostics));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied port diagnostics from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy port diagnostics from deep link: {ex.Message}");
-        }
-    }
+    private void CopyBrowserSetupGuidance() =>
+        CopyDiagnostic("browser setup guidance", CommandCenterTextHelper.BuildBrowserSetupGuidance);
 
-    private void CopyCapabilityDiagnostics()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildCapabilityDiagnosticsSummary(BuildCommandCenterState()));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied capability diagnostics from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy capability diagnostics from deep link: {ex.Message}");
-        }
-    }
+    private void CopyPortDiagnostics() =>
+        CopyDiagnostic("port diagnostics", s => CommandCenterTextHelper.BuildPortDiagnosticsSummary(s.PortDiagnostics));
 
-    private void CopyNodeInventory()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildNodeInventorySummary(BuildCommandCenterState().Nodes));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied node inventory from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy node inventory from deep link: {ex.Message}");
-        }
-    }
+    private void CopyCapabilityDiagnostics() =>
+        CopyDiagnostic("capability diagnostics", CommandCenterTextHelper.BuildCapabilityDiagnosticsSummary);
 
-    private void CopyChannelSummary()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildChannelSummaryText(BuildCommandCenterState().Channels));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied channel summary from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy channel summary from deep link: {ex.Message}");
-        }
-    }
+    private void CopyNodeInventory() =>
+        CopyDiagnostic("node inventory", s => CommandCenterTextHelper.BuildNodeInventorySummary(s.Nodes));
 
-    private void CopyActivitySummary()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildActivitySummary(BuildCommandCenterState().RecentActivity));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied activity summary from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy activity summary from deep link: {ex.Message}");
-        }
-    }
+    private void CopyChannelSummary() =>
+        CopyDiagnostic("channel summary", s => CommandCenterTextHelper.BuildChannelSummaryText(s.Channels));
 
-    private void CopyExtensibilitySummary()
-    {
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(CommandCenterTextHelper.BuildExtensibilitySummary(BuildCommandCenterState().Channels));
-            Clipboard.SetContent(package);
-            Logger.Info("Copied extensibility summary from deep link");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to copy extensibility summary from deep link: {ex.Message}");
-        }
-    }
+    private void CopyActivitySummary() =>
+        CopyDiagnostic("activity summary", s => CommandCenterTextHelper.BuildActivitySummary(s.RecentActivity));
+
+    private void CopyExtensibilitySummary() =>
+        CopyDiagnostic("extensibility summary", s => CommandCenterTextHelper.BuildExtensibilitySummary(s.Channels));
 
     private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
     {
@@ -4230,6 +3659,11 @@ public partial class App : Application
                 });
             }
         });
+    }
+
+    private void OnSettingsHotkeyPressed(object? sender, EventArgs e)
+    {
+        OnUiThread(() => ShowHub("companion"));
     }
 
     #endregion
@@ -4401,7 +3835,7 @@ public partial class App : Application
                     if (!string.IsNullOrEmpty(uri))
                     {
                         Logger.Info($"Received deep link via IPC: {uri}");
-                        _dispatcherQueue?.TryEnqueue(() => HandleDeepLink(uri));
+                        OnUiThread(() => HandleDeepLink(uri));
                     }
                 }
                 catch (OperationCanceledException)
@@ -4517,7 +3951,7 @@ public partial class App : Application
         
         if (arguments.TryGetValue("action", out var action))
         {
-            _dispatcherQueue?.TryEnqueue(() =>
+            OnUiThread(() =>
             {
                 switch (action)
                 {
@@ -4550,9 +3984,7 @@ public partial class App : Application
 
     public static void CopyTextToClipboard(string text)
     {
-        var dataPackage = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-        dataPackage.SetText(text);
-        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+        ClipboardHelper.CopyText(text);
     }
 
     #endregion
@@ -4698,7 +4130,15 @@ public partial class App : Application
             try
             {
                 _sshTunnelService ??= new SshTunnelService(new AppLogger());
-                _sshTunnelService.EnsureStarted(_settings);
+                var includeBrowserProxy =
+                    _settings.NodeBrowserProxyEnabled &&
+                    SshTunnelCommandLine.CanForwardBrowserProxyPort(_settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort);
+                _sshTunnelService.EnsureStarted(
+                    _settings.SshTunnelUser,
+                    _settings.SshTunnelHost,
+                    _settings.SshTunnelRemotePort,
+                    _settings.SshTunnelLocalPort,
+                    includeBrowserProxy);
                 DiagnosticsJsonlService.Write("tunnel.ensure_started", new
                 {
                     status = _sshTunnelService.Status.ToString(),
@@ -4742,7 +4182,15 @@ public partial class App : Application
         {
             try
             {
-                _sshTunnelService.EnsureStarted(_settings);
+                var restartBrowserProxy =
+                    _settings.NodeBrowserProxyEnabled &&
+                    SshTunnelCommandLine.CanForwardBrowserProxyPort(_settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort);
+                _sshTunnelService.EnsureStarted(
+                    _settings.SshTunnelUser,
+                    _settings.SshTunnelHost,
+                    _settings.SshTunnelRemotePort,
+                    _settings.SshTunnelLocalPort,
+                    restartBrowserProxy);
                 Logger.Info("SSH tunnel restarted successfully");
                 DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
                 {

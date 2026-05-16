@@ -74,7 +74,7 @@ public class A2UICapabilitySecurityTests
             };
             var res = await cap.ExecuteAsync(req);
             Assert.False(res.Ok);
-            Assert.Contains("maximum size", res.Error);
+            Assert.Equal("Failed to read jsonlPath", res.Error);
         }
         finally
         {
@@ -125,7 +125,7 @@ public class A2UICapabilitySecurityTests
             var res = await cap.ExecuteAsync(req);
 
             Assert.False(res.Ok);
-            Assert.Contains("temp", res.Error, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Failed to read jsonlPath", res.Error);
         }
         finally
         {

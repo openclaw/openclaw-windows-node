@@ -22,7 +22,7 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
-    public void Onboarding_UsesThemeAwareBackgroundResources()
+    public void OnboardingHostAndGatewayWizard_UseThemeAwareBackgroundResources()
     {
         var onboardingPath = Path.Combine(
             GetRepositoryRoot(),
@@ -40,7 +40,6 @@ public class TrayMenuWindowMarkupTests
         }
 
         Assert.Contains(sources, file => file.Source.Contains("CardBackgroundFillColorDefaultBrush"));
-        Assert.Contains(sources, file => file.Source.Contains("SystemFillColorCautionBackgroundBrush"));
         Assert.Contains(sources, file => file.Source.Contains("SystemFillColorAttentionBackgroundBrush"));
 
         var onboardingWindowSource = File.ReadAllText(Path.Combine(

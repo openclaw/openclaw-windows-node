@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Match the OnboardingV2 project TFM exactly so we can ProjectReference
+         it without TFM-mismatch warnings. The Tray.Tests project deliberately
+         stays pure net10.0; this project mirrors the V2 surface (which depends
+         on Microsoft.UI.Xaml.ElementTheme) so V2-specific tests can run. -->
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenClawTray.OnboardingV2\OpenClawTray.OnboardingV2.csproj" />
+  </ItemGroup>
+
+</Project>

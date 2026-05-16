@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -692,9 +692,7 @@ Gebruik een van deze opties:
   <data name="Toast_CameraBlockedDetail" xml:space="preserve">
     <value>Schakel cameratoegang in via Windows-privacyinstellingen voor OpenClaw Tray</value>
   </data>
-
   <!-- ==================== Toast: Recording ==================== -->
-
   <data name="Toast_ScreenRecordingStarted" xml:space="preserve">
     <value>🔴 Schermopname gestart</value>
   </data>
@@ -725,9 +723,7 @@ Gebruik een van deze opties:
   <data name="Toast_CameraRecordingCompleteDetail" xml:space="preserve">
     <value>Cameraclip is naar de agent verzonden</value>
   </data>
-
   <!-- ==================== Recording Consent Dialog ==================== -->
-
   <data name="RecordingConsent_WindowTitle" xml:space="preserve">
     <value>OpenClaw · Toestemmingsverzoek</value>
   </data>
@@ -752,9 +748,7 @@ Gebruik een van deze opties:
   <data name="RecordingConsent_Deny" xml:space="preserve">
     <value>Weigeren</value>
   </data>
-
   <!-- ==================== Settings: Privacy ==================== -->
-
   <data name="Settings_PrivacyHeader" xml:space="preserve">
     <value>Privacyinstellingen</value>
   </data>
@@ -779,9 +773,7 @@ Gebruik een van deze opties:
   <data name="CameraRecordingToggle.Header" xml:space="preserve">
     <value>Camera-opname toestaan</value>
   </data>
-
   <!-- ==================== Activity Stream: Recording ==================== -->
-
   <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
     <value>Schermopname gestart</value>
   </data>
@@ -800,7 +792,6 @@ Gebruik een van deze opties:
   <data name="Activity_RecordingSentToAgent" xml:space="preserve">
     <value>{0}-opname verzonden naar agent</value>
   </data>
-
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nieuw: Activiteitenstroom</value>
@@ -1417,7 +1408,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Onboarding_Connection_LaterStatus" xml:space="preserve">
     <value>U kunt de gateway later configureren in Instellingen.</value>
   </data>
-
   <data name="Onboarding_SetupWarning_Title" xml:space="preserve">
     <value>OpenClaw instellen</value>
   </data>
@@ -1618,16 +1608,16 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ Deze computer</value>
   </data>
-  <data name="CapabilitiesPage_TextBlock_15.Text" xml:space="preserve">
+  <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>Apparaatmogelijkheden die via de gateway aan agents worden aangeboden. Schakel in wat deze computer mag doen.</value>
   </data>
-  <data name="CapabilitiesPage_TextBlock_33.Text" xml:space="preserve">
+  <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>Lokale MCP-server</value>
   </data>
-  <data name="CapabilitiesPage_TextBlock_34.Text" xml:space="preserve">
+  <data name="PermissionsPage_McpDescription.Text" xml:space="preserve">
     <value>Stel mogelijkheden beschikbaar via HTTP voor CLI-hulpprogramma’s en lokale integraties.</value>
   </data>
-  <data name="CapabilitiesPage_TextBlock_44.Text" xml:space="preserve">
+  <data name="PermissionsPage_McpEndpointLabel.Text" xml:space="preserve">
     <value>Eindpunt:</value>
   </data>
   <data name="CopyMcpTokenButton.Content" xml:space="preserve">
@@ -1900,32 +1890,8 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="HealthCheckButton.Content" xml:space="preserve">
     <value>Statuscontrole</value>
   </data>
-  <data name="InstancesPage_TextBlock_12.Text" xml:space="preserve">
-    <value>🖥️ Exemplaren</value>
-  </data>
   <data name="RefreshButton.Content" xml:space="preserve">
     <value>⟳ Vernieuwen</value>
-  </data>
-  <data name="InstancesPage_TextBlock_22.Text" xml:space="preserve">
-    <value>🖥️ Geen andere exemplaren gevonden</value>
-  </data>
-  <data name="InstancesPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Andere OpenClaw-knooppunten die met dezelfde gateway zijn verbonden, worden hier weergegeven.</value>
-  </data>
-  <data name="NodesPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🖥️ Knooppunten</value>
-  </data>
-  <data name="NodesPage_TextBlock_22.Text" xml:space="preserve">
-    <value>Geen knooppunten verbonden</value>
-  </data>
-  <data name="NodesPage_TextBlock_29.Text" xml:space="preserve">
-    <value>🔗 Koppelingsaanvragen in behandeling</value>
-  </data>
-  <data name="NodesPage_TextBlock_35.Text" xml:space="preserve">
-    <value>📱 Apparaatkoppelingen in behandeling</value>
-  </data>
-  <data name="NodesPage_TextBlock_41.Text" xml:space="preserve">
-    <value>🌐 Verbonden clients</value>
   </data>
   <data name="NodesPage_Action_Rename" xml:space="preserve">
     <value>Hernoemen</value>
@@ -2040,9 +2006,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
     <value>Regel toevoegen</value>
-  </data>
-  <data name="SaveExecPolicyButton.Content" xml:space="preserve">
-    <value>Uitvoeringsbeleid opslaan</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Knooppunt-allowlist</value>
@@ -2261,7 +2224,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Kanalen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>Knooppunten</value>
+    <value>Instanties</value>
   </data>
   <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
     <value>Koppelingen</value>
@@ -2464,46 +2427,34 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>Taak verwijderen</value>
   </data>
-  <data name="CapabilitiesPage_SttCardDescription.Text" xml:space="preserve">
-    <value>Herkent microfoonaudio lokaal op deze pc met Whisper. Het model wordt één keer gedownload bij het eerste gebruik.</value>
-  </data>
-  <data name="CapabilitiesPage_SttCardHeader.Text" xml:space="preserve">
-    <value>🎤 Spraak-naar-tekst</value>
-  </data>
-  <data name="CapabilitiesPage_SttMoreSettingsLink.Content" xml:space="preserve">
+  <data name="PermissionsPage_SttMoreSettingsLink.Content" xml:space="preserve">
     <value>Meer spraakinstellingen…</value>
   </data>
-  <data name="CapabilitiesPage_TtsCardDescription.Text" xml:space="preserve">
-    <value>Standaardaanbieder voor tts.speak. Per-aanroep provider/voiceId/model overschrijft deze standaard.</value>
-  </data>
-  <data name="CapabilitiesPage_TtsCardHeader.Text" xml:space="preserve">
-    <value>🔊 Tekst-naar-spraak</value>
-  </data>
-  <data name="CapabilitiesPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
+  <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
     <value>ElevenLabs API-sleutel</value>
   </data>
-  <data name="CapabilitiesPage_TtsElevenLabsHelp.Text" xml:space="preserve">
+  <data name="PermissionsPage_TtsElevenLabsHelp.Text" xml:space="preserve">
     <value>API-sleutel wordt versleuteld opgeslagen met Windows DPAPI. Laat leeg om de eerder opgeslagen waarde te behouden bij het wijzigen van andere velden.</value>
   </data>
-  <data name="CapabilitiesPage_TtsElevenLabsModel.Header" xml:space="preserve">
+  <data name="PermissionsPage_TtsElevenLabsModel.Header" xml:space="preserve">
     <value>ElevenLabs-model</value>
   </data>
-  <data name="CapabilitiesPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
+  <data name="PermissionsPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
     <value>eleven_multilingual_v2</value>
   </data>
-  <data name="CapabilitiesPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
+  <data name="PermissionsPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
     <value>ElevenLabs stem-ID</value>
   </data>
-  <data name="CapabilitiesPage_TtsProviderComboBox.Header" xml:space="preserve">
+  <data name="PermissionsPage_TtsProviderComboBox.Header" xml:space="preserve">
     <value>Aanbieder</value>
   </data>
-  <data name="CapabilitiesPage_TtsProviderElevenLabs.Content" xml:space="preserve">
+  <data name="PermissionsPage_TtsProviderElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs</value>
   </data>
-  <data name="CapabilitiesPage_TtsProviderPiper.Content" xml:space="preserve">
+  <data name="PermissionsPage_TtsProviderPiper.Content" xml:space="preserve">
     <value>Piper (lokale ML, aanbevolen)</value>
   </data>
-  <data name="CapabilitiesPage_TtsProviderWindows.Content" xml:space="preserve">
+  <data name="PermissionsPage_TtsProviderWindows.Content" xml:space="preserve">
     <value>Ingebouwde Windows-spraak</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
@@ -2811,7 +2762,8 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
     <value>▶ Voorbeeld van stem</value>
-  </data>  <data name="DebugPage_TextBlock_OverridesHeader.Text" xml:space="preserve">
+  </data>
+  <data name="DebugPage_TextBlock_OverridesHeader.Text" xml:space="preserve">
     <value>Foutopsporingsopties</value>
   </data>
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
@@ -2963,5 +2915,402 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="VoiceSettingsPage_TestVoiceButtonText.Text" xml:space="preserve">
     <value>Spraakinvoer testen</value>
+  </data>
+  <data name="PermissionsPage_FeaturesDescription_Enabled" xml:space="preserve">
+    <value>Toggle individual features that agents may request from this PC.</value>
+  </data>
+  <data name="PermissionsPage_FeaturesDescription_Disabled" xml:space="preserve">
+    <value>Turn on Node Mode above to enable these features.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Browser_Label" xml:space="preserve">
+    <value>Browser control</value>
+  </data>
+  <data name="PermissionsPage_Cap_Browser_Description" xml:space="preserve">
+    <value>Lets agents drive a Chromium browser on this PC — open pages, click, and read content.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Camera_Label" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="PermissionsPage_Cap_Camera_Description" xml:space="preserve">
+    <value>Lets agents capture still images and short clips from this PC's camera.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Canvas_Label" xml:space="preserve">
+    <value>Canvas</value>
+  </data>
+  <data name="PermissionsPage_Cap_Canvas_Description" xml:space="preserve">
+    <value>Lets agents render and interact with a shared visual canvas hosted on this PC.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Screen_Label" xml:space="preserve">
+    <value>Screen capture</value>
+  </data>
+  <data name="PermissionsPage_Cap_Screen_Description" xml:space="preserve">
+    <value>Lets agents take screenshots and short screen recordings of this PC.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Location_Label" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="PermissionsPage_Cap_Location_Description" xml:space="preserve">
+    <value>Lets agents read this PC's approximate location.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Tts_Label" xml:space="preserve">
+    <value>Text-to-speech</value>
+  </data>
+  <data name="PermissionsPage_Cap_Tts_Description" xml:space="preserve">
+    <value>Lets agents speak text aloud through this PC's speakers.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Stt_Label" xml:space="preserve">
+    <value>Speech-to-text</value>
+  </data>
+  <data name="PermissionsPage_Cap_Stt_Description" xml:space="preserve">
+    <value>Lets agents transcribe microphone audio locally using Whisper. Turning this on downloads the Whisper model (~140 MB) on first use.</value>
+  </data>
+  <data name="PermissionsPage_SttHint_Ready" xml:space="preserve">
+    <value>Whisper model is ready. Speech-to-text runs fully on this PC; no audio leaves the device.</value>
+  </data>
+  <data name="PermissionsPage_SttHint_Downloading" xml:space="preserve">
+    <value>Whisper model is downloading. Speech-to-text will be available once it's ready.</value>
+  </data>
+  <data name="PermissionsPage_SttHint_FailedFormat" xml:space="preserve">
+    <value>Whisper model download failed: {0}. Toggle Speech-to-text off and back on to retry.</value>
+  </data>
+  <data name="PermissionsPage_SttHint_NotDownloaded" xml:space="preserve">
+    <value>Whisper model is not downloaded. Open More voice settings… to download it before using speech-to-text.</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Disabled" xml:space="preserve">
+    <value>Node mode disabled</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_DisabledDetails" xml:space="preserve">
+    <value>Enable Node Mode to provide device capabilities to agents.</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Active" xml:space="preserve">
+    <value>Node active</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_ActiveDetailsFormat" xml:space="preserve">
+    <value>Providing {0} capabilities: {1}</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_NoCapabilities" xml:space="preserve">
+    <value>No capabilities enabled.</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_NotConnected" xml:space="preserve">
+    <value>Node mode enabled, not connected</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_NotConnectedDetails" xml:space="preserve">
+    <value>Connect to a gateway to start providing device capabilities.</value>
+  </data>
+  <data name="PermissionsPage_McpStatus_TokenReady" xml:space="preserve">
+    <value>Server enabled — token ready</value>
+  </data>
+  <data name="PermissionsPage_McpStatus_TokenPending" xml:space="preserve">
+    <value>Server enabled — token will be created on next start</value>
+  </data>
+  <data name="PermissionsPage_McpStatus_TokenCopied" xml:space="preserve">
+    <value>Token copied to clipboard</value>
+  </data>
+  <data name="PermissionsPage_McpStatus_TokenNotFound" xml:space="preserve">
+    <value>Token file not found — start the MCP server first</value>
+  </data>
+  <data name="PermissionsPage_McpStatus_UrlCopied" xml:space="preserve">
+    <value>URL copied to clipboard</value>
+  </data>
+  <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
+    <value>No rules</value>
+  </data>
+  <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
+    <value>1 rule</value>
+  </data>
+  <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
+    <value>{0} rules</value>
+  </data>
+  <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
+    <value>No allowlist data available. Connect to a gateway first.</value>
+  </data>
+  <data name="PermissionsPage_Allowlist_NoCommands" xml:space="preserve">
+    <value>No allowed commands configured in gateway.</value>
+  </data>
+  <data name="PermissionsPage_Allowlist_ParseFailed" xml:space="preserve">
+    <value>Failed to parse allowlist from config.</value>
+  </data>
+  <data name="PermissionsPage_TtsStatus_DefaultProviderFormat" xml:space="preserve">
+    <value>Default provider: {0}</value>
+  </data>
+  <data name="PermissionsPage_TtsStatus_ElevenLabsSaved" xml:space="preserve">
+    <value>ElevenLabs settings saved.</value>
+  </data>
+  <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
+    <value>Failed to read token: {0}</value>
+  </data>
+  <data name="InstancesPage_Title.Text" xml:space="preserve">
+    <value>Instances</value>
+  </data>
+  <data name="InstancesPage_Subtitle.Text" xml:space="preserve">
+    <value>Latest presence beacons from OpenClaw nodes.</value>
+  </data>
+  <data name="InstancesPage_ConnectionWarning.Title" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="InstancesPage_ConnectionWarning.Message" xml:space="preserve">
+    <value>Connect to a gateway to see live instance data.</value>
+  </data>
+  <data name="InstancesPage_EmptyTitle.Text" xml:space="preserve">
+    <value>No instances reported yet.</value>
+  </data>
+  <data name="InstancesPage_ContextMenu_CopyDebug" xml:space="preserve">
+    <value>Copy debug summary</value>
+  </data>
+  <data name="InstancesPage_Status_Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="InstancesPage_Status_Idle" xml:space="preserve">
+    <value>Idle</value>
+  </data>
+  <data name="InstancesPage_Status_Disconnected" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="InstancesPage_Reason_Self" xml:space="preserve">
+    <value>Self</value>
+  </data>
+  <data name="InstancesPage_Reason_Connect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="InstancesPage_Reason_Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="InstancesPage_Reason_NodeConnect" xml:space="preserve">
+    <value>Node connect</value>
+  </data>
+  <data name="InstancesPage_Reason_NodeDisconnect" xml:space="preserve">
+    <value>Node disconnect</value>
+  </data>
+  <data name="InstancesPage_Reason_Launch" xml:space="preserve">
+    <value>Launch</value>
+  </data>
+  <data name="InstancesPage_Reason_Heartbeat" xml:space="preserve">
+    <value>Heartbeat</value>
+  </data>
+  <data name="InstancesPage_Reason_Refresh" xml:space="preserve">
+    <value>Instances refresh</value>
+  </data>
+  <data name="InstancesPage_Reason_Resync" xml:space="preserve">
+    <value>Resync</value>
+  </data>
+  <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
+    <value>🔗 Pending Operator/Node Pairing</value>
+  </data>
+  <data name="ConnectionPage_NodePairing_Subtitle.Text" xml:space="preserve">
+    <value>Operators and Windows nodes waiting for approval to connect to this gateway.</value>
+  </data>
+  <data name="InstancesPage_RefreshLabel.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="InstancesPage_CapabilitiesCount_Format" xml:space="preserve">
+    <value>{0} capabilities</value>
+  </data>
+  <data name="InstancesPage_CommandsCount_Format" xml:space="preserve">
+    <value>{0} commands</value>
+  </data>
+  <data name="InstancesPage_Presence_AccessibilityFormat" xml:space="preserve">
+    <value>{0} presence</value>
+  </data>
+  <data name="InstancesPage_UpdateReason_Tooltip_Format" xml:space="preserve">
+    <value>Why this presence entry was last updated (debug marker). Raw: {0}</value>
+  </data>
+  <data name="InstancesPage_UpdateReason_Tooltip_NoReason" xml:space="preserve">
+    <value>Why this presence entry was last updated (debug marker).</value>
+  </data>
+  <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
+    <value>Disconnected — no active presence</value>
+  </data>
+  <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
+    <value>Active — last seen {0}</value>
+  </data>
+  <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
+    <value>Idle — last seen {0}</value>
+  </data>
+  <data name="InstancesPage_Status_Inactive" xml:space="preserve">
+    <value>Inactive</value>
+  </data>
+  <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
+    <value>Inactive — last seen {0}</value>
+  </data>
+  <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
+    <value>Role: {0}</value>
+  </data>
+  <data name="InstanceManage_CopyNodeId_AccessibilityName" xml:space="preserve">
+    <value>Copy node ID</value>
+  </data>
+  <data name="InstancesPage_TimeAgo_Seconds_Format" xml:space="preserve">
+    <value>{0}s geleden</value>
+  </data>
+  <data name="InstancesPage_TimeAgo_Minutes_Format" xml:space="preserve">
+    <value>{0}m geleden</value>
+  </data>
+  <data name="InstancesPage_TimeAgo_Hours_Format" xml:space="preserve">
+    <value>{0}u geleden</value>
+  </data>
+  <data name="InstancesPage_TimeAgo_Days_Format" xml:space="preserve">
+    <value>{0}d geleden</value>
+  </data>
+
+  <data name="V2_Window_Title" xml:space="preserve">
+    <value>OpenClaw Setup</value>
+  </data>
+  <data name="V2_Nav_Back" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="V2_Nav_Next" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="V2_Nav_Finish" xml:space="preserve">
+    <value>Finish</value>
+  </data>
+  <data name="V2_Welcome_Title" xml:space="preserve">
+    <value>Get started with OpenClaw</value>
+  </data>
+  <data name="V2_Welcome_Body" xml:space="preserve">
+    <value>OpenClaw lets agents run commands, read and write files, and capture screenshots on this PC. Only set it up on a computer you trust.</value>
+  </data>
+  <data name="V2_Welcome_InfoCard" xml:space="preserve">
+    <value>This local setup installs a small WSL Linux instance dedicated to OpenClaw. If you'd rather connect to an existing or remote gateway, choose Advanced setup.</value>
+  </data>
+  <data name="V2_Welcome_PrimaryButton" xml:space="preserve">
+    <value>Set up locally</value>
+  </data>
+  <data name="V2_Welcome_PrimaryButton_InstallNewWslGateway" xml:space="preserve">
+    <value>Install new WSL Gateway</value>
+  </data>
+  <data name="V2_Welcome_AdvancedLink" xml:space="preserve">
+    <value>Advanced setup</value>
+  </data>
+  <data name="V2_Welcome_LocalReplaceDialog_Title" xml:space="preserve">
+    <value>Install a new WSL gateway?</value>
+  </data>
+  <data name="V2_Welcome_LocalReplaceDialog_Body" xml:space="preserve">
+    <value>Your current OpenClaw WSL gateway and its OpenClawGateway distro will be deleted. Setup will then install and connect to a new local WSL gateway.</value>
+  </data>
+  <data name="V2_Welcome_ExternalDialog_Title" xml:space="preserve">
+    <value>Install a local WSL gateway?</value>
+  </data>
+  <data name="V2_Welcome_ExternalDialog_Body" xml:space="preserve">
+    <value>Setup will install and connect to a new local WSL gateway. Your existing external gateway connection will stay available from the Connections page.</value>
+  </data>
+  <data name="V2_Welcome_SetupWarning_Confirm" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="V2_Welcome_SetupWarning_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="V2_Progress_Title" xml:space="preserve">
+    <value>Setting up locally</value>
+  </data>
+  <data name="V2_Progress_Subtitle" xml:space="preserve">
+    <value>Creating OpenClaw Gateway WSL instance</value>
+  </data>
+  <data name="V2_Progress_Stage_RemovingExistingGateway" xml:space="preserve">
+    <value>Removing existing gateway</value>
+  </data>
+  <data name="V2_Progress_Stage_CheckSystem" xml:space="preserve">
+    <value>Check system</value>
+  </data>
+  <data name="V2_Progress_Stage_InstallingUbuntu" xml:space="preserve">
+    <value>Installing Ubuntu</value>
+  </data>
+  <data name="V2_Progress_Stage_ConfiguringInstance" xml:space="preserve">
+    <value>Configuring instance</value>
+  </data>
+  <data name="V2_Progress_Stage_InstallingOpenClaw" xml:space="preserve">
+    <value>Installing OpenClaw</value>
+  </data>
+  <data name="V2_Progress_Stage_PreparingGateway" xml:space="preserve">
+    <value>Preparing gateway</value>
+  </data>
+  <data name="V2_Progress_Stage_StartingGateway" xml:space="preserve">
+    <value>Starting gateway</value>
+  </data>
+  <data name="V2_Progress_Stage_GeneratingSetupCode" xml:space="preserve">
+    <value>Generating setup code</value>
+  </data>
+  <data name="V2_Progress_TryAgain" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="V2_Gateway_Title" xml:space="preserve">
+    <value>Configuring gateway</value>
+  </data>
+  <data name="V2_Gateway_CardHeader" xml:space="preserve">
+    <value>Welcome to OpenClaw gateway</value>
+  </data>
+  <data name="V2_Gateway_CardBody1" xml:space="preserve">
+    <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
+  </data>
+  <data name="V2_Gateway_CardBody2" xml:space="preserve">
+    <value>All requests are processed on this PC. Your data stays local.</value>
+  </data>
+  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
+    <value>Open http://localhost:18789 in browser</value>
+  </data>
+  <data name="V2_Permissions_Title" xml:space="preserve">
+    <value>Grant permissions</value>
+  </data>
+  <data name="V2_Permissions_Body" xml:space="preserve">
+    <value>OpenClaw works best when it can send notifications, access your camera and microphone, capture your screen, and know your location. Grant permissions below.</value>
+  </data>
+  <data name="V2_Permissions_Row_Notifications" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="V2_Permissions_Row_Camera" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="V2_Permissions_Row_Microphone" xml:space="preserve">
+    <value>Microphone</value>
+  </data>
+  <data name="V2_Permissions_Row_Location" xml:space="preserve">
+    <value>Location (optional)</value>
+  </data>
+  <data name="V2_Permissions_Row_ScreenCapture" xml:space="preserve">
+    <value>Screen Capture</value>
+  </data>
+  <data name="V2_Permissions_OpenSettings" xml:space="preserve">
+    <value>Open Settings</value>
+  </data>
+  <data name="V2_Permissions_Refresh" xml:space="preserve">
+    <value>Refresh status</value>
+  </data>
+  <data name="V2_Permissions_Status_Enabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="V2_Permissions_Status_Available" xml:space="preserve">
+    <value>Available – uses picker per capture</value>
+  </data>
+  <data name="V2_AllSet_Title" xml:space="preserve">
+    <value>All set!</value>
+  </data>
+  <data name="V2_AllSet_Subtitle" xml:space="preserve">
+    <value>OpenClaw is ready to go</value>
+  </data>
+  <data name="V2_AllSet_NodeMode_Title" xml:space="preserve">
+    <value>Node Mode Active</value>
+  </data>
+  <data name="V2_AllSet_NodeMode_Body" xml:space="preserve">
+    <value>This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine.</value>
+  </data>
+  <data name="V2_AllSet_StartupQuestion" xml:space="preserve">
+    <value>Launch OpenClaw at startup?</value>
+  </data>
+  <data name="V2_AllSet_On" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="V2_AllSet_Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="V2_Welcome_Replace_Heading" xml:space="preserve">
+    <value>Existing setup detected</value>
+  </data>
+  <data name="V2_Welcome_Replace_Body" xml:space="preserve">
+    <value>Setting up locally will overwrite your existing OpenClaw configuration.</value>
+  </data>
+  <data name="V2_Welcome_Replace_Confirm" xml:space="preserve">
+    <value>Replace my setup</value>
+  </data>
+  <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
+    <value>Keep my setup</value>
   </data>
 </root>

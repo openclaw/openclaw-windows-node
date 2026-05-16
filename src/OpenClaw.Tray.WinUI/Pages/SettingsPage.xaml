@@ -4,124 +4,262 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <Page.Resources>
+        <Thickness x:Key="SettingsRowPadding">16,14,16,14</Thickness>
+        <Thickness x:Key="SectionHeaderMargin">4,18,4,4</Thickness>
+    </Page.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,24,24,12">
-            <StackPanel Spacing="12" HorizontalAlignment="Stretch">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,24,24,24">
+            <StackPanel Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
-                <TextBlock x:Uid="SettingsPage_TextBlock_16" Text="⚙️ Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
-                <TextBlock x:Uid="SettingsPage_TextBlock_17" Text="Local app preferences for this computer."
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                <!-- Page header -->
+                <TextBlock Text="Settings"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           Margin="0,0,0,8"/>
 
-                <!-- Startup -->
-                <Expander x:Name="StartupExpander" IsExpanded="True"
-                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="StartupExpander">
-                    <Expander.Header>
-                        <TextBlock x:Uid="SettingsPage_TextBlock_26" Text="Startup" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </Expander.Header>
-                    <StackPanel Spacing="12" Padding="4">
-                        <ToggleSwitch x:Uid="AutoStartToggle" x:Name="AutoStartToggle" Header="Start automatically with Windows"
-                                      AutomationProperties.AutomationId="SettingsPageAutoStart"/>
-                        <ToggleSwitch x:Uid="GlobalHotkeyToggle" x:Name="GlobalHotkeyToggle" Header="Global hotkey (Ctrl+Alt+Shift+C → Quick Send)"
-                                      AutomationProperties.AutomationId="SettingsPageHotkey"/>
-                    </StackPanel>
-                </Expander>
+                <!-- ═════════ General ═════════ -->
+                <TextBlock Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
 
-                <!-- User interface -->
-                <Expander x:Name="UserInterfaceExpander" IsExpanded="True"
-                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="UserInterfaceExpander">
-                    <Expander.Header>
-                        <TextBlock Text="User interface" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </Expander.Header>
-                    <StackPanel Spacing="12" Padding="4">
-                        <ToggleSwitch x:Name="UseLegacyWebChatToggle" Header="Use standard Gateway Chat interface"
-                                      AutomationProperties.AutomationId="SettingsPageUseLegacyWebChat"/>
-                        <TextBlock Text="When on, the Chat tab and tray Chat popup host the gateway's chat interface instead of the custom Windows interface."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Expander>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_AutoStart_Header" Text="Start with Windows" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_AutoStart_Description"
+                                       Text="Launch OpenClaw automatically when you sign in."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="AutoStartToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageAutoStart"
+                                      AutomationProperties.Name="Start with Windows"/>
+                    </Grid>
+                </Border>
 
-                <!-- Notifications -->
-                <Expander x:Name="NotificationsExpander" IsExpanded="True"
-                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="NotificationsExpander">
-                    <Expander.Header>
-                        <TextBlock x:Uid="SettingsPage_TextBlock_41" Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </Expander.Header>
-                    <StackPanel Spacing="12" Padding="4">
-                        <ToggleSwitch x:Uid="NotificationsToggle" x:Name="NotificationsToggle" Header="Show notifications"
-                                      AutomationProperties.AutomationId="SettingsPageNotifications"/>
-                        <ComboBox x:Uid="NotificationSoundComboBox" x:Name="NotificationSoundComboBox" Header="Sound" Width="200"
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_GlobalHotkey_Header" Text="Quick Send hotkey" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_GlobalHotkey_Description"
+                                       Text="Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="GlobalHotkeyToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageHotkey"
+                                      AutomationProperties.Name="Global hotkey"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_LegacyChat_Header" Text="Use gateway's web chat interface" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_LegacyChat_Description"
+                                       Text="When on, Chat hosts the gateway's web chat instead of the native Windows experience."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="UseLegacyWebChatToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageUseLegacyWebChat"
+                                      AutomationProperties.Name="Use gateway chat interface"/>
+                    </Grid>
+                </Border>
+
+                <!-- ═════════ Notifications ═════════ -->
+                <TextBlock Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_Notifications_Header" Text="Show notifications" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_Notifications_Description"
+                                       Text="Show toast notifications for events you've subscribed to below."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="NotificationsToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageNotifications"
+                                      AutomationProperties.Name="Show notifications"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_NotifSound_Header" Text="Sound" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_NotifSound_Description"
+                                       Text="Notification sound played alongside the toast."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="NotificationSoundComboBox" MinWidth="140"
                                   AutomationProperties.AutomationId="SettingsPageSound">
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_50" Content="Subtle" Tag="Subtle"/>
                         </ComboBox>
-                        <TextBlock x:Uid="SettingsPage_TextBlock_52" Text="Show notifications for:"
-                                   Style="{StaticResource BodyTextBlockStyle}" Margin="0,4,0,0"/>
-                        <StackPanel Spacing="4">
-                            <CheckBox x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb" Content="Health alerts"
+                    </Grid>
+                </Border>
+
+                <!-- Categories: 2-col grid for tight, aligned layout -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock x:Uid="SettingsPage_TextBlock_52" Text="Notify me about"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <Grid ColumnSpacing="24" RowSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <CheckBox Grid.Row="0" Grid.Column="0" x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb"
+                                      Content="Health alerts"
                                       AutomationProperties.AutomationId="SettingsPageNotifyHealth"/>
-                            <CheckBox x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb" Content="Urgent messages"
+                            <CheckBox Grid.Row="0" Grid.Column="1" x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb"
+                                      Content="Urgent messages"
                                       AutomationProperties.AutomationId="SettingsPageNotifyUrgent"/>
-                            <CheckBox x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb" Content="Reminders"
+                            <CheckBox Grid.Row="1" Grid.Column="0" x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb"
+                                      Content="Reminders"
                                       AutomationProperties.AutomationId="SettingsPageNotifyReminder"/>
-                            <CheckBox x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb" Content="Email summaries"
+                            <CheckBox Grid.Row="1" Grid.Column="1" x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb"
+                                      Content="Email summaries"
                                       AutomationProperties.AutomationId="SettingsPageNotifyEmail"/>
-                            <CheckBox x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb" Content="Calendar events"
+                            <CheckBox Grid.Row="2" Grid.Column="0" x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb"
+                                      Content="Calendar events"
                                       AutomationProperties.AutomationId="SettingsPageNotifyCalendar"/>
-                            <CheckBox x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb" Content="Build notifications"
+                            <CheckBox Grid.Row="2" Grid.Column="1" x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb"
+                                      Content="Build notifications"
                                       AutomationProperties.AutomationId="SettingsPageNotifyBuild"/>
-                            <CheckBox x:Uid="NotifyStockCb" x:Name="NotifyStockCb" Content="Stock alerts"
+                            <CheckBox Grid.Row="3" Grid.Column="0" x:Uid="NotifyStockCb" x:Name="NotifyStockCb"
+                                      Content="Stock alerts"
                                       AutomationProperties.AutomationId="SettingsPageNotifyStock"/>
-                            <CheckBox x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb" Content="Info messages"
+                            <CheckBox Grid.Row="3" Grid.Column="1" x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb"
+                                      Content="Info messages"
                                       AutomationProperties.AutomationId="SettingsPageNotifyInfo"/>
+                        </Grid>
+                        <Button x:Uid="TestNotificationButton" x:Name="TestNotificationButton"
+                                Content="Send test notification" Click="OnTestNotification"
+                                HorizontalAlignment="Left" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ═════════ Privacy ═════════ -->
+                <TextBlock Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+                <TextBlock x:Uid="SettingsPrivacyDescription"
+                           Text="Pre-approve capabilities so agents can use them without a prompt every time. You'll still see a countdown before recording starts."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap" Margin="4,0,4,4"/>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_ScreenRec_Header" Text="Allow screen recording" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ScreenRec_Description"
+                                       Text="Lets agents capture the screen via screen.* commands."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
-                        <Button x:Uid="TestNotificationButton" x:Name="TestNotificationButton" Content="Send Test Notification" Click="OnTestNotification"/>
-                    </StackPanel>
-                </Expander>
+                        <ToggleSwitch Grid.Column="1" x:Name="ScreenRecordingToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageScreenRecording"
+                                      AutomationProperties.Name="Allow screen recording"/>
+                    </Grid>
+                </Border>
 
-                <!-- Privacy -->
-                <Expander x:Name="PrivacyExpander" IsExpanded="True"
-                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="PrivacyExpander">
-                    <Expander.Header>
-                        <TextBlock x:Uid="SettingsPrivacyHeader" Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </Expander.Header>
-                    <StackPanel Spacing="12" Padding="4">
-                        <TextBlock x:Uid="SettingsPrivacyDescription" Text="Pre-approve capabilities so agents can use them without a permission prompt each time. You'll still see a countdown before recording starts."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                        <ToggleSwitch x:Uid="ScreenRecordingToggle" x:Name="ScreenRecordingToggle" Header="Allow screen recording"
-                                      AutomationProperties.AutomationId="SettingsPageScreenRecording"/>
-                        <ToggleSwitch x:Uid="CameraRecordingToggle" x:Name="CameraRecordingToggle" Header="Allow camera recording"
-                                      AutomationProperties.AutomationId="SettingsPageCameraRecording"/>
-                    </StackPanel>
-                </Expander>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_CamRec_Header" Text="Allow camera recording" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_CamRec_Description"
+                                       Text="Lets agents capture the camera via camera.* commands."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="CameraRecordingToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageCameraRecording"
+                                      AutomationProperties.Name="Allow camera recording"/>
+                    </Grid>
+                </Border>
 
-                <!-- Local Gateway — hidden when no local gateway is installed (gated in code-behind) -->
-                <Expander x:Name="LocalGatewayExpander"
-                          IsExpanded="False"
-                          Visibility="Collapsed"
-                          HorizontalAlignment="Stretch"
-                          HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="LocalGatewayExpander">
-                    <Expander.Header>
-                        <TextBlock Text="&#x1F5D1;&#xFE0F; Local Gateway" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </Expander.Header>
-                    <StackPanel Spacing="12" Padding="4">
+                <!-- ═════════ Local Gateway (conditional) ═════════ -->
+                <TextBlock x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"
+                           Visibility="Collapsed"/>
 
-                        <!-- Row A: MSIX warning (shown when PackageHelper.IsPackaged AND local gateway installed) -->
+                <Border x:Name="LocalGatewayExpander"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8"
+                        Padding="16"
+                        Visibility="Collapsed"
+                        AutomationProperties.AutomationId="LocalGatewayExpander">
+                    <StackPanel Spacing="12">
                         <InfoBar x:Name="MsixWarningBar"
                                  Severity="Warning"
                                  IsOpen="False"
@@ -129,42 +267,33 @@
                                  Title="MSIX installation detected"
                                  Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
 
-                        <!-- Row B: Body description — text swaps to in-progress copy while engine runs -->
                         <TextBlock x:Name="GatewayBodyText"
                                    Text="Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"/>
 
-                        <!-- Row C: Action button — code-behind morphs Content/Visibility through
-                             Idle → InProgress (ProgressRing+label inside Button) → Success (hidden) / Failure (re-enabled) -->
                         <Button x:Name="RemoveGatewayButton"
                                 HorizontalAlignment="Right"
                                 Content="Remove Local Gateway"
                                 Click="OnRemoveGateway"
                                 AutomationProperties.AutomationId="RemoveLocalGatewayButton"/>
 
-                        <!-- Row D: Result InfoBar — revealed after operation completes -->
                         <InfoBar x:Name="UninstallResultBar"
                                  IsOpen="False"
                                  IsClosable="True"/>
                     </StackPanel>
-                </Expander>
+                </Border>
 
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Footer -->
-        <Border Grid.Row="1"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0" Padding="24,16">
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                <Button x:Uid="CancelButton" x:Name="CancelButton" Content="Cancel" MinWidth="80" Click="OnCancel"
-                        AutomationProperties.AutomationId="SettingsPageCancel"/>
-                <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save" MinWidth="80" Click="OnSave"
-                        Style="{ThemeResource AccentButtonStyle}"
-                        AutomationProperties.AutomationId="SettingsPageSave"/>
-            </StackPanel>
-        </Border>
+        <!-- Saved indicator (transient, auto-hides) -->
+        <InfoBar x:Name="SavedInfoBar" Grid.Row="1"
+                 IsOpen="False" IsClosable="False"
+                 Severity="Success"
+                 Title="Saved"
+                 HorizontalAlignment="Right"
+                 Margin="0,0,24,12"
+                 MaxWidth="200"/>
     </Grid>
 </Page>

@@ -15,12 +15,20 @@
       <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
+    <Project Path="src/OpenClaw.Connection/OpenClaw.Connection.csproj" />
     <Project Path="src/OpenClaw.Chat/OpenClaw.Chat.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
     <Project Path="src/OpenClawTray.FunctionalUI/OpenClawTray.FunctionalUI.csproj" />
+    <Project Path="src/OpenClawTray.OnboardingV2/OpenClawTray.OnboardingV2.csproj" />
+    <Project Path="src/OpenClaw.SetupPreview/OpenClaw.SetupPreview.csproj">
+      <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
     <Project Path="src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj">
       <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -30,9 +38,11 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj" />
+    <Project Path="tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj" />
     <Project Path="tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj" />
     <Project Path="tests/OpenClawTray.FunctionalUI.Tests/OpenClawTray.FunctionalUI.Tests.csproj" />
+    <Project Path="tests/OpenClawTray.OnboardingV2.Tests/OpenClawTray.OnboardingV2.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.IntegrationTests/OpenClaw.Tray.IntegrationTests.csproj" />
     <Project Path="tests/OpenClaw.Tray.UITests/OpenClaw.Tray.UITests.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />

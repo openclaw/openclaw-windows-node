@@ -84,6 +84,18 @@ public class WindowsNodeClient : WebSocketClientBase
     /// <summary>Human-readable display name surfaced to the gateway and other nodes.</summary>
     public string DisplayName => _registration.DisplayName;
 
+    /// <summary>Exposes the registration for internal diagnostics only.</summary>
+    internal NodeRegistration Registration => _registration;
+
+    /// <summary>Number of registered capabilities (read-only diagnostic accessor).</summary>
+    public int RegisteredCapabilityCount => _registration.Capabilities.Count;
+
+    /// <summary>Number of registered commands (read-only diagnostic accessor).</summary>
+    public int RegisteredCommandCount => _registration.Commands.Count;
+
+    /// <summary>First few registered command names for diagnostic logging.</summary>
+    public IEnumerable<string> RegisteredCommandsSample => _registration.Commands.Take(5);
+
     protected override int ReceiveBufferSize => 65536;
     protected override string ClientRole => "node";
     
@@ -481,9 +493,9 @@ public class WindowsNodeClient : WebSocketClientBase
         catch (Exception ex)
         {
             _logger.Error($"[NODE] Command execution failed: {command}", ex);
-            await SendNodeInvokeResultAsync(requestId, false, null, $"Execution failed: {ex.Message}");
+            await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed");
             stopwatch.Stop();
-            RaiseInvokeCompleted(requestId, command, false, $"Execution failed: {ex.Message}", stopwatch.Elapsed);
+            RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
         }
     }
     
@@ -545,6 +557,8 @@ public class WindowsNodeClient : WebSocketClientBase
 
         _logger.Info($"[HANDSHAKE] → Sending connect:");
         _logger.Info($"[HANDSHAKE]   role=node, clientId={ClientId}, mode=node");
+        _logger.Info($"[HANDSHAKE]   caps={_registration.Capabilities.Count}: [{string.Join(", ", _registration.Capabilities)}]");
+        _logger.Info($"[HANDSHAKE]   commands={_registration.Commands.Count}: [{string.Join(", ", _registration.Commands)}]");
         _logger.Info($"[HANDSHAKE]   isBootstrap={usingBootstrap}, hasNodeDeviceToken={isPaired}");
         _logger.Info($"[HANDSHAKE]   deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
         _logger.Info($"[HANDSHAKE]   nonce={nonce?[..Math.Min(15, nonce?.Length ?? 0)]}...");
@@ -589,7 +603,7 @@ public class WindowsNodeClient : WebSocketClientBase
             @params = new
             {
                 minProtocol = 3,
-                maxProtocol = 3,
+                maxProtocol = 4,
                 client = new
                 {
                     id = ClientId,  // Must match what we sign in payload
@@ -1003,9 +1017,9 @@ public class WindowsNodeClient : WebSocketClientBase
         catch (Exception ex)
         {
             _logger.Error($"Command execution failed: {command}", ex);
-            await SendErrorResponseAsync(requestId, $"Execution failed: {ex.Message}");
+            await SendErrorResponseAsync(requestId, "Command execution failed");
             stopwatch.Stop();
-            RaiseInvokeCompleted(requestId, command, false, $"Execution failed: {ex.Message}", stopwatch.Elapsed);
+            RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
         }
     }
 

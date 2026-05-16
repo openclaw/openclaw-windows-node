@@ -1,13 +1,13 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using WinDataTransfer = global::Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClawTray.Pages;
 
@@ -115,9 +115,7 @@ public sealed partial class DebugPage : Page
 
     private void OnCopyLog(object sender, RoutedEventArgs e)
     {
-        var dp = new WinDataTransfer.DataPackage();
-        dp.SetText(LogText.Text ?? "");
-        WinDataTransfer.Clipboard.SetContent(dp);
+        ClipboardHelper.CopyText(LogText.Text ?? "");
     }
 
     // ── Connection Status ────────────────────────────────────────────
@@ -183,9 +181,7 @@ public sealed partial class DebugPage : Page
     private void OnCopyDeviceId(object sender, RoutedEventArgs e)
     {
         var fullId = DeviceIdText.Tag as string ?? DeviceIdText.Text;
-        var dp = new WinDataTransfer.DataPackage();
-        dp.SetText(fullId);
-        WinDataTransfer.Clipboard.SetContent(dp);
+        ClipboardHelper.CopyText(fullId);
     }
 
     // ── Debug Actions ────────────────────────────────────────────────
@@ -238,9 +234,7 @@ public sealed partial class DebugPage : Page
             $"Time: {DateTime.UtcNow:u}"
         };
 
-        var dp = new WinDataTransfer.DataPackage();
-        dp.SetText(string.Join("\n", lines));
-        WinDataTransfer.Clipboard.SetContent(dp);
+        ClipboardHelper.CopyText(string.Join("\n", lines));
 
         if (sender is Button btn)
         {

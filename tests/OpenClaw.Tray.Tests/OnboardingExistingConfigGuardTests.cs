@@ -31,6 +31,31 @@ public class OnboardingExistingConfigGuardTests
     }
 
     [Fact]
+    public void HasExistingConfiguration_ReturnsTrue_WhenOperatorTokenStoredOnlyInPerGatewayDir()
+    {
+        // Modern pairings (post-GatewayRegistry) store the operator device token
+        // at <dataPath>/gateways/<gatewayId>/device-key-ed25519.json via
+        // DeviceIdentityStore. The legacy root file is NOT written for fresh
+        // pairings, so the guard MUST scan per-gateway directories — otherwise
+        // a returning user opening Setup/Reconfigure would not see the
+        // "Replace my setup / Keep my setup" warning and could overwrite a
+        // working config (Hanselman PR #340 review feedback).
+        using var temp = new TempDir();
+        var perGatewayDir = Path.Combine(temp.Path, "gateways", "gw-abc");
+        Directory.CreateDirectory(perGatewayDir);
+        var identity = new DeviceIdentity(perGatewayDir);
+        identity.Initialize();
+        identity.StoreDeviceToken("per-gateway-operator-token");
+        var settings = new SettingsManager(temp.Path);
+        var guard = new OnboardingExistingConfigGuard(settings, temp.Path, temp.StatePath);
+
+        var summary = guard.GetSummary();
+        Assert.True(summary.HasOperatorDeviceToken);
+        Assert.True(summary.HasAny);
+        Assert.True(guard.HasExistingConfiguration());
+    }
+
+    [Fact]
     public void HasExistingConfiguration_ReturnsTrue_WhenNodeDeviceTokenExists()
     {
         using var temp = new TempDir();
@@ -40,6 +65,24 @@ public class OnboardingExistingConfigGuardTests
         var settings = new SettingsManager(temp.Path);
         var guard = new OnboardingExistingConfigGuard(settings, temp.Path, temp.StatePath);
 
+        Assert.True(guard.HasExistingConfiguration());
+    }
+
+    [Fact]
+    public void HasExistingConfiguration_ReturnsTrue_WhenNodeTokenStoredOnlyInPerGatewayDir()
+    {
+        using var temp = new TempDir();
+        var perGatewayDir = Path.Combine(temp.Path, "gateways", "gw-node");
+        Directory.CreateDirectory(perGatewayDir);
+        var identity = new DeviceIdentity(perGatewayDir);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("node", "per-gateway-node-token");
+        var settings = new SettingsManager(temp.Path);
+        var guard = new OnboardingExistingConfigGuard(settings, temp.Path, temp.StatePath);
+
+        var summary = guard.GetSummary();
+        Assert.True(summary.HasNodeDeviceToken);
+        Assert.True(summary.HasAny);
         Assert.True(guard.HasExistingConfiguration());
     }
 

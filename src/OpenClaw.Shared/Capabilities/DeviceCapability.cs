@@ -149,7 +149,7 @@ public class DeviceCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Warn($"device.status: {section} collection failed: {ex.Message}");
-            return new { error = ex.Message };
+            return new { error = "collection failed" };
         }
     }
 
@@ -159,7 +159,7 @@ public class DeviceCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Warn($"device.status: {section} collection failed: {ex.Message}");
-            return new { error = ex.Message };
+            return new { error = "collection failed" };
         }
     }
 
