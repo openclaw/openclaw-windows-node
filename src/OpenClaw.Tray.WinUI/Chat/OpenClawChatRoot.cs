@@ -28,9 +28,21 @@ public sealed class OpenClawChatRoot : Component
     private readonly Action? _onAttachClick;
     private readonly Action? _onSettingsClick;
     private readonly Action<bool>? _onSpeakerMuteChanged;
+    private readonly bool _initialMuted;
     private Action<ChatAttachment>? _onFileAttached;
     private Action<string?>? _setVoiceTranscript;
     private Action<float>? _setVoiceAudioLevel;
+    /// <summary>
+    /// Programmatically start voice recording from outside the composer.
+    /// Set by the composer during render.
+    /// </summary>
+    public Action? TriggerVoiceRecording { get; set; }
+
+    /// <summary>
+    /// Push mute state from outside (e.g. when another chat view toggles mute).
+    /// Set by render.
+    /// </summary>
+    public Action<bool>? SetSpeakerMuted { get; set; }
 
     /// <summary>
     /// Callback invoked by the host window/page after a file is selected.
@@ -68,7 +80,8 @@ public sealed class OpenClawChatRoot : Component
         Func<CancellationToken, Task<string?>>? onVoiceRequest = null,
         Action? onAttachClick = null,
         Action? onSettingsClick = null,
-        Action<bool>? onSpeakerMuteChanged = null)
+        Action<bool>? onSpeakerMuteChanged = null,
+        bool initialMuted = false)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _initialThreadId = initialThreadId;
@@ -77,6 +90,7 @@ public sealed class OpenClawChatRoot : Component
         _onAttachClick = onAttachClick;
         _onSettingsClick = onSettingsClick;
         _onSpeakerMuteChanged = onSpeakerMuteChanged;
+        _initialMuted = initialMuted;
     }
 
     public override Element Render()
@@ -87,7 +101,7 @@ public sealed class OpenClawChatRoot : Component
         // the whole tree so toggles always show in the live preview.
         var explorationRev = UseState(0, threadSafe: true);
         var pendingAttachment = UseState<ChatAttachment?>(null, threadSafe: true);
-        var speakerMuted = UseState(false, threadSafe: true);
+        var speakerMuted = UseState(_initialMuted, threadSafe: true);
         var voiceTranscript = UseState<string?>(null, threadSafe: true);
         var voiceAudioLevel = UseState(0f, threadSafe: true);
 
@@ -96,6 +110,7 @@ public sealed class OpenClawChatRoot : Component
         _onFileAttached = att => pendingAttachment.Set(att);
         _setVoiceTranscript = voiceTranscript.Set;
         _setVoiceAudioLevel = voiceAudioLevel.Set;
+        SetSpeakerMuted = muted => speakerMuted.Set(muted);
         UseEffect((Func<Action>)(() =>
         {
             // Defer the re-render via DispatcherQueue. When the user picks an
@@ -371,7 +386,8 @@ public sealed class OpenClawChatRoot : Component
                 },
                 OnSettingsClick: _onSettingsClick,
                 VoiceTranscript: voiceTranscript.Value,
-                VoiceAudioLevel: voiceAudioLevel.Value))
+                VoiceAudioLevel: voiceAudioLevel.Value,
+                RegisterVoiceStarter: starter => TriggerVoiceRecording = starter))
             : Empty();
 
         var divider = Empty();

@@ -50,13 +50,14 @@ public static class FunctionalChatHostExtensions
         Func<CancellationToken, Task<string?>>? onVoiceRequest = null,
         Action? onAttachClick = null,
         Action? onSettingsClick = null,
-        Action<bool>? onSpeakerMuteChanged = null)
+        Action<bool>? onSpeakerMuteChanged = null,
+        bool initialMuted = false)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged);
+        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted);
         var host = new FunctionalHostControl();
         host.Mount(root);
         target.Child = host;
@@ -81,6 +82,15 @@ public sealed class MountedFunctionalChat(Border target, FunctionalHostControl h
 
     /// <summary>Push voice audio input level (0.0–1.0) into the composer.</summary>
     public void SetVoiceAudioLevel(float level) => root.SetVoiceAudioLevel?.Invoke(level);
+
+    /// <summary>Programmatically start voice recording (e.g. from hotkey).</summary>
+    public void TriggerVoiceRecording() => root.TriggerVoiceRecording?.Invoke();
+
+    /// <summary>Whether the voice trigger callback has been registered by the composer.</summary>
+    public bool HasVoiceTrigger => root.TriggerVoiceRecording != null;
+
+    /// <summary>Push mute state from outside (e.g. cross-view sync).</summary>
+    public void SetSpeakerMuted(bool muted) => root.SetSpeakerMuted?.Invoke(muted);
 
     public void Dispose()
     {

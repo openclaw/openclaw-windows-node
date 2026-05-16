@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.App.Pages.Settings.NodeSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="24" Spacing="16" MaxWidth="600" HorizontalAlignment="Left">
+            <TextBlock Text="Node &amp; MCP" Style="{StaticResource TitleTextBlockStyle}"/>
+
+            <!-- Node Mode -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Node Mode" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ToggleSwitch x:Name="NodeModeToggle" Header="Enable node mode"/>
+                    <TextBlock Text="When enabled, this PC can receive commands from the agent (canvas, screenshots, etc.)"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,-8,0,0"/>
+
+                    <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Node capabilities" FontWeight="SemiBold"/>
+                            <ToggleSwitch x:Name="NodeCanvasToggle" Header="Canvas / WebView2"/>
+                            <ToggleSwitch x:Name="NodeScreenToggle" Header="Screen snapshot and recording"/>
+                            <ToggleSwitch x:Name="NodeCameraToggle" Header="Camera list, snapshot, and clips"/>
+                            <ToggleSwitch x:Name="NodeLocationToggle" Header="Location"/>
+                            <ToggleSwitch x:Name="NodeBrowserProxyToggle" Header="Browser proxy bridge"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- MCP Server -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Local MCP Server" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ToggleSwitch x:Name="McpToggle" Header="Enable MCP server"/>
+                    <TextBlock Text="Exposes node capabilities to local MCP clients (Claude Desktop, Cursor, Claude Code)."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,-8,0,0"/>
+
+                    <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="MCP Server Details" FontWeight="SemiBold"/>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Endpoint:" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" x:Name="McpEndpointBox" IsReadOnly="True"
+                                         BorderThickness="0" Background="Transparent" Padding="0"
+                                         FontFamily="Consolas" FontSize="12"/>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Status:" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" x:Name="McpStatusText" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Bearer token:" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" x:Name="McpTokenBox" IsReadOnly="True"
+                                         BorderThickness="0" Background="Transparent" Padding="0"
+                                         FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
+                                <Button Grid.Column="2" x:Name="McpTokenRevealButton" Content="Reveal" Click="OnRevealMcpToken" Padding="8,2"/>
+                                <Button Grid.Column="3" x:Name="McpTokenCopyButton" Content="Copy" Click="OnCopyMcpToken" Padding="8,2"/>
+                                <Button Grid.Column="4" x:Name="McpTokenResetButton" Content="Reset" Click="OnResetMcpToken" Padding="8,2"/>
+                            </Grid>
+                            <TextBlock x:Name="McpTokenHintText" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Button Content="Save" Style="{StaticResource AccentButtonStyle}" Click="OnSave" HorizontalAlignment="Right"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

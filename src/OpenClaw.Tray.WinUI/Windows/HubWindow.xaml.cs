@@ -58,6 +58,8 @@ public sealed partial class HubWindow : WindowEx
     public string? LastAuthError { get; set; }
     public string? NodeShortDeviceId { get; set; }
     public VoiceService? VoiceServiceInstance { get; set; }
+    /// <summary>When true, ChatPage should auto-start voice recording on next navigation. Consumed (reset to false) by ChatPage.</summary>
+    public bool PendingAutoStartVoice { get; set; }
     public string? NodeFullDeviceId { get; set; }
 
     // Cached gateway data — pages read these on navigation
@@ -114,6 +116,9 @@ public sealed partial class HubWindow : WindowEx
             NavView.SelectedItem = NavView.MenuItems[0];
         }
     }
+
+    /// <summary>Returns the currently displayed page in the content frame.</summary>
+    public object? CurrentPage => ContentFrame?.Content;
 
     /// <summary>
     /// Navigate to a specific page by tag name (e.g. "home", "sessions", "channels").

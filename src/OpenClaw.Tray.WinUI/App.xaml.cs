@@ -4195,7 +4195,34 @@ public partial class App : Application
     private void OnVoiceHotkeyPressed(object? sender, EventArgs e)
     {
         if (_dispatcherQueue == null) return;
-        _dispatcherQueue.TryEnqueue(() => ShowVoiceOverlay());
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            // Always set the flag first — ChatPage checks it during navigation
+            var hubExisted = _hubWindow != null;
+            ShowHub("chat");
+            if (_hubWindow == null) return;
+
+            if (_hubWindow.CurrentPage is Pages.ChatPage chatPage)
+            {
+                // Chat page is already visible — trigger voice directly
+                chatPage.TriggerAutoStartVoice();
+            }
+            else
+            {
+                // Chat page is being created — set the flag for ChatPage.Initialize to pick up.
+                // Also schedule a delayed trigger in case the flag isn't consumed during navigation.
+                _hubWindow.PendingAutoStartVoice = true;
+                _dispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    if (_hubWindow?.PendingAutoStartVoice == true &&
+                        _hubWindow.CurrentPage is Pages.ChatPage cp)
+                    {
+                        _hubWindow.PendingAutoStartVoice = false;
+                        cp.TriggerAutoStartVoice();
+                    }
+                });
+            }
+        });
     }
 
     #endregion
@@ -4441,9 +4468,20 @@ public partial class App : Application
     public Task SpeakChatTextAsync(string text) =>
         _chatCoordinator?.SpeakChatTextAsync(text) ?? Task.CompletedTask;
 
+    /// <summary>Raised when speaker mute state changes from any source (composer, settings, etc.).</summary>
+    public event Action<bool>? SpeakerMuteChanged;
+
     public void SetChatSpeakerMuted(bool muted)
     {
         if (_chatCoordinator is { } c) c.IsMuted = muted;
+        // Persist to settings
+        if (_settings != null)
+        {
+            _settings.VoiceTtsEnabled = !muted;
+            _settings.Save();
+        }
+        // Broadcast to all subscribers
+        SpeakerMuteChanged?.Invoke(muted);
     }
 
     private static void SendDeepLinkToRunningInstance(string uri)

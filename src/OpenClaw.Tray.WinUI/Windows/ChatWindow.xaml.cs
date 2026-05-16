@@ -120,6 +120,7 @@ public sealed partial class ChatWindow : WindowEx
         {
             app.SettingsChanged += OnAppSettingsChanged;
             app.ChatProviderChanged += OnAppChatProviderChanged;
+            app.SpeakerMuteChanged += OnSpeakerMuteChanged;
         }
 
         // Per-surface debug override (DebugPage > "Debug Overrides").
@@ -139,6 +140,11 @@ public sealed partial class ChatWindow : WindowEx
     private const int DefaultChatHeight = 640;
 
     private void OnAppSettingsChanged(object? sender, EventArgs e) => ApplyChatSurface();
+
+    private void OnSpeakerMuteChanged(bool muted)
+    {
+        DispatcherQueue?.TryEnqueue(() => _functionalHost?.SetSpeakerMuted(muted));
+    }
 
     private void OnAppChatProviderChanged(object? sender, EventArgs e)
     {
@@ -441,14 +447,16 @@ public sealed partial class ChatWindow : WindowEx
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
+        var appInstance = App.Current as App;
         _functionalHost = ((Window)this).MountFunctionalChat(
             ChatHost,
             provider,
             onReadAloud: readAloud,
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
-            onSettingsClick: () => (App.Current as App)?.ShowHub("voice"),
-            onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted));
+            onSettingsClick: () => appInstance?.ShowHub("voice"),
+            onSpeakerMuteChanged: muted => appInstance?.SetChatSpeakerMuted(muted),
+            initialMuted: appInstance?.Settings?.VoiceTtsEnabled == false);
         _mountedProvider = provider;
     }
 
@@ -634,6 +642,7 @@ public sealed partial class ChatWindow : WindowEx
         {
             app.SettingsChanged -= OnAppSettingsChanged;
             app.ChatProviderChanged -= OnAppChatProviderChanged;
+            app.SpeakerMuteChanged -= OnSpeakerMuteChanged;
         }
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
         ChatExplorationState.Changed -= OnExplorationChanged;

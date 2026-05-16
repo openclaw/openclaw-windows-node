@@ -277,6 +277,7 @@ public sealed class VoiceService : IAsyncDisposable
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
         var pipeline = new AudioPipeline(_logger, _stt, _vad);
+        WirePipelineEvents(pipeline);
         var tcs = new TaskCompletionSource<SttListenResult>();
         var sw = Stopwatch.StartNew();
 

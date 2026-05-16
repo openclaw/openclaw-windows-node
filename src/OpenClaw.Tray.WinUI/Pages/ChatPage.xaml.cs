@@ -64,10 +64,42 @@ public sealed partial class ChatPage : Page
         if (App.Current is App app)
             app.ChatProviderChanged -= OnAppChatProviderChanged;
 
+        if (App.Current is App app2)
+            app2.SpeakerMuteChanged -= OnSpeakerMuteChanged;
+
         // MEDIUM 6: detach the static debug-override subscription so that
         // an unloaded ChatPage doesn't keep responding to overrides changes
         // (the page keeps the static handler alive otherwise).
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
+    }
+
+    /// <summary>Trigger voice recording programmatically (e.g. from V hotkey).</summary>
+    public void TriggerAutoStartVoice()
+    {
+        if (_functionalHost?.HasVoiceTrigger == true)
+        {
+            _functionalHost.TriggerVoiceRecording();
+            return;
+        }
+        // Composer may not have rendered yet — retry until trigger is registered
+        RetryTriggerVoice(retries: 15, delayMs: 100);
+    }
+
+    private void RetryTriggerVoice(int retries, int delayMs)
+    {
+        if (retries <= 0) return;
+        DispatcherQueue?.TryEnqueue(async () =>
+        {
+            await Task.Delay(delayMs);
+            if (_functionalHost?.HasVoiceTrigger == true)
+            {
+                _functionalHost.TriggerVoiceRecording();
+            }
+            else
+            {
+                RetryTriggerVoice(retries - 1, delayMs);
+            }
+        });
     }
 
     public void Initialize(HubWindow hub)
@@ -94,6 +126,8 @@ public sealed partial class ChatPage : Page
         {
             app.ChatProviderChanged -= OnAppChatProviderChanged;
             app.ChatProviderChanged += OnAppChatProviderChanged;
+            app.SpeakerMuteChanged -= OnSpeakerMuteChanged;
+            app.SpeakerMuteChanged += OnSpeakerMuteChanged;
         }
 
         // Also react to the per-surface debug override picked from DebugPage.
@@ -106,6 +140,11 @@ public sealed partial class ChatPage : Page
     private void OnSettingsSaved(object? sender, EventArgs e) => ApplyChatSurface();
 
     private void OnDebugOverrideChanged(object? sender, EventArgs e) => ApplyChatSurface();
+
+    private void OnSpeakerMuteChanged(bool muted)
+    {
+        DispatcherQueue?.TryEnqueue(() => _functionalHost?.SetSpeakerMuted(muted));
+    }
 
     private void OnAppChatProviderChanged(object? sender, EventArgs e)
     {
@@ -176,6 +215,12 @@ public sealed partial class ChatPage : Page
         {
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
+            // Check for pending auto-start voice even when already mounted
+            if (_hub?.PendingAutoStartVoice == true)
+            {
+                _hub.PendingAutoStartVoice = false;
+                _functionalHost.TriggerVoiceRecording();
+            }
             return;
         }
 
@@ -197,8 +242,21 @@ public sealed partial class ChatPage : Page
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
-            onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted));
+            onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted),
+            initialMuted: _hub?.Settings?.VoiceTtsEnabled == false);
         _mountedProvider = provider;
+
+        // If the V hotkey (or another caller) requested auto-start voice,
+        // trigger it after the UI thread processes the mount (composer needs
+        // to render first so TriggerVoiceRecording is registered).
+        if (_hub.PendingAutoStartVoice)
+        {
+            _hub.PendingAutoStartVoice = false;
+            DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                _functionalHost?.TriggerVoiceRecording();
+            });
+        }
     }
 
     private void ShowWebViewSurface(bool forceNavigate = false)
@@ -588,7 +646,7 @@ public sealed partial class ChatPage : Page
         {
             var args = new SttListenArgs
             {
-                TimeoutMs = 10_000,
+                TimeoutMs = 120_000,
                 Language = ""
             };
             var result = await voiceService.ListenOnceAsync(args, cancellationToken);

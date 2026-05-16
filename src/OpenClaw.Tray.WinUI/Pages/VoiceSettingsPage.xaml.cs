@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
@@ -17,7 +17,6 @@ public sealed partial class VoiceSettingsPage : Page
 {
     private HubWindow? _hub;
     private VoiceService? _voiceService;
-    private bool _isVoiceTestDialogOpen;
     private bool _suppressEvents;
     // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
     // download (and vice versa). Each download type owns its own token.
@@ -31,14 +30,15 @@ public sealed partial class VoiceSettingsPage : Page
     public VoiceSettingsPage()
     {
         InitializeComponent();
-        // Refresh model + voice status every time the page becomes visible so
-        // file-state changes (e.g. a silent Whisper auto-download triggered by
-        // the Voice Overlay, or a Piper voice downloaded in another window)
-        // propagate without forcing the user to renavigate.
         Loaded += (_, _) =>
         {
             UpdateModelStatus();
             UpdatePiperVoiceState();
+        };
+        Unloaded += (_, _) =>
+        {
+            if (App.Current is App app)
+                app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
         };
     }
 
@@ -46,7 +46,22 @@ public sealed partial class VoiceSettingsPage : Page
     {
         _hub = hub;
         _voiceService = voiceService;
+        if (App.Current is App app)
+        {
+            app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
+            app.SpeakerMuteChanged += OnAppSpeakerMuteChanged;
+        }
         LoadSettings();
+    }
+
+    private void OnAppSpeakerMuteChanged(bool muted)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            _suppressEvents = true;
+            TtsResponseToggle.IsOn = !muted;
+            _suppressEvents = false;
+        });
     }
 
     private void LoadSettings()
@@ -108,7 +123,7 @@ public sealed partial class VoiceSettingsPage : Page
             ?? "base";
 
         // Check the file directly via WhisperModelManager rather than going
-        // through VoiceService — _voiceService can be null if the user reaches
+        // through VoiceService â€” _voiceService can be null if the user reaches
         // this page before NodeService finishes wiring it, and we still want
         // accurate status.
         var manager = new OpenClaw.Shared.Audio.WhisperModelManager(
@@ -175,8 +190,8 @@ public sealed partial class VoiceSettingsPage : Page
     private void OnTtsResponseToggled(object sender, RoutedEventArgs e)
     {
         if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.VoiceTtsEnabled = TtsResponseToggle.IsOn;
-        _hub.Settings.Save();
+        // Use centralized SetChatSpeakerMuted which persists + broadcasts
+        (App.Current as App)?.SetChatSpeakerMuted(!TtsResponseToggle.IsOn);
     }
 
     private void OnAudioFeedbackToggled(object sender, RoutedEventArgs e)
@@ -204,7 +219,7 @@ public sealed partial class VoiceSettingsPage : Page
         {
             // Throttle UI updates: the underlying download streams in 80 KB
             // chunks, so for a 466 MB model that's ~5,800 progress callbacks
-            // — each one Posts to the SyncContext and then queues a
+            // â€” each one Posts to the SyncContext and then queues a
             // DispatcherQueue tick. The dispatcher saturates and the app
             // appears frozen. Coalesce to at most one UI update per ~150 ms,
             // and always force a final 100% update when the download
@@ -254,7 +269,7 @@ public sealed partial class VoiceSettingsPage : Page
         }
         catch (Exception ex)
         {
-            // Privacy: never put ex.Message in the UI — it can carry URLs,
+            // Privacy: never put ex.Message in the UI â€” it can carry URLs,
             // file paths, hash digests, or HTTP body fragments. Log the full
             // detail; show a generic message.
             Logger.Error($"Whisper model download failed: {ex}");
@@ -268,323 +283,232 @@ public sealed partial class VoiceSettingsPage : Page
         }
     }
 
-    // ── TTS Voice Selection ──
+    // â”€â”€ TTS Voice Selection â”€â”€
 
     private async void OnTestVoiceClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null || _isVoiceTestDialogOpen) return;
+        if (_hub?.Settings == null) return;
 
-        _isVoiceTestDialogOpen = true;
-        TestVoiceButton.IsEnabled = false;
+        // Toggle: hide button, show inline test panel
+        TestVoiceButton.Visibility = Visibility.Collapsed;
+        InlineTestArea.Visibility = Visibility.Visible;
+        InlineTestTranscriptPanel.Children.Clear();
+        InlineTestTranscriptScroll.Visibility = Visibility.Collapsed;
+        _lastInlineTestBubbleText = null;
+        SetInlineTestStatus("");
+        InlineTestPillHost.Visibility = Visibility.Collapsed;
+    }
 
-        try
+    private async void OnInlineTestCloseClick(object sender, RoutedEventArgs e)
+    {
+        await StopInlineTestAsync();
+        InlineTestArea.Visibility = Visibility.Collapsed;
+        TestVoiceButton.Visibility = Visibility.Visible;
+    }
+
+    private VoiceService? _inlineTestVoiceService;
+    private bool _inlineTestListening;
+    private bool _inlineTestHandlersAttached;
+    private Border[]? _inlineTestPillBars;
+    private Border? _inlineTestPillDot;
+    private Border? _inlineTestPillContainer;
+    private TextBlock? _lastInlineTestBubbleText;
+
+    private void SetInlineTestStatus(string text)
+    {
+        InlineTestStatus.Text = text;
+        InlineTestStatus.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void EnsureInlineTestPill()
+    {
+        if (_inlineTestPillContainer != null) return;
+
+        var accentColor = (global::Windows.UI.Color)Application.Current.Resources["SystemAccentColor"];
+        _inlineTestPillDot = new Border
         {
-            // Use a dedicated test service so settings verification never stops,
-            // submits through, or otherwise mutates the live voice overlay session.
-            await using var voiceService = new VoiceService(new AppLogger(), _hub.Settings);
-
-            // ── Transcript area (matches Companion Voice overlay style) ──
-            var emptyStateIcon = new FontIcon
+            Width = 6, Height = 6,
+            CornerRadius = new CornerRadius(3),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Red),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var pillLabel = new TextBlock
+        {
+            Text = "Recording",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(accentColor),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var pillWavePanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1.5, VerticalAlignment = VerticalAlignment.Center };
+        _inlineTestPillBars = new Border[16];
+        for (int bi = 0; bi < 16; bi++)
+        {
+            var bar = new Border
             {
-                Glyph = "\uE720",
-                FontSize = 32,
-                Opacity = 0.3,
-                HorizontalAlignment = HorizontalAlignment.Center
+                Width = 2, Height = 3,
+                CornerRadius = new CornerRadius(1),
+                Background = new SolidColorBrush(accentColor),
+                VerticalAlignment = VerticalAlignment.Center
             };
-            var emptyStateText = new TextBlock
-            {
-                Text = "Press Start and begin speaking",
-                FontSize = 13,
-                Opacity = 0.4,
-                HorizontalAlignment = HorizontalAlignment.Center
-            };
-            var emptyState = new StackPanel
-            {
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Spacing = 8,
-                Margin = new Thickness(0, 40, 0, 40),
-            };
-            emptyState.Children.Add(emptyStateIcon);
-            emptyState.Children.Add(emptyStateText);
-
-            var transcriptPanel = new StackPanel { Spacing = 8 };
-            transcriptPanel.Children.Add(emptyState);
-
-            var transcriptScroll = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Padding = new Thickness(12),
-                MaxHeight = 220,
-                Content = transcriptPanel
-            };
-
-            var transcriptBorder = new Border
-            {
-                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
-                CornerRadius = new CornerRadius(8),
-                Child = transcriptScroll
-            };
-
-            // ── Audio level bar ──
-            var levelBarBg = new Border
-            {
-                Background = (Brush)Application.Current.Resources["ControlStrongFillColorDefaultBrush"],
-                CornerRadius = new CornerRadius(2),
-                Opacity = 0.3
-            };
-            var levelBarFill = new Border
-            {
-                Background = new SolidColorBrush((global::Windows.UI.Color)Application.Current.Resources["SystemAccentColor"]),
-                CornerRadius = new CornerRadius(2),
-                HorizontalAlignment = HorizontalAlignment.Left,
-                Width = 0
-            };
-            var levelBarGrid = new Grid
-            {
-                Height = 4,
-                Margin = new Thickness(0, 0, 0, 8)
-            };
-            levelBarGrid.Children.Add(levelBarBg);
-            levelBarGrid.Children.Add(levelBarFill);
-
-            // ── Status text ──
-            var statusText = new TextBlock
-            {
-                Text = "Press Start to begin",
-                FontSize = 12,
-                Opacity = 0.5,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 10)
-            };
-
-            // ── Start/Stop button (accent style, matches overlay) ──
-            var btnIcon = new FontIcon { Glyph = "\uE768", FontSize = 14 };
-            var btnLabel = new TextBlock { Text = "Start Listening", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
-            var btnContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            btnContent.Children.Add(btnIcon);
-            btnContent.Children.Add(btnLabel);
-
-            var startButton = new Button
-            {
-                Content = btnContent,
-                Style = (Style)Application.Current.Resources["AccentButtonStyle"],
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                Height = 40
-            };
-
-            // ── Layout ──
-            var panel = new StackPanel { Spacing = 0, Width = 340 };
-            panel.Children.Add(transcriptBorder);
-            panel.Children.Add(new Border { Height = 12 });
-            panel.Children.Add(levelBarGrid);
-            panel.Children.Add(statusText);
-            panel.Children.Add(startButton);
-
-            var dialog = new ContentDialog
-            {
-                Title = "Test Voice Input",
-                Content = panel,
-                CloseButtonText = "Done",
-                XamlRoot = this.XamlRoot
-            };
-
-            var listening = false;
-            var voiceOperationInProgress = false;
-            var handlersAttached = false;
-            TextBlock? lastBubbleText = null;
-
-            void AddBubble(string text)
-            {
-                // Hide empty state on first transcription
-                if (emptyState.Visibility == Visibility.Visible)
-                    emptyState.Visibility = Visibility.Collapsed;
-
-                // Consolidate rapid segments into the same bubble
-                if (lastBubbleText != null)
-                {
-                    lastBubbleText.Text += " " + text;
-                }
-                else
-                {
-                    var bubble = new Border
-                    {
-                        Background = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue),
-                        CornerRadius = new CornerRadius(12, 12, 4, 12),
-                        Padding = new Thickness(12, 10, 12, 10),
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Margin = new Thickness(24, 4, 0, 4)
-                    };
-
-                    var grid = new Grid { ColumnSpacing = 8 };
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                    var icon = new FontIcon
-                    {
-                        Glyph = "\uE77B",
-                        FontSize = 12,
-                        VerticalAlignment = VerticalAlignment.Top,
-                        Margin = new Thickness(0, 3, 0, 0),
-                        Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
-                    };
-                    Grid.SetColumn(icon, 0);
-                    grid.Children.Add(icon);
-
-                    lastBubbleText = new TextBlock
-                    {
-                        Text = text,
-                        TextWrapping = TextWrapping.Wrap,
-                        FontSize = 13,
-                        IsTextSelectionEnabled = true,
-                        Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
-                    };
-                    Grid.SetColumn(lastBubbleText, 1);
-                    grid.Children.Add(lastBubbleText);
-
-                    bubble.Child = grid;
-                    transcriptPanel.Children.Add(bubble);
-                }
-
-                transcriptScroll.UpdateLayout();
-                transcriptScroll.ChangeView(null, transcriptScroll.ScrollableHeight, null);
-            }
-
-            void OnTranscription(string text)
-            {
-                DispatcherQueue.TryEnqueue(() => AddBubble(text));
-            }
-
-            void OnDiagnostic(string msg)
-            {
-                DispatcherQueue.TryEnqueue(() => statusText.Text = msg);
-            }
-
-            void OnSpeaking(bool isSpeaking)
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    if (isSpeaking)
-                    {
-                        statusText.Text = "\U0001f3a4 Listening...";
-                        // New speech utterance → new bubble
-                        lastBubbleText = null;
-                    }
-                    else
-                    {
-                        statusText.Text = "Speak now";
-                    }
-                });
-            }
-
-            void OnAudioLevel(float level)
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    var maxWidth = levelBarGrid.ActualWidth > 0 ? levelBarGrid.ActualWidth : 340;
-                    levelBarFill.Width = Math.Max(0, level * maxWidth);
-                });
-            }
-
-            void AttachVoiceHandlers()
-            {
-                if (handlersAttached) return;
-                voiceService.TranscriptionReceived += OnTranscription;
-                voiceService.DiagnosticMessage += OnDiagnostic;
-                voiceService.SpeakingChanged += OnSpeaking;
-                voiceService.AudioLevelChanged += OnAudioLevel;
-                handlersAttached = true;
-            }
-
-            void DetachVoiceHandlers()
-            {
-                if (!handlersAttached) return;
-                voiceService.TranscriptionReceived -= OnTranscription;
-                voiceService.DiagnosticMessage -= OnDiagnostic;
-                voiceService.SpeakingChanged -= OnSpeaking;
-                voiceService.AudioLevelChanged -= OnAudioLevel;
-                handlersAttached = false;
-            }
-
-            dialog.Closing += (_, args) =>
-            {
-                if (!voiceOperationInProgress) return;
-                args.Cancel = true;
-                statusText.Text = "Please wait for voice input to finish...";
-            };
-
-            startButton.Click += async (_, _) =>
-            {
-                if (voiceOperationInProgress) return;
-                voiceOperationInProgress = true;
-                startButton.IsEnabled = false;
-
-                if (!listening)
-                {
-                    try
-                    {
-                        listening = true;
-                        btnIcon.Glyph = "\uE71A";
-                        btnLabel.Text = "Stop Listening";
-                        AttachVoiceHandlers();
-                        await voiceService.StartVoiceChatAsync();
-                        statusText.Text = "Speak now";
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error($"Voice input test failed: {ex}");
-                        statusText.Text = "Could not start voice input";
-                        listening = false;
-                        btnIcon.Glyph = "\uE768";
-                        btnLabel.Text = "Start Listening";
-                        DetachVoiceHandlers();
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        statusText.Text = "Processing...";
-                        levelBarFill.Width = 0;
-                        await voiceService.StopAsync();
-                        statusText.Text = "Done — check your transcript above";
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error($"Voice input test stop failed: {ex}");
-                        statusText.Text = "Could not stop voice input cleanly";
-                    }
-                    finally
-                    {
-                        listening = false;
-                        btnIcon.Glyph = "\uE768";
-                        btnLabel.Text = "Start Listening";
-                        DetachVoiceHandlers();
-                    }
-                }
-
-                voiceOperationInProgress = false;
-                startButton.IsEnabled = true;
-            };
-
-            await dialog.ShowAsync();
-
-            // Clean up when dialog closes
-            if (listening)
-            {
-                listening = false;
-                levelBarFill.Width = 0;
-                await voiceService.StopAsync();
-                DetachVoiceHandlers();
-            }
-
+            _inlineTestPillBars[bi] = bar;
+            pillWavePanel.Children.Add(bar);
         }
-        finally
+        var pillContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        pillContent.Children.Add(_inlineTestPillDot);
+        pillContent.Children.Add(pillLabel);
+        pillContent.Children.Add(pillWavePanel);
+        _inlineTestPillContainer = new Border
         {
-            TestVoiceButton.IsEnabled = true;
-            _isVoiceTestDialogOpen = false;
+            Child = pillContent,
+            Padding = new Thickness(10, 5, 12, 5),
+            CornerRadius = new CornerRadius(14),
+            Background = new SolidColorBrush(accentColor) { Opacity = 0.1 },
+            BorderBrush = new SolidColorBrush(accentColor) { Opacity = 0.3 },
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Visibility = Visibility.Collapsed
+        };
+        InlineTestPillHost.Children.Add(_inlineTestPillContainer);
+    }
+
+    private async void OnInlineTestStartClick(object sender, RoutedEventArgs e)
+    {
+        if (_hub?.Settings == null) return;
+        InlineTestStartBtn.IsEnabled = false;
+
+        if (!_inlineTestListening)
+        {
+            try
+            {
+                _inlineTestVoiceService ??= new VoiceService(new AppLogger(), _hub.Settings);
+                _inlineTestListening = true;
+                InlineTestBtnIcon.Glyph = "\uE71A";
+                InlineTestBtnLabel.Text = "Stop";
+                SetInlineTestStatus("");
+                EnsureInlineTestPill();
+                _inlineTestPillContainer!.Visibility = Visibility.Visible;
+                InlineTestPillHost.Visibility = Visibility.Visible;
+
+                if (!_inlineTestHandlersAttached)
+                {
+                    _inlineTestVoiceService.TranscriptionReceived += OnInlineTestTranscription;
+                    _inlineTestVoiceService.AudioLevelChanged += OnInlineTestAudioLevel;
+                    _inlineTestVoiceService.SpeakingChanged += OnInlineTestSpeaking;
+                    _inlineTestHandlersAttached = true;
+                }
+                await _inlineTestVoiceService.StartVoiceChatAsync();
+                SetInlineTestStatus("");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Inline voice test failed: {ex}");
+                SetInlineTestStatus("Could not start voice input");
+                _inlineTestListening = false;
+                InlineTestBtnIcon.Glyph = "\uE720";
+                InlineTestBtnLabel.Text = "Record";
+                InlineTestPillHost.Visibility = Visibility.Collapsed;
+                if (_inlineTestPillContainer != null)
+                    _inlineTestPillContainer.Visibility = Visibility.Collapsed;
+            }
+        }
+        else
+        {
+            await StopInlineTestAsync();
+        }
+
+        InlineTestStartBtn.IsEnabled = true;
+    }
+
+    private async Task StopInlineTestAsync()
+    {
+        if (_inlineTestVoiceService != null && _inlineTestListening)
+        {
+            try { await _inlineTestVoiceService.StopAsync(); } catch { }
+        }
+        _inlineTestListening = false;
+        InlineTestBtnIcon.Glyph = "\uE720";
+        InlineTestBtnLabel.Text = "Record";
+        SetInlineTestStatus(InlineTestTranscriptPanel.Children.Count > 0 ? "" : "Done");
+        InlineTestPillHost.Visibility = Visibility.Collapsed;
+        if (_inlineTestPillContainer != null)
+            _inlineTestPillContainer.Visibility = Visibility.Collapsed;
+        if (_inlineTestHandlersAttached && _inlineTestVoiceService != null)
+        {
+            _inlineTestVoiceService.TranscriptionReceived -= OnInlineTestTranscription;
+            _inlineTestVoiceService.AudioLevelChanged -= OnInlineTestAudioLevel;
+            _inlineTestVoiceService.SpeakingChanged -= OnInlineTestSpeaking;
+            _inlineTestHandlersAttached = false;
         }
     }
+
+    private void OnInlineTestTranscription(string text)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            InlineTestTranscriptScroll.Visibility = Visibility.Visible;
+
+            // Consolidate rapid segments into same bubble
+            if (_lastInlineTestBubbleText != null)
+            {
+                _lastInlineTestBubbleText.Text += " " + text;
+            }
+            else
+            {
+                var accentColor = (global::Windows.UI.Color)Application.Current.Resources["SystemAccentColor"];
+                var bubbleText = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
+                };
+                var bubble = new Border
+                {
+                    Child = bubbleText,
+                    Background = new SolidColorBrush(accentColor),
+                    CornerRadius = new CornerRadius(12, 12, 4, 12),
+                    Padding = new Thickness(12, 8, 12, 8),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(24, 0, 0, 0)
+                };
+                InlineTestTranscriptPanel.Children.Add(bubble);
+                _lastInlineTestBubbleText = bubbleText;
+            }
+
+            InlineTestTranscriptScroll.UpdateLayout();
+            InlineTestTranscriptScroll.ChangeView(null, InlineTestTranscriptScroll.ScrollableHeight, null);
+        });
+    }
+
+    private void OnInlineTestAudioLevel(float level)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (_inlineTestPillBars == null) return;
+            for (int bi = 0; bi < _inlineTestPillBars.Length; bi++)
+            {
+                var phase = (bi % 3 == 0) ? 0.7 : (bi % 3 == 1) ? 1.0 : 0.5;
+                _inlineTestPillBars[bi].Height = 2.0 + Math.Min(level * phase, 1.0) * 8.0;
+                _inlineTestPillBars[bi].Opacity = 0.5 + Math.Min(level, 1f) * 0.5;
+            }
+            if (_inlineTestPillDot != null)
+                _inlineTestPillDot.Opacity = 0.5 + Math.Min(level, 1f) * 0.5;
+        });
+    }
+
+    private void OnInlineTestSpeaking(bool isSpeaking)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            SetInlineTestStatus("");
+            if (isSpeaking)
+            {
+                // New speech utterance â†’ new bubble
+                _lastInlineTestBubbleText = null;
+            }
+        });
+    }
+
 
     private void LoadTtsSettings(SettingsManager settings)
     {
@@ -703,8 +627,8 @@ public sealed partial class VoiceSettingsPage : Page
         {
             var voices = new OpenClaw.Shared.Audio.PiperVoiceManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
             // Same throttling story as the Whisper download: ~80 KB per
-            // streaming callback × ~150 MB voices = ~1,800 reports. Coalesce
-            // to ≥150 ms intervals so we don't choke the dispatcher.
+            // streaming callback Ã— ~150 MB voices = ~1,800 reports. Coalesce
+            // to â‰¥150 ms intervals so we don't choke the dispatcher.
             DateTime lastPiperReportUtc = DateTime.MinValue;
             var progress = new Progress<(long downloaded, long total)>(p =>
             {
@@ -897,7 +821,7 @@ public sealed partial class VoiceSettingsPage : Page
         }
         catch (Exception ex)
         {
-            // Show error inline (sanitized — full detail in the log).
+            // Show error inline (sanitized â€” full detail in the log).
             Logger.Error($"Windows TTS preview failed: {ex}");
             PreviewVoiceButton.Content = L("VoiceSettingsPage_StatusError");
             await System.Threading.Tasks.Task.Delay(3000);

@@ -61,7 +61,8 @@ public record OpenClawComposerProps(
     Action? OnSpeakerToggle = null,
     Action? OnSettingsClick = null,
     string? VoiceTranscript = null,
-    float VoiceAudioLevel = 0f);
+    float VoiceAudioLevel = 0f,
+    Action<Action>? RegisterVoiceStarter = null);
 
 public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 {
@@ -104,6 +105,63 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Track whether the mic is actively recording for visual indicator.
         var isRecording = UseState(false, threadSafe: true);
         var voiceCtsRef = UseRef<CancellationTokenSource?>(null);
+        // When true, a stop (not cancel) was requested — keep the transcript.
+        var voiceStoppedRef = UseRef(false);
+        // TextBox reference for focusing after recording completes
+        var textBoxRef = UseRef<TextBox?>(null);
+
+        // Extracted voice-start action so it can be triggered programmatically (e.g. hotkey)
+        Action startVoiceRecording = () =>
+        {
+            if (Props.OnVoiceRequest is null || isRecording.Value) return;
+            var cts = new CancellationTokenSource();
+            voiceCtsRef.Current = cts;
+            voiceStoppedRef.Current = false;
+            isRecording.Set(true);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var text = await Props.OnVoiceRequest(cts.Token);
+                    // Keep transcript if we got text (either natural completion
+                    // or user pressed stop). Discard only on explicit cancel.
+                    if (!string.IsNullOrEmpty(text)
+                        && (voiceStoppedRef.Current || !cts.IsCancellationRequested))
+                    {
+                        // Append to existing text (supports multiple recording passes)
+                        var existing = inputRef.Current?.TrimEnd();
+                        inputRef.Current = string.IsNullOrEmpty(existing)
+                            ? text
+                            : existing + " " + text;
+                        hasTextState.Set(true);
+                        sendVersion.Set(sendVersion.Value + 1);
+                    }
+                }
+                catch { /* voice cancelled or failed */ }
+                finally
+                {
+                    voiceCtsRef.Current = null;
+                    voiceStoppedRef.Current = false;
+                    cts.Dispose();
+                    isRecording.Set(false);
+                    // Move focus to the textbox so Enter sends the transcribed text
+                    var tb = textBoxRef.Current;
+                    if (tb != null)
+                    {
+                        tb.DispatcherQueue?.TryEnqueue(() =>
+                        {
+                            tb.Focus(FocusState.Programmatic);
+                            // Place cursor at end of transcribed text
+                            tb.SelectionStart = tb.Text?.Length ?? 0;
+                            tb.SelectionLength = 0;
+                        });
+                    }
+                }
+            });
+        };
+
+        // Register the voice starter so external callers (e.g. hotkey) can trigger recording
+        Props.RegisterVoiceStarter?.Invoke(startVoiceRecording);
 
         var sendAction = () =>
         {
@@ -159,8 +217,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 Props.OnModelChanged(models[idx]);
         }).Set(cb =>
         {
+            cb.Width = 160;
             cb.MinWidth = 0;
-            cb.MaxWidth = 180;
             cb.Height = 28;
             cb.FontSize = 11;
             cb.Padding = new Thickness(8, 0, 4, 0);
@@ -211,6 +269,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             })
             .Set(tb =>
             {
+                textBoxRef.Current = tb;
                 tb.PlaceholderText = recording
                     ? LocalizationHelper.GetString("Chat_Voice_ListeningPrompt")
                     : placeholder;
@@ -297,52 +356,89 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
              .Margin(0, 0, 0, 4);
         }
 
-        // ── Voice recording indicator row (shown during active recording) ──
-        Element voiceIndicator = Empty();
+        // ── Voice recording indicator: compact pill with dot, label, and mini waveform ──
+        // Only shown while actively recording (isRecording state).
+        // Uses a unique Key so FunctionalUI doesn't reuse the same Border and leave
+        // stale styling when switching between pill and empty placeholder.
+        Element voiceIndicator;
         if (recording)
         {
             var audioLevel = Props.VoiceAudioLevel;
+            var accentBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
 
-            // Pulsing red dot — uses audio level to vary opacity (0.4–1.0)
-            var redDot = Border(Empty())
+            // Red recording dot
+            var recDot = Border(Empty())
                 .Set(b =>
                 {
-                    b.Width = 8;
-                    b.Height = 8;
-                    b.CornerRadius = new CornerRadius(4);
+                    b.Width = 6;
+                    b.Height = 6;
+                    b.CornerRadius = new CornerRadius(3);
                     b.Background = new SolidColorBrush(Microsoft.UI.Colors.Red);
-                    b.Opacity = 0.4 + Math.Min(audioLevel, 1f) * 0.6;
+                    b.Opacity = 0.5 + Math.Min(audioLevel, 1f) * 0.5;
                     b.VerticalAlignment = VerticalAlignment.Center;
                 });
 
-            // Level bars — 16 thin rectangles driven by audio level
-            var barCount = 16;
-            var barElements = new Element[barCount];
-            for (int bi = 0; bi < barCount; bi++)
+            // "Recording" label
+            var recLabel = TextBlock("Recording")
+                .Set(t =>
+                {
+                    t.FontSize = 11;
+                    t.Foreground = accentBrush;
+                    t.VerticalAlignment = VerticalAlignment.Center;
+                });
+
+            // Mini waveform bars (16 bars for a fuller waveform)
+            var miniBarCount = 16;
+            var miniBarElements = new Element[miniBarCount];
+            for (int bi = 0; bi < miniBarCount; bi++)
             {
-                // Stagger bar heights for a natural waveform look
-                var barPhase = (bi % 3 == 0) ? 0.8 : (bi % 3 == 1) ? 1.0 : 0.6;
-                var barHeight = 2.0 + Math.Min(audioLevel * barPhase, 1.0) * 14.0;
-                barElements[bi] = Border(Empty())
+                var barPhase = (bi % 3 == 0) ? 0.7 : (bi % 3 == 1) ? 1.0 : 0.5;
+                var barHeight = 2.0 + Math.Min(audioLevel * barPhase, 1.0) * 8.0;
+                miniBarElements[bi] = Border(Empty())
                     .Set(b =>
                     {
-                        b.Width = 3;
+                        b.Width = 2;
                         b.Height = barHeight;
-                        b.CornerRadius = new CornerRadius(1.5);
-                        b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
+                        b.CornerRadius = new CornerRadius(1);
+                        b.Background = accentBrush;
                         b.Opacity = 0.5 + Math.Min(audioLevel, 1f) * 0.5;
                         b.VerticalAlignment = VerticalAlignment.Center;
                     });
             }
-            var levelBars = (FlexRow(barElements) with { ColumnGap = 2 })
-                .VAlign(VerticalAlignment.Center)
-                .Set(sp => sp.Height = 18);
+            var miniWave = (FlexRow(miniBarElements) with { ColumnGap = 1.5 })
+                .VAlign(VerticalAlignment.Center);
 
-            voiceIndicator = (FlexRow(
-                redDot,
-                levelBars.Flex(grow: 1)
-            ) with { ColumnGap = 8 })
-            .Margin(4, 0, 4, 0);
+            // Pill container with accent tint background and border
+            voiceIndicator = Border(
+                (FlexRow(recDot, recLabel, miniWave) with { ColumnGap = 8 })
+                    .VAlign(VerticalAlignment.Center)
+            ).Set(b =>
+            {
+                b.Padding = new Thickness(10, 5, 12, 5);
+                b.CornerRadius = new CornerRadius(14);
+                b.Background = accentBrush;
+                b.Opacity = 1.0;
+                // Use a low-opacity accent background
+                if (accentBrush is SolidColorBrush scb)
+                {
+                    b.Background = new SolidColorBrush(scb.Color) { Opacity = 0.1 };
+                    b.BorderBrush = new SolidColorBrush(scb.Color) { Opacity = 0.3 };
+                }
+                b.BorderThickness = new Thickness(1);
+            }).Margin(4, 0, 4, 0)
+              .HAlign(HorizontalAlignment.Left);
+            voiceIndicator.Key = "voice-pill";
+        }
+        else
+        {
+            voiceIndicator = Border(Empty()).Set(b =>
+            {
+                b.Padding = new Thickness(0);
+                b.Margin = new Thickness(0);
+                b.Height = 0;
+                b.Opacity = 0;
+            });
+            voiceIndicator.Key = "voice-pill-hidden";
         }
 
         Element IconButton(string glyph, string tip, Action onClick, Brush? foreground = null)
@@ -380,45 +476,39 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 Props.OnAttachClick?.Invoke();
             })
             : Empty();
-        var voiceBtn  = ChatExplorationState.VoiceIconShow
-            ? IconButton(
-                isRecording.Value
-                    ? "\uE71A"  // Stop glyph — click to cancel recording
-                    : NonEmptyGlyph(ChatExplorationState.VoiceIconGlyph, "\uE720"),
-                LocalizationHelper.GetString("Chat_Composer_Tooltip_Voice"), () =>
+
+        // Voice recording: three-button model
+        // - Not recording: mic button starts recording
+        // - Recording: mic button becomes stop (■, keeps transcript),
+        //   plus a cancel (✕) button that discards
+        Element voiceBtn = Empty();
+        Element voiceCancelBtn = Empty();
+        if (ChatExplorationState.VoiceIconShow)
+        {
+            if (isRecording.Value)
             {
-                if (Props.OnVoiceRequest is null) return;
-                if (isRecording.Value)
+                // Stop button — ends recording and keeps the transcript
+                voiceBtn = IconButton("\uE15B", "Stop recording", () =>
                 {
-                    // Cancel the active recording
+                    voiceStoppedRef.Current = true;
                     voiceCtsRef.Current?.Cancel();
-                    return;
-                }
-                var cts = new CancellationTokenSource();
-                voiceCtsRef.Current = cts;
-                isRecording.Set(true);
-                _ = Task.Run(async () =>
+                }, foreground: new SolidColorBrush(Microsoft.UI.Colors.Red));
+
+                // Cancel button — discards recording entirely
+                voiceCancelBtn = IconButton("\uE711", "Cancel recording", () =>
                 {
-                    try
-                    {
-                        var text = await Props.OnVoiceRequest(cts.Token);
-                        if (!string.IsNullOrEmpty(text) && !cts.IsCancellationRequested)
-                        {
-                            inputRef.Current = text;
-                            hasTextState.Set(true);
-                            sendVersion.Set(sendVersion.Value + 1);
-                        }
-                    }
-                    catch { /* voice cancelled or failed — silently ignore */ }
-                    finally
-                    {
-                        voiceCtsRef.Current = null;
-                        cts.Dispose();
-                        isRecording.Set(false);
-                    }
+                    voiceStoppedRef.Current = false;
+                    voiceCtsRef.Current?.Cancel();
                 });
-            }, foreground: isRecording.Value ? new SolidColorBrush(Microsoft.UI.Colors.Red) : null)
-            : Empty();
+            }
+            else
+            {
+                voiceBtn = IconButton(
+                    NonEmptyGlyph(ChatExplorationState.VoiceIconGlyph, "\uE720"),
+                    LocalizationHelper.GetString("Chat_Composer_Tooltip_Voice"),
+                    startVoiceRecording);
+            }
+        }
         var speakerBtn = Props.OnSpeakerToggle is not null
             ? IconButton(
                 Props.IsSpeakerMuted ? "\uE74F" : "\uE767",  // SpeakerMute : Speaker
@@ -647,7 +737,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             // Wrapping in FlexRow caused the Button to stretch to the Star column width.
             var bottomRow = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
                 combinedPill.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
-                (FlexRow(attachBtn, voiceBtn, speakerBtn, settingsBtn, actionBtn, stopBtn) with { ColumnGap = 4 })                    .HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 1)
+                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, settingsBtn, actionBtn, stopBtn) with { ColumnGap = 4 })                    .HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 1)
             );
 
             return VStack(0,
@@ -665,7 +755,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }
 
         var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            (FlexRow(attachBtn, voiceBtn, speakerBtn, settingsBtn, actionBtn, stopBtn)
+            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, settingsBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
             .Grid(row: 0, column: 1)

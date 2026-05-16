@@ -63,10 +63,47 @@
                     <Button x:Name="TestVoiceButton" Click="OnTestVoiceClick"
                             Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE720;" FontSize="14"/>
-                            <TextBlock x:Uid="VoiceSettingsPage_TestVoiceButtonText" x:Name="TestVoiceButtonText" Text="Test Voice Input"/>
+                            <FontIcon x:Name="TestVoiceBtnIcon" Glyph="&#xE720;" FontSize="14"/>
+                            <TextBlock x:Name="TestVoiceButtonText" Text="Test Voice Input"/>
                         </StackPanel>
                     </Button>
+
+                    <!-- Inline voice test area (toggled by test button) -->
+                    <Border x:Name="InlineTestArea" Visibility="Collapsed"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="8" Padding="16" Margin="0,4,0,0">
+                        <StackPanel Spacing="10">
+                            <!-- Transcript area with speech bubbles -->
+                            <ScrollViewer x:Name="InlineTestTranscriptScroll" MaxHeight="140"
+                                          VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                                <StackPanel x:Name="InlineTestTranscriptPanel" Spacing="6"/>
+                            </ScrollViewer>
+
+                            <!-- Recording pill (shown while recording, below transcript) -->
+                            <StackPanel x:Name="InlineTestPillHost" Orientation="Horizontal"
+                                        HorizontalAlignment="Center" Visibility="Collapsed"/>
+
+                            <!-- Status text (only shown for errors/done) -->
+                            <TextBlock x:Name="InlineTestStatus" Text=""
+                                       FontSize="12" Opacity="0.5" HorizontalAlignment="Center"
+                                       Visibility="Collapsed"/>
+
+                            <!-- Centered buttons -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                <Button x:Name="InlineTestStartBtn" Click="OnInlineTestStartClick"
+                                        Style="{StaticResource AccentButtonStyle}" Padding="12,8">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon x:Name="InlineTestBtnIcon" Glyph="&#xE720;" FontSize="14"/>
+                                        <TextBlock x:Name="InlineTestBtnLabel" Text="Record" FontSize="13"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="InlineTestCloseBtn" Click="OnInlineTestCloseClick"
+                                        Padding="8" ToolTipService.ToolTip="Close test panel">
+                                    <FontIcon Glyph="&#xE711;" FontSize="12"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 
