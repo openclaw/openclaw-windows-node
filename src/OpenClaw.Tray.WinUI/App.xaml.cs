@@ -882,7 +882,8 @@ public partial class App : Application
         ShowHub("connection");
     }
 
-    private VoiceOverlayWindow? _voiceOverlayWindow;
+    // Voice overlay disabled — inline chat voice mode is used instead.
+    // private VoiceOverlayWindow? _voiceOverlayWindow;
     private VoiceService? _standaloneVoiceService;
 
     /// <summary>
@@ -892,6 +893,9 @@ public partial class App : Application
     public VoiceService? VoiceServiceInstance =>
         _nodeService?.VoiceService ?? _standaloneVoiceService;
 
+    // Voice overlay disabled — inline chat voice mode is used instead.
+    // Kept for potential future re-enablement.
+    /*
     private void ShowVoiceOverlay()
     {
         var voiceService = _nodeService?.VoiceService ?? EnsureStandaloneVoiceService();
@@ -924,6 +928,7 @@ public partial class App : Application
 
         _voiceOverlayWindow.Activate();
     }
+    */
 
     private VoiceService? EnsureStandaloneVoiceService()
     {
@@ -982,7 +987,7 @@ public partial class App : Application
             case "dashboard": OpenDashboard(); break;
             case "canvas": ShowCanvasWindow(); break;
             case "openchat": ShowHub("chat"); break;
-            case "voice": ShowVoiceOverlay(); break;
+            case "voice": ShowHub("voice"); break; // was: ShowVoiceOverlay()
             case "webchat": ShowWebChat(); break;
             case "hub": ShowHub(); break;
             case "companion":
@@ -1512,7 +1517,8 @@ public partial class App : Application
         menu.AddMenuItem("Dashboard", "🌐", "dashboard");
         menu.AddMenuItem("Chat", "💬", "openchat");
         menu.AddMenuItem("Canvas", "🎨", "canvas");
-        menu.AddMenuItem("Voice", "🎙️", "voice");
+        // Voice overlay disabled — inline chat voice mode is used instead.
+        // menu.AddMenuItem("Voice", "🎙️", "voice");
         menu.AddMenuItem("Companion Settings...", "🦞", "companion");
         menu.AddMenuItem(LocalizationHelper.GetString("Menu_QuickSend"), "📤", "quicksend");
 
@@ -3117,17 +3123,18 @@ public partial class App : Application
             if (ChatProvider?.IsResponseSuppressed == true)
                 return;
 
-            if (_voiceOverlayWindow != null)
-            {
-                _dispatcherQueue?.TryEnqueue(() =>
-                {
-                    try
-                    {
-                        _voiceOverlayWindow?.AddAgentResponse(notification.Message);
-                    }
-                    catch { }
-                });
-            }
+            // Voice overlay disabled — agent responses no longer routed to overlay window.
+            // if (_voiceOverlayWindow != null)
+            // {
+            //     _dispatcherQueue?.TryEnqueue(() =>
+            //     {
+            //         try
+            //         {
+            //             _voiceOverlayWindow?.AddAgentResponse(notification.Message);
+            //         }
+            //         catch { }
+            //     });
+            // }
 
             // TTS: read response aloud whenever the toggle is on (any chat surface).
             if (_settings?.VoiceTtsEnabled == true)
@@ -3362,7 +3369,7 @@ public partial class App : Application
             _hubWindow.QuickSendAction = () => ShowQuickSend();
             _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;
-            _hubWindow.OpenVoiceAction = () => ShowVoiceOverlay();
+            _hubWindow.OpenVoiceAction = () => ShowHub("voice"); // was: ShowVoiceOverlay()
             _hubWindow.ConnectionManager = _connectionManager;
             _hubWindow.GatewayRegistry = _gatewayRegistry;
             _hubWindow.ConnectAction = () =>
@@ -4445,7 +4452,7 @@ public partial class App : Application
             OpenDashboard = OpenDashboard,
             OpenQuickSend = ShowQuickSend,
             OpenHub = (page) => ShowHub(page),
-            OpenVoice = () => ShowVoiceOverlay(),
+            OpenVoice = () => ShowHub("voice"), // was: ShowVoiceOverlay()
             StopVoice = () => _ = StopVoiceAsync(),
             SendMessage = async (msg) =>
             {

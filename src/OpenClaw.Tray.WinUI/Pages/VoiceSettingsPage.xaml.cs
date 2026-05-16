@@ -35,10 +35,17 @@ public sealed partial class VoiceSettingsPage : Page
             UpdateModelStatus();
             UpdatePiperVoiceState();
         };
-        Unloaded += (_, _) =>
+        Unloaded += async (_, _) =>
         {
             if (App.Current is App app)
                 app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
+
+            if (_inlineTestVoiceService != null)
+            {
+                await StopInlineTestAsync();
+                await _inlineTestVoiceService.DisposeAsync();
+                _inlineTestVoiceService = null;
+            }
         };
     }
 
