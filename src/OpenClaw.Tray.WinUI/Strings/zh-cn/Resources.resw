@@ -2861,6 +2861,12 @@
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>语音</value>
   </data>
+  <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
+    <value>正在聆听…</value>
+  </data>
+  <data name="Chat_Voice_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
   <data name="Chat_Composer_Tooltip_More" xml:space="preserve">
     <value>更多</value>
   </data>

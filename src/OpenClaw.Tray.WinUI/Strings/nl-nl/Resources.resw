@@ -2862,6 +2862,12 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>Stem</value>
   </data>
+  <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
+    <value>Luisteren…</value>
+  </data>
+  <data name="Chat_Voice_Cancel" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
   <data name="Chat_Composer_Tooltip_More" xml:space="preserve">
     <value>Meer</value>
   </data>
