@@ -31,6 +31,19 @@ public sealed class AsyncListLoadingPageWiringTests
         Assert.Contains(".CanEdit", source);
     }
 
+    [Fact]
+    public void CronPage_DefaultsToLoadingUntilFirstListResponse()
+    {
+        var xaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml");
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs");
+
+        Assert.Contains("x:Name=\"LoadingState\" Grid.Row=\"4\"", xaml);
+        Assert.Contains("Visibility=\"Visible\"", xaml);
+        Assert.Contains("x:Name=\"EmptyState\" Grid.Row=\"4\"", xaml);
+        Assert.Contains("Visibility=\"Collapsed\"", xaml);
+        Assert.Contains("keepRefreshing && !hadLoadedJobs && jobs.Count == 0", source);
+    }
+
     private static string ReadSource(params string[] relativePathParts)
     {
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory();

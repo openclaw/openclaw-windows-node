@@ -528,6 +528,7 @@ public sealed partial class CronPage : Page
 
     private void ParseCronList(JsonElement payload, bool keepRefreshing = false)
     {
+        var hadLoadedJobs = _jobsLoading.HasLoaded;
         var jobs = new List<CronJobViewModel>();
 
         foreach (var item in payload.EnumerateArray())
@@ -760,8 +761,15 @@ public sealed partial class CronPage : Page
             }
 
             _jobs = jobs;
-            _jobsLoading.Complete(jobs.Count);
-            if (keepRefreshing)
+            if (keepRefreshing && !hadLoadedJobs && jobs.Count == 0)
+            {
+                _jobsLoading.BeginInitialRefresh();
+            }
+            else
+            {
+                _jobsLoading.Complete(jobs.Count);
+            }
+            if (keepRefreshing && _jobsLoading.HasLoaded)
                 _jobsLoading.BeginRefresh();
 
             // Restore expanded state from persisted set

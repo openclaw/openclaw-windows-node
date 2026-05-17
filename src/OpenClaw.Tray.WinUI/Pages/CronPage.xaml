@@ -266,7 +266,7 @@
         <!-- Loading state -->
         <StackPanel x:Name="LoadingState" Grid.Row="4"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
-                    Visibility="Collapsed">
+                    Visibility="Visible">
             <ProgressRing IsActive="True" Width="24" Height="24" HorizontalAlignment="Center"/>
             <TextBlock Text="Loading cron jobs…"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -278,7 +278,8 @@
 
         <!-- Empty state -->
         <StackPanel x:Name="EmptyState" Grid.Row="4"
-                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
+                    Visibility="Collapsed">
             <TextBlock Text="⏱️" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock Text="No cron jobs configured"
                        Style="{StaticResource SubtitleTextBlockStyle}"
