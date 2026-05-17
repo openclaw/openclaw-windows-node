@@ -1200,8 +1200,11 @@ public class WindowsNodeClientTests
     {
         private readonly string _category;
         private readonly string[] _commands;
+        private readonly TaskCompletionSource<bool> _executedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int ExecuteCount { get; private set; }
         public string? LastCommand { get; private set; }
+        /// <summary>Completes when ExecuteAsync is first called. Use in tests to await fire-and-forget dispatch.</summary>
+        public Task ExecutedTask => _executedTcs.Task;
 
         public MockCapability(string category, params string[] commands)
         {
@@ -1217,6 +1220,7 @@ public class WindowsNodeClientTests
         {
             ExecuteCount++;
             LastCommand = request.Command;
+            _executedTcs.TrySetResult(true);
             return Task.FromResult(new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { dispatched = true } });
         }
     }
@@ -1248,6 +1252,8 @@ public class WindowsNodeClientTests
                 """;
 
             await InvokeProcessMessageAsync(client, json);
+            // Capability is dispatched fire-and-forget; wait for it to complete
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(1, cap.ExecuteCount);
             Assert.Equal("mock.ping", cap.LastCommand);
@@ -1325,6 +1331,8 @@ public class WindowsNodeClientTests
                 """;
 
             await InvokeProcessMessageAsync(client, json);
+            // Capability is dispatched fire-and-forget; wait for the first one to complete
+            await first.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(1, first.ExecuteCount);
             Assert.Equal(0, second.ExecuteCount);
@@ -1363,6 +1371,8 @@ public class WindowsNodeClientTests
                 """;
 
             await InvokeProcessMessageAsync(client, json);
+            // Capability is dispatched fire-and-forget; wait for it to complete
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(1, cap.ExecuteCount);
             Assert.Equal("mock.ping", cap.LastCommand);
