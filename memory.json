@@ -1,75 +1,43 @@
 {
-  "last_run": "2026-05-16T12:40:28Z",
-  "run_id": "25962141002",
+  "last_run": "2026-05-17T01:18:13Z",
+  "run_id": "25977791154",
   "comments_made": {
-    "pr_419": { "date": "2026-05-16", "run": "25962141002", "note": "Review: watchdog timer lifecycle, empty catch UX gap, _pendingNavigationOrigin fix confirmed" },
-    "pr_327": { "date": "2026-05-13", "run": "25800798536" },
-    "pr_296": { "date": "2026-05-13", "run": "25800798536", "note": "superseded by PR #327, closed" },
-    "pr_325": { "date": "2026-05-13", "run": "25775356295" },
-    "pr_324": { "date": "2026-05-13", "run": "25775356295" },
-    "pr_313": { "date": "2026-05-12", "run": "25706948178" },
-    "pr_310": { "date": "2026-05-11", "run": "25672662361" },
-    "pr_288": { "date": "2026-05-07", "run": "25497143196" },
-    "pr_259": { "date": "2026-05-04", "run": "25320065239" },
-    "issue_281": { "date": "2026-05-06", "run": "25410959577" },
-    "issue_99": { "date": "2026-05-10", "run": "25628892354" },
-    "issue_246": { "date": "2026-05-01", "run": "25197516078" },
-    "issue_191": { "date": "2026-04-21", "run": "24698532801" },
-    "issue_357": { "date": "2026-05-14", "run": "25881465721" },
-    "issue_350": { "date": "2026-05-15", "run": "25918910618", "note": "v3 probe PR created (#408)" },
-    "issue_363": { "date": "2026-05-14", "run": "25881465721" },
-    "issue_365": { "date": "2026-05-15", "run": "25894771496", "note": "SafeDispatch/SafeEventInvoke PR #406 created" },
-    "issue_349": { "date": "2026-05-16", "run": "25948787077", "note": "ws:// warning PR #416 created" },
-    "issue_364": { "date": "2026-05-16", "run": "25948787077", "note": "clipboard consolidation PR #417 created" }
+    "pr_419": {"date":"2026-05-16","note":"Review: watchdog, empty catch, _pendingNavigationOrigin"},
+    "pr_327": {"date":"2026-05-13"},
+    "pr_325": {"date":"2026-05-13","note":"operator requestId gap"},
+    "pr_324": {"date":"2026-05-13"},
+    "pr_313": {"date":"2026-05-12"},
+    "pr_310": {"date":"2026-05-11"},
+    "pr_288": {"date":"2026-05-07"},
+    "pr_259": {"date":"2026-05-04"},
+    "issue_281": {"date":"2026-05-06"},
+    "issue_99": {"date":"2026-05-10"},
+    "issue_246": {"date":"2026-05-01"},
+    "issue_191": {"date":"2026-04-21"},
+    "issue_357": {"date":"2026-05-14"},
+    "issue_350": {"date":"2026-05-15","note":"v3 probe PR #408"},
+    "issue_363": {"date":"2026-05-17","note":"fire-and-forget fix PR branch fix-hol-blocking-363"},
+    "issue_365": {"date":"2026-05-15","note":"SafeDispatch PR #406"},
+    "issue_349": {"date":"2026-05-16","note":"ws:// warning PR #416"},
+    "issue_364": {"date":"2026-05-16","note":"clipboard PR #417"},
+    "issue_368": {"date":"2026-05-17","note":"Models.cs split: move 4 helpers first"},
+    "issue_371": {"date":"2026-05-17","note":"Loopback check: 3 distinct questions, GatewayChatUrlBuilder idiomatic"}
   },
   "fix_attempts": {
-    "pr_analyzer_362": {
-      "status": "pr_created_pending",
-      "branch": "repo-assist/eng-enable-analyzers-src-362",
-      "date": "2026-05-16",
-      "note": "76 warnings surfaced in Shared (CA1822, CA2016, CA1305, CA1859). No TreatWarningsAsErrors. Step 1 of #362."
-    },
-    "pr_349_insecure_gateway": {
-      "status": "pr_created_pending",
-      "pr": 416,
-      "branch": "repo-assist/fix-insecure-gateway-url-warning-349",
-      "date": "2026-05-16"
-    },
-    "pr_364_clipboard": {
-      "status": "pr_created_pending",
-      "pr": 417,
-      "branch": "repo-assist/improve-consolidate-clipboard-helper-364",
-      "date": "2026-05-16"
-    },
-    "pr_365_safe_dispatch": {
-      "status": "pr_created_pending",
-      "pr": 406,
-      "branch": "repo-assist/fix-safe-dispatch-empty-catches-365",
-      "date": "2026-05-15"
-    },
-    "pr_357_ct_propagation": {
-      "status": "pr_created_pending",
-      "branch": "repo-assist/fix-ct-propagation-windowsnodeclient-357",
-      "date": "2026-05-14"
-    },
-    "pr_343_card_background": {
-      "status": "pr_created_pending",
-      "pr": 380,
-      "branch": "repo-assist/fix-a2ui-card-background-343",
-      "date": "2026-05-14"
-    },
-    "pr_350_v2_downgrade": {
-      "status": "pr_created_pending",
-      "pr": 408,
-      "branch": "repo-assist/fix-v2-signature-downgrade-350",
-      "date": "2026-05-15"
-    }
+    "hol_363": {"status":"pr_pending","branch":"repo-assist/fix-hol-blocking-363","date":"2026-05-17","note":"SemaphoreSlim(8) fire-and-forget. 1613 passed."},
+    "analyzers_362": {"status":"pr_pending","branch":"repo-assist/eng-enable-analyzers-src-362","date":"2026-05-16"},
+    "insecure_349": {"status":"pr_pending","pr":416,"branch":"repo-assist/fix-insecure-gateway-url-warning-349","date":"2026-05-16"},
+    "clipboard_364": {"status":"pr_pending","pr":417,"date":"2026-05-16"},
+    "safe_dispatch_365": {"status":"pr_pending","pr":406,"date":"2026-05-15"},
+    "ct_prop_357": {"status":"pr_pending","branch":"repo-assist/fix-ct-propagation-windowsnodeclient-357","date":"2026-05-14"},
+    "card_bg_343": {"status":"pr_pending","pr":380,"date":"2026-05-14"},
+    "v2_downgrade_350": {"status":"pr_pending","pr":408,"date":"2026-05-15"}
   },
-  "backlog_cursor": "issue_372",
-  "notes": "This run: Task 2 (PR #419 review) + Task 4 (#362 analyzer enablement PR). Active Repo Assist PRs: #380 (CardBackground #343), #406 (SafeDispatch #365), #408 (v3->v2 #350), #416 (#349 ws:// warning), #417 (#364 clipboard), new analyzer PR (branch repo-assist/eng-enable-analyzers-src-362). Deep-review issues #367-#371 not yet commented on. Future: #363 head-of-line blocking, Tier 2 of #349 (block non-TLS remote), remaining ~80 empty catch sites, dotnet format CI step (#362 step 2).",
+  "backlog_cursor": "issue_374",
+  "notes": "This run: PR for #363 (HOL blocking fire-and-forget), comments #368/#371/#363. Not yet: #367,#369,#370,#372,#374. Future: remaining ~80 empty catches, Tier 2 #349, dotnet format CI.",
   "test_baseline": {
-    "shared_tests": "exit 0 (1613 passed, 28 skipped, 7 pre-existing failures)",
-    "tray_tests": "exit 0 (897 passed, 48 skipped, 8 pre-existing failures)",
-    "note": "Updated 2026-05-16 after 'Rebuild Connection page' commit on master. Both test suites on Linux."
+    "shared": "1613 passed, 28 skipped, 7 pre-existing failures",
+    "tray": "897 passed, 48 skipped, 8 pre-existing failures",
+    "note": "Linux, 2026-05-16"
   }
 }
