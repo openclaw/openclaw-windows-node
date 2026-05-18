@@ -294,6 +294,28 @@ jobs:
         $xml.Save((Resolve-Path $manifest))
         Write-Host "Patched MSIX manifest to identity $identityName, display name '$displayName', version $version"
 
+    - name: Patch CommandPalette MSIX manifest metadata
+      shell: pwsh
+      run: |
+        # Keep the CommandPalette extension package metadata in lockstep with the
+        # parent tray package so both sign under the same Trusted Signing cert
+        # subject and are discoverable as a coherent product. The repo template
+        # ships with placeholder Microsoft values that must NEVER ship.
+        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
+        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
+        $trayIdentity = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
+        $cmdpalIdentity = "$trayIdentity.CommandPalette"
+        $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $publisherDisplay = "Scott Hanselman"
+        $manifest = "src/OpenClaw.CommandPalette/Package.appxmanifest"
+        [xml]$xml = Get-Content $manifest
+        $xml.Package.Identity.Name = $cmdpalIdentity
+        $xml.Package.Identity.Publisher = $publisher
+        $xml.Package.Identity.Version = $version
+        $xml.Package.Properties.PublisherDisplayName = $publisherDisplay
+        $xml.Save((Resolve-Path $manifest))
+        Write-Host "Patched CommandPalette MSIX manifest to identity $cmdpalIdentity, publisher '$publisher', version $version"
+
     - name: Build MSIX Package
       run: >
         msbuild src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj

@@ -3,8 +3,9 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  IgnorableNamespaces="uap uap5 rescap">
 
   <!-- IMPORTANT: Publisher must exactly match Azure Trusted Signing certificate subject.
        Check your certificate profile at: Azure Portal > Trusted Signing > hanselman > WindowsEdgeLight
@@ -49,6 +50,18 @@
             <uap:DisplayName>OpenClaw Protocol</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
+
+        <!-- Startup task for "Launch when Windows starts" toggle.
+             TaskId is the stable identifier passed to StartupTask.GetAsync(...).
+             EnabledState=disabled means the toggle is OFF by default; the user
+             must opt in via Settings, which calls StartupTask.RequestEnableAsync()
+             and surfaces the one-time Windows consent dialog. -->
+        <uap5:Extension Category="windows.startupTask">
+          <uap5:StartupTask
+            TaskId="OpenClawCompanionStartup"
+            Enabled="false"
+            DisplayName="OpenClaw Companion" />
+        </uap5:Extension>
       </Extensions>
     </Application>
   </Applications>
