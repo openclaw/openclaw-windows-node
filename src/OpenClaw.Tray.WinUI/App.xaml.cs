@@ -840,7 +840,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
     {
-        ShowChatWindow();
+        if (_connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected)
+        {
+            ShowChatWindow();
+            return;
+        }
+
+        ShowHub("connection");
     }
 
     internal void ShowChatWindow()

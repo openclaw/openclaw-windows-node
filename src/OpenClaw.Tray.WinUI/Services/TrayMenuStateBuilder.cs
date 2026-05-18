@@ -288,7 +288,8 @@ internal sealed class TrayMenuStateBuilder
             menu.AddFlyoutCustomItem(sessionsRow, sessionsFlyout, action: "sessions");
         }
 
-        // ── Usage (no divider — flows directly under Sessions) ──
+        // ── Usage (connected only; stale disconnected usage is misleading) ──
+        if (isConnected)
         {
             var usageRow = BuildUsageRow(secondaryText);
             var usageFlyout = BuildUsageFlyoutItems(secondaryText);
