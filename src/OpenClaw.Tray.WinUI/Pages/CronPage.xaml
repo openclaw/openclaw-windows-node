@@ -5,7 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <Grid Padding="24,16,24,16">
+    <Grid HorizontalAlignment="Stretch">
+    <Grid Padding="24,16,24,16" MaxWidth="900" HorizontalAlignment="Stretch">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -45,25 +46,15 @@
             <!-- Scheduler status row -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     CornerRadius="6" Padding="12,8">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Ellipse x:Name="SchedulerStatusIndicator" Width="8" Height="8"
-                                 Fill="Gray" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="SchedulerStatusText" Text="—" VerticalAlignment="Center"
-                                   FontSize="13"/>
-                        <TextBlock x:Name="NextWakeText" Text="" VerticalAlignment="Center"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </StackPanel>
-                    <ToggleSwitch x:Name="SchedulerToggle" Grid.Column="1"
-                                   IsOn="False" VerticalAlignment="Center"
-                                   IsEnabled="False" MinWidth="0"
-                                   OnContent="" OffContent=""/>
-                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse x:Name="SchedulerStatusIndicator" Width="8" Height="8"
+                             Fill="Gray" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="SchedulerStatusText" Text="—" VerticalAlignment="Center"
+                               FontSize="13"/>
+                    <TextBlock x:Name="NextWakeText" Text="" VerticalAlignment="Center"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
             </Border>
         </StackPanel>
 
@@ -305,6 +296,7 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
         </StackPanel>
+    </Grid>
     </Grid>
     </ScrollViewer>
 </Page>

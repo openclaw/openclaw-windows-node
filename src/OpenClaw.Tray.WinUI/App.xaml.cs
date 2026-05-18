@@ -1363,7 +1363,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             CurrentStatus = _appState!.Status,
             AuthFailureMessage = _appState?.AuthFailureMessage,
-            GatewayUrl = _settings?.GetEffectiveGatewayUrl(),
+            GatewayUrl = _gatewayRegistry?.GetActive()?.Url ?? _settings?.GetEffectiveGatewayUrl(),
             GatewaySelf = _appState?.GatewaySelf,
             Presence = _appState?.Presence,
             EnableNodeMode = _settings?.EnableNodeMode == true && _nodeService != null,

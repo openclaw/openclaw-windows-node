@@ -5,7 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+    <Grid HorizontalAlignment="Stretch">
+        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -102,5 +103,6 @@
             </ListView>
 
         </StackPanel>
+    </Grid>
     </ScrollViewer>
 </Page>

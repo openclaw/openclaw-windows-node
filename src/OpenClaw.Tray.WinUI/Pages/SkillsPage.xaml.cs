@@ -46,6 +46,23 @@ public sealed partial class SkillsPage : Page
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
         PopulateAgentFilter();
+
+        // Show cached data immediately if available
+        if (_allSkills.Count == 0 && _appState.SkillsData.HasValue)
+        {
+            UpdateFromGateway(_appState.SkillsData.Value);
+        }
+        else if (_allSkills.Count > 0)
+        {
+            RebuildCards();
+        }
+        else
+        {
+            // No cached data — show loading spinner
+            LoadingState.Visibility = Visibility.Visible;
+            EmptyState.Visibility = Visibility.Collapsed;
+        }
+
         if (CurrentApp.GatewayClient != null)
         {
             _ = CurrentApp.GatewayClient.RequestSkillsStatusAsync(GetSelectedAgentId());
@@ -186,6 +203,7 @@ public sealed partial class SkillsPage : Page
 
     private void RebuildCards()
     {
+        LoadingState.Visibility = Visibility.Collapsed;
         var enabled = _allSkills.Where(s => s.IsEnabled).ToList();
         var disabled = _allSkills.Where(s => !s.IsEnabled).ToList();
 

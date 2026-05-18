@@ -46,7 +46,27 @@ public sealed partial class CronPage : Page
         if (client != null)
         {
             ConnectionInfoBar.IsOpen = false;
-            _cronLoading.BeginInitialRefresh();
+
+            // If we already have loaded data (returning to this page), keep showing it
+            // while refreshing in the background
+            if (_cronLoading.HasLoaded)
+            {
+                _cronLoading.BeginRefresh();
+                if (_editingJobId == null)
+                    RebuildJobCards();
+            }
+            else if (_appState.CronList.HasValue)
+            {
+                // First visit but AppState has cached data from gateway — process it
+                _cronLoading.BeginRefresh();
+                UpdateFromGateway(_appState.CronList.Value);
+                if (_appState.CronStatus.HasValue)
+                    ParseCronStatus(_appState.CronStatus.Value);
+            }
+            else
+            {
+                _cronLoading.BeginInitialRefresh();
+            }
             UpdateCronLoadingVisuals();
             _ = client.RequestCronListAsync();
             _ = client.RequestCronStatusAsync();
@@ -823,7 +843,6 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
-            SchedulerToggle.IsOn = enabled;
             SchedulerStatusText.Text = enabled ? "Enabled" : "Disabled";
             SchedulerStatusIndicator.Fill = new SolidColorBrush(enabled ? Colors.LimeGreen : Colors.Gray);
             StorePathText.Text = storePath;

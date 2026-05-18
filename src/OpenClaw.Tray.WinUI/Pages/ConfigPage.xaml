@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:OpenClawTray.Controls">
 
-    <Grid Padding="24,16,24,16" RowSpacing="12">
+    <Grid Padding="24,16,24,16" RowSpacing="12" MaxWidth="900" HorizontalAlignment="Stretch">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>

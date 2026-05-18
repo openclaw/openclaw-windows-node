@@ -3,7 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+    <Grid HorizontalAlignment="Stretch">
+        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
             <!-- Inline back link — only shown when the user arrived via a
                  cross-page link from Connection. Set by InstancesPage.Initialize
@@ -73,5 +74,6 @@
             <StackPanel x:Name="InstancesList" Spacing="8"/>
 
         </StackPanel>
+    </Grid>
     </ScrollViewer>
 </Page>
