@@ -59,7 +59,7 @@ public static class DeepLinkHandler
 
         var path = result.Path?.TrimEnd('/') ?? string.Empty;
 
-        Logger.Info($"Handling deep link: {path}");
+        Logger.Info($"Handling deep link: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
 
         switch (path.ToLowerInvariant())
         {
@@ -239,7 +239,7 @@ public static class DeepLinkHandler
                         try
                         {
                             await actions.SendMessage(agentMessage);
-                            Logger.Info($"Sent message via deep link: {agentMessage}");
+                            Logger.Info("Sent message via deep link");
                         }
                         catch (Exception ex)
                         {

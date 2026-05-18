@@ -22,6 +22,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,8 +33,6 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    private const string PipeName = "OpenClawTray-DeepLink";
-    
     internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
     {
         FetchOnlyLatestRelease = true,
@@ -266,6 +265,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenClawTray");
+    private static readonly string DeepLinkPipeName =
+        DeepLinkSecurityPolicy.BuildCurrentUserScopedPipeName(DataPath);
     // Operator/node identity store (DeviceIdentity). Lives at %APPDATA%\OpenClawTray
     // by convention so it follows the user across machines via roaming profile.
     // OPENCLAW_TRAY_APPDATA_DIR isolates a test/E2E identity store the same way
@@ -796,7 +797,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 ? _startupArgs[1] : null);
         if (startupDeepLink != null)
         {
-            HandleDeepLink(startupDeepLink);
+            await HandleDeepLinkAsync(startupDeepLink);
         }
 
         Logger.Info("Application started (WinUI 3)");
@@ -1247,6 +1248,28 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         };
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
+    }
+
+    private async Task<bool> ConfirmDeepLinkActionAsync(DeepLinkResult result)
+    {
+        var root = _keepAliveWindow?.Content as FrameworkElement;
+        if (root?.XamlRoot == null)
+        {
+            Logger.Warn($"Cannot confirm deep link action without XAML root: {DeepLinkSecurityPolicy.RedactForLog($"openclaw://{result.Path}")}");
+            return false;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Confirm OpenClaw action",
+            Content = $"A deep link wants to {DeepLinkSecurityPolicy.GetActionDisplayName(result)}.",
+            PrimaryButtonText = "Allow",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = root.XamlRoot
+        };
+        var dialogResult = await dialog.ShowAsync();
+        return dialogResult == ContentDialogResult.Primary;
     }
 
     private void AddRecentActivity(
@@ -3278,20 +3301,40 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 try
                 {
-                    using var pipe = new NamedPipeServerStream(PipeName, PipeDirection.In);
+                    using var pipe = new NamedPipeServerStream(
+                        DeepLinkPipeName,
+                        PipeDirection.In,
+                        maxNumberOfServerInstances: 1,
+                        PipeTransmissionMode.Byte,
+                        PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
+                        inBufferSize: DeepLinkSecurityPolicy.MaxIpcMessageBytes,
+                        outBufferSize: 0);
                     await pipe.WaitForConnectionAsync(token);
-                    using var reader = new System.IO.StreamReader(pipe);
-                    var uri = await reader.ReadLineAsync(token);
+                    var uri = await ReadDeepLinkIpcPayloadAsync(pipe, token);
                     if (!string.IsNullOrEmpty(uri))
                     {
-                        Logger.Info($"Received deep link via IPC: {uri}");
-                        OnUiThread(() => HandleDeepLink(uri));
+                        Logger.Info($"Received deep link via IPC: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
+                        OnUiThread(() => _ = HandleDeepLinkAsync(uri));
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     Logger.Info("Deep link server stopping (canceled)");
                     break; // Normal shutdown
+                }
+                catch (InvalidDataException ex)
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        Logger.Warn($"Rejected deep link IPC payload: {ex.Message}");
+                    }
+                }
+                catch (TimeoutException ex)
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        Logger.Warn($"Rejected deep link IPC payload: {ex.Message}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -3303,6 +3346,77 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
             }
         }, token);
+    }
+
+    private static async Task<string?> ReadDeepLinkIpcPayloadAsync(Stream stream, CancellationToken appToken)
+    {
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(appToken);
+        readCts.CancelAfter(DeepLinkSecurityPolicy.IpcReadTimeout);
+
+        var scratch = new byte[1024];
+        var payload = new byte[DeepLinkSecurityPolicy.MaxIpcMessageBytes + 1];
+        var totalBytes = 0;
+
+        try
+        {
+            while (true)
+            {
+                var remaining = payload.Length - totalBytes;
+                if (remaining <= 0)
+                    throw new InvalidDataException("payload exceeds maximum size");
+
+                var read = await stream.ReadAsync(
+                    scratch.AsMemory(0, Math.Min(scratch.Length, remaining)),
+                    readCts.Token);
+                if (read == 0)
+                    break;
+
+                scratch.AsSpan(0, read).CopyTo(payload.AsSpan(totalBytes));
+                totalBytes += read;
+                if (totalBytes > DeepLinkSecurityPolicy.MaxIpcMessageBytes)
+                    throw new InvalidDataException("payload exceeds maximum size");
+            }
+        }
+        catch (OperationCanceledException) when (!appToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("timed out while reading payload");
+        }
+
+        if (totalBytes == 0)
+            return null;
+
+        try
+        {
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                .GetString(payload, 0, totalBytes)
+                .TrimEnd('\r', '\n');
+        }
+        catch (DecoderFallbackException ex)
+        {
+            throw new InvalidDataException("payload is not valid UTF-8", ex);
+        }
+    }
+
+    private async Task HandleDeepLinkAsync(string uri)
+    {
+        var result = DeepLinkParser.ParseDeepLink(uri);
+        if (result == null)
+        {
+            Logger.Warn($"Rejected invalid deep link: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
+            return;
+        }
+
+        if (DeepLinkSecurityPolicy.RequiresConfirmation(result))
+        {
+            var confirmed = await ConfirmDeepLinkActionAsync(result);
+            if (!confirmed)
+            {
+                Logger.Warn($"Rejected unconfirmed deep link action: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
+                return;
+            }
+        }
+
+        HandleDeepLink(uri);
     }
 
     private void HandleDeepLink(string uri)
@@ -3363,11 +3477,29 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         try
         {
-            using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+            if (!DeepLinkSecurityPolicy.IsIpcPayloadWithinLimit(uri))
+            {
+                Logger.Warn($"Rejected oversized deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
+                return;
+            }
+
+            if (DeepLinkParser.ParseDeepLink(uri) == null)
+            {
+                Logger.Warn($"Rejected invalid deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
+                return;
+            }
+
+            var payload = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                .GetBytes(uri);
+            using var pipe = new NamedPipeClientStream(
+                ".",
+                DeepLinkPipeName,
+                PipeDirection.Out,
+                PipeOptions.CurrentUserOnly);
             pipe.Connect(1000);
-            using var writer = new System.IO.StreamWriter(pipe);
-            writer.WriteLine(uri);
-            writer.Flush();
+            pipe.Write(payload, 0, payload.Length);
+            pipe.Flush();
+            pipe.WaitForPipeDrain();
         }
         catch (Exception ex)
         {
