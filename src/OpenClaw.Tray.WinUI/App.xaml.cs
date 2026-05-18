@@ -767,6 +767,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Initialize connections — always create operator client for UI data,
         // additionally create node service for gateway node mode or local MCP.
+        // Before any connection attempt, re-arm the WSL keepalive so the local
+        // gateway VM stays up across tray restarts and across the 20s WSL
+        // vmIdleTimeout window observed on some hosts. The keepalive runs detached
+        // from the tray's lifetime — see WslDistroKeepAlive in LocalGatewaySetup.cs.
+        await TryEnsureLocalGatewayKeepAliveAsync();
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -1958,6 +1963,98 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         if (_suppressNodeDuringSetup) return false;
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
+    }
+
+    /// <summary>
+    /// Re-arms the WSL keepalive process for the local OpenClawGateway distro on every
+    /// tray launch when the active gateway is local. The keepalive runs detached from
+    /// the tray (see <see cref="WslDistroKeepAlive"/>) so the WSL2 VM stays up even after
+    /// the tray exits — addressing the vmIdleTimeout window where Windows tears down the
+    /// distro (and therefore systemd + the gateway service) ~20s after the last
+    /// interactive wsl.exe session ends.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort: this method swallows every failure. The tray must always reach its
+    /// chrome initialization regardless of WSL state.
+    /// </remarks>
+    private async Task TryEnsureLocalGatewayKeepAliveAsync()
+    {
+        try
+        {
+            if (_settings is null) return;
+
+            var gatewayUrl = _settings.GetEffectiveGatewayUrl();
+            var distroName = await ResolveLocalGatewayDistroNameAsync();
+
+            if (string.IsNullOrWhiteSpace(gatewayUrl) || !LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl))
+            {
+                // User is no longer using the local gateway (mode switch since the last
+                // launch). Tear down any keepalive marker that a prior session left
+                // behind so the WSL VM is allowed to idle out; we never reach
+                // EnsureStarted in this branch.
+                if (!string.IsNullOrWhiteSpace(distroName))
+                    WslDistroKeepAlive.Stop(distroName, new AppLogger());
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(distroName)) return;
+
+            // Bounded probe: never let a hanging `wsl --list` block tray startup. If WSL
+            // is broken / mid-update, log + skip — the next launch will retry.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var runner = new WslExeCommandRunner(new AppLogger(), defaultTimeout: TimeSpan.FromSeconds(4));
+            try
+            {
+                var distros = await runner.ListDistrosAsync(cts.Token);
+                if (!distros.Any(d => d.Name.Equals(distroName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Logger.Warn($"[WslKeepAlive] Configured local-gateway distro '{distroName}' not present; skipping keepalive.");
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Warn("[WslKeepAlive] wsl --list timed out; skipping keepalive (will retry next launch).");
+                return;
+            }
+
+            WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger());
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Startup keepalive failed (non-fatal): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Resolves the WSL distro name to keep alive. Prefers the value persisted by
+    /// onboarding in <c>setup-state.json</c> so the keepalive always targets the distro
+    /// the user actually installed. In DEBUG / test builds, an
+    /// <c>OPENCLAW_WSL_DISTRO_NAME</c> environment override is honored to match
+    /// <see cref="LocalGatewaySetupRuntimeConfiguration.FromEnvironment"/>. Falls back
+    /// to the upstream default <c>OpenClawGateway</c>.
+    /// </summary>
+    private async Task<string?> ResolveLocalGatewayDistroNameAsync()
+    {
+        try
+        {
+            var store = new LocalGatewaySetupStateStore();
+            var state = await store.LoadAsync();
+            if (state is not null && !string.IsNullOrWhiteSpace(state.DistroName))
+                return state.DistroName;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Failed to read setup-state.json: {ex.Message}");
+        }
+
+#if DEBUG || OPENCLAW_TRAY_TESTS
+        var envOverride = Environment.GetEnvironmentVariable(LocalGatewaySetupRuntimeConfiguration.DistroNameVariable);
+        if (!string.IsNullOrWhiteSpace(envOverride))
+            return envOverride;
+#endif
+
+        return "OpenClawGateway";
     }
 
     // The pre-unification ShouldInitializeNodeService(GatewayRecord, string) overload
