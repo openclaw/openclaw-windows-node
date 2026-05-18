@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1738,24 +1739,26 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
 
     public KeepAliveProcessIdentity Spawn(string distroName)
     {
-        // Spawn detached: no stdio redirect so the child has independent stdio handles,
-        // and we never register a ProcessExit handler — the keepalive must outlive the tray.
-        var process = Process.Start(new ProcessStartInfo
+        // The keepalive must outlive the tray. Packaged (MSIX/Centennial) WinUI apps
+        // run inside a job object that by default kills child processes when the
+        // parent exits — Process.Start alone would not survive an MSIX tray exit. Try
+        // CreateProcess with CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS first; if
+        // the host job forbids breakaway (ERROR_ACCESS_DENIED), fall back to a plain
+        // Process.Start so the keepalive still arms while the tray runs.
+        var commandLine = BuildCommandLine(distroName);
+        var pid = Win32DetachedSpawn.TryStart(commandLine, breakaway: true, out var firstError);
+        if (pid is null && firstError == Win32DetachedSpawn.ErrorAccessDenied)
         {
-            FileName = "wsl.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false,
-            ArgumentList = { "-d", distroName, "-u", "openclaw", "--", "sleep", "2147483647" }
-        }) ?? throw new InvalidOperationException("Process.Start returned null for wsl.exe keepalive.");
+            pid = Win32DetachedSpawn.TryStart(commandLine, breakaway: false, out _);
+        }
 
-        _lastSpawnedPid = process.Id;
-        var name = SafeProcessName(process);
-        var startUtc = SafeStartTimeUtc(process);
-        // Release the handle so the OS doesn't keep a reference tied to this AppDomain.
-        process.Dispose();
-        return new KeepAliveProcessIdentity(name, startUtc);
+        if (pid is null)
+        {
+            return SpawnViaProcessFallback(distroName);
+        }
+
+        _lastSpawnedPid = pid.Value;
+        return CaptureIdentity(pid.Value);
     }
 
     public bool TryGetProcessIdentity(int pid, out KeepAliveProcessIdentity identity)
@@ -1765,7 +1768,7 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
         try
         {
             using var process = Process.GetProcessById(pid);
-            identity = new KeepAliveProcessIdentity(SafeProcessName(process), process.StartTime.ToUniversalTime());
+            identity = new KeepAliveProcessIdentity(SafeProcessName(process), SafeStartTimeUtc(process));
             return true;
         }
         catch (ArgumentException) { return false; }     // No such PID
@@ -1788,6 +1791,57 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
 
     public int GetCurrentPidForLastSpawn() => _lastSpawnedPid;
 
+    private static string BuildCommandLine(string distroName)
+    {
+        // wsl.exe lives in System32 (on PATH for both packaged and unpackaged contexts).
+        // Distro names are constrained (alphanumerics + a few separators), but quote
+        // defensively so a future configurable name with whitespace cannot break the
+        // CreateProcess command-line parser. Same for the literal token args.
+        return $"wsl.exe -d \"{distroName}\" -u openclaw -- sleep 2147483647";
+    }
+
+    private KeepAliveProcessIdentity SpawnViaProcessFallback(string distroName)
+    {
+        // Used only when CreateProcess fails outright (not for the breakaway-denied
+        // case, which is handled above). Process.Start is more permissive about path
+        // resolution and error reporting.
+        var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
+            ArgumentList = { "-d", distroName, "-u", "openclaw", "--", "sleep", "2147483647" }
+        }) ?? throw new InvalidOperationException("Process.Start returned null for wsl.exe keepalive.");
+
+        _lastSpawnedPid = process.Id;
+        var name = SafeProcessName(process);
+        var startUtc = SafeStartTimeUtc(process);
+        process.Dispose();
+        return new KeepAliveProcessIdentity(name, startUtc);
+    }
+
+    private static KeepAliveProcessIdentity CaptureIdentity(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return new KeepAliveProcessIdentity(SafeProcessName(process), SafeStartTimeUtc(process));
+        }
+        catch (ArgumentException)
+        {
+            // Process exited between CreateProcess and GetProcessById. Fall back to a
+            // best-effort identity so the marker is still written; next adoption will
+            // fail naturally and we'll respawn.
+            return new KeepAliveProcessIdentity(string.Empty, DateTime.UtcNow);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return new KeepAliveProcessIdentity(string.Empty, DateTime.UtcNow);
+        }
+    }
+
     private static string SafeProcessName(Process process)
     {
         try { return process.ProcessName; }
@@ -1807,6 +1861,101 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
         try { return process.StartTime.ToUniversalTime(); }
         catch (InvalidOperationException) { return DateTime.UtcNow; }
         catch (System.ComponentModel.Win32Exception) { return DateTime.UtcNow; }
+    }
+}
+
+/// <summary>
+/// Minimal P/Invoke wrapper around <c>CreateProcessW</c> so the keepalive can request
+/// <see cref="CREATE_BREAKAWAY_FROM_JOB"/> — required to survive MSIX/packaged tray
+/// exit, where the host job otherwise kills child processes.
+/// </summary>
+internal static class Win32DetachedSpawn
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public uint cb;
+        public string? lpReserved;
+        public string? lpDesktop;
+        public string? lpTitle;
+        public uint dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+        public ushort wShowWindow, cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput, hStdOutput, hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessW(
+        string? lpApplicationName,
+        StringBuilder lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    private const uint CREATE_BREAKAWAY_FROM_JOB = 0x01000000;
+    private const uint DETACHED_PROCESS = 0x00000008;
+    private const uint CREATE_NO_WINDOW = 0x08000000;
+    public const int ErrorAccessDenied = 5;
+
+    /// <summary>
+    /// Spawns <paramref name="commandLine"/> with <c>DETACHED_PROCESS | CREATE_NO_WINDOW</c>
+    /// (optionally adding <c>CREATE_BREAKAWAY_FROM_JOB</c>). Returns the new PID on
+    /// success, or <see langword="null"/> on failure with the Win32 error in
+    /// <paramref name="win32Error"/>.
+    /// </summary>
+    public static int? TryStart(string commandLine, bool breakaway, out int win32Error)
+    {
+        win32Error = 0;
+        var si = new STARTUPINFO { cb = (uint)Marshal.SizeOf<STARTUPINFO>() };
+        var pi = default(PROCESS_INFORMATION);
+
+        // CreateProcess may mutate the command-line buffer in place.
+        var commandLineBuffer = new StringBuilder(commandLine);
+
+        var flags = DETACHED_PROCESS | CREATE_NO_WINDOW;
+        if (breakaway) flags |= CREATE_BREAKAWAY_FROM_JOB;
+
+        var ok = CreateProcessW(
+            lpApplicationName: null,
+            lpCommandLine: commandLineBuffer,
+            lpProcessAttributes: IntPtr.Zero,
+            lpThreadAttributes: IntPtr.Zero,
+            bInheritHandles: false,
+            dwCreationFlags: flags,
+            lpEnvironment: IntPtr.Zero,
+            lpCurrentDirectory: null,
+            lpStartupInfo: ref si,
+            lpProcessInformation: out pi);
+
+        if (!ok)
+        {
+            win32Error = Marshal.GetLastWin32Error();
+            return null;
+        }
+
+        // We don't need the process/thread handles; close them so we don't leak.
+        if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+        if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+        return (int)pi.dwProcessId;
     }
 }
 
@@ -1872,7 +2021,21 @@ public static class WslDistroKeepAlive
             {
                 var spawnIdentity = host.Spawn(distroName);
                 var pid = host.GetCurrentPidForLastSpawn();
-                WriteMarker(markerPath, new KeepAliveMarker(distroName, pid, spawnIdentity.StartTimeUtc, spawnIdentity.Name));
+                try
+                {
+                    WriteMarker(markerPath, new KeepAliveMarker(distroName, pid, spawnIdentity.StartTimeUtc, spawnIdentity.Name));
+                }
+                catch (Exception writeEx)
+                {
+                    // Transactional invariant: a spawned keepalive without a marker is
+                    // an untracked orphan. Future tray launches cannot adopt it (no
+                    // marker), Stop/StopAll cannot reach it, and it will outlive
+                    // distro repair/remove. Kill the just-spawned PID before
+                    // surfacing the failure.
+                    logger?.Warn($"Marker write failed after spawn for {distroName}; killing orphan PID {pid}: {writeEx.Message}");
+                    try { host.Kill(pid); } catch { /* best-effort cleanup */ }
+                    throw;
+                }
                 logger?.Info($"Started WSL keepalive process for {distroName} (PID {pid}).");
             }
             catch (Exception ex)

@@ -4,6 +4,7 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.Tray.Tests;
 
+[Collection("WslDistroKeepAliveSerial")]
 public class LocalGatewaySetupTests
 {
     [Fact]
@@ -701,6 +702,9 @@ public class LocalGatewaySetupTests
     [Fact]
     public async Task LifecycleManager_RepairTerminatesOnlyGatewayDistroAndRestartsGatewayService()
     {
+        // Isolate WslDistroKeepAlive — RepairAsync now calls Stop/EnsureStarted, which
+        // would otherwise try to spawn a real wsl.exe process and write to LocalAppData.
+        using var _ = new WslDistroKeepAliveTests.KeepAliveIsolation();
         var wsl = new FakeWslCommandRunner { Distros = [new WslDistroInfo("OpenClawGateway", "Running", 2)] };
         var manager = new LocalGatewayLifecycleManager(new LocalGatewaySetupOptions(), wsl, new SuccessfulHealthProbe());
 
@@ -717,6 +721,9 @@ public class LocalGatewaySetupTests
     [Fact]
     public async Task LifecycleManager_RemoveUnregistersDistroAndClearsLocalCredentials()
     {
+        // Isolate WslDistroKeepAlive — RemoveAsync now calls Stop, which would
+        // otherwise touch the user's real LocalAppData marker directory.
+        using var _ = new WslDistroKeepAliveTests.KeepAliveIsolation();
         var settings = new FakeSetupSettings { Token = "token", BootstrapToken = "bootstrap", EnableNodeMode = true };
         var wsl = new FakeWslCommandRunner { Distros = [new WslDistroInfo("OpenClawGateway", "Stopped", 2)] };
         var manager = new LocalGatewayLifecycleManager(new LocalGatewaySetupOptions(), wsl, new SuccessfulHealthProbe(), settings);

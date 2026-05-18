@@ -5,10 +5,21 @@ using OpenClawTray.Services.LocalGatewaySetup;
 namespace OpenClaw.Tray.Tests;
 
 /// <summary>
+/// xunit collection marker that serializes any test class touching
+/// <see cref="OpenClawTray.Services.LocalGatewaySetup.WslDistroKeepAlive"/>
+/// global state (`__TestHost`, `__TestMarkerDirectory`). Different test classes
+/// run in parallel by default; this collection forces them to share a single
+/// runner so the static seams cannot interleave.
+/// </summary>
+[CollectionDefinition("WslDistroKeepAliveSerial", DisableParallelization = true)]
+public sealed class WslDistroKeepAliveSerialCollection { }
+
+/// <summary>
 /// Behavioral tests for <see cref="WslDistroKeepAlive"/>. The class is global static
 /// state, so each test resets the test seams in a try/finally to keep tests
 /// independent.
 /// </summary>
+[Collection("WslDistroKeepAliveSerial")]
 public class WslDistroKeepAliveTests
 {
     [Fact]
@@ -194,6 +205,36 @@ public class WslDistroKeepAliveTests
     }
 
     [Fact]
+    public void EnsureStarted_MarkerWriteFails_KillsOrphanSpawn()
+    {
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var host = new FakeKeepAliveHost();
+
+        // Point the marker dir at a path that cannot be written: a file existing where
+        // the directory is expected. Directory.CreateDirectory will throw IOException
+        // because the path is occupied by a regular file.
+        var blockedDir = Path.Combine(temp.Path, "blocked");
+        File.WriteAllText(blockedDir, "occupied");
+
+        try
+        {
+            WslDistroKeepAlive.__TestMarkerDirectory = blockedDir;
+            WslDistroKeepAlive.__TestHost = host;
+
+            WslDistroKeepAlive.EnsureStarted("OpenClawGateway");
+
+            // Spawn happened, but marker write failed → orphan must be killed.
+            Assert.Single(host.SpawnCalls);
+            Assert.Single(host.KillCalls);
+            Assert.Equal(host.LastSpawnedPid, host.KillCalls[0]);
+        }
+        finally
+        {
+            WslDistroKeepAlive.__ResetForTests();
+        }
+    }
+
+    [Fact]
     public void StopAll_StopsEveryRecordedDistro()
     {
         using var temp = new LocalGatewaySetupTests.TempDirectory();
@@ -230,12 +271,40 @@ public class WslDistroKeepAliveTests
     }
 
     /// <summary>
+    /// Test-only IDisposable that swaps <see cref="WslDistroKeepAlive"/> onto a
+    /// no-op in-memory host and a throwaway marker directory. Other test classes
+    /// (notably <c>LocalGatewaySetupTests</c>) need this when they exercise code
+    /// paths — like <c>LocalGatewayLifecycleManager.RepairAsync</c> — that
+    /// internally call <see cref="WslDistroKeepAlive.EnsureStarted"/> or
+    /// <see cref="WslDistroKeepAlive.Stop"/>. Without this, the lifecycle tests
+    /// would spawn real <c>wsl.exe</c> processes on the dev/CI machine.
+    /// </summary>
+    internal sealed class KeepAliveIsolation : IDisposable
+    {
+        private readonly string _tempDir;
+
+        public KeepAliveIsolation()
+        {
+            _tempDir = Path.Combine(Path.GetTempPath(), "openclaw-keepalive-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_tempDir);
+            WslDistroKeepAlive.__TestMarkerDirectory = _tempDir;
+            WslDistroKeepAlive.__TestHost = new FakeKeepAliveHost();
+        }
+
+        public void Dispose()
+        {
+            WslDistroKeepAlive.__ResetForTests();
+            try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    /// <summary>
     /// In-memory keepalive host. Simulates Windows process lifecycle without forking
     /// real processes: each <see cref="Spawn"/> generates a synthetic PID + start time,
     /// and <see cref="TryGetProcessIdentity"/> returns identity records that callers
     /// can override per-PID to simulate PID recycling.
     /// </summary>
-    private sealed class FakeKeepAliveHost : IWslKeepAliveProcessHost
+    internal sealed class FakeKeepAliveHost : IWslKeepAliveProcessHost
     {
         private int _nextPid = 1000;
         private readonly Dictionary<int, KeepAliveProcessIdentity> _liveProcesses = new();

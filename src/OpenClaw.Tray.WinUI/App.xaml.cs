@@ -767,11 +767,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Initialize connections — always create operator client for UI data,
         // additionally create node service for gateway node mode or local MCP.
-        // Before any connection attempt, re-arm the WSL keepalive so the local
-        // gateway VM stays up across tray restarts and across the 20s WSL
-        // vmIdleTimeout window observed on some hosts. The keepalive runs detached
-        // from the tray's lifetime — see WslDistroKeepAlive in LocalGatewaySetup.cs.
-        await TryEnsureLocalGatewayKeepAliveAsync();
+        // Re-arm the WSL keepalive so the local gateway VM stays up across tray
+        // restarts and across the 20s WSL vmIdleTimeout window observed on some
+        // hosts. Fire-and-forget on a background task so a slow LxssManager at
+        // cold logon never delays InitializeGatewayClient. The keepalive itself
+        // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
+        _ = Task.Run(TryEnsureLocalGatewayKeepAliveAsync);
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -1974,8 +1975,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// interactive wsl.exe session ends.
     /// </summary>
     /// <remarks>
-    /// Best-effort: this method swallows every failure. The tray must always reach its
-    /// chrome initialization regardless of WSL state.
+    /// Best-effort, fire-and-forget. Cold Windows logon is exactly when LxssManager is
+    /// slow to come up, so a hanging <c>wsl --list</c> probe must never block tray
+    /// startup. We retry with bounded backoff; if every probe times out, we still try
+    /// the spawn and let <c>wsl.exe</c> itself decide whether the distro exists —
+    /// missing a keepalive arm at cold logon is the exact bug this method exists to
+    /// prevent (see PR review feedback).
     /// </remarks>
     private async Task TryEnsureLocalGatewayKeepAliveAsync()
     {
@@ -1999,25 +2004,44 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             if (string.IsNullOrWhiteSpace(distroName)) return;
 
-            // Bounded probe: never let a hanging `wsl --list` block tray startup. If WSL
-            // is broken / mid-update, log + skip — the next launch will retry.
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            // Backoff schedule for the cold-logon case. Each entry is the delay BEFORE
+            // the next attempt. After the last entry we fall through to a defensive
+            // spawn regardless of probe outcome — wsl.exe itself will exit quickly if
+            // the distro genuinely does not exist, which is preferable to silently
+            // never arming the keepalive.
+            TimeSpan[] retryDelays = [TimeSpan.Zero, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60)];
             var runner = new WslExeCommandRunner(new AppLogger(), defaultTimeout: TimeSpan.FromSeconds(4));
-            try
+
+            for (var attempt = 0; attempt < retryDelays.Length; attempt++)
             {
-                var distros = await runner.ListDistrosAsync(cts.Token);
-                if (!distros.Any(d => d.Name.Equals(distroName, StringComparison.OrdinalIgnoreCase)))
+                if (retryDelays[attempt] > TimeSpan.Zero)
+                    await Task.Delay(retryDelays[attempt]);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try
                 {
-                    Logger.Warn($"[WslKeepAlive] Configured local-gateway distro '{distroName}' not present; skipping keepalive.");
+                    var distros = await runner.ListDistrosAsync(cts.Token);
+                    if (!distros.Any(d => d.Name.Equals(distroName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Logger.Warn($"[WslKeepAlive] Configured local-gateway distro '{distroName}' not present; skipping keepalive.");
+                        return;
+                    }
+
+                    WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger());
                     return;
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                Logger.Warn("[WslKeepAlive] wsl --list timed out; skipping keepalive (will retry next launch).");
-                return;
+                catch (OperationCanceledException)
+                {
+                    Logger.Warn($"[WslKeepAlive] wsl --list probe timed out (attempt {attempt + 1}/{retryDelays.Length}); will retry.");
+                }
             }
 
+            // All probes timed out. WSL/LxssManager may be wedged, mid-update, or just
+            // very slow on this cold-logon. Attempt the spawn anyway — the wsl.exe
+            // child exits quickly if the distro truly does not exist, and adoption on
+            // the next launch will either recover (if the distro is fine) or skip
+            // (if it really is gone).
+            Logger.Warn("[WslKeepAlive] wsl --list never returned; spawning keepalive defensively.");
             WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger());
         }
         catch (Exception ex)
