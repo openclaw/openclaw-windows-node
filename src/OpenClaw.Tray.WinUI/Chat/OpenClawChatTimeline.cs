@@ -703,7 +703,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         Element RenderUserEntry(ChatTimelineItem entry, bool startsBurst, bool endsBurst)
         {
             // Detect attachment indicators injected by the send path.
-            // Format: "🖼️ filename.png" or "📎 file.md" on its own line.
+            // Format: "\u200B🖼️ filename.png" or "\u200B📎 file.md" on its own line.
+            // The zero-width space prefix prevents false positives from normal text.
             // When present, split into message text + attachment cards.
             var text = entry.Text ?? "";
             var lines = text.Split('\n');
@@ -713,9 +714,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             foreach (var line in lines)
             {
                 var trimLine = line.Trim();
-                if (trimLine.StartsWith("🖼️ "))
+                if (trimLine.StartsWith("\u200B🖼️ "))
+                    attachmentNames.Add(("🖼️", trimLine.Substring(4).Trim(), true));
+                else if (trimLine.StartsWith("\u200B📎 "))
+                    attachmentNames.Add(("📎", trimLine.Substring(3).Trim(), false));
+                // Also match legacy format without zero-width space for backward compat
+                else if (trimLine.StartsWith("🖼️ ") && trimLine.Length < 260)
                     attachmentNames.Add(("🖼️", trimLine.Substring(3).Trim(), true));
-                else if (trimLine.StartsWith("📎 "))
+                else if (trimLine.StartsWith("📎 ") && trimLine.Length < 260)
                     attachmentNames.Add(("📎", trimLine.Substring(2).Trim(), false));
                 else
                     messageLines.Add(line);

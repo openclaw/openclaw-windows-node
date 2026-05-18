@@ -691,12 +691,34 @@ public sealed partial class ChatPage : Page
             }
 
             Logger.Info($"[ChatPage] File selected: {path}");
-            var attachment = ChatAttachment.FromFile(path);
+            var attachment = await ChatAttachment.FromFileAsync(path);
             _functionalHost?.AttachFile(attachment);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[ChatPage] Attachment rejected: {ex.Message}");
+            await ShowAttachmentErrorAsync(ex.Message);
         }
         catch (Exception ex)
         {
             Logger.Error($"[ChatPage] File picker error: {ex}");
         }
+    }
+
+    private async Task ShowAttachmentErrorAsync(string message)
+    {
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Cannot attach file",
+                Content = message,
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+        catch { /* dialog display failed, already logged */ }
     }
 }

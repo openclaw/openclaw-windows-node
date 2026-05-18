@@ -1,13 +1,16 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Helpers;
 
 /// <summary>
-/// Opens the native Win32 IFileOpenDialog. UWP FileOpenPicker throws
-/// COMException in unpackaged / self-hosted WinUI 3 apps, so we use
-/// the COM dialog directly.
+/// Opens the native Win32 IFileOpenDialog on a dedicated STA thread.
+/// UWP FileOpenPicker throws COMException in unpackaged / self-hosted WinUI 3 apps,
+/// so we use the COM dialog directly. IFileOpenDialog is an STA COM object and must
+/// run on an STA thread — using a dedicated STA thread avoids hangs/failures from
+/// shell extensions when called from MTA thread-pool threads.
 /// </summary>
 internal static class Win32FilePickerHelper
 {
@@ -17,17 +20,33 @@ internal static class Win32FilePickerHelper
     /// </summary>
     public static Task<string?> PickSingleFileAsync(IntPtr ownerHwnd, string title = "Open")
     {
-        return Task.Run(() =>
+        var tcs = new TaskCompletionSource<string?>();
+        var staThread = new Thread(() =>
         {
-            var dialog = (IFileOpenDialog)new FileOpenDialogClass();
-            dialog.SetOptions(FOS.FOS_FORCEFILESYSTEM | FOS.FOS_FILEMUSTEXIST);
-            dialog.SetTitle(title);
-            var hr = dialog.Show(ownerHwnd);
-            if (hr < 0) return null; // cancelled or error
-            dialog.GetResult(out var item);
-            item.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var filePath);
-            return filePath;
+            try
+            {
+                var dialog = (IFileOpenDialog)new FileOpenDialogClass();
+                dialog.SetOptions(FOS.FOS_FORCEFILESYSTEM | FOS.FOS_FILEMUSTEXIST);
+                dialog.SetTitle(title);
+                var hr = dialog.Show(ownerHwnd);
+                if (hr < 0)
+                {
+                    tcs.SetResult(null); // cancelled or error
+                    return;
+                }
+                dialog.GetResult(out var item);
+                item.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var filePath);
+                tcs.SetResult(filePath);
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
         });
+        staThread.SetApartmentState(ApartmentState.STA);
+        staThread.IsBackground = true;
+        staThread.Start();
+        return tcs.Task;
     }
 
     // ── COM interop ──────────────────────────────────────────────────

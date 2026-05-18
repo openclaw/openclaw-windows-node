@@ -1,6 +1,7 @@
 using OpenClaw.Chat;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
@@ -517,8 +518,14 @@ public sealed partial class ChatWindow : WindowEx
             if (path is null) return;
             Logger.Info($"[ChatWindow] File selected: {path}");
 
-            var attachment = ChatAttachment.FromFile(path);
+            Logger.Info($"[ChatWindow] File selected: {path}");
+            var attachment = await ChatAttachment.FromFileAsync(path);
             _functionalHost?.AttachFile(attachment);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[ChatWindow] Attachment rejected: {ex.Message}");
+            await ShowAttachmentErrorAsync(ex.Message);
         }
         catch (Exception ex)
         {
@@ -528,6 +535,23 @@ public sealed partial class ChatWindow : WindowEx
         {
             ChatWindowPinState.IsPinned = wasPinned;
         }
+    }
+
+    private async Task ShowAttachmentErrorAsync(string message)
+    {
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Cannot attach file",
+                Content = message,
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Content?.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+        catch { /* dialog display failed, already logged */ }
     }
 
     private static string BuildChatUrl(string gatewayUrl, string token)

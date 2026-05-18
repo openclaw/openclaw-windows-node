@@ -504,8 +504,8 @@ public sealed class OpenClawChatRoot : Component
         IReadOnlyList<ChatAttachment>? attachments = attachment is not null
             ? new[] { attachment }
             : null;
-        if (attachments is not null && _provider is OpenClawChatDataProvider concreteProvider)
-            RunFireAndForget(ct => concreteProvider.SendMessageAsync(threadId, message, ct, attachments));
+        if (attachments is not null)
+            RunFireAndForget(ct => _provider.SendMessageAsync(threadId, message, ct, attachments));
         else
             RunFireAndForget(ct => _provider.SendMessageAsync(threadId, message, ct));
     }

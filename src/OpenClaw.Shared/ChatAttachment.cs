@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
@@ -10,6 +11,9 @@ namespace OpenClaw.Shared;
 /// </summary>
 public sealed class ChatAttachment
 {
+    /// <summary>Maximum attachment size in bytes (10 MB).</summary>
+    public const long MaxSizeBytes = 10 * 1024 * 1024;
+
     [JsonPropertyName("type")]
     public string Type { get; init; } = "file";
 
@@ -27,14 +31,46 @@ public sealed class ChatAttachment
     public long SizeBytes { get; init; }
 
     /// <summary>
-    /// Creates a <see cref="ChatAttachment"/> by reading a file from disk,
+    /// Creates a <see cref="ChatAttachment"/> by reading a file from disk asynchronously,
     /// base64-encoding its contents, and inferring the MIME type from the extension.
+    /// Throws <see cref="InvalidOperationException"/> if the file exceeds <see cref="MaxSizeBytes"/>.
+    /// </summary>
+    public static async Task<ChatAttachment> FromFileAsync(string filePath)
+    {
+        var info = new FileInfo(filePath);
+        if (!info.Exists)
+            throw new FileNotFoundException("Attachment file not found", filePath);
+
+        if (info.Length > MaxSizeBytes)
+            throw new InvalidOperationException(
+                $"File is too large ({FormatBytes(info.Length)}). Maximum attachment size is {FormatBytes(MaxSizeBytes)}.");
+
+        var bytes = await File.ReadAllBytesAsync(filePath);
+        var mime = InferMimeType(info.Extension);
+
+        return new ChatAttachment
+        {
+            Type = mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? "image" : "file",
+            MimeType = mime,
+            FileName = info.Name,
+            Content = Convert.ToBase64String(bytes),
+            SizeBytes = info.Length
+        };
+    }
+
+    /// <summary>
+    /// Synchronous overload kept for backward compatibility.
+    /// Throws <see cref="InvalidOperationException"/> if the file exceeds <see cref="MaxSizeBytes"/>.
     /// </summary>
     public static ChatAttachment FromFile(string filePath)
     {
         var info = new FileInfo(filePath);
         if (!info.Exists)
             throw new FileNotFoundException("Attachment file not found", filePath);
+
+        if (info.Length > MaxSizeBytes)
+            throw new InvalidOperationException(
+                $"File is too large ({FormatBytes(info.Length)}). Maximum attachment size is {FormatBytes(MaxSizeBytes)}.");
 
         var bytes = File.ReadAllBytes(filePath);
         var mime = InferMimeType(info.Extension);
@@ -82,11 +118,16 @@ public sealed class ChatAttachment
     /// <summary>Human-readable size string for UI display.</summary>
     public string FormatSize()
     {
-        return SizeBytes switch
+        return FormatBytes(SizeBytes);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        return bytes switch
         {
-            < 1024 => $"{SizeBytes} B",
-            < 1024 * 1024 => $"{SizeBytes / 1024.0:F1} KB",
-            _ => $"{SizeBytes / (1024.0 * 1024.0):F1} MB"
+            < 1024 => $"{bytes} B",
+            < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+            _ => $"{bytes / (1024.0 * 1024.0):F1} MB"
         };
     }
 }

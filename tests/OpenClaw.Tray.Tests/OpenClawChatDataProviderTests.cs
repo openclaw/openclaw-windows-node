@@ -1619,4 +1619,76 @@ public class OpenClawChatDataProviderTests
             Assert.True(bytes <= OpenClawChatDataProvider.MaxEntryTextBytes);
         }
     }
+
+    [Fact]
+    public async Task StopResponseAsync_FailedAbort_ClearsSuppression()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.AbortBehavior = _ => throw new Exception("Network error");
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        // Send a message to get a turn active
+        await provider.SendMessageAsync("main", "Hello");
+        // Simulate lifecycle.start with a runId
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", "main", "run-1"));
+
+        // Now stop — the abort will fail
+        await provider.StopResponseAsync("main");
+
+        // The failed abort should generate an error notification
+        Assert.Contains(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
+
+        // Crucially: sending a new message should work (thread not permanently suppressed)
+        snapshots.Clear();
+        await provider.SendMessageAsync("main", "Try again");
+        Assert.True(snapshots.Count > 0, "Sending after failed abort should succeed");
+        Assert.Contains(bridge.SentMessages, m => m == "Try again");
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ClearsPendingAbortCounts()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        // Send a message
+        await provider.SendMessageAsync("main", "First");
+        // Stop before lifecycle.start (creates a pending abort)
+        await provider.StopResponseAsync("main");
+
+        // Now send another message — this should clear pending aborts
+        await provider.SendMessageAsync("main", "Second");
+
+        // Simulate lifecycle.start arriving for the second message
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", "main", "run-2"));
+
+        // The pending abort should NOT have fired (cleared by second send)
+        Assert.DoesNotContain("run-2", bridge.AbortedRunIds);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithAttachment_SendsThroughInterface()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        var attachment = new ChatAttachment
+        {
+            Type = "file",
+            MimeType = "text/plain",
+            FileName = "test.txt",
+            Content = Convert.ToBase64String(new byte[] { 72, 101, 108, 108, 111 }),
+            SizeBytes = 5
+        };
+
+        await provider.SendMessageAsync("main", "Check this", default, new[] { attachment });
+
+        Assert.Contains(bridge.SentMessages, m => m == "Check this");
+        // The display text in the timeline should include the attachment indicator
+        var timeline = snapshots[^1].Timelines["main"];
+        var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Contains("test.txt", userEntry.Text);
+    }
 }

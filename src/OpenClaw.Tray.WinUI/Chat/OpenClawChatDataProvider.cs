@@ -172,15 +172,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var nonce = Guid.NewGuid().ToString("N");
 
         // Build the display text for the user bubble. When attachments are
-        // present, append a human-readable indicator so the bubble is never
-        // blank even if the typed message was empty.
+        // present, append a structured indicator line so the bubble is never
+        // blank even if the typed message was empty. Uses a unique prefix
+        // ("\u200B📎 " / "\u200B🖼️ ") with a zero-width space to prevent
+        // false positives from normal user text.
         var displayText = trimmed;
         if (hasAttachments)
         {
-            var chips = string.Join(", ", attachments!.Select(a =>
+            var chips = string.Join("\n", attachments!.Select(a =>
                 a.Type == "image"
-                    ? $"🖼️ {a.FileName}"
-                    : $"📎 {a.FileName}"));
+                    ? $"\u200B🖼️ {a.FileName}"
+                    : $"\u200B📎 {a.FileName}"));
             displayText = string.IsNullOrEmpty(trimmed)
                 ? chips
                 : $"{trimmed}\n{chips}";
@@ -197,10 +199,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _sessionIds.TryGetValue(threadId, out sessionId);
 
             // Clear abort suppression — the user is starting a new interaction.
-            // Do NOT clear _pendingAbortCounts here: the user may send multiple
-            // messages rapidly with stops between; the count must accumulate
-            // until lifecycle.start fires and drains all pending aborts.
+            // Also clear pending abort counts: if the user sends a new message,
+            // any queued aborts from before should not fire against the new turn.
             _abortedThreads.Remove(threadId);
+            _pendingAbortCounts.Remove(threadId);
 
             // Capture metadata for the just-added user entry.
             var meta = BuildLiveMetaLocked(threadId);
@@ -263,8 +265,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             catch (Exception ex)
             {
+                // Abort RPC failed — clear suppression so the thread isn't permanently blocked.
+                lock (_gate)
+                {
+                    _abortedThreads.Remove(threadId);
+                    _abortedRunIds.Remove(runId);
+                }
+                Logger.Warn($"[ABORT] chat.abort failed, cleared suppression: {ex.Message}");
                 RaiseNotification(new ChatProviderNotification(
                     ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_AbortFailed"), ex.Message));
+                return;
             }
         }
         else
@@ -1030,6 +1040,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     if (!string.IsNullOrEmpty(evt.RunId))
                         _abortedRunIds.Remove(evt.RunId);
                     _activeRunIds.Remove(threadId);
+
+                    // Clear thread-level abort suppression on terminal lifecycle events.
+                    // The turn is over — any remaining abort suppression is no longer needed.
+                    _abortedThreads.Remove(threadId);
 
                     // Edge case: if we have pending aborts but never saw lifecycle.start
                     // (gateway responded so fast start+end were batched), fire the
