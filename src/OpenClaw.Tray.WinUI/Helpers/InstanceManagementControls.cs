@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
-using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -21,7 +20,7 @@ namespace OpenClawTray.Helpers;
 /// <remarks>
 /// Builders return null when their backing data is empty so callers can
 /// <c>AppendIfNotNull</c> them. The destructive actions (Rename, Forget) need
-/// a <see cref="HubWindow"/> for gateway client access and a
+/// an <see cref="IOperatorGatewayClient"/> for gateway client access and a
 /// <see cref="FrameworkElement"/> whose <see cref="UIElement.XamlRoot"/> anchors
 /// the <see cref="ContentDialog"/>.
 /// </remarks>
@@ -35,7 +34,7 @@ public static class InstanceManagementControls
     /// </summary>
     public static FrameworkElement BuildManagementBody(
         GatewayNodeInfo node,
-        HubWindow hub,
+        IOperatorGatewayClient? gatewayClient,
         FrameworkElement xamlRootSource)
     {
         var stack = new StackPanel { Spacing = 10 };
@@ -51,7 +50,7 @@ public static class InstanceManagementControls
         AppendIfNotNull(stack, BuildCommandsSection(node));
         AppendIfNotNull(stack, BuildPathEnvSection(node));
 
-        stack.Children.Add(BuildActionFooter(node, hub, xamlRootSource));
+        stack.Children.Add(BuildActionFooter(node, gatewayClient, xamlRootSource));
 
         return stack;
     }
@@ -294,10 +293,10 @@ public static class InstanceManagementControls
 
     public static StackPanel BuildActionFooter(
         GatewayNodeInfo node,
-        HubWindow hub,
+        IOperatorGatewayClient? gatewayClient,
         FrameworkElement xamlRootSource)
     {
-        var clientAvailable = hub.GatewayClient != null;
+        var clientAvailable = gatewayClient != null;
 
         var footer = new StackPanel
         {
@@ -328,7 +327,7 @@ public static class InstanceManagementControls
         };
         renameBtn.Click += async (_, _) =>
         {
-            try { await OnRenameClickedAsync(node, hub, xamlRootSource); }
+            try { await OnRenameClickedAsync(node, gatewayClient, xamlRootSource); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Rename click failed: {ex}"); }
         };
         actions.Children.Add(renameBtn);
@@ -345,7 +344,7 @@ public static class InstanceManagementControls
         };
         forgetBtn.Click += async (_, _) =>
         {
-            try { await OnForgetClickedAsync(node, hub, xamlRootSource); }
+            try { await OnForgetClickedAsync(node, gatewayClient, xamlRootSource); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Forget click failed: {ex}"); }
         };
         actions.Children.Add(forgetBtn);
@@ -360,10 +359,10 @@ public static class InstanceManagementControls
 
     private static async Task OnRenameClickedAsync(
         GatewayNodeInfo node,
-        HubWindow hub,
+        IOperatorGatewayClient? gatewayClient,
         FrameworkElement xamlRootSource)
     {
-        if (hub.GatewayClient is not { } client) return;
+        if (gatewayClient is not { } client) return;
         if (_dialogOpen) return;
         _dialogOpen = true;
         try
@@ -463,10 +462,10 @@ public static class InstanceManagementControls
 
     private static async Task OnForgetClickedAsync(
         GatewayNodeInfo node,
-        HubWindow hub,
+        IOperatorGatewayClient? gatewayClient,
         FrameworkElement xamlRootSource)
     {
-        if (hub.GatewayClient is not { } client) return;
+        if (gatewayClient is not { } client) return;
         if (_dialogOpen) return;
         _dialogOpen = true;
         try

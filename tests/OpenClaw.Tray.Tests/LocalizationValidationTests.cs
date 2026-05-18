@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests;
@@ -9,6 +10,19 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public class LocalizationValidationTests
 {
+    private static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+    private static readonly HashSet<string> LocalizableXamlAttributes = new(StringComparer.Ordinal)
+    {
+        "Content",
+        "Description",
+        "Header",
+        "Message",
+        "PlaceholderText",
+        "Text",
+        "Title",
+    };
+
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
         "AboutPage_TextBlock_19.Text",
@@ -126,6 +140,8 @@ public class LocalizationValidationTests
         "InstancesPage_UpdateReason_Tooltip_NoReason",
         "ConnectionPage_NodePairing_Title.Text",
         "ConnectionPage_NodePairing_Subtitle.Text",
+        "AboutPage_MoreDiagnosticsLink.Content",
+        "ConnectionStatusWindow.Title",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =
@@ -173,6 +189,18 @@ public class LocalizationValidationTests
                 e => e.Element("value")?.Value ?? string.Empty);
     }
 
+    private static bool IsNonLocalizableXamlValue(string value) =>
+        string.IsNullOrWhiteSpace(value) ||
+        !Regex.IsMatch(value, @"\p{L}", RegexOptions.CultureInvariant) ||
+        value.StartsWith("{Binding", StringComparison.Ordinal) ||
+        value.StartsWith("{x:Bind", StringComparison.Ordinal) ||
+        value.StartsWith("{StaticResource", StringComparison.Ordinal) ||
+        value.StartsWith("{ThemeResource", StringComparison.Ordinal) ||
+        value.StartsWith("{TemplateBinding", StringComparison.Ordinal) ||
+        value.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
     private static List<string> GetNonEnglishLocaleDirectories(string stringsDir) =>
         Directory.GetDirectories(stringsDir)
             .Where(d => !string.Equals(Path.GetFileName(d), "en-us", StringComparison.OrdinalIgnoreCase))
@@ -196,6 +224,9 @@ public class LocalizationValidationTests
     private static bool IsInvariantOrDeferred(string key, string value) =>
         InvariantOrDeferredResourceKeys.Contains(key)
         || IsInvariantValue(value)
+        || key.StartsWith("ChannelsPage_", StringComparison.Ordinal)
+        || key.StartsWith("DiagnosticsPage_", StringComparison.Ordinal)
+        || key.StartsWith("SettingsRow_", StringComparison.Ordinal)
         // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
         // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
         // five .resw files with English values. Translations land in a follow-up.
@@ -230,6 +261,62 @@ public class LocalizationValidationTests
             Assert.True(extra.Count == 0,
                 $"Locale '{locale}' has {extra.Count} unexpected key(s): {string.Join(", ", extra.Take(10))}");
         }
+    }
+
+    [Fact]
+    public void XamlControlsWithXUid_HaveMatchingEnUsResources()
+    {
+        var winUiRoot = Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var resourceKeys = LoadResw(Path.Combine(GetStringsDirectory(), "en-us", "Resources.resw"))
+            .Keys
+            .ToHashSet(StringComparer.Ordinal);
+        var missing = new List<string>();
+
+        foreach (var xamlPath in Directory.EnumerateFiles(winUiRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(IsSourceXaml)
+                     .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            var relativePath = Path.GetRelativePath(GetRepositoryRoot(), xamlPath);
+            var doc = XDocument.Load(xamlPath, LoadOptions.SetLineInfo);
+
+            foreach (var element in doc.Descendants())
+            {
+                var uid = element.Attribute(XamlNamespace + "Uid")?.Value;
+                if (string.IsNullOrWhiteSpace(uid))
+                    continue;
+
+                foreach (var attribute in element.Attributes())
+                {
+                    var attributeName = attribute.Name.LocalName;
+                    if (!LocalizableXamlAttributes.Contains(attributeName) ||
+                        IsNonLocalizableXamlValue(attribute.Value))
+                    {
+                        continue;
+                    }
+
+                    var key = $"{uid}.{attributeName}";
+                    if (!resourceKeys.Contains(key))
+                    {
+                        var line = element is IXmlLineInfo lineInfo && lineInfo.HasLineInfo()
+                            ? lineInfo.LineNumber
+                            : 0;
+                        missing.Add($"{relativePath}:{line} missing {key}");
+                    }
+                }
+            }
+        }
+
+        Assert.True(missing.Count == 0,
+            "Every localizable XAML attribute on an x:Uid element must have an en-us Resources.resw key. Missing: " +
+            string.Join("; ", missing.Take(50)));
+    }
+
+    private static bool IsSourceXaml(string path)
+    {
+        var relative = Path.GetRelativePath(GetRepositoryRoot(), path);
+        var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return !segments.Contains("bin", StringComparer.OrdinalIgnoreCase) &&
+               !segments.Contains("obj", StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

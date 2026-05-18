@@ -555,6 +555,9 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
             if (urlMatch.Success)
             {
                 var detectedUrl = urlMatch.Value;
+                // Width-matches the card above (both stretch within the
+                // outer VStack's MaxWidth(460)). The browser is never opened
+                // automatically — the user must click this button.
                 urlButton = Button($"🌐 Open in browser: {detectedUrl}", () =>
                 {
                     try
@@ -563,10 +566,7 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
                         _ = global::Windows.System.Launcher.LaunchUriAsync(btnUri);
                     }
                     catch { }
-                }).HAlign(HorizontalAlignment.Left);
-
-                // Auto-open the browser on first render of this step
-                // (UseEffect runs once per step since stepId changes)
+                }).HAlign(HorizontalAlignment.Stretch);
             }
 
             // Device code detection — look for "Code: XXXX-XXXX" or similar.
@@ -600,37 +600,36 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
             }
         }
 
-        // Auto-open browser for auth URLs when a new step arrives
-        UseEffect(() =>
-        {
-            if (!string.IsNullOrEmpty(displayMessage))
-            {
-                var urlMatch = UrlInMessagePattern.Match(displayMessage);
-                if (urlMatch.Success)
-                {
-                    try
-                    {
-                        if (Uri.TryCreate(urlMatch.Value, UriKind.Absolute, out var autoUri) && (autoUri.Scheme == "https" || autoUri.Scheme == "http"))
-                        _ = global::Windows.System.Launcher.LaunchUriAsync(autoUri);
-                    }
-                    catch { }
-                }
-            }
-        }, stepId); // Re-runs when stepId changes (new step)
+        // Browser launch is intentionally NOT automatic. Some wizard steps
+        // (e.g. the security/info page or pairing instructions) send a URL
+        // that is purely informational; auto-opening was disruptive. The
+        // user can click the "Open in browser" button below to launch any
+        // detected URL — including OAuth/device-code URLs.
 
         return VStack(8,
-            TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_Title"))
-                .FontSize(22)
-                .FontWeight(new global::Windows.UI.Text.FontWeight(700))
-                .HAlign(HorizontalAlignment.Center),
+            // Top heading is driven by the wizard's current step title (or
+            // local lifecycle title for loading/error/complete/offline). The
+            // hosting V2 page suppresses its own heading when this wizard
+            // is embedded so we don't show two titles. Capped at 2 lines
+            // with ellipsis so a long server-supplied step title can't push
+            // the device-code block or "Open in browser" button off-screen.
+            TextBlock(string.IsNullOrEmpty(displayTitle)
+                    ? LocalizationHelper.GetString("Onboarding_Wizard_Title")
+                    : displayTitle)
+                .FontSize(28)
+                .SemiBold()
+                .HAlign(HorizontalAlignment.Center)
+                .TextWrapping()
+                .Set(t =>
+                {
+                    t.MaxLines = 2;
+                    t.TextTrimming = Microsoft.UI.Xaml.TextTrimming.CharacterEllipsis;
+                    t.TextAlignment = Microsoft.UI.Xaml.TextAlignment.Center;
+                }),
 
             Border(
                 ScrollView(
                     VStack(10,
-                        TextBlock(displayTitle)
-                            .FontSize(15)
-                            .FontWeight(new global::Windows.UI.Text.FontWeight(700))
-                            .TextWrapping(),
                         TextBlock(displayMessage)
                             .FontSize(13)
                             .TextWrapping(),
@@ -640,6 +639,7 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
             )
             .CornerRadius(8)
             .BackgroundResource("CardBackgroundFillColorDefaultBrush")
+            .HAlign(HorizontalAlignment.Stretch)
             .MaxHeight(350),
 
             // Device code display (large, copyable — for auth flows)

@@ -23,31 +23,31 @@ public sealed class GatewayWelcomePage : Component<OnboardingV2State>
 {
     public override Element Render()
     {
-        var theme = Props.EffectiveTheme;
-
-        // Title is intentionally minimal — the wizard's own header provides
-        // step context. Margin pushes it down so it doesn't crowd the V2
-        // title bar.
-        var heading = TextBlock(V2Strings.Get("V2_Gateway_Title"))
-            .FontSize(28)
-            .SemiBold()
-            .HAlign(HorizontalAlignment.Center)
-            .Set(t => t.Foreground = V2Theme.TextStrong(theme));
-
         var children = new List<Element?>
         {
             new BorderElement(null).Height(24),
-            heading,
-            new BorderElement(null).Height(20),
         };
 
         // Embed the gateway wizard (provider/model RPC picker). The host
-        // populates GatewayWizardChildFactory at mount time. In the
-        // standalone preview (no host) this is null and the page renders
-        // the heading only.
+        // populates GatewayWizardChildFactory at mount time. When it is
+        // present the wizard renders its own dynamic step-driven heading;
+        // we deliberately do NOT add the static "Configuring gateway"
+        // heading here to avoid showing two titles for the same UI.
+        // In the standalone preview (no host) we render only the heading.
         if (Props.GatewayWizardChildFactory is { } childFactory)
         {
             children.Add(childFactory().Margin(0, 0, 0, 0));
+        }
+        else
+        {
+            var theme = Props.EffectiveTheme;
+            var heading = TextBlock(V2Strings.Get("V2_Gateway_Title"))
+                .FontSize(28)
+                .SemiBold()
+                .HAlign(HorizontalAlignment.Center)
+                .Set(t => t.Foreground = V2Theme.TextStrong(theme));
+            children.Add(heading);
+            children.Add(new BorderElement(null).Height(20));
         }
 
         return VStack(0, children.ToArray())

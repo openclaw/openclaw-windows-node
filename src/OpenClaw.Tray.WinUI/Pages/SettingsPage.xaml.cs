@@ -5,7 +5,6 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Services.LocalGatewaySetup;
-using OpenClawTray.Windows;
 using System;
 using System.IO;
 using System.Threading;
@@ -14,7 +13,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SettingsPage : Page
 {
-    private HubWindow? _hub;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private bool _initialized;
     private bool _saving;
     private bool _loading;
@@ -35,36 +34,36 @@ public sealed partial class SettingsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    public void Initialize(HubWindow hub)
+    public void Initialize()
     {
-        _hub = hub;
-        if (!_initialized && hub.Settings != null)
+        var settings = CurrentApp.Settings;
+        if (!_initialized && settings != null)
         {
             _loading = true;
-            LoadSettings(hub.Settings);
+            LoadSettings(settings);
             _loading = false;
             WireAutoSaveHandlers();
             _initialized = true;
         }
-        else if (_initialized && hub.Settings != null)
+        else if (_initialized && settings != null)
         {
             _loading = true;
-            ScreenRecordingToggle.IsOn = hub.Settings.ScreenRecordingConsentGiven;
-            CameraRecordingToggle.IsOn = hub.Settings.CameraRecordingConsentGiven;
+            ScreenRecordingToggle.IsOn = settings.ScreenRecordingConsentGiven;
+            CameraRecordingToggle.IsOn = settings.CameraRecordingConsentGiven;
             _loading = false;
         }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings != null)
-            _hub.Settings.Saved += OnExternalSettingsChanged;
+        if (CurrentApp.Settings != null)
+            CurrentApp.Settings.Saved += OnExternalSettingsChanged;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings != null)
-            _hub.Settings.Saved -= OnExternalSettingsChanged;
+        if (CurrentApp.Settings != null)
+            CurrentApp.Settings.Saved -= OnExternalSettingsChanged;
     }
 
     // ── Auto-save wiring ──
@@ -81,14 +80,14 @@ public sealed partial class SettingsPage : Page
                 Persist(s => s.NotificationSound = item.Tag?.ToString() ?? "Default");
         };
 
-        WireCheckBox(NotifyHealthCb, v => _hub!.Settings!.NotifyHealth = v);
-        WireCheckBox(NotifyUrgentCb, v => _hub!.Settings!.NotifyUrgent = v);
-        WireCheckBox(NotifyReminderCb, v => _hub!.Settings!.NotifyReminder = v);
-        WireCheckBox(NotifyEmailCb, v => _hub!.Settings!.NotifyEmail = v);
-        WireCheckBox(NotifyCalendarCb, v => _hub!.Settings!.NotifyCalendar = v);
-        WireCheckBox(NotifyBuildCb, v => _hub!.Settings!.NotifyBuild = v);
-        WireCheckBox(NotifyStockCb, v => _hub!.Settings!.NotifyStock = v);
-        WireCheckBox(NotifyInfoCb, v => _hub!.Settings!.NotifyInfo = v);
+        WireCheckBox(NotifyHealthCb, v => CurrentApp.Settings!.NotifyHealth = v);
+        WireCheckBox(NotifyUrgentCb, v => CurrentApp.Settings!.NotifyUrgent = v);
+        WireCheckBox(NotifyReminderCb, v => CurrentApp.Settings!.NotifyReminder = v);
+        WireCheckBox(NotifyEmailCb, v => CurrentApp.Settings!.NotifyEmail = v);
+        WireCheckBox(NotifyCalendarCb, v => CurrentApp.Settings!.NotifyCalendar = v);
+        WireCheckBox(NotifyBuildCb, v => CurrentApp.Settings!.NotifyBuild = v);
+        WireCheckBox(NotifyStockCb, v => CurrentApp.Settings!.NotifyStock = v);
+        WireCheckBox(NotifyInfoCb, v => CurrentApp.Settings!.NotifyInfo = v);
 
         ScreenRecordingToggle.Toggled += (_, _) => Persist(s => s.ScreenRecordingConsentGiven = ScreenRecordingToggle.IsOn);
         CameraRecordingToggle.Toggled += (_, _) => Persist(s => s.CameraRecordingConsentGiven = CameraRecordingToggle.IsOn);
@@ -103,13 +102,13 @@ public sealed partial class SettingsPage : Page
 
     private void Persist(Action<SettingsManager> mutate)
     {
-        if (_loading || _hub?.Settings == null) return;
+        if (_loading || CurrentApp.Settings == null) return;
         _saving = true;
         try
         {
-            mutate(_hub.Settings);
-            _hub.Settings.Save();
-            _hub.RaiseSettingsSaved();
+            mutate(CurrentApp.Settings);
+            CurrentApp.Settings.Save();
+            ((IAppCommands)CurrentApp).NotifySettingsSaved();
             ShowSavedIndicator();
         }
         finally
@@ -120,14 +119,14 @@ public sealed partial class SettingsPage : Page
 
     private void PersistAutoStart()
     {
-        if (_loading || _hub?.Settings == null) return;
+        if (_loading || CurrentApp.Settings == null) return;
         _saving = true;
         try
         {
-            _hub.Settings.AutoStart = AutoStartToggle.IsOn;
-            _hub.Settings.Save();
-            AutoStartManager.SetAutoStart(_hub.Settings.AutoStart);
-            _hub.RaiseSettingsSaved();
+            CurrentApp.Settings.AutoStart = AutoStartToggle.IsOn;
+            CurrentApp.Settings.Save();
+            AutoStartManager.SetAutoStart(CurrentApp.Settings.AutoStart);
+            ((IAppCommands)CurrentApp).NotifySettingsSaved();
             ShowSavedIndicator();
         }
         finally
@@ -152,13 +151,13 @@ public sealed partial class SettingsPage : Page
 
     private void OnExternalSettingsChanged(object? sender, EventArgs e)
     {
-        if (_hub?.Settings == null || _saving) return;
+        if (CurrentApp.Settings == null || _saving) return;
         DispatcherQueue.TryEnqueue(() =>
         {
             _loading = true;
             try
             {
-                LoadSettings(_hub.Settings);
+                LoadSettings(CurrentApp.Settings);
             }
             finally
             {
@@ -297,10 +296,10 @@ public sealed partial class SettingsPage : Page
         _uninstallCts = new CancellationTokenSource();
         try
         {
-            if (_hub?.Settings == null)
+            if (CurrentApp.Settings == null)
                 throw new InvalidOperationException("Settings not available.");
 
-            var engine = LocalGatewayUninstall.Build(_hub.Settings, registry: _hub.GatewayRegistry);
+            var engine = LocalGatewayUninstall.Build(CurrentApp.Settings, registry: CurrentApp.Registry);
             var uninstallResult = await engine.RunAsync(
                 new LocalGatewayUninstallOptions
                 {

@@ -35,12 +35,15 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupExistingGatewayClassifier.cs" Link="Services\SetupExistingGatewayClassifier.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AsyncListLoadingState.cs" Link="Services\AsyncListLoadingState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeInvokeActivityFormatter.cs" Link="Services\NodeInvokeActivityFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeCapabilityGating.cs" Link="Services\NodeCapabilityGating.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
@@ -68,6 +71,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardStepSelection.cs" Link="Imported\WizardStepSelection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardFlowController.cs" Link="Imported\WizardFlowController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dialogs\QuickSendCoordinator.cs" Link="Imported\QuickSendCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageChannelMetrics.cs" Link="Imported\ConnectionPageChannelMetrics.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageRowState.cs" Link="Imported\ConnectionPageRowState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionManagerWindowsNodeConnector.cs" Link="Services\ConnectionManagerWindowsNodeConnector.cs" />
   </ItemGroup>
 
 </Project>

@@ -246,7 +246,7 @@ public class DeepLinkParserTests
     [InlineData("openclaw://setup", nameof(DeepLinkActions.OpenSetup))]
     [InlineData("openclaw://chat", nameof(DeepLinkActions.OpenHub))]
     [InlineData("openclaw://commandcenter", nameof(DeepLinkActions.OpenHub))]
-    [InlineData("openclaw://history", nameof(DeepLinkActions.OpenActivityStream))]
+    [InlineData("openclaw://history", nameof(DeepLinkActions.OpenHub))]
     [InlineData("openclaw://logs", nameof(DeepLinkActions.OpenLogFile))]
     [InlineData("openclaw://log-folder", nameof(DeepLinkActions.OpenLogFolder))]
     [InlineData("openclaw://config", nameof(DeepLinkActions.OpenConfigFolder))]
@@ -311,17 +311,27 @@ public class DeepLinkParserTests
     }
 
     [Fact]
-    public void Handle_Activity_PassesFilter()
+    public void Handle_Activity_RedirectsToChannelsByDefault()
     {
-        string? filter = null;
+        // ActivityPage was removed; openclaw://activity now routes to the
+        // appropriate hub page based on the filter parameter. With no filter
+        // (or notification/channel), Channels is the destination.
+        string? hubTag = null;
         var actions = new DeepLinkActions
         {
-            OpenActivityStream = value => filter = value
+            OpenHub = tag => hubTag = tag
         };
 
-        DeepLinkHandler.Handle("openclaw://activity?filter=nodes", actions);
+        DeepLinkHandler.Handle("openclaw://activity?filter=node", actions);
+        Assert.Equal("instances", hubTag);
 
-        Assert.Equal("nodes", filter);
+        hubTag = null;
+        DeepLinkHandler.Handle("openclaw://activity?filter=session", actions);
+        Assert.Equal("sessions", hubTag);
+
+        hubTag = null;
+        DeepLinkHandler.Handle("openclaw://activity", actions);
+        Assert.Equal("channels", hubTag);
     }
 
     [Fact]

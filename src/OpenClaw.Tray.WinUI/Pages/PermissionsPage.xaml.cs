@@ -17,7 +17,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class PermissionsPage : Page
 {
-    private HubWindow? _hub;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private bool _suppressMcpToggle;
     private bool _suppressTtsProviderChange;
     private readonly List<ToggleSwitch> _featureToggles = new();
@@ -34,77 +34,86 @@ public sealed partial class PermissionsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    public void Initialize(HubWindow hub)
+    public void Initialize()
     {
-        _hub = hub;
         HostnameText.Text = Environment.MachineName;
 
-        BindNodeModeMaster(hub);
-        BuildCapabilityToggles(hub);
-        UpdateMcpStatus(hub);
-        UpdateSttCard(hub);
-        UpdateTtsCard(hub);
-        UpdateNodeStatus(hub);
-        ApplyFeaturesEnabledState(hub);
+        // Show "← Back to Connection" only when the user arrived from
+        // Connection's cross-page link; staying hidden when the rail nav
+        // is used keeps the page chrome quiet for direct navigation.
+        var hub = CurrentApp.ActiveHubWindow as HubWindow;
+        BackToConnectionLink.Visibility = hub?.LastNavigationOrigin == "connection"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        BindNodeModeMaster();
+        BuildCapabilityToggles();
+        UpdateMcpStatus();
+        UpdateSttCard();
+        UpdateTtsCard();
+        UpdateNodeStatus();
+        ApplyFeaturesEnabledState();
 
         LoadExecPolicy();
-        LoadAllowlist(hub.LastConfig);
+        LoadAllowlist(CurrentApp.AppState?.Config);
     }
+
+    private void OnBackToConnectionClicked(object sender, RoutedEventArgs e)
+        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings != null)
-            _hub.Settings.Saved += OnSettingsSaved;
+        if (CurrentApp.Settings != null)
+            CurrentApp.Settings.Saved += OnSettingsSaved;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings != null)
-            _hub.Settings.Saved -= OnSettingsSaved;
+        if (CurrentApp.Settings != null)
+            CurrentApp.Settings.Saved -= OnSettingsSaved;
     }
 
     private bool _suppressNodeModeToggle;
 
-    private void BindNodeModeMaster(HubWindow hub)
+    private void BindNodeModeMaster()
     {
-        if (hub.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         _suppressNodeModeToggle = true;
-        NodeModeToggle.IsOn = hub.Settings.EnableNodeMode;
+        NodeModeToggle.IsOn = CurrentApp.Settings.EnableNodeMode;
         _suppressNodeModeToggle = false;
     }
 
     private void OnNodeModeToggled(object sender, RoutedEventArgs e)
     {
-        if (_suppressNodeModeToggle || _hub?.Settings == null) return;
-        _hub.Settings.EnableNodeMode = NodeModeToggle.IsOn;
-        _hub.Settings.Save();
-        _hub.RaiseSettingsSaved();
-        ApplyFeaturesEnabledState(_hub);
-        UpdateNodeStatus(_hub);
-        UpdateSttCard(_hub);
-        UpdateTtsCard(_hub);
+        if (_suppressNodeModeToggle || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.EnableNodeMode = NodeModeToggle.IsOn;
+        CurrentApp.Settings.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
+        ApplyFeaturesEnabledState();
+        UpdateNodeStatus();
+        UpdateSttCard();
+        UpdateTtsCard();
     }
 
     private void OnSettingsSaved(object? sender, EventArgs e)
     {
-        if (_hub == null) return;
         DispatcherQueue?.TryEnqueue(() =>
         {
             if (!IsLoaded) return;
-            BindNodeModeMaster(_hub);
-            ApplyFeaturesEnabledState(_hub);
-            UpdateNodeStatus(_hub);
-            ReloadFeatureToggleStates(_hub);
-            UpdateMcpStatus(_hub);
-            UpdateSttCard(_hub);
-            UpdateTtsCard(_hub);
+            BindNodeModeMaster();
+            ApplyFeaturesEnabledState();
+            UpdateNodeStatus();
+            ReloadFeatureToggleStates();
+            UpdateMcpStatus();
+            UpdateSttCard();
+            UpdateTtsCard();
         });
     }
 
-    private void ReloadFeatureToggleStates(HubWindow hub)
+    private void ReloadFeatureToggleStates()
     {
-        if (hub.Settings == null || _featureToggles.Count == 0) return;
-        var s = hub.Settings;
+        if (CurrentApp.Settings == null || _featureToggles.Count == 0) return;
+        var s = CurrentApp.Settings;
         // Order matches BuildCapabilityToggles: browser, camera, canvas, screen, location, tts, stt.
         bool[] expected =
         {
@@ -123,9 +132,9 @@ public sealed partial class PermissionsPage : Page
     /// no effect until Node Mode is back on. ItemsRepeater isn't a Control (no IsEnabled),
     /// so we apply per-toggle plus an Opacity on the repeater.
     /// </summary>
-    private void ApplyFeaturesEnabledState(HubWindow hub)
+    private void ApplyFeaturesEnabledState()
     {
-        var nodeEnabled = hub.Settings?.EnableNodeMode ?? false;
+        var nodeEnabled = CurrentApp.Settings?.EnableNodeMode ?? false;
         CapabilityRepeater.Opacity = nodeEnabled ? 1.0 : 0.4;
         foreach (var toggle in _featureToggles)
             toggle.IsEnabled = nodeEnabled;
@@ -134,10 +143,10 @@ public sealed partial class PermissionsPage : Page
             : "PermissionsPage_FeaturesDescription_Disabled");
     }
 
-    private void BuildCapabilityToggles(HubWindow hub)
+    private void BuildCapabilityToggles()
     {
-        if (hub.Settings == null) return;
-        var settings = hub.Settings;
+        if (CurrentApp.Settings == null) return;
+        var settings = CurrentApp.Settings;
 
         // OnToggleSideEffect runs after the new value is persisted.
         var capabilities = new (string Icon, string Label, string Description, bool Value, Action<bool> Setter, Action<bool>? OnToggleSideEffect)[]
@@ -170,7 +179,7 @@ public sealed partial class PermissionsPage : Page
                 LocalizationHelper.GetString("PermissionsPage_Cap_Stt_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Stt_Description"),
                 settings.NodeSttEnabled, v => settings.NodeSttEnabled = v,
-                v => { if (v) EnsureWhisperModelDownloadedAsync(hub); }),
+                v => { if (v) EnsureWhisperModelDownloadedAsync(); }),
         };
 
         var items = new List<UIElement>();
@@ -190,11 +199,11 @@ public sealed partial class PermissionsPage : Page
             {
                 setter(toggle.IsOn);
                 settings.Save();
-                hub.RaiseSettingsSaved();
+                ((IAppCommands)CurrentApp).NotifySettingsSaved();
                 capturedSideEffect?.Invoke(toggle.IsOn);
-                UpdateSttCard(hub);
-                UpdateTtsCard(hub);
-                UpdateNodeStatus(hub);
+                UpdateSttCard();
+                UpdateTtsCard();
+                UpdateNodeStatus();
             };
             _featureToggles.Add(toggle);
             items.Add(BuildCapabilityRow(icon, label, description, toggle));
@@ -211,7 +220,7 @@ public sealed partial class PermissionsPage : Page
     /// page-locally so <see cref="UpdateSttEngineHint"/> can surface "downloading" /
     /// failure copy that's accurate regardless of which code path started the download.
     /// </summary>
-    private async void EnsureWhisperModelDownloadedAsync(HubWindow hub)
+    private async void EnsureWhisperModelDownloadedAsync()
     {
         // async void: ANY uncaught throw bypasses WinUI's UnhandledException handling
         // and tears down the process. Keep every statement inside the try so we can't
@@ -219,22 +228,22 @@ public sealed partial class PermissionsPage : Page
         var logger = new AppLogger();
         try
         {
-            var modelName = hub.Settings?.SttModelName ?? "base";
+            var modelName = CurrentApp.Settings?.SttModelName ?? "base";
             var modelManager = new OpenClaw.Shared.Audio.WhisperModelManager(
                 SettingsManager.SettingsDirectoryPath, logger);
 
             if (modelManager.IsModelDownloaded(modelName) || _isDownloadingWhisperModel) return;
             // Also defer to a VoiceService-initiated download that may be in flight —
             // concurrent writes to the same model file would otherwise be possible.
-            if (hub.VoiceServiceInstance?.IsWhisperDownloadingModel == true)
+            if (CurrentApp.VoiceService?.IsWhisperDownloadingModel == true)
             {
-                if (IsLoaded) UpdateSttCard(hub);
+                if (IsLoaded) UpdateSttCard();
                 return;
             }
 
             _isDownloadingWhisperModel = true;
             _whisperDownloadError = null;
-            if (IsLoaded) UpdateSttCard(hub);
+            if (IsLoaded) UpdateSttCard();
 
             try
             {
@@ -248,7 +257,7 @@ public sealed partial class PermissionsPage : Page
             finally
             {
                 _isDownloadingWhisperModel = false;
-                if (IsLoaded) UpdateSttCard(hub);
+                if (IsLoaded) UpdateSttCard();
             }
         }
         catch (Exception ex)
@@ -307,22 +316,22 @@ public sealed partial class PermissionsPage : Page
 
     // ── Speech-to-Text card ──────────────────────────────────────────
 
-    private void UpdateSttCard(HubWindow hub)
+    private void UpdateSttCard()
     {
-        var enabled = hub.Settings?.NodeSttEnabled == true;
+        var enabled = CurrentApp.Settings?.NodeSttEnabled == true;
         SttCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!enabled || hub.Settings == null) return;
-        UpdateSttEngineHint(hub);
+        if (!enabled || CurrentApp.Settings == null) return;
+        UpdateSttEngineHint();
     }
 
-    private void UpdateSttEngineHint(HubWindow hub)
+    private void UpdateSttEngineHint()
     {
-        var modelName = hub.Settings?.SttModelName ?? "base";
+        var modelName = CurrentApp.Settings?.SttModelName ?? "base";
         var modelManager = new OpenClaw.Shared.Audio.WhisperModelManager(
             SettingsManager.SettingsDirectoryPath, new AppLogger());
         var modelDownloaded = modelManager.IsModelDownloaded(modelName);
         var modelDownloading = _isDownloadingWhisperModel
-            || (hub.VoiceServiceInstance?.IsWhisperDownloadingModel ?? false);
+            || (CurrentApp.VoiceService?.IsWhisperDownloadingModel ?? false);
 
         if (modelDownloaded)
         {
@@ -345,18 +354,18 @@ public sealed partial class PermissionsPage : Page
 
     private void OnSttMoreSettingsClick(object sender, RoutedEventArgs e)
     {
-        _hub?.NavigateTo("voice");
+        ((IAppCommands)CurrentApp).Navigate("voice");
     }
 
     // ── Text-to-Speech card ──────────────────────────────────────────
 
-    private void UpdateTtsCard(HubWindow hub)
+    private void UpdateTtsCard()
     {
-        var enabled = hub.Settings?.NodeTtsEnabled == true;
+        var enabled = CurrentApp.Settings?.NodeTtsEnabled == true;
         TtsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!enabled || hub.Settings == null) return;
+        if (!enabled || CurrentApp.Settings == null) return;
 
-        var settings = hub.Settings;
+        var settings = CurrentApp.Settings;
 
         _suppressTtsProviderChange = true;
         TtsProviderComboBox.SelectedIndex = settings.TtsProvider switch
@@ -402,17 +411,17 @@ public sealed partial class PermissionsPage : Page
     private void OnTtsProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressTtsProviderChange) return;
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
 
         var newProvider = (TtsProviderComboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
             ? tag
             : TtsCapability.WindowsProvider;
 
-        if (!string.Equals(_hub.Settings.TtsProvider, newProvider, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(CurrentApp.Settings.TtsProvider, newProvider, StringComparison.OrdinalIgnoreCase))
         {
-            _hub.Settings.TtsProvider = newProvider;
-            _hub.Settings.Save();
-            _hub.RaiseSettingsSaved();
+            CurrentApp.Settings.TtsProvider = newProvider;
+            CurrentApp.Settings.Save();
+            ((IAppCommands)CurrentApp).NotifySettingsSaved();
             TtsStatusText.Text = LocalizationHelper.Format(
                 "PermissionsPage_TtsStatus_DefaultProviderFormat", newProvider);
         }
@@ -422,8 +431,8 @@ public sealed partial class PermissionsPage : Page
 
     private void OnTtsElevenLabsCommitted(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
-        var settings = _hub.Settings;
+        if (CurrentApp.Settings == null) return;
+        var settings = CurrentApp.Settings;
 
         var changed = false;
 
@@ -455,7 +464,7 @@ public sealed partial class PermissionsPage : Page
         if (changed)
         {
             settings.Save();
-            _hub.RaiseSettingsSaved();
+            ((IAppCommands)CurrentApp).NotifySettingsSaved();
             TtsElevenLabsApiKeyBox.Password =
                 string.IsNullOrEmpty(settings.TtsElevenLabsApiKey) ? "" : SavedApiKeySentinel;
             TtsStatusText.Text = LocalizationHelper.GetString("PermissionsPage_TtsStatus_ElevenLabsSaved");
@@ -464,10 +473,10 @@ public sealed partial class PermissionsPage : Page
 
     // ── Node status ──────────────────────────────────────────────────
 
-    private void UpdateNodeStatus(HubWindow hub)
+    private void UpdateNodeStatus()
     {
-        var nodeEnabled = hub.Settings?.EnableNodeMode ?? false;
-        var isConnected = hub.CurrentStatus == ConnectionStatus.Connected;
+        var nodeEnabled = CurrentApp.Settings?.EnableNodeMode ?? false;
+        var isConnected = (CurrentApp.AppState?.Status ?? ConnectionStatus.Disconnected) == ConnectionStatus.Connected;
 
         if (!nodeEnabled)
         {
@@ -481,13 +490,13 @@ public sealed partial class PermissionsPage : Page
             NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Active");
 
             var caps = new List<string>();
-            if (hub.Settings?.NodeBrowserProxyEnabled == true) caps.Add("browser");
-            if (hub.Settings?.NodeCameraEnabled == true) caps.Add("camera");
-            if (hub.Settings?.NodeCanvasEnabled == true) caps.Add("canvas");
-            if (hub.Settings?.NodeScreenEnabled == true) caps.Add("screen");
-            if (hub.Settings?.NodeLocationEnabled == true) caps.Add("location");
-            if (hub.Settings?.NodeTtsEnabled == true) caps.Add("tts");
-            if (hub.Settings?.NodeSttEnabled == true) caps.Add("stt");
+            if (CurrentApp.Settings?.NodeBrowserProxyEnabled == true) caps.Add("browser");
+            if (CurrentApp.Settings?.NodeCameraEnabled == true) caps.Add("camera");
+            if (CurrentApp.Settings?.NodeCanvasEnabled == true) caps.Add("canvas");
+            if (CurrentApp.Settings?.NodeScreenEnabled == true) caps.Add("screen");
+            if (CurrentApp.Settings?.NodeLocationEnabled == true) caps.Add("location");
+            if (CurrentApp.Settings?.NodeTtsEnabled == true) caps.Add("tts");
+            if (CurrentApp.Settings?.NodeSttEnabled == true) caps.Add("stt");
             NodeDetailsText.Text = caps.Count > 0
                 ? LocalizationHelper.Format(
                     "PermissionsPage_NodeStatus_ActiveDetailsFormat",
@@ -504,9 +513,9 @@ public sealed partial class PermissionsPage : Page
 
     // ── MCP server ───────────────────────────────────────────────────
 
-    private void UpdateMcpStatus(HubWindow hub)
+    private void UpdateMcpStatus()
     {
-        var settings = hub.Settings;
+        var settings = CurrentApp.Settings;
         if (settings == null) return;
 
         _suppressMcpToggle = true;
@@ -528,11 +537,11 @@ public sealed partial class PermissionsPage : Page
     private void OnMcpToggled(object sender, RoutedEventArgs e)
     {
         if (_suppressMcpToggle) return;
-        if (_hub?.Settings == null) return;
-        _hub.Settings.EnableMcpServer = McpToggle.IsOn;
-        _hub.Settings.Save();
-        _hub.RaiseSettingsSaved();
-        UpdateMcpStatus(_hub);
+        if (CurrentApp.Settings == null) return;
+        CurrentApp.Settings.EnableMcpServer = McpToggle.IsOn;
+        CurrentApp.Settings.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
+        UpdateMcpStatus();
     }
 
     private void OnCopyMcpToken(object sender, RoutedEventArgs e)

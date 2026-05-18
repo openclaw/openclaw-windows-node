@@ -739,6 +739,8 @@ public class LocalGatewaySetupTests
 
         var engine = LocalGatewaySetupEngineFactory.CreateLocalOnly(
             settings,
+            FakeOperatorConnector.Instance,
+            FakeWindowsNodeConnector.Instance,
             replaceExistingConfigurationConfirmed: true);
 
         Assert.NotNull(engine);
@@ -753,6 +755,8 @@ public class LocalGatewaySetupTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             LocalGatewaySetupEngineFactory.CreateLocalOnly(
                 settings,
+                FakeOperatorConnector.Instance,
+                FakeWindowsNodeConnector.Instance,
                 identityDataPath: temp.Path,
                 replaceExistingConfigurationConfirmed: false));
 
@@ -771,6 +775,8 @@ public class LocalGatewaySetupTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             LocalGatewaySetupEngineFactory.CreateLocalOnly(
                 settings,
+                FakeOperatorConnector.Instance,
+                FakeWindowsNodeConnector.Instance,
                 identityDataPath: temp.Path,
                 replaceExistingConfigurationConfirmed: false));
 
@@ -789,6 +795,8 @@ public class LocalGatewaySetupTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             LocalGatewaySetupEngineFactory.CreateLocalOnly(
                 settings,
+                FakeOperatorConnector.Instance,
+                FakeWindowsNodeConnector.Instance,
                 identityDataPath: temp.Path,
                 replaceExistingConfigurationConfirmed: false));
 
@@ -806,11 +814,37 @@ public class LocalGatewaySetupTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             LocalGatewaySetupEngineFactory.CreateLocalOnly(
                 settings,
+                FakeOperatorConnector.Instance,
+                FakeWindowsNodeConnector.Instance,
                 identityDataPath: temp.Path,
                 setupStatePath: setupStatePath,
                 replaceExistingConfigurationConfirmed: false));
 
         Assert.Contains("existing_config_replacement_not_confirmed", ex.Message);
+    }
+
+    /// <summary>
+    /// No-op operator connector used by tests that hit existing-config guards before
+    /// any pairing happens. Production paths supply ConnectionManagerOperatorConnector.
+    /// </summary>
+    private sealed class FakeOperatorConnector : IGatewayOperatorConnector
+    {
+        public static readonly FakeOperatorConnector Instance = new();
+        public Task<GatewayOperatorConnectionResult> ConnectAsync(string gatewayUrl, string token, bool tokenIsBootstrapToken = false, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Connected));
+        public Task<GatewayOperatorConnectionResult> ConnectWithStoredDeviceTokenAsync(string gatewayUrl, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Connected));
+    }
+
+    /// <summary>
+    /// No-op node connector used by tests that hit existing-config guards before
+    /// any node pairing happens. Production paths supply ConnectionManagerWindowsNodeConnector.
+    /// </summary>
+    private sealed class FakeWindowsNodeConnector : IWindowsNodeConnector
+    {
+        public static readonly FakeWindowsNodeConnector Instance = new();
+        public Task ConnectAsync(string gatewayUrl, string token, string? bootstrapToken, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     internal sealed class FakeWslCommandRunner : IWslCommandRunner

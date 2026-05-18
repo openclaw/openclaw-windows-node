@@ -1,173 +1,466 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page x:Class="OpenClawTray.Pages.DebugPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+      xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+      xmlns:helpers="using:OpenClawTray.Helpers">
 
-            <TextBlock x:Uid="DebugPage_TextBlock_8" Text="🐛 Debug" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8"/>
+    <!--
+        Diagnostics page (route still "debug" for back-compat with command
+        palette / deep links). Composition follows
+        docs/design/surfaces/diagnostics-page.md (forthcoming) and the
+        rules in docs/design/iconography.md and docs/design/tokens.md:
+        every glyph goes through FluentIconCatalog, status colors come
+        from SystemFill* tokens, and the page uses CommunityToolkit
+        SettingsCard / SettingsExpander instead of hand-rolled rows.
 
-            <!-- Log Viewer -->
-            <Expander x:Name="LogExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="DebugPage_TextBlock_14" Text="Log Viewer" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="8" Padding="4">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Uid="DebugPage_Button_18" Content="⟳ Refresh" Click="OnRefreshLog"/>
-                        <Button x:Uid="DebugPage_Button_19" Content="📋 Copy Log" Click="OnCopyLog"/>
-                    </StackPanel>
-                    <ScrollViewer x:Name="LogScrollViewer" MaxHeight="400"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                  BorderThickness="1" CornerRadius="4" Padding="8">
-                        <TextBlock x:Uid="LogText" x:Name="LogText" Text="Loading..."
-                                   FontFamily="Consolas" FontSize="11"
-                                   TextWrapping="NoWrap" IsTextSelectionEnabled="True"/>
-                    </ScrollViewer>
+        Three task-oriented sections + an in-page detail view for the
+        recent log. The connection event timeline opens in its own
+        ConnectionStatusWindow (same pattern as Chat explorations) so
+        live diagnostic streams don't push the rest of the page off-
+        screen. The recent-log detail view follows the same
+        Visibility-swap pattern as ConnectionPage's AddGateway sub-view.
+    -->
+
+    <Page.Resources>
+        <x:Double x:Key="DiagSettingsCardSpacing">4</x:Double>
+        <Style x:Key="DiagSectionHeaderTextBlockStyle"
+               BasedOn="{StaticResource BodyStrongTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="1,30,0,6"/>
+        </Style>
+    </Page.Resources>
+
+    <Grid>
+
+        <!-- Body host. MainView and DetailView are siblings; we swap
+             Visibility to navigate without losing this Page's instance,
+             matching ConnectionPage.AddGatewayPanel.
+
+             The page title now lives INSIDE MainView's StackPanel
+             (same column as the SettingsCards) — that's the
+             WinUI Gallery / Permissions page pattern. Putting the
+             title and the cards in one StackPanel guarantees they
+             share the exact same MaxWidth=900 centered column and
+             left-edge alignment, regardless of how narrow the title
+             text is on its own. -->
+
+            <!-- ─── MAIN VIEW ─────────────────────────────────────────── -->
+            <!-- Stretching outer Grid is REQUIRED: a StackPanel placed
+                 directly inside a ScrollViewer ignores MaxWidth on layouts
+                 wider than the cap (the ScrollViewer hands it the full
+                 width and Center alignment collapses to the content's
+                 natural width). Wrapping in a Grid with HorizontalAlignment
+                 =Stretch gives the StackPanel a known parent rect to
+                 center within. Mirrors PermissionsPage.xaml — historical
+                 pain across multiple sessions, do not "simplify". -->
+            <ScrollViewer x:Name="MainView"
+                          Padding="24,24,24,24"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Disabled">
+                <Grid HorizontalAlignment="Stretch">
+                <StackPanel HorizontalAlignment="Center"
+                            MaxWidth="900"
+                            Spacing="{StaticResource DiagSettingsCardSpacing}">
+
+                    <!-- Title block (in-stack, same column as cards). -->
+                    <TextBlock x:Uid="DiagnosticsPage_Title"
+                               Text="Diagnostics"
+                               Style="{StaticResource TitleTextBlockStyle}"
+                               Margin="0,0,0,2"/>
+                    <TextBlock x:Uid="DiagnosticsPage_Subtitle"
+                               Text="Inspect, export, and troubleshoot your OpenClaw installation."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,12"/>
+
+                    <!-- Top status InfoBar. Both actions render as
+                         HyperlinkButtons inside InfoBar.Content (matches
+                         the Win11 Settings convention — see Settings →
+                         System → Storage). Padding=0 strips button chrome
+                         so they read as inline links flush with the
+                         message text. -->
+                    <controls:InfoBar x:Name="StatusInfoBar"
+                                      IsOpen="True"
+                                      IsClosable="False"
+                                      Severity="Informational"
+                                      Title="Status"
+                                      Margin="0,0,0,12">
+                        <controls:InfoBar.Content>
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="20"
+                                        Margin="0,4,0,8">
+                                <HyperlinkButton x:Uid="DiagnosticsPage_ManageOnConnection"
+                                                 Content="Manage on Connection page"
+                                                 Click="OnManageOnConnection"
+                                                 Padding="0"/>
+                            </StackPanel>
+                        </controls:InfoBar.Content>
+                    </controls:InfoBar>
+
+                    <!-- Share diagnostics with support -->
+                    <TextBlock x:Uid="DiagnosticsPage_Section_Share"
+                               Text="Share diagnostics with support"
+                               Style="{StaticResource DiagSectionHeaderTextBlockStyle}"/>
+
+                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_Bundle"
+                                          Header="Create diagnostics bundle"
+                                          Description="Includes connection, gateway, ports, capabilities, log tail, and device summary. Preview before sharing."
+                                          IsClickEnabled="True"
+                                          Click="OnCreateDiagnosticsBundle">
+                        <toolkit:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Briefcase, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsCard.HeaderIcon>
+                    </toolkit:SettingsCard>
+
+                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_OpenDiagnosticsFolder"
+                                          Header="Open diagnostics folder"
+                                          Description="Logs and structured diagnostics (.jsonl) live here."
+                                          IsClickEnabled="True"
+                                          Click="OnOpenDiagnosticsFolder">
+                        <toolkit:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Folder, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsCard.HeaderIcon>
+                    </toolkit:SettingsCard>
+
+                    <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_SpecificCopies"
+                                              Header="Copy specific diagnostic text"
+                                              Description="Send just one piece of context.">
+                        <toolkit:SettingsExpander.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsExpander.HeaderIcon>
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_CopySupport"
+                                                  Header="Copy support context"
+                                                  Description="Connection state, gateway URL, runtime, tunnel."
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopySupportContext">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_CopyDebugBundle"
+                                                  Header="Copy full debug bundle"
+                                                  Description="Everything the preview dialog produces, no preview."
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopyDebugBundle">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_CopyBrowserSetup"
+                                                  Header="Copy browser setup guidance"
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopyBrowserSetup">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_CopyPortDiagnostics"
+                                                  Header="Copy port diagnostics"
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopyPortDiagnostics">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_CopyCapabilityDiagnostics"
+                                                  Header="Copy capability diagnostics"
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopyCapabilityDiagnostics">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+
+                    <!-- Transient "Copied to clipboard" feedback. Opens
+                         when any of the Copy* handlers fires, auto-
+                         dismisses ~2.5 s later via a DispatcherTimer.
+                         InfoBar with IsOpen=False does not consume any
+                         vertical layout space, so this is a no-op when
+                         idle. -->
+                    <controls:InfoBar x:Name="CopyFeedbackInfoBar"
+                                      IsOpen="False"
+                                      IsClosable="False"
+                                      Severity="Success"
+                                      Title="Copied"
+                                      Margin="0,4,0,0"
+                                      AutomationProperties.AutomationId="DiagnosticsCopyFeedback"/>
+
+                    <!-- Inspect local diagnostics -->
+                    <TextBlock x:Uid="DiagnosticsPage_Section_Inspect"
+                               Text="Inspect local diagnostics"
+                               Style="{StaticResource DiagSectionHeaderTextBlockStyle}"/>
+
+                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_EventTimeline"
+                                          Header="Connection event timeline"
+                                          Description="Live state-machine events, websocket frames, credential resolution, and pairing handshakes.">
+                        <toolkit:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsCard.HeaderIcon>
+                        <Button x:Uid="DiagnosticsPage_OpenEventTimelineButton"
+                                Content="Open"
+                                Click="OnOpenEventTimeline"
+                                AutomationProperties.AutomationId="DiagnosticsOpenEventTimeline"/>
+                    </toolkit:SettingsCard>
+
+                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_RecentLog"
+                                          Header="Recent log"
+                                          Description="Last 200 lines of openclaw-tray.log, with severity coloring."
+                                          IsClickEnabled="True"
+                                          Click="OnShowRecentLog"
+                                          AutomationProperties.AutomationId="DiagnosticsOpenRecentLog">
+                        <toolkit:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Document, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsCard.HeaderIcon>
+                    </toolkit:SettingsCard>
+
+                    <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_Identity"
+                                              Header="Device identity"
+                                              Description="Local cryptographic identifiers for this device.">
+                        <toolkit:SettingsExpander.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Lock, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsExpander.HeaderIcon>
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_DeviceId"
+                                                  Header="Device ID"
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopyDeviceId">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                                <TextBlock x:Name="DeviceIdText"
+                                           Text="—"
+                                           FontFamily="Consolas"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           IsTextSelectionEnabled="True"/>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_PublicKey"
+                                                  Header="Public key"
+                                                  IsClickEnabled="True"
+                                                  Click="OnCopyPublicKey">
+                                <toolkit:SettingsCard.ActionIcon>
+                                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                                </toolkit:SettingsCard.ActionIcon>
+                                <TextBlock x:Name="PublicKeyText"
+                                           Text="—"
+                                           FontFamily="Consolas"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           IsTextSelectionEnabled="True"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="520"/>
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+
+                    <!-- Developer tools -->
+                    <TextBlock x:Uid="DiagnosticsPage_Section_Developer"
+                               Text="Developer tools"
+                               Style="{StaticResource DiagSectionHeaderTextBlockStyle}"/>
+
+                    <controls:InfoBar IsOpen="True"
+                                      IsClosable="False"
+                                      Severity="Warning"
+                                      x:Uid="DiagnosticsPage_DeveloperWarning"
+                                      Title="For engineers"
+                                      Message="These tools may change app behavior, restart the app, or open experimental UI."
+                                      Margin="0,0,0,4"/>
+
+                    <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_ChatOverrides"
+                                              Header="Chat surface overrides"
+                                              Description="Per-surface override of the chat UI. Resets when OpenClaw restarts.">
+                        <toolkit:SettingsExpander.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Chat, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsExpander.HeaderIcon>
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_HubChat"
+                                                  Header="Hub chat tab">
+                                <ComboBox x:Name="HubChatOverrideCombo"
+                                          MinWidth="220"
+                                          AutomationProperties.AutomationId="DebugPageHubChatOverride"
+                                          SelectionChanged="OnHubChatOverrideChanged">
+                                    <ComboBoxItem Content="No override" Tag="NoOverride"/>
+                                    <ComboBoxItem Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
+                                    <ComboBoxItem Content="Force Companion Chat UI" Tag="ForceNative"/>
+                                </ComboBox>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_TrayChat"
+                                                  Header="Tray chat popup">
+                                <ComboBox x:Name="TrayChatOverrideCombo"
+                                          MinWidth="220"
+                                          AutomationProperties.AutomationId="DebugPageTrayChatOverride"
+                                          SelectionChanged="OnTrayChatOverrideChanged">
+                                    <ComboBoxItem Content="No override" Tag="NoOverride"/>
+                                    <ComboBoxItem Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
+                                    <ComboBoxItem Content="Force Companion Chat UI" Tag="ForceNative"/>
+                                </ComboBox>
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+
+                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_ChatExplorations"
+                                          Header="Open chat explorations"
+                                          Description="Engineering preview of chat bubble and tool-card rendering.">
+                        <toolkit:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Develop, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsCard.HeaderIcon>
+                        <Button x:Uid="DiagnosticsPage_OpenChatExplorationsButton"
+                                Content="Open"
+                                Click="OnOpenChatExplorations"
+                                AutomationProperties.AutomationId="DebugPageOpenChatExplorations"/>
+                    </toolkit:SettingsCard>
+
+                    <!-- Reconfigure… — canonical action verb per naming.md
+                         (action that walks the user back through the
+                         onboarding wizard). Always followed by `…` because
+                         it opens a wizard. -->
+                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_Reconfigure"
+                                          Header="Reconfigure…"
+                                          Description="Reopens the OpenClaw onboarding wizard. You will be asked to confirm.">
+                        <toolkit:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Reset, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        </toolkit:SettingsCard.HeaderIcon>
+                        <Button x:Uid="DiagnosticsPage_ReconfigureButton"
+                                Content="Reconfigure…"
+                                Click="OnRelaunchOnboarding"/>
+                    </toolkit:SettingsCard>
+
                 </StackPanel>
-            </Expander>
+                </Grid>
+            </ScrollViewer>
 
-            <!-- Connection Status -->
-            <Expander x:Name="ConnectionExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="DebugPage_TextBlock_38" Text="Connection Status" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="8" Padding="4">
-                    <Grid ColumnSpacing="12" RowSpacing="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="140"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition/>
-                            <RowDefinition/>
-                            <RowDefinition/>
-                        </Grid.RowDefinitions>
+            <!-- ─── DETAIL VIEW ───────────────────────────────────────── -->
+            <!-- Hidden by default. Hosts the recent-log reader; the
+                 connection event timeline opens in its own
+                 ConnectionStatusWindow instead. The body uses Border +
+                 RichTextBlock (not a SettingsCard) because it's a
+                 content reader, not a settings row.
 
-                        <TextBlock x:Uid="DebugPage_TextBlock_52" Grid.Row="0" Grid.Column="0" Text="Operator Status"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Uid="OperatorStatusText" Grid.Row="0" Grid.Column="1" x:Name="OperatorStatusText" Text="Unknown"/>
+                 Same wrapper pattern as MainView: outer Grid stretches to
+                 fill the available width (giving the inner Grid a known
+                 parent rect); inner Grid uses MaxWidth=900 + Center to
+                 center the 900-wide column within. WITHOUT the explicit
+                 Stretch on the outer Grid, the inner Grid's MaxWidth is
+                 ignored on wide windows (Center collapses to content
+                 width). Historical pain — do not "simplify". -->
+            <!-- Padding intentionally matches MainView's ScrollViewer
+                 padding (24 on all sides) so the column position and
+                 vertical inset don't shift when the user enters or
+                 leaves DetailView. Pinned by
+                 DebugPage_DetailViewMatchesMainViewPadding. -->
+            <Grid x:Name="DetailView"
+                  Visibility="Collapsed"
+                  Padding="24,24,24,24"
+                  HorizontalAlignment="Stretch">
+                <Grid MaxWidth="900"
+                      HorizontalAlignment="Center"
+                      RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
 
-                        <TextBlock x:Uid="DebugPage_TextBlock_56" Grid.Row="1" Grid.Column="0" Text="Gateway URL"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="GatewayUrlText" Text="—"
-                                   IsTextSelectionEnabled="True" FontFamily="Consolas" FontSize="12"/>
-
-                        <TextBlock x:Uid="DebugPage_TextBlock_61" Grid.Row="2" Grid.Column="0" Text="Node Mode"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="NodeModeText" Text="—"/>
-                    </Grid>
-                </StackPanel>
-            </Expander>
-
-            <!-- Device Identity -->
-            <Expander x:Name="DeviceExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="DebugPage_TextBlock_72" Text="Device Identity" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="8" Padding="4">
-                    <Grid ColumnSpacing="12" RowSpacing="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="100"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition/>
-                            <RowDefinition/>
-                        </Grid.RowDefinitions>
-
-                        <TextBlock x:Uid="DebugPage_TextBlock_86" Grid.Row="0" Grid.Column="0" Text="Device ID"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="DeviceIdText" Text="—"
-                                   FontFamily="Consolas" FontSize="12" IsTextSelectionEnabled="True"
-                                   VerticalAlignment="Center"/>
-                        <Button x:Uid="DebugPage_Button_91" Grid.Row="0" Grid.Column="2" Content="📋 Copy" Click="OnCopyDeviceId"
-                                Padding="6,3" MinWidth="0" VerticalAlignment="Center"/>
-
-                        <TextBlock x:Uid="DebugPage_TextBlock_94" Grid.Row="1" Grid.Column="0" Text="Public Key"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="PublicKeyText" Text="—"
-                                   FontFamily="Consolas" FontSize="11" IsTextSelectionEnabled="True"
-                                   TextWrapping="Wrap" VerticalAlignment="Center"
-                                   Grid.ColumnSpan="2"/>
-                    </Grid>
-                </StackPanel>
-            </Expander>
-
-            <!-- Debug Overrides — process-wide, per-surface chat UI override.
-                 Lets engineers compare the legacy WebView and the native
-                 native chat surfaces side-by-side without flipping the
-                 user-facing "Use standard Gateway Chat interface" setting. -->
-            <Expander x:Name="OverridesExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="DebugPage_TextBlock_OverridesHeader" Text="Debug Overrides" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="12" Padding="4">
-                    <TextBlock x:Uid="DebugPage_TextBlock_OverridesCaption"
-                               Text="Override the global 'Use standard Gateway Chat interface' setting per chat container. Resets when the app restarts."
+                <StackPanel Grid.Row="0" Spacing="2">
+                    <HyperlinkButton x:Name="DetailBackButton"
+                                     Padding="0"
+                                     Click="OnBackToMain"
+                                     AutomationProperties.AutomationId="DiagnosticsDetailBack">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="11"
+                                      VerticalAlignment="Center"/>
+                            <TextBlock x:Uid="DiagnosticsPage_DetailBack"
+                                       Text="Back to Diagnostics"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </HyperlinkButton>
+                    <TextBlock x:Name="DetailTitle"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               AutomationProperties.HeadingLevel="Level1"/>
+                    <TextBlock x:Name="DetailCaption"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"/>
-                    <Grid ColumnSpacing="12" RowSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition/>
-                            <RowDefinition/>
-                        </Grid.RowDefinitions>
-                        <TextBlock x:Uid="DebugPage_TextBlock_HubChatLabel" Grid.Row="0" Grid.Column="0" Text="Hub Chat tab UI:"
-                                   VerticalAlignment="Center"/>
-                        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="HubChatOverrideCombo"
-                                  HorizontalAlignment="Stretch"
-                                  AutomationProperties.AutomationId="DebugPageHubChatOverride"
-                                  SelectionChanged="OnHubChatOverrideChanged">
-                            <ComboBoxItem x:Uid="DebugPage_ChatOverride_NoOverride_Hub" Content="No override" Tag="NoOverride"/>
-                            <ComboBoxItem x:Uid="DebugPage_ChatOverride_ForceLegacy_Hub" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
-                            <ComboBoxItem x:Uid="DebugPage_ChatOverride_ForceNative_Hub" Content="Force Companion Chat UI" Tag="ForceNative"/>
-                        </ComboBox>
-                        <TextBlock x:Uid="DebugPage_TextBlock_TrayChatLabel" Grid.Row="1" Grid.Column="0" Text="Tray Chat popup UI:"
-                                   VerticalAlignment="Center"/>
-                        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="TrayChatOverrideCombo"
-                                  HorizontalAlignment="Stretch"
-                                  AutomationProperties.AutomationId="DebugPageTrayChatOverride"
-                                  SelectionChanged="OnTrayChatOverrideChanged">
-                            <ComboBoxItem x:Uid="DebugPage_ChatOverride_NoOverride_Tray" Content="No override" Tag="NoOverride"/>
-                            <ComboBoxItem x:Uid="DebugPage_ChatOverride_ForceLegacy_Tray" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
-                            <ComboBoxItem x:Uid="DebugPage_ChatOverride_ForceNative_Tray" Content="Force Companion Chat UI" Tag="ForceNative"/>
-                        </ComboBox>
-                    </Grid>
                 </StackPanel>
-            </Expander>
 
-            <!-- Debug Actions -->
-            <Expander x:Name="ActionsExpander" IsExpanded="True"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Expander.Header>
-                    <TextBlock x:Uid="DebugPage_TextBlock_108" Text="Debug Actions" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                </Expander.Header>
-                <StackPanel Spacing="8" Padding="4">
-                    <Button x:Uid="DebugPage_Button_111" Content="📄 Open Log File" Click="OnOpenLogFile" HorizontalAlignment="Stretch"/>
-                    <Button x:Uid="DebugPage_Button_112" Content="📁 Open Config Folder" Click="OnOpenConfigFolder" HorizontalAlignment="Stretch"/>
-                    <Button x:Uid="DebugPage_Button_113" Content="📁 Open Diagnostics Folder" Click="OnOpenDiagnosticsFolder" HorizontalAlignment="Stretch"/>
-                    <Button Content="🔌 Connection Status Window" Click="OnOpenConnectionStatus" HorizontalAlignment="Stretch"/>
-                    <Button x:Uid="DebugPage_Button_114" Content="📋 Copy Support Context" Click="OnCopySupportContext"
-                            Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch"/>
-                    <Button Content="🔄 Relaunch First-Run Setup" Click="OnRelaunchOnboarding" HorizontalAlignment="Stretch"/>
-                    <Button Content="🎨 Open Chat Explorations" Click="OnOpenChatExplorations" HorizontalAlignment="Stretch"
-                            AutomationProperties.AutomationId="DebugPageOpenChatExplorations"/>
+                <StackPanel Grid.Row="1"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <Button x:Name="DetailRefreshButton"
+                            Click="OnDetailRefresh"
+                            ToolTipService.ToolTip="Refresh">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Refresh, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="12"/>
+                            <TextBlock Text="Refresh"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="DetailCopyButton"
+                            Click="OnDetailCopy"
+                            ToolTipService.ToolTip="Copy to clipboard">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="12"/>
+                            <TextBlock Text="Copy"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="DetailOpenFileButton"
+                            Click="OnDetailOpenFile"
+                            ToolTipService.ToolTip="Open log file in default editor"
+                            Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="12"/>
+                            <TextBlock Text="Open file"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
-            </Expander>
 
-        </StackPanel>
-    </ScrollViewer>
+                <Border Grid.Row="2"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource OverlayCornerRadius}"
+                        Padding="10">
+                    <ScrollViewer x:Name="DetailScroll"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto">
+                        <RichTextBlock x:Name="DetailRichText"
+                                       FontFamily="Consolas"
+                                       FontSize="11.5"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"
+                                       AutomationProperties.Name="Diagnostics detail content"/>
+                    </ScrollViewer>
+                </Border>
+                </Grid>
+            </Grid>
+
+    </Grid>
 </Page>

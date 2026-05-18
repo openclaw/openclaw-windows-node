@@ -845,6 +845,117 @@ public class OperatorPairingApprovalTests
         Assert.Equal(3, runner.RunInDistroCommands.Count);
     }
 
+    // ─── Gateway-down extended-retry regression tests (bug 2026-05-16) ───
+    //
+    // When the gateway restarts mid-PairWindowsTrayNode (it can emit a 1012 service-restart
+    // ~15s after operator pairing while flushing config), both initial stage-1 attempts can
+    // hit a still-restarting gateway and fail with stderr like:
+    //   [openclaw] Reason: gateway closed (1006 abnormal closure (no close frame))
+    // The original 750ms single-retry isn't enough. The approver now keeps retrying with
+    // exponential backoff while the stderr looks like a transient gateway-down.
+
+    private const string GatewayDownStderr =
+        "[openclaw] Could not start the CLI.\n" +
+        "[openclaw] Reason: gateway closed (1006 abnormal closure (no close frame)): no close reason\n" +
+        "Gateway target: ws://127.0.0.1:18789\n";
+
+    [Fact]
+    public void LooksLikeGatewayDown_RecognizesProductionStderrPattern()
+    {
+        var down = new WslCommandResult(1, string.Empty, GatewayDownStderr);
+        var unrelated = new WslCommandResult(1, string.Empty, "syntax error near unexpected token");
+        var success = new WslCommandResult(0, "ok", string.Empty);
+        var empty = new WslCommandResult(1, string.Empty, string.Empty);
+
+        Assert.True(WslGatewayCliPendingDeviceApprover.LooksLikeGatewayDown(down));
+        Assert.False(WslGatewayCliPendingDeviceApprover.LooksLikeGatewayDown(unrelated));
+        Assert.False(WslGatewayCliPendingDeviceApprover.LooksLikeGatewayDown(success));
+        Assert.False(WslGatewayCliPendingDeviceApprover.LooksLikeGatewayDown(empty));
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_GatewayDownInBothAttempts_RetriesUntilSuccess()
+    {
+        // Sequence: token-read → stage-1 attempt 1 (gateway-down) → stage-1 attempt 2
+        // (gateway-down) → stage-1 attempt 3 (gateway-down) → stage-1 attempt 4 (success).
+        // Then stage-2 commit.
+        var previewJson = "{\"selected\":{\"requestId\":\"r-recovered\"}}";
+        var commitJson = "{\"requestId\":\"r-recovered\"}";
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, GatewayToken + "\n", string.Empty),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(0, previewJson, string.Empty),
+            new WslCommandResult(0, commitJson, string.Empty));
+        // Zero retry delay so the test runs fast; the production code still bounds total
+        // attempts via the GatewayDownRetryDelays array length.
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.True(result.Success);
+        // token-read + 4 stage-1 attempts + 1 stage-2 = 6 commands.
+        Assert.Equal(6, runner.RunInDistroCommands.Count);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_PersistentGatewayDown_EventuallyFailsCleanly()
+    {
+        // If the gateway never comes back, we still bail with the last gateway-down stderr
+        // surfaced in the failure message — better than silently looping forever.
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, GatewayToken + "\n", string.Empty),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("operator_pending_approval_failed", result.ErrorCode);
+        Assert.Contains("gateway closed", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        // token-read + 5 stage-1 attempts (initial + 1 retry + 3 extended retries) = 6 commands.
+        // Stage-2 must NOT run because stage-1 never produced a requestId.
+        Assert.Equal(6, runner.RunInDistroCommands.Count);
+    }
+
+    [Fact]
+    public async Task WslGatewayCliPendingDeviceApprover_GatewayDownThenDifferentError_StopsRetrying()
+    {
+        // If the second extended retry returns a DIFFERENT (non-gateway-down) error,
+        // we bail with that error rather than burning through all retries.
+        var runner = new RecordingWslRunner(
+            new WslCommandResult(0, GatewayToken + "\n", string.Empty),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            new WslCommandResult(1, string.Empty, GatewayDownStderr),
+            // Third attempt: a NEW, distinct error pattern (not gateway-down).
+            new WslCommandResult(1, string.Empty, "permission denied: /var/lib/openclaw/gateway-token"));
+        var approver = new WslGatewayCliPendingDeviceApprover(runner, "/opt/openclaw/bin/openclaw", TimeSpan.Zero);
+
+        var result = await approver.ApproveLatestAsync(new LocalGatewaySetupState
+        {
+            GatewayUrl = "ws://127.0.0.1:18789",
+            DistroName = "OpenClawGateway",
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("permission denied", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        // Should have stopped after the non-gateway-down failure — not consumed all retries.
+        Assert.Equal(4, runner.RunInDistroCommands.Count);
+    }
+
     private static void AssertGatewayTokenInEnvironmentOnly(RecordingWslRunner runner, int commandIndex)
     {
         var environment = runner.RunInDistroEnvironments[commandIndex];

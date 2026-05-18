@@ -247,7 +247,11 @@ public class CanvasCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("canvas.eval handler failed", ex);
-            return Error("Eval failed");
+            // Surface structured CANVAS_* errors for diagnostics; keep generic
+            // message for other exceptions to avoid leaking internal details.
+            var msg = ex.Message.StartsWith("CANVAS_", StringComparison.Ordinal)
+                ? ex.Message : "Eval failed";
+            return Error(msg);
         }
     }
     
@@ -279,7 +283,9 @@ public class CanvasCapability : NodeCapabilityBase
         catch (Exception ex)
         {
             Logger.Error("canvas.snapshot handler failed", ex);
-            return Error("Snapshot failed");
+            var msg = ex.Message.StartsWith("CANVAS_", StringComparison.Ordinal)
+                ? ex.Message : "Snapshot failed";
+            return Error(msg);
         }
     }
     

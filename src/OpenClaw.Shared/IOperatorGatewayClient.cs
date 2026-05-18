@@ -80,6 +80,8 @@ public interface IOperatorGatewayClient
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);
+    /// <summary>Response-aware variant of <see cref="PatchConfigAsync"/>: awaits the gateway's reply and returns the real error on failure.</summary>
+    Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000);
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);
@@ -93,6 +95,16 @@ public interface IOperatorGatewayClient
     Task<bool> DevicePairApproveAsync(string requestId);
     Task<bool> DevicePairRejectAsync(string requestId);
     Task<bool> StartChannelAsync(string channelName);
+    /// <summary>Start a channel and return the full gateway response so the page can detect "unknown channel" (plugin not loaded).</summary>
+    Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000);
     Task<bool> StopChannelAsync(string channelName);
+    /// <summary>Fetch the rich channels.status snapshot from the gateway. Mac/web canonical wire method.</summary>
+    Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000);
+    /// <summary>Log out / unlink a channel (whatsapp, telegram). Sends channels.logout { channel }.</summary>
+    Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000);
+    /// <summary>Begin a QR linking flow (whatsapp, signal). Sends web.login.start { force, timeoutMs }.</summary>
+    Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000);
+    /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
+    Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
 }

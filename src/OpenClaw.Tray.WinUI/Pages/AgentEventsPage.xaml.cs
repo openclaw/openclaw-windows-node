@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 using OpenClawTray.Windows;
 
 namespace OpenClawTray.Pages;
@@ -16,6 +17,7 @@ public sealed partial class AgentEventsPage : Page
     private string _activeFilter = "all";
     private string? _agentIdFilter;
     private bool _filterDirty;
+    private AppState? _appState;
 
     /// <summary>Set by HubWindow so Clear can also clear the central cache.</summary>
     public Action? ClearCentralCache { get; set; }
@@ -56,6 +58,36 @@ public sealed partial class AgentEventsPage : Page
     {
         InitializeComponent();
         _initialized = true;
+        Unloaded += (_, _) =>
+        {
+            if (_appState != null)
+            {
+                _appState.AgentEventAdded -= OnAgentEventAdded;
+                _appState.PropertyChanged -= OnAppStateChanged;
+            }
+        };
+    }
+
+    public void Initialize(HubWindow hub)
+    {
+        _appState = ((App)Application.Current).AppState;
+        _appState.AgentEventAdded += OnAgentEventAdded;
+        _appState.PropertyChanged += OnAppStateChanged;
+        PopulateAgentFilter(hub);
+    }
+
+    private void OnAppStateChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AppState.AgentEvents) && _appState?.AgentEvents.Count == 0)
+        {
+            _allEvents.Clear();
+            ApplyFilter();
+        }
+    }
+
+    private void OnAgentEventAdded(AgentEventInfo evt)
+    {
+        AddEvent(evt);
     }
 
     public void AddEvent(AgentEventInfo evt)

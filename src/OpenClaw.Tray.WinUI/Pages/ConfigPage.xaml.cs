@@ -3,9 +3,10 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using OpenClawTray.Windows;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,7 +17,8 @@ public sealed partial class ConfigPage : Page
 {
     private static readonly JsonElement s_emptyObject = JsonDocument.Parse("{}").RootElement.Clone();
 
-    private HubWindow? _hub;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private AppState? _appState;
     private JsonElement? _lastConfig;
     private JsonElement? _lastSchema;
     private string? _baseHash;
@@ -29,84 +31,96 @@ public sealed partial class ConfigPage : Page
     public ConfigPage()
     {
         InitializeComponent();
+        Unloaded += (_, _) =>
+        {
+            if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+        };
     }
 
-    public void Initialize(HubWindow hub)
+    public void Initialize()
     {
-        _hub = hub;
+        _appState = CurrentApp.AppState;
+        _appState.PropertyChanged += OnAppStateChanged;
         OpenClawTray.Services.Logger.Info("[ConfigPage] Initialize");
-        if (hub.GatewayClient != null)
+        if (CurrentApp.GatewayClient != null)
         {
-            _ = hub.GatewayClient.RequestConfigSchemaAsync();
-            _ = hub.GatewayClient.RequestConfigAsync();
+            _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
+            _ = CurrentApp.GatewayClient.RequestConfigAsync();
         }
     }
 
     public void UpdateConfig(JsonElement config)
     {
         var configSnapshot = config.Clone();
-        DispatcherQueue?.TryEnqueue(() =>
+        try
         {
-            try
+            OpenClawTray.Services.Logger.Info("[ConfigPage] UpdateConfig received");
+            _lastConfig = configSnapshot;
+
+            // Get baseHash from the config.get response
+            // The gateway returns a 'hash' field which is SHA256 of the raw file content
+            if (configSnapshot.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
             {
-                OpenClawTray.Services.Logger.Info("[ConfigPage] UpdateConfig received");
-                _lastConfig = configSnapshot;
-
-                // Get baseHash from the config.get response
-                // The gateway returns a 'hash' field which is SHA256 of the raw file content
-                if (configSnapshot.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
-                {
-                    _baseHash = bh.GetString();
-                }
-                else if (configSnapshot.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
-                {
-                    _baseHash = hashEl.GetString();
-                }
-                else if (configSnapshot.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
-                {
-                    // Fallback: compute from raw content
-                    var rawContent = rawEl.GetString();
-                    if (rawContent != null)
-                    {
-                        var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
-                        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-                        _baseHash = Convert.ToHexStringLower(hash);
-                    }
-                }
-
-                // Show file path in subtitle if available
-                if (configSnapshot.TryGetProperty("path", out var pathEl))
-                    ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-driven form";
-
-                RenderTree();
-                UpdateRawJson();
+                _baseHash = bh.GetString();
             }
-            catch (Exception ex)
+            else if (configSnapshot.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
             {
-                OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config: {ex}");
-                ShowConfigRenderError();
+                _baseHash = hashEl.GetString();
             }
-        });
+            else if (configSnapshot.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
+            {
+                // Fallback: compute from raw content
+                var rawContent = rawEl.GetString();
+                if (rawContent != null)
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
+                    var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+                    _baseHash = Convert.ToHexStringLower(hash);
+                }
+            }
+
+            // Show file path in subtitle if available
+            if (configSnapshot.TryGetProperty("path", out var pathEl))
+                ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-driven form";
+
+            RenderTree();
+            UpdateRawJson();
+        }
+        catch (Exception ex)
+        {
+            OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config: {ex}");
+            ShowConfigRenderError();
+        }
+    }
+
+    private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(AppState.Config):
+                if (_appState!.Config.HasValue) UpdateConfig(_appState.Config.Value);
+                break;
+            case nameof(AppState.ConfigSchema):
+                if (_appState!.ConfigSchema.HasValue) UpdateConfigSchema(_appState.ConfigSchema.Value);
+                break;
+        }
     }
 
     public void UpdateConfigSchema(JsonElement schema)
     {
         var schemaSnapshot = schema.Clone();
-        DispatcherQueue?.TryEnqueue(() =>
+        try
         {
-            try
-            {
-                _lastSchema = schemaSnapshot;
-                // Re-render tree if config is already loaded
-                if (_lastConfig.HasValue)
-                    RenderTree();
-            }
-            catch (Exception ex)
-            {
-                OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
-                ShowConfigRenderError();
-            }
-        });
+            _lastSchema = schemaSnapshot;
+            // Re-render tree if config is already loaded
+            if (_lastConfig.HasValue)
+                RenderTree();
+        }
+        catch (Exception ex)
+        {
+            OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
+            ShowConfigRenderError();
+        }
     }
 
     private void RenderTree()
@@ -212,7 +226,7 @@ public sealed partial class ConfigPage : Page
 
     private void OnOpenDashboard(object sender, RoutedEventArgs e)
     {
-        _hub?.OpenDashboardAction?.Invoke("config");
+        ((IAppCommands)CurrentApp).OpenDashboard("config");
     }
 
     private static void ExpandAll(IList<TreeViewNode> nodes)
@@ -245,7 +259,7 @@ public sealed partial class ConfigPage : Page
             return;
         }
 
-        if (_hub?.GatewayClient == null || !_lastConfig.HasValue)
+        if (CurrentApp.GatewayClient == null || !_lastConfig.HasValue)
         {
             SaveStatus.Text = "Not connected";
             return;
@@ -273,13 +287,13 @@ public sealed partial class ConfigPage : Page
         SaveStatus.Text = "Saving...";
         try
         {
-            var ok = await _hub.GatewayClient.PatchConfigAsync(updatedElement, _baseHash);
+            var ok = await CurrentApp.GatewayClient.PatchConfigAsync(updatedElement, _baseHash);
             SaveStatus.Text = ok ? "✓ Saved" : "✗ Save failed — changes preserved";
 
             if (ok)
             {
                 _pendingChanges.Clear();
-                _ = _hub.GatewayClient.RequestConfigAsync();
+                _ = CurrentApp.GatewayClient.RequestConfigAsync();
             }
         }
         catch (Exception) { SaveStatus.Text = "✗ Save failed — changes preserved"; }
@@ -334,11 +348,11 @@ public sealed partial class ConfigPage : Page
 
     private void OnRefresh(object sender, RoutedEventArgs e)
     {
-        if (_hub?.GatewayClient != null)
+        if (CurrentApp.GatewayClient != null)
         {
             SaveStatus.Text = "";
-            _ = _hub.GatewayClient.RequestConfigSchemaAsync();
-            _ = _hub.GatewayClient.RequestConfigAsync();
+            _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
+            _ = CurrentApp.GatewayClient.RequestConfigAsync();
         }
     }
 
@@ -721,20 +735,20 @@ public sealed partial class ConfigPage : Page
 
     private void OnValueEdited(string configPath, object newValue)
     {
-        if (_hub?.GatewayClient == null) return;
+        if (CurrentApp.GatewayClient == null) return;
 
         _ = Task.Run(async () =>
         {
             try
             {
-                var success = await _hub.GatewayClient.SetConfigAsync(configPath, newValue);
+                var success = await CurrentApp.GatewayClient.SetConfigAsync(configPath, newValue);
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     SaveStatus.Text = success
                         ? $"✅ Sent {configPath}"
                         : $"❌ Failed to save {configPath}";
-                    if (success && _hub?.GatewayClient != null)
-                        _ = _hub.GatewayClient.RequestConfigAsync();
+                    if (success && CurrentApp.GatewayClient != null)
+                        _ = CurrentApp.GatewayClient.RequestConfigAsync();
                 });
             }
             catch (Exception ex)

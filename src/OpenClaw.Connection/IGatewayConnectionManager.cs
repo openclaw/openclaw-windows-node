@@ -24,6 +24,26 @@ public interface IGatewayConnectionManager : IDisposable
     Task ReconnectAsync();
     Task SwitchGatewayAsync(string gatewayId);
 
+    /// <summary>
+    /// Drive the node connection for the active gateway and await its terminal state.
+    /// Operator must already be Connected (caller responsibility — usually the easy-button
+    /// setup engine, which only invokes this after PairOperator completes).
+    /// <para>
+    /// Behavior:
+    ///   - If the node is already Connected + Paired, returns immediately.
+    ///   - Otherwise calls the internal node-start path (bypassing the
+    ///     auto-start <c>shouldStartNodeConnection</c> gate) and waits for the
+    ///     manager's snapshot to reach <c>NodeState=Connected, NodePairingStatus=Paired</c>.
+    ///   - Throws <see cref="InvalidOperationException"/> if the operator is not connected
+    ///     or there is no node connector wired.
+    ///   - Throws <see cref="InvalidOperationException"/> on terminal node failure
+    ///     (Error / PairingRejected) with the snapshot's error message.
+    ///   - Throws <see cref="TimeoutException"/> after the default 35s window if the
+    ///     caller did not pass a cancellation token; respects the caller's token otherwise.
+    /// </para>
+    /// </summary>
+    Task EnsureNodeConnectedAsync(CancellationToken cancellationToken = default);
+
     // ─── Setup ───
     Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode);
     Task<SetupCodeResult> ConnectWithSharedTokenAsync(string gatewayUrl, string token, SshTunnelConfig? sshTunnel = null);

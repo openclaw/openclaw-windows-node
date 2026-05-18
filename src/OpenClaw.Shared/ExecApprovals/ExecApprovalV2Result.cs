@@ -7,6 +7,7 @@ public enum ExecApprovalV2Code
 {
     Unavailable,
     SecurityDeny,
+    AskDeny,
     AllowlistMiss,
     UserDenied,
     ValidationFailed,
@@ -33,6 +34,9 @@ public sealed class ExecApprovalV2Result
 
     public static ExecApprovalV2Result SecurityDeny(string reason)
         => new(ExecApprovalV2Code.SecurityDeny, reason);
+
+    public static ExecApprovalV2Result AskDeny(string reason)
+        => new(ExecApprovalV2Code.AskDeny, reason);
 
     public static ExecApprovalV2Result AllowlistMiss(string reason)
         => new(ExecApprovalV2Code.AllowlistMiss, reason);

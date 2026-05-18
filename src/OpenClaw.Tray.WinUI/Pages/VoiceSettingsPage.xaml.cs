@@ -5,7 +5,6 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
-using OpenClawTray.Windows;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -15,7 +14,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class VoiceSettingsPage : Page
 {
-    private HubWindow? _hub;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private VoiceService? _voiceService;
     private bool _suppressEvents;
     // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
@@ -49,9 +48,8 @@ public sealed partial class VoiceSettingsPage : Page
         };
     }
 
-    public void Initialize(HubWindow hub, VoiceService? voiceService)
+    public void Initialize(VoiceService? voiceService)
     {
-        _hub = hub;
         _voiceService = voiceService;
         if (App.Current is App app)
         {
@@ -73,12 +71,12 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void LoadSettings()
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         _suppressEvents = true;
 
         try
         {
-            var settings = _hub.Settings;
+            var settings = CurrentApp.Settings;
 
             SttEnabledToggle.IsOn = settings.NodeSttEnabled;
 
@@ -125,7 +123,7 @@ public sealed partial class VoiceSettingsPage : Page
         // Determine the selected model. Prefer settings; fall back to the
         // ModelCombo selection if settings haven't been wired yet so the
         // status reflects what's on disk even before Initialize completes.
-        var modelName = _hub?.Settings?.SttModelName
+        var modelName = CurrentApp.Settings?.SttModelName
             ?? (ModelCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString()
             ?? "base";
 
@@ -158,59 +156,59 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void OnSttToggled(object sender, RoutedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.NodeSttEnabled = SttEnabledToggle.IsOn;
-        _hub.Settings.Save();
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.NodeSttEnabled = SttEnabledToggle.IsOn;
+        CurrentApp.Settings.Save();
         UpdateCardVisibility();
     }
 
     private void OnModelChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
+        if (_suppressEvents || CurrentApp.Settings == null) return;
 
         if (ModelCombo.SelectedItem is ComboBoxItem item && item.Tag is string modelName)
         {
-            _hub.Settings.SttModelName = modelName;
-            _hub.Settings.Save();
+            CurrentApp.Settings.SttModelName = modelName;
+            CurrentApp.Settings.Save();
             UpdateModelStatus();
         }
     }
 
     private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
+        if (_suppressEvents || CurrentApp.Settings == null) return;
 
         if (LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
         {
-            _hub.Settings.SttLanguage = lang;
-            _hub.Settings.Save();
+            CurrentApp.Settings.SttLanguage = lang;
+            CurrentApp.Settings.Save();
         }
     }
 
     private void OnSilenceChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.SttSilenceTimeout = (float)SilenceSlider.Value;
-        _hub.Settings.Save();
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.SttSilenceTimeout = (float)SilenceSlider.Value;
+        CurrentApp.Settings.Save();
     }
 
     private void OnTtsResponseToggled(object sender, RoutedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
+        if (_suppressEvents || CurrentApp.Settings == null) return;
         // Use centralized SetChatSpeakerMuted which persists + broadcasts
         (App.Current as App)?.SetChatSpeakerMuted(!TtsResponseToggle.IsOn);
     }
 
     private void OnAudioFeedbackToggled(object sender, RoutedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.VoiceAudioFeedback = AudioFeedbackToggle.IsOn;
-        _hub.Settings.Save();
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.VoiceAudioFeedback = AudioFeedbackToggle.IsOn;
+        CurrentApp.Settings.Save();
     }
 
     private async void OnDownloadClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
 
         // Cancel any in-progress Whisper download (only). Piper downloads are
         // independent and keep running.
@@ -259,9 +257,9 @@ public sealed partial class VoiceSettingsPage : Page
             // button label flips to "Re-download" (UpdateModelStatus). The
             // download manager short-circuits if the file exists, so we
             // delete first to force a fresh fetch + SHA-256 re-verify.
-            manager.DeleteModel(_hub.Settings.SttModelName);
+            manager.DeleteModel(CurrentApp.Settings.SttModelName);
             await manager.DownloadModelAsync(
-                _hub.Settings.SttModelName,
+                CurrentApp.Settings.SttModelName,
                 progress,
                 _whisperDownloadCts.Token);
 
@@ -294,7 +292,7 @@ public sealed partial class VoiceSettingsPage : Page
 
     private async void OnTestVoiceClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
 
         // Toggle: hide button, show inline test panel
         TestVoiceButton.Visibility = Visibility.Collapsed;
@@ -380,14 +378,14 @@ public sealed partial class VoiceSettingsPage : Page
 
     private async void OnInlineTestStartClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         InlineTestStartBtn.IsEnabled = false;
 
         if (!_inlineTestListening)
         {
             try
             {
-                _inlineTestVoiceService ??= new VoiceService(new AppLogger(), _hub.Settings);
+                _inlineTestVoiceService ??= new VoiceService(new AppLogger(), CurrentApp.Settings);
                 _inlineTestListening = true;
                 InlineTestBtnIcon.Glyph = "\uE71A";
                 InlineTestBtnLabel.Text = "Stop";
@@ -570,11 +568,11 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void OnPiperVoiceChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
+        if (_suppressEvents || CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is ComboBoxItem item && item.Tag is string voiceId)
         {
-            _hub.Settings.TtsPiperVoiceId = voiceId;
-            _hub.Settings.Save();
+            CurrentApp.Settings.TtsPiperVoiceId = voiceId;
+            CurrentApp.Settings.Save();
         }
         UpdatePiperVoiceState();
     }
@@ -586,7 +584,7 @@ public sealed partial class VoiceSettingsPage : Page
     /// </summary>
     private void UpdatePiperVoiceState()
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId)
             return;
 
@@ -615,7 +613,7 @@ public sealed partial class VoiceSettingsPage : Page
 
     private async void OnPiperDownloadClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
 
         // Cancel any prior Piper download (only). Whisper downloads are
@@ -683,7 +681,7 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void OnPiperDeleteClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
 
         try
@@ -702,7 +700,7 @@ public sealed partial class VoiceSettingsPage : Page
 
     private async void OnPiperPreviewClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
 
         PiperPreviewButton.IsEnabled = false;
@@ -711,7 +709,7 @@ public sealed partial class VoiceSettingsPage : Page
 
         try
         {
-            using var tts = new TextToSpeechService(new AppLogger(), _hub.Settings);
+            using var tts = new TextToSpeechService(new AppLogger(), CurrentApp.Settings);
             await tts.SpeakAsync(new OpenClaw.Shared.Capabilities.TtsSpeakArgs
             {
                 Text = L("VoiceSettingsPage_CompanionPreviewText"),
@@ -780,43 +778,43 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void OnTtsProviderChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
+        if (_suppressEvents || CurrentApp.Settings == null) return;
 
         if (TtsProviderCombo.SelectedItem is ComboBoxItem item && item.Tag is string provider)
         {
-            _hub.Settings.TtsProvider = provider;
-            _hub.Settings.Save();
+            CurrentApp.Settings.TtsProvider = provider;
+            CurrentApp.Settings.Save();
         }
         UpdateTtsProviderVisibility();
     }
 
     private void OnWindowsVoiceChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
+        if (_suppressEvents || CurrentApp.Settings == null) return;
 
         if (WindowsVoiceCombo.SelectedItem is ComboBoxItem item && item.Tag is string voiceId)
         {
-            _hub.Settings.TtsWindowsVoiceId = voiceId;
-            _hub.Settings.Save();
+            CurrentApp.Settings.TtsWindowsVoiceId = voiceId;
+            CurrentApp.Settings.Save();
         }
     }
 
     private async void OnPreviewVoiceClick(object sender, RoutedEventArgs e)
     {
-        if (_hub?.Settings == null) return;
+        if (CurrentApp.Settings == null) return;
 
         PreviewVoiceButton.IsEnabled = false;
         PreviewVoiceButton.Content = L("VoiceSettingsPage_PreviewButtonPlaying");
 
         try
         {
-            var tts = new TextToSpeechService(new AppLogger(), _hub.Settings);
+            var tts = new TextToSpeechService(new AppLogger(), CurrentApp.Settings);
             try
             {
                 await tts.SpeakAsync(new OpenClaw.Shared.Capabilities.TtsSpeakArgs
                 {
                     Text = L("VoiceSettingsPage_CompanionPreviewText"),
-                    Provider = _hub.Settings.TtsProvider,
+                    Provider = CurrentApp.Settings.TtsProvider,
                     VoiceId = WindowsVoiceCombo.SelectedItem is ComboBoxItem item ? item.Tag?.ToString() : null,
                     Interrupt = true
                 });
@@ -842,22 +840,22 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void OnElevenLabsKeyChanged(object sender, RoutedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.TtsElevenLabsApiKey = ElevenLabsApiKeyBox.Password;
-        _hub.Settings.Save();
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.TtsElevenLabsApiKey = ElevenLabsApiKeyBox.Password;
+        CurrentApp.Settings.Save();
     }
 
     private void OnElevenLabsVoiceIdChanged(object sender, TextChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.TtsElevenLabsVoiceId = ElevenLabsVoiceIdBox.Text;
-        _hub.Settings.Save();
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.TtsElevenLabsVoiceId = ElevenLabsVoiceIdBox.Text;
+        CurrentApp.Settings.Save();
     }
 
     private void OnElevenLabsModelChanged(object sender, TextChangedEventArgs e)
     {
-        if (_suppressEvents || _hub?.Settings == null) return;
-        _hub.Settings.TtsElevenLabsModel = ElevenLabsModelBox.Text;
-        _hub.Settings.Save();
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.TtsElevenLabsModel = ElevenLabsModelBox.Text;
+        CurrentApp.Settings.Save();
     }
 }

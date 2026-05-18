@@ -80,6 +80,10 @@
                         <Button x:Uid="CheckUpdatesButton" x:Name="CheckUpdatesButton" Content="Check for Updates"
                                 Click="OnCheckUpdatesClick"/>
                     </StackPanel>
+                    <HyperlinkButton x:Uid="AboutPage_MoreDiagnosticsLink"
+                                     Content="More diagnostics →"
+                                     Click="OnMoreDiagnosticsClick"
+                                     Padding="0,4,0,0"/>
                 </StackPanel>
             </Border>
 

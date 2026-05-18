@@ -2,7 +2,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
-using OpenClawTray.Windows;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -13,7 +12,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SandboxPage : Page
 {
-    private HubWindow? _hub;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private bool _suppress;
     private bool _dialogOpen;
     private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
@@ -86,9 +85,8 @@ public sealed partial class SandboxPage : Page
         CustomFoldersList.ItemsSource = CustomFolders;
     }
 
-    public void Initialize(HubWindow hub)
+    public void Initialize()
     {
-        _hub = hub;
         LoadState();
         ProbeStatus();
         UpdateControlsEnabledState();
@@ -98,7 +96,7 @@ public sealed partial class SandboxPage : Page
 
     private void LoadState()
     {
-        if (_hub?.Settings is not { } settings) return;
+        if (CurrentApp.Settings is not { } settings) return;
 
         _suppress = true;
         try
@@ -300,7 +298,7 @@ public sealed partial class SandboxPage : Page
 
     private void ApplyPreset(SandboxPreset preset)
     {
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
 
         _suppress = true;
         try
@@ -347,7 +345,7 @@ public sealed partial class SandboxPage : Page
 
     private void UpdatePresetHighlight()
     {
-        var s = _hub?.Settings;
+        var s = CurrentApp.Settings;
         var active = s is null ? null : DetectActivePreset(s);
         SetPresetCardActive(PresetLockedButton, active?.Tag == s_lockedDown.Tag);
         SetPresetCardActive(PresetBalancedButton, active?.Tag == s_balanced.Tag);
@@ -451,7 +449,7 @@ public sealed partial class SandboxPage : Page
     private void Save()
     {
         if (_suppress) return;
-        _hub?.Settings?.Save();
+        CurrentApp.Settings?.Save();
         UpdatePresetHighlight();
     }
 
@@ -466,7 +464,7 @@ public sealed partial class SandboxPage : Page
     private async void OnSandboxEnabledToggled(object sender, RoutedEventArgs e)
     {
         if (_suppress) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
 
         var newValue = SandboxEnabledToggle.IsOn;
         var oldValue = s.SystemRunSandboxEnabled;
@@ -530,7 +528,7 @@ public sealed partial class SandboxPage : Page
     private void OnNetInternetToggled(object sender, RoutedEventArgs e)
     {
         if (_suppress) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         s.SystemRunAllowOutbound = NetInternetToggle.IsOn;
         Save();
     }
@@ -538,7 +536,7 @@ public sealed partial class SandboxPage : Page
     private void OnDocsAccessChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppress) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         s.SandboxDocumentsAccess = ReadAccessTag(DocsAccessCombo);
         Save();
     }
@@ -546,7 +544,7 @@ public sealed partial class SandboxPage : Page
     private void OnDownloadsAccessChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppress) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         s.SandboxDownloadsAccess = ReadAccessTag(DownloadsAccessCombo);
         Save();
     }
@@ -554,7 +552,7 @@ public sealed partial class SandboxPage : Page
     private void OnDesktopAccessChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppress) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         s.SandboxDesktopAccess = ReadAccessTag(DesktopAccessCombo);
         Save();
     }
@@ -564,7 +562,8 @@ public sealed partial class SandboxPage : Page
 
     private async System.Threading.Tasks.Task PickCustomFolderAsync(SandboxFolderAccess access)
     {
-        if (_hub is null) return;
+        var window = CurrentApp.ActiveHubWindow;
+        if (window is null) return;
 
         var picker = new FolderPicker
         {
@@ -572,7 +571,7 @@ public sealed partial class SandboxPage : Page
         };
         picker.FileTypeFilter.Add("*");
 
-        var hwnd = WindowNative.GetWindowHandle(_hub);
+        var hwnd = WindowNative.GetWindowHandle(window);
         InitializeWithWindow.Initialize(picker, hwnd);
 
         var folder = await picker.PickSingleFolderAsync();
@@ -588,7 +587,7 @@ public sealed partial class SandboxPage : Page
         CustomFolders.Add(row);
         RefreshCustomFoldersUi();
 
-        if (_hub.Settings is { } s)
+        if (CurrentApp.Settings is { } s)
         {
             s.SandboxCustomFolders.Add(new SandboxCustomFolder { Path = folder.Path, Access = access });
             Save();
@@ -610,7 +609,7 @@ public sealed partial class SandboxPage : Page
             return;
         }
 
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
 
         var newIndex = combo.SelectedIndex;
         var newAccess = newIndex switch
@@ -653,7 +652,7 @@ public sealed partial class SandboxPage : Page
         if (row != null) CustomFolders.Remove(row);
         RefreshCustomFoldersUi();
 
-        if (_hub?.Settings is { } s)
+        if (CurrentApp.Settings is { } s)
         {
             s.SandboxCustomFolders.RemoveAll(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
             Save();
@@ -664,7 +663,7 @@ public sealed partial class SandboxPage : Page
     {
         if (_suppress) return;
         if (sender is not RadioButton rb || rb.Tag is not string tag) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         s.SandboxClipboard = tag switch
         {
             "Read" => SandboxClipboardMode.Read,
@@ -680,7 +679,7 @@ public sealed partial class SandboxPage : Page
         if (_suppress) return;
         var secs = (int)Math.Round(e.NewValue);
         TimeoutLabel.Text = $"Max time per command: {secs} sec";
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         s.SandboxTimeoutMs = secs * 1000;
         Save();
     }
@@ -688,7 +687,7 @@ public sealed partial class SandboxPage : Page
     private void OnMaxOutputChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppress) return;
-        if (_hub?.Settings is not { } s) return;
+        if (CurrentApp.Settings is not { } s) return;
         var tag = (string?)((ComboBoxItem?)MaxOutputCombo.SelectedItem)?.Tag;
         if (tag != null && long.TryParse(tag, out var bytes))
         {

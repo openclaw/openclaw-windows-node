@@ -5,6 +5,20 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
 
+            <!-- Inline back link — only shown when the user arrived via a
+                 cross-page link from Connection. Set by InstancesPage.Initialize
+                 based on HubWindow.LastNavigationOrigin. -->
+            <HyperlinkButton x:Name="BackToConnectionLink"
+                             Click="OnBackToConnectionClicked"
+                             Padding="0" Margin="0,0,0,-8"
+                             Visibility="Collapsed"
+                             AutomationProperties.AutomationId="BackToConnectionLink">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE72B;" FontSize="12"/>
+                    <TextBlock Text="Back to Connection"/>
+                </StackPanel>
+            </HyperlinkButton>
+
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -39,15 +53,6 @@
                     </StackPanel>
                 </Button>
             </Grid>
-
-            <InfoBar x:Uid="InstancesPage_ConnectionWarning"
-                     x:Name="ConnectionWarning"
-                     Title="Not connected"
-                     Message="Connect to a gateway to see live instance data."
-                     Severity="Warning"
-                     IsOpen="True"
-                     IsClosable="False"
-                     Visibility="Collapsed"/>
 
             <StackPanel x:Name="EmptyState"
                         Spacing="8"

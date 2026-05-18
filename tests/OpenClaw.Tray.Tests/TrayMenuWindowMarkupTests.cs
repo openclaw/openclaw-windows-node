@@ -220,6 +220,9 @@ public class TrayMenuWindowMarkupTests
     [Fact]
     public void DeepLinkHandler_HasActivityStreamEntryPoint()
     {
+        // ActivityPage was removed; the activity deep link now redirects by filter
+        // to the appropriate page (channels by default, sessions/usage/instances
+        // when a matching filter is present). The case label is still present.
         var sourcePath = Path.Combine(
             GetRepositoryRoot(),
             "src",
@@ -230,12 +233,13 @@ public class TrayMenuWindowMarkupTests
         var source = File.ReadAllText(sourcePath);
 
         Assert.Contains(@"case ""activity"":", source);
-        Assert.Contains(@"OpenHub?.Invoke(""activity"")", source);
+        Assert.Contains(@"OpenHub?.Invoke(", source);
     }
 
     [Fact]
     public void DeepLinkHandler_HasNotificationHistoryEntryPoint()
     {
+        // Notification/history deep links now redirect to Channels.
         var sourcePath = Path.Combine(
             GetRepositoryRoot(),
             "src",
@@ -247,7 +251,7 @@ public class TrayMenuWindowMarkupTests
 
         Assert.Contains(@"case ""history"":", source);
         Assert.Contains(@"case ""notification-history"":", source);
-        Assert.Contains(@"OpenHub?.Invoke(""activity"")", source);
+        Assert.Contains(@"OpenHub?.Invoke(""channels"")", source);
     }
 
     [Fact]

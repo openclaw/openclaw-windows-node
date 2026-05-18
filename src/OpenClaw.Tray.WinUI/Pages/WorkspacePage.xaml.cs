@@ -1,47 +1,67 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
-using OpenClawTray.Windows;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text.Json;
 
 namespace OpenClawTray.Pages;
 
 public sealed partial class WorkspacePage : Page
 {
-    private HubWindow? _hub;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private AppState? _appState;
     private readonly Dictionary<string, TabViewItem> _fileTabs = new(StringComparer.OrdinalIgnoreCase);
     private bool _tabsPopulated;
 
-    private string AgentId => _hub?.CurrentAgentId ?? "main";
+    /// <summary>Set by HubWindow before <see cref="Initialize"/> to specify the active agent scope.</summary>
+    public string AgentId { get; set; } = "main";
     public string CurrentAgentId => AgentId;
 
     public WorkspacePage()
     {
         InitializeComponent();
+        Unloaded += (_, _) =>
+        {
+            if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+        };
     }
 
-    public void Initialize(HubWindow hub)
+    public void Initialize()
     {
-        _hub = hub;
-        // If HubWindow has cached file list data for this agent, it will replay after Initialize.
+        _appState = CurrentApp.AppState;
+        _appState.PropertyChanged += OnAppStateChanged;
         // Only request fresh data when no matching cache exists.
-        var hasMatchingCache = hub.LastAgentFilesList.HasValue &&
-            string.Equals(hub.LastAgentFilesListAgentId, AgentId, StringComparison.OrdinalIgnoreCase);
-        if (hub.GatewayClient != null && hub.CurrentStatus == ConnectionStatus.Connected && !hasMatchingCache)
+        var hasMatchingCache = _appState?.AgentFilesList.HasValue == true &&
+            string.Equals(_appState?.AgentFilesListAgentId, AgentId, StringComparison.OrdinalIgnoreCase);
+        var status = CurrentApp.AppState?.Status ?? OpenClaw.Shared.ConnectionStatus.Disconnected;
+        if (CurrentApp.GatewayClient != null && status == OpenClaw.Shared.ConnectionStatus.Connected && !hasMatchingCache)
         {
             FallbackInfoBar.IsOpen = false;
             LoadingRing.IsActive = true;
             LoadingPanel.Visibility = Visibility.Visible;
             ClearTabs();
-            hub.RecordAgentFilesListRequest(AgentId);
-            _ = hub.GatewayClient.RequestAgentFilesListAsync(AgentId);
+            _ = CurrentApp.GatewayClient.RequestAgentFilesListAsync(AgentId);
         }
-        else if (hub.GatewayClient == null || hub.CurrentStatus != ConnectionStatus.Connected)
+        else if (CurrentApp.GatewayClient == null || status != OpenClaw.Shared.ConnectionStatus.Connected)
         {
             FallbackInfoBar.IsOpen = true;
             FallbackInfoBar.Message = "Connect to gateway to view workspace files.";
+        }
+    }
+
+    private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(AppState.AgentFilesList):
+                if (_appState!.AgentFilesList.HasValue) UpdateAgentFilesList(_appState.AgentFilesList.Value);
+                break;
+            case nameof(AppState.AgentFileContent):
+                if (_appState!.AgentFileContent.HasValue) UpdateAgentFileContent(_appState.AgentFileContent.Value);
+                break;
         }
     }
 
@@ -85,8 +105,8 @@ public sealed partial class WorkspacePage : Page
             FileTabs.SelectedIndex = 0;
             _tabsPopulated = true;
             // Explicitly fetch first tab content (SelectionChanged may not fire for programmatic index set)
-            if (FileTabs.SelectedItem is TabViewItem firstTab && firstTab.Tag is string firstName && _hub?.GatewayClient != null)
-                _ = _hub.GatewayClient.RequestAgentFileGetAsync(AgentId, firstName);
+            if (FileTabs.SelectedItem is TabViewItem firstTab && firstTab.Tag is string firstName && CurrentApp.GatewayClient != null)
+                _ = CurrentApp.GatewayClient.RequestAgentFileGetAsync(AgentId, firstName);
         }
     }
 
@@ -171,22 +191,21 @@ public sealed partial class WorkspacePage : Page
     {
         // Lazy load on tab select if content is still placeholder
         if (FileTabs.SelectedItem is TabViewItem tab && tab.Tag is string fileName &&
-            tab.Content is StackPanel && _hub?.GatewayClient != null)
+            tab.Content is StackPanel && CurrentApp.GatewayClient != null)
         {
-            _ = _hub.GatewayClient.RequestAgentFileGetAsync(AgentId, fileName);
+            _ = CurrentApp.GatewayClient.RequestAgentFileGetAsync(AgentId, fileName);
         }
     }
 
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_hub?.GatewayClient != null)
+        if (CurrentApp.GatewayClient != null)
         {
             LoadingRing.IsActive = true;
             LoadingPanel.Visibility = Visibility.Visible;
             FallbackInfoBar.IsOpen = false;
             ClearTabs();
-            _hub.RecordAgentFilesListRequest(AgentId);
-            _ = _hub.GatewayClient.RequestAgentFilesListAsync(AgentId);
+            _ = CurrentApp.GatewayClient.RequestAgentFilesListAsync(AgentId);
         }
     }
 

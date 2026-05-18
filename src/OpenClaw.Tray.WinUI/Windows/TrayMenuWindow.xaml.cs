@@ -120,7 +120,6 @@ public sealed partial class TrayMenuWindow : WindowEx
     private string? _activeFlyoutKey;
     private string? _activeFlyoutTag;
     private readonly Dictionary<string, (Button button, IReadOnlyList<TrayMenuFlyoutItem> items)> _flyoutsByTag = new(StringComparer.Ordinal);
-    public string? ActiveFlyoutTag => _activeFlyoutTag;
     private bool _isShown;
     /// <summary>True while the menu window is visible. App can use this to
     /// trigger an in-place rebuild when backing state changes mid-display.</summary>
@@ -202,7 +201,7 @@ public sealed partial class TrayMenuWindow : WindowEx
 
                 var foreground = GetForegroundWindow();
                 var thisHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-                var flyoutHwnd = _activeFlyoutWindow != null
+                var flyoutHwnd = _activeFlyoutWindow != null && _activeFlyoutWindow._isShown
                     ? WinRT.Interop.WindowNative.GetWindowHandle(_activeFlyoutWindow)
                     : IntPtr.Zero;
                 var ownerHwnd = _ownerMenu != null
@@ -916,51 +915,6 @@ public sealed partial class TrayMenuWindow : WindowEx
         _isShown = false;
     }
 
-    /// <summary>
-    /// Re-measures content and resizes the window while keeping the bottom edge anchored.
-    /// </summary>
-    public void SizeToContentKeepBottom()
-    {
-        var oldPos = AppWindow.Position;
-        var oldSize = AppWindow.Size;
-        var oldBottom = oldPos.Y + oldSize.Height;
-
-        SizeToContent();
-
-        var newSize = AppWindow.Size;
-        var newY = oldBottom - newSize.Height;
-        if (TryGetCurrentMonitorWorkArea(out var workArea))
-        {
-            const int margin = 8;
-            newY = Math.Max(workArea.Top + margin, newY);
-            newY = Math.Min(workArea.Bottom - newSize.Height - margin, newY);
-        }
-
-        AppWindow.Move(new global::Windows.Graphics.PointInt32(oldPos.X, newY));
-        _lastMoveAndResizeRect = new global::Windows.Graphics.RectInt32(oldPos.X, newY, newSize.Width, newSize.Height);
-    }
-
-    private bool TryGetCurrentMonitorWorkArea(out RECT workArea)
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        if (hMonitor == IntPtr.Zero)
-        {
-            workArea = default;
-            return false;
-        }
-
-        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        if (!GetMonitorInfo(hMonitor, ref info))
-        {
-            workArea = default;
-            return false;
-        }
-
-        workArea = info.rcWork;
-        return true;
-    }
-
     public void SizeToContent() => SizeToContent(MenuWidthViewUnits);
 
     /// <summary>
@@ -1150,6 +1104,15 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         if (!ReferenceEquals(_activeFlyoutOwner, ownerButton) || !string.Equals(_activeFlyoutKey, flyoutKey, StringComparison.Ordinal))
         {
+            // Hide the submenu while repopulating so the user never sees
+            // an empty or stale panel. ShowAdjacentTo will re-show it once
+            // the new content has been measured and sized.
+            if (flyoutWindow._isShown)
+            {
+                flyoutWindow.Hide();
+                flyoutWindow._isShown = false;
+            }
+
             flyoutWindow.ClearItems();
             foreach (var item in items)
             {
@@ -1196,22 +1159,12 @@ public sealed partial class TrayMenuWindow : WindowEx
     private void HideActiveFlyout()
     {
         _activeFlyoutWindow?.HideCascade();
-        _activeFlyoutWindow = null;
+        // Keep _activeFlyoutWindow alive for reuse — creating a new WinUI
+        // window on every hover is expensive and causes content measurement
+        // failures before XamlRoot is initialized.
         _activeFlyoutOwner = null;
         _activeFlyoutKey = null;
         _activeFlyoutTag = null;
-    }
-
-    public bool TryRestoreCascade(string? tag)
-    {
-        if (string.IsNullOrEmpty(tag))
-            return false;
-
-        if (!_flyoutsByTag.TryGetValue(tag, out var entry))
-            return false;
-
-        ShowCascadingFlyout(entry.button, entry.items);
-        return true;
     }
 
     private static string CreateFlyoutKey(IEnumerable<TrayMenuFlyoutItem> items)
@@ -1301,7 +1254,7 @@ public sealed partial class TrayMenuWindow : WindowEx
                 break;
             case VirtualKey.Left:
             case VirtualKey.Escape:
-                if (_activeFlyoutWindow != null)
+                if (_activeFlyoutWindow != null && _activeFlyoutWindow._isShown)
                 {
                     HideActiveFlyout();
                 }
@@ -1325,7 +1278,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             timer.Stop();
             var foreground = GetForegroundWindow();
             var thisHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            var flyoutHwnd = _activeFlyoutWindow == null
+            var flyoutHwnd = _activeFlyoutWindow == null || !_activeFlyoutWindow._isShown
                 ? IntPtr.Zero
                 : WinRT.Interop.WindowNative.GetWindowHandle(_activeFlyoutWindow);
 

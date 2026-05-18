@@ -9,9 +9,14 @@
 
             <TextBlock x:Uid="UsagePage_TextBlock_10" Text="📊 Usage &amp; Cost" Style="{StaticResource TitleTextBlockStyle}"/>
 
-            <InfoBar x:Uid="ConnectionWarning" x:Name="ConnectionWarning" Title="Not Connected"
-                     Message="Connect to gateway to see live data"
-                     Severity="Warning" IsOpen="True" IsClosable="False" Visibility="Collapsed"/>
+            <InfoBar x:Name="ConnectionInfoBar"
+                     IsOpen="False" IsClosable="False" Severity="Warning"
+                     Title="Gateway disconnected"
+                     Message="Connect to a gateway to load usage data.">
+                <InfoBar.ActionButton>
+                    <Button Content="Open Connection" Click="OnOpenConnectionClick"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
 
             <!-- Big number: Total Cost -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -125,8 +130,20 @@
                             <SelectorBarItem x:Uid="Period30DaysItem" x:Name="Period30DaysItem" Text="30 Days"/>
                         </SelectorBar>
                     </Grid>
-                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
-                    <ListView x:Name="DailyListView" SelectionMode="None">
+                     <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                    <StackPanel x:Name="DailyLoadingPanel" Orientation="Horizontal" Spacing="12"
+                                HorizontalAlignment="Center" Padding="0,24,0,16">
+                        <ProgressRing IsActive="True" Width="20" Height="20"/>
+                        <TextBlock Text="Loading daily costs..."
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="DailyEmptyText"
+                               Text="No daily usage for this period"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center" Padding="0,24,0,16"
+                               Visibility="Collapsed"/>
+                     <ListView x:Name="DailyListView" SelectionMode="None">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="4,6">

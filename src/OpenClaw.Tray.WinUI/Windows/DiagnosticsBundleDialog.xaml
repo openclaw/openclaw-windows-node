@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="OpenClawTray.Windows.DiagnosticsBundleDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Style="{StaticResource DefaultContentDialogStyle}"
+    Title="Diagnostics bundle"
+    PrimaryButtonText="Copy to clipboard"
+    SecondaryButtonText="Save to file"
+    CloseButtonText="Close"
+    DefaultButton="Primary">
+
+    <Grid RowSpacing="12" MinWidth="640" MaxWidth="860">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <InfoBar
+            Grid.Row="0"
+            IsOpen="True"
+            IsClosable="False"
+            Severity="Informational"
+            Title="Review before sharing"
+            Message="Sensitive tokens, command arguments, payloads, and recordings are excluded by the bundle builder."/>
+
+        <TextBlock
+            Grid.Row="1"
+            x:Name="BundleHeaderText"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            TextWrapping="Wrap"/>
+
+        <Border
+            Grid.Row="2"
+            Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
+            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="4">
+            <ScrollViewer
+                MaxHeight="420"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Auto">
+                <TextBox
+                    x:Name="BundleText"
+                    IsReadOnly="True"
+                    AcceptsReturn="True"
+                    TextWrapping="NoWrap"
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    BorderThickness="0"
+                    Background="Transparent"
+                    AutomationProperties.Name="Diagnostics bundle text"/>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</ContentDialog>

@@ -90,87 +90,121 @@
             PaneClosing="OnNavPaneStateChanged"
             SelectionChanged="NavView_SelectionChanged">
 
+            <NavigationView.Resources>
+                <!-- Match Windows 11 Settings: ~22px colorful icons in a default-height row.
+                     Default row pitch (~50px) lines up with Settings' sidebar.
+                     Only the Left-pane theme key has an override; Top and Compact modes are not used (PaneDisplayMode is hardcoded above). -->
+                <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
+                <!-- Tighten group separators so the section breaks don't feel as oversized
+                     as the WinUI default once rows are bigger. -->
+                <Thickness x:Key="NavigationViewItemSeparatorMargin">0,2,0,2</Thickness>
+
+                <!-- Shared SvgImageSource resources for colorful sidebar icons.
+                     Defined once so each NavigationViewItem references the same decoded SVG
+                     (avoids per-instance parse cost; also makes the XAML→ImageSource path
+                     explicit instead of relying on implicit URI→SvgImageSource conversion).
+                     The dynamic agent-list code (HubWindow.xaml.cs) also looks up the
+                     "Agents_Icon" key from this dictionary. -->
+                <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
+                <SvgImageSource x:Key="Connection_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Connection.svg"/>
+                <SvgImageSource x:Key="Sessions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sessions.svg"/>
+                <SvgImageSource x:Key="Skills_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Skills.svg"/>
+                <SvgImageSource x:Key="Channels_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Channels.svg"/>
+                <SvgImageSource x:Key="Instances_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Instances.svg"/>
+                <SvgImageSource x:Key="Advanced_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Advanced.svg"/>
+                <SvgImageSource x:Key="AgentEvents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/AgentEvents.svg"/>
+                <SvgImageSource x:Key="Agents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Agents.svg"/>
+                <SvgImageSource x:Key="Bindings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Bindings.svg"/>
+                <SvgImageSource x:Key="Config_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Config.svg"/>
+                <SvgImageSource x:Key="Usage_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Usage.svg"/>
+                <SvgImageSource x:Key="Cron_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Cron.svg"/>
+                <SvgImageSource x:Key="Voice_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Voice.svg"/>
+                <SvgImageSource x:Key="Settings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Settings.svg"/>
+                <SvgImageSource x:Key="Permissions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Permissions.svg"/>
+                <SvgImageSource x:Key="Sandbox_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sandbox.svg"/>
+                <SvgImageSource x:Key="Activity_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
+                <SvgImageSource x:Key="Debug_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Debug.svg"/>
+                <SvgImageSource x:Key="Info_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Info.svg"/>
+            </NavigationView.Resources>
+
         <NavigationView.MenuItems>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" Tag="chat" Content="Chat">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" x:Name="NavChat" Tag="chat" Content="Chat">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItemSeparator/>
 
-            <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" Content="Gateway"/>
+            <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE839;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_91" Tag="sessions" Content="Sessions">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F2;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_91" x:Name="NavSessions" Tag="sessions" Content="Sessions">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sessions_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_97" Tag="skills" Content="Skills">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE945;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_97" x:Name="NavSkills" Tag="skills" Content="Skills">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Skills_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" Tag="channels" Content="Channels">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xEC05;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" x:Name="NavChannels" Tag="channels" Content="Channels">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Channels_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" Tag="instances" Content="Instances">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE977;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="instances" Content="Instances">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <!-- Advanced — consolidates gateway-oriented pages -->
-            <NavigationViewItem Content="Advanced" SelectsOnInvoked="False">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE950;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Name="NavAdvanced" Content="Advanced" SelectsOnInvoked="False">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Advanced_Icon}"/></NavigationViewItem.Icon>
                 <NavigationViewItem.MenuItems>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_94" Tag="agentevents" Content="Agent Events">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource AgentEvents_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}"/></NavigationViewItem.Icon>
                         <NavigationViewItem.MenuItems>
                             <NavigationViewItem x:Uid="DefaultAgentNavItem" x:Name="DefaultAgentNavItem" Content="main" Tag="agent:main">
-                                <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;"/></NavigationViewItem.Icon>
+                                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}"/></NavigationViewItem.Icon>
                             </NavigationViewItem>
                         </NavigationViewItem.MenuItems>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_115" Tag="bindings" Content="Bindings">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AD;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Bindings_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" Tag="config" Content="Config">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" Tag="usage" Content="Usage">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Usage_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" Tag="cron" Content="Cron">
-                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                 </NavigationViewItem.MenuItems>
             </NavigationViewItem>
-            <NavigationViewItemSeparator/>
+            <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
 
             <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
-            <NavigationViewItem Tag="voice" Content="Voice &amp; Audio">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE720;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Voice" Tag="voice" Content="Voice &amp; Audio">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Voice_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_136" Tag="permissions" Content="Permissions">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xEA18;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Permissions_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="sandbox" Content="Sandbox">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE72E;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_139" Tag="activity" Content="Activity">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xEA95;"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" Tag="debug" Content="Debug">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xEBE8;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_148" Tag="info" Content="Info">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE946;"/></NavigationViewItem.Icon>
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Info_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.FooterMenuItems>
 
-        <Frame x:Name="ContentFrame">
+        <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated">
             <Frame.ContentTransitions>
                 <TransitionCollection>
                     <NavigationThemeTransition/>

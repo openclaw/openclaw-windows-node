@@ -162,7 +162,6 @@
                                     VerticalAlignment="Center">
                             <Button x:Name="StripPrimaryButton"
                                     Content="Connect"
-                                    Style="{ThemeResource AccentButtonStyle}"
                                     Visibility="Collapsed"
                                     Click="OnStripPrimaryClicked"
                                     AutomationProperties.AutomationId="StripPrimaryAction"/>
@@ -353,9 +352,18 @@
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Content="Copy"
                                         Click="OnCopyNodeApproveCommand"
+                                        ToolTipService.ToolTip="Copy command"
+                                        AutomationProperties.Name="Copy approval command"
                                         AutomationProperties.AutomationId="NodeApproveCopyAction"/>
                             </Grid>
                         </Border>
+
+                        <!-- Connect button when awaiting node pairing approval -->
+                        <Button x:Name="NodeReconnectButton" Visibility="Collapsed"
+                                Content="Connect" Click="OnReconnectFromRecovery"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Margin="0,4,0,0"
+                                AutomationProperties.AutomationId="NodeReconnect"/>
 
                         <!-- Capability chips removed in favor of NodeCapabilityText
                              above. Element kept for back-compat with code-behind
@@ -431,7 +439,6 @@
                                              x:Name="RecoveryRepairCodeBox"
                                              PlaceholderText="Paste setup code here…"/>
                                     <Button Grid.Column="1" Content="Apply"
-                                            Style="{ThemeResource AccentButtonStyle}"
                                             Click="OnApplyRepairCode"
                                             AutomationProperties.AutomationId="RecoveryApplyRepair"/>
                                 </Grid>
@@ -458,6 +465,8 @@
                                                VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" Content="Copy"
                                             Click="OnCopyApproveCommand"
+                                            ToolTipService.ToolTip="Copy command"
+                                            AutomationProperties.Name="Copy approval command"
                                             AutomationProperties.AutomationId="RecoveryCopyApprove"/>
                                 </Grid>
                             </StackPanel>
@@ -466,6 +475,9 @@
                         <!-- Escape hatch: just disconnect; the always-visible
                              gateways list below offers switching by one click. -->
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                            <Button Content="Connect" Click="OnReconnectFromRecovery"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    AutomationProperties.AutomationId="RecoveryConnect"/>
                             <Button Content="Disconnect" Click="OnDisconnect"
                                     AutomationProperties.AutomationId="RecoveryDisconnect"/>
                         </StackPanel>
@@ -767,6 +779,7 @@
                         <TextBox x:Name="DirectUrlBox"
                                  Header="Gateway URL"
                                  PlaceholderText="ws://host.local:18790"
+                                 TextChanged="OnDirectInputChanged"
                                  AutomationProperties.AutomationId="AddDirectUrl"/>
                         <PasswordBox x:Name="DirectTokenBox"
                                      Header="Shared token"
@@ -887,7 +900,7 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"/>
 
-                    <!-- Save / Cancel row -->
+                    <!-- Test / Save / Cancel row -->
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -903,6 +916,11 @@
                                 Content="Cancel"
                                 Click="OnAddBack"/>
                     </Grid>
+                    <TextBlock x:Name="AddTestResultText"
+                               Visibility="Collapsed"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"
+                               Style="{StaticResource CaptionTextBlockStyle}"/>
                 </StackPanel>
             </Border>
 

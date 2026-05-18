@@ -62,10 +62,13 @@ internal enum ConnectionPrimaryAction
     Reconnect,
     Retry,
     Cancel,
-    CopyApproveCommand,
     RestartTunnel,
-    Rep,
     BackToCockpit,
+    // CopyApproveCommand and Rep retired: the inline RecoveryApproveCmdBlock
+    // Copy button and the RecoveryAuthPasteBlock paste-and-Apply affordance
+    // own those flows; surfacing them in the strip header on top of a
+    // critical/caution status read as a loud red CTA duplicating the inline
+    // controls below it.
 }
 
 /// <summary>Visual state of the Operator card in Cockpit mode.</summary>
@@ -372,8 +375,14 @@ internal sealed record ConnectionPagePlan
                 StripAccent = ConnectionAccent.Caution,
                 StripHeadline = "Awaiting approval",
                 StripSub = "Approve this client on the gateway host. Connection will resume automatically.",
-                StripPrimaryLabel = cmd != null ? "Copy command" : null,
-                StripPrimaryAction = cmd != null ? ConnectionPrimaryAction.CopyApproveCommand : ConnectionPrimaryAction.None,
+                // No strip-level CTA here: the inline Copy button in
+                // RecoveryApproveCmdBlock owns the copy action, and surfacing
+                // an accent "Copy command" CTA in the strip header on top of
+                // a caution status read as a loud red button next to the
+                // pairing instructions. ConnectionToggle still allows the
+                // user to disconnect; reconnection auto-resumes once approved.
+                StripPrimaryLabel = null,
+                StripPrimaryAction = ConnectionPrimaryAction.None,
                 RecoveryApproveCommand = cmd,
                 RecoveryDetail = "Run on the gateway host:",
                 ActiveGatewayDisplayName = name,
@@ -410,8 +419,13 @@ internal sealed record ConnectionPagePlan
                 StripSub = string.IsNullOrEmpty(err)
                     ? $"Token for {name} is no longer valid."
                     : err,
-                StripPrimaryLabel = "Re-pair",
-                StripPrimaryAction = ConnectionPrimaryAction.Rep,
+                // No strip-level "Re-pair" CTA: the RecoveryAuthPasteBlock
+                // below the strip already exposes a paste-setup-code + Apply
+                // affordance, which IS the re-pair flow. A strip CTA on top
+                // of a critical error read as a loud red button duplicating
+                // an action the user can already see beneath it.
+                StripPrimaryLabel = null,
+                StripPrimaryAction = ConnectionPrimaryAction.None,
                 ActiveGatewayDisplayName = name,
                 ActiveGatewayDetailLine = url,
                 ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
@@ -506,9 +520,21 @@ internal sealed record ConnectionPagePlan
         var reqId = !string.IsNullOrEmpty(snap.NodePairingRequestId)
             ? ConnectionCardPlanSanitizer.Sanitize(snap.NodePairingRequestId!, maxLen: 64)
             : null;
+        // CLI is noun-first: `openclaw nodes approve <requestId>` (see
+        // openclaw/src/cli/nodes-cli/register.pairing.ts). The earlier
+        // `openclaw approve node …` form does not match any registered
+        // subcommand and silently failed when users pasted it.
+        // Missing requestId is a real-world case on older gateway builds:
+        // emit a single discovery command (`openclaw nodes pending`) the
+        // user can paste verbatim into any shell — they then pick a
+        // requestId from its output and run approve manually. We avoid
+        // embedding a "# then:" or "<requestId>" follow-up in the clipboard
+        // text because `#` is treated as a literal arg by cmd.exe and `<`
+        // is parsed as input redirection — pasting either breaks for
+        // Windows-cmd users.
         return reqId != null
-            ? $"openclaw approve node {reqId}"
-            : "openclaw approve node";
+            ? $"openclaw nodes approve {reqId}"
+            : "openclaw nodes pending";
     }
 
     private static string? BuildDevicePairingApproveCommand(GatewayConnectionSnapshot snap)
@@ -518,9 +544,12 @@ internal sealed record ConnectionPagePlan
         var reqId = !string.IsNullOrEmpty(snap.OperatorPairingRequestId)
             ? ConnectionCardPlanSanitizer.Sanitize(snap.OperatorPairingRequestId!, maxLen: 64)
             : null;
+        // Noun-first per openclaw/src/cli/devices-cli.ts:
+        // `openclaw devices approve <requestId>`. Mirror BuildNodeApproveCommand:
+        // single discovery command in the clipboard, no shell-hostile suffix.
         return reqId != null
-            ? $"openclaw approve device {reqId}"
-            : "openclaw approve device";
+            ? $"openclaw devices approve {reqId}"
+            : "openclaw devices list";
     }
 
     private static string? ExtractNodeErrorDetail(GatewayConnectionSnapshot snap)

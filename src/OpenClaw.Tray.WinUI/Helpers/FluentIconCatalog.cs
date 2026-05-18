@@ -57,6 +57,10 @@ public static class FluentIconCatalog
     public const string Plug = "\uE839";           // Plug/PC1 — Direct connection tile (alias of System; same glyph)
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
 
+    // ── Channel actions ────────────────────────────────────────────
+    public const string ChannelLogout = "\uF3B1";   // SignOut — per-channel logout (WhatsApp/Signal in the header; non-QR channels' destructive "disconnect" body action)
+    public const string ChannelStart = "\uE768";    // Play — start-channel header action
+
     // ── Glance chips (Connection page) ─────────────────────────────
     public const string People = "\uE716";         // People — N clients chip
     public const string Money = "\uE9D9";          // Money — $today chip
@@ -70,6 +74,24 @@ public static class FluentIconCatalog
 
     // ── Brand placeholder (lobster emoji currently retained) ───────
     public const string Brand = "🦞";
+
+    // ── Diagnostics page glyphs ────────────────────────────────────
+    // Added 2026-05 for the Diagnostics surface
+    // (src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml). Keep these here
+    // rather than as XAML literals so the icon catalog stays the
+    // single source of truth and FluentIconCatalogTests pins each one.
+    public const string Bug = "\uEBE8";            // BugSolid — nav item glyph for Diagnostics
+    public const string Briefcase = "\uE7B8";      // Briefcase — diagnostics bundle action
+    public const string Folder = "\uE8DA";         // OpenLocal — open folder action
+    public const string Copy = "\uE8C8";           // Copy — copy-to-clipboard affordance
+    public const string Document = "\uE8A5";       // Document — recent log / log file
+    public const string Refresh = "\uE72C";        // Refresh — re-read a snapshot (distinct from Sync E895)
+    // Reset aliases Refresh (U+E72C). Both share the "restart from scratch"
+    // metaphor; the named constant keeps Reconfigure call sites semantically
+    // distinct from data-refresh call sites even though the glyph is the same.
+    public const string Reset = "\uE72C";          // Refresh (alias) — Reconfigure / start over
+    public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
+    public const string Develop = "\uE943";        // Code — engineering / explorations action
 
     /// <summary>
     /// Builds a <see cref="FontIcon"/> for the given PUA glyph using the

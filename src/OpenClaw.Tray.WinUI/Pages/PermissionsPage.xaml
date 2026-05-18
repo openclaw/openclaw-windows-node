@@ -10,6 +10,20 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
+            <!-- Inline back link — only shown when the user arrived via a
+                 cross-page link from Connection. Set by PermissionsPage.Initialize
+                 based on HubWindow.LastNavigationOrigin. -->
+            <HyperlinkButton x:Name="BackToConnectionLink"
+                             Click="OnBackToConnectionClicked"
+                             Padding="0" Margin="0,0,0,4"
+                             Visibility="Collapsed"
+                             AutomationProperties.AutomationId="BackToConnectionLink">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE72B;" FontSize="12"/>
+                    <TextBlock Text="Back to Connection"/>
+                </StackPanel>
+            </HyperlinkButton>
+
             <!-- ───────── Page header ───────── -->
             <TextBlock Text="Permissions"
                        Style="{StaticResource TitleTextBlockStyle}"

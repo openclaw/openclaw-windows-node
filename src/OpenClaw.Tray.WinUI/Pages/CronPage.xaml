@@ -18,19 +18,26 @@
         <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0"/>
-                <TextBlock x:Name="JobCountText" Text="(0)" VerticalAlignment="Center" Grid.Column="1" Margin="8,0,0,0"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <Button x:Name="NewJobButton" Grid.Column="3" Click="OnNewJobClick" Padding="8,4">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <FontIcon Glyph="&#xE710;" FontSize="14"/>
-                        <TextBlock Text="New Job" FontSize="13"/>
+                     <ColumnDefinition Width="Auto"/>
+                     <ColumnDefinition Width="Auto"/>
+                     <ColumnDefinition Width="*"/>
+                     <ColumnDefinition Width="Auto"/>
+                     <ColumnDefinition Width="Auto"/>
+                 </Grid.ColumnDefinitions>
+                 <TextBlock Text="⏱️ Cron Jobs" Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0"/>
+                 <TextBlock x:Name="JobCountText" Text="(0)" VerticalAlignment="Center" Grid.Column="1" Margin="8,0,0,0"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                 <Button x:Name="RefreshButton" Grid.Column="3" Click="OnRefreshClick" Padding="8,4" Margin="0,0,8,0">
+                     <StackPanel Orientation="Horizontal" Spacing="4">
+                         <FontIcon Glyph="&#xE72C;" FontSize="14"/>
+                         <TextBlock Text="Refresh" FontSize="13"/>
+                     </StackPanel>
+                 </Button>
+                 <Button x:Name="NewJobButton" Grid.Column="4" Click="OnNewJobClick" Padding="8,4">
+                     <StackPanel Orientation="Horizontal" Spacing="4">
+                         <FontIcon Glyph="&#xE710;" FontSize="14"/>
+                         <TextBlock Text="New Job" FontSize="13"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -60,8 +67,18 @@
             </Border>
         </StackPanel>
 
-        <!-- Store path (hidden, just for data) -->
-        <TextBlock x:Name="StorePathText" Visibility="Collapsed"/>
+         <!-- Store path (hidden, just for data) -->
+         <TextBlock x:Name="StorePathText" Visibility="Collapsed"/>
+
+         <InfoBar x:Name="ConnectionInfoBar" Grid.Row="1"
+                  IsOpen="False" IsClosable="False" Severity="Warning"
+                  Title="Gateway disconnected"
+                  Message="Connect to a gateway to load cron jobs."
+                  Margin="0,0,0,12">
+             <InfoBar.ActionButton>
+                 <Button Content="Open Connection" Click="OnOpenConnectionClick"/>
+             </InfoBar.ActionButton>
+         </InfoBar>
 
         <!-- Job creation/edit form -->
         <Border x:Name="JobFormPanel" Grid.Row="2" Visibility="Collapsed"
@@ -263,12 +280,22 @@
         <!-- Notification for completed one-shot jobs -->
         <InfoBar x:Name="JobCompletedInfoBar" Grid.Row="3" IsOpen="False" Severity="Success" IsClosable="True" Margin="0,0,0,8"/>
 
-        <!-- Jobs list (manually managed for inline editing) -->
-        <StackPanel x:Name="JobsListPanel" Grid.Row="4" Spacing="4" Visibility="Collapsed"/>
+         <!-- Jobs list (manually managed for inline editing) -->
+         <StackPanel x:Name="JobsListPanel" Grid.Row="4" Spacing="4" Visibility="Collapsed"/>
 
-        <!-- Empty state -->
-        <StackPanel x:Name="EmptyState" Grid.Row="4"
-                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+         <StackPanel x:Name="LoadingState" Grid.Row="4" Orientation="Horizontal" Spacing="12"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     Visibility="Visible">
+             <ProgressRing IsActive="True" Width="22" Height="22"/>
+             <TextBlock Text="Loading cron jobs..."
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center"/>
+         </StackPanel>
+
+         <!-- Empty state -->
+         <StackPanel x:Name="EmptyState" Grid.Row="4"
+                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
+                     Visibility="Collapsed">
             <TextBlock Text="⏱️" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock Text="No cron jobs configured"
                        Style="{StaticResource SubtitleTextBlockStyle}"

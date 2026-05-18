@@ -9,18 +9,21 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
-            
-            <!-- Custom OpenClaw Theme Resources -->
-            <SolidColorBrush x:Key="LobsterAccentBrush" Color="#E74C3C" />
-            <SolidColorBrush x:Key="LobsterAccentBrushHover" Color="#C0392B" />
-            
-            <!-- Hub NavigationView accent -->
-            <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="#E74C3C"/>
 
-            <!-- Custom Button Style -->
+            <!-- Hub NavigationView selection indicator: follow the user's
+                 Windows accent (was hard-coded lobster red #E74C3C). Resolves
+                 against {ThemeResource SystemAccentColor} so the indicator
+                 updates if the user changes their accent. -->
+            <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground"
+                             Color="{ThemeResource SystemAccentColor}"/>
+
+            <!-- Primary action button: use the WinUI default accent fill
+                 (driven by the user's Windows accent color), not the old
+                 lobster-red brand override. Foreground and CornerRadius keep
+                 the previous app-specific values so layout stays identical. -->
             <Style x:Key="AccentButtonStyle" TargetType="Button">
-                <Setter Property="Background" Value="{StaticResource LobsterAccentBrush}" />
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                 <Setter Property="CornerRadius" Value="4" />
             </Style>
         </ResourceDictionary>

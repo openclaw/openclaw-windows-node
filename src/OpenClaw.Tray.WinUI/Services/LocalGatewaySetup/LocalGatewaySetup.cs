@@ -1682,34 +1682,10 @@ public interface IWindowsNodeConnector
     Task ConnectAsync(string gatewayUrl, string token, string? bootstrapToken, CancellationToken cancellationToken = default);
 }
 
-#if !OPENCLAW_TRAY_TESTS
-public sealed class NodeServiceWindowsNodeConnector : IWindowsNodeConnector
-{
-    private readonly NodeService _nodeService;
-
-    public NodeServiceWindowsNodeConnector(NodeService nodeService)
-    {
-        _nodeService = nodeService;
-    }
-
-    public async Task ConnectAsync(string gatewayUrl, string token, string? bootstrapToken, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        await _nodeService.ConnectAsync(gatewayUrl, token, bootstrapToken);
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(35);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_nodeService.IsConnected && _nodeService.IsPaired)
-                return;
-
-            await Task.Delay(250, cancellationToken);
-        }
-
-        throw new TimeoutException("Timed out waiting for the Windows tray node to pair with the gateway.");
-    }
-}
-#endif
+// NodeServiceWindowsNodeConnector (direct NodeService.ConnectAsync delegate, no
+// diagnostics tee) has been removed — all node pairing now flows through
+// ConnectionManagerWindowsNodeConnector → GatewayConnectionManager.EnsureNodeConnectedAsync.
+// See docs/node-connection-architecture.md and easy-button-gateway-comms-audit.md.
 
 public static class WslDistroKeepAlive
 {
@@ -1800,72 +1776,10 @@ public interface IGatewayOperatorConnector
     Task<GatewayOperatorConnectionResult> ConnectWithStoredDeviceTokenAsync(string gatewayUrl, CancellationToken cancellationToken = default);
 }
 
-public sealed class OpenClawGatewayOperatorConnector : IGatewayOperatorConnector
-{
-    private readonly IOpenClawLogger _logger;
-    private readonly TimeSpan _timeout;
-
-    public OpenClawGatewayOperatorConnector(IOpenClawLogger? logger = null, TimeSpan? timeout = null)
-    {
-        _logger = logger ?? NullLogger.Instance;
-        _timeout = timeout ?? TimeSpan.FromSeconds(35);
-    }
-
-    public async Task<GatewayOperatorConnectionResult> ConnectAsync(string gatewayUrl, string token, bool tokenIsBootstrapToken = false, CancellationToken cancellationToken = default)
-    {
-        using var client = new OpenClawGatewayClient(gatewayUrl, token, _logger, tokenIsBootstrapToken, bootstrapPairAsNode: false);
-        var completion = new TaskCompletionSource<GatewayOperatorConnectionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        client.StatusChanged += (_, status) =>
-        {
-            if (status == ConnectionStatus.Connected)
-                completion.TrySetResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Connected));
-            else if (status == ConnectionStatus.Error)
-            {
-                if (client.IsPairingRequired)
-                    completion.TrySetResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.PairingRequired, "Gateway requires pairing approval.", client.PairingRequiredRequestId));
-                else if (client.IsAuthFailed)
-                    completion.TrySetResult(new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.AuthFailed, "Gateway rejected operator authentication."));
-            }
-        };
-
-        try
-        {
-            await client.ConnectAsync();
-            var completed = await Task.WhenAny(completion.Task, Task.Delay(_timeout, cancellationToken));
-            return completed == completion.Task
-                ? await completion.Task
-                : new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Timeout, "Timed out waiting for operator handshake.");
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Failed, ex.Message);
-        }
-        finally
-        {
-            await client.DisconnectAsync();
-        }
-    }
-
-    public async Task<GatewayOperatorConnectionResult> ConnectWithStoredDeviceTokenAsync(string gatewayUrl, CancellationToken cancellationToken = default)
-    {
-        var dataPath = Path.Combine(
-            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
-                ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "OpenClawTray");
-        var identity = new DeviceIdentity(dataPath, _logger);
-        identity.Initialize();
-
-        if (string.IsNullOrWhiteSpace(identity.DeviceToken))
-            return new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.AuthFailed, "Gateway did not return a stored device token after bootstrap pairing.");
-
-        return await ConnectAsync(gatewayUrl, identity.DeviceToken, tokenIsBootstrapToken: false, cancellationToken);
-    }
-}
+// OpenClawGatewayOperatorConnector (direct OpenClawGatewayClient instantiation, no
+// diagnostics tee) has been removed — all operator pairing now flows through
+// ConnectionManagerOperatorConnector → GatewayConnectionManager. See
+// docs/node-connection-architecture.md and easy-button-gateway-comms-audit.md.
 
 public sealed class WslGatewayCliSharedGatewayTokenProvider : ISharedGatewayTokenProvider
 {
@@ -2221,6 +2135,35 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
     public const int MaxStdoutSurfaceLength = 1024;
     private static readonly TimeSpan DefaultStage1RetryDelay = TimeSpan.FromMilliseconds(750);
 
+    /// <summary>
+    /// When the gateway restarts mid-PairWindowsTrayNode (which can happen 10-15s after
+    /// operator pairing — gateway flushes config and restarts the service), the WSL CLI
+    /// briefly cannot reach the gateway and exits non-zero with stderr containing
+    /// "1006 abnormal closure" / "gateway closed" / "Gateway not yet ready". The original
+    /// 750ms single-retry isn't enough for the gateway to come back. When we detect this
+    /// pattern in both initial attempts, we keep retrying with exponential backoff up to
+    /// this cap so the WSL approve flow survives a transient gateway restart instead of
+    /// failing with the misleading operator_pending_approval_failed code.
+    /// </summary>
+    private static readonly TimeSpan[] GatewayDownRetryDelays =
+    [
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(4),
+        TimeSpan.FromSeconds(8),
+    ];
+
+    /// <summary>
+    /// Patterns in CLI stderr that indicate the gateway is transiently down (typically
+    /// mid-restart) rather than a real pairing/auth failure.
+    /// </summary>
+    private static readonly string[] GatewayDownStderrPatterns =
+    [
+        "1006 abnormal closure",
+        "gateway closed",
+        "Gateway not yet ready",
+        "Could not start the CLI",
+    ];
+
     private readonly IWslCommandRunner _wsl;
     private readonly string _commandName;
     private readonly TimeSpan _stage1RetryDelay;
@@ -2386,7 +2329,70 @@ public sealed class WslGatewayCliPendingDeviceApprover : IPendingDeviceApprover
             ["bash", "-lc", BuildPreviewScript()],
             cancellationToken,
             tokenEnvironment);
+        if (second.Success || ParsePreviewJson(second.StandardOutput).Success)
+        {
+            return new Stage1Outcome(second, FirstResult: first);
+        }
+
+        // Bug: gateway-restart mid-PairWindowsTrayNode (manual test 2026-05-16) — when the
+        // gateway emits a 1012 service-restart shortly after operator pairing, both initial
+        // stage-1 attempts can hit a still-restarting gateway and fail with stderr like:
+        //   [openclaw] Reason: gateway closed (1006 abnormal closure (no close frame))
+        // The 750ms retry window isn't enough for the gateway to come back. If we recognize
+        // this pattern in both attempts, keep retrying with exponential backoff so the
+        // engine doesn't misreport this as operator_pending_approval_failed.
+        if (LooksLikeGatewayDown(first) && LooksLikeGatewayDown(second))
+        {
+            var last = second;
+            foreach (var delay in GatewayDownRetryDelays)
+            {
+                try
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    return new Stage1Outcome(last, FirstResult: first);
+                }
+
+                var attempt = await _wsl.RunInDistroAsync(
+                    state.DistroName,
+                    ["bash", "-lc", BuildPreviewScript()],
+                    cancellationToken,
+                    tokenEnvironment);
+                if (attempt.Success || ParsePreviewJson(attempt.StandardOutput).Success)
+                {
+                    return new Stage1Outcome(attempt, FirstResult: first);
+                }
+                last = attempt;
+                if (!LooksLikeGatewayDown(attempt))
+                {
+                    // Stopped looking like a transient gateway-down failure — bail and let
+                    // the caller surface this attempt's stderr verbatim.
+                    return new Stage1Outcome(last, FirstResult: first);
+                }
+            }
+            return new Stage1Outcome(last, FirstResult: first);
+        }
+
         return new Stage1Outcome(second, FirstResult: first);
+    }
+
+    /// <summary>
+    /// Heuristic match for "the gateway is down right now, retry will probably succeed"
+    /// — see <see cref="GatewayDownStderrPatterns"/>.
+    /// </summary>
+    internal static bool LooksLikeGatewayDown(WslCommandResult result)
+    {
+        if (result.Success) return false;
+        var stderr = result.StandardError ?? string.Empty;
+        if (stderr.Length == 0) return false;
+        foreach (var pattern in GatewayDownStderrPatterns)
+        {
+            if (stderr.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -3282,6 +3288,8 @@ public static class LocalGatewaySetupEngineFactory
 {
     public static LocalGatewaySetupEngine CreateLocalOnly(
         SettingsManager settings,
+        IGatewayOperatorConnector operatorConnector,
+        IWindowsNodeConnector windowsNodeConnector,
         IOpenClawLogger? logger = null,
 #if !OPENCLAW_TRAY_TESTS
         NodeService? nodeService = null,
@@ -3291,9 +3299,11 @@ public static class LocalGatewaySetupEngineFactory
         bool replaceExistingConfigurationConfirmed = false,
         string? identityDataPath = null,
         string? setupStatePath = null,
-        OpenClaw.Connection.GatewayRegistry? gatewayRegistry = null,
-        IGatewayOperatorConnector? operatorConnectorOverride = null)
+        OpenClaw.Connection.GatewayRegistry? gatewayRegistry = null)
     {
+        ArgumentNullException.ThrowIfNull(operatorConnector);
+        ArgumentNullException.ThrowIfNull(windowsNodeConnector);
+
         // Defense-in-depth fail-closed: refuse to construct the engine if any of the
         // 6 sync existing-config predicates fire and the caller has not passed explicit
         // confirmation. Predicates checked: Token, BootstrapToken, GatewayUrl (non-default),
@@ -3348,16 +3358,10 @@ public static class LocalGatewaySetupEngineFactory
 
         var wsl = new WslExeCommandRunner(logger, TimeSpan.FromMinutes(30));
         var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings, gatewayRegistry);
-        var operatorConnector = operatorConnectorOverride ?? (IGatewayOperatorConnector)new OpenClawGatewayOperatorConnector(logger);
         var bootstrapTokenProvider = new WslGatewayCliBootstrapTokenProvider(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
         var sharedGatewayTokenProvider = new WslGatewayCliSharedGatewayTokenProvider(wsl);
         var gatewayConfigurationPreparer = new OpenClawCliGatewayConfigurationPreparer(wsl);
         var pendingDeviceApprover = new WslGatewayCliPendingDeviceApprover(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
-#if OPENCLAW_TRAY_TESTS
-        IWindowsNodeConnector? windowsNodeConnector = null;
-#else
-        IWindowsNodeConnector? windowsNodeConnector = nodeService == null ? null : new NodeServiceWindowsNodeConnector(nodeService);
-#endif
 
         return new LocalGatewaySetupEngine(
             options,

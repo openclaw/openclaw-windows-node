@@ -7,8 +7,8 @@ using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
-using OpenClaw.Connection;
 using OpenClawTray.Windows;
+using OpenClaw.Connection;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -22,6 +22,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class ChatPage : Page
 {
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private HubWindow? _hub;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
@@ -58,8 +59,7 @@ public sealed partial class ChatPage : Page
                 WebView.CoreWebView2.NavigationStarting -= _navStartingHandler;
         }
 
-        if (_hub is not null)
-            _hub.SettingsSaved -= OnSettingsSaved;
+        CurrentApp.SettingsChanged -= OnSettingsSaved;
 
         if (App.Current is App app)
             app.ChatProviderChanged -= OnAppChatProviderChanged;
@@ -102,15 +102,15 @@ public sealed partial class ChatPage : Page
         });
     }
 
-    public void Initialize(HubWindow hub)
+    public void Initialize()
     {
-        _hub = hub;
+        _hub = CurrentApp.ActiveHubWindow as HubWindow;
 
         // Compute a "open in browser" URL once so the toolbar button works
         // even when the gateway isn't fully reachable yet.
-        if (hub.Settings is not null)
+        if (CurrentApp.Settings is not null)
         {
-            var url = TryComputeChatUrl(hub.Settings);
+            var url = TryComputeChatUrl(CurrentApp.Settings);
             if (!string.IsNullOrEmpty(url))
             {
                 _chatUrl = url;
@@ -119,8 +119,8 @@ public sealed partial class ChatPage : Page
 
         // Re-mount on settings change so toggling "Use standard Gateway Chat
         // interface" swaps the surface live.
-        hub.SettingsSaved -= OnSettingsSaved;
-        hub.SettingsSaved += OnSettingsSaved;
+        CurrentApp.SettingsChanged -= OnSettingsSaved;
+        CurrentApp.SettingsChanged += OnSettingsSaved;
 
         if (App.Current is App app)
         {
@@ -160,19 +160,19 @@ public sealed partial class ChatPage : Page
 
     private void ApplyChatSurface()
     {
-        if (_hub?.Settings is null) return;
+        if (CurrentApp.Settings is null) return;
 
         // HIGH 3: re-resolve the chat URL from the current settings on every
         // surface application — _chatUrl was previously computed once in
         // Initialize() and never refreshed, so SettingsSaved (e.g. token /
         // gateway URL change) would leave the WebView pointing at a stale URL.
-        var freshUrl = TryComputeChatUrl(_hub.Settings);
+        var freshUrl = TryComputeChatUrl(CurrentApp.Settings);
         var urlChanged = !string.Equals(freshUrl, _chatUrl, StringComparison.Ordinal);
         _chatUrl = freshUrl;
 
         var useLegacy = OpenClawTray.Chat.DebugChatSurfaceOverrides.ResolveUseLegacy(
             OpenClawTray.Chat.DebugChatSurfaceOverrides.HubChat,
-            _hub.Settings.UseLegacyWebChat);
+            CurrentApp.Settings.UseLegacyWebChat);
         if (useLegacy)
             ShowWebViewSurface(forceNavigate: urlChanged);
         else
@@ -237,7 +237,7 @@ public sealed partial class ChatPage : Page
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
-        _functionalHost = ((Window)_hub!).MountFunctionalChat(
+        _functionalHost = CurrentApp.ActiveHubWindow!.MountFunctionalChat(
             ChatHost,
             provider,
             onReadAloud: readAloud,
@@ -245,7 +245,7 @@ public sealed partial class ChatPage : Page
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
             onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted),
-            initialMuted: _hub?.Settings?.VoiceTtsEnabled == false);
+            initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false);
         _mountedProvider = provider;
 
         // If the V hotkey (or another caller) requested auto-start voice,
@@ -291,8 +291,8 @@ public sealed partial class ChatPage : Page
             return;
         }
 
-        if (_hub?.Settings is null) return;
-        _ = InitializeWebViewAsync(_hub.Settings);
+        if (CurrentApp.Settings is null) return;
+        _ = InitializeWebViewAsync(CurrentApp.Settings);
     }
 
     private bool NavigateWebViewToCurrentChatUrl()
@@ -343,7 +343,7 @@ public sealed partial class ChatPage : Page
         try
         {
             if (!InteractiveGatewayCredentialResolver.TryResolve(
-                _hub?.GatewayRegistry,
+                CurrentApp.Registry,
                 SettingsManager.SettingsDirectoryPath,
                 DeviceIdentityFileReader.Instance,
                 settings.GetEffectiveGatewayUrl(),
@@ -426,7 +426,7 @@ public sealed partial class ChatPage : Page
             };
             WebView.CoreWebView2.NavigationStarting += _navStartingHandler;
 
-            _connectionManager = _hub?.ConnectionManager;
+            _connectionManager = CurrentApp.ConnectionManager;
             _navigationCts?.Cancel();
             _navigationCts = new CancellationTokenSource();
             _ = NavigateWhenChatReadyAsync(_connectionManager, credential.GatewayUrl, _navigationCts.Token);
@@ -631,7 +631,7 @@ public sealed partial class ChatPage : Page
         RetryChatButton.Visibility = Visibility.Collapsed;
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
-        _ = NavigateWhenChatReadyAsync(_connectionManager, _hub?.GatewayRegistry?.GetById(_hub.GatewayRegistry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
+        _ = NavigateWhenChatReadyAsync(_connectionManager, CurrentApp.Registry?.GetById(CurrentApp.Registry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
     }
 
     private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken)

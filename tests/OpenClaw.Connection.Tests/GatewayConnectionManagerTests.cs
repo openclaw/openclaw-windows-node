@@ -71,6 +71,29 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal("gw-1", _manager.CurrentSnapshot.GatewayId);
     }
 
+    /// <summary>
+    /// Regression guard for the post-onboarding "don't cancel an in-flight reconnect"
+    /// path in App.OnboardingCompleted. When the V2 GatewayWelcome wizard saves a new
+    /// provider/model config the gateway emits a 1012 shutdown and clients enter the
+    /// Connecting state via the auto-reconnect timer. The App handler must see
+    /// OperatorState == Connecting from CurrentSnapshot (without poking OperatorClient
+    /// internals) so it can skip the redundant reconnect call.
+    /// </summary>
+    [Fact]
+    public async Task CurrentSnapshot_OperatorState_IsConnecting_WhileConnectInFlight()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+
+        // Mid-connect (handshake not yet succeeded): operator role-state should be Connecting,
+        // and the overall snapshot mirrors it. This is the signal App.OnboardingCompleted
+        // uses to avoid canceling an in-flight reconnect from a gateway-restart event.
+        Assert.Equal(RoleConnectionState.Connecting, _manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(OverallConnectionState.Connecting, _manager.CurrentSnapshot.OverallState);
+    }
+
     [Fact]
     public async Task ConnectAsync_CreatesClient()
     {
@@ -159,8 +182,12 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task HandshakeSucceeded_SuppressesManagerNodeConnector_WhenLocalNodeServiceOwnsIdentity()
+    public async Task HandshakeSucceeded_RespectsShouldStartNodeConnectionGate_WhenFalse()
     {
+        // The shouldStartNodeConnection delegate (on the manager constructor) is a
+        // generic per-gateway gate. Pre-unification the App used it to defer to a
+        // legacy NodeService for local gateways; post-unification the App no longer
+        // wires this predicate, but the gate itself remains a useful seam for callers.
         SetupGateway("gw-local", "ws://localhost:18789", isLocal: true);
         _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
         _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
@@ -177,7 +204,7 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task HandshakeSucceeded_StartsManagerNodeConnector_WhenNoLocalNodeServiceOwnsIdentity()
+    public async Task HandshakeSucceeded_StartsManagerNodeConnector_WhenGateAllows()
     {
         SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
         _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
@@ -230,6 +257,177 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.NotNull(method);
         var task = (Task)method!.Invoke(manager, [1L])!;
         await task;
+    }
+
+    // ─── EnsureNodeConnectedAsync tests ───
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_OperatorNotConnected_Throws()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        var node = new ScriptedNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node);
+
+        // ConnectAsync only transitions to Connecting; HandshakeSucceeded would be needed to reach Connected.
+        await manager.ConnectAsync("gw-1");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.EnsureNodeConnectedAsync());
+        Assert.Contains("Operator must be Connected", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, node.ConnectCount);
+    }
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_NoConnector_Throws()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        // _manager has no node connector wired
+        await _manager.ConnectAsync("gw-1");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _manager.EnsureNodeConnectedAsync());
+    }
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_AlreadyPaired_NoOp()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+        var node = new ScriptedNodeConnector
+        {
+            ConnectAction = (s, _) =>
+            {
+                s.SimulateStatus(ConnectionStatus.Connected);
+                s.SimulatePairing(PairingStatus.Paired);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        await manager.EnsureNodeConnectedAsync();
+        var firstCount = node.ConnectCount;
+        await manager.EnsureNodeConnectedAsync();
+
+        // Second call must short-circuit (no new connect)
+        Assert.Equal(firstCount, node.ConnectCount);
+    }
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_HappyPath_ReturnsWhenPaired()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+        var node = new ScriptedNodeConnector
+        {
+            ConnectAction = (s, _) =>
+            {
+                s.SimulateStatus(ConnectionStatus.Connected);
+                s.SimulatePairing(PairingStatus.Paired);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node,
+            // Suppress auto-start to mimic the easy-button path: setup engine drives it.
+            shouldStartNodeConnection: (_, _) => false);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(0, node.ConnectCount); // suppressed auto-start
+
+        await manager.EnsureNodeConnectedAsync();
+
+        Assert.Equal(1, node.ConnectCount);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(PairingStatus.Paired, manager.CurrentSnapshot.NodePairingStatus);
+    }
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_PairingRejected_Throws()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+        var node = new ScriptedNodeConnector
+        {
+            ConnectAction = (s, _) =>
+            {
+                s.SimulateStatus(ConnectionStatus.Connecting);
+                s.SimulatePairing(PairingStatus.Rejected);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.EnsureNodeConnectedAsync());
+    }
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_NodeError_Throws()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+        var node = new ScriptedNodeConnector
+        {
+            // NodeError trigger requires NodeState != Idle, so transition through Connecting first.
+            ConnectAction = (s, _) =>
+            {
+                s.SimulateStatus(ConnectionStatus.Connecting);
+                s.SimulateStatus(ConnectionStatus.Error);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.EnsureNodeConnectedAsync());
+    }
+
+    [Fact]
+    public async Task EnsureNodeConnectedAsync_CallerCancellation_PropagatesOperationCanceled()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+        var node = new ScriptedNodeConnector
+        {
+            // Connect but never reach Paired — caller will cancel
+            ConnectAction = (s, _) => s.SimulateStatus(ConnectionStatus.Connecting)
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        using var cts = new CancellationTokenSource();
+        var task = manager.EnsureNodeConnectedAsync(cts.Token);
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
     }
 
     // ─── Mocks ───
@@ -379,6 +577,61 @@ public class GatewayConnectionManagerTests : IDisposable
         }
 
         public Task DisconnectAsync() => Task.CompletedTask;
+
+        public void Dispose() { }
+    }
+
+    /// <summary>
+    /// Test connector that fires StatusChanged / PairingStatusChanged events synchronously
+    /// so tests can drive the manager's state machine through realistic transitions.
+    /// </summary>
+    private sealed class ScriptedNodeConnector : INodeConnector
+    {
+        public int ConnectCount { get; private set; }
+        public string? LastGatewayUrl { get; private set; }
+        public bool IsConnected { get; private set; }
+        public PairingStatus PairingStatus { get; private set; } = PairingStatus.Unknown;
+        public string? NodeDeviceId => "scripted-node";
+        public NodeConnectionMode Mode => IsConnected ? NodeConnectionMode.Gateway : NodeConnectionMode.Disabled;
+
+        /// <summary>
+        /// Optional callback fired during ConnectAsync. Receives this connector and the
+        /// gateway URL — use SimulateStatus / SimulatePairing to walk the state machine.
+        /// </summary>
+        public Action<ScriptedNodeConnector, string>? ConnectAction { get; set; }
+
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+#pragma warning disable CS0067 // ClientCreated unused in current tests
+        public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
+#pragma warning restore CS0067
+
+        public Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
+        {
+            ConnectCount++;
+            LastGatewayUrl = gatewayUrl;
+            ConnectAction?.Invoke(this, gatewayUrl);
+            return Task.CompletedTask;
+        }
+
+        public Task DisconnectAsync()
+        {
+            IsConnected = false;
+            PairingStatus = PairingStatus.Unknown;
+            return Task.CompletedTask;
+        }
+
+        public void SimulateStatus(ConnectionStatus status)
+        {
+            IsConnected = status == ConnectionStatus.Connected;
+            StatusChanged?.Invoke(this, status);
+        }
+
+        public void SimulatePairing(PairingStatus status, string? requestId = null)
+        {
+            PairingStatus = status;
+            PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(status, deviceId: "scripted-node", requestId: requestId));
+        }
 
         public void Dispose() { }
     }

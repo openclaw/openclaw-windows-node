@@ -690,6 +690,66 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             return TrySendTrackedRequestAsync("config.patch", new { raw });
     }
 
+    /// <summary>
+    /// Response-aware variant of <see cref="PatchConfigAsync"/>. Uses the
+    /// wizard request mechanism (<see cref="SendWizardRequestAsync"/>) so we
+    /// actually await the gateway's response and return a <see cref="ConfigPatchResult"/>
+    /// with the real error message on failure. The fire-and-forget
+    /// <see cref="PatchConfigAsync"/> stays for legacy callers that don't
+    /// care about the gateway's reply.
+    /// </summary>
+    public async Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000)
+    {
+        var raw = fullConfig.GetRawText();
+        object payload = baseHash != null ? new { raw, baseHash } : (object)new { raw };
+        try
+        {
+            var response = await SendWizardRequestAsync("config.patch", payload, timeoutMs);
+            _logger.Info("config.patch succeeded");
+            return new ConfigPatchResult
+            {
+                Ok = true,
+                RawResponse = response.ValueKind == JsonValueKind.Undefined ? null : response.GetRawText(),
+            };
+        }
+        catch (Exception ex)
+        {
+            // Sanitize before logging — the gateway sometimes echoes patched
+            // field values in validation errors, so logging ex.Message verbatim
+            // can leak secrets to the on-disk tray log (Hanselman review LOW-7).
+            // The full unsanitized message stays in ConfigPatchResult.Error so
+            // the UI banner can show it.
+            _logger.Warn($"config.patch failed: {SanitizeErrorForLog(ex.Message)}");
+            return new ConfigPatchResult
+            {
+                Ok = false,
+                Error = ex.Message,
+                RawResponse = ex.ToString(),
+            };
+        }
+    }
+
+    /// <summary>
+    /// Best-effort scrub of a gateway error message before it lands in the
+    /// tray log: caps length and masks token-shaped values for the channel
+    /// credential keys we know about (botToken / signingSecret / webhookUrl
+    /// / nsec / privateKey / generic token|secret|key|password fields). The
+    /// gateway may put raw field values in validation errors, and the log
+    /// is persistent on disk — see Hanselman review LOW-7.
+    /// </summary>
+    private static string SanitizeErrorForLog(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw ?? "";
+        const int MaxLen = 500;
+        var truncated = raw.Length > MaxLen ? raw[..MaxLen] + "…(truncated)" : raw;
+        // Mask JSON-style "field": "value" pairs for sensitive field names.
+        truncated = System.Text.RegularExpressions.Regex.Replace(
+            truncated,
+            @"(""(?i:botToken|signingSecret|webhookUrl|nsec|privateKey|token|secret|apiKey|password)""\s*:\s*"")[^""]+("")",
+            "$1<redacted>$2");
+        return truncated;
+    }
+
     // Agent methods
 
     public async Task RequestAgentsListAsync()
@@ -847,51 +907,194 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return TrySendTrackedRequestAsync("device.pair.reject", new { requestId });
     }
 
-    /// <summary>Start a channel (telegram, whatsapp, etc).</summary>
+    /// <summary>
+    /// Start a channel. Sends <c>channels.start { channel }</c> — the gateway's
+    /// canonical wire method per <c>src/gateway/server-methods-list.ts:21</c>.
+    /// (Note: previously this sent <c>channel.start</c> singular which the gateway
+    /// rejects as an unknown method; that was a latent bug.) Returns true when
+    /// the gateway acknowledges the start, false on any failure. For the rich
+    /// error payload — including "unknown channel" which means the channel
+    /// plugin isn't installed on the gateway host — use
+    /// <see cref="StartChannelDetailedAsync"/>.
+    /// </summary>
     public async Task<bool> StartChannelAsync(string channelName)
     {
-        if (!IsConnected) return false;
+        var result = await StartChannelDetailedAsync(channelName);
+        return result != null && result.Ok && result.Started;
+    }
+
+    /// <summary>
+    /// Start a channel via <c>channels.start</c> and return the full gateway
+    /// response (including error message + raw JSON). The page uses this to
+    /// distinguish "channel started" from "plugin not loaded on gateway" so
+    /// the user gets accurate guidance instead of a generic failure.
+    /// </summary>
+    public async Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000)
+    {
+        if (!IsConnected) return null;
         try
         {
-            var req = new
+            var response = await SendWizardRequestAsync(
+                "channels.start",
+                new { channel = channelName },
+                timeoutMs);
+            var raw = response.GetRawText();
+            string? acctId = null;
+            string? channel = null;
+            bool started = false;
+            if (response.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
-                type = "req",
-                id = Guid.NewGuid().ToString(),
-                method = "channel.start",
-                @params = new { channel = channelName }
+                if (response.TryGetProperty("channel", out var ch) && ch.ValueKind == System.Text.Json.JsonValueKind.String)
+                    channel = ch.GetString();
+                if (response.TryGetProperty("accountId", out var aid) && aid.ValueKind == System.Text.Json.JsonValueKind.String)
+                    acctId = aid.GetString();
+                if (response.TryGetProperty("started", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.True)
+                    started = true;
+            }
+            _logger.Info($"channels.start {channelName} → started={started}");
+            return new ChannelStartResult
+            {
+                Channel = channel ?? channelName,
+                AccountId = acctId,
+                Started = started,
+                Ok = true,
+                RawResponse = raw,
             };
-            await SendRawAsync(JsonSerializer.Serialize(req));
-            _logger.Info($"Sent channel.start for {channelName}");
-            return true;
         }
         catch (Exception ex)
         {
-            _logger.Error($"Failed to start channel {channelName}", ex);
-            return false;
+            _logger.Warn($"channels.start {channelName} failed: {ex.Message}");
+            return new ChannelStartResult
+            {
+                Channel = channelName,
+                Started = false,
+                Ok = false,
+                Error = ex.Message,
+                RawResponse = ex.ToString(),
+            };
         }
     }
 
-    /// <summary>Stop a channel (telegram, whatsapp, etc).</summary>
+    /// <summary>Stop a channel. Sends <c>channels.stop { channel }</c>.</summary>
     public async Task<bool> StopChannelAsync(string channelName)
     {
         if (!IsConnected) return false;
         try
         {
-            var req = new
-            {
-                type = "req",
-                id = Guid.NewGuid().ToString(),
-                method = "channel.stop",
-                @params = new { channel = channelName }
-            };
-            await SendRawAsync(JsonSerializer.Serialize(req));
-            _logger.Info($"Sent channel.stop for {channelName}");
+            await SendWizardRequestAsync("channels.stop", new { channel = channelName }, 12000);
+            _logger.Info($"channels.stop {channelName} succeeded");
             return true;
         }
         catch (Exception ex)
         {
-            _logger.Error($"Failed to stop channel {channelName}", ex);
+            _logger.Warn($"channels.stop {channelName} failed: {ex.Message}");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Fetch the rich channels.status snapshot — the canonical channel-status API
+    /// used by macOS and the web UI. Returns null on failure.
+    /// The <paramref name="timeoutMs"/> is propagated to the gateway so slow
+    /// environments can extend the probe budget without recompiling.
+    /// </summary>
+    public async Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000)
+    {
+        if (!IsConnected) return null;
+        try
+        {
+            // Pass the caller's timeoutMs through to the gateway. We give the
+            // request envelope a slightly larger overall budget than the probe
+            // budget so a slow but successful probe still returns in time.
+            var probeTimeoutMs = Math.Max(1000, timeoutMs - 2000);
+            var response = await SendWizardRequestAsync(
+                "channels.status",
+                new { probe, timeoutMs = probeTimeoutMs },
+                timeoutMs);
+            return ChannelsStatusParser.Parse(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"channels.status request failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Log out / unlink a channel. Sends <c>channels.logout { channel }</c>.</summary>
+    public async Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000)
+    {
+        if (!IsConnected) return false;
+        try
+        {
+            await SendWizardRequestAsync("channels.logout", new { channel = channelName }, timeoutMs);
+            _logger.Info($"channels.logout {channelName} succeeded");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"channels.logout {channelName} failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Begin a web/QR linking flow for the current default linking channel.</summary>
+    public async Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000)
+    {
+        if (!IsConnected) return null;
+        try
+        {
+            var response = await SendWizardRequestAsync(
+                "web.login.start",
+                new { force, timeoutMs },
+                timeoutMs + 5000);
+            return new WebLoginStartResult
+            {
+                Message = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
+                QrDataUrl = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("qrDataUrl", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null,
+                Connected = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("connected", out var c) && c.ValueKind == JsonValueKind.True,
+                RawResponse = response.ValueKind != JsonValueKind.Undefined ? response.GetRawText() : null,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"web.login.start failed: {ex.Message}");
+            // Return a populated result with the error so the UI can surface
+            // it in the diagnostic disclosure. Returning null would lose the
+            // gateway's actual reason for failing.
+            return new WebLoginStartResult
+            {
+                Error = ex.Message,
+                RawResponse = ex.ToString(),
+            };
+        }
+    }
+
+    /// <summary>Long-poll for QR linking completion.</summary>
+    public async Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000)
+    {
+        if (!IsConnected) return null;
+        try
+        {
+            var response = await SendWizardRequestAsync(
+                "web.login.wait",
+                new { currentQrDataUrl, timeoutMs },
+                timeoutMs + 5000);
+            return new WebLoginWaitResult
+            {
+                Message = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
+                QrDataUrl = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("qrDataUrl", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null,
+                Connected = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("connected", out var c) && c.ValueKind == JsonValueKind.True,
+                RawResponse = response.ValueKind != JsonValueKind.Undefined ? response.GetRawText() : null,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"web.login.wait failed: {ex.Message}");
+            return new WebLoginWaitResult
+            {
+                Error = ex.Message,
+                RawResponse = ex.ToString(),
+            };
         }
     }
 
