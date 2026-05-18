@@ -1369,7 +1369,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                     HandleResponse(root);
                     break;
                 case "event":
-                    HandleEvent(root);
+                    HandleEvent(root, json.Length);
                     break;
             }
         }
@@ -2214,7 +2214,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return sb.ToString().TrimEnd();
     }
 
-    private void HandleEvent(JsonElement root)
+    private void HandleEvent(JsonElement root, int rawMessageLength)
     {
         if (!root.TryGetProperty("event", out var eventProp)) return;
         var eventType = eventProp.GetString();
@@ -2225,7 +2225,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 HandleConnectChallenge(root);
                 break;
             case "agent":
-                HandleAgentEvent(root);
+                HandleAgentEvent(root, rawMessageLength);
                 break;
             case "health":
                 if (root.TryGetProperty("payload", out var hp) &&
@@ -2236,7 +2236,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 }
                 break;
             case "chat":
-                HandleChatEvent(root);
+                HandleChatEvent(root, rawMessageLength);
                 break;
             case "session":
                 HandleSessionEvent(root);
@@ -2303,7 +2303,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    private void HandleAgentEvent(JsonElement root)
+    private void HandleAgentEvent(JsonElement root, int rawMessageLength)
     {
         if (!root.TryGetProperty("payload", out var payload)) return;
 
@@ -2311,9 +2311,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         // tool args/outputs, and URLs. Log shape only (type + length).
         try
         {
-            var rawLen = root.GetRawText().Length;
             var streamHint = payload.TryGetProperty("stream", out var sh) ? sh.GetString() ?? "" : "";
-            _logger.Debug($"Agent event received: stream={streamHint} len={rawLen}");
+            _logger.Debug($"Agent event received: stream={streamHint} len={rawMessageLength}");
         }
         catch { }
 
@@ -2456,13 +2455,12 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    private void HandleChatEvent(JsonElement root)
+    private void HandleChatEvent(JsonElement root, int rawMessageLength)
     {
         // HIGH 4: never log chat content. Log shape only — the raw payload
         // can include user prompts, assistant text, tool output, and even
         // bearer tokens routed through the gateway in some flows.
-        var rawText = root.GetRawText();
-        _logger.Debug($"Chat event received: len={rawText.Length}");
+        _logger.Debug($"Chat event received: len={rawMessageLength}");
         
         if (!root.TryGetProperty("payload", out var payload)) return;
         EmitRawChatEvent(payload);

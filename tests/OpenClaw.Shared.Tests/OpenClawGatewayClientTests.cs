@@ -570,6 +570,32 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ProcessRawMessage_ChatEventLogsRawLengthWithoutPayloadContent()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        var rawMessage = "{\"type\":\"event\",\"event\":\"chat\",\"payload\":{\"sessionKey\":\"main\",\"text\":\"super-secret chat payload\",\"role\":\"user\"}}";
+
+        helper.ProcessRawMessage(rawMessage);
+
+        Assert.Contains(logger.Logs, log => log == $"DEBUG: Chat event received: len={rawMessage.Length}");
+        Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ProcessRawMessage_AgentEventLogsRawLengthWithoutPayloadContent()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        var rawMessage = "{\"type\":\"event\",\"event\":\"agent\",\"payload\":{\"sessionKey\":\"main\",\"stream\":\"tool\",\"data\":{\"phase\":\"call\",\"name\":\"shell\",\"args\":{\"command\":\"super-secret command\"}}}}";
+
+        helper.ProcessRawMessage(rawMessage);
+
+        Assert.Contains(logger.Logs, log => log == $"DEBUG: Agent event received: stream=tool len={rawMessage.Length}");
+        Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ClassifyNotification_DetectsHealthAlerts()
     {
         var helper = new GatewayClientTestHelper();
