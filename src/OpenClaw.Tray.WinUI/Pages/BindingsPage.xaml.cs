@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.Services;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json;
@@ -11,6 +12,7 @@ public sealed partial class BindingsPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private AppState? _appState;
+    private readonly AsyncListLoadingState _bindingsLoading = new();
 
     public BindingsPage()
     {
@@ -23,15 +25,38 @@ public sealed partial class BindingsPage : Page
 
     public void Initialize()
     {
+        if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
         // Use cached config if available
         if (_appState?.Config.HasValue == true)
+        {
             ParseBindings(_appState.Config.Value);
+            _bindingsLoading.BeginRefresh();
+            UpdateLoadingVisuals();
+        }
+        else
+        {
+            _bindingsLoading.BeginInitialRefresh();
+            UpdateLoadingVisuals();
+        }
         // Request fresh config
-        if (CurrentApp.GatewayClient != null)
-            _ = CurrentApp.GatewayClient.RequestConfigAsync();
+        var client = CurrentApp.GatewayClient;
+        if (client != null)
+        {
+            ConnectionInfoBar.IsOpen = false;
+            _ = client.RequestConfigAsync();
+        }
+        else
+        {
+            _bindingsLoading.Fail();
+            ShowDisconnected();
+            UpdateLoadingVisuals();
+        }
     }
+
+    private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
+        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -79,26 +104,67 @@ public sealed partial class BindingsPage : Page
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _bindingsLoading.Fail();
+            ShowLoadFailure(ex);
+            UpdateLoadingVisuals();
+            return;
+        }
 
         if (bindings.Count == 0)
         {
-            SingleAgentInfoBar.IsOpen = true;
             BindingsList.ItemsSource = null;
         }
         else
         {
-            SingleAgentInfoBar.IsOpen = false;
             BindingsList.ItemsSource = bindings;
         }
+
+        _bindingsLoading.Complete(bindings.Count);
+        UpdateLoadingVisuals();
     }
 
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        if (CurrentApp.GatewayClient != null)
+        var client = CurrentApp.GatewayClient;
+        if (client != null)
         {
-            _ = CurrentApp.GatewayClient.RequestConfigAsync();
+            ConnectionInfoBar.IsOpen = false;
+            _bindingsLoading.BeginRefresh();
+            UpdateLoadingVisuals();
+            _ = client.RequestConfigAsync();
         }
+        else
+        {
+            _bindingsLoading.Fail();
+            ShowDisconnected();
+            UpdateLoadingVisuals();
+        }
+    }
+
+    private void UpdateLoadingVisuals()
+    {
+        LoadingState.Visibility = _bindingsLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
+        BindingsList.Visibility = _bindingsLoading.ShouldShowContent ? Visibility.Visible : Visibility.Collapsed;
+        SingleAgentInfoBar.IsOpen = _bindingsLoading.ShouldShowEmpty;
+        RefreshButton.IsEnabled = CurrentApp.GatewayClient != null && _bindingsLoading.CanEdit;
+    }
+
+    private void ShowDisconnected()
+    {
+        ConnectionInfoBar.Title = "Gateway disconnected";
+        ConnectionInfoBar.Message = "Connect to a gateway to load bindings.";
+        ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
+        ConnectionInfoBar.IsOpen = true;
+    }
+
+    private void ShowLoadFailure(Exception ex)
+    {
+        ConnectionInfoBar.Title = "Could not load bindings";
+        ConnectionInfoBar.Message = ex.Message;
+        ConnectionInfoBar.Severity = InfoBarSeverity.Error;
+        ConnectionInfoBar.IsOpen = true;
     }
 
     private class BindingViewModel

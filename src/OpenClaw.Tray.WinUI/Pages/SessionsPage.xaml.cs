@@ -19,6 +19,7 @@ public sealed partial class SessionsPage : Page
     private SessionInfo[]? _allSessions;
     private string _activeChannel = "all";
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _refreshTimer;
+    private readonly AsyncListLoadingState _sessionLoading = new();
 
     public SessionsPage()
     {
@@ -45,26 +46,44 @@ public sealed partial class SessionsPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        if (CurrentApp.GatewayClient == null)
+        var client = CurrentApp.GatewayClient;
+        if (client == null)
         {
-            EmptyState.Visibility = Visibility.Collapsed;
-            SessionListView.ItemsSource = null;
+            _sessionLoading.Fail();
+            ShowDisconnected();
+            ApplyFilter();
             return;
         }
 
-        if (_appState?.Sessions != null)
-            UpdateSessions(_appState.Sessions);
+        ConnectionInfoBar.IsOpen = false;
 
-        _ = CurrentApp.GatewayClient.RequestSessionsAsync();
-        _ = CurrentApp.GatewayClient.RequestModelsListAsync();
+        if (_appState?.Sessions is { Length: > 0 } sessions)
+        {
+            _sessionLoading.Complete(sessions.Length);
+            UpdateSessions(sessions);
+            _sessionLoading.BeginRefresh();
+            ApplyFilter();
+        }
+        else
+        {
+            _sessionLoading.BeginInitialRefresh();
+            ApplyFilter();
+        }
+
+        _ = client.RequestSessionsAsync();
+        _ = client.RequestModelsListAsync();
     }
 
     private void OnBackToConnectionClicked(object sender, RoutedEventArgs e)
         => ((IAppCommands)CurrentApp).Navigate("connection");
 
+    private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
+        => ((IAppCommands)CurrentApp).Navigate("connection");
+
     public void UpdateSessions(SessionInfo[] sessions)
     {
         _allSessions = sessions;
+        _sessionLoading.Complete(sessions.Length);
         RebuildChannelTabs();
         ApplyFilter();
     }
@@ -92,16 +111,18 @@ public sealed partial class SessionsPage : Page
 
     private void ApplyFilter()
     {
-        if (_allSessions == null || _allSessions.Length == 0)
+        if (!_sessionLoading.HasLoaded)
         {
             SessionListView.ItemsSource = null;
-            EmptyState.Visibility = Visibility.Visible;
+            SessionListView.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = Visibility.Collapsed;
+            LoadingState.Visibility = _sessionLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
+            RefreshButton.IsEnabled = CurrentApp.GatewayClient != null && _sessionLoading.CanEdit;
+            ChannelSelector.IsEnabled = false;
             return;
         }
 
-        EmptyState.Visibility = Visibility.Collapsed;
-
-        IEnumerable<SessionInfo> filtered = _allSessions;
+        IEnumerable<SessionInfo> filtered = _allSessions ?? Array.Empty<SessionInfo>();
 
         if (_activeChannel != "all")
         {
@@ -117,12 +138,19 @@ public sealed partial class SessionsPage : Page
         if (viewModels.Count == 0)
         {
             SessionListView.ItemsSource = null;
-            EmptyState.Visibility = Visibility.Visible;
+            SessionListView.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = _sessionLoading.ShouldShowEmpty || _sessionLoading.HasLoaded ? Visibility.Visible : Visibility.Collapsed;
         }
         else
         {
             SessionListView.ItemsSource = viewModels;
+            SessionListView.Visibility = Visibility.Visible;
+            EmptyState.Visibility = Visibility.Collapsed;
         }
+
+        LoadingState.Visibility = _sessionLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
+        RefreshButton.IsEnabled = CurrentApp.GatewayClient != null && _sessionLoading.CanEdit;
+        ChannelSelector.IsEnabled = _sessionLoading.HasLoaded && _sessionLoading.CanEdit;
     }
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -166,6 +194,7 @@ public sealed partial class SessionsPage : Page
             TokensText = tokensText,
             ContextPercent = contextPercent,
             HasTokenData = hasTokens || contextPercent > 0,
+            CanEdit = _sessionLoading.CanEdit,
         };
     }
 
@@ -181,9 +210,9 @@ public sealed partial class SessionsPage : Page
         if (sender is Button btn && btn.Tag is string key)
         {
             var client = CurrentApp.GatewayClient;
-            if (client == null) return;
+            if (client == null) { ShowDisconnected(); return; }
             try { await client.ResetSessionAsync(key); }
-            catch { }
+            catch (Exception ex) { ShowActionFailure("Reset failed", ex); }
         }
     }
 
@@ -192,9 +221,9 @@ public sealed partial class SessionsPage : Page
         if (sender is Button btn && btn.Tag is string key)
         {
             var client = CurrentApp.GatewayClient;
-            if (client == null) return;
+            if (client == null) { ShowDisconnected(); return; }
             try { await client.DeleteSessionAsync(key); }
-            catch { }
+            catch (Exception ex) { ShowActionFailure("Delete failed", ex); }
         }
     }
 
@@ -203,20 +232,28 @@ public sealed partial class SessionsPage : Page
         if (sender is Button btn && btn.Tag is string key)
         {
             var client = CurrentApp.GatewayClient;
-            if (client == null) return;
+            if (client == null) { ShowDisconnected(); return; }
             try { await client.CompactSessionAsync(key); }
-            catch { }
+            catch (Exception ex) { ShowActionFailure("Compact failed", ex); }
         }
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e)
     {
         var client = CurrentApp.GatewayClient;
-        if (client != null)
+        if (client == null)
         {
-            _ = client.RequestSessionsAsync();
-            _ = client.RequestModelsListAsync();
+            _sessionLoading.Fail();
+            ShowDisconnected();
+            ApplyFilter();
+            return;
         }
+
+        ConnectionInfoBar.IsOpen = false;
+        _sessionLoading.BeginRefresh();
+        ApplyFilter();
+        _ = client.RequestSessionsAsync();
+        _ = client.RequestModelsListAsync();
 
         if (RefreshButton.Content is StackPanel)
         {
@@ -240,6 +277,23 @@ public sealed partial class SessionsPage : Page
         if (n >= 1_000) return $"{n / 1_000.0:0.#}K";
         return n.ToString();
     }
+
+    private void ShowDisconnected()
+    {
+        ConnectionInfoBar.Title = "Gateway disconnected";
+        ConnectionInfoBar.Message = "Connect to a gateway to load sessions.";
+        ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
+        ConnectionInfoBar.IsOpen = true;
+        RefreshButton.IsEnabled = false;
+    }
+
+    private void ShowActionFailure(string title, Exception ex)
+    {
+        ConnectionInfoBar.Title = title;
+        ConnectionInfoBar.Message = ex.Message;
+        ConnectionInfoBar.Severity = InfoBarSeverity.Error;
+        ConnectionInfoBar.IsOpen = true;
+    }
 }
 
 public class SessionViewModel
@@ -252,5 +306,6 @@ public class SessionViewModel
     public string TokensText { get; set; } = "";
     public double ContextPercent { get; set; }
     public bool HasTokenData { get; set; }
+    public bool CanEdit { get; set; } = true;
     public Visibility TokenRowVisibility => HasTokenData ? Visibility.Visible : Visibility.Collapsed;
 }

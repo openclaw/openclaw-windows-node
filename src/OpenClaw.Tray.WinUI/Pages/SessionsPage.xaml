@@ -45,9 +45,27 @@
 
         <!-- Channel filter SelectorBar -->
         <SelectorBar x:Name="ChannelSelector" Grid.Row="2"
-                     SelectionChanged="ChannelSelector_SelectionChanged">
+                      SelectionChanged="ChannelSelector_SelectionChanged">
             <SelectorBarItem x:Name="AllTab" Text="All" IsSelected="True"/>
         </SelectorBar>
+
+        <InfoBar x:Name="ConnectionInfoBar" Grid.Row="3"
+                 IsOpen="False" IsClosable="False" Severity="Warning"
+                 Title="Gateway disconnected"
+                 Message="Connect to a gateway to load sessions.">
+            <InfoBar.ActionButton>
+                <Button Content="Open Connection" Click="OnOpenConnectionClick"/>
+            </InfoBar.ActionButton>
+        </InfoBar>
+
+        <StackPanel x:Name="LoadingState" Grid.Row="4" Orientation="Horizontal" Spacing="12"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="Collapsed">
+            <ProgressRing IsActive="True" Width="22" Height="22"/>
+            <TextBlock Text="Loading sessions..."
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
 
         <!-- Empty state -->
         <StackPanel x:Name="EmptyState" Grid.Row="4" Spacing="8"
@@ -116,12 +134,15 @@
 
                             <!-- Row 4: Action buttons -->
                             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="16,4,0,0">
-                                <Button Content="Reset" Tag="{Binding Key}" Click="OnResetSession"
-                                        Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
-                                <Button Content="Compact" Tag="{Binding Key}" Click="OnCompactSession"
-                                        Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
-                                <Button Content="Delete" Tag="{Binding Key}" Click="OnDeleteSession"
-                                        Foreground="IndianRed" Padding="8,4"/>
+                                 <Button Content="Reset" Tag="{Binding Key}" Click="OnResetSession"
+                                         IsEnabled="{Binding CanEdit}"
+                                         Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
+                                 <Button Content="Compact" Tag="{Binding Key}" Click="OnCompactSession"
+                                         IsEnabled="{Binding CanEdit}"
+                                         Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
+                                 <Button Content="Delete" Tag="{Binding Key}" Click="OnDeleteSession"
+                                         IsEnabled="{Binding CanEdit}"
+                                         Foreground="IndianRed" Padding="8,4"/>
                             </StackPanel>
                         </Grid>
                     </Border>

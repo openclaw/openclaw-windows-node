@@ -16,6 +16,9 @@ public sealed partial class UsagePage : Page
     private AppState? _appState;
     // Default matches the XAML-selected Period7DaysItem (IsSelected="True").
     private int _currentPeriodDays = 7;
+    private readonly AsyncListLoadingState _providerLoading = new();
+    private readonly AsyncListLoadingState _dailyCostLoading = new();
+    private DateTime _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
 
     public UsagePage()
     {
@@ -28,10 +31,13 @@ public sealed partial class UsagePage : Page
 
     public void Initialize()
     {
+        if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
-        if (CurrentApp.GatewayClient != null)
+        var client = CurrentApp.GatewayClient;
+        if (client != null)
         {
+            ConnectionInfoBar.IsOpen = false;
             // Apply cached data immediately, then request fresh.
             if (_appState?.Usage != null) UpdateUsage(_appState.Usage);
             // Only apply cached cost data when its period matches the current
@@ -40,18 +46,32 @@ public sealed partial class UsagePage : Page
             if (_appState?.UsageCost != null && _appState.UsageCost.Days == _currentPeriodDays)
             {
                 UpdateUsageCost(_appState.UsageCost);
+                _dailyCostLoading.BeginRefresh();
+            }
+            else
+            {
+                _dailyCostLoading.BeginInitialRefresh();
             }
             if (_appState?.UsageStatus != null) UpdateUsageStatus(_appState.UsageStatus);
-            _ = CurrentApp.GatewayClient.RequestUsageAsync();
-            _ = CurrentApp.GatewayClient.RequestUsageCostAsync(_currentPeriodDays);
-            _ = CurrentApp.GatewayClient.RequestUsageStatusAsync();
+            else _providerLoading.BeginInitialRefresh();
+            UpdateDailyCostLoadingVisuals();
+            UpdateProviderLoadingVisuals();
+            _ = client.RequestUsageAsync();
+            _ = client.RequestUsageCostAsync(_currentPeriodDays);
+            _ = client.RequestUsageStatusAsync();
         }
         else
         {
-            // Not connected — nothing to load, hide the loading skeleton.
-            ProviderLoadingPanel.Visibility = Visibility.Collapsed;
+            _providerLoading.Fail();
+            _dailyCostLoading.Fail();
+            ShowDisconnected();
+            UpdateProviderLoadingVisuals();
+            UpdateDailyCostLoadingVisuals();
         }
     }
+
+    private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
+        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -80,6 +100,13 @@ public sealed partial class UsagePage : Page
 
     public void UpdateUsageCost(GatewayCostUsageInfo cost)
     {
+        if (cost.Days != _currentPeriodDays)
+            return;
+
+        if (cost.UpdatedAt < _lastAppliedUsageCostUpdatedAtUtc)
+            return;
+
+        _lastAppliedUsageCostUpdatedAtUtc = cost.UpdatedAt;
         TotalCostText.Text = $"${cost.Totals.TotalCost:F2}";
         TokenCountText.Text = FormatLargeNumber(cost.Totals.TotalTokens);
 
@@ -88,6 +115,8 @@ public sealed partial class UsagePage : Page
             Date = d.Date,
             Cost = $"${d.TotalCost:F2}",
         }).ToList();
+        _dailyCostLoading.Complete(cost.Daily.Count);
+        UpdateDailyCostLoadingVisuals();
     }
 
     public void UpdateUsageStatus(GatewayUsageStatusInfo status)
@@ -102,9 +131,8 @@ public sealed partial class UsagePage : Page
         }).ToList();
 
         bool hasProviders = status.Providers.Count > 0;
-        ProviderLoadingPanel.Visibility = Visibility.Collapsed;
-        ProviderListView.Visibility = hasProviders ? Visibility.Visible : Visibility.Collapsed;
-        ProviderEmptyText.Visibility = hasProviders ? Visibility.Collapsed : Visibility.Visible;
+        _providerLoading.Complete(status.Providers.Count);
+        UpdateProviderLoadingVisuals();
     }
 
     private void OnPeriodSelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -117,11 +145,46 @@ public sealed partial class UsagePage : Page
     {
         if (days == _currentPeriodDays) return;
         _currentPeriodDays = days;
+        _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
+        DailyListView.ItemsSource = null;
+        TotalCostText.Text = "—";
+        TokenCountText.Text = "—";
+        _dailyCostLoading.BeginInitialRefresh();
+        UpdateDailyCostLoadingVisuals();
 
         if (CurrentApp.GatewayClient != null)
         {
             _ = CurrentApp.GatewayClient.RequestUsageCostAsync(days);
         }
+        else
+        {
+            _dailyCostLoading.Fail();
+            ShowDisconnected();
+            UpdateDailyCostLoadingVisuals();
+        }
+    }
+
+    private void UpdateDailyCostLoadingVisuals()
+    {
+        DailyLoadingPanel.Visibility = _dailyCostLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
+        DailyListView.Visibility = _dailyCostLoading.ShouldShowContent ? Visibility.Visible : Visibility.Collapsed;
+        DailyEmptyText.Visibility = _dailyCostLoading.ShouldShowEmpty ? Visibility.Visible : Visibility.Collapsed;
+        PeriodSelector.IsEnabled = _dailyCostLoading.CanEdit;
+    }
+
+    private void UpdateProviderLoadingVisuals()
+    {
+        ProviderLoadingPanel.Visibility = _providerLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
+        ProviderListView.Visibility = _providerLoading.ShouldShowContent ? Visibility.Visible : Visibility.Collapsed;
+        ProviderEmptyText.Visibility = _providerLoading.ShouldShowEmpty ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ShowDisconnected()
+    {
+        ConnectionInfoBar.Title = "Gateway disconnected";
+        ConnectionInfoBar.Message = "Connect to a gateway to load usage data.";
+        ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
+        ConnectionInfoBar.IsOpen = true;
     }
 
     private static string FormatLargeNumber(long n)
