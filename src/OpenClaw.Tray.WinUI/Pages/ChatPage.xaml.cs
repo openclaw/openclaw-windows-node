@@ -139,11 +139,7 @@ public sealed partial class ChatPage : Page
     {
         return InteractiveGatewayCredentialResolver.TryResolve(
             (App.Current as App)?.Registry,
-            SettingsManager.SettingsDirectoryPath,
             DeviceIdentityFileReader.Instance,
-            settings.GetEffectiveGatewayUrl(),
-            settings.LegacyToken,
-            settings.LegacyBootstrapToken,
             out var credential) &&
             credential is { IsBootstrapToken: false } &&
             GatewayChatUrlBuilder.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var url, out _)
@@ -277,11 +273,7 @@ public sealed partial class ChatPage : Page
         {
             if (!InteractiveGatewayCredentialResolver.TryResolve(
                 CurrentApp.Registry,
-                SettingsManager.SettingsDirectoryPath,
                 DeviceIdentityFileReader.Instance,
-                settings.GetEffectiveGatewayUrl(),
-                settings.LegacyToken,
-                settings.LegacyBootstrapToken,
                 out var credential) ||
                 credential == null)
             {

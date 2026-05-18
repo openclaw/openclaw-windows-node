@@ -1587,6 +1587,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (!string.IsNullOrWhiteSpace(effectiveUrl) &&
             string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
         {
+            Logger.Warn("[GatewayRegistry] Resolved operator credential from legacy root identity path; migration copy may have failed.");
             return resolver.ResolveOperator(record, SettingsManager.SettingsDirectoryPath);
         }
 
@@ -2925,11 +2926,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         if (!InteractiveGatewayCredentialResolver.TryResolve(
             _gatewayRegistry,
-            SettingsManager.SettingsDirectoryPath,
             DeviceIdentityFileReader.Instance,
-            _settings.GetEffectiveGatewayUrl(),
-            _settings.LegacyToken,
-            _settings.LegacyBootstrapToken,
             out var credential) ||
             credential == null)
         {

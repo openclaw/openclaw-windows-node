@@ -546,6 +546,98 @@ public class LocalGatewaySetupTests
     }
 
     [Fact]
+    public void SettingsManagerLocalGatewaySetupSettings_PersistsCredentialsToRegistryOnly()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path);
+        var registry = new OpenClaw.Connection.GatewayRegistry(temp.Path);
+        var adapter = new SettingsManagerLocalGatewaySetupSettings(settings, registry)
+        {
+            GatewayUrl = "ws://localhost:18789",
+            Token = "shared-token",
+            BootstrapToken = "bootstrap-token"
+        };
+
+        adapter.Save();
+
+        var record = registry.GetActive();
+        Assert.NotNull(record);
+        Assert.Equal("shared-token", record!.SharedGatewayToken);
+        Assert.Equal("bootstrap-token", record.BootstrapToken);
+
+        using var savedSettings = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
+        Assert.False(savedSettings.RootElement.TryGetProperty("Token", out _));
+        Assert.False(savedSettings.RootElement.TryGetProperty("BootstrapToken", out _));
+    }
+
+    [Fact]
+    public void SettingsManagerLocalGatewaySetupSettings_PreservesRecordFieldsAndUnassignedCredentials()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path);
+        var registry = new OpenClaw.Connection.GatewayRegistry(temp.Path);
+        var lastConnected = DateTime.UtcNow;
+        var existing = new OpenClaw.Connection.GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://localhost:18789",
+            FriendlyName = "Local",
+            SharedGatewayToken = "existing-shared",
+            BootstrapToken = "existing-bootstrap",
+            LastConnected = lastConnected,
+            SshTunnel = new OpenClaw.Connection.SshTunnelConfig("user", "host", 18789, 18790)
+        };
+        registry.AddOrUpdate(existing);
+        registry.SetActive(existing.Id);
+
+        var adapter = new SettingsManagerLocalGatewaySetupSettings(settings, registry)
+        {
+            GatewayUrl = existing.Url,
+            UseSshTunnel = false
+        };
+        adapter.Save();
+
+        var record = registry.GetActive();
+        Assert.NotNull(record);
+        Assert.Equal("Local", record!.FriendlyName);
+        Assert.Equal("existing-shared", record.SharedGatewayToken);
+        Assert.Equal("existing-bootstrap", record.BootstrapToken);
+        Assert.Equal(lastConnected, record.LastConnected);
+        Assert.Equal(existing.SshTunnel, record.SshTunnel);
+        Assert.True(record.IsLocal);
+    }
+
+    [Fact]
+    public void SettingsManagerLocalGatewaySetupSettings_ClearsExplicitlyClearedRegistryCredentials()
+    {
+        using var temp = new TempDirectory();
+        var settings = new OpenClawTray.Services.SettingsManager(temp.Path);
+        var registry = new OpenClaw.Connection.GatewayRegistry(temp.Path);
+        var existing = new OpenClaw.Connection.GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://localhost:18789",
+            SharedGatewayToken = "existing-shared",
+            BootstrapToken = "existing-bootstrap",
+        };
+        registry.AddOrUpdate(existing);
+        registry.SetActive(existing.Id);
+
+        var adapter = new SettingsManagerLocalGatewaySetupSettings(settings, registry)
+        {
+            GatewayUrl = existing.Url,
+            Token = "",
+            BootstrapToken = ""
+        };
+        adapter.Save();
+
+        var record = registry.GetActive();
+        Assert.NotNull(record);
+        Assert.Null(record!.SharedGatewayToken);
+        Assert.Null(record.BootstrapToken);
+    }
+
+    [Fact]
     public async Task SettingsSharedGatewayTokenProvisioner_DoesNotPersistTokenWhenGatewayConfigFails()
     {
         var settings = new FakeSetupSettings();

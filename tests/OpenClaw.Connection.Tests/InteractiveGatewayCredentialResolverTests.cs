@@ -1,4 +1,3 @@
-using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Connection;
 
@@ -36,11 +35,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
 
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(
             _registry,
-            _tempDir,
             _identityReader,
-            "ws://legacy:18789",
-            null,
-            null,
             out var credential);
 
         Assert.True(resolved);
@@ -65,11 +60,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
 
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(
             _registry,
-            _tempDir,
             _identityReader,
-            "ws://active:18789",
-            null,
-            null,
             out var credential);
 
         Assert.True(resolved);
@@ -94,11 +85,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
 
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(
             _registry,
-            _tempDir,
             _identityReader,
-            "ws://active:18789",
-            null,
-            null,
             out var credential);
 
         Assert.True(resolved);
@@ -109,23 +96,40 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
     }
 
     [Fact]
-    public void TryResolve_FallsBackToLegacySettingsWhenNoRegistryIsActive()
+    public void TryResolve_ReturnsFalse_WhenNoRegistryIsActive()
     {
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(
             _registry,
-            _tempDir,
             _identityReader,
-            "ws://legacy:18789",
-            "legacy-token",
-            null,
+            out var credential);
+
+        Assert.False(resolved);
+        Assert.Null(credential);
+    }
+
+    [Fact]
+    public void TryResolve_UsesActiveGatewayDeviceToken_WhenSharedTokenMissing()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://active:18789"
+        };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+        _identityReader.OperatorToken = "paired-token";
+
+        var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+            _registry,
+            _identityReader,
             out var credential);
 
         Assert.True(resolved);
         Assert.NotNull(credential);
-        Assert.Equal("ws://legacy:18789", credential!.GatewayUrl);
-        Assert.Equal("legacy-token", credential.Token);
+        Assert.Equal("ws://active:18789", credential!.GatewayUrl);
+        Assert.Equal("paired-token", credential.Token);
         Assert.False(credential.IsBootstrapToken);
-        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, credential.Source);
+        Assert.Equal(CredentialResolver.SourceDeviceToken, credential.Source);
     }
 
     private sealed class MockDeviceIdentityReader : IDeviceIdentityReader

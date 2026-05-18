@@ -12,79 +12,45 @@ public static class InteractiveGatewayCredentialResolver
 {
     public static bool TryResolve(
         GatewayRegistry? registry,
-        string settingsDirectory,
         IDeviceIdentityReader identityReader,
-        string? effectiveGatewayUrl,
-        string? legacyToken,
-        string? legacyBootstrapToken,
         out InteractiveGatewayCredential? credential)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(settingsDirectory);
         ArgumentNullException.ThrowIfNull(identityReader);
 
         var active = registry?.GetActive();
-        if (active != null && !string.IsNullOrWhiteSpace(active.Url))
-        {
-            // For HTTP surfaces (chat), prefer SharedGatewayToken over DeviceToken.
-            // DeviceToken is for WebSocket auth (auth.deviceToken); SharedGatewayToken
-            // is for HTTP ?token= auth which the chat/dashboard endpoints expect.
-            if (!string.IsNullOrWhiteSpace(active.SharedGatewayToken))
-            {
-                credential = new InteractiveGatewayCredential(
-                    active.Url,
-                    active.SharedGatewayToken!,
-                    false,
-                    CredentialResolver.SourceSharedGatewayToken);
-                return true;
-            }
-
-            // Fall back to standard credential resolution (DeviceToken → Bootstrap)
-            var resolver = new CredentialResolver(identityReader);
-            var resolved = resolver.ResolveOperator(active, registry!.GetIdentityDirectory(active.Id));
-            if (resolved != null)
-            {
-                credential = new InteractiveGatewayCredential(
-                    active.Url,
-                    resolved.Token,
-                    resolved.IsBootstrapToken,
-                    resolved.Source);
-                return true;
-            }
-
-            if (!string.Equals(active.Url, effectiveGatewayUrl, StringComparison.OrdinalIgnoreCase))
-            {
-                credential = null;
-                return false;
-            }
-        }
-
-        var gatewayUrl = effectiveGatewayUrl;
-        if (string.IsNullOrWhiteSpace(gatewayUrl))
+        if (active == null || string.IsNullOrWhiteSpace(active.Url))
         {
             credential = null;
             return false;
         }
 
-        var legacyRecord = new GatewayRecord
+        // For HTTP surfaces (chat), prefer SharedGatewayToken over DeviceToken.
+        // DeviceToken is for WebSocket auth (auth.deviceToken); SharedGatewayToken
+        // is for HTTP ?token= auth which the chat/dashboard endpoints expect.
+        if (!string.IsNullOrWhiteSpace(active.SharedGatewayToken))
         {
-            Id = "legacy-settings",
-            Url = gatewayUrl,
-            SharedGatewayToken = legacyToken,
-            BootstrapToken = legacyBootstrapToken
-        };
-        var resolver2 = new CredentialResolver(identityReader);
-        var legacyCredential = resolver2.ResolveOperator(legacyRecord, settingsDirectory);
-        if (legacyCredential == null)
+            credential = new InteractiveGatewayCredential(
+                active.Url,
+                active.SharedGatewayToken!,
+                false,
+                CredentialResolver.SourceSharedGatewayToken);
+            return true;
+        }
+
+        // Fall back to standard credential resolution (DeviceToken → Bootstrap)
+        var resolver = new CredentialResolver(identityReader);
+        var resolved = resolver.ResolveOperator(active, registry!.GetIdentityDirectory(active.Id));
+        if (resolved == null)
         {
             credential = null;
             return false;
         }
 
         credential = new InteractiveGatewayCredential(
-            gatewayUrl,
-            legacyCredential.Token,
-            legacyCredential.IsBootstrapToken,
-            legacyCredential.Source);
+            active.Url,
+            resolved.Token,
+            resolved.IsBootstrapToken,
+            resolved.Source);
         return true;
     }
 }

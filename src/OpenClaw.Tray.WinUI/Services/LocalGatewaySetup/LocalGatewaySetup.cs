@@ -1634,6 +1634,10 @@ public sealed class SettingsManagerLocalGatewaySetupSettings : ILocalGatewaySetu
 {
     private readonly SettingsManager _settings;
     private readonly OpenClaw.Connection.GatewayRegistry? _registry;
+    private string _token = "";
+    private string _bootstrapToken = "";
+    private bool _tokenAssigned;
+    private bool _bootstrapTokenAssigned;
 
     public SettingsManagerLocalGatewaySetupSettings(SettingsManager settings, OpenClaw.Connection.GatewayRegistry? registry = null)
     {
@@ -1642,8 +1646,24 @@ public sealed class SettingsManagerLocalGatewaySetupSettings : ILocalGatewaySetu
     }
 
     public string GatewayUrl { get => _settings.GatewayUrl; set => _settings.GatewayUrl = value; }
-    public string Token { get; set; } = "";
-    public string BootstrapToken { get; set; } = "";
+    public string Token
+    {
+        get => _token;
+        set
+        {
+            _token = value ?? string.Empty;
+            _tokenAssigned = true;
+        }
+    }
+    public string BootstrapToken
+    {
+        get => _bootstrapToken;
+        set
+        {
+            _bootstrapToken = value ?? string.Empty;
+            _bootstrapTokenAssigned = true;
+        }
+    }
     public bool UseSshTunnel { get => _settings.UseSshTunnel; set => _settings.UseSshTunnel = value; }
     public bool EnableNodeMode { get => _settings.EnableNodeMode; set => _settings.EnableNodeMode = value; }
 
@@ -1656,13 +1676,16 @@ public sealed class SettingsManagerLocalGatewaySetupSettings : ILocalGatewaySetu
         {
             var existing = _registry.FindByUrl(GatewayUrl);
             var recordId = existing?.Id ?? System.Guid.NewGuid().ToString();
-            var record = new OpenClaw.Connection.GatewayRecord
+            var record = (existing ?? new OpenClaw.Connection.GatewayRecord { Id = recordId }) with
             {
-                Id = recordId,
                 Url = GatewayUrl,
-                SharedGatewayToken = !string.IsNullOrWhiteSpace(Token) ? Token : existing?.SharedGatewayToken,
-                BootstrapToken = !string.IsNullOrWhiteSpace(BootstrapToken) ? BootstrapToken : existing?.BootstrapToken,
-                IsLocal = true,
+                SharedGatewayToken = _tokenAssigned
+                    ? (string.IsNullOrWhiteSpace(_token) ? null : _token)
+                    : existing?.SharedGatewayToken,
+                BootstrapToken = _bootstrapTokenAssigned
+                    ? (string.IsNullOrWhiteSpace(_bootstrapToken) ? null : _bootstrapToken)
+                    : existing?.BootstrapToken,
+                IsLocal = true
             };
             _registry.AddOrUpdate(record);
             _registry.SetActive(recordId);
@@ -1976,6 +1999,8 @@ public sealed class SettingsOperatorPairingService : IOperatorPairingService
 
     private ResolvedOperatorCredential? ResolveCredential()
     {
+        // Setup-only pending credentials: normal post-setup callers must use
+        // CredentialResolver so stored device tokens are never downgraded.
         if (!string.IsNullOrWhiteSpace(_settings.Token))
             return new ResolvedOperatorCredential(_settings.Token, false);
 
