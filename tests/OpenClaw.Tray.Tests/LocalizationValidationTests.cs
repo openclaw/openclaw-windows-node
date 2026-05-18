@@ -273,6 +273,7 @@ public class LocalizationValidationTests
         var missing = new List<string>();
 
         foreach (var xamlPath in Directory.EnumerateFiles(winUiRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(IsSourceXaml)
                      .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
             var relativePath = Path.GetRelativePath(GetRepositoryRoot(), xamlPath);
@@ -308,6 +309,14 @@ public class LocalizationValidationTests
         Assert.True(missing.Count == 0,
             "Every localizable XAML attribute on an x:Uid element must have an en-us Resources.resw key. Missing: " +
             string.Join("; ", missing.Take(50)));
+    }
+
+    private static bool IsSourceXaml(string path)
+    {
+        var relative = Path.GetRelativePath(GetRepositoryRoot(), path);
+        var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return !segments.Contains("bin", StringComparer.OrdinalIgnoreCase) &&
+               !segments.Contains("obj", StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
