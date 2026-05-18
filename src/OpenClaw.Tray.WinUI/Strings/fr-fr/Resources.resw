@@ -1616,6 +1616,12 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Connectez-vous à la passerelle pour commencer la discussion</value>
   </data>
+  <data name="ChatPage_WaitingTitle.Text" xml:space="preserve">
+    <value>En attente du démarrage du chat…</value>
+  </data>
+  <data name="ChatPage_WaitingStatusText.Text" xml:space="preserve">
+    <value>La passerelle est connectée ; l'interface de chat est encore en cours de démarrage.</value>
+  </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
     <value>⚙️ Configuration</value>
   </data>
@@ -3061,6 +3067,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
+  </data>
+  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
+    <value>Retour à la connexion</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>

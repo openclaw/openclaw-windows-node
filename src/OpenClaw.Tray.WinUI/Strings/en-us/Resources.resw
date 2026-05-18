@@ -1665,6 +1665,12 @@ On your gateway host (Mac/Linux), run:
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Connect to gateway to start chatting</value>
   </data>
+  <data name="ChatPage_WaitingTitle.Text" xml:space="preserve">
+    <value>Waiting for chat to start…</value>
+  </data>
+  <data name="ChatPage_WaitingStatusText.Text" xml:space="preserve">
+    <value>The gateway is connected; the chat surface is still coming online.</value>
+  </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
     <value>⚙️ Config</value>
   </data>
@@ -3110,6 +3116,9 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
+  </data>
+  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
+    <value>Back to Connection</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
