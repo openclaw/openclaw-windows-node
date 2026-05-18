@@ -766,29 +766,36 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
         // detected URL — including OAuth/device-code URLs.
 
         return VStack(8,
-            // Top heading is driven by the wizard's current step title (or
-            // local lifecycle title for loading/error/complete/offline). The
-            // hosting V2 page suppresses its own heading when this wizard
-            // is embedded so we don't show two titles. Capped at 2 lines
-            // with ellipsis so a long server-supplied step title can't push
-            // the device-code block or "Open in browser" button off-screen.
-            TextBlock(string.IsNullOrEmpty(displayTitle)
-                    ? LocalizationHelper.GetString("Onboarding_Wizard_Title")
-                    : displayTitle)
+            // Top heading is the static "Configuring Gateway" label. The
+            // hosting V2 page suppresses its own duplicate heading when
+            // this wizard is embedded, so we render exactly one here. The
+            // per-step title (or local lifecycle title for
+            // loading/error/complete/offline) is rendered inside the card
+            // below as the sub-heading.
+            TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_Title"))
                 .FontSize(28)
                 .SemiBold()
-                .HAlign(HorizontalAlignment.Center)
-                .TextWrapping()
-                .Set(t =>
-                {
-                    t.MaxLines = 2;
-                    t.TextTrimming = Microsoft.UI.Xaml.TextTrimming.CharacterEllipsis;
-                    t.TextAlignment = Microsoft.UI.Xaml.TextAlignment.Center;
-                }),
+                .HAlign(HorizontalAlignment.Center),
 
             Border(
                 ScrollView(
                     VStack(10,
+                        TextBlock(displayTitle)
+                            .FontSize(15)
+                            .FontWeight(new global::Windows.UI.Text.FontWeight(700))
+                            .TextWrapping()
+                            .Set(t =>
+                            {
+                                // Server-supplied stepTitle in the "active" state has
+                                // untrusted length. Cap at 3 lines with ellipsis so a
+                                // verbose title can't push displayMessage and inputArea
+                                // below the card's MaxHeight(350) fold, and so a long
+                                // unbroken token (URL, slug) trims instead of clipping
+                                // horizontally inside the ScrollView (which has
+                                // HorizontalScrollMode=Disabled).
+                                t.MaxLines = 3;
+                                t.TextTrimming = Microsoft.UI.Xaml.TextTrimming.CharacterEllipsis;
+                            }),
                         TextBlock(displayMessage)
                             .FontSize(13)
                             .TextWrapping(),
