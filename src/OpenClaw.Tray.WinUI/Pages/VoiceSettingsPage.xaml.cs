@@ -16,7 +16,7 @@ public sealed partial class VoiceSettingsPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private VoiceService? _voiceService;
-    private bool _suppressEvents;
+    private bool _suppressEvents = true; // suppress until Initialize/LoadSettings runs
     // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
     // download (and vice versa). Each download type owns its own token.
     private static string L(string key) => LocalizationHelper.GetString(key);

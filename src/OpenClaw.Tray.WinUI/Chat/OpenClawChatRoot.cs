@@ -330,7 +330,7 @@ public sealed class OpenClawChatRoot : Component
                 DefaultModel: selectedThread.Model,
                 ShowThinkingIndicator: showThinking,
                 OnReadAloud: _onReadAloud is not null
-                    ? (text => speakerMuted.Value ? Task.CompletedTask : _onReadAloud(text))
+                    ? (text => _onReadAloud(text))
                     : null)));
 
         // Distinct list of channel labels (= thread titles) — feeds the
