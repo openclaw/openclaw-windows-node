@@ -7,8 +7,6 @@ on:
     - cron: "22 4 * * 1"
     - cron: "22 4 * * 4"
   workflow_dispatch:
-  slash_command:
-    name: localization-audit
 
 timeout-minutes: 60
 
