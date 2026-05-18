@@ -3281,4 +3281,232 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
     <value>Keep my setup</value>
   </data>
+  <data name="FilterAllButton.Content" xml:space="preserve">
+    <value>Tout</value>
+  </data>
+  <data name="ChannelsPage_Title.Text" xml:space="preserve">
+    <value>Canaux</value>
+  </data>
+  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
+    <value>Rafraîchir</value>
+  </data>
+  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
+    <value>CONFIGURÉ</value>
+  </data>
+  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
+    <value>DISPONIBLE</value>
+  </data>
+  <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
+    <value>Accueil</value>
+  </data>
+  <data name="ChatPageRefreshToolTip.Content" xml:space="preserve">
+    <value>Rafraîchir</value>
+  </data>
+  <data name="ChatPageDeveloperToolsToolTip.Content" xml:space="preserve">
+    <value>Outils de développement</value>
+  </data>
+  <data name="SettingsRow_AutoStart_Header.Text" xml:space="preserve">
+    <value>Démarrer avec Windows</value>
+  </data>
+  <data name="SettingsRow_GlobalHotkey_Header.Text" xml:space="preserve">
+    <value>Raccourci Envoi rapide</value>
+  </data>
+  <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
+    <value>Utiliser l’interface de chat web de la passerelle</value>
+  </data>
+  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+    <value>Afficher les notifications</value>
+  </data>
+  <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
+    <value>Son</value>
+  </data>
+  <data name="SettingsRow_ScreenRec_Header.Text" xml:space="preserve">
+    <value>Autoriser l’enregistrement de l’écran</value>
+  </data>
+  <data name="SettingsRow_CamRec_Header.Text" xml:space="preserve">
+    <value>Autoriser l’enregistrement de la caméra</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_Voice.Content" xml:space="preserve">
+    <value>Voix et audio</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
+    <value>Bac à sable</value>
+  </data>
+  <data name="AboutPage_MoreDiagnosticsLink.Content" xml:space="preserve">
+    <value>More diagnostics →</value>
+  </data>
+  <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
+    <value>Your gateway didn't list any channels</value>
+  </data>
+  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
+    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials — the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
+  </data>
+  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
+    <value>Read the channels guide</value>
+  </data>
+  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
+    <value>Connect to a gateway to manage channels.</value>
+  </data>
+  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>No channels available</value>
+  </data>
+  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
+    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
+  </data>
+  <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+  <data name="DiagnosticsPage_Subtitle.Text" xml:space="preserve">
+    <value>Inspect, export, and troubleshoot your OpenClaw installation.</value>
+  </data>
+  <data name="DiagnosticsPage_ManageOnConnection.Content" xml:space="preserve">
+    <value>Manage on Connection page</value>
+  </data>
+  <data name="DiagnosticsPage_Section_Share.Text" xml:space="preserve">
+    <value>Share diagnostics with support</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Bundle.Header" xml:space="preserve">
+    <value>Create diagnostics bundle</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Bundle.Description" xml:space="preserve">
+    <value>Includes connection, gateway, ports, capabilities, log tail, and device summary. Preview before sharing.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_OpenDiagnosticsFolder.Header" xml:space="preserve">
+    <value>Open diagnostics folder</value>
+  </data>
+  <data name="DiagnosticsPage_Card_OpenDiagnosticsFolder.Description" xml:space="preserve">
+    <value>Logs and structured diagnostics (.jsonl) live here.</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_SpecificCopies.Header" xml:space="preserve">
+    <value>Copy specific diagnostic text</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_SpecificCopies.Description" xml:space="preserve">
+    <value>Send just one piece of context.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopySupport.Header" xml:space="preserve">
+    <value>Copy support context</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopySupport.Description" xml:space="preserve">
+    <value>Connection state, gateway URL, runtime, tunnel.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
+    <value>Copy full debug bundle</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
+    <value>Everything the preview dialog produces, no preview.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
+    <value>Copy browser setup guidance</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopyPortDiagnostics.Header" xml:space="preserve">
+    <value>Copy port diagnostics</value>
+  </data>
+  <data name="DiagnosticsPage_Card_CopyCapabilityDiagnostics.Header" xml:space="preserve">
+    <value>Copy capability diagnostics</value>
+  </data>
+  <data name="DiagnosticsPage_Section_Inspect.Text" xml:space="preserve">
+    <value>Inspect local diagnostics</value>
+  </data>
+  <data name="DiagnosticsPage_Card_EventTimeline.Header" xml:space="preserve">
+    <value>Connection event timeline</value>
+  </data>
+  <data name="DiagnosticsPage_Card_EventTimeline.Description" xml:space="preserve">
+    <value>Live state-machine events, websocket frames, credential resolution, and pairing handshakes.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenEventTimelineButton.Content" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="DiagnosticsPage_Card_RecentLog.Header" xml:space="preserve">
+    <value>Recent log</value>
+  </data>
+  <data name="DiagnosticsPage_Card_RecentLog.Description" xml:space="preserve">
+    <value>Last 200 lines of openclaw-tray.log, with severity coloring.</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_Identity.Header" xml:space="preserve">
+    <value>Device identity</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_Identity.Description" xml:space="preserve">
+    <value>Local cryptographic identifiers for this device.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_DeviceId.Header" xml:space="preserve">
+    <value>Device ID</value>
+  </data>
+  <data name="DiagnosticsPage_Card_PublicKey.Header" xml:space="preserve">
+    <value>Public key</value>
+  </data>
+  <data name="DiagnosticsPage_Section_Developer.Text" xml:space="preserve">
+    <value>Developer tools</value>
+  </data>
+  <data name="DiagnosticsPage_DeveloperWarning.Title" xml:space="preserve">
+    <value>For engineers</value>
+  </data>
+  <data name="DiagnosticsPage_DeveloperWarning.Message" xml:space="preserve">
+    <value>These tools may change app behavior, restart the app, or open experimental UI.</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_ChatOverrides.Header" xml:space="preserve">
+    <value>Chat surface overrides</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
+    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
+    <value>Hub chat tab</value>
+  </data>
+  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
+    <value>Tray chat popup</value>
+  </data>
+  <data name="DiagnosticsPage_Card_ChatExplorations.Header" xml:space="preserve">
+    <value>Open chat explorations</value>
+  </data>
+  <data name="DiagnosticsPage_Card_ChatExplorations.Description" xml:space="preserve">
+    <value>Engineering preview of chat bubble and tool-card rendering.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenChatExplorationsButton.Content" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
+    <value>Reconfigure…</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Reconfigure.Description" xml:space="preserve">
+    <value>Reopens the OpenClaw onboarding wizard. You will be asked to confirm.</value>
+  </data>
+  <data name="DiagnosticsPage_ReconfigureButton.Content" xml:space="preserve">
+    <value>Reconfigure…</value>
+  </data>
+  <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
+    <value>Back to Diagnostics</value>
+  </data>
+  <data name="SettingsRow_AutoStart_Description.Text" xml:space="preserve">
+    <value>Launch OpenClaw automatically when you sign in.</value>
+  </data>
+  <data name="SettingsRow_GlobalHotkey_Description.Text" xml:space="preserve">
+    <value>Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere.</value>
+  </data>
+  <data name="SettingsRow_LegacyChat_Description.Text" xml:space="preserve">
+    <value>When on, Chat hosts the gateway's web chat instead of the native Windows experience.</value>
+  </data>
+  <data name="SettingsRow_Notifications_Description.Text" xml:space="preserve">
+    <value>Show toast notifications for events you've subscribed to below.</value>
+  </data>
+  <data name="SettingsRow_NotifSound_Description.Text" xml:space="preserve">
+    <value>Notification sound played alongside the toast.</value>
+  </data>
+  <data name="SettingsRow_ScreenRec_Description.Text" xml:space="preserve">
+    <value>Lets agents capture the screen via screen.* commands.</value>
+  </data>
+  <data name="SettingsRow_CamRec_Description.Text" xml:space="preserve">
+    <value>Lets agents capture the camera via camera.* commands.</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+    <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
+  </data>
+  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+    <value>e.g. eleven_turbo_v2</value>
+  </data>
+  <data name="ConnectionStatusWindow.Title" xml:space="preserve">
+    <value>Connection Status</value>
+  </data>
 </root>
