@@ -526,7 +526,7 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _invokeSemaphore.Release();
             }
-        }, ct);
+        }, CancellationToken.None);
     }
     
     private async Task SendNodeInvokeResultAsync(string requestId, bool success, object? payload, string? error)
@@ -1073,7 +1073,7 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _invokeSemaphore.Release();
             }
-        }, ct);
+        }, CancellationToken.None);
     }
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)
