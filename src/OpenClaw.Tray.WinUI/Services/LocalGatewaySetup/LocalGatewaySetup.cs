@@ -1146,6 +1146,30 @@ public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurat
             openClaw + " config set gateway.port " + options.GatewayPort.ToString(CultureInfo.InvariantCulture) + " --strict-json",
             openClaw + " config set gateway.auth.mode token",
             "xargs -r " + openClaw + " config set gateway.auth.token </var/lib/openclaw/gateway-token",
+            // Suppress restart-required reloads triggered by config writes the V2 setup
+            // wizard makes mid-flow. With the default "hybrid" mode, the gateway-side
+            // wizard at src/wizard/setup.ts:750 commits the wizard's collected snapshot
+            // (gateway.bind / gateway.tailscale.* / gateway.controlUi.* /
+            // auth.profiles.*) — those paths fall under the catch-all restart rule
+            // in src/gateway/config-reload-plan.ts (line 126: { prefix: "gateway",
+            // kind: "restart" }) and would fire a service restart (WS close 1012,
+            // restartExpectedMs: 1500). That cancels the in-flight wizard.next mid-
+            // step and forces the operator to re-walk the entire wizard with no
+            // memory of the previous answers.
+            //
+            // Setting reload.mode=hot makes the watcher LOG-and-IGNORE restart-required
+            // changes (src/gateway/config-reload.ts:274-281: "config reload requires
+            // gateway restart; hot mode ignoring") while still allowing legitimate
+            // hot reloads (channels/hooks/plugins). The gateway already has the right
+            // bind/auth/port from this PrepareGatewayConfig phase, so suppressing the
+            // mid-wizard restart loses nothing: the wizard's writes for those paths
+            // are no-ops in terms of running gateway state.
+            //
+            // gateway.reload itself is { prefix: "gateway.reload", kind: "none" } in
+            // the reload-plan rules, so this write does not itself trigger a reload.
+            // The watcher is not yet active when this script runs (StartGateway phase
+            // hasn't started), so even the earlier writes above don't notify.
+            openClaw + " config set gateway.reload.mode hot",
             openClaw + " config validate"
         });
 

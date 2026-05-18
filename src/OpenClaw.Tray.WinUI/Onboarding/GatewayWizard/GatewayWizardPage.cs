@@ -93,6 +93,44 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
 
                 setWizardState("complete");
                 SaveState("complete");
+
+                // Re-arm gateway.reload.mode=hybrid (the gateway default) now that
+                // the wizard's burst of config writes is done. The pre-seed in
+                // OpenClawCliGatewayConfigurationPreparer.PrepareAsync set this to
+                // "hot" so the wizard's mid-flow config writes wouldn't fire a
+                // service restart that cancels the in-flight wizard.next (see that
+                // file's comment for the full root-cause analysis). Leaving "hot"
+                // permanent would silently suppress restart-required config changes
+                // later (e.g., port/bind/auth changes from the tray Settings page
+                // would update openclaw.json but the running gateway would keep its
+                // old settings). Resetting to "hybrid" restores normal behavior.
+                //
+                // This write itself does not trigger a reload: gateway.reload is a
+                // { prefix: "gateway.reload", kind: "none" } rule in
+                // src/gateway/config-reload-plan.ts:50. Best-effort fire-and-forget;
+                // failures only log because we don't want to block the wizard
+                // complete transition on a config write blip.
+                try
+                {
+                    var resetClient = ((App)Microsoft.UI.Xaml.Application.Current).GatewayClient ?? Props.GatewayClient;
+                    if (resetClient is not null)
+                    {
+                        _ = resetClient.SetConfigAsync("gateway.reload.mode", "hybrid")
+                            .ContinueWith(t =>
+                            {
+                                if (t.IsFaulted)
+                                    Logger.Warn($"[GatewayWizard] Failed to reset gateway.reload.mode to hybrid: {t.Exception?.GetBaseException().Message}");
+                                else if (t.Result)
+                                    Logger.Info("[GatewayWizard] Reset gateway.reload.mode to hybrid after wizard completion");
+                                else
+                                    Logger.Warn("[GatewayWizard] Reset gateway.reload.mode returned false (config.set declined)");
+                            }, TaskScheduler.Default);
+                    }
+                }
+                catch (Exception resetEx)
+                {
+                    Logger.Warn($"[GatewayWizard] Could not schedule gateway.reload.mode reset: {resetEx.Message}");
+                }
                 return;
             }
 
@@ -331,6 +369,10 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
                     ApplyStep(response);
                 }
             }
+            catch (OperationCanceledException ex)
+            {
+                await TryRecoverFromServiceRestartAsync(app, stepId, ex);
+            }
             catch (Exception ex)
             {
                 // SECURITY: Log full exception, show a sanitized version of the gateway
@@ -392,6 +434,17 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
                 var response = await client.SendWizardRequestAsync("wizard.next", parameters);
                 ApplyStep(response);
             }
+            catch (OperationCanceledException ex)
+            {
+                // Sibling-defect recovery: SkipStep hits the same WS close 1012
+                // restart race as SubmitStep when the user clicks the Skip button
+                // (vs picking __skip__ + Continue). Route through the same recovery
+                // helper so a transient disconnect or service-restart mid-skip
+                // doesn't leave the wizard surface stuck. See SubmitStep's catch
+                // for the underlying root-cause analysis.
+                var app2 = (App)Microsoft.UI.Xaml.Application.Current;
+                await TryRecoverFromServiceRestartAsync(app2, stepId, ex);
+            }
             catch (Exception ex)
             {
                 Logger.Error($"[GatewayWizard] Skip step failed: {ex}");
@@ -406,6 +459,112 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
             {
                 await Task.Delay(400); // Brief delay so button disable is visible
                 setSubmitting(false);
+            }
+        }
+
+        // Recovery helper shared by SubmitStep and SkipStep.
+        //
+        // Empirical bug (logs at 2026-05-16 14:47:44, channels-skip path on a
+        // fresh openclaw.json): the gateway commits the wizard's collected
+        // config to disk between stages (writeWizardConfigFile at
+        // src/wizard/setup.ts:750). On a fresh install that snapshot adds new
+        // gateway.bind / gateway.tailscale.* / gateway.controlUi.* /
+        // auth.profiles.* paths, all of which match the catch-all
+        // { prefix: "gateway", kind: "restart" } rule in
+        // src/gateway/config-reload-plan.ts:126. The chokidar config-reload
+        // watcher in src/gateway/config-reload.ts queues a service restart
+        // (WS close 1012, "gateway restarting", restartExpectedMs: 1500 — see
+        // src/cli/gateway-cli/run-loop.ts:558).
+        // OpenClawGatewayClient.ClearPendingRequests then raises
+        // OperationCanceledException from the pending wizard TCS.
+        //
+        // The primary fix for this is the gateway.reload.mode=hot pre-seed in
+        // OpenClawCliGatewayConfigurationPreparer.PrepareAsync; this helper is
+        // the defense-in-depth path that still runs if any other event drops
+        // the wizard.next mid-flight (gateway crash, manual systemctl restart,
+        // intermittent WSL network blip, etc.). Mirrors the macOS tray pattern
+        // in apps/macos/Sources/OpenClaw/OnboardingWizard.swift:171-186
+        // (restartIfSessionLost): wait for reconnect, clear stale session,
+        // re-issue wizard.start. If the gateway-side session is still alive
+        // (transient WS disconnect, no full restart), fall back to wizard.status
+        // — mirrors StartWizard at the top of this file (lines 238-253).
+        async Task TryRecoverFromServiceRestartAsync(App app, string failingStepId, OperationCanceledException originalEx)
+        {
+            Logger.Info($"[GatewayWizard] wizard.next cancelled by service-restart-like event ({originalEx.Message}); waiting for reconnect to restart wizard…");
+            setErrorMsg("");
+            setWizardState("loading");
+            SaveState("loading");
+
+            IOperatorGatewayClient? client = null;
+            var reconnected = false;
+            for (int wait = 0; wait < 20; wait++)
+            {
+                client = app.GatewayClient ?? Props.GatewayClient;
+                if (client?.IsConnectedToGateway == true) { reconnected = true; break; }
+                await Task.Delay(1000);
+            }
+
+            if (!reconnected || client == null)
+            {
+                Logger.Warn("[GatewayWizard] Gateway did not reconnect within 20s after service restart");
+                var msg = LocalizationHelper.GetString("Onboarding_Wizard_ErrorGatewayDisconnectedDetail");
+                if (string.IsNullOrEmpty(msg) || msg == "Onboarding_Wizard_ErrorGatewayDisconnectedDetail")
+                    msg = "Gateway is restarting. Try again in a moment.";
+                setErrorMsg(msg);
+                setWizardState("error");
+                SaveState("error", msg);
+                return;
+            }
+
+            // Clear the stale session before restarting so wizard.start does not
+            // get rejected with "wizard already running" if the server preserved
+            // the in-memory session across our WS close (transient blip).
+            Props.WizardSessionId = null;
+            Props.WizardStepPayload = null;
+
+            try
+            {
+                Logger.Info("[GatewayWizard] Reconnected; calling wizard.start to recover from service restart");
+                var restartResponse = await client.SendWizardRequestAsync("wizard.start");
+                ApplyStep(restartResponse);
+            }
+            catch (InvalidOperationException sessionStillRunning) when (sessionStillRunning.Message.Contains("already running", StringComparison.OrdinalIgnoreCase))
+            {
+                // Transient disconnect, NOT a full service restart: the gateway-side
+                // wizard session is still alive. wizard.status returns {status,error?}
+                // only — no step payload — but ApplyStep falls through to
+                // setWizardState("active") preserving whatever stale step the UI was
+                // showing. Mirrors StartWizard's pattern at lines 238-253.
+                Logger.Info("[GatewayWizard] Wizard session still running after reconnect, fetching current status…");
+                try
+                {
+                    var statusResponse = await client.SendWizardRequestAsync("wizard.status");
+                    ApplyStep(statusResponse);
+                }
+                catch
+                {
+                    Logger.Warn("[GatewayWizard] Could not resume existing wizard session after reconnect, marking offline");
+                    setWizardState("offline");
+                    SaveState("offline");
+                }
+            }
+            catch (InvalidOperationException unknownOrMissing) when (
+                unknownOrMissing.Message.Contains("unknown method", StringComparison.OrdinalIgnoreCase) ||
+                unknownOrMissing.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Warn($"[GatewayWizard] wizard.start after reconnect hit unknown-method/not-found: {unknownOrMissing.Message}");
+                setWizardState("offline");
+                SaveState("offline");
+            }
+            catch (Exception restartEx)
+            {
+                Logger.Error($"[GatewayWizard] wizard.start after service restart failed: {restartEx}");
+                var fallback = LocalizationHelper.GetString("Onboarding_Wizard_StepError");
+                if (fallback == "Onboarding_Wizard_StepError") fallback = WizardErrorFormatter.GenericFallbackMessage;
+                var msg = WizardErrorFormatter.FormatStepError(restartEx, failingStepId, fallback);
+                setErrorMsg(msg);
+                setWizardState("error");
+                SaveState("error", msg);
             }
         }
 
