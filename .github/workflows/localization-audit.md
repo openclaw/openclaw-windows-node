@@ -3,7 +3,9 @@ description: |
   Audits OpenClaw localization coverage and creates a draft pull request when user-facing strings bypass the Resources.resw localization pattern.
 
 on:
-  schedule: weekly
+  schedule:
+    - cron: "22 4 * * 1"
+    - cron: "22 4 * * 4"
   workflow_dispatch:
   slash_command:
     name: localization-audit
