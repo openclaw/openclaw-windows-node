@@ -64,11 +64,11 @@ $summaryPath = Join-Path $runRoot "summary.json"
 $summaryMarkdownPath = Join-Path $runRoot "summary.md"
 $trayProject = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
 $runtimeIdentifier = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "win-arm64" } else { "win-x64" }
-$trayTfm = ([xml](Get-Content $trayProject)).Project.PropertyGroup |
+$trayTfm = ([xml](Get-Content -LiteralPath $trayProject -Raw)).Project.PropertyGroup |
     ForEach-Object { $_.TargetFramework } |
     Where-Object { $_ } |
     Select-Object -First 1
-if (-not $trayTfm) { throw "Could not derive TargetFramework from $trayProject" }
+if (-not $trayTfm) { throw "Could not derive TargetFramework from $trayProject." }
 $trayExe = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\Debug\$trayTfm\$runtimeIdentifier\OpenClaw.Tray.WinUI.exe"
 $cliProject = Join-Path $repoRoot "src\OpenClaw.Cli\OpenClaw.Cli.csproj"
 
