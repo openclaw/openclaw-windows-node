@@ -26,17 +26,63 @@
   SendMessage(WM_SYSCOMMAND, SC_CLOSE) alone does NOT work — WindowsTerminal
   swallows it on these orphan frames.
 
+  ## WHY YOU MAY STILL SEE GHOSTS AFTER A FIX
+
+  On Win11 with Windows Terminal as the default terminal app (the new Win11
+  default, registry value
+  HKCU\Console\%%Startup\DelegationConsole = {2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}),
+  EVERY console-spawning child process gets a Cascadia hosting frame
+  allocated. Most close cleanly when the child exits; a small fraction
+  leak under timing conditions. The in-process test cleanup
+  (tests/OpenClaw.Tray.Tests/WinAppSdkGhostWindowCleanup.cs) only fires
+  inside the testhost lifetime. build.ps1's end-of-build hook only fires
+  after a successful build. NEITHER catches leaks from:
+
+   - `gh`, `git`, `dotnet`, `pwsh`, or any other CLI you run from your
+     shell outside of `./build.ps1`
+   - Agent tooling that spawns fresh PowerShell sessions (each session's
+     console allocation is a fresh opportunity to leak)
+   - Killed-with-Ctrl+C / OOM processes that never ran teardown
+
+  For high-shell-activity sessions (e.g., agent-driven work on this branch),
+  use `-Daemon` to run a background watcher, or `-InstallScheduledTask` for
+  always-on protection without keeping a console alive.
+
 .PARAMETER WhatIf
   Lists matching ghosts without closing them.
 
 .PARAMETER Quiet
   Suppress per-window status lines; only print the summary.
 
+.PARAMETER Daemon
+  Run continuously in the foreground, polling every -PollSeconds seconds
+  and cleaning any ghosts found. Use this when you're about to do a lot
+  of shell work and don't want to remember to clean up. Stop with Ctrl+C.
+
+.PARAMETER PollSeconds
+  Daemon mode polling interval. Default 30s; minimum 5s.
+
+.PARAMETER InstallScheduledTask
+  Register a Windows scheduled task that runs this script every 5 minutes
+  under the current user. Idempotent — replaces any existing task with the
+  same name. Use -UninstallScheduledTask to remove it.
+
+.PARAMETER UninstallScheduledTask
+  Unregister the scheduled task created by -InstallScheduledTask.
+
 .EXAMPLE
   ./scripts/cleanup-ghost-windows.ps1
 
 .EXAMPLE
   ./scripts/cleanup-ghost-windows.ps1 -WhatIf
+
+.EXAMPLE
+  # Background watcher for the duration of a shell session:
+  ./scripts/cleanup-ghost-windows.ps1 -Daemon
+
+.EXAMPLE
+  # One-time setup for developers doing heavy shell work on this branch:
+  ./scripts/cleanup-ghost-windows.ps1 -InstallScheduledTask
 
 .NOTES
   This script is also invoked automatically at the end of ./build.ps1 on
@@ -45,9 +91,24 @@
   blank Terminal frames piling up after running tests in this repo.
 #>
 
-[CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = 'OneShot')]
 param(
-  [switch] $Quiet
+  [Parameter(ParameterSetName = 'OneShot')]
+  [Parameter(ParameterSetName = 'Daemon')]
+  [switch] $Quiet,
+
+  [Parameter(ParameterSetName = 'Daemon', Mandatory = $true)]
+  [switch] $Daemon,
+
+  [Parameter(ParameterSetName = 'Daemon')]
+  [ValidateRange(5, 3600)]
+  [int] $PollSeconds = 30,
+
+  [Parameter(ParameterSetName = 'InstallTask', Mandatory = $true)]
+  [switch] $InstallScheduledTask,
+
+  [Parameter(ParameterSetName = 'UninstallTask', Mandatory = $true)]
+  [switch] $UninstallScheduledTask
 )
 
 if (-not $IsWindows -and $PSVersionTable.Platform -ne 'Win32NT') {
@@ -136,40 +197,105 @@ function Close-GhostFrame {
   [OpenClawCleanup.TerminalGhostCleanupNative]::SendMessageTimeout($HWnd, 0x0010, [System.IntPtr]::Zero, [System.IntPtr]::Zero, 0x0002, 1000, [ref]$result) | Out-Null
 }
 
-# Up to 5 passes with a short delay between, mirroring the C# CleanupBlankFramesRepeatedly.
-$totalClosed = 0
-for ($pass = 1; $pass -le 5; $pass++) {
-  $ghosts = Find-GhostFrames
-  if ($ghosts.Count -eq 0) { break }
+function Invoke-OneShotCleanup {
+  param([switch] $Quiet)
+  $totalClosed = 0
+  for ($pass = 1; $pass -le 5; $pass++) {
+    $ghosts = Find-GhostFrames
+    if ($ghosts.Count -eq 0) { break }
 
-  if ($pass -eq 1 -and -not $Quiet) {
-    Write-Host ("Found {0} ghost Terminal frame(s):" -f $ghosts.Count) -ForegroundColor Yellow
-  }
+    if ($pass -eq 1 -and -not $Quiet) {
+      Write-Host ("Found {0} ghost Terminal frame(s):" -f $ghosts.Count) -ForegroundColor Yellow
+    }
 
-  foreach ($g in $ghosts) {
-    if ($PSCmdlet.ShouldProcess("HWND $($g.HWND) (Owner WindowsTerminal PID $($g.OwnerPid), $($g.Width)x$($g.Height))", "Close")) {
-      Close-GhostFrame -HWnd $g.HWND
-      $totalClosed++
-      if (-not $Quiet) {
-        Write-Host ("  Pass {0}: closed HWND {1} ({2}x{3})" -f $pass, $g.HWND, $g.Width, $g.Height) -ForegroundColor Green
+    foreach ($g in $ghosts) {
+      if ($PSCmdlet.ShouldProcess("HWND $($g.HWND) (Owner WindowsTerminal PID $($g.OwnerPid), $($g.Width)x$($g.Height))", "Close")) {
+        Close-GhostFrame -HWnd $g.HWND
+        $totalClosed++
+        if (-not $Quiet) {
+          Write-Host ("  Pass {0}: closed HWND {1} ({2}x{3})" -f $pass, $g.HWND, $g.Width, $g.Height) -ForegroundColor Green
+        }
       }
     }
+
+    Start-Sleep -Milliseconds 500
   }
 
-  Start-Sleep -Milliseconds 500
-}
+  $remaining = (Find-GhostFrames).Count
+  if ($remaining -gt 0) {
+    Write-Host ("WARNING: {0} ghost frame(s) still present after 5 passes. Try running again or reboot." -f $remaining) -ForegroundColor Red
+    return @{ Closed = $totalClosed; Remaining = $remaining }
+  }
 
-$remaining = (Find-GhostFrames).Count
-if ($remaining -gt 0) {
-  Write-Host ("WARNING: {0} ghost frame(s) still present after {1} passes. Try running again or reboot." -f $remaining, 5) -ForegroundColor Red
-  exit 1
-}
-
-if (-not $Quiet) {
-  if ($totalClosed -eq 0) {
+  if (-not $Quiet -and $totalClosed -eq 0) {
     Write-Host "No ghost Terminal frames detected."
-  } else {
+  } elseif (-not $Quiet -and $totalClosed -gt 0) {
     Write-Host ("Closed {0} ghost Terminal frame(s)." -f $totalClosed) -ForegroundColor Green
   }
+  return @{ Closed = $totalClosed; Remaining = 0 }
 }
+
+# -----------------------------------------------------------------------------
+# Scheduled-task installer
+# -----------------------------------------------------------------------------
+$taskName = 'OpenClaw-Ghost-Terminal-Cleanup'
+
+if ($InstallScheduledTask) {
+  # Idempotent: drop any existing registration first.
+  Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+
+  $scriptPath = $MyInvocation.MyCommand.Path
+  $action = New-ScheduledTaskAction `
+    -Execute 'pwsh.exe' `
+    -Argument "-NoProfile -WindowStyle Hidden -File `"$scriptPath`" -Quiet"
+  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+    -RepetitionInterval (New-TimeSpan -Minutes 5)
+  $settings = New-ScheduledTaskSettingsSet `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+  $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
+
+  Register-ScheduledTask -TaskName $taskName `
+    -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
+    -Description "Auto-close orphan Windows Terminal 'Terminal' frames left by OpenClaw tests and msbuild. See scripts/cleanup-ghost-windows.ps1." | Out-Null
+
+  Write-Host "Installed scheduled task '$taskName' (runs every 5 minutes, current user, hidden)." -ForegroundColor Green
+  Write-Host "  Uninstall:  ./scripts/cleanup-ghost-windows.ps1 -UninstallScheduledTask"
+  exit 0
+}
+
+if ($UninstallScheduledTask) {
+  $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  if ($null -eq $existing) {
+    Write-Host "Scheduled task '$taskName' is not registered; nothing to remove."
+    exit 0
+  }
+  Unregister-ScheduledTask -TaskName $taskName -Confirm:$false | Out-Null
+  Write-Host "Unregistered scheduled task '$taskName'." -ForegroundColor Green
+  exit 0
+}
+
+# -----------------------------------------------------------------------------
+# Daemon mode
+# -----------------------------------------------------------------------------
+if ($Daemon) {
+  Write-Host "Daemon mode: polling every $PollSeconds s. Ctrl+C to stop." -ForegroundColor Cyan
+  $cycle = 0
+  while ($true) {
+    $cycle++
+    $r = Invoke-OneShotCleanup -Quiet:$Quiet
+    if ($r.Closed -gt 0 -and -not $Quiet) {
+      Write-Host ("[{0}] cycle {1}: closed {2}" -f (Get-Date -Format HH:mm:ss), $cycle, $r.Closed) -ForegroundColor Green
+    }
+    Start-Sleep -Seconds $PollSeconds
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Default: one-shot
+# -----------------------------------------------------------------------------
+$result = Invoke-OneShotCleanup -Quiet:$Quiet
+if ($result.Remaining -gt 0) { exit 1 }
 exit 0

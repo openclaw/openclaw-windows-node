@@ -128,4 +128,32 @@ public sealed class GhostWindowCleanupScriptContractTests
         Assert.Matches(@"-lt\s+1000",  script);  // PowerShell less-than check on width
         Assert.Matches(@"-lt\s+500",   script);  // height
     }
+
+    [Theory]
+    [InlineData("-Daemon",                  "long-running watcher for shell-heavy sessions")]
+    [InlineData("-PollSeconds",             "configurable daemon poll interval")]
+    [InlineData("-InstallScheduledTask",    "background recovery without keeping a console alive")]
+    [InlineData("-UninstallScheduledTask",  "matching uninstaller")]
+    public void Script_ExposesEscalationModesForOutOfBandLeaks(string switchName, string reason)
+    {
+        // We can't catch every Cascadia frame leak from our wired triggers
+        // (testhost + build.ps1); ad-hoc shell invocations of gh/git/dotnet
+        // outside of build.ps1 leak too. The escalation modes let a developer
+        // who does heavy shell work on this branch keep their box clean.
+        // Drift here breaks the AGENTS.md guidance and the recovery story
+        // documented in commit de5e73e and beyond.
+        var script = LoadScript();
+        Assert.True(script.Contains(switchName),
+            $"Cleanup script missing '{switchName}' switch ({reason}).");
+    }
+
+    [Fact]
+    public void Script_ScheduledTaskName_IsStable()
+    {
+        // Pin the task name so the uninstaller matches what the installer
+        // registered. AGENTS.md and any future support recipes that refer
+        // to the task name will break silently if this drifts.
+        var script = LoadScript();
+        Assert.Contains("OpenClaw-Ghost-Terminal-Cleanup", script);
+    }
 }
