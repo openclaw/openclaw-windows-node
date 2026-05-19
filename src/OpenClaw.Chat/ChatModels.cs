@@ -30,7 +30,8 @@ public enum ChatToolCallStatus
 {
     InProgress,
     Success,
-    Error
+    Error,
+    Interrupted
 }
 
 public enum ChatTone
@@ -87,13 +88,15 @@ public record ChatTimelineState(
     string? ActiveToolCallId,
     string? CurrentIntent,
     System.Collections.Immutable.ImmutableHashSet<string> LocalNonces,
+    System.Collections.Immutable.ImmutableDictionary<string, string> ActiveToolCalls,
     bool HistoryLoaded = false,
     ChatPermissionRequest? PendingPermission = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
         false, 1, null, null, null, null,
-        System.Collections.Immutable.ImmutableHashSet<string>.Empty);
+        System.Collections.Immutable.ImmutableHashSet<string>.Empty,
+        System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 }
 
 public record ChatHistoryPage(ChatEvent[] Events, int NextSince, int PrevBefore, bool HasMore);
@@ -107,9 +110,9 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent() : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
-public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null) : ChatEvent;
-public record ChatToolOutputEvent(string Text) : ChatEvent;
-public record ChatToolErrorEvent(string Text) : ChatEvent;
+public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null, string? ToolCallId = null) : ChatEvent;
+public record ChatToolOutputEvent(string Text, string? ToolCallId = null) : ChatEvent;
+public record ChatToolErrorEvent(string Text, string? ToolCallId = null) : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
 public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;

@@ -2826,6 +2826,9 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Status_Error" xml:space="preserve">
     <value>Error</value>
   </data>
+  <data name="Chat_Status_Interrupted" xml:space="preserve">
+    <value>Interrupted</value>
+  </data>
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>Load earlier messages</value>
   </data>

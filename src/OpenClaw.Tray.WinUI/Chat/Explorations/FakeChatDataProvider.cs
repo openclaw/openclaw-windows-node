@@ -65,6 +65,7 @@ public sealed class FakeChatDataProvider : IChatDataProvider
             ActiveToolCallId: null,
             CurrentIntent: null,
             LocalNonces: ImmutableHashSet<string>.Empty,
+            ActiveToolCalls: ImmutableDictionary<string, string>.Empty,
             HistoryLoaded: true,
             PendingPermission: null);
     }

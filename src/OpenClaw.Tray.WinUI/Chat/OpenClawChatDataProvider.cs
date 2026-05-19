@@ -1219,15 +1219,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var phase = evt.Data.TryGetProperty("phase", out var phaseProp) ? phaseProp.GetString() ?? "" : "";
         var title = evt.Data.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "" : "";
         var toolName = ExtractToolKindFromTitle(title);
+        var itemId = evt.Data.TryGetProperty("itemId", out var idProp) ? idProp.GetString() : null;
 
         return phase.ToLowerInvariant() switch
         {
-            "start" => new ChatToolStartEvent(title, toolName),
+            "start" => new ChatToolStartEvent(title, toolName, ToolCallId: itemId),
             // ``end`` flips the active tool's status to Success even when no
             // command_output arrived (e.g. ``read``, ``glob`` — non-shell).
-            // Use the title as a no-op output so the reducer marks Success.
-            "end" => new ChatToolOutputEvent(string.Empty),
-            "error" => new ChatToolErrorEvent(title),
+            "end" => new ChatToolOutputEvent(string.Empty, ToolCallId: itemId),
+            "error" => new ChatToolErrorEvent(title, ToolCallId: itemId),
             _ => null
         };
     }
@@ -1252,7 +1252,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (string.IsNullOrEmpty(output))
             return null;
 
-        return new ChatToolOutputEvent(output);
+        var itemId = evt.Data.TryGetProperty("itemId", out var idProp) ? idProp.GetString() : null;
+        return new ChatToolOutputEvent(output, ToolCallId: itemId);
     }
 
     /// <summary>
