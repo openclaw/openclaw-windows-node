@@ -19,20 +19,24 @@ internal sealed class WinAppSdkGhostWindowCleanupAttribute : BeforeAfterTestAttr
 }
 
 /// <summary>
-/// Cleans up Windows App SDK shell-frame ghosts created during tray validation.
+/// Cleans up desktop-frame ghosts created during tray validation.
 /// Some WinUI/AppWindow surfaces can leave an explorer-owned, blank
-/// <c>ApplicationFrameWindow</c> behind when the testhost exits. Those windows are
-/// visually disruptive on a developer workstation even though all tests pass.
-/// This test-only hook hides and closes blank shell frames during validation and
-/// again when the test process exits.
+/// <c>ApplicationFrameWindow</c> behind when the testhost exits; the validation
+/// host can also leave generic Windows Terminal frames around local runs. Those
+/// windows are visually disruptive on a developer workstation even though all
+/// tests pass. This test-only hook hides and closes newly-created ghost frames
+/// during validation and again when the test process exits.
 /// </summary>
 internal static class WinAppSdkGhostWindowCleanup
 {
     private const uint WM_CLOSE = 0x0010;
+    private const uint WM_SYSCOMMAND = 0x0112;
+    private const uint SC_CLOSE = 0xF060;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
     private const int SW_HIDE = 0;
     private static readonly object s_baselineLock = new();
     private static HashSet<IntPtr> s_baselineBlankFrames = [];
+    private static HashSet<IntPtr> s_baselineTerminalFrames = [];
     private static int s_cleanupInProgress;
     private static System.Threading.Timer? s_cleanupTimer;
 
@@ -42,7 +46,8 @@ internal static class WinAppSdkGhostWindowCleanup
         if (!OperatingSystem.IsWindows())
             return;
 
-        RecordBaselineBlankFrames();
+        RecordBaselineGhostFrames();
+        CleanupBlankFrames();
         s_cleanupTimer = new System.Threading.Timer(
             _ => CleanupBlankFrames(),
             state: null,
@@ -65,11 +70,14 @@ internal static class WinAppSdkGhostWindowCleanup
         {
             foreach (var hwnd in EnumerateBlankApplicationFrameWindows())
             {
-                if (IsBaselineBlankFrame(hwnd))
-                    continue;
+                if (!IsBaselineBlankFrame(hwnd))
+                    HideAndClose(hwnd);
+            }
 
-                _ = ShowWindow(hwnd, SW_HIDE);
-                _ = SendMessageTimeout(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out _);
+            foreach (var hwnd in EnumerateTerminalGhostWindows())
+            {
+                if (!IsBaselineTerminalFrame(hwnd))
+                    HideAndClose(hwnd);
             }
         }
         finally
@@ -78,11 +86,12 @@ internal static class WinAppSdkGhostWindowCleanup
         }
     }
 
-    private static void RecordBaselineBlankFrames()
+    private static void RecordBaselineGhostFrames()
     {
         lock (s_baselineLock)
         {
             s_baselineBlankFrames = EnumerateBlankApplicationFrameWindows().ToHashSet();
+            s_baselineTerminalFrames = EnumerateTerminalGhostWindows().ToHashSet();
         }
     }
 
@@ -91,6 +100,14 @@ internal static class WinAppSdkGhostWindowCleanup
         lock (s_baselineLock)
         {
             return s_baselineBlankFrames.Contains(hwnd);
+        }
+    }
+
+    private static bool IsBaselineTerminalFrame(IntPtr hwnd)
+    {
+        lock (s_baselineLock)
+        {
+            return s_baselineTerminalFrames.Contains(hwnd);
         }
     }
 
@@ -153,6 +170,61 @@ internal static class WinAppSdkGhostWindowCleanup
         return windows;
     }
 
+    private static IEnumerable<IntPtr> EnumerateTerminalGhostWindows()
+    {
+        var windows = new List<IntPtr>();
+        _ = EnumWindows((hwnd, lParam) =>
+        {
+            if (!IsWindowVisible(hwnd))
+                return true;
+
+            var className = new StringBuilder(256);
+            _ = GetClassName(hwnd, className, className.Capacity);
+            if (!string.Equals(className.ToString(), "CASCADIA_HOSTING_WINDOW_CLASS", StringComparison.Ordinal))
+                return true;
+
+            var title = new StringBuilder(512);
+            _ = GetWindowText(hwnd, title, title.Capacity);
+            if (!string.Equals(title.ToString(), "Terminal", StringComparison.Ordinal))
+                return true;
+
+            _ = GetWindowThreadProcessId(hwnd, out var pid);
+            try
+            {
+                using var owner = System.Diagnostics.Process.GetProcessById((int)pid);
+                if (!string.Equals(owner.ProcessName, "WindowsTerminal", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
+            }
+
+            if (!GetWindowRect(hwnd, out var rect))
+                return true;
+
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            if (width >= 1000 && height >= 500)
+                windows.Add(hwnd);
+
+            return true;
+        }, IntPtr.Zero);
+
+        return windows;
+    }
+
+    private static void HideAndClose(IntPtr hwnd)
+    {
+        _ = ShowWindow(hwnd, SW_HIDE);
+        _ = PostMessage(hwnd, WM_SYSCOMMAND, new IntPtr(SC_CLOSE), IntPtr.Zero);
+        _ = SendMessageTimeout(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out _);
+    }
+
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -185,6 +257,9 @@ internal static class WinAppSdkGhostWindowCleanup
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hwnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
