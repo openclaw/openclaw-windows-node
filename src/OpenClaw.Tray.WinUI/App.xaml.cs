@@ -576,6 +576,27 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return; // Environment.Exit called inside; defensive return
         }
 
+        // -----------------------------------------------------------------------
+        // Toast activator launch path. The manifest declares a windows.comServer +
+        // windows.toastNotificationActivation pair (CLSID D4E7F816-…) so the app
+        // shows up in Settings > Notifications immediately on install. When the
+        // user clicks an actionable toast, Windows spawns
+        //   OpenClaw.Tray.WinUI.exe -ToastActivator
+        // expecting us to register the COM class with the matching CLSID and
+        // handle the activation. We don't currently consume click callbacks, but
+        // we still need to short-circuit this launch — otherwise Windows starts
+        // a second tray instance that immediately fights the single-instance
+        // mutex check below and either crashes or steals the user's running
+        // tray's state.
+        // -----------------------------------------------------------------------
+        if (_startupArgs.Contains("-ToastActivator", StringComparer.OrdinalIgnoreCase))
+        {
+            // Windows already activated (or will already activate) the primary
+            // tray instance via the toast's argument string; nothing else to do.
+            Environment.Exit(0);
+            return;
+        }
+
         // Check for protocol activation (MSIX packaged apps receive deep links this way)
         string? protocolUri = GetProtocolActivationUri();
 

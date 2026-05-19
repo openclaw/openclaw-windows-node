@@ -99,6 +99,9 @@ public sealed class MsixManifestAssertionTests
         Assert.Equal("openclaw", (string?)protocol!.Attribute("Name"));
     }
 
+    private const string AppxComNs = "http://schemas.microsoft.com/appx/manifest/com/windows10";
+    private const string AppxDesktopNs = "http://schemas.microsoft.com/appx/manifest/desktop/windows10";
+
     [Fact]
     public void Tray_DeclaresStartupTaskExtensionMatchingAutoStartManager()
     {
@@ -111,6 +114,59 @@ public sealed class MsixManifestAssertionTests
         Assert.NotNull(startupTask);
         Assert.Equal("OpenClawCompanionStartup", (string?)startupTask!.Attribute("TaskId"));
         Assert.Equal("false", (string?)startupTask.Attribute("Enabled"));
+    }
+
+    [Fact]
+    public void Tray_DeclaresToastNotificationActivationExtension()
+    {
+        // Without windows.toastNotificationActivation, MSIX packaged apps do NOT
+        // appear in Settings > Notifications until they fire a toast under package
+        // identity (and even then it can be delayed by several minutes). The pair
+        // of <com:Extension windows.comServer> + <desktop:Extension
+        // windows.toastNotificationActivation> registers the activator CLSID and
+        // makes the entry appear immediately on install. The two CLSIDs MUST
+        // match each other; this test pins both halves of the contract.
+        var doc = LoadTrayManifest();
+
+        var comClass = doc.Descendants(XName.Get("Class", AppxComNs)).SingleOrDefault();
+        Assert.NotNull(comClass);
+        var comClassId = (string?)comClass!.Attribute("Id");
+
+        var toastActivation = doc.Descendants(XName.Get("ToastNotificationActivation", AppxDesktopNs)).SingleOrDefault();
+        Assert.NotNull(toastActivation);
+        var toastClsid = (string?)toastActivation!.Attribute("ToastActivatorCLSID");
+
+        Assert.False(string.IsNullOrEmpty(comClassId), "COM class Id missing from manifest");
+        Assert.False(string.IsNullOrEmpty(toastClsid), "ToastActivatorCLSID missing from manifest");
+        Assert.Equal(comClassId, toastClsid);
+
+        // App.OnLaunched MUST short-circuit '-ToastActivator' or Windows-spawned
+        // activator instances will fight the singleton mutex. Pin the early-exit.
+        var appXamlCs = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("\"-ToastActivator\"", appXamlCs);
+    }
+
+    [Fact]
+    public void Tray_PrivacyListIcon_HasAllRequiredUnplatedTargetSizes()
+    {
+        // Settings > Privacy lists (Camera, Microphone, Location) render the per-app
+        // icon at small sizes (16, 20, 24, 32, 48 px). When a fitting altform-unplated
+        // variant is missing, Windows falls back to the plated tile with the manifest
+        // BackgroundColor as fill — which appears as a system-accent (blue) square
+        // behind our lobster. Reported by Mike during the MSIX-E2E manual test pass.
+        //
+        // Required minimum set covers the sizes Settings > Privacy is documented to
+        // request. Add more if you observe additional blue-background fallbacks.
+        var assetsDir = Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Assets");
+
+        foreach (var size in new[] { 16, 20, 24, 32, 44, 48, 256 })
+        {
+            var fileName = $"Square44x44Logo.targetsize-{size}_altform-unplated.png";
+            Assert.True(File.Exists(Path.Combine(assetsDir, fileName)),
+                $"Missing unplated icon variant '{fileName}'. Settings > Privacy will fall back to the plated tile, rendering with the manifest BackgroundColor.");
+        }
     }
 
     [Fact]

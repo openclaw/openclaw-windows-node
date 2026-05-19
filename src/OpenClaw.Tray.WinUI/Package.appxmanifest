@@ -4,8 +4,10 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap5 rescap">
+  IgnorableNamespaces="uap uap5 com desktop rescap">
 
   <!-- IMPORTANT: Publisher must exactly match Azure Trusted Signing certificate subject.
        Check your certificate profile at: Azure Portal > Trusted Signing > hanselman > WindowsEdgeLight
@@ -62,6 +64,35 @@
             Enabled="false"
             DisplayName="OpenClaw Companion" />
         </uap5:Extension>
+
+        <!-- Toast notification activation. Without this pair MSIX packaged apps
+             do NOT show up in Settings > Notifications until the first toast is
+             actually delivered under package identity (and even then it's
+             often delayed by several minutes). Declaring the COM activator
+             surfaces the per-app entry immediately on install so users can
+             pre-configure notification preferences before they ever fire one.
+
+             The ToastActivatorCLSID is a stable GUID we own; if you change it
+             also update the COM class Id below to match (Windows refuses to
+             register the toast activator if the two drift).
+
+             Note: we declare the activator but do NOT currently consume click
+             callbacks (no CoRegisterClassObject in App.OnLaunched yet). Toast
+             clicks therefore just open / activate the tray via the standard
+             single-instance path. Wiring click handlers is a follow-up. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="OpenClaw.Tray.WinUI.exe"
+                           DisplayName="OpenClaw Companion Toast Activator"
+                           Arguments="-ToastActivator">
+              <com:Class Id="D4E7F816-9D6A-4A49-B1BC-C1CE71282B04"
+                         DisplayName="OpenClaw Companion Toast Activator" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="D4E7F816-9D6A-4A49-B1BC-C1CE71282B04" />
+        </desktop:Extension>
       </Extensions>
     </Application>
   </Applications>
