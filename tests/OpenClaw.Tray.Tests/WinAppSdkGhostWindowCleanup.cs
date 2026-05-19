@@ -31,6 +31,8 @@ internal static class WinAppSdkGhostWindowCleanup
     private const uint WM_CLOSE = 0x0010;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
     private const int SW_HIDE = 0;
+    private static readonly object s_baselineLock = new();
+    private static HashSet<IntPtr> s_baselineBlankFrames = [];
     private static int s_cleanupInProgress;
     private static System.Threading.Timer? s_cleanupTimer;
 
@@ -40,7 +42,7 @@ internal static class WinAppSdkGhostWindowCleanup
         if (!OperatingSystem.IsWindows())
             return;
 
-        CleanupBlankFrames();
+        RecordBaselineBlankFrames();
         s_cleanupTimer = new System.Threading.Timer(
             _ => CleanupBlankFrames(),
             state: null,
@@ -63,6 +65,9 @@ internal static class WinAppSdkGhostWindowCleanup
         {
             foreach (var hwnd in EnumerateBlankApplicationFrameWindows())
             {
+                if (IsBaselineBlankFrame(hwnd))
+                    continue;
+
                 _ = ShowWindow(hwnd, SW_HIDE);
                 _ = SendMessageTimeout(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out _);
             }
@@ -70,6 +75,22 @@ internal static class WinAppSdkGhostWindowCleanup
         finally
         {
             System.Threading.Volatile.Write(ref s_cleanupInProgress, 0);
+        }
+    }
+
+    private static void RecordBaselineBlankFrames()
+    {
+        lock (s_baselineLock)
+        {
+            s_baselineBlankFrames = EnumerateBlankApplicationFrameWindows().ToHashSet();
+        }
+    }
+
+    private static bool IsBaselineBlankFrame(IntPtr hwnd)
+    {
+        lock (s_baselineLock)
+        {
+            return s_baselineBlankFrames.Contains(hwnd);
         }
     }
 
