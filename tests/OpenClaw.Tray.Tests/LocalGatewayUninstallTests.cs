@@ -1434,4 +1434,123 @@ public sealed class LocalGatewayUninstallTests
         Assert.True(result.Success);
         Assert.Empty(result.Errors);
     }
+
+    // -----------------------------------------------------------------------
+    // Issue #467: prune empty %LOCALAPPDATA%\OpenClawTray\wsl\ and the local
+    // root if they're empty after the per-artifact deletes. Bug repro: after
+    // a full clean uninstall, the user found %LOCALAPPDATA%\OpenClawTray\wsl\
+    // and %LOCALAPPDATA%\OpenClawTray\ left behind as phantom empty folders.
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task FullUninstall_PrunesEmptyWslParent_Issue467()
+    {
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+        // Drop a fake .vhdx so the dir is non-empty initially.
+        File.WriteAllText(Path.Combine(vhdDir, "ext4.vhdx"), "fake-vhdx-bytes");
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.True(result.Success, $"Uninstall failed: {string.Join("; ", result.Errors)}");
+        // wsl\ parent must be gone — that's the new Step 5b behavior.
+        Assert.False(Directory.Exists(Path.Combine(env.LocalDataDir, "wsl")),
+            "wsl\\ parent directory should be pruned when empty after VHD removal.");
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Prune empty wsl\\ parent directory");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Executed, step!.Status);
+    }
+
+    [WindowsFact]
+    public async Task FullUninstall_PrunesEmptyLocalAppDataRoot_Issue467()
+    {
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+        File.WriteAllText(Path.Combine(vhdDir, "ext4.vhdx"), "fake-vhdx-bytes");
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.True(result.Success, $"Uninstall failed: {string.Join("; ", result.Errors)}");
+        Assert.False(Directory.Exists(env.LocalDataDir),
+            "%LOCALAPPDATA%\\OpenClawTray\\ should be pruned when empty after full uninstall.");
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Prune empty %LOCALAPPDATA%\\OpenClawTray\\");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Executed, step!.Status);
+    }
+
+    [WindowsFact]
+    public async Task FullUninstall_PreservesLocalAppDataRoot_WhenNonEmpty_Issue467()
+    {
+        // Defensive: if a future writer (or a user) drops a file directly under
+        // %LOCALAPPDATA%\OpenClawTray\ that none of the explicit-delete steps
+        // own, we MUST NOT recursively wipe it. The empty-guard on Step 12a
+        // protects against this; this test pins the protection.
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+        File.WriteAllText(Path.Combine(vhdDir, "ext4.vhdx"), "fake-vhdx-bytes");
+        var unknownFile = Path.Combine(env.LocalDataDir, "user-dropped-something.txt");
+        File.WriteAllText(unknownFile, "do not delete me");
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.True(result.Success, $"Uninstall failed: {string.Join("; ", result.Errors)}");
+        Assert.True(Directory.Exists(env.LocalDataDir),
+            "%LOCALAPPDATA%\\OpenClawTray\\ MUST be preserved when it still holds non-OpenClaw files.");
+        Assert.True(File.Exists(unknownFile),
+            "Unknown user file under the root must not be touched.");
+        Assert.False(Directory.Exists(Path.Combine(env.LocalDataDir, "wsl")),
+            "wsl\\ subfolder is independently empty-pruned regardless of root state.");
+
+        var step = result.Steps.FirstOrDefault(s => s.Name == "Prune empty %LOCALAPPDATA%\\OpenClawTray\\");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step!.Status);
+        Assert.Contains("remaining entries", step.Detail ?? "");
+    }
+
+    [WindowsFact]
+    public async Task FullUninstall_PreservesWslParent_WhenSiblingDistroPresent_Issue467()
+    {
+        // Defensive: a hypothetical "openclaw-staging" sibling distro would
+        // also live under %LOCALAPPDATA%\OpenClawTray\wsl\. Removing the
+        // configured distro's VHD must NOT wipe the sibling.
+        using var env = new UninstallTestEnv();
+        var configuredVhd = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        var siblingVhd    = Path.Combine(env.LocalDataDir, "wsl", "openclaw-staging");
+        Directory.CreateDirectory(configuredVhd);
+        Directory.CreateDirectory(siblingVhd);
+        File.WriteAllText(Path.Combine(configuredVhd, "ext4.vhdx"), "fake-vhdx-bytes");
+        File.WriteAllText(Path.Combine(siblingVhd,    "ext4.vhdx"), "sibling-vhdx-bytes");
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true,
+            DistroName = "OpenClawGateway"
+        });
+
+        Assert.True(result.Success, $"Uninstall failed: {string.Join("; ", result.Errors)}");
+        Assert.False(Directory.Exists(configuredVhd), "Configured distro's VHD dir must be removed.");
+        Assert.True(Directory.Exists(siblingVhd), "Sibling distro's VHD dir must NOT be touched.");
+        Assert.True(Directory.Exists(Path.Combine(env.LocalDataDir, "wsl")),
+            "wsl\\ parent must be preserved when a sibling distro remains.");
+    }
 }

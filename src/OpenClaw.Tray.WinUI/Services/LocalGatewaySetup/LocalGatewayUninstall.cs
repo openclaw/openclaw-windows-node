@@ -421,6 +421,36 @@ public sealed class LocalGatewayUninstall
         });
 
         // ------------------------------------------------------------------
+        // Step 5b — Prune now-empty %LOCALAPPDATA%\OpenClawTray\wsl\
+        // Step 5a deletes the per-distro VHD directory but never touches its
+        // parent. If wsl\ is now empty (no other distros) it would otherwise
+        // remain as a phantom folder visible to users who go looking after
+        // uninstall (issue #467). Empty-guard means we never accidentally
+        // delete a parent that still holds another OpenClaw distro's data.
+        // ------------------------------------------------------------------
+        await RunStepAsync("Prune empty wsl\\ parent directory", options, ct, () =>
+        {
+            var wslParent = Path.Combine(_localDataPath, "wsl");
+            if (Directory.Exists(wslParent) && !Directory.EnumerateFileSystemEntries(wslParent).Any())
+            {
+                Directory.Delete(wslParent);
+                RecordStep("Prune empty wsl\\ parent directory", UninstallStepStatus.Executed,
+                    $"Removed empty {wslParent}.");
+            }
+            else if (!Directory.Exists(wslParent))
+            {
+                RecordStep("Prune empty wsl\\ parent directory", UninstallStepStatus.Skipped,
+                    "Directory absent.");
+            }
+            else
+            {
+                RecordStep("Prune empty wsl\\ parent directory", UninstallStepStatus.Skipped,
+                    "Directory not empty (additional OpenClaw WSL state remains).");
+            }
+            return Task.CompletedTask;
+        });
+
+        // ------------------------------------------------------------------
         // Step 6 — Reset autostart
         // CRITICAL ORDERING (v3 §B): persist settings BEFORE deleting registry.
         // ------------------------------------------------------------------
@@ -651,6 +681,45 @@ public sealed class LocalGatewayUninstall
         // ------------------------------------------------------------------
         RecordStep("Preserve mcp-token.txt", UninstallStepStatus.Skipped,
             "mcp-token.txt preserved unconditionally (v3 §F). Not a gateway artifact.");
+
+        // ------------------------------------------------------------------
+        // Step 12a — Prune now-empty %LOCALAPPDATA%\OpenClawTray\
+        // After all the per-artifact deletes above, the local-app-data root
+        // is often empty but still on disk, leaving a phantom folder behind
+        // the user sees post-uninstall (issue #467). Empty-guard means we
+        // never delete a folder that still holds preserved logs / the user's
+        // unrelated files. Note: %APPDATA%\OpenClawTray\ (roaming) is
+        // intentionally NOT pruned here because mcp-token.txt lives there
+        // and is preserved by design.
+        // ------------------------------------------------------------------
+        await RunStepAsync("Prune empty %LOCALAPPDATA%\\OpenClawTray\\", options, ct, () =>
+        {
+            if (Directory.Exists(_localDataPath) && !Directory.EnumerateFileSystemEntries(_localDataPath).Any())
+            {
+                Directory.Delete(_localDataPath);
+                RecordStep("Prune empty %LOCALAPPDATA%\\OpenClawTray\\", UninstallStepStatus.Executed,
+                    $"Removed empty {_localDataPath}.");
+            }
+            else if (!Directory.Exists(_localDataPath))
+            {
+                RecordStep("Prune empty %LOCALAPPDATA%\\OpenClawTray\\", UninstallStepStatus.Skipped,
+                    "Directory absent.");
+            }
+            else
+            {
+                // Enumerate first-level remaining entries so the operator (or
+                // a follow-up support recipe) can see exactly what's blocking
+                // the prune. Helps catch new artifact-writers that weren't
+                // added to the explicit-delete steps above.
+                var remaining = Directory.EnumerateFileSystemEntries(_localDataPath)
+                    .Take(8)
+                    .Select(p => Path.GetFileName(p))
+                    .ToArray();
+                RecordStep("Prune empty %LOCALAPPDATA%\\OpenClawTray\\", UninstallStepStatus.Skipped,
+                    $"Directory not empty; remaining entries: {string.Join(", ", remaining)}.");
+            }
+            return Task.CompletedTask;
+        });
 
         // ------------------------------------------------------------------
         // Step 13 — Compute postconditions
