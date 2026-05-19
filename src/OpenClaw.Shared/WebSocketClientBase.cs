@@ -311,8 +311,8 @@ public abstract class WebSocketClientBase : IDisposable
 
         try
         {
-            // Capture local reference after acquiring the send lock to avoid
-            // concurrent reconnect/dispose replacing the socket under a send.
+            // Serialize sends; reconnect/dispose can still close the captured socket,
+            // so the send below keeps the existing state-change guards.
             var ws = _webSocket;
             if (ws?.State != WebSocketState.Open) return;
 
