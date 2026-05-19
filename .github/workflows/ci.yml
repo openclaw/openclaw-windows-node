@@ -488,6 +488,37 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
+    # Render the .appinstaller XML that drives non-Store auto-update for the MSIX.
+    # Windows AppInstaller polls the URL embedded in this file (see docs/RELEASING.md
+    # for the four update triggers). The rendered file is attached to the GitHub
+    # release alongside the .msix bundles AND must also be published at a stable
+    # URL so Windows AppInstaller has a non-tagged URL to poll over time.
+    - name: Render AppInstaller
+      if: steps.msix-x64.outcome == 'success'
+      shell: pwsh
+      run: |
+        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
+        $tag = "${{ github.ref_name }}"
+        $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+        $x64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
+        $arm64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
+        # The stable channel URL is served by GitHub Pages from the gh-pages branch.
+        # Publishing TO gh-pages is intentionally separate (see follow-up issue);
+        # the URL still has to be embedded here so installs from this tag know where
+        # to poll for the next update.
+        $appInstallerUri = "https://openclaw.github.io/openclaw-windows-node/latest.appinstaller"
+        ./scripts/render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -MsixX64Uri $x64Uri `
+          -MsixArm64Uri $arm64Uri `
+          -AppInstallerUri $appInstallerUri `
+          -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller"
+        # Also copy to a stable filename so the gh-pages publishing step (or a
+        # manual operator running the release) has a predictable filename.
+        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller" "latest.appinstaller"
+
     # Create ZIP files for Updatum auto-update (needs "win-x64" in filename)
     - name: Create Release ZIPs
       run: |
@@ -555,6 +586,8 @@ jobs:
           OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix
+          OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller
+          latest.appinstaller
         prerelease: ${{ contains(github.ref_name, '-') }}
         make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         body: |

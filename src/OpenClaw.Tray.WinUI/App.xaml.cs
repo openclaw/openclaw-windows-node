@@ -3255,6 +3255,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task<bool> CheckForUpdatesAsync()
     {
+        // Packaged apps under MSIX don't need an in-app startup poll — Windows
+        // AppInstaller polls our hosted .appinstaller per the OnLaunch settings
+        // embedded in the AppInstaller XML and applies updates on the NEXT
+        // launch (see docs/RELEASING.md for the four update triggers). Calling
+        // Updatum here would silently double-publish a "vN+1 available" toast
+        // for the upgrade the OS already has staged. Return true so the caller
+        // launches the app normally.
+        if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        {
+            Logger.Info("Skipping in-app update check (packaged build; AppInstaller polls OnLaunch)");
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Managed",
+                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CheckedAt = DateTime.UtcNow,
+                Detail = "managed by Windows AppInstaller"
+            };
+            return true;
+        }
+
         try
         {
 #if DEBUG
@@ -3352,6 +3372,52 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private async Task CheckForUpdatesUserInitiatedAsync()
     {
         Logger.Info("Manual update check requested");
+
+        // Packaged: bypass the Updatum check/download/install dance and go
+        // directly to PackageManager.AddPackageByAppInstallerFileAsync. The
+        // AppInstaller URL is the single source of truth; if a newer version
+        // is published Windows will restart the app, otherwise we surface
+        // "already up to date" in the UI.
+        if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        {
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Checking",
+                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CheckedAt = DateTime.UtcNow,
+                Detail = $"querying {AppInstallerUpdateService.LatestAppInstallerUri}"
+            };
+            UpdateStatusDetailWindow();
+
+            var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync();
+            _appState!.UpdateInfo = outcome.Outcome switch
+            {
+                AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
+                {
+                    Status = "Updating",
+                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update queued; Windows will restart the app"
+                },
+                AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
+                {
+                    Status = "Current",
+                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "no updates available"
+                },
+                _ => new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update failed"
+                }
+            };
+            UpdateStatusDetailWindow();
+            return;
+        }
+
         var shouldContinue = await CheckForUpdatesAsync();
         UpdateStatusDetailWindow();
         if (!shouldContinue)

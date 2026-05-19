@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenClaw Companion AppInstaller template.
+
+  CI renders this template per tag in .github/workflows/ci.yml (release job)
+  via scripts/render-appinstaller.ps1 by string-substituting:
+    {{VERSION}}              - 4-part version, e.g. 0.5.3.0 (must match the
+                               MSIX <Identity Version="…"> exactly)
+    {{PUBLISHER}}            - quoted publisher subject from the MSIX manifest
+                               e.g. "CN=Scott Hanselman, O=Scott Hanselman, …"
+    {{MSIX_X64_URI}}         - absolute URL of the x64 .msix attached to the
+                               release (https://github.com/.../releases/.../*.msix)
+    {{MSIX_ARM64_URI}}       - absolute URL of the arm64 .msix
+    {{APPINSTALLER_URI}}     - absolute URL of THIS rendered .appinstaller file
+                               on the stable channel (e.g. GitHub Pages)
+
+  See docs/RELEASING.md for the four AppInstaller update triggers and how
+  ShowPrompt / UpdateBlocksActivation / HoursBetweenUpdateChecks behave.
+-->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="{{VERSION}}"
+  Uri="{{APPINSTALLER_URI}}">
+
+  <MainBundle
+    Name="OpenClaw.Companion"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    Uri="{{MSIX_X64_URI}}" />
+
+  <!--
+    HoursBetweenUpdateChecks=24  - poll the AppInstaller URL at most once per
+                                   24 hours; cheap on the network, plenty fast
+                                   for a non-Store auto-update channel.
+    ShowPrompt=true              - the user sees a small "Update available" toast
+                                   before the update applies, never a silent
+                                   background swap.
+    UpdateBlocksActivation=false - app launches immediately even when an update
+                                   is being staged, preserving cold-start latency.
+                                   The update lands on the NEXT launch instead.
+    ForceUpdateFromAnyVersion=true - allow downgrades when we need to ship a
+                                     rollback (rare; useful when a release goes
+                                     bad and we want all installs back on N-1).
+  -->
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="24"
+              ShowPrompt="true"
+              UpdateBlocksActivation="false" />
+    <ForceUpdateFromAnyVersion>true</ForceUpdateFromAnyVersion>
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>
