@@ -217,6 +217,34 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
+    public async Task OperatorSideAutoApprove_NodeSideSkippedWithoutScope_CanStillApproveSameRequestId()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.read"]); // no admin/pairing yet
+        lifecycle.TrackingClient.SetIsConnected(true);
+        _nodeConnector.NodeDeviceId = "own-id";
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-same-later-scope");
+        await Task.Delay(200);
+        Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
+
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin"]);
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        lifecycle.TrackingClient.FireNodePairListUpdated(new PairingListInfo
+        {
+            Pending = [new PairingRequest { RequestId = "req-same-later-scope", NodeId = "own-id" }]
+        });
+        await approvalDone;
+
+        Assert.Contains("node.pair.approve", lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
     public async Task OperatorSideAutoApprove_SameRequestId_DoesNotApproveTwice()
     {
         using var manager = CreateConnectedManager();

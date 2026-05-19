@@ -871,6 +871,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 return;
             }
 
+            var approvalGeneration = Interlocked.Read(ref _generation);
+            bool attemptedApprove = false;
             bool approved = false;
             try
             {
@@ -885,6 +887,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
                         try
                         {
+                            attemptedApprove = true;
                             approved = await operatorClient.NodePairApproveAsync(e.RequestId);
                             if (!approved)
                                 _diagnostics.Record("node", "Node auto-approval failed");
@@ -899,12 +902,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             finally
             {
-                // Always record the requestId so we don't spin-loop attempting
-                // an approve that the gateway has refused (transient or
-                // policy). A second deliberate retry should come from a new
-                // user-initiated action, not from auto-replaying every
-                // re-broadcast of the same pending entry.
-                _lastAutoApprovedRequestId = e.RequestId;
+                // Only dedupe after an actual approve attempt. If the operator
+                // client was disconnected or lacked scope, the operator-side
+                // NodePairListUpdated path must still be able to approve this
+                // same requestId once the operator is ready.
+                if (attemptedApprove && Interlocked.Read(ref _generation) == approvalGeneration)
+                    _lastAutoApprovedRequestId = e.RequestId;
                 Interlocked.Exchange(ref _autoApproveInFlight, null);
             }
 
@@ -914,7 +917,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
                 await Task.Delay(1000); // brief delay for gateway to process
-                if (Interlocked.Read(ref _generation) == _generation) // re-check before side effect
+                if (Interlocked.Read(ref _generation) == approvalGeneration)
                     await StartNodeConnectionAsync();
             }
         }
