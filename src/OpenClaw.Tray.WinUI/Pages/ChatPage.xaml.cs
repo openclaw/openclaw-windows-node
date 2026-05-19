@@ -47,8 +47,11 @@ public sealed partial class ChatPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // Tear down native chat (if mounted) and detach WebView2 nav handlers.
-        DisposeFunctionalHost();
+        // Don't tear down the native chat host — preserve it across page
+        // navigations so that scroll position, selected session, and loaded
+        // history survive. ShowFunctionalSurface's _mountedProvider check
+        // will reuse the existing host when the page reloads.
+        // DisposeFunctionalHost() is intentionally NOT called here.
 
         _navigationCts?.Cancel();
         if (WebView.CoreWebView2 != null)
@@ -230,6 +233,12 @@ public sealed partial class ChatPage : Page
 
         if (provider is null)
         {
+            // If we already have a mounted chat, keep it visible rather than
+            // flashing the disconnected placeholder. The ChatProviderChanged
+            // event will remount when the provider becomes available again.
+            if (_functionalHost is not null)
+                return;
+
             PlaceholderPanel.Visibility = Visibility.Visible;
             ChatHost.Visibility = Visibility.Collapsed;
             return;
@@ -241,6 +250,7 @@ public sealed partial class ChatPage : Page
             ChatHost,
             provider,
             onReadAloud: readAloud,
+            onStopSpeaking: () => app?.StopChatSpeaking(),
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
@@ -634,11 +644,55 @@ public sealed partial class ChatPage : Page
         _ = NavigateWhenChatReadyAsync(_connectionManager, CurrentApp.Registry?.GetById(CurrentApp.Registry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
     }
 
-    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken)
+    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
         var voiceService = _hub?.VoiceServiceInstance;
         var host = _functionalHost;
         if (voiceService is null) return null;
+
+        // If the STT model isn't downloaded yet, prompt the user and open voice settings.
+        if (!voiceService.IsModelDownloaded)
+        {
+            var tcs = new TaskCompletionSource();
+            DispatcherQueue?.TryEnqueue(async () =>
+            {
+                try
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Voice Model Required",
+                        Content = "The speech-to-text model needs to be installed before you can use voice input. Would you like to open Voice settings to install it?",
+                        PrimaryButtonText = "Open Voice Settings",
+                        CloseButtonText = "Cancel",
+                        XamlRoot = Content?.XamlRoot
+                    };
+                    // Light-dismiss: close when the user taps the smoke overlay.
+                    dialog.Opened += (s, _) =>
+                    {
+                        if (s is ContentDialog d)
+                        {
+                            foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
+                            {
+                                if (popup.Child is UIElement overlay && overlay != d)
+                                {
+                                    overlay.Tapped += (_, _) => d.Hide();
+                                    break;
+                                }
+                            }
+                        }
+                    };
+                    var result = await dialog.ShowAsync();
+                    if (result == ContentDialogResult.Primary)
+                    {
+                        _hub?.NavigateTo("voice");
+                    }
+                }
+                catch { /* dialog already open or window closing */ }
+                finally { tcs.TrySetResult(); }
+            });
+            await tcs.Task;
+            return null;
+        }
 
         // Subscribe to streaming events during recording
         void OnTranscription(string text) => host?.SetVoiceTranscript(text);
@@ -646,6 +700,7 @@ public sealed partial class ChatPage : Page
 
         voiceService.TranscriptionReceived += OnTranscription;
         voiceService.AudioLevelChanged += OnAudioLevel;
+        onRecordingStarted?.Invoke();
         try
         {
             var args = new SttListenArgs

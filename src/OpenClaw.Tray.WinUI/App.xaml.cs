@@ -955,7 +955,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// Returns null if STT is not enabled.
     /// </summary>
     public VoiceService? VoiceServiceInstance =>
-        _nodeService?.VoiceService ?? _standaloneVoiceService;
+        _nodeService?.VoiceService ?? EnsureStandaloneVoiceService();
 
     // Voice overlay disabled — inline chat voice mode is used instead.
     // Kept for potential future re-enablement.
@@ -3576,6 +3576,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public Task SpeakChatTextAsync(string text) =>
         _chatCoordinator?.SpeakChatTextAsync(text) ?? Task.CompletedTask;
+
+    public void StopChatSpeaking() => _chatCoordinator?.StopSpeaking();
 
     /// <summary>Raised when speaker mute state changes from any source (composer, settings, etc.).</summary>
     public event Action<bool>? SpeakerMuteChanged;

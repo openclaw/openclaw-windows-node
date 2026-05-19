@@ -46,7 +46,9 @@ public record OpenClawChatTimelineProps(
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
     bool ShowThinkingIndicator = false,
-    Func<string, Task>? OnReadAloud = null);
+    Func<string, Task>? OnReadAloud = null,
+    Action? OnStopSpeaking = null,
+    int ScrollToBottomToken = 0);
 
 /// <summary>
 /// OpenClaw-skinned variant of <see cref="ChatTimeline"/> from the vendored
@@ -66,6 +68,14 @@ public record OpenClawChatTimelineProps(
 public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 {
     const double FollowThreshold = 60;
+
+    /// <summary>
+    /// Static scroll-offset store shared across all timeline instances so that
+    /// scroll position survives page navigation (which recreates the page and
+    /// component instances). Bounded to avoid unbounded memory growth.
+    /// </summary>
+    private static readonly Dictionary<string, double> s_sessionOffsets = new();
+    private const int MaxSessionOffsets = 50;
 
     // SECURITY (chat-rubber-duck HIGH 1 / MEDIUM 3): chat-bubble Markdown is
     // rendered as sanitized inert text that:
@@ -226,9 +236,13 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var lastScrollableHeightRef = UseRef(0.0);
         var suppressAutoFollowRef = UseRef(false);
         var sessionOffsetsRef = UseRef<Dictionary<string, double>>(new());
+        var prevScrollToBottomTokenRef = UseRef(0);
         var hasMoreHistoryRef = UseRef(Props.HasMoreHistory);
         var loadMoreHistoryRef = UseRef<Action?>(Props.OnLoadMoreHistory);
         var loadMoreRequestedForCountRef = UseRef(-1);
+        // Pending offset to restore after layout completes (SizeChanged).
+        // Set during initialLoad when ScrollableHeight is still 0.
+        var pendingRestoreOffsetRef = UseRef<double?>(null);
 
         // Per-entry expand state for tool chips. Tokens are
         // "{entryId}:call" and "{entryId}:out" so call and output
@@ -274,6 +288,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // a delayed continuation that reads it later sees a stale set and
         // bails out, leaving the ack glyph stuck.
         var (ackedActionsValue, ackUpdate) = UseReducer<HashSet<string>>(new HashSet<string>(), threadSafe: true);
+
+        // Track which entry is currently being read aloud so the button
+        // can toggle to stop playback on a second press.
+        var speakingEntryId = UseState<string?>(null, threadSafe: true);
+
         async void AckAction(string entryId, string actionKey)
         {
             var key = entryId + "|" + actionKey;
@@ -306,7 +325,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var previousFirstEntryId = prevFirstEntryIdRef.Current;
         var previousLastEntryId = prevLastEntryIdRef.Current;
         var sessionChanged = Props.SessionId != previousSessionId;
-        var initialLoad = !sessionChanged && previousEntryCount == 0 && entryCount > 0;
+        var isFirstMount = sessionChanged && previousSessionId is null;
+        var initialLoad = isFirstMount
+            ? entryCount > 0
+            : (!sessionChanged && previousEntryCount == 0 && entryCount > 0);
         var prependedHistory = !sessionChanged
             && previousEntryCount > 0
             && entryCount > previousEntryCount
@@ -321,11 +343,22 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         void StoreSessionOffset(string? sessionId, double offset)
         {
             if (sessionId is { Length: > 0 })
+            {
                 sessionOffsetsRef.Current[sessionId] = offset;
+                s_sessionOffsets[sessionId] = offset;
+                // Evict oldest entries when cache exceeds bound
+                if (s_sessionOffsets.Count > MaxSessionOffsets)
+                {
+                    var first = s_sessionOffsets.Keys.First();
+                    s_sessionOffsets.Remove(first);
+                }
+            }
         }
 
         void UpdateScrollMetrics(Microsoft.UI.Xaml.Controls.ScrollViewer sv)
         {
+            if (sv.ViewportHeight <= 0) return;
+
             lastVerticalOffsetRef.Current = sv.VerticalOffset;
             lastScrollableHeightRef.Current = sv.ScrollableHeight;
             isFollowingRef.Current = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
@@ -594,12 +627,30 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             catch { /* clipboard contention — silently ignore */ }
         }
 
-        async void ReadAloud(string text)
+        async void ReadAloud(string entryId, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
+
+            // Toggle: if this entry is currently being read, stop it.
+            if (speakingEntryId.Value == entryId)
+            {
+                speakingEntryId.Set(null);
+                Props.OnStopSpeaking?.Invoke();
+                return;
+            }
+
             if (Props.OnReadAloud is not { } onReadAloud) return;
 
-            await onReadAloud(StripMarkdownForSpeech(text));
+            speakingEntryId.Set(entryId);
+            try
+            {
+                await onReadAloud(StripMarkdownForSpeech(text));
+            }
+            finally
+            {
+                // Clear speaking state when playback finishes or fails
+                speakingEntryId.Set(null);
+            }
         }
 
         // Very light markdown stripper so the synthesizer doesn't read
@@ -655,9 +706,13 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             parts.Add(HoverIcon(entryId, "copy", "\uE8C8", "\uE73E",
                 LocalizationHelper.GetString("Chat_Assistant_Action_Copy"),
                 () => { CopyToClipboard(entryText); AckAction(entryId, "copy"); }).VAlign(VerticalAlignment.Center));
-            parts.Add(HoverIcon(entryId, "speak", "\uE767", "\uE73E",
-                LocalizationHelper.GetString("Chat_Assistant_Action_ReadAloud"),
-                () => { ReadAloud(entryText); AckAction(entryId, "speak"); }).VAlign(VerticalAlignment.Center));
+
+            var isSpeaking = speakingEntryId.Value == entryId;
+            var speakGlyph = isSpeaking ? "\uE71A" : "\uE767"; // Stop vs Speaker
+            var speakTip = isSpeaking ? "Stop" : LocalizationHelper.GetString("Chat_Assistant_Action_ReadAloud");
+            parts.Add(HoverIcon(entryId, "speak", speakGlyph, "\uE73E",
+                speakTip,
+                () => { ReadAloud(entryId, entryText); if (!isSpeaking) AckAction(entryId, "speak"); }).VAlign(VerticalAlignment.Center));
 
             return (FlexRow(parts.ToArray()) with { ColumnGap = 8 })
                 .HAlign(HorizontalAlignment.Left);
@@ -1681,8 +1736,26 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                 contentRef.Current = (Microsoft.UI.Xaml.Controls.StackPanel)sp;
                                 sp.SizeChanged += (_, _) =>
                                 {
-                                    if (!suppressAutoFollowRef.Current && isFollowingRef.Current && scrollViewRef.Current is { } sv)
+                                    if (scrollViewRef.Current is not { } sv) return;
+
+                                    // Pending scroll restoration from initialLoad — apply
+                                    // once the layout is ready (ScrollableHeight > 0).
+                                    if (pendingRestoreOffsetRef.Current is { } pendingOffset && sv.ScrollableHeight > 0)
+                                    {
+                                        pendingRestoreOffsetRef.Current = null;
+                                        var target = ClampOffset(pendingOffset, sv.ScrollableHeight);
+                                        isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
+                                        sv.ChangeView(null, target, null, disableAnimation: true);
+                                        lastVerticalOffsetRef.Current = target;
+                                        lastScrollableHeightRef.Current = sv.ScrollableHeight;
+                                        suppressAutoFollowRef.Current = false;
+                                        return;
+                                    }
+
+                                    if (!suppressAutoFollowRef.Current && isFollowingRef.Current)
+                                    {
                                         QueueScrollToBottom(sv, prevSessionIdRef.Current, disableAnimation: true);
+                                    }
                                 };
                             }
                         }).Grid(row: 1, column: 0),
@@ -1715,7 +1788,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (entryCount != previousEntryCount)
                     loadMoreRequestedForCountRef.Current = -1;
 
-                if (sessionChanged)
+                if (sessionChanged && !isFirstMount)
                 {
                     StoreSessionOffset(previousSessionId, lastVerticalOffsetRef.Current);
 
@@ -1731,13 +1804,38 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 }
                 else if (initialLoad)
                 {
-                    if (Props.SessionId is not null && sessionOffsetsRef.Current.TryGetValue(Props.SessionId, out var savedOffset))
-                        QueueScrollToOffset(sv, Props.SessionId, savedOffset, disableAnimation: true, suppressAutoFollow: true);
+                    // Check instance-level ref first, then static store (survives page recreation)
+                    double? savedOffset = null;
+                    if (Props.SessionId is not null)
+                    {
+                        if (sessionOffsetsRef.Current.TryGetValue(Props.SessionId, out var refOffset))
+                            savedOffset = refOffset;
+                        else if (s_sessionOffsets.TryGetValue(Props.SessionId, out var staticOffset))
+                            savedOffset = staticOffset;
+                    }
+
+                    if (savedOffset is not null)
+                    {
+                        // Defer the scroll restoration: the ScrollViewer hasn't
+                        // laid out yet (ScrollableHeight=0) so we can't scroll
+                        // now. Store the target and let SizeChanged apply it
+                        // once the layout is ready.
+                        pendingRestoreOffsetRef.Current = savedOffset.Value;
+                        suppressAutoFollowRef.Current = true;
+                        isFollowingRef.Current = false;
+                    }
                     else
                         QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);
                 }
                 else if (appendedEntries && isFollowingRef.Current)
                 {
+                    QueueScrollToBottom(sv, Props.SessionId, disableAnimation: false);
+                }
+
+                // External scroll-to-bottom request (e.g. user sent a message)
+                if (Props.ScrollToBottomToken != prevScrollToBottomTokenRef.Current)
+                {
+                    prevScrollToBottomTokenRef.Current = Props.ScrollToBottomToken;
                     QueueScrollToBottom(sv, Props.SessionId, disableAnimation: false);
                 }
 

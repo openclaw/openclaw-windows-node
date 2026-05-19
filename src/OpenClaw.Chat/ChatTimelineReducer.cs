@@ -84,7 +84,7 @@ public static class ChatTimelineReducer
         {
             Entries = state.Entries.Add(new(id, ChatTimelineItemKind.ToolCall, e.Text,
                 ToolName: e.ToolName, ToolResult: ChatToolCallStatus.InProgress,
-                IntentSummary: e.Text, ToolArgs: e.ToolArgs)),
+                IntentSummary: e.Text, ToolArgs: e.ToolArgs, ToolCallId: e.ToolCallId)),
             NextId = state.NextId + 1,
             ActiveToolCallId = id,
             TurnActive = true
@@ -94,9 +94,10 @@ public static class ChatTimelineReducer
     static ChatTimelineState ApplyToolOutput(ChatTimelineState state, ChatToolOutputEvent e)
     {
         var entries = state.Entries;
-        if (state.ActiveToolCallId is { } tid)
+        var targetId = FindToolEntryId(state, e.ToolCallId);
+        if (targetId is not null)
         {
-            var idx = entries.FindIndex(en => en.Id == tid);
+            var idx = entries.FindIndex(en => en.Id == targetId);
             if (idx >= 0)
             {
                 entries = entries.SetItem(idx, entries[idx] with
@@ -106,15 +107,19 @@ public static class ChatTimelineReducer
                 });
             }
         }
-        return state with { Entries = entries, ActiveToolCallId = null, PendingPermission = null };
+        // Clear ActiveToolCallId only if we just completed it (or no ToolCallId was specified)
+        var nextActiveId = (e.ToolCallId is null || targetId == state.ActiveToolCallId)
+            ? null : state.ActiveToolCallId;
+        return state with { Entries = entries, ActiveToolCallId = nextActiveId, PendingPermission = null };
     }
 
     static ChatTimelineState ApplyToolError(ChatTimelineState state, ChatToolErrorEvent e)
     {
         var entries = state.Entries;
-        if (state.ActiveToolCallId is { } tid)
+        var targetId = FindToolEntryId(state, e.ToolCallId);
+        if (targetId is not null)
         {
-            var idx = entries.FindIndex(en => en.Id == tid);
+            var idx = entries.FindIndex(en => en.Id == targetId);
             if (idx >= 0)
             {
                 entries = entries.SetItem(idx, entries[idx] with
@@ -124,7 +129,30 @@ public static class ChatTimelineReducer
                 });
             }
         }
-        return state with { Entries = entries, ActiveToolCallId = null, PendingPermission = null };
+        var nextActiveId = (e.ToolCallId is null || targetId == state.ActiveToolCallId)
+            ? null : state.ActiveToolCallId;
+        return state with { Entries = entries, ActiveToolCallId = nextActiveId, PendingPermission = null };
+    }
+
+    /// <summary>
+    /// Find the timeline entry id for a tool call. When <paramref name="toolCallId"/>
+    /// is provided, match by the stored ToolCallId on the entry. Otherwise fall
+    /// back to <see cref="ChatTimelineState.ActiveToolCallId"/>.
+    /// </summary>
+    static string? FindToolEntryId(ChatTimelineState state, string? toolCallId)
+    {
+        if (toolCallId is not null)
+        {
+            for (int i = state.Entries.Count - 1; i >= 0; i--)
+            {
+                if (state.Entries[i].ToolCallId == toolCallId)
+                    return state.Entries[i].Id;
+            }
+            // ToolCallId was specified but not found — don't fall back to
+            // ActiveToolCallId as that would corrupt an unrelated tool entry.
+            return null;
+        }
+        return state.ActiveToolCallId;
     }
 
     static ChatTimelineState UpsertAssistant(ChatTimelineState state, string text, bool replace, bool streaming, bool reconcilePrevious = false)

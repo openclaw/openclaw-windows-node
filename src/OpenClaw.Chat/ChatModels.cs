@@ -74,7 +74,8 @@ public record ChatTimelineItem(
     string? ToolOutput = null,
     string? IntentSummary = null,
     JsonObject? ToolArgs = null,
-    ChatTone? Tone = null);
+    ChatTone? Tone = null,
+    string? ToolCallId = null);
 
 public record ChatPermissionRequest(string RequestId, string PermissionKind, string ToolName, string Detail);
 
@@ -107,9 +108,9 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent() : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
-public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null) : ChatEvent;
-public record ChatToolOutputEvent(string Text) : ChatEvent;
-public record ChatToolErrorEvent(string Text) : ChatEvent;
+public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null, string? ToolCallId = null) : ChatEvent;
+public record ChatToolOutputEvent(string Text, string? ToolCallId = null) : ChatEvent;
+public record ChatToolErrorEvent(string Text, string? ToolCallId = null) : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
 public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;

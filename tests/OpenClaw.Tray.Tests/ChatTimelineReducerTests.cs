@@ -80,4 +80,98 @@ public class ChatTimelineReducerTests
         Assert.Equal(256, state.LocalNonces.Count);
         Assert.Contains("nonce-299", state.LocalNonces);
     }
+
+    // ── ToolCallId matching ──
+
+    [Fact]
+    public void ToolOutput_WithToolCallId_MatchesCorrectToolEntry()
+    {
+        var state = ChatTimelineState.Initial();
+
+        // Start two tools with different ToolCallIds
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("grep foo", "grep", ToolCallId: "call-1"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("ls dir", "ls", ToolCallId: "call-2"));
+
+        Assert.Equal(2, state.Entries.Count);
+        Assert.Equal(ChatToolCallStatus.InProgress, state.Entries[0].ToolResult);
+        Assert.Equal(ChatToolCallStatus.InProgress, state.Entries[1].ToolResult);
+
+        // Complete the first tool by ToolCallId (out of order)
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("found 3 matches", ToolCallId: "call-1"));
+
+        Assert.Equal(ChatToolCallStatus.Success, state.Entries[0].ToolResult);
+        Assert.Equal("found 3 matches", state.Entries[0].ToolOutput);
+        // Second tool still in progress
+        Assert.Equal(ChatToolCallStatus.InProgress, state.Entries[1].ToolResult);
+    }
+
+    [Fact]
+    public void ToolError_WithToolCallId_MatchesCorrectToolEntry()
+    {
+        var state = ChatTimelineState.Initial();
+
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("run script", "bash", ToolCallId: "call-A"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("read file", "cat", ToolCallId: "call-B"));
+
+        // Error the second tool
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolErrorEvent("file not found", ToolCallId: "call-B"));
+
+        // First tool still in progress
+        Assert.Equal(ChatToolCallStatus.InProgress, state.Entries[0].ToolResult);
+        // Second tool errored
+        Assert.Equal(ChatToolCallStatus.Error, state.Entries[1].ToolResult);
+        Assert.Equal("file not found", state.Entries[1].ToolOutput);
+    }
+
+    [Fact]
+    public void ToolOutput_WithoutToolCallId_FallsBackToActiveToolCallId()
+    {
+        var state = ChatTimelineState.Initial();
+
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("powershell", "powershell"));
+
+        // Output without ToolCallId should use ActiveToolCallId fallback
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("output text"));
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatToolCallStatus.Success, state.Entries[0].ToolResult);
+        Assert.Equal("output text", state.Entries[0].ToolOutput);
+    }
+
+    [Fact]
+    public void ToolStart_StoresToolCallIdOnEntry()
+    {
+        var state = ChatTimelineState.Initial();
+
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("grep foo", "grep", ToolCallId: "tc-42"));
+
+        Assert.Single(state.Entries);
+        Assert.Equal("tc-42", state.Entries[0].ToolCallId);
+    }
+
+    [Fact]
+    public void ToolOutput_WithUnknownToolCallId_DoesNotCorruptActiveEntry()
+    {
+        var state = ChatTimelineState.Initial();
+
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("grep foo", "grep", ToolCallId: "call-1"));
+
+        // Output with an unknown ToolCallId should NOT fall back to active
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("stale output", ToolCallId: "call-unknown"));
+
+        // Active tool should remain InProgress — not corrupted
+        Assert.Equal(ChatToolCallStatus.InProgress, state.Entries[0].ToolResult);
+        Assert.Null(state.Entries[0].ToolOutput);
+    }
 }

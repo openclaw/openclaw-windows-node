@@ -47,17 +47,19 @@ public static class FunctionalChatHostExtensions
         IChatDataProvider provider,
         string? initialThreadId = null,
         Func<string, Task>? onReadAloud = null,
-        Func<CancellationToken, Task<string?>>? onVoiceRequest = null,
+        Action? onStopSpeaking = null,
+        Func<CancellationToken, Action?, Task<string?>>? onVoiceRequest = null,
         Action? onAttachClick = null,
         Action? onSettingsClick = null,
         Action<bool>? onSpeakerMuteChanged = null,
-        bool initialMuted = false)
+        bool initialMuted = false,
+        bool isCompact = false)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted);
+        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onStopSpeaking, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted, isCompact);
         var host = new FunctionalHostControl();
         host.Mount(root);
         target.Child = host;

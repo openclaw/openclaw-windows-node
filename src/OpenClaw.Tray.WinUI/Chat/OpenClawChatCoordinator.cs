@@ -109,6 +109,13 @@ public sealed class OpenClawChatCoordinator : IDisposable
         return SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: true);
     }
 
+    /// <summary>Stops any currently playing TTS audio immediately.</summary>
+    public void StopSpeaking()
+    {
+        try { (_nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService()).StopSpeaking(); }
+        catch { /* best effort */ }
+    }
+
     public Task SpeakResponseAsync(string text) => SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: false);
 
     private async Task SpeakConfiguredTextAsync(string text, bool muteVoiceCapture, bool bypassMute = false)

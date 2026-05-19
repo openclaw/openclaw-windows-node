@@ -24,14 +24,17 @@ public sealed class OpenClawChatRoot : Component
     private readonly IChatDataProvider _provider;
     private readonly string? _initialThreadId;
     private readonly Func<string, Task>? _onReadAloud;
-    private readonly Func<CancellationToken, Task<string?>>? _onVoiceRequest;
+    private readonly Action? _onStopSpeaking;
+    private readonly Func<CancellationToken, Action?, Task<string?>>? _onVoiceRequest;
     private readonly Action? _onAttachClick;
     private readonly Action? _onSettingsClick;
     private readonly Action<bool>? _onSpeakerMuteChanged;
     private readonly bool _initialMuted;
+    private readonly bool _isCompact;
     private Action<ChatAttachment>? _onFileAttached;
     private Action<string?>? _setVoiceTranscript;
     private Action<float>? _setVoiceAudioLevel;
+    private Action? _scrollToBottomToken;
     /// <summary>
     /// Programmatically start voice recording from outside the composer.
     /// Set by the composer during render.
@@ -77,20 +80,24 @@ public sealed class OpenClawChatRoot : Component
         IChatDataProvider provider,
         string? initialThreadId = null,
         Func<string, Task>? onReadAloud = null,
-        Func<CancellationToken, Task<string?>>? onVoiceRequest = null,
+        Action? onStopSpeaking = null,
+        Func<CancellationToken, Action?, Task<string?>>? onVoiceRequest = null,
         Action? onAttachClick = null,
         Action? onSettingsClick = null,
         Action<bool>? onSpeakerMuteChanged = null,
-        bool initialMuted = false)
+        bool initialMuted = false,
+        bool isCompact = false)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _initialThreadId = initialThreadId;
         _onReadAloud = onReadAloud;
+        _onStopSpeaking = onStopSpeaking;
         _onVoiceRequest = onVoiceRequest;
         _onAttachClick = onAttachClick;
         _onSettingsClick = onSettingsClick;
         _onSpeakerMuteChanged = onSpeakerMuteChanged;
         _initialMuted = initialMuted;
+        _isCompact = isCompact;
     }
 
     public override Element Render()
@@ -104,12 +111,14 @@ public sealed class OpenClawChatRoot : Component
         var speakerMuted = UseState(_initialMuted, threadSafe: true);
         var voiceTranscript = UseState<string?>(null, threadSafe: true);
         var voiceAudioLevel = UseState(0f, threadSafe: true);
+        var scrollToBottomToken = UseState(0, threadSafe: true);
 
         // Wire the OnFileAttached callback so the host window/page can set the
         // pending attachment after the file picker completes.
         _onFileAttached = att => pendingAttachment.Set(att);
         _setVoiceTranscript = voiceTranscript.Set;
         _setVoiceAudioLevel = voiceAudioLevel.Set;
+        _scrollToBottomToken = () => scrollToBottomToken.Set(scrollToBottomToken.Value + 1);
         SetSpeakerMuted = muted => speakerMuted.Set(muted);
         UseEffect((Func<Action>)(() =>
         {
@@ -331,7 +340,9 @@ public sealed class OpenClawChatRoot : Component
                 ShowThinkingIndicator: showThinking,
                 OnReadAloud: _onReadAloud is not null
                     ? (text => _onReadAloud(text))
-                    : null)));
+                    : null,
+                OnStopSpeaking: _onStopSpeaking,
+                ScrollToBottomToken: scrollToBottomToken.Value)));
 
         // Distinct list of channel labels (= thread titles) — feeds the
         // composer's first ComboBox so the user can switch chats from the
@@ -387,7 +398,8 @@ public sealed class OpenClawChatRoot : Component
                 OnSettingsClick: _onSettingsClick,
                 VoiceTranscript: voiceTranscript.Value,
                 VoiceAudioLevel: voiceAudioLevel.Value,
-                RegisterVoiceStarter: starter => TriggerVoiceRecording = starter))
+                RegisterVoiceStarter: starter => TriggerVoiceRecording = starter,
+                IsCompact: _isCompact))
             : Empty();
 
         var divider = Empty();
@@ -501,6 +513,7 @@ public sealed class OpenClawChatRoot : Component
 
     private void OnSend(string threadId, string message, ChatAttachment? attachment)
     {
+        _scrollToBottomToken?.Invoke();
         IReadOnlyList<ChatAttachment>? attachments = attachment is not null
             ? new[] { attachment }
             : null;

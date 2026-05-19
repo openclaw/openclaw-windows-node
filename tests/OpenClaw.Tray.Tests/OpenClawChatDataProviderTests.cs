@@ -243,9 +243,15 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task ChatMessageReceived_UserEcho_Ignored()
     {
+        // After sending a message locally, the SSE echo of that same text
+        // should be suppressed (already displayed by SendMessageAsync).
+        var tcs = new TaskCompletionSource();
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => tcs.Task;
         await provider.LoadAsync();
-        snapshots.Clear();
+
+        _ = provider.SendMessageAsync("main", "hi");
+        snapshots.Clear(); // clear the snapshot from SendMessageAsync
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -255,7 +261,10 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
+        // The echo should be suppressed — no new snapshot.
         Assert.Empty(snapshots);
+
+        tcs.SetResult();
     }
 
     [Fact]
@@ -1511,11 +1520,10 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task OnChatMessageReceived_LiveUserPlain_StillIgnored()
+    public async Task OnChatMessageReceived_LiveUserPlain_ShownAsRemoteUser()
     {
-        // Regression guard for MEDIUM 2 fix: ordinary live ``role=user``
-        // echoes (no System prefix) must still be dropped — the local
-        // SendMessageAsync path already added that user entry.
+        // After the cross-client sync fix, non-echo user messages from SSE
+        // (e.g. sent from gateway web UI) should appear in the timeline.
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
         snapshots.Clear();
@@ -1528,7 +1536,11 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
-        Assert.Empty(snapshots);
+        Assert.Single(snapshots);
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+        Assert.Equal("hello there", entry.Text);
     }
 
     // ── chat rubber-duck MEDIUM 4: per-message size cap ──
@@ -1690,5 +1702,130 @@ public class OpenClawChatDataProviderTests
         var timeline = snapshots[^1].Timelines["main"];
         var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
         Assert.Contains("test.txt", userEntry.Text);
+    }
+
+    // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
+
+    [Fact]
+    public async Task SessionsUpdated_WhileConnected_EagerlyLoadsHistory()
+    {
+        // When sessions arrive after the connection is already established,
+        // the provider should automatically load history for new threads.
+        var historyRequested = new List<string?>();
+        var (bridge, provider, snapshots, _) = CreateProvider();
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = key ?? "",
+                Messages = new[]
+                {
+                    new ChatMessageInfo { Role = "assistant", Text = "welcome back", State = "final", Ts = 1 },
+                }
+            });
+        };
+        await provider.LoadAsync();
+
+        // Simulate: status → Connected, then sessions arrive.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        bridge.RaiseSessions(new[] { MainSession() });
+
+        // Give fire-and-forget history load time to complete.
+        await Task.Delay(200);
+
+        Assert.Contains("main", historyRequested);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_WhileDisconnected_DoesNotLoadHistory()
+    {
+        var historyRequested = new List<string?>();
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        };
+        await provider.LoadAsync();
+
+        // Status stays Disconnected, sessions arrive.
+        bridge.RaiseSessions(new[] { MainSession() });
+
+        await Task.Delay(100);
+
+        Assert.Empty(historyRequested);
+    }
+
+    // ── OnStatusChanged: broadened reconnect reloads all timelines ──
+
+    [Fact]
+    public async Task StatusChanged_Connected_ClearsHistoryInFlightAndReloads()
+    {
+        // On (re)connect, all timeline threads should be reloaded, not just
+        // those in _historyLoaded.
+        var historyRequested = new List<string?>();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        };
+        await provider.LoadAsync();
+
+        // Transition to Connected — should reload the "main" timeline even
+        // though LoadHistoryAsync was never successfully called before.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await Task.Delay(200);
+
+        Assert.Contains("main", historyRequested);
+    }
+
+    // ── LoadHistoryAsync retry on failure while connected ──
+
+    [Fact]
+    public async Task LoadHistoryAsync_WhenConnected_RetriesAfterFailure()
+    {
+        var calls = 0;
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ =>
+        {
+            calls++;
+            if (calls == 1)
+                throw new InvalidOperationException("gateway not ready");
+
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = new[]
+                {
+                    new ChatMessageInfo { Role = "assistant", Text = "hello", State = "final", Ts = 1 },
+                }
+            });
+        };
+        await provider.LoadAsync();
+
+        // Mark as connected so retry logic triggers.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+
+        // First call fails.
+        Assert.Contains(notifications, n =>
+            n.Kind == ChatProviderNotificationKind.Error &&
+            n.Message?.Contains("gateway not ready") == true);
+
+        // Wait for the 2-second retry.
+        await Task.Delay(3000);
+
+        // Retry should have succeeded.
+        Assert.True(calls >= 2, $"Expected retry, got {calls} calls");
+        Assert.Contains(snapshots, s =>
+            s.Timelines.TryGetValue("main", out var tl) &&
+            tl.Entries.Any(e => e.Kind == ChatTimelineItemKind.Assistant && e.Text == "hello"));
     }
 }
