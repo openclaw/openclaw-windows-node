@@ -30,14 +30,52 @@ namespace OpenClaw.WinNode.Cli;
 /// </summary>
 internal static class OrphanPurger
 {
-    /// <summary>Names of WSL distros we know we install via the local-gateway flow.</summary>
+    /// <summary>
+    /// Substrings that identify a WSL distro as belonging to the OpenClaw
+    /// local-gateway flow. We match these case-insensitively against the
+    /// distro name returned by <c>wsl --list --quiet</c>.
+    /// </summary>
     /// <remarks>
-    /// The local-gateway installer uses <c>openclaw-local</c> as the canonical
-    /// distro name. We pattern-match the prefix instead of an exact name so a
-    /// future <c>openclaw-staging</c> / <c>openclaw-arm64</c> variant is also
-    /// caught.
+    /// The local-gateway installer has used two naming conventions across the
+    /// project's history:
+    /// <list type="bullet">
+    /// <item><description><c>OpenClawGateway</c> — the original PascalCase
+    /// name used by the WSL gateway installer (still in production as of
+    /// 2026-05; observed on Mike's dev box during the MSIX-E2E manual test
+    /// prep).</description></item>
+    /// <item><description><c>openclaw-*</c> — the newer kebab-case
+    /// convention adopted for variants like <c>openclaw-local</c>,
+    /// <c>openclaw-staging</c>.</description></item>
+    /// </list>
+    /// Match is case-insensitive because <c>wsl --list --quiet</c> echoes
+    /// the user-specified case verbatim and we cannot rely on either form.
     /// </remarks>
+    internal static readonly string[] OrphanWslDistroPatterns = new[]
+    {
+        "openclaw",   // matches both "openclaw-*" and "OpenClawGateway" case-insensitively
+    };
+
+    /// <summary>
+    /// Retained for backward compatibility with <c>OrphanPurgerContractTests</c>
+    /// and for any external script that pattern-matches the historical
+    /// "openclaw-" prefix. New detection logic should use
+    /// <see cref="OrphanWslDistroPatterns"/>.
+    /// </summary>
     internal const string OrphanWslDistroPrefix = "openclaw-";
+
+    /// <summary>
+    /// Registry subkeys under <c>HKCU\Software\Classes</c> we treat as
+    /// orphan URI scheme registrations. Both the lowercase
+    /// <c>openclaw</c> form (which the unpackaged DeepLinkHandler writes)
+    /// and the PascalCase <c>OpenClaw</c> form (observed in the wild from
+    /// older builds) are listed because Windows Explorer-driven user
+    /// scrubbers can leave one but not the other.
+    /// </summary>
+    internal static readonly string[] OrphanUriSchemeKeys = new[]
+    {
+        @"Software\Classes\openclaw",
+        @"Software\Classes\OpenClaw",
+    };
 
     public record OrphanItem(string Kind, string Name, string Detail);
     public record PurgeReport(
@@ -144,7 +182,19 @@ internal static class OrphanPurger
         {
             var line = rawLine.Trim().Trim('\u0000');
             if (line.Length == 0) continue;
-            if (!line.StartsWith(OrphanWslDistroPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+            // Match against every documented pattern, case-insensitive. See
+            // OrphanWslDistroPatterns for why we accept both PascalCase and
+            // kebab-case forms.
+            var matched = false;
+            foreach (var pattern in OrphanWslDistroPatterns)
+            {
+                if (line.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) continue;
             yield return new OrphanItem(
                 Kind: "wsl-distro",
                 Name: line,
@@ -188,12 +238,18 @@ internal static class OrphanPurger
     {
         // openclaw:// URI scheme (unpackaged-only; PR #310 path). Packaged
         // installs use the windows.protocol manifest extension and there is
-        // nothing in HKCU\Software\Classes for them.
-        if (TryRegistryKeyExists(Registry.CurrentUser, @"Software\Classes\openclaw", out var detail))
+        // nothing in HKCU\Software\Classes for them. We check both casing
+        // variants because the registry is case-insensitive for lookup but
+        // can hold both keys simultaneously if different scrubbing scripts
+        // touched them.
+        foreach (var subkey in OrphanUriSchemeKeys)
         {
-            yield return new OrphanItem("registry-uri-scheme",
-                @"HKCU\Software\Classes\openclaw",
-                detail);
+            if (TryRegistryKeyExists(Registry.CurrentUser, subkey, out var detail))
+            {
+                yield return new OrphanItem("registry-uri-scheme",
+                    $@"HKCU\{subkey}",
+                    detail);
+            }
         }
 
         // HKCU\...\Run entry for the legacy auto-start path (now superseded by
@@ -249,7 +305,15 @@ internal static class OrphanPurger
                 Directory.Delete(orphan.Name, recursive: true);
                 break;
             case "registry-uri-scheme":
-                Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\openclaw", throwOnMissingSubKey: false);
+                // Strip the HKCU\ prefix re-attached at detection time to
+                // recover the original subkey path. We delete *that* subtree
+                // rather than the hard-coded lowercase variant so the
+                // PascalCase key (HKCU\Software\Classes\OpenClaw) also gets
+                // removed when it's the one detected.
+                var subkey = orphan.Name.StartsWith(@"HKCU\")
+                    ? orphan.Name[5..]
+                    : orphan.Name;
+                Registry.CurrentUser.DeleteSubKeyTree(subkey, throwOnMissingSubKey: false);
                 break;
             case "registry-run-key":
                 using (var key = Registry.CurrentUser.OpenSubKey(

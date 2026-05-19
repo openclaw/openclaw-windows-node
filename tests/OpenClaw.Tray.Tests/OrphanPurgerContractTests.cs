@@ -47,8 +47,38 @@ public sealed class OrphanPurgerContractTests
     {
         // The local-gateway flow names every distro it installs with an
         // openclaw- prefix. Drift here means a real orphan goes undetected
-        // (we silently miss what we promised to clean) — pin it.
+        // (we silently miss what we promised to clean) — pin it. Retained
+        // for backward compat after the 2026-05 case-insensitive fix added
+        // OrphanWslDistroPatterns.
         Assert.Contains("OrphanWslDistroPrefix = \"openclaw-\"", LoadOrphanPurgerSource());
+    }
+
+    [Fact]
+    public void WslDistroDetection_IsCaseInsensitive_AndCatchesLegacyOpenClawGateway()
+    {
+        // Regression: during MSIX-E2E manual test prep we found Mike's box
+        // had an OpenClawGateway (PascalCase, no dash) distro installed by
+        // the historical local-gateway flow. The original "openclaw-"
+        // case-sensitive prefix would silently miss it, meaning a user who
+        // ran --purge-wsl-orphans would be told "no orphans" while a 2.6 GB
+        // .vhdx orphan was still on disk. Pin the case-insensitive substring
+        // strategy so future refactors can't reintroduce the bug.
+        var src = LoadOrphanPurgerSource();
+        Assert.Contains("OrphanWslDistroPatterns", src);
+        Assert.Contains("StringComparison.OrdinalIgnoreCase", src);
+        Assert.Contains("OpenClawGateway", src); // documented in the remarks
+    }
+
+    [Fact]
+    public void UriSchemeDetection_CoversBothCaseVariants()
+    {
+        // Same source as the WSL bug: the registry holds both
+        // HKCU\Software\Classes\openclaw AND HKCU\Software\Classes\OpenClaw
+        // simultaneously on some boxes; we have to enumerate both.
+        var src = LoadOrphanPurgerSource();
+        Assert.Contains(@"Software\Classes\openclaw", src);
+        Assert.Contains(@"Software\Classes\OpenClaw", src);
+        Assert.Contains("OrphanUriSchemeKeys", src);
     }
 
     [Theory]
