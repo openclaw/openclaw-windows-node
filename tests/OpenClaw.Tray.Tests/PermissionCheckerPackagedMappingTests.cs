@@ -11,10 +11,9 @@ namespace OpenClaw.Tray.Tests;
 /// We cannot instantiate a real <c>AppCapability</c> from this xUnit process
 /// — the WinRT factory throws E_FAIL outside an MSIX-launched host — and the
 /// tray.Tests target is net10.0 (not net10.0-windows), so we cannot even import
-/// the WinRT enum. Following the precedent of <see cref="InstallerIssAssertionTests"/>,
-/// we therefore pin the contract as source-text assertions on the production
-/// switch arms. If you reorder or retitle these arms, also update this test —
-/// silent drift here would silently bypass capability consent on MSIX users.
+/// the WinRT enum. We pin the contract as source-text assertions on the
+/// production switch arms (see also the manifest assertions in
+/// <c>MsixManifestAssertionTests</c>).
 /// </summary>
 public sealed class PermissionCheckerPackagedMappingTests
 {

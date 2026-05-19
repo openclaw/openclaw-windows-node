@@ -611,19 +611,19 @@ On every build, the following artifacts are uploaded:
 When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
 
 1. **Build & Sign:**
-   - All artifacts built for x64 and ARM64
-   - Executables signed with Azure Trusted Signing certificate
+   - MSIX packages built for x64 and ARM64
+   - Both `.msix` files and the rendered `.appinstaller` are signed with the Azure Trusted Signing certificate
 
-2. **Create Installers:**
-   - Inno Setup creates Windows installers
-   - Includes both Tray app and Command Palette extension
-   - Separate installers for x64 and ARM64
+2. **Render AppInstaller:**
+   - `scripts/render-appinstaller.ps1` produces both `OpenClawCompanion-X.Y.Z.appinstaller` (per-tag) and `latest.appinstaller` (stable filename for the gh-pages URL)
+   - See [`docs/RELEASING.md`](./docs/RELEASING.md) for the four AppInstaller update triggers
 
 3. **GitHub Release:**
    - Automatic release created with tag name
-   - Includes:
-     - Installers: `OpenClawTray-Setup-x64.exe`, `OpenClawTray-Setup-arm64.exe`
-     - Portable ZIPs: `OpenClawTray-{version}-win-x64.zip`, `OpenClawTray-{version}-win-arm64.zip`
+   - Attached assets:
+     - `latest.appinstaller` (recommended user download)
+     - `OpenClawCompanion-X.Y.Z.appinstaller` (tag-pinned)
+     - `OpenClawCompanion-X.Y.Z-win-x64.msix` and `-win-arm64.msix` (offline / power-user)
    - Release notes auto-generated from commits
 
 ### Monitoring CI

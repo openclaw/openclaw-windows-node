@@ -519,71 +519,11 @@ jobs:
         # manual operator running the release) has a predictable filename.
         Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller" "latest.appinstaller"
 
-    # Create ZIP files for Updatum auto-update (needs "win-x64" in filename)
-    - name: Create Release ZIPs
-      run: |
-        Compress-Archive -Path artifacts/tray-win-x64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
-        Compress-Archive -Path artifacts/tray-win-arm64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
-
-    # Inno Setup installer for x64
-    - name: Install Inno Setup
-      run: choco install innosetup -y
-
-    - name: Build x64 Installer
-      run: |
-        # Prepare x64 files
-        mkdir publish-x64
-        copy artifacts/tray-win-x64/* publish-x64/ -Recurse
-        mkdir publish-x64\cmdpal
-        $manifestFolder = Get-ChildItem -Path "artifacts/cmdpal-x64" -Recurse -Filter "AppxManifest.xml" | Select-Object -First 1
-        if ($manifestFolder) {
-          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-x64\cmdpal -Recurse
-        }
-        # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 installer.iss
-
-    - name: Build arm64 Installer
-      run: |
-        # Prepare arm64 files
-        mkdir publish-arm64
-        copy artifacts/tray-win-arm64/* publish-arm64/ -Recurse
-        mkdir publish-arm64\cmdpal
-        $manifestFolder = Get-ChildItem -Path "artifacts/cmdpal-arm64" -Recurse -Filter "AppxManifest.xml" | Select-Object -First 1
-        if ($manifestFolder) {
-          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-arm64\cmdpal -Recurse
-        }
-        # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
-
-    - name: Azure Login for Signing
-      uses: azure/login@v3
-      with:
-        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
-
-    - name: Sign Installer
-      uses: azure/trusted-signing-action@v2
-      with:
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        endpoint: https://wus2.codesigning.azure.net/
-        signing-account-name: hanselman
-        certificate-profile-name: WindowsEdgeLight
-        files-folder: Output
-        files-folder-filter: exe
-        file-digest: SHA256
-        timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        timestamp-digest: SHA256
-
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
         files: |
-          Output/OpenClawTray-Setup-x64.exe
-          Output/OpenClawTray-Setup-arm64.exe
-          OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
-          OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix
           OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller
@@ -591,22 +531,20 @@ jobs:
         prerelease: ${{ contains(github.ref_name, '-') }}
         make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         body: |
-          ## OpenClaw Windows Hub ${{ github.ref_name }}
+          ## OpenClaw Companion ${{ github.ref_name }}
 
           ### Downloads
-          - **Installer (x64)**: `OpenClawTray-Setup-x64.exe` - Intel/AMD 64-bit
-          - **Installer (ARM64)**: `OpenClawTray-Setup-arm64.exe` - Windows on ARM (Surface, etc.)
-          - **Portable x64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip`
-          - **Portable ARM64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip`
-          - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` - Packaged (camera/mic consent)
-          - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` - Packaged (camera/mic consent)
+          - **AppInstaller (recommended)**: `latest.appinstaller` — install once and Windows auto-updates from then on (see docs/RELEASING.md for the 4 update triggers)
+          - **Tag-pinned AppInstaller**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller`
+          - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` — offline / power-user install (no auto-update)
+          - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` — Windows on ARM (Surface, Snapdragon)
 
           ### Features
           - 🦞 System tray integration with gateway status
-          - 🎯 PowerToys Command Palette extension (optional)
-          - 🔄 Auto-updates from GitHub Releases
+          - 🎯 PowerToys Command Palette extension
+          - 🔄 Auto-updates via Windows AppInstaller (non-Store channel)
           - ✅ Code-signed with Azure Trusted Signing
-          - 📦 MSIX package available for native camera/microphone consent prompts
+          - 📦 MSIX-only distribution: native camera/microphone/location consent prompts under our package name
 
           ### Requirements
           - Windows 10 version 1903 or later
@@ -615,7 +553,6 @@ jobs:
           - PowerToys (for Command Palette extension)
 
           ### Quick Start
-          1. Run the installer for your architecture (or sideload the MSIX for camera consent)
-          2. Optionally enable Command Palette extension during install
-          3. Launch from Start Menu or system tray
-          4. Right-click tray icon → Settings to configure
+          1. Click the `latest.appinstaller` link above — Windows AppInstaller will install the signed MSIX and wire up auto-update.
+          2. Launch from Start Menu or system tray.
+          3. Right-click tray icon → Settings to configure.

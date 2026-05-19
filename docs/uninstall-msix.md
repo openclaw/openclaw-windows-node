@@ -45,31 +45,46 @@ Therefore, removing the MSIX package via **Settings → Apps → OpenClaw Tray
 
 ## Manual Recovery (After MSIX Removed Without In-Tray Cleanup)
 
-If the MSIX was already removed and the WSL distro / app data remains:
+If the MSIX was already removed and the WSL distro / app data remains, the
+**supported recovery path** is the dedicated CLI flag:
 
 ```powershell
-# 1. Unregister the distro (removes .vhdx from wsl's internal store)
-wsl --unregister OpenClawGateway
+# Detect orphans (dry-run; exits 1 if any found)
+openclaw-winnode --purge-wsl-orphans --json-output
 
-# 2. Remove VHD parent directory (wsl --unregister may leave the folder)
-Remove-Item "$env:LOCALAPPDATA\OpenClawTray\wsl\OpenClawGateway" `
-    -Recurse -Force -ErrorAction SilentlyContinue
+# Apply the deletions
+openclaw-winnode --purge-wsl-orphans --confirm-destructive --json-output
+```
 
-# 3. Remove autostart registry entry
+The CLI detects and removes:
+
+| Kind                  | Where                                                                                |
+|-----------------------|--------------------------------------------------------------------------------------|
+| `wsl-distro`          | Any WSL distro whose name starts with `openclaw-`                                    |
+| `appdata-folder`      | `%APPDATA%\OpenClawTray\`                                                            |
+| `localappdata-folder` | `%LOCALAPPDATA%\OpenClawTray\`                                                       |
+| `registry-uri-scheme` | `HKCU\Software\Classes\openclaw` (legacy unpackaged URI scheme)                      |
+| `registry-run-key`    | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\OpenClawTray` (legacy autostart) |
+
+If the CLI is not available (e.g., the package was uninstalled before this
+fallback was published), the equivalent PowerShell one-liners are:
+
+```powershell
+# 1. Unregister the WSL distro(s)
+wsl --list --quiet |
+    Where-Object { $_ -match '^openclaw-' } |
+    ForEach-Object { wsl --unregister $_ }
+
+# 2. Remove autostart registry entry (legacy)
 Remove-ItemProperty `
     -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" `
     -Name "OpenClawTray" -ErrorAction SilentlyContinue
 
-# 4. Remove local app data (setup state, logs)
+# 3. Remove openclaw:// URI scheme registration (legacy)
+Remove-Item "HKCU:\SOFTWARE\Classes\openclaw" -Recurse -Force -ErrorAction SilentlyContinue
+
+# 4. Remove app data
 Remove-Item "$env:LOCALAPPDATA\OpenClawTray" -Recurse -Force -ErrorAction SilentlyContinue
-
-# 5. Remove roaming app data (settings, device key — only if you want full purge)
-#    NOTE: mcp-token.txt is intentionally preserved here; delete manually if needed.
-Remove-Item "$env:APPDATA\OpenClawTray\setup-state.json" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:APPDATA\OpenClawTray"      -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
-Or use the validation script if it is available separately:
-
-```powershell
-.\validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive
-```

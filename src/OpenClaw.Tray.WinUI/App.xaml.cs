@@ -26,19 +26,12 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Updatum;
 using WinUIEx;
 
 namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
-    {
-        FetchOnlyLatestRelease = true,
-        InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
-    };
-
     private TrayIcon? _trayIcon;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
@@ -593,11 +586,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // two test runs against the same data dir would otherwise pick different
         // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
         // SHA-256 prefix instead.
-        // NOTE: The bare "OpenClawTray" mutex name is also referenced by
-        // installer.iss `AppMutex=` for install/uninstall race coordination
-        // (round 2, Scott #5). The suffixed test-isolation variant is
-        // intentionally not covered by AppMutex — production installs only
-        // ever use the unsuffixed name.
+        // NOTE: Historically the bare "OpenClawTray" mutex name was also referenced
+        // by installer.iss `AppMutex=` for install/uninstall race coordination.
+        // installer.iss has been removed (MSIX-only distribution); the mutex name
+        // is retained because (a) it's load-bearing for the running-tray
+        // single-instance check, and (b) the merged LocalGatewayUninstall flow
+        // (PR #310) and any future Reset & remove path still need a stable name
+        // to detect a running tray.
         var mutexName = "OpenClawTray";
         if (DataDirOverride is not null)
         {
@@ -3277,83 +3272,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-#if DEBUG
-            Logger.Info("Skipping update check in debug build");
+            // Unpackaged builds (dev / debug / CI hosts) have no shipping update
+            // channel — there's no MSIX to apply and Updatum has been removed.
+            // Just stamp the UpdateInfo so the diagnostics panel reflects the
+            // current state and let the app launch.
+            Logger.Info("Skipping update check (unpackaged build; no update channel available)");
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Skipped",
                 CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
                 CheckedAt = DateTime.UtcNow,
-                Detail = "debug build"
+                Detail = "unpackaged build; install the MSIX for auto-update"
             };
             return true;
-#else
-            Logger.Info("Checking for updates...");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Checking",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
-                CheckedAt = DateTime.UtcNow
-            };
-            var updateFound = await AppUpdater.CheckForUpdatesAsync();
-
-            if (!updateFound)
-            {
-                Logger.Info("No updates available");
-                _appState!.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Current",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "no updates available"
-                };
-                return true;
-            }
-
-            var release = AppUpdater.LatestRelease!;
-            var changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
-            Logger.Info($"Update available: {release.TagName}");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Available",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
-                LatestVersion = release.TagName,
-                CheckedAt = DateTime.UtcNow,
-                Detail = "prompted"
-            };
-
-            if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
-                string.Equals(_settings.SkippedUpdateTag, release.TagName, StringComparison.OrdinalIgnoreCase))
-            {
-                Logger.Info($"Skipping update prompt for remembered version {release.TagName}");
-                _appState!.UpdateInfo.Detail = "skipped by user";
-                return true;
-            }
-
-            var dialog = new UpdateDialog(release.TagName, changelog);
-            var result = await dialog.ShowAsync();
-
-            if (result == UpdateDialogResult.Download)
-            {
-                _appState!.UpdateInfo.Detail = "download requested";
-                if (_settings != null)
-                {
-                    _settings.SkippedUpdateTag = string.Empty;
-                    _settings.Save();
-                }
-                var installed = await DownloadAndInstallUpdateAsync();
-                return !installed; // Don't launch if update succeeded
-            }
-
-            if (result == UpdateDialogResult.Skip && _settings != null)
-            {
-                _settings.SkippedUpdateTag = release.TagName ?? string.Empty;
-                _settings.Save();
-                _appState!.UpdateInfo.Detail = "skipped by user";
-            }
-
-            return true; // RemindLater or Skip - continue
-#endif
         }
         catch (Exception ex)
         {
@@ -3373,11 +3304,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         Logger.Info("Manual update check requested");
 
-        // Packaged: bypass the Updatum check/download/install dance and go
-        // directly to PackageManager.AddPackageByAppInstallerFileAsync. The
-        // AppInstaller URL is the single source of truth; if a newer version
-        // is published Windows will restart the app, otherwise we surface
-        // "already up to date" in the UI.
+        // Packaged: bypass any in-app dance and go directly to
+        // PackageManager.AddPackageByAppInstallerFileAsync. The AppInstaller URL
+        // is the single source of truth; if a newer version is published Windows
+        // will restart the app, otherwise we surface "already up to date".
         if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
         {
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
@@ -3418,42 +3348,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return;
         }
 
-        var shouldContinue = await CheckForUpdatesAsync();
+        // Unpackaged: no update channel. Show the user the same "skipped" status
+        // the startup check would set.
+        await CheckForUpdatesAsync();
         UpdateStatusDetailWindow();
-        if (!shouldContinue)
-        {
-            Exit();
-        }
-    }
-
-    private async Task<bool> DownloadAndInstallUpdateAsync()
-    {
-        DownloadProgressDialog? progressDialog = null;
-        try
-        {
-            progressDialog = new DownloadProgressDialog(AppUpdater);
-            progressDialog.ShowAsync(); // Fire and forget
-
-            var downloadedAsset = await AppUpdater.DownloadUpdateAsync();
-
-            progressDialog?.Close();
-
-            if (downloadedAsset == null || !System.IO.File.Exists(downloadedAsset.FilePath))
-            {
-                Logger.Error("Update download failed or file missing");
-                return false;
-            }
-
-            Logger.Info("Installing update and restarting...");
-            await AppUpdater.InstallUpdateAsync(downloadedAsset);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Update failed: {ex.Message}");
-            progressDialog?.Close();
-            return false;
-        }
     }
 
     #endregion

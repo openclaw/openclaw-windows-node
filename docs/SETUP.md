@@ -14,34 +14,35 @@ Before installing, make sure you have:
 
 ### 1. Download the Installer
 
-Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the latest installer for your architecture:
+Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the **AppInstaller** file:
 
-| File | Architecture |
+| File | Description |
 |------|-------------|
-| `OpenClawTray-Setup-x64.exe` | Intel / AMD (most PCs) |
-| `OpenClawTray-Setup-arm64.exe` | ARM64 (Surface Pro X, Snapdragon laptops) |
+| `latest.appinstaller` | Recommended — install once, Windows auto-updates from then on |
+| `OpenClawCompanion-X.Y.Z-win-x64.msix` | Offline / power-user install for Intel / AMD (no auto-update) |
+| `OpenClawCompanion-X.Y.Z-win-arm64.msix` | Offline / power-user install for ARM64 (Surface Pro X, Snapdragon laptops; no auto-update) |
 
-If you're unsure, use the **x64** installer.
+If you're unsure, click **`latest.appinstaller`** — Windows AppInstaller will pick the right architecture for your machine and wire up automatic updates.
 
-### 2. Run the Installer
+### 2. Run the AppInstaller
 
-Double-click the downloaded `.exe`. Windows may show a SmartScreen prompt — click **More info → Run anyway** (this is normal for code-signed apps that haven't yet accumulated reputation).
+Click `latest.appinstaller`. Windows AppInstaller opens, shows the publisher (Scott Hanselman, code-signed via Azure Trusted Signing), and offers to install.
 
-The installer runs without requiring administrator privileges.
+The install runs without requiring administrator privileges.
 
-### 3. Choose Optional Components
+### 3. Optional integrations
 
-The installer offers two optional components:
+The MSIX installs the tray app. Optional integrations are configured from inside the app:
 
-- **Create Desktop Icon** — adds a shortcut to your desktop.
-- **Start OpenClaw Tray when Windows starts** — launches Molty automatically at login (recommended).
-- **Install PowerToys Command Palette extension** — enables OpenClaw commands in PowerToys Command Palette (requires [PowerToys](https://github.com/microsoft/PowerToys) to be installed). See [POWERTOYS.md](./POWERTOYS.md) for details.
+- **PowerToys Command Palette extension** — install separately if you use PowerToys; see [POWERTOYS.md](./POWERTOYS.md).
+- **Launch at Windows sign-in** — toggle in **Settings → Auto-start** (uses the Windows StartupTask API; the user can revoke it from Task Manager → Startup).
 
 ### 4. First Launch
 
-After the installer finishes, OpenClaw Tray starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
+After install, OpenClaw Tray starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
+
 
 ### 5. Onboarding Wizard
 

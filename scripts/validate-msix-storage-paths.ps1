@@ -38,10 +38,10 @@
       - MUST add in-app pre-uninstall warning banner gated on:
             PackageHelper.IsPackaged() && File.Exists(setupStatePath)
         so users are warned before removing the MSIX package.
-      - The Inno uninstaller script (Uninstall-LocalGateway.ps1) targets real paths
-        unconditionally — no change needed there.
-      - Recovery: scripts/validate-wsl-gateway-uninstall.ps1 -Scenario Full
-            -ConfirmDestructiveClean is still relevant for orphaned state.
+      - Recovery (after MSIX was removed without using the in-tray button):
+            openclaw-winnode --purge-wsl-orphans --confirm-destructive --json-output
+        (see docs/uninstall-msix.md for the equivalent PowerShell one-liners if the
+        CLI is not available.)
 
     If "PathB-CleanRemove":
       - Remove-AppxPackage handles file-based artifact cleanup automatically.
