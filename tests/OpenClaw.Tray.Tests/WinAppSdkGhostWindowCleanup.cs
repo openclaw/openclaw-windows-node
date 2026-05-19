@@ -11,6 +11,9 @@ namespace OpenClaw.Tray.Tests;
 
 internal sealed class WinAppSdkGhostWindowCleanupAttribute : BeforeAfterTestAttribute
 {
+    public override void Before(MethodInfo methodUnderTest) =>
+        WinAppSdkGhostWindowCleanup.CleanupBlankFrames();
+
     public override void After(MethodInfo methodUnderTest) =>
         WinAppSdkGhostWindowCleanup.CleanupBlankFrames();
 }
@@ -28,6 +31,8 @@ internal static class WinAppSdkGhostWindowCleanup
     private const uint WM_CLOSE = 0x0010;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
     private const int SW_HIDE = 0;
+    private static int s_cleanupInProgress;
+    private static System.Threading.Timer? s_cleanupTimer;
 
     [ModuleInitializer]
     public static void Initialize()
@@ -36,8 +41,14 @@ internal static class WinAppSdkGhostWindowCleanup
             return;
 
         CleanupBlankFrames();
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => CleanupBlankFrames();
-        AssemblyLoadContext.Default.Unloading += _ => CleanupBlankFrames();
+        s_cleanupTimer = new System.Threading.Timer(
+            _ => CleanupBlankFrames(),
+            state: null,
+            dueTime: System.TimeSpan.FromSeconds(1),
+            period: System.TimeSpan.FromSeconds(1));
+
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => CleanupBlankFramesRepeatedly();
+        AssemblyLoadContext.Default.Unloading += _ => CleanupBlankFramesRepeatedly();
     }
 
     public static void CleanupBlankFrames()
@@ -45,10 +56,30 @@ internal static class WinAppSdkGhostWindowCleanup
         if (!OperatingSystem.IsWindows())
             return;
 
-        foreach (var hwnd in EnumerateBlankApplicationFrameWindows())
+        if (System.Threading.Interlocked.Exchange(ref s_cleanupInProgress, 1) == 1)
+            return;
+
+        try
         {
-            _ = ShowWindow(hwnd, SW_HIDE);
-            _ = SendMessageTimeout(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out _);
+            foreach (var hwnd in EnumerateBlankApplicationFrameWindows())
+            {
+                _ = ShowWindow(hwnd, SW_HIDE);
+                _ = SendMessageTimeout(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out _);
+            }
+        }
+        finally
+        {
+            System.Threading.Volatile.Write(ref s_cleanupInProgress, 0);
+        }
+    }
+
+    private static void CleanupBlankFramesRepeatedly()
+    {
+        var deadline = System.DateTime.UtcNow.AddSeconds(5);
+        while (System.DateTime.UtcNow < deadline)
+        {
+            CleanupBlankFrames();
+            System.Threading.Thread.Sleep(250);
         }
     }
 
@@ -74,7 +105,8 @@ internal static class WinAppSdkGhostWindowCleanup
             try
             {
                 using var owner = System.Diagnostics.Process.GetProcessById((int)pid);
-                if (!string.Equals(owner.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(owner.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(owner.ProcessName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase))
                     return true;
             }
             catch (ArgumentException)
