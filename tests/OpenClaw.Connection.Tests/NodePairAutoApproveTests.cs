@@ -396,19 +396,14 @@ public class NodePairAutoApproveTests : IDisposable
 
         /// <summary>
         /// Raises NodePairListUpdated on this client so tests can drive the
-        /// operator-side auto-approve path without a live WebSocket.
+        /// operator-side auto-approve path without a live WebSocket. Uses the
+        /// internal test-only raiser exposed via
+        /// [InternalsVisibleTo("OpenClaw.Connection.Tests")] — earlier this
+        /// reached the private event backing field by reflection, which
+        /// silently broke the moment the event got refactored.
         /// </summary>
         public void FireNodePairListUpdated(PairingListInfo info)
-        {
-            var ev = typeof(OpenClawGatewayClient).GetEvent("NodePairListUpdated");
-            Assert.NotNull(ev);
-            var field = typeof(OpenClawGatewayClient).GetField(
-                "NodePairListUpdated",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            var handler = (EventHandler<PairingListInfo>?)field!.GetValue(this);
-            handler?.Invoke(this, info);
-        }
+            => RaiseNodePairListUpdatedForTests(info);
     }
 
     private sealed class ScriptedNodeConnector : INodeConnector

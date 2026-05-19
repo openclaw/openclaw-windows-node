@@ -63,8 +63,10 @@ public sealed partial class InstancesPage : Page
             // navigation (without waiting for the gateway's next broadcast).
             _ = Task.Run(async () =>
             {
-                try { await CurrentApp.GatewayClient.RequestNodePairListAsync(); } catch { }
-                try { await CurrentApp.GatewayClient.RequestDevicePairListAsync(); } catch { }
+                try { await CurrentApp.GatewayClient.RequestNodePairListAsync(); }
+                catch (Exception ex) { Services.Logger.Warn($"[InstancesPage] Eager node-pair refresh failed: {ex.Message}"); }
+                try { await CurrentApp.GatewayClient.RequestDevicePairListAsync(); }
+                catch (Exception ex) { Services.Logger.Warn($"[InstancesPage] Eager device-pair refresh failed: {ex.Message}"); }
             });
         }
     }

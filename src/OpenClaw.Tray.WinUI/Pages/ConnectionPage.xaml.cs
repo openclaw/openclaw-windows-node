@@ -137,8 +137,10 @@ public sealed partial class ConnectionPage : Page
         {
             _ = Task.Run(async () =>
             {
-                try { await client.RequestNodePairListAsync(); } catch { /* surface via diag */ }
-                try { await client.RequestDevicePairListAsync(); } catch { /* surface via diag */ }
+                try { await client.RequestNodePairListAsync(); }
+                catch (Exception ex) { Services.Logger.Warn($"[ConnectionPage] Eager node-pair refresh failed: {ex.Message}"); }
+                try { await client.RequestDevicePairListAsync(); }
+                catch (Exception ex) { Services.Logger.Warn($"[ConnectionPage] Eager device-pair refresh failed: {ex.Message}"); }
             });
         }
 

@@ -207,6 +207,14 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     public event EventHandler<JsonElement>? AgentsListUpdated;
     public event EventHandler<JsonElement>? AgentFilesListUpdated;
     public event EventHandler<JsonElement>? AgentFileContentUpdated;
+
+    // ─── Test-only event raisers ───
+    // Exposed via [InternalsVisibleTo("OpenClaw.Connection.Tests")] so unit
+    // tests can drive event-handler code paths without a live WebSocket.
+    // Avoids the previous reflection-on-private-backing-field approach which
+    // silently breaks the moment the events grow explicit add/remove blocks.
+    internal void RaiseNodePairListUpdatedForTests(PairingListInfo info)
+        => NodePairListUpdated?.Invoke(this, info);
     /// <summary>
     /// Raised when the gateway broadcasts a "chat" event (assistant or user
     /// message echo). Use this to drive a chat-UI timeline; the existing

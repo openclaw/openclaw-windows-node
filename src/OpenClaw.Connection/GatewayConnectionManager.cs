@@ -857,17 +857,21 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
 
-        // Auto-approve node pairing if operator has admin/pairing scope
+        // Auto-approve node pairing if operator has admin/pairing scope.
+        // _autoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
+        // we release it before the reconnect delay so unrelated approvals
+        // (different requestIds) aren't starved while we wait for the gateway
+        // and node-reconnect handshake to settle (which can take 5–30s on
+        // first connect via WSL cold-start).
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
             && e.RequestId != _lastAutoApprovedRequestId)
         {
-            // Atomic guard: only one approval in-flight at a time.
-            // If another approval is already running, skip this one entirely.
             if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
             {
                 return;
             }
 
+            bool approved = false;
             try
             {
                 var operatorClient = _activeLifecycle?.DataClient;
@@ -881,18 +885,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
                         try
                         {
-                            var approved = await operatorClient.NodePairApproveAsync(e.RequestId);
-                            if (approved)
-                            {
-                                _lastAutoApprovedRequestId = e.RequestId;
-                                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
-                                await Task.Delay(1000); // brief delay for gateway to process
-                                await StartNodeConnectionAsync();
-                            }
-                            else
-                            {
+                            approved = await operatorClient.NodePairApproveAsync(e.RequestId);
+                            if (!approved)
                                 _diagnostics.Record("node", "Node auto-approval failed");
-                            }
                         }
                         catch (Exception ex)
                         {
@@ -904,7 +899,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             finally
             {
+                // Always record the requestId so we don't spin-loop attempting
+                // an approve that the gateway has refused (transient or
+                // policy). A second deliberate retry should come from a new
+                // user-initiated action, not from auto-replaying every
+                // re-broadcast of the same pending entry.
+                _lastAutoApprovedRequestId = e.RequestId;
                 Interlocked.Exchange(ref _autoApproveInFlight, null);
+            }
+
+            // Post-approve reconnect happens OUTSIDE the CAS guard so it
+            // doesn't block unrelated approvals.
+            if (approved)
+            {
+                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
+                await Task.Delay(1000); // brief delay for gateway to process
+                if (Interlocked.Read(ref _generation) == _generation) // re-check before side effect
+                    await StartNodeConnectionAsync();
             }
         }
     }
@@ -930,6 +941,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (operatorClient?.IsConnectedToGateway != true) return;
         if (!OperatorScopeHelper.CanApproveDevices(operatorClient.GrantedOperatorScopes)) return;
 
+        // Track whether ANY approve succeeded so we know to schedule one
+        // reconnect at the end (rather than reconnecting per-entry, which
+        // would race with itself).
+        string? lastApprovedRequestId = null;
+
         foreach (var req in info.Pending)
         {
             if (Interlocked.Read(ref _generation) != gen) return;
@@ -937,40 +953,63 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (req.RequestId == _lastAutoApprovedRequestId) continue;
             if (!string.Equals(req.NodeId, ownNodeId, StringComparison.OrdinalIgnoreCase)) continue;
 
-            // Same atomic guard as the node-side flow to avoid concurrent
-            // approvals of the same requestId from racing event paths.
+            // CAS guard scoped to JUST the approve RPC. Release before the
+            // post-approve reconnect so unrelated approvals are not starved
+            // (e.g. another own-node pending with a different requestId in
+            // the same or next snapshot).
             if (Interlocked.CompareExchange(ref _autoApproveInFlight, req.RequestId, null) != null)
                 continue;
 
+            bool approved = false;
             try
             {
                 _diagnostics.Record("node", $"Operator-side auto-approving own node pairing (requestId={req.RequestId})");
-                var approved = await operatorClient.NodePairApproveAsync(req.RequestId);
-                if (approved)
+                try
                 {
-                    _lastAutoApprovedRequestId = req.RequestId;
-                    _diagnostics.Record("node", "Operator-side node pair approved — reconnecting node so caps propagate");
-                    await Task.Delay(1000);
-                    if (Interlocked.Read(ref _generation) == gen)
-                        await StartNodeConnectionAsync();
+                    approved = await operatorClient.NodePairApproveAsync(req.RequestId);
+                    if (!approved)
+                        _diagnostics.Record("node", "Operator-side node pair approval rejected by gateway");
                 }
-                else
+                catch (Exception ex)
                 {
-                    _diagnostics.Record("node", "Operator-side node pair approval rejected by gateway");
+                    _logger.Warn($"[ConnMgr] Operator-side node auto-approve failed: {ex.Message}");
+                    _diagnostics.Record("node", $"Operator-side auto-approve error: {ex.Message}");
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"[ConnMgr] Operator-side node auto-approve failed: {ex.Message}");
-                _diagnostics.Record("node", $"Operator-side auto-approve error: {ex.Message}");
             }
             finally
             {
+                // Always record the requestId — both on success (prevent
+                // re-approving the same id after the gateway re-broadcasts)
+                // and on failure (prevent a spin loop on a rejected id).
+                // Re-check generation: if a reconnect happened during the
+                // await above, DisposeActiveClient already cleared
+                // _lastAutoApprovedRequestId for the new generation; we must
+                // not overwrite that null with a stale id from the old gen.
+                if (Interlocked.Read(ref _generation) == gen)
+                    _lastAutoApprovedRequestId = req.RequestId;
                 Interlocked.Exchange(ref _autoApproveInFlight, null);
             }
-            // Only attempt one approval per snapshot — gateway will push a
-            // fresh NodePairListUpdated after our approve lands.
-            break;
+
+            if (approved)
+            {
+                lastApprovedRequestId = req.RequestId;
+                // Continue scanning so a second own-pending in the same
+                // snapshot (e.g. stale requestId from prior session) also
+                // gets attempted — broken only by an explicit failure to
+                // approve, which we still try the next entry for.
+            }
+            // On failure/rejection, fall through to next own-pending entry
+            // rather than break — the gateway may not re-broadcast if the
+            // approve frame round-tripped and was rejected mid-flight.
+        }
+
+        // Single reconnect after the snapshot is fully processed.
+        if (lastApprovedRequestId is not null)
+        {
+            _diagnostics.Record("node", $"Operator-side approved {lastApprovedRequestId} — reconnecting node so caps propagate");
+            await Task.Delay(1000);
+            if (Interlocked.Read(ref _generation) == gen)
+                await StartNodeConnectionAsync();
         }
     }
 
