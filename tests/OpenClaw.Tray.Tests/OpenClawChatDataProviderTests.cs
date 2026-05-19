@@ -894,6 +894,25 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task AgentEvent_ItemEndAfterCommandOutput_PreservesOutput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","itemId":"tool-1","output":"hi\n"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("hi\n", entry.ToolOutput);
+    }
+
+    [Fact]
     public async Task AgentEvent_ToolError_ExtractsErrorText()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });

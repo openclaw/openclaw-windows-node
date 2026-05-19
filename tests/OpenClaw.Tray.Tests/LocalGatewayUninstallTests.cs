@@ -16,6 +16,7 @@ namespace OpenClaw.Tray.Tests;
 /// All tests use isolated temp directories via OPENCLAW_TRAY_DATA_DIR /
 /// OPENCLAW_TRAY_LOCALAPPDATA_DIR to avoid touching the real user profile.
 /// </summary>
+[Collection(OpenClawTrayDataDirEnvironmentCollection.Name)]
 public sealed class LocalGatewayUninstallTests
 {
     // -----------------------------------------------------------------------

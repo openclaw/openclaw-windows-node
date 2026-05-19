@@ -154,6 +154,19 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void ToolOutput_WithToolCallId_PreservesOutputWhenEndEventIsEmpty()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("exec command", "exec", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("command output", ToolCallId: "tc1"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent(string.Empty, ToolCallId: "tc1"));
+
+        Assert.Equal(ChatToolCallStatus.Success, updated.Entries[0].ToolResult);
+        Assert.Equal("command output", updated.Entries[0].ToolOutput);
+    }
+
+    [Fact]
     public void ToolError_WithToolCallId_MatchesCorrectTool()
     {
         var state = ChatTimelineState.Initial();

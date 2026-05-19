@@ -107,10 +107,13 @@ public static class ChatTimelineReducer
             var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
             {
+                var existingOutput = entries[idx].ToolOutput;
                 entries = entries.SetItem(idx, entries[idx] with
                 {
                     ToolResult = ChatToolCallStatus.Success,
-                    ToolOutput = e.Text
+                    ToolOutput = string.IsNullOrEmpty(e.Text) && existingOutput is not null
+                        ? existingOutput
+                        : e.Text
                 });
             }
         }
