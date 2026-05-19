@@ -722,19 +722,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 // the gateway sees the node with caps=0/cmds=0 (regression introduced
                 // 2026-05-12 in 62533e2 when capability registration moved to this
                 // lazy bridge pattern).
-                if (_settings != null)
+                if (_settings == null)
+                {
+                    Logger.Warn("[App] NodeConnector.ClientCreated fired before settings were initialized; node may connect without capabilities");
+                    diagnostics.Record("node", "WARNING: settings unavailable; cannot initialize NodeService for capability binding");
+                }
+                else
                 {
                     EnsureNodeService(_settings);
                 }
 
                 diagnostics.Record("node", $"ClientCreated fired, _nodeService null={_nodeService is null}");
-                _nodeService?.AttachClient(args.Client, args.BearerToken);
+                if (_nodeService == null)
+                {
+                    Logger.Warn("[App] NodeService unavailable during ClientCreated; node may connect with caps=0/cmds=0");
+                    diagnostics.Record("node", "WARNING: NodeService unavailable; cannot bind node capabilities");
+                    return;
+                }
+
+                _nodeService.AttachClient(args.Client, args.BearerToken);
                 var client = args.Client;
                 diagnostics.Record("node", $"After AttachClient: caps={client.Capabilities.Count}, cmds={client.RegisteredCommandCount}");
                 if (client.RegisteredCommandCount > 0)
                     diagnostics.Record("node", $"Commands sample: {string.Join(", ", client.RegisteredCommandsSample)}...");
                 else
+                {
+                    Logger.Warn("[App] Node capability binding produced 0 commands before connect");
                     diagnostics.Record("node", "WARNING: 0 commands registered on node client before connect");
+                }
             }
             catch (Exception ex)
             {

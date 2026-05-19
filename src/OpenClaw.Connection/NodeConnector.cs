@@ -79,6 +79,7 @@ public sealed class NodeConnector : INodeConnector
         catch (Exception ex)
         {
             _logger.Warn($"[NodeConnector] ClientCreated handler threw: {ex.Message}");
+            _diagnostics?.Record("node", "ClientCreated handler failed; node may connect without capabilities", ex.Message);
         }
 
         _client.StatusChanged += (s, e) => StatusChanged?.Invoke(this, e);
