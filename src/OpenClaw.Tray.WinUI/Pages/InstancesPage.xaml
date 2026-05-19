@@ -70,6 +70,45 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
 
+            <!--
+                Pending-pair banner. Surfaces the same warning that
+                ConnectionPage shows so the user is never stuck staring at a
+                "connected node with empty capabilities" without an obvious
+                affordance. The actual approve/reject UI lives on the
+                Connection page; clicking the button navigates there. The
+                banner stays collapsed unless there's at least one pending
+                node or device pair.
+            -->
+            <Border x:Name="PendingPairBanner"
+                    Visibility="Collapsed"
+                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                    BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="12,10">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon Glyph="&#xE7BA;" FontSize="18"
+                              Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                              VerticalAlignment="Center"/>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock x:Name="PendingPairBannerText"
+                                   Text="Pairing approval required"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Name="PendingPairBannerSubtext"
+                                   Text="A node has connected but its capabilities won't activate until you approve the pairing request."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="520"/>
+                    </StackPanel>
+                    <Button x:Name="PendingPairBannerAction"
+                            Content="Review on Connection page"
+                            Click="OnPendingPairBannerClicked"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right"/>
+                </StackPanel>
+            </Border>
+
             <StackPanel x:Name="InstancesList" Spacing="8"/>
 
         </StackPanel>

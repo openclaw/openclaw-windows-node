@@ -128,6 +128,27 @@ public sealed partial class ConnectionPage : Page
         // active row as "disconnected" for one frame before the snapshot pass
         // flips it to "Connected".
         RefreshFromSnapshot(_connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle);
+
+        // Eagerly refresh pending-pairing lists so the banner reflects truth
+        // the moment the user navigates here (rather than waiting for the
+        // gateway to push the next node.pair.requested broadcast). Both calls
+        // are tracked + idempotent on the gateway side.
+        if (CurrentApp.GatewayClient is { IsConnectedToGateway: true } client)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await client.RequestNodePairListAsync(); } catch { /* surface via diag */ }
+                try { await client.RequestDevicePairListAsync(); } catch { /* surface via diag */ }
+            });
+        }
+
+        // Push any already-resolved pending lists into the page immediately
+        // — the AppState may have been populated on a prior visit and the
+        // PropertyChanged subscriber only fires on future changes.
+        if (_appState?.NodePairList is { } existingNode)
+            UpdatePairingRequests(existingNode);
+        if (_appState?.DevicePairList is { } existingDevice)
+            UpdateDevicePairingRequests(existingDevice);
     }
 
     private void OnPageUnloaded(object sender, RoutedEventArgs e)

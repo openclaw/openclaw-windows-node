@@ -131,6 +131,122 @@ public class NodePairAutoApproveTests : IDisposable
             .Count(m => m == "node.pair.approve"));
     }
 
+    [Fact]
+    public async Task OperatorSideAutoApprove_ApprovesPendingForOwnNodeId()
+    {
+        // Operator-side regression test for the scenario where:
+        //   1. The Windows node device is already paired (so the node-side
+        //      WindowsNodeClient sees PairingStatus.Paired and never fires
+        //      Pending — the existing OnNodePairingStatusChanged path can't
+        //      kick in).
+        //   2. The gateway nevertheless broadcasts node.pair.requested
+        //      because the node-sub-pairing record is empty (gateway's
+        //      /home/openclaw/.openclaw/nodes/paired.json = "{}").
+        //   3. The operator client receives the resulting
+        //      NodePairListUpdated push containing OUR own nodeId.
+        // Manager must auto-approve via the operator path, otherwise the
+        // node sits as "connected with 0 capabilities" indefinitely.
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+
+        const string ownNodeId = "f52d5187f33563a00947012c8de63f489cd0127bf008017e77090e218918a9f6";
+        _nodeConnector.NodeDeviceId = ownNodeId;
+
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        lifecycle.TrackingClient.FireNodePairListUpdated(new PairingListInfo
+        {
+            Pending =
+            [
+                new PairingRequest { RequestId = "op-side-req-1", NodeId = ownNodeId }
+            ]
+        });
+        await approvalDone;
+
+        Assert.Contains("node.pair.approve", lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task OperatorSideAutoApprove_IgnoresPendingForOtherNodeId()
+    {
+        // Defensive: when the gateway has multiple pending node-pair
+        // requests (e.g. another tray on the same gateway), the operator
+        // path must only approve OUR own deviceId — never silently
+        // approve a peer.
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        _nodeConnector.NodeDeviceId = "f52d5187...own";
+
+        lifecycle.TrackingClient.FireNodePairListUpdated(new PairingListInfo
+        {
+            Pending =
+            [
+                new PairingRequest { RequestId = "req-someone-else", NodeId = "different-node-id" }
+            ]
+        });
+        await Task.Delay(200);
+
+        Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task OperatorSideAutoApprove_WithoutScope_DoesNotApprove()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.read"]); // no admin/pairing
+        lifecycle.TrackingClient.SetIsConnected(true);
+        _nodeConnector.NodeDeviceId = "own-id";
+
+        lifecycle.TrackingClient.FireNodePairListUpdated(new PairingListInfo
+        {
+            Pending =
+            [
+                new PairingRequest { RequestId = "req-no-scope", NodeId = "own-id" }
+            ]
+        });
+        await Task.Delay(200);
+
+        Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task OperatorSideAutoApprove_SameRequestId_DoesNotApproveTwice()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        _nodeConnector.NodeDeviceId = "own-id";
+
+        var firstDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        lifecycle.TrackingClient.FireNodePairListUpdated(new PairingListInfo
+        {
+            Pending = [new PairingRequest { RequestId = "dedupe-1", NodeId = "own-id" }]
+        });
+        await firstDone;
+        // Wait for the post-approve sequence to complete before firing the
+        // second event; _lastAutoApprovedRequestId must be set first.
+        await Task.Delay(1100);
+
+        // Re-broadcast (same id) — must be skipped via _lastAutoApprovedRequestId.
+        lifecycle.TrackingClient.FireNodePairListUpdated(new PairingListInfo
+        {
+            Pending = [new PairingRequest { RequestId = "dedupe-1", NodeId = "own-id" }]
+        });
+        await Task.Delay(200);
+
+        Assert.Equal(1, lifecycle.TrackingClient.ApprovalMethodsCalled
+            .Count(m => m == "node.pair.approve"));
+    }
+
     // ─── Helpers ───
 
     private GatewayConnectionManager CreateConnectedManager()
@@ -276,6 +392,22 @@ public class NodePairAutoApproveTests : IDisposable
             _approvalMethodsCalled.Add("device.pair.approve");
             _approvalSignal?.TrySetResult();
             return Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// Raises NodePairListUpdated on this client so tests can drive the
+        /// operator-side auto-approve path without a live WebSocket.
+        /// </summary>
+        public void FireNodePairListUpdated(PairingListInfo info)
+        {
+            var ev = typeof(OpenClawGatewayClient).GetEvent("NodePairListUpdated");
+            Assert.NotNull(ev);
+            var field = typeof(OpenClawGatewayClient).GetField(
+                "NodePairListUpdated",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var handler = (EventHandler<PairingListInfo>?)field!.GetValue(this);
+            handler?.Invoke(this, info);
         }
     }
 
