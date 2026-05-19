@@ -19,13 +19,12 @@ internal sealed class WinAppSdkGhostWindowCleanupAttribute : BeforeAfterTestAttr
 }
 
 /// <summary>
-/// Cleans up desktop-frame ghosts created during tray validation.
+/// Cleans up Windows App SDK shell-frame ghosts created during tray validation.
 /// Some WinUI/AppWindow surfaces can leave an explorer-owned, blank
-/// <c>ApplicationFrameWindow</c> behind when the testhost exits; the validation
-/// host can also leave generic Windows Terminal frames around local runs. Those
-/// windows are visually disruptive on a developer workstation even though all
-/// tests pass. This test-only hook hides and closes newly-created ghost frames
-/// during validation and again when the test process exits.
+/// <c>ApplicationFrameWindow</c> behind when the testhost exits. Those windows
+/// are visually disruptive on a developer workstation even though all tests pass.
+/// This test-only hook hides and closes newly-created blank shell frames during
+/// validation and again when the test process exits.
 /// </summary>
 internal static class WinAppSdkGhostWindowCleanup
 {
@@ -36,7 +35,6 @@ internal static class WinAppSdkGhostWindowCleanup
     private const int SW_HIDE = 0;
     private static readonly object s_baselineLock = new();
     private static HashSet<IntPtr> s_baselineBlankFrames = [];
-    private static HashSet<IntPtr> s_baselineTerminalFrames = [];
     private static int s_cleanupInProgress;
     private static System.Threading.Timer? s_cleanupTimer;
 
@@ -46,7 +44,7 @@ internal static class WinAppSdkGhostWindowCleanup
         if (!OperatingSystem.IsWindows())
             return;
 
-        RecordBaselineGhostFrames();
+        RecordBaselineBlankFrames();
         CleanupBlankFrames();
         s_cleanupTimer = new System.Threading.Timer(
             _ => CleanupBlankFrames(),
@@ -73,12 +71,6 @@ internal static class WinAppSdkGhostWindowCleanup
                 if (!IsBaselineBlankFrame(hwnd))
                     HideAndClose(hwnd);
             }
-
-            foreach (var hwnd in EnumerateTerminalGhostWindows())
-            {
-                if (!IsBaselineTerminalFrame(hwnd))
-                    HideAndClose(hwnd);
-            }
         }
         finally
         {
@@ -86,12 +78,11 @@ internal static class WinAppSdkGhostWindowCleanup
         }
     }
 
-    private static void RecordBaselineGhostFrames()
+    private static void RecordBaselineBlankFrames()
     {
         lock (s_baselineLock)
         {
             s_baselineBlankFrames = EnumerateBlankApplicationFrameWindows().ToHashSet();
-            s_baselineTerminalFrames = EnumerateTerminalGhostWindows().ToHashSet();
         }
     }
 
@@ -100,14 +91,6 @@ internal static class WinAppSdkGhostWindowCleanup
         lock (s_baselineLock)
         {
             return s_baselineBlankFrames.Contains(hwnd);
-        }
-    }
-
-    private static bool IsBaselineTerminalFrame(IntPtr hwnd)
-    {
-        lock (s_baselineLock)
-        {
-            return s_baselineTerminalFrames.Contains(hwnd);
         }
     }
 
@@ -162,54 +145,6 @@ internal static class WinAppSdkGhostWindowCleanup
             var width = rect.Right - rect.Left;
             var height = rect.Bottom - rect.Top;
             if (width > 100 && height > 100)
-                windows.Add(hwnd);
-
-            return true;
-        }, IntPtr.Zero);
-
-        return windows;
-    }
-
-    private static IEnumerable<IntPtr> EnumerateTerminalGhostWindows()
-    {
-        var windows = new List<IntPtr>();
-        _ = EnumWindows((hwnd, lParam) =>
-        {
-            if (!IsWindowVisible(hwnd))
-                return true;
-
-            var className = new StringBuilder(256);
-            _ = GetClassName(hwnd, className, className.Capacity);
-            if (!string.Equals(className.ToString(), "CASCADIA_HOSTING_WINDOW_CLASS", StringComparison.Ordinal))
-                return true;
-
-            var title = new StringBuilder(512);
-            _ = GetWindowText(hwnd, title, title.Capacity);
-            if (!string.Equals(title.ToString(), "Terminal", StringComparison.Ordinal))
-                return true;
-
-            _ = GetWindowThreadProcessId(hwnd, out var pid);
-            try
-            {
-                using var owner = System.Diagnostics.Process.GetProcessById((int)pid);
-                if (!string.Equals(owner.ProcessName, "WindowsTerminal", StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            catch (ArgumentException)
-            {
-                return true;
-            }
-            catch (InvalidOperationException)
-            {
-                return true;
-            }
-
-            if (!GetWindowRect(hwnd, out var rect))
-                return true;
-
-            var width = rect.Right - rect.Left;
-            var height = rect.Bottom - rect.Top;
-            if (width >= 1000 && height >= 500)
                 windows.Add(hwnd);
 
             return true;
