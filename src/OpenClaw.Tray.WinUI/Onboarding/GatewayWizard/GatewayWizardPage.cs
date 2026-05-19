@@ -775,7 +775,14 @@ public sealed class GatewayWizardPage : Component<GatewayWizardState>
             TextBlock(LocalizationHelper.GetString("Onboarding_Wizard_Title"))
                 .FontSize(28)
                 .SemiBold()
-                .HAlign(HorizontalAlignment.Center),
+                .HAlign(HorizontalAlignment.Center)
+                .TextWrapping()
+                .Set(t =>
+                {
+                    t.MaxLines = 2;
+                    t.TextTrimming = Microsoft.UI.Xaml.TextTrimming.CharacterEllipsis;
+                    t.TextAlignment = Microsoft.UI.Xaml.TextAlignment.Center;
+                }),
 
             Border(
                 ScrollView(
