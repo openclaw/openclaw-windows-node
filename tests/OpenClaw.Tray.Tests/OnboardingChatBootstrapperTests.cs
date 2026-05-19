@@ -91,6 +91,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public bool IsConnectedToGateway { get; init; } = true;
         public string? OperatorDeviceId => "operator";
         public IReadOnlyList<string> GrantedOperatorScopes => Array.Empty<string>();
+        public string? MainSessionKey { get; init; } = "main";
+        public bool HasHandshakeSnapshot { get; init; } = true;
 
         public event EventHandler<OpenClawNotification>? NotificationReceived;
         public event EventHandler<AgentActivity>? ActivityChanged;

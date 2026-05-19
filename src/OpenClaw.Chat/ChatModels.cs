@@ -123,7 +123,30 @@ public record ChatDataSnapshot(
     IReadOnlyDictionary<string, ChatTimelineState> Timelines,
     string? DefaultThreadId,
     string? ConnectionStatus,
-    string[] AvailableModels);
+    string[] AvailableModels,
+    ChatComposeTarget ComposeTarget);
+
+/// <summary>
+/// Describes where the UI may send the next chat message. Distinct from
+/// <see cref="ChatDataSnapshot.Threads"/> because, in protocols like the
+/// OpenClaw gateway, there is always a canonical "main" target whose session
+/// row may not have been materialized yet (zero sessions on fresh install).
+/// The UI uses this to decide whether the composer should be enabled even
+/// when <see cref="ChatDataSnapshot.Threads"/> is empty.
+/// </summary>
+/// <param name="SessionKey">
+/// The provider-resolved canonical session key for the default send target,
+/// or <c>null</c> when not yet known (e.g. handshake incomplete).
+/// </param>
+/// <param name="IsReady">
+/// True when the provider is connected, has resolved a canonical send target,
+/// and accepts <see cref="IChatDataProvider.SendMessageAsync"/> calls keyed by
+/// <see cref="SessionKey"/>.
+/// </param>
+public sealed record ChatComposeTarget(string? SessionKey, bool IsReady)
+{
+    public static ChatComposeTarget NotReady { get; } = new(null, false);
+}
 
 public sealed class ChatDataChangedEventArgs(ChatDataSnapshot snapshot) : EventArgs
 {
@@ -157,7 +180,10 @@ public interface IChatDataProvider : IAsyncDisposable
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
 
     Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default);
-    Task<ChatThread> CreateThreadAsync(string? initialMessage = null, CancellationToken cancellationToken = default);
+    // Note: there is intentionally no CreateThreadAsync. The gateway protocol
+    // has no "create new session" RPC; the canonical send target is exposed via
+    // ChatDataSnapshot.ComposeTarget and the first SendMessageAsync against it
+    // implicitly materializes the session on the server.
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default);
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken, IReadOnlyList<OpenClaw.Shared.ChatAttachment>? attachments) =>
         SendMessageAsync(threadId, message, cancellationToken);
