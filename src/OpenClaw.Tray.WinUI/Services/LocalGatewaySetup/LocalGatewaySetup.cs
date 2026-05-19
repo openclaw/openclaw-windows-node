@@ -1724,20 +1724,20 @@ public interface IWindowsNodeConnector
 /// </remarks>
 public sealed record KeepAliveProcessIdentity(string Name, DateTime StartTimeUtc);
 
+public sealed record KeepAliveSpawnResult(int Pid, KeepAliveProcessIdentity Identity);
+
 internal interface IWslKeepAliveProcessHost
 {
-    KeepAliveProcessIdentity Spawn(string distroName);
+    KeepAliveSpawnResult Spawn(string distroName, IOpenClawLogger? logger = null);
     bool TryGetProcessIdentity(int pid, out KeepAliveProcessIdentity identity);
     void Kill(int pid);
-    int GetCurrentPidForLastSpawn();
 }
 
 internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
 {
     public static readonly DefaultWslKeepAliveProcessHost Instance = new();
-    private int _lastSpawnedPid;
 
-    public KeepAliveProcessIdentity Spawn(string distroName)
+    public KeepAliveSpawnResult Spawn(string distroName, IOpenClawLogger? logger = null)
     {
         // The keepalive must outlive the tray. Packaged (MSIX/Centennial) WinUI apps
         // run inside a job object that by default kills child processes when the
@@ -1745,20 +1745,29 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
         // CreateProcess with CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS first; if
         // the host job forbids breakaway (ERROR_ACCESS_DENIED), fall back to a plain
         // Process.Start so the keepalive still arms while the tray runs.
-        var commandLine = BuildCommandLine(distroName);
-        var pid = Win32DetachedSpawn.TryStart(commandLine, breakaway: true, out var firstError);
+        ValidateDistroNameForCommandLine(distroName);
+
+        var wslPath = ResolveWslPath();
+        var commandLine = BuildCommandLine(wslPath, distroName);
+        var pid = Win32DetachedSpawn.TryStart(wslPath, commandLine, breakaway: true, out var firstError);
         if (pid is null && firstError == Win32DetachedSpawn.ErrorAccessDenied)
         {
-            pid = Win32DetachedSpawn.TryStart(commandLine, breakaway: false, out _);
+            logger?.Warn("[WslKeepAlive] CREATE_BREAKAWAY_FROM_JOB denied; retrying detached keepalive without breakaway.");
+            pid = Win32DetachedSpawn.TryStart(wslPath, commandLine, breakaway: false, out var secondError);
+            if (pid is null)
+                logger?.Warn($"[WslKeepAlive] Detached CreateProcess without breakaway failed (Win32={secondError}); falling back to Process.Start.");
+        }
+        else if (pid is null)
+        {
+            logger?.Warn($"[WslKeepAlive] Detached CreateProcess with breakaway failed (Win32={firstError}); falling back to Process.Start.");
         }
 
         if (pid is null)
         {
-            return SpawnViaProcessFallback(distroName);
+            return SpawnViaProcessFallback(wslPath, distroName);
         }
 
-        _lastSpawnedPid = pid.Value;
-        return CaptureIdentity(pid.Value);
+        return new KeepAliveSpawnResult(pid.Value, CaptureIdentity(pid.Value));
     }
 
     public bool TryGetProcessIdentity(int pid, out KeepAliveProcessIdentity identity)
@@ -1789,25 +1798,43 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
         catch (System.ComponentModel.Win32Exception) { }
     }
 
-    public int GetCurrentPidForLastSpawn() => _lastSpawnedPid;
-
-    private static string BuildCommandLine(string distroName)
+    private static string ResolveWslPath()
     {
-        // wsl.exe lives in System32 (on PATH for both packaged and unpackaged contexts).
-        // Distro names are constrained (alphanumerics + a few separators), but quote
-        // defensively so a future configurable name with whitespace cannot break the
-        // CreateProcess command-line parser. Same for the literal token args.
-        return $"wsl.exe -d \"{distroName}\" -u openclaw -- sleep 2147483647";
+        var systemDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        if (string.IsNullOrWhiteSpace(systemDirectory))
+            return "wsl.exe";
+        return Path.Combine(systemDirectory, "wsl.exe");
     }
 
-    private KeepAliveProcessIdentity SpawnViaProcessFallback(string distroName)
+    private static void ValidateDistroNameForCommandLine(string distroName)
+    {
+        // OpenClaw controls the production distro name ("OpenClawGateway"). Keep the
+        // manual CreateProcess command line deliberately conservative so embedded
+        // quotes/backslashes cannot alter argv parsing for a detached child process.
+        if (!Regex.IsMatch(distroName, @"^[A-Za-z0-9._-]+$"))
+            throw new ArgumentException($"WSL distro name '{distroName}' contains unsupported characters.", nameof(distroName));
+    }
+
+    private static string BuildCommandLine(string wslPath, string distroName)
+    {
+        return $"{QuoteWindowsArgument(wslPath)} -d {QuoteWindowsArgument(distroName)} -u openclaw -- sleep 2147483647";
+    }
+
+    private static string QuoteWindowsArgument(string value)
+    {
+        // This helper is intentionally minimal because distroName is allowlisted and
+        // the executable path comes from System32. It still escapes quotes defensively.
+        return "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+    }
+
+    private KeepAliveSpawnResult SpawnViaProcessFallback(string wslPath, string distroName)
     {
         // Used only when CreateProcess fails outright (not for the breakaway-denied
         // case, which is handled above). Process.Start is more permissive about path
         // resolution and error reporting.
         var process = Process.Start(new ProcessStartInfo
         {
-            FileName = "wsl.exe",
+            FileName = wslPath,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = false,
@@ -1815,11 +1842,11 @@ internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
             ArgumentList = { "-d", distroName, "-u", "openclaw", "--", "sleep", "2147483647" }
         }) ?? throw new InvalidOperationException("Process.Start returned null for wsl.exe keepalive.");
 
-        _lastSpawnedPid = process.Id;
+        var pid = process.Id;
         var name = SafeProcessName(process);
         var startUtc = SafeStartTimeUtc(process);
         process.Dispose();
-        return new KeepAliveProcessIdentity(name, startUtc);
+        return new KeepAliveSpawnResult(pid, new KeepAliveProcessIdentity(name, startUtc));
     }
 
     private static KeepAliveProcessIdentity CaptureIdentity(int pid)
@@ -1922,7 +1949,7 @@ internal static class Win32DetachedSpawn
     /// success, or <see langword="null"/> on failure with the Win32 error in
     /// <paramref name="win32Error"/>.
     /// </summary>
-    public static int? TryStart(string commandLine, bool breakaway, out int win32Error)
+    public static int? TryStart(string applicationName, string commandLine, bool breakaway, out int win32Error)
     {
         win32Error = 0;
         var si = new STARTUPINFO { cb = (uint)Marshal.SizeOf<STARTUPINFO>() };
@@ -1935,7 +1962,7 @@ internal static class Win32DetachedSpawn
         if (breakaway) flags |= CREATE_BREAKAWAY_FROM_JOB;
 
         var ok = CreateProcessW(
-            lpApplicationName: null,
+            lpApplicationName: applicationName,
             lpCommandLine: commandLineBuffer,
             lpProcessAttributes: IntPtr.Zero,
             lpThreadAttributes: IntPtr.Zero,
@@ -1956,6 +1983,79 @@ internal static class Win32DetachedSpawn
         if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
         if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
         return (int)pi.dwProcessId;
+    }
+}
+
+/// <summary>
+/// Testable startup arming loop for the local WSL gateway keepalive. The tray calls
+/// this from a fire-and-forget task at launch; tests pass fake probe/ensure delegates
+/// so timeout/failure behavior never depends on a real WSL installation.
+/// </summary>
+internal static class WslKeepAliveStartupArmer
+{
+    public static readonly TimeSpan[] DefaultRetryDelays =
+    [
+        TimeSpan.Zero,
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(60)
+    ];
+
+    public static async Task ArmAsync(
+        string distroName,
+        Func<CancellationToken, Task<WslCommandResult>> probeAsync,
+        Action ensureStarted,
+        Action<string> warn,
+        TimeSpan[]? retryDelays = null,
+        TimeSpan? probeTimeout = null,
+        Func<TimeSpan, Task>? delayAsync = null)
+    {
+        if (string.IsNullOrWhiteSpace(distroName))
+            return;
+
+        retryDelays ??= DefaultRetryDelays;
+        probeTimeout ??= TimeSpan.FromSeconds(5);
+        delayAsync ??= Task.Delay;
+
+        for (var attempt = 0; attempt < retryDelays.Length; attempt++)
+        {
+            if (retryDelays[attempt] > TimeSpan.Zero)
+                await delayAsync(retryDelays[attempt]);
+
+            using var cts = new CancellationTokenSource(probeTimeout.Value);
+            WslCommandResult result;
+            try
+            {
+                result = await probeAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                warn($"[WslKeepAlive] wsl --list probe cancelled/timed out (attempt {attempt + 1}/{retryDelays.Length}); will retry.");
+                continue;
+            }
+
+            if (!result.Success)
+            {
+                var detail = string.IsNullOrWhiteSpace(result.StandardError)
+                    ? result.StandardOutput
+                    : result.StandardError;
+                warn($"[WslKeepAlive] wsl --list failed (exit {result.ExitCode}, attempt {attempt + 1}/{retryDelays.Length}): {SecretRedactor.Redact(detail)}");
+                continue;
+            }
+
+            var distros = WslExeCommandRunner.ParseDistroList(result.StandardOutput);
+            if (!distros.Any(d => d.Name.Equals(distroName, StringComparison.OrdinalIgnoreCase)))
+            {
+                warn($"[WslKeepAlive] Configured local-gateway distro '{distroName}' not present; skipping keepalive.");
+                return;
+            }
+
+            ensureStarted();
+            return;
+        }
+
+        warn("[WslKeepAlive] wsl --list never succeeded; spawning keepalive defensively.");
+        ensureStarted();
     }
 }
 
@@ -2019,11 +2119,11 @@ public static class WslDistroKeepAlive
 
             try
             {
-                var spawnIdentity = host.Spawn(distroName);
-                var pid = host.GetCurrentPidForLastSpawn();
+                var spawn = host.Spawn(distroName, logger);
+                var pid = spawn.Pid;
                 try
                 {
-                    WriteMarker(markerPath, new KeepAliveMarker(distroName, pid, spawnIdentity.StartTimeUtc, spawnIdentity.Name));
+                    WriteMarker(markerPath, new KeepAliveMarker(distroName, pid, spawn.Identity.StartTimeUtc, spawn.Identity.Name));
                 }
                 catch (Exception writeEx)
                 {
@@ -2061,7 +2161,14 @@ public static class WslDistroKeepAlive
             var host = __TestHost ?? DefaultWslKeepAliveProcessHost.Instance;
             var markerPath = GetMarkerPath(distroName);
             if (!TryReadMarker(markerPath, out var marker))
+            {
+                if (File.Exists(markerPath))
+                {
+                    logger?.Warn($"WSL keepalive marker for {distroName} is malformed; deleting marker only.");
+                    TryDeleteMarker(markerPath);
+                }
                 return;
+            }
 
             try
             {
@@ -2109,7 +2216,14 @@ public static class WslDistroKeepAlive
             try
             {
                 if (TryReadMarkerFromPath(file, out var marker))
+                {
                     Stop(marker.DistroName, logger);
+                }
+                else if (File.Exists(file))
+                {
+                    logger?.Warn($"WSL keepalive marker {file} is malformed; deleting marker only.");
+                    TryDeleteMarker(file);
+                }
             }
             catch (Exception ex)
             {

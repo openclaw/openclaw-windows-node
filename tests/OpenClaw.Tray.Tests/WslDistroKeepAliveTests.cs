@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using OpenClaw.Shared;
 using OpenClawTray.Services.LocalGatewaySetup;
 
 namespace OpenClaw.Tray.Tests;
@@ -168,6 +169,24 @@ public class WslDistroKeepAliveTests
     }
 
     [Fact]
+    public void Stop_MalformedMarker_DeletesMarker_DoesNotKill()
+    {
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var host = new FakeKeepAliveHost();
+
+        WithSeams(temp.Path, host, () =>
+        {
+            var markerPath = Path.Combine(temp.Path, "OpenClawGateway.json");
+            File.WriteAllText(markerPath, "{not valid json");
+
+            WslDistroKeepAlive.Stop("OpenClawGateway");
+
+            Assert.Empty(host.KillCalls);
+            Assert.False(File.Exists(markerPath));
+        });
+    }
+
+    [Fact]
     public void EnsureStarted_NullOrEmptyDistro_IsNoOp()
     {
         using var temp = new LocalGatewaySetupTests.TempDirectory();
@@ -232,6 +251,72 @@ public class WslDistroKeepAliveTests
         {
             WslDistroKeepAlive.__ResetForTests();
         }
+    }
+
+    [Fact]
+    public async Task StartupArmer_FailedFirstProbeThenSuccess_EnsuresStartedOnce()
+    {
+        var probes = new Queue<WslCommandResult>([
+            new WslCommandResult(-1, string.Empty, "wsl.exe timed out"),
+            new WslCommandResult(0, """
+              NAME                   STATE           VERSION
+            * Ubuntu                 Running         2
+              OpenClawGateway        Stopped         2
+            """, string.Empty)
+        ]);
+        var ensureCount = 0;
+
+        await WslKeepAliveStartupArmer.ArmAsync(
+            "OpenClawGateway",
+            _ => Task.FromResult(probes.Dequeue()),
+            () => ensureCount++,
+            _ => { },
+            retryDelays: [TimeSpan.Zero, TimeSpan.Zero],
+            probeTimeout: TimeSpan.FromSeconds(1));
+
+        Assert.Equal(1, ensureCount);
+        Assert.Empty(probes);
+    }
+
+    [Fact]
+    public async Task StartupArmer_AllProbesFail_DefensivelyEnsuresStartedOnce()
+    {
+        var probeCount = 0;
+        var ensureCount = 0;
+
+        await WslKeepAliveStartupArmer.ArmAsync(
+            "OpenClawGateway",
+            _ =>
+            {
+                probeCount++;
+                return Task.FromResult(new WslCommandResult(-1, string.Empty, "wsl.exe timed out"));
+            },
+            () => ensureCount++,
+            _ => { },
+            retryDelays: [TimeSpan.Zero, TimeSpan.Zero],
+            probeTimeout: TimeSpan.FromSeconds(1));
+
+        Assert.Equal(2, probeCount);
+        Assert.Equal(1, ensureCount);
+    }
+
+    [Fact]
+    public async Task StartupArmer_SuccessfulProbeMissingDistro_SkipsEnsureStarted()
+    {
+        var ensureCount = 0;
+
+        await WslKeepAliveStartupArmer.ArmAsync(
+            "OpenClawGateway",
+            _ => Task.FromResult(new WslCommandResult(0, """
+              NAME                   STATE           VERSION
+            * Ubuntu                 Running         2
+            """, string.Empty)),
+            () => ensureCount++,
+            _ => { },
+            retryDelays: [TimeSpan.Zero],
+            probeTimeout: TimeSpan.FromSeconds(1));
+
+        Assert.Equal(0, ensureCount);
     }
 
     [Fact]
@@ -313,7 +398,7 @@ public class WslDistroKeepAliveTests
         public List<int> KillCalls { get; } = new();
         public int LastSpawnedPid { get; private set; }
 
-        public KeepAliveProcessIdentity Spawn(string distroName)
+        public KeepAliveSpawnResult Spawn(string distroName, IOpenClawLogger? logger = null)
         {
             SpawnCalls.Add(distroName);
             var pid = _nextPid++;
@@ -322,7 +407,7 @@ public class WslDistroKeepAliveTests
                 System.DateTime.UtcNow.AddTicks(pid));
             _liveProcesses[pid] = identity;
             LastSpawnedPid = pid;
-            return identity;
+            return new KeepAliveSpawnResult(pid, identity);
         }
 
         public bool TryGetProcessIdentity(int pid, out KeepAliveProcessIdentity identity)
@@ -341,8 +426,6 @@ public class WslDistroKeepAliveTests
             KillCalls.Add(pid);
             _liveProcesses.Remove(pid);
         }
-
-        public int GetCurrentPidForLastSpawn() => LastSpawnedPid;
 
         public void OverrideIdentity(int pid, KeepAliveProcessIdentity identity)
             => _liveProcesses[pid] = identity;

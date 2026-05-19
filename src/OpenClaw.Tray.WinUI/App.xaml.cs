@@ -2004,45 +2004,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             if (string.IsNullOrWhiteSpace(distroName)) return;
 
-            // Backoff schedule for the cold-logon case. Each entry is the delay BEFORE
-            // the next attempt. After the last entry we fall through to a defensive
-            // spawn regardless of probe outcome — wsl.exe itself will exit quickly if
-            // the distro genuinely does not exist, which is preferable to silently
-            // never arming the keepalive.
-            TimeSpan[] retryDelays = [TimeSpan.Zero, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60)];
             var runner = new WslExeCommandRunner(new AppLogger(), defaultTimeout: TimeSpan.FromSeconds(4));
-
-            for (var attempt = 0; attempt < retryDelays.Length; attempt++)
-            {
-                if (retryDelays[attempt] > TimeSpan.Zero)
-                    await Task.Delay(retryDelays[attempt]);
-
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                try
-                {
-                    var distros = await runner.ListDistrosAsync(cts.Token);
-                    if (!distros.Any(d => d.Name.Equals(distroName, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        Logger.Warn($"[WslKeepAlive] Configured local-gateway distro '{distroName}' not present; skipping keepalive.");
-                        return;
-                    }
-
-                    WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger());
-                    return;
-                }
-                catch (OperationCanceledException)
-                {
-                    Logger.Warn($"[WslKeepAlive] wsl --list probe timed out (attempt {attempt + 1}/{retryDelays.Length}); will retry.");
-                }
-            }
-
-            // All probes timed out. WSL/LxssManager may be wedged, mid-update, or just
-            // very slow on this cold-logon. Attempt the spawn anyway — the wsl.exe
-            // child exits quickly if the distro truly does not exist, and adoption on
-            // the next launch will either recover (if the distro is fine) or skip
-            // (if it really is gone).
-            Logger.Warn("[WslKeepAlive] wsl --list never returned; spawning keepalive defensively.");
-            WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger());
+            await WslKeepAliveStartupArmer.ArmAsync(
+                distroName,
+                cancellationToken => runner.RunAsync(["--list", "--verbose"], cancellationToken),
+                () => WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger()),
+                Logger.Warn);
         }
         catch (Exception ex)
         {
