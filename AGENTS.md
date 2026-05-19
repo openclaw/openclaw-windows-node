@@ -27,6 +27,7 @@ Notes:
   - `$env:OPENCLAW_REPO_ROOT='D:\github\moltbot-windows-hub.<worktree-name>'`
 - Tray tests must isolate `SettingsManager` from real user settings. Do not use `new SettingsManager()` in tests unless the test intentionally reads `%APPDATA%\OpenClawTray\settings.json`; pass a temp settings directory or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
 - Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
+- **Windows Terminal ghost frames**: tray tests and MSIX packaging tools (`MakeAppx`, `signtool`, the WindowsAppSDK markup compiler) can leak blank "Terminal" windows that survive testhost / msbuild exit. The in-process cleanup at `tests/OpenClaw.Tray.Tests/WinAppSdkGhostWindowCleanup.cs` catches most of them; `build.ps1` invokes the manual fallback at the end of every build. If you see blank Terminal windows piling up after a manual / interrupted test run, run `scripts/cleanup-ghost-windows.ps1` (no admin needed; safe — only touches `CASCADIA_HOSTING_WINDOW_CLASS` windows ≥1000×500 with title literally `Terminal` owned by `WindowsTerminal`).
 - Do not claim completion without reporting validation results.
 
 ## Architecture Context for New Agents
