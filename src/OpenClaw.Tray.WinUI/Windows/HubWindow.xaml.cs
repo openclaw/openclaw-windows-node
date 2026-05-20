@@ -46,6 +46,7 @@ public sealed partial class HubWindow : WindowEx
     /// <summary>When true, ChatPage should auto-start voice recording on next navigation. Consumed (reset to false) by ChatPage.</summary>
     public bool PendingAutoStartVoice { get; set; }
     public string? NodeFullDeviceId { get; set; }
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
     // Cached gateway data — pages read these on navigation
     public SessionInfo[]? LastSessions { get; private set; }
@@ -78,6 +79,7 @@ public sealed partial class HubWindow : WindowEx
         Closed += (s, e) =>
         {
             IsClosed = true;
+            _gatewayNavHideTimer?.Stop();
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
         };
@@ -99,7 +101,7 @@ public sealed partial class HubWindow : WindowEx
         {
             AppModel.PropertyChanged += OnAppModelChanged;
             UpdateTitleBarStatus(AppModel.Status);
-            UpdateGatewayNavVisibility(AppModel.Status == ConnectionStatus.Connected);
+            ScheduleGatewayNavVisibilityForStatus(AppModel.Status, debounceDisconnected: false);
         }
     }
 
@@ -121,7 +123,7 @@ public sealed partial class HubWindow : WindowEx
                         DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                         {
                             if (IsClosed) return;
-                            UpdateGatewayNavVisibility(AppModel!.Status == ConnectionStatus.Connected);
+                            ScheduleGatewayNavVisibilityForStatus(AppModel!.Status, debounceDisconnected: true);
                         });
                 });
                 break;
@@ -367,6 +369,50 @@ public sealed partial class HubWindow : WindowEx
             new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red),
         _ => new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
     };
+
+    private void ScheduleGatewayNavVisibilityForStatus(ConnectionStatus status, bool debounceDisconnected)
+    {
+        switch (GatewayNavVisibilityDebouncePolicy.GetDecision(status, debounceDisconnected))
+        {
+            case GatewayNavVisibilityDecision.ShowNow:
+                _gatewayNavHideTimer?.Stop();
+                UpdateGatewayNavVisibility(connected: true);
+                break;
+            case GatewayNavVisibilityDecision.HideNow:
+                _gatewayNavHideTimer?.Stop();
+                UpdateGatewayNavVisibility(connected: false);
+                break;
+            case GatewayNavVisibilityDecision.ScheduleHide:
+                ScheduleGatewayNavHide();
+                break;
+        }
+    }
+
+    private void ScheduleGatewayNavHide()
+    {
+        if (DispatcherQueue is null)
+        {
+            UpdateGatewayNavVisibility(connected: false);
+            return;
+        }
+
+        _gatewayNavHideTimer ??= DispatcherQueue.CreateTimer();
+        _gatewayNavHideTimer.Interval = GatewayNavVisibilityDebouncePolicy.DisconnectHideDelay;
+        _gatewayNavHideTimer.Tick -= OnGatewayNavHideTimerTick;
+        _gatewayNavHideTimer.Tick += OnGatewayNavHideTimerTick;
+        _gatewayNavHideTimer.Stop();
+        _gatewayNavHideTimer.Start();
+    }
+
+    private void OnGatewayNavHideTimerTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (IsClosed || AppModel is null)
+            return;
+
+        if (GatewayNavVisibilityDebouncePolicy.ShouldHideAfterDelay(AppModel.Status))
+            UpdateGatewayNavVisibility(connected: false);
+    }
 
     private void UpdateGatewayNavVisibility(bool connected)
     {
