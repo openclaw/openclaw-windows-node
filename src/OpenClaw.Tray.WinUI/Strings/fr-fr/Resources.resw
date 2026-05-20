@@ -2777,6 +2777,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Status_Error" xml:space="preserve">
     <value>Erreur</value>
   </data>
+  <data name="Chat_Status_Interrupted" xml:space="preserve">
+    <value>Interrompu</value>
+  </data>
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>Charger les messages précédents</value>
   </data>

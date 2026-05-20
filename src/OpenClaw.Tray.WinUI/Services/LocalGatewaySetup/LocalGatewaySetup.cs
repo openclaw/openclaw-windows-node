@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1711,12 +1712,384 @@ public interface IWindowsNodeConnector
 // ConnectionManagerWindowsNodeConnector → GatewayConnectionManager.EnsureNodeConnectedAsync.
 // See docs/node-connection-architecture.md and easy-button-gateway-comms-audit.md.
 
+/// <summary>
+/// Identity for an OS process, captured for safe PID re-identification.
+/// </summary>
+/// <remarks>
+/// We compare both the process name (best-effort sanity check) and the high-resolution
+/// <see cref="StartTimeUtc"/> because PIDs can be recycled. If a previous keepalive
+/// exited and Windows handed its PID to an unrelated process, the start time will
+/// differ — preventing <see cref="WslDistroKeepAlive.Stop(string, IOpenClawLogger?)"/>
+/// from killing the wrong process.
+/// </remarks>
+public sealed record KeepAliveProcessIdentity(string Name, DateTime StartTimeUtc);
+
+public sealed record KeepAliveSpawnResult(int Pid, KeepAliveProcessIdentity Identity);
+
+internal interface IWslKeepAliveProcessHost
+{
+    KeepAliveSpawnResult Spawn(string distroName, IOpenClawLogger? logger = null);
+    bool TryGetProcessIdentity(int pid, out KeepAliveProcessIdentity identity);
+    void Kill(int pid);
+}
+
+internal sealed class DefaultWslKeepAliveProcessHost : IWslKeepAliveProcessHost
+{
+    public static readonly DefaultWslKeepAliveProcessHost Instance = new();
+
+    public KeepAliveSpawnResult Spawn(string distroName, IOpenClawLogger? logger = null)
+    {
+        // The keepalive must outlive the tray. Packaged (MSIX/Centennial) WinUI apps
+        // run inside a job object that by default kills child processes when the
+        // parent exits — Process.Start alone would not survive an MSIX tray exit. Try
+        // CreateProcess with CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS first; if
+        // the host job forbids breakaway (ERROR_ACCESS_DENIED), fall back to a plain
+        // Process.Start so the keepalive still arms while the tray runs.
+        ValidateDistroNameForCommandLine(distroName);
+
+        var wslPath = ResolveWslPath();
+        var commandLine = BuildCommandLine(wslPath, distroName);
+        var pid = Win32DetachedSpawn.TryStart(wslPath, commandLine, breakaway: true, out var firstError);
+        if (pid is null && firstError == Win32DetachedSpawn.ErrorAccessDenied)
+        {
+            logger?.Warn("[WslKeepAlive] CREATE_BREAKAWAY_FROM_JOB denied; retrying detached keepalive without breakaway.");
+            pid = Win32DetachedSpawn.TryStart(wslPath, commandLine, breakaway: false, out var secondError);
+            if (pid is null)
+                logger?.Warn($"[WslKeepAlive] Detached CreateProcess without breakaway failed (Win32={secondError}); falling back to Process.Start.");
+        }
+        else if (pid is null)
+        {
+            logger?.Warn($"[WslKeepAlive] Detached CreateProcess with breakaway failed (Win32={firstError}); falling back to Process.Start.");
+        }
+
+        if (pid is null)
+        {
+            return SpawnViaProcessFallback(wslPath, distroName);
+        }
+
+        return new KeepAliveSpawnResult(pid.Value, CaptureIdentity(pid.Value));
+    }
+
+    public bool TryGetProcessIdentity(int pid, out KeepAliveProcessIdentity identity)
+    {
+        identity = default!;
+        if (pid <= 0) return false;
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            identity = new KeepAliveProcessIdentity(SafeProcessName(process), SafeStartTimeUtc(process));
+            return true;
+        }
+        catch (ArgumentException) { return false; }     // No such PID
+        catch (InvalidOperationException) { return false; } // Process exited between calls
+        catch (System.ComponentModel.Win32Exception) { return false; } // Access denied / handle invalidated
+    }
+
+    public void Kill(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch (ArgumentException) { }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
+    }
+
+    private static string ResolveWslPath()
+    {
+        var systemDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        if (string.IsNullOrWhiteSpace(systemDirectory))
+            return "wsl.exe";
+        return Path.Combine(systemDirectory, "wsl.exe");
+    }
+
+    private static void ValidateDistroNameForCommandLine(string distroName)
+    {
+        // OpenClaw controls the production distro name ("OpenClawGateway"). Keep the
+        // manual CreateProcess command line deliberately conservative so embedded
+        // quotes/backslashes cannot alter argv parsing for a detached child process.
+        if (!Regex.IsMatch(distroName, @"^[A-Za-z0-9._-]+$"))
+            throw new ArgumentException($"WSL distro name '{distroName}' contains unsupported characters.", nameof(distroName));
+    }
+
+    private static string BuildCommandLine(string wslPath, string distroName)
+    {
+        return $"{QuoteWindowsArgument(wslPath)} -d {QuoteWindowsArgument(distroName)} -u openclaw -- sleep 2147483647";
+    }
+
+    private static string QuoteWindowsArgument(string value)
+    {
+        // This helper is intentionally minimal because distroName is allowlisted and
+        // the executable path comes from System32. It still escapes quotes defensively.
+        return "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+    }
+
+    private KeepAliveSpawnResult SpawnViaProcessFallback(string wslPath, string distroName)
+    {
+        // Used only when CreateProcess fails outright (not for the breakaway-denied
+        // case, which is handled above). Process.Start is more permissive about path
+        // resolution and error reporting.
+        var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = wslPath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
+            ArgumentList = { "-d", distroName, "-u", "openclaw", "--", "sleep", "2147483647" }
+        }) ?? throw new InvalidOperationException("Process.Start returned null for wsl.exe keepalive.");
+
+        var pid = process.Id;
+        var name = SafeProcessName(process);
+        var startUtc = SafeStartTimeUtc(process);
+        process.Dispose();
+        return new KeepAliveSpawnResult(pid, new KeepAliveProcessIdentity(name, startUtc));
+    }
+
+    private static KeepAliveProcessIdentity CaptureIdentity(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return new KeepAliveProcessIdentity(SafeProcessName(process), SafeStartTimeUtc(process));
+        }
+        catch (ArgumentException)
+        {
+            // Process exited between CreateProcess and GetProcessById. Fall back to a
+            // best-effort identity so the marker is still written; next adoption will
+            // fail naturally and we'll respawn.
+            return new KeepAliveProcessIdentity(string.Empty, DateTime.UtcNow);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return new KeepAliveProcessIdentity(string.Empty, DateTime.UtcNow);
+        }
+    }
+
+    private static string SafeProcessName(Process process)
+    {
+        try { return process.ProcessName; }
+        catch (InvalidOperationException) { return string.Empty; }
+        catch (System.ComponentModel.Win32Exception) { return string.Empty; }
+    }
+
+    /// <summary>
+    /// Reads <see cref="Process.StartTime"/> defensively. If <c>wsl.exe</c> exits between
+    /// <see cref="Process.Start"/> and this call (e.g., the distro is unhealthy), the
+    /// property can throw <see cref="InvalidOperationException"/>. Falling back to
+    /// <c>UtcNow</c> means adoption may fail on the very next launch — the worst case is
+    /// one redundant <c>sleep</c> spawn, which is preferable to crashing the spawn path.
+    /// </summary>
+    private static DateTime SafeStartTimeUtc(Process process)
+    {
+        try { return process.StartTime.ToUniversalTime(); }
+        catch (InvalidOperationException) { return DateTime.UtcNow; }
+        catch (System.ComponentModel.Win32Exception) { return DateTime.UtcNow; }
+    }
+}
+
+/// <summary>
+/// Minimal P/Invoke wrapper around <c>CreateProcessW</c> so the keepalive can request
+/// <see cref="CREATE_BREAKAWAY_FROM_JOB"/> — required to survive MSIX/packaged tray
+/// exit, where the host job otherwise kills child processes.
+/// </summary>
+internal static class Win32DetachedSpawn
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public uint cb;
+        public string? lpReserved;
+        public string? lpDesktop;
+        public string? lpTitle;
+        public uint dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+        public ushort wShowWindow, cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput, hStdOutput, hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessW(
+        string? lpApplicationName,
+        StringBuilder lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    private const uint CREATE_BREAKAWAY_FROM_JOB = 0x01000000;
+    private const uint DETACHED_PROCESS = 0x00000008;
+    private const uint CREATE_NO_WINDOW = 0x08000000;
+    public const int ErrorAccessDenied = 5;
+
+    /// <summary>
+    /// Spawns <paramref name="commandLine"/> with <c>DETACHED_PROCESS | CREATE_NO_WINDOW</c>
+    /// (optionally adding <c>CREATE_BREAKAWAY_FROM_JOB</c>). Returns the new PID on
+    /// success, or <see langword="null"/> on failure with the Win32 error in
+    /// <paramref name="win32Error"/>.
+    /// </summary>
+    public static int? TryStart(string applicationName, string commandLine, bool breakaway, out int win32Error)
+    {
+        win32Error = 0;
+        var si = new STARTUPINFO { cb = (uint)Marshal.SizeOf<STARTUPINFO>() };
+        var pi = default(PROCESS_INFORMATION);
+
+        // CreateProcess may mutate the command-line buffer in place.
+        var commandLineBuffer = new StringBuilder(commandLine);
+
+        var flags = DETACHED_PROCESS | CREATE_NO_WINDOW;
+        if (breakaway) flags |= CREATE_BREAKAWAY_FROM_JOB;
+
+        var ok = CreateProcessW(
+            lpApplicationName: applicationName,
+            lpCommandLine: commandLineBuffer,
+            lpProcessAttributes: IntPtr.Zero,
+            lpThreadAttributes: IntPtr.Zero,
+            bInheritHandles: false,
+            dwCreationFlags: flags,
+            lpEnvironment: IntPtr.Zero,
+            lpCurrentDirectory: null,
+            lpStartupInfo: ref si,
+            lpProcessInformation: out pi);
+
+        if (!ok)
+        {
+            win32Error = Marshal.GetLastWin32Error();
+            return null;
+        }
+
+        // We don't need the process/thread handles; close them so we don't leak.
+        if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+        if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+        return (int)pi.dwProcessId;
+    }
+}
+
+/// <summary>
+/// Testable startup arming loop for the local WSL gateway keepalive. The tray calls
+/// this from a fire-and-forget task at launch; tests pass fake probe/ensure delegates
+/// so timeout/failure behavior never depends on a real WSL installation.
+/// </summary>
+internal static class WslKeepAliveStartupArmer
+{
+    public static readonly TimeSpan[] DefaultRetryDelays =
+    [
+        TimeSpan.Zero,
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(60)
+    ];
+
+    public static async Task ArmAsync(
+        string distroName,
+        Func<CancellationToken, Task<WslCommandResult>> probeAsync,
+        Action ensureStarted,
+        Action<string> warn,
+        TimeSpan[]? retryDelays = null,
+        TimeSpan? probeTimeout = null,
+        Func<TimeSpan, Task>? delayAsync = null)
+    {
+        if (string.IsNullOrWhiteSpace(distroName))
+            return;
+
+        retryDelays ??= DefaultRetryDelays;
+        probeTimeout ??= TimeSpan.FromSeconds(5);
+        delayAsync ??= Task.Delay;
+
+        for (var attempt = 0; attempt < retryDelays.Length; attempt++)
+        {
+            if (retryDelays[attempt] > TimeSpan.Zero)
+                await delayAsync(retryDelays[attempt]);
+
+            using var cts = new CancellationTokenSource(probeTimeout.Value);
+            WslCommandResult result;
+            try
+            {
+                result = await probeAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                warn($"[WslKeepAlive] wsl --list probe cancelled/timed out (attempt {attempt + 1}/{retryDelays.Length}); will retry.");
+                continue;
+            }
+
+            if (!result.Success)
+            {
+                var detail = string.IsNullOrWhiteSpace(result.StandardError)
+                    ? result.StandardOutput
+                    : result.StandardError;
+                warn($"[WslKeepAlive] wsl --list failed (exit {result.ExitCode}, attempt {attempt + 1}/{retryDelays.Length}): {SecretRedactor.Redact(detail)}");
+                continue;
+            }
+
+            var distros = WslExeCommandRunner.ParseDistroList(result.StandardOutput);
+            if (!distros.Any(d => d.Name.Equals(distroName, StringComparison.OrdinalIgnoreCase)))
+            {
+                warn($"[WslKeepAlive] Configured local-gateway distro '{distroName}' not present; skipping keepalive.");
+                return;
+            }
+
+            ensureStarted();
+            return;
+        }
+
+        warn("[WslKeepAlive] wsl --list never succeeded; spawning keepalive defensively.");
+        ensureStarted();
+    }
+}
+
+/// <summary>
+/// Manages the WSL VM keepalive process for the local-gateway distro. Spawns a
+/// detached <c>wsl.exe -d &lt;distro&gt; -u openclaw -- sleep 2147483647</c> that
+/// keeps the WSL2 VM running independently of the tray's lifetime. A marker file
+/// at <c>%LOCALAPPDATA%\OpenClawTray\wsl-keepalive\&lt;distro&gt;.json</c>
+/// (overridable via <c>OPENCLAW_TRAY_LOCALAPPDATA_DIR</c>) records the spawned
+/// PID + start time so subsequent tray launches can adopt the existing keepalive
+/// instead of spawning duplicates.
+/// </summary>
 public static class WslDistroKeepAlive
 {
+    private const string MarkerDirectoryName = "wsl-keepalive";
     private static readonly object s_lock = new();
-    private static readonly Dictionary<string, Process> s_processes = new(StringComparer.OrdinalIgnoreCase);
-    private static bool s_processExitRegistered;
+    private static readonly JsonSerializerOptions s_jsonOptions = new() { WriteIndented = false };
 
+    // Test seams.
+    internal static IWslKeepAliveProcessHost? __TestHost;
+    internal static string? __TestMarkerDirectory;
+
+    internal static void __ResetForTests()
+    {
+        __TestHost = null;
+        __TestMarkerDirectory = null;
+    }
+
+    /// <summary>
+    /// Ensures a keepalive process is running for <paramref name="distroName"/>. Adopts
+    /// an existing keepalive (recorded via marker file) when the PID is still alive and
+    /// its start time matches the marker; otherwise spawns a new one.
+    /// Non-throwing — failures are logged.
+    /// </summary>
     public static void EnsureStarted(string distroName, IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(distroName))
@@ -1724,64 +2097,243 @@ public static class WslDistroKeepAlive
 
         lock (s_lock)
         {
-            if (s_processes.TryGetValue(distroName, out var existing) && !existing.HasExited)
-                return;
+            var host = __TestHost ?? DefaultWslKeepAliveProcessHost.Instance;
+            var markerPath = GetMarkerPath(distroName);
 
             try
             {
-                var process = Process.Start(new ProcessStartInfo
+                if (TryReadMarker(markerPath, out var marker)
+                    && string.Equals(marker.DistroName, distroName, StringComparison.OrdinalIgnoreCase)
+                    && host.TryGetProcessIdentity(marker.Pid, out var identity)
+                    && IdentityMatchesMarker(identity, marker))
                 {
-                    FileName = "wsl.exe",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    ArgumentList = { "-d", distroName, "-u", "openclaw", "--", "sleep", "2147483647" }
-                });
-
-                if (process == null)
-                {
-                    logger?.Warn("Failed to start WSL keepalive process.");
+                    logger?.Info($"Adopted existing WSL keepalive for {distroName} (PID {marker.Pid}).");
                     return;
-                }
-
-                s_processes[distroName] = process;
-                logger?.Info($"Started WSL keepalive process for {distroName} (PID {process.Id}).");
-
-                if (!s_processExitRegistered)
-                {
-                    AppDomain.CurrentDomain.ProcessExit += (_, _) => StopAll();
-                    s_processExitRegistered = true;
                 }
             }
             catch (Exception ex)
             {
-                logger?.Warn($"Failed to start WSL keepalive process: {ex.Message}");
+                logger?.Warn($"Failed to inspect WSL keepalive marker for {distroName}: {ex.Message}");
+                // Fall through to spawn fresh.
             }
-        }
-    }
 
-    private static void StopAll()
-    {
-        lock (s_lock)
-        {
-            foreach (var process in s_processes.Values)
+            try
             {
+                var spawn = host.Spawn(distroName, logger);
+                var pid = spawn.Pid;
                 try
                 {
-                    if (!process.HasExited)
-                        process.Kill(entireProcessTree: true);
+                    WriteMarker(markerPath, new KeepAliveMarker(distroName, pid, spawn.Identity.StartTimeUtc, spawn.Identity.Name));
                 }
-                catch
+                catch (Exception writeEx)
                 {
-                    // Process exit cleanup is best-effort only.
+                    // Transactional invariant: a spawned keepalive without a marker is
+                    // an untracked orphan. Future tray launches cannot adopt it (no
+                    // marker), Stop/StopAll cannot reach it, and it will outlive
+                    // distro repair/remove. Kill the just-spawned PID before
+                    // surfacing the failure.
+                    logger?.Warn($"Marker write failed after spawn for {distroName}; killing orphan PID {pid}: {writeEx.Message}");
+                    try { host.Kill(pid); } catch { /* best-effort cleanup */ }
+                    throw;
                 }
+                logger?.Info($"Started WSL keepalive process for {distroName} (PID {pid}).");
             }
-
-            s_processes.Clear();
+            catch (Exception ex)
+            {
+                logger?.Warn($"Failed to start WSL keepalive process for {distroName}: {ex.Message}");
+            }
         }
     }
+
+    /// <summary>
+    /// Stops the keepalive for <paramref name="distroName"/> if the marker file
+    /// references a process whose identity (name + start time) still matches.
+    /// If the PID has been recycled to an unrelated process, only the marker is
+    /// deleted — we never kill an unverified PID.
+    /// </summary>
+    public static void Stop(string distroName, IOpenClawLogger? logger = null)
+    {
+        if (string.IsNullOrWhiteSpace(distroName))
+            return;
+
+        lock (s_lock)
+        {
+            var host = __TestHost ?? DefaultWslKeepAliveProcessHost.Instance;
+            var markerPath = GetMarkerPath(distroName);
+            if (!TryReadMarker(markerPath, out var marker))
+            {
+                if (File.Exists(markerPath))
+                {
+                    logger?.Warn($"WSL keepalive marker for {distroName} is malformed; deleting marker only.");
+                    TryDeleteMarker(markerPath);
+                }
+                return;
+            }
+
+            try
+            {
+                if (host.TryGetProcessIdentity(marker.Pid, out var identity) && IdentityMatchesMarker(identity, marker))
+                {
+                    host.Kill(marker.Pid);
+                    logger?.Info($"Stopped WSL keepalive for {distroName} (PID {marker.Pid}).");
+                }
+                else
+                {
+                    logger?.Info($"WSL keepalive marker for {distroName} did not match a live process (PID {marker.Pid}); removing marker only.");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn($"Failed to stop WSL keepalive for {distroName}: {ex.Message}");
+            }
+            finally
+            {
+                TryDeleteMarker(markerPath);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stops keepalives for every recorded marker. Best-effort; used by uninstall.
+    /// </summary>
+    public static void StopAll(IOpenClawLogger? logger = null)
+    {
+        string? markerDir;
+        lock (s_lock)
+        {
+            markerDir = ResolveMarkerDirectory();
+        }
+
+        if (markerDir is null || !Directory.Exists(markerDir))
+            return;
+
+        // Materialize before iterating: Stop() deletes each marker file as it processes
+        // it, and FindNextFile semantics on Windows can skip entries when the directory
+        // mutates mid-enumeration.
+        var markerFiles = Directory.EnumerateFiles(markerDir, "*.json").ToList();
+        foreach (var file in markerFiles)
+        {
+            try
+            {
+                if (TryReadMarkerFromPath(file, out var marker))
+                {
+                    Stop(marker.DistroName, logger);
+                }
+                else if (File.Exists(file))
+                {
+                    logger?.Warn($"WSL keepalive marker {file} is malformed; deleting marker only.");
+                    TryDeleteMarker(file);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn($"Failed to stop keepalive recorded in {file}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool IdentityMatchesMarker(KeepAliveProcessIdentity identity, KeepAliveMarker marker)
+    {
+        // Name comparison is a best-effort sanity check ("wsl") — Spawn captures whatever
+        // the OS reports, which may be empty if the process exited before ProcessName was
+        // resolved. Start time is the authoritative anti-PID-recycle check; allow a small
+        // tolerance for clock-resolution rounding through serialization.
+        if (!string.IsNullOrEmpty(marker.ProcessName)
+            && !string.IsNullOrEmpty(identity.Name)
+            && !string.Equals(identity.Name, marker.ProcessName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var delta = (identity.StartTimeUtc - marker.StartTimeUtc).Duration();
+        // Generous tolerance: DateTime.ToUniversalTime + JSON serialization can round to
+        // 100-tick (10us) increments depending on the kind, and on slow disks the live
+        // process's reported StartTime can drift slightly from the value cached at spawn.
+        // 500ms is well below any plausible PID-recycle window (Windows PID reuse takes
+        // at least seconds in practice) so we don't lose anti-recycle protection.
+        return delta <= TimeSpan.FromMilliseconds(500);
+    }
+
+    private static string? ResolveMarkerDirectory()
+    {
+        if (!string.IsNullOrWhiteSpace(__TestMarkerDirectory))
+            return __TestMarkerDirectory;
+
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
+        if (string.IsNullOrWhiteSpace(root))
+            root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(root))
+            return null;
+
+        return Path.Combine(root, "OpenClawTray", MarkerDirectoryName);
+    }
+
+    private static string GetMarkerPath(string distroName)
+    {
+        var dir = ResolveMarkerDirectory()
+            ?? throw new InvalidOperationException("Could not resolve LocalApplicationData for WSL keepalive marker.");
+        var safe = SanitizeForFileName(distroName);
+        return Path.Combine(dir, safe + ".json");
+    }
+
+    private static string SanitizeForFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var builder = new StringBuilder(name.Length);
+        foreach (var ch in name)
+            builder.Append(Array.IndexOf(invalid, ch) >= 0 ? '_' : ch);
+        return builder.ToString();
+    }
+
+    private static bool TryReadMarker(string markerPath, out KeepAliveMarker marker)
+        => TryReadMarkerFromPath(markerPath, out marker);
+
+    private static bool TryReadMarkerFromPath(string markerPath, out KeepAliveMarker marker)
+    {
+        marker = default!;
+        try
+        {
+            if (!File.Exists(markerPath)) return false;
+            var json = File.ReadAllText(markerPath);
+            var parsed = JsonSerializer.Deserialize<KeepAliveMarker>(json, s_jsonOptions);
+            if (parsed is null || string.IsNullOrWhiteSpace(parsed.DistroName) || parsed.Pid <= 0)
+                return false;
+            marker = parsed;
+            return true;
+        }
+        catch (JsonException) { return false; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static void WriteMarker(string markerPath, KeepAliveMarker marker)
+    {
+        var directory = Path.GetDirectoryName(markerPath);
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        // Atomic write: serialize to a temp file then atomically replace the destination
+        // (overwrite handles the case where another tray instance won the race and wrote
+        // first — see hanselman review #1). NTFS guarantees File.Move with overwrite is
+        // atomic on the same volume.
+        var tempPath = markerPath + ".tmp";
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(marker, s_jsonOptions));
+        File.Move(tempPath, markerPath, overwrite: true);
+    }
+
+    private static void TryDeleteMarker(string markerPath)
+    {
+        try { if (File.Exists(markerPath)) File.Delete(markerPath); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
 }
+
+public sealed record KeepAliveMarker(
+    string DistroName,
+    int Pid,
+    DateTime StartTimeUtc,
+    string ProcessName);
 
 public enum GatewayOperatorConnectionStatus
 {
@@ -3211,13 +3763,15 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
     private readonly IWslCommandRunner _wsl;
     private readonly ILocalGatewayHealthProbe _healthProbe;
     private readonly ILocalGatewaySetupSettings? _settings;
+    private readonly IOpenClawLogger? _logger;
 
-    public LocalGatewayLifecycleManager(LocalGatewaySetupOptions options, IWslCommandRunner wsl, ILocalGatewayHealthProbe healthProbe, ILocalGatewaySetupSettings? settings = null)
+    public LocalGatewayLifecycleManager(LocalGatewaySetupOptions options, IWslCommandRunner wsl, ILocalGatewayHealthProbe healthProbe, ILocalGatewaySetupSettings? settings = null, IOpenClawLogger? logger = null)
     {
         _options = options;
         _wsl = wsl;
         _healthProbe = healthProbe;
         _settings = settings;
+        _logger = logger;
     }
 
     public async Task<LocalGatewayLifecycleResult> RepairAsync(CancellationToken cancellationToken = default)
@@ -3226,6 +3780,12 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
         var distros = await _wsl.ListDistrosAsync(cancellationToken);
         if (!distros.Any(d => d.Name.Equals(_options.DistroName, StringComparison.OrdinalIgnoreCase) && d.Version == 2))
             return Fail("distro_missing", $"The OpenClaw WSL distro '{_options.DistroName}' was not found.", steps);
+
+        // Tear down any stale keepalive before terminating; we'll spawn a fresh one
+        // after the gateway becomes healthy. Without this, the old keepalive lingers
+        // pointing at a now-restarted VM but is no longer tracked by our marker.
+        WslDistroKeepAlive.Stop(_options.DistroName, _logger);
+        steps.Add("keepalive_stopped");
 
         await _wsl.TerminateDistroAsync(_options.DistroName, cancellationToken);
         steps.Add("distro_terminated");
@@ -3244,6 +3804,11 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
         if (!health.Success)
             return Fail("gateway_unhealthy", health.Error ?? WslLogsHelp("Gateway did not become healthy after repair."), steps);
 
+        // Re-arm the keepalive so the VM stays up after repair completes, even if the
+        // tray that triggered repair exits before the next OnLaunched hook runs.
+        WslDistroKeepAlive.EnsureStarted(_options.DistroName, _logger);
+        steps.Add("keepalive_started");
+
         return new LocalGatewayLifecycleResult(true, Steps: steps);
     }
 
@@ -3252,6 +3817,11 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
         var steps = new List<string>();
         if (!request.ConfirmRemove)
             return Fail("confirmation_required", "Removing the local OpenClaw Gateway requires explicit confirmation.", steps);
+
+        // Stop the keepalive before terminating so the marker file does not survive
+        // distro removal and confuse a future install with the same name.
+        WslDistroKeepAlive.Stop(_options.DistroName, _logger);
+        steps.Add("keepalive_stopped");
 
         await _wsl.TerminateDistroAsync(_options.DistroName, cancellationToken);
         steps.Add("distro_terminated");

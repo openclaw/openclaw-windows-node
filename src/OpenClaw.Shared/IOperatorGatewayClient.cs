@@ -41,6 +41,10 @@ public interface IOperatorGatewayClient
     string? OperatorDeviceId { get; }
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
+    /// <summary>Canonical main session key resolved from hello-ok; <c>null</c> until handshake.</summary>
+    string? MainSessionKey { get; }
+    /// <summary>True once the hello-ok handshake has been processed.</summary>
+    bool HasHandshakeSnapshot { get; }
 
     // ─── Connection events (from WebSocketClientBase) ───
     event EventHandler<ConnectionStatus>? StatusChanged;

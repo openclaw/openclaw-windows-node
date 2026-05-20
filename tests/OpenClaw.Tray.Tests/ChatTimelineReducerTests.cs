@@ -174,4 +174,134 @@ public class ChatTimelineReducerTests
         Assert.Equal(ChatToolCallStatus.InProgress, state.Entries[0].ToolResult);
         Assert.Null(state.Entries[0].ToolOutput);
     }
+
+    [Fact]
+    public void TurnEnd_ClearsActiveToolCallId()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent("powershell", "powershell"));
+
+        Assert.NotNull(state.ActiveToolCallId);
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Null(updated.ActiveToolCallId);
+    }
+
+    [Fact]
+    public void TurnEnd_MarksInProgressToolAsInterrupted()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent("powershell", "powershell"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Single(updated.Entries);
+        Assert.Equal(ChatToolCallStatus.Interrupted, updated.Entries[0].ToolResult);
+    }
+
+    [Fact]
+    public void TurnEnd_WithNoActiveTool_IsNoOpForToolState()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatThinkingEvent(string.Empty));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.False(updated.TurnActive);
+        Assert.Null(updated.ActiveToolCallId);
+    }
+
+    [Fact]
+    public void TurnEnd_MarksMultipleParallelToolsAsInterrupted()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("read", "read", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("grep", "grep", ToolCallId: "tc2"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Equal(2, updated.Entries.Count);
+        Assert.Equal(ChatToolCallStatus.Interrupted, updated.Entries[0].ToolResult);
+        Assert.Equal(ChatToolCallStatus.Interrupted, updated.Entries[1].ToolResult);
+        Assert.Null(updated.ActiveToolCallId);
+        Assert.Empty(updated.ActiveToolCalls);
+    }
+
+    [Fact]
+    public void ToolOutput_WithToolCallId_MatchesCorrectTool()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("read foo", "read", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("grep bar", "grep", ToolCallId: "tc2"));
+
+        // Output for tc1 arrives (even though tc2 started later)
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("file contents", ToolCallId: "tc1"));
+
+        Assert.Equal(ChatToolCallStatus.Success, updated.Entries[0].ToolResult);
+        Assert.Equal("file contents", updated.Entries[0].ToolOutput);
+        // tc2 still in progress
+        Assert.Equal(ChatToolCallStatus.InProgress, updated.Entries[1].ToolResult);
+    }
+
+    [Fact]
+    public void ToolOutput_WithToolCallId_PreservesOutputWhenEndEventIsEmpty()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("exec command", "exec", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("command output", ToolCallId: "tc1"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent(string.Empty, ToolCallId: "tc1"));
+
+        Assert.Equal(ChatToolCallStatus.Success, updated.Entries[0].ToolResult);
+        Assert.Equal("command output", updated.Entries[0].ToolOutput);
+    }
+
+    [Fact]
+    public void ToolError_WithToolCallId_MatchesCorrectTool()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("read foo", "read", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("grep bar", "grep", ToolCallId: "tc2"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("not found", ToolCallId: "tc2"));
+
+        // tc1 still in progress
+        Assert.Equal(ChatToolCallStatus.InProgress, updated.Entries[0].ToolResult);
+        // tc2 errored
+        Assert.Equal(ChatToolCallStatus.Error, updated.Entries[1].ToolResult);
+        Assert.Equal("not found", updated.Entries[1].ToolOutput);
+    }
+
+    [Fact]
+    public void ToolOutput_WithoutToolCallId_FallsBackToLastStarted()
+    {
+        // Legacy events without ToolCallId use positional fallback
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent("powershell", "powershell"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("output text"));
+
+        Assert.Equal(ChatToolCallStatus.Success, updated.Entries[0].ToolResult);
+        Assert.Null(updated.ActiveToolCallId);
+    }
+
+    [Fact]
+    public void Error_MarksActiveToolAsInterrupted()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent("powershell", "powershell"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatErrorEvent("Something broke"));
+
+        // Tool should be marked Interrupted (not Success — it never completed)
+        Assert.Equal(ChatToolCallStatus.Interrupted, updated.Entries[0].ToolResult);
+        Assert.Null(updated.ActiveToolCallId);
+        Assert.False(updated.TurnActive);
+    }
 }

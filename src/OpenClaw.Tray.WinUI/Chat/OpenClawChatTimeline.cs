@@ -991,7 +991,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             {
                 // Same palette as the previous chip — keeps continuity with
                 // Kenny's Cat04 tool cards. Running orange / Done green /
-                // Error critical.
+                // Error critical / Interrupted grey.
                 switch (entry.ToolResult)
                 {
                     case ChatToolCallStatus.Success:
@@ -1000,6 +1000,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     case ChatToolCallStatus.Error:
                         var err = themeBrush("SystemFillColorCriticalBrush");
                         return (LocalizationHelper.GetString("Chat_Status_Error"), err, err);
+                    case ChatToolCallStatus.Interrupted:
+                        var grey = themeBrush("TextFillColorTertiaryBrush");
+                        return (LocalizationHelper.GetString("Chat_Status_Interrupted"), grey, grey);
                     default:
                         var run = new SolidColorBrush(Color.FromArgb(0xFF, 0xDC, 0x78, 0x1E));
                         return (LocalizationHelper.GetString("Chat_Status_Running"), run, themeBrush("TextFillColorTertiaryBrush"));
@@ -1203,12 +1206,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var stepCount = entries.Count;
 
             // Aggregate burst status: Error if any errored, Running if any
-            // not-yet-finished, otherwise Done. Drives the task header pill.
+            // not-yet-finished, Interrupted if any interrupted (but not running),
+            // otherwise Done. Drives the task header pill.
             ChatToolCallStatus aggregateStatus = ChatToolCallStatus.Success;
             foreach (var e in entries)
             {
                 if (e.ToolResult == ChatToolCallStatus.Error) { aggregateStatus = ChatToolCallStatus.Error; break; }
-                if (e.ToolResult != ChatToolCallStatus.Success) aggregateStatus = ChatToolCallStatus.InProgress;
+                if (e.ToolResult == ChatToolCallStatus.InProgress) { aggregateStatus = ChatToolCallStatus.InProgress; }
+                else if (e.ToolResult == ChatToolCallStatus.Interrupted && aggregateStatus == ChatToolCallStatus.Success)
+                    aggregateStatus = ChatToolCallStatus.Interrupted;
             }
             var (taskStatusText, taskStatusBg, _) = ResolveStatus(new ChatTimelineItem(
                 Id: "agg", Kind: ChatTimelineItemKind.ToolCall, Text: null,
@@ -1368,6 +1374,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         case ChatToolCallStatus.Error:
                             return Caption("\uE711")
                                 .Foreground(themeBrush("SystemFillColorCriticalBrush"))
+                                .Set(t => { t.FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"); t.FontSize = size; })
+                                .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center);
+                        case ChatToolCallStatus.Interrupted:
+                            return Caption("\uE738")
+                                .Foreground(themeBrush("TextFillColorTertiaryBrush"))
                                 .Set(t => { t.FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"); t.FontSize = size; })
                                 .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center);
                         default:

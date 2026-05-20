@@ -2777,6 +2777,9 @@
   <data name="Chat_Status_Error" xml:space="preserve">
     <value>错误</value>
   </data>
+  <data name="Chat_Status_Interrupted" xml:space="preserve">
+    <value>已中断</value>
+  </data>
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>加载更早的消息</value>
   </data>

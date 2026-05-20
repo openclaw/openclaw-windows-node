@@ -78,7 +78,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly HashSet<string> _historyInFlight = new();            // sessionKey
     // Track recently-sent local user message texts so we can suppress
     // SSE echoes while still displaying messages from other clients.
-    private readonly Dictionary<string, Queue<string>> _localSentTexts = new();
+    private readonly Dictionary<string, Queue<LocalSentText>> _localSentTexts = new();
     // Threads where we locally initiated the current turn (via SendMessageAsync).
     // When lifecycle.start arrives for a thread NOT in this set, we know a remote
     // client started the turn and should fetch the user message from history.
@@ -86,6 +86,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // Per-thread retry count for LoadHistoryAsync to prevent unbounded retry loops.
     private readonly Dictionary<string, int> _historyRetryCount = new();
     private const int MaxHistoryRetries = 3;
+    private static readonly TimeSpan LocalEchoSuppressionWindow = TimeSpan.FromSeconds(30);
+    private readonly record struct LocalSentText(string Text, DateTimeOffset SentAt);
     // Per-thread, per-entry metadata: timestamp + model snapshot at the
     // moment the entry was created. Built up as events are applied so the
     // timeline renderer can show a "<sender> · <local time> · <model>" footer
@@ -144,28 +146,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
     }
 
-    public Task<ChatThread> CreateThreadAsync(string? initialMessage = null, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        // The gateway has no "create new chat session" RPC today; the operator
-        // is always wired to the gateway's main session. Return that thread
-        // and (optionally) send the initial message into it.
-        ChatThread thread;
-        lock (_gate)
-        {
-            EnsureTimelinesForSessionsLocked();
-            thread = ResolveMainOrFirstThreadLocked()
-                     ?? new ChatThread { Id = "main", Title = "Main session", Status = ChatThreadStatus.Running };
-        }
-
-        if (!string.IsNullOrWhiteSpace(initialMessage))
-        {
-            return SendMessageAsync(thread.Id, initialMessage!, cancellationToken)
-                .ContinueWith(_ => thread, cancellationToken, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
-        }
-        return Task.FromResult(thread);
-    }
-
     // Explicit interface implementation (no attachments).
     Task IChatDataProvider.SendMessageAsync(string threadId, string message, CancellationToken cancellationToken)
         => SendMessageAsync(threadId, message, cancellationToken, attachments: null);
@@ -211,10 +191,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // Track this text so we can suppress the SSE echo.
             if (!_localSentTexts.TryGetValue(threadId, out var q))
             {
-                q = new Queue<string>();
+                q = new Queue<LocalSentText>();
                 _localSentTexts[threadId] = q;
             }
-            q.Enqueue(trimmed);
+            q.Enqueue(new LocalSentText(trimmed, DateTimeOffset.UtcNow));
             // Cap at 20 to avoid unbounded growth.
             while (q.Count > 20) q.Dequeue();
 
@@ -241,6 +221,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         catch (Exception ex)
         {
+            lock (_gate)
+            {
+                RemovePendingLocalEchoLocked(threadId, trimmed);
+                _locallyInitiatedThreads.Remove(threadId);
+            }
+
             // Surface as an error in the timeline + notification — keeps the
             // user message visible so they can edit/retry.
             ApplyEventAndPublish(threadId, new ChatErrorEvent($"Send failed: {ex.Message}"));
@@ -936,9 +922,21 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (message is null) return;
 
+        // The gateway must include a canonical sessionKey on every chat event.
+        // If it doesn't, that's a protocol bug — drop the event rather than
+        // routing it to a literal "main" bucket that can't possibly match the
+        // optimistic timeline keyed by the canonical key. Surfacing the drop
+        // here makes future protocol gaps visible instead of silently merging
+        // into a synthetic key.
+        if (string.IsNullOrEmpty(message.SessionKey))
+        {
+            Logger.Warn($"[ChatProvider] Dropping chat message with empty sessionKey (role={message.Role})");
+            return;
+        }
+
         // Suppress chat messages for threads that were aborted by the user.
         // Chat messages don't carry a runId, so we use thread-level suppression.
-        var msgThreadId = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+        var msgThreadId = message.SessionKey;
         lock (_gate)
         {
             if (_abortedThreads.Contains(msgThreadId))
@@ -960,7 +958,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (LooksLikeSystemControlNote(message.Text))
             {
                 if (string.IsNullOrEmpty(message.Text)) return;
-                var sysThread = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+                var sysThread = message.SessionKey;
                 ChatEntryMetadata? sysMeta;
                 lock (_gate) { sysMeta = BuildLiveMetaLocked(sysThread, message.Ts); }
                 ApplyEventAndPublish(sysThread,
@@ -975,9 +973,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             lock (_gate)
             {
                 if (_localSentTexts.TryGetValue(msgThreadId, out var q) && q.Count > 0
-                    && q.Peek() == echoText)
+                    && TryConsumeLocalEchoLocked(msgThreadId, q, echoText))
                 {
-                    q.Dequeue();
                     isLocalEcho = true;
                 }
             }
@@ -1001,7 +998,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (roleLower == "toolresult" || roleLower == "tool_result")
         {
             if (string.IsNullOrEmpty(message.Text)) return;
-            var trThread = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+            var trThread = message.SessionKey;
             ChatEntryMetadata? trMeta;
             lock (_gate) { trMeta = BuildLiveMetaLocked(trThread, message.Ts); }
             var capped = TruncateForChatEntry(message.Text);
@@ -1016,7 +1013,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (string.IsNullOrEmpty(message.Text))
             return;
 
-        var threadId = string.IsNullOrEmpty(message.SessionKey) ? "main" : message.SessionKey;
+        var threadId = message.SessionKey;
         ChatEntryMetadata? meta;
         lock (_gate)
         {
@@ -1058,7 +1055,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private void OnAgentEventReceived(object? sender, AgentEventInfo evt)
     {
         if (evt is null) return;
-        var threadId = string.IsNullOrEmpty(evt.SessionKey) ? "main" : evt.SessionKey;
+        // As with chat events, every agent event must carry a canonical
+        // sessionKey. Drop the event rather than routing to "main" if missing —
+        // see the rationale in OnChatMessageReceived.
+        if (string.IsNullOrEmpty(evt.SessionKey))
+        {
+            Logger.Warn($"[ChatProvider] Dropping agent event with empty sessionKey (stream={evt.Stream})");
+            return;
+        }
+        var threadId = evt.SessionKey;
 
         // Always update run tracking first (state maintenance must not be skipped).
         UpdateActiveRunId(evt, threadId);
@@ -1189,6 +1194,51 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 }
             }
         }
+    }
+
+    private bool TryConsumeLocalEchoLocked(string threadId, Queue<LocalSentText> queue, string text)
+    {
+        var now = DateTimeOffset.UtcNow;
+        while (queue.Count > 0 && now - queue.Peek().SentAt > LocalEchoSuppressionWindow)
+            queue.Dequeue();
+
+        if (queue.Count == 0)
+        {
+            _localSentTexts.Remove(threadId);
+            return false;
+        }
+
+        if (!string.Equals(queue.Peek().Text, text, StringComparison.Ordinal))
+            return false;
+
+        queue.Dequeue();
+        if (queue.Count == 0)
+            _localSentTexts.Remove(threadId);
+        return true;
+    }
+
+    private void RemovePendingLocalEchoLocked(string threadId, string text)
+    {
+        if (!_localSentTexts.TryGetValue(threadId, out var queue))
+            return;
+
+        var kept = new Queue<LocalSentText>(queue.Count);
+        var removed = false;
+        while (queue.Count > 0)
+        {
+            var pending = queue.Dequeue();
+            if (!removed && string.Equals(pending.Text, text, StringComparison.Ordinal))
+            {
+                removed = true;
+                continue;
+            }
+            kept.Enqueue(pending);
+        }
+
+        if (kept.Count == 0)
+            _localSentTexts.Remove(threadId);
+        else
+            _localSentTexts[threadId] = kept;
     }
 
     /// <summary>
@@ -1941,23 +1991,51 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
     }
 
-    private ChatThread? ResolveMainOrFirstThreadLocked()
-    {
-        if (_sessions.Length == 0) return null;
-        var main = Array.Find(_sessions, s => s.IsMain);
-        return ToThread(main ?? _sessions[0]);
-    }
-
     private ChatDataSnapshot BuildSnapshotLocked()
     {
-        var threads = new ChatThread[_sessions.Length];
+        // Build threads from the gateway's authoritative session list.
+        // No synthesis based on local timeline keys — the UI's compose target
+        // is exposed separately via ChatComposeTarget so the renderer can show
+        // a usable composer even before the first session materializes server-
+        // side (e.g. fresh install with zero sessions).
+        var threadList = new List<ChatThread>(_sessions.Length + 1);
         for (int i = 0; i < _sessions.Length; i++)
-            threads[i] = ToThread(_sessions[i]);
+            threadList.Add(ToThread(_sessions[i]));
+
+        var composeKey = _bridge.MainSessionKey;
+        var composeReady = _bridge.HasHandshakeSnapshot
+            && !string.IsNullOrWhiteSpace(composeKey)
+            && _status == ConnectionStatus.Connected;
+
+        // If the compose target hasn't materialized as a real session yet but
+        // already has an optimistic timeline (because the user sent a message
+        // before the gateway echoed back sessions.list), surface a synthetic
+        // thread record so the UI can render the optimistic bubble without
+        // falling back into the "no thread selected" zero state. The synthetic
+        // thread's Id is the canonical compose key, so when SessionsUpdated
+        // eventually arrives with the same key it replaces the synthetic in
+        // place — no migration, no re-keying.
+        if (composeReady
+            && composeKey is { } ck
+            && _timelines.TryGetValue(ck, out var pendingTl)
+            && pendingTl.Entries.Count > 0
+            && !_sessions.Any(s => string.Equals(s.Key, ck, StringComparison.Ordinal)))
+        {
+            threadList.Add(new ChatThread
+            {
+                Id = ck,
+                Title = "Main session",
+                Status = ChatThreadStatus.Running,
+                Activity = ChatActivity.Idle,
+            });
+        }
+
+        var threads = threadList.ToArray();
 
         // Snapshot a defensive copy of the timeline dict.
         var timelinesCopy = new Dictionary<string, ChatTimelineState>(_timelines);
 
-        var defaultThreadId = ResolveDefaultThreadIdLocked(threads);
+        var defaultThreadId = ResolveDefaultThreadIdLocked();
 
         var connectionLabel = _status switch
         {
@@ -1968,32 +2046,47 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _ => _status.ToString()
         };
 
+        var composeTarget = composeReady
+            ? new ChatComposeTarget(composeKey, true)
+            : ChatComposeTarget.NotReady;
+
         return new ChatDataSnapshot(
             Threads: threads,
             Timelines: timelinesCopy,
             DefaultThreadId: defaultThreadId,
             ConnectionStatus: connectionLabel,
-            AvailableModels: _availableModels);
+            AvailableModels: _availableModels,
+            ComposeTarget: composeTarget);
     }
 
-    private static string? ResolveDefaultThreadIdLocked(ChatThread[] threads)
+    private string? ResolveDefaultThreadIdLocked()
     {
-        if (threads.Length == 0) return null;
-        for (int i = 0; i < threads.Length; i++)
+        // Prefer the gateway's canonical main session (IsMain on SessionInfo)
+        // so we never have to guess from a literal like "main". Only fall back
+        // to the compose target (pre-materialization) or the first available
+        // session when no main is present.
+        for (int i = 0; i < _sessions.Length; i++)
         {
-            // ChatThread doesn't carry the IsMain flag explicitly, so detect it
-            // by a heuristic: the upstream Title we set for main sessions.
-            if (string.Equals(threads[i].Id, "main", StringComparison.OrdinalIgnoreCase))
-                return threads[i].Id;
+            var s = _sessions[i];
+            if (s.IsMain && !string.IsNullOrEmpty(s.Key))
+                return s.Key;
         }
-        return threads[0].Id;
+        if (_bridge.HasHandshakeSnapshot
+            && _bridge.MainSessionKey is { } mk
+            && !string.IsNullOrWhiteSpace(mk))
+            return mk;
+        if (_sessions.Length > 0 && !string.IsNullOrEmpty(_sessions[0].Key))
+            return _sessions[0].Key;
+        return null;
     }
 
     private static ChatThread ToThread(SessionInfo s)
     {
         return new ChatThread
         {
-            Id = string.IsNullOrEmpty(s.Key) ? "main" : s.Key,
+            // SessionInfo.Key is the canonical gateway session key; we trust
+            // it as-is rather than substituting a literal like "main".
+            Id = s.Key ?? string.Empty,
             Title = !string.IsNullOrWhiteSpace(s.DisplayName)
                 ? s.DisplayName!
                 : (s.IsMain ? "Main session" : s.ShortKey),

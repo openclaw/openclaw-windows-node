@@ -14,12 +14,12 @@ public static class ChatTimelineReducer
             ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false),
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true),
             ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: false, e.ReconcilePrevious),
-            ChatTurnEndEvent => state with { TurnActive = false, ActiveAssistantId = null, ActiveReasoningId = null, PendingPermission = null },
+            ChatTurnEndEvent => ApplyTurnEnd(state),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
             ChatToolStartEvent e => ApplyToolStart(state, e),
             ChatToolOutputEvent e => ApplyToolOutput(state, e),
             ChatToolErrorEvent e => ApplyToolError(state, e),
-            ChatErrorEvent e => PushEntry(EndTurn(state), ChatTimelineItemKind.Status, e.Text, ChatTone.Error),
+            ChatErrorEvent e => PushEntry(ApplyTurnEnd(state), ChatTimelineItemKind.Status, e.Text, ChatTone.Error),
             ChatStatusEvent e => PushEntry(state, ChatTimelineItemKind.Status, e.Text, e.Tone),
             ChatRestoredEvent e => PushEntry(state, ChatTimelineItemKind.Status, e.Text, ChatTone.Info),
             ChatContextChangedEvent => state,
@@ -80,46 +80,59 @@ public static class ChatTimelineReducer
     static ChatTimelineState ApplyToolStart(ChatTimelineState state, ChatToolStartEvent e)
     {
         var id = $"e{state.NextId}";
+        var activeToolCalls = state.ActiveToolCalls;
+
+        // Register by ToolCallId if available (parallel-safe correlation).
+        if (e.ToolCallId is { } tcId)
+            activeToolCalls = activeToolCalls.SetItem(tcId, id);
+
         return state with
         {
             Entries = state.Entries.Add(new(id, ChatTimelineItemKind.ToolCall, e.Text,
                 ToolName: e.ToolName, ToolResult: ChatToolCallStatus.InProgress,
                 IntentSummary: e.Text, ToolArgs: e.ToolArgs, ToolCallId: e.ToolCallId)),
             NextId = state.NextId + 1,
-            ActiveToolCallId = id,
+            // Only update legacy positional slot for events without a correlation ID.
+            ActiveToolCallId = e.ToolCallId is null ? id : state.ActiveToolCallId,
+            ActiveToolCalls = activeToolCalls,
             TurnActive = true
         };
     }
 
     static ChatTimelineState ApplyToolOutput(ChatTimelineState state, ChatToolOutputEvent e)
     {
-        var entries = state.Entries;
-        var targetId = FindToolEntryId(state, e.ToolCallId);
-        if (targetId is not null)
+        var (entries, entryId) = ResolveToolEntry(state, e.ToolCallId);
+        if (entryId is { } tid)
         {
-            var idx = entries.FindIndex(en => en.Id == targetId);
+            var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
             {
+                var existingOutput = entries[idx].ToolOutput;
                 entries = entries.SetItem(idx, entries[idx] with
                 {
                     ToolResult = ChatToolCallStatus.Success,
-                    ToolOutput = e.Text
+                    ToolOutput = string.IsNullOrEmpty(e.Text) && existingOutput is not null
+                        ? existingOutput
+                        : e.Text
                 });
             }
         }
-        // Clear ActiveToolCallId only if we just completed it (or no ToolCallId was specified)
-        var nextActiveId = (e.ToolCallId is null || targetId == state.ActiveToolCallId)
-            ? null : state.ActiveToolCallId;
-        return state with { Entries = entries, ActiveToolCallId = nextActiveId, PendingPermission = null };
+        return state with
+        {
+            Entries = entries,
+            // Don't remove from ActiveToolCalls here: multiple output events can arrive
+            // for the same tool (command_output + item end). Mapping is cleared at turn end.
+            ActiveToolCallId = (entryId == state.ActiveToolCallId) ? null : state.ActiveToolCallId,
+            PendingPermission = null
+        };
     }
 
     static ChatTimelineState ApplyToolError(ChatTimelineState state, ChatToolErrorEvent e)
     {
-        var entries = state.Entries;
-        var targetId = FindToolEntryId(state, e.ToolCallId);
-        if (targetId is not null)
+        var (entries, entryId) = ResolveToolEntry(state, e.ToolCallId);
+        if (entryId is { } tid)
         {
-            var idx = entries.FindIndex(en => en.Id == targetId);
+            var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
             {
                 entries = entries.SetItem(idx, entries[idx] with
@@ -129,30 +142,32 @@ public static class ChatTimelineReducer
                 });
             }
         }
-        var nextActiveId = (e.ToolCallId is null || targetId == state.ActiveToolCallId)
-            ? null : state.ActiveToolCallId;
-        return state with { Entries = entries, ActiveToolCallId = nextActiveId, PendingPermission = null };
+        return state with
+        {
+            Entries = entries,
+            ActiveToolCallId = (entryId == state.ActiveToolCallId) ? null : state.ActiveToolCallId,
+            ActiveToolCalls = e.ToolCallId is { } k ? state.ActiveToolCalls.Remove(k) : state.ActiveToolCalls,
+            PendingPermission = null
+        };
     }
 
     /// <summary>
-    /// Find the timeline entry id for a tool call. When <paramref name="toolCallId"/>
-    /// is provided, match by the stored ToolCallId on the entry. Otherwise fall
-    /// back to <see cref="ChatTimelineState.ActiveToolCallId"/>.
+    /// Resolve which timeline entry a tool output/error belongs to.
+    /// Prefers ID-based lookup (parallel-safe); falls back to ActiveToolCallId only for legacy events (no ID).
     /// </summary>
-    static string? FindToolEntryId(ChatTimelineState state, string? toolCallId)
+    static (System.Collections.Immutable.ImmutableList<ChatTimelineItem> Entries, string? EntryId) ResolveToolEntry(
+        ChatTimelineState state, string? toolCallId)
     {
-        if (toolCallId is not null)
+        if (toolCallId is { } tcId)
         {
-            for (int i = state.Entries.Count - 1; i >= 0; i--)
-            {
-                if (state.Entries[i].ToolCallId == toolCallId)
-                    return state.Entries[i].Id;
-            }
-            // ToolCallId was specified but not found — don't fall back to
-            // ActiveToolCallId as that would corrupt an unrelated tool entry.
-            return null;
+            // ID provided: strict lookup only. If mapping already consumed, no-op (don't misroute).
+            return state.ActiveToolCalls.TryGetValue(tcId, out var entryId)
+                ? (state.Entries, entryId)
+                : (state.Entries, null);
         }
-        return state.ActiveToolCallId;
+
+        // No ID: legacy positional fallback.
+        return (state.Entries, state.ActiveToolCallId);
     }
 
     static ChatTimelineState UpsertAssistant(ChatTimelineState state, string text, bool replace, bool streaming, bool reconcilePrevious = false)
@@ -234,14 +249,42 @@ public static class ChatTimelineReducer
         };
     }
 
-    static ChatTimelineState EndTurn(ChatTimelineState state) => state with
+    static ChatTimelineState ApplyTurnEnd(ChatTimelineState state)
     {
-        TurnActive = false,
-        ActiveAssistantId = null,
-        ActiveReasoningId = null,
-        ActiveToolCallId = null,
-        PendingPermission = null
-    };
+        var entries = state.Entries;
+
+        // Collect all entry IDs that are still tracked as active.
+        var activeEntryIds = new System.Collections.Generic.HashSet<string>();
+        if (state.ActiveToolCallId is { } fallbackId)
+            activeEntryIds.Add(fallbackId);
+        foreach (var kvp in state.ActiveToolCalls)
+            activeEntryIds.Add(kvp.Value);
+
+        // Mark all remaining in-progress tools as Interrupted (reality: they never completed).
+        foreach (var entryId in activeEntryIds)
+        {
+            var idx = entries.FindIndex(en => en.Id == entryId);
+            if (idx >= 0 && entries[idx].ToolResult == ChatToolCallStatus.InProgress)
+            {
+                entries = entries.SetItem(idx, entries[idx] with
+                {
+                    ToolResult = ChatToolCallStatus.Interrupted
+                });
+            }
+        }
+
+        return state with
+        {
+            Entries = entries,
+            TurnActive = false,
+            ActiveAssistantId = null,
+            ActiveReasoningId = null,
+            ActiveToolCallId = null,
+            ActiveToolCalls = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
+            PendingPermission = null
+        };
+    }
+
 
     static ChatTimelineState BeginTurn(ChatTimelineState state) =>
         state.TurnActive ? state : state with { TurnActive = true };

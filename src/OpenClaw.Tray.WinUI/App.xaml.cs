@@ -132,7 +132,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var settings = _settings ?? new SettingsManager();
         // NodeService is still required for capability registration on the manager's
         // WindowsNodeClient (via App.xaml.cs ClientCreated → AttachClient bridge).
-        var nodeService = EnsureNodeServiceForLocalGatewaySetup(settings);
+        var nodeService = EnsureNodeService(settings);
         // Suppress manager auto-start of node during setup so the engine retains
         // strict phase ordering (operator paired → WSL CLI device-approve → node
         // pairing). EnsureNodeConnectedAsync (called by ConnectionManagerWindowsNodeConnector
@@ -711,14 +711,45 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             try
             {
+                // A node client was just created (manager auto-start OR setup engine
+                // EnsureNodeConnectedAsync). We MUST have a NodeService to register
+                // capabilities on this client before the outbound "connect" goes out —
+                // see NodeConnector.cs:66. Build it lazily here so we never depend on
+                // OnLaunched ordering or the _suppressNodeDuringSetup gate having
+                // landed in the right state. EnsureNodeService is
+                // idempotent — it returns the existing instance if already built.
+                // Without this, _nodeService?.AttachClient below is a silent no-op and
+                // the gateway sees the node with caps=0/cmds=0 (regression introduced
+                // 2026-05-12 in 62533e2 when capability registration moved to this
+                // lazy bridge pattern).
+                if (_settings == null)
+                {
+                    Logger.Warn("[App] NodeConnector.ClientCreated fired before settings were initialized; node may connect without capabilities");
+                    diagnostics.Record("node", "WARNING: settings unavailable; cannot initialize NodeService for capability binding");
+                }
+                else
+                {
+                    EnsureNodeService(_settings);
+                }
+
                 diagnostics.Record("node", $"ClientCreated fired, _nodeService null={_nodeService is null}");
-                _nodeService?.AttachClient(args.Client, args.BearerToken);
+                if (_nodeService == null)
+                {
+                    Logger.Warn("[App] NodeService unavailable during ClientCreated; node may connect with caps=0/cmds=0");
+                    diagnostics.Record("node", "WARNING: NodeService unavailable; cannot bind node capabilities");
+                    return;
+                }
+
+                _nodeService.AttachClient(args.Client, args.BearerToken);
                 var client = args.Client;
                 diagnostics.Record("node", $"After AttachClient: caps={client.Capabilities.Count}, cmds={client.RegisteredCommandCount}");
                 if (client.RegisteredCommandCount > 0)
                     diagnostics.Record("node", $"Commands sample: {string.Join(", ", client.RegisteredCommandsSample)}...");
                 else
+                {
+                    Logger.Warn("[App] Node capability binding produced 0 commands before connect");
                     diagnostics.Record("node", "WARNING: 0 commands registered on node client before connect");
+                }
             }
             catch (Exception ex)
             {
@@ -762,11 +793,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // The method is idempotent — safe to call here AND later if first-run setup runs.
         if (ShouldInitializeNodeService() && _settings != null)
         {
-            EnsureNodeServiceForLocalGatewaySetup(_settings);
+            EnsureNodeService(_settings);
         }
 
         // Initialize connections — always create operator client for UI data,
         // additionally create node service for gateway node mode or local MCP.
+        // Re-arm the WSL keepalive so the local gateway VM stays up across tray
+        // restarts and across the 20s WSL vmIdleTimeout window observed on some
+        // hosts. Fire-and-forget on a background task so a slow LxssManager at
+        // cold logon never delays InitializeGatewayClient. The keepalive itself
+        // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
+        _ = Task.Run(TryEnsureLocalGatewayKeepAliveAsync);
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -1672,7 +1709,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return false;
         }
 
-        var nodeService = EnsureNodeServiceForLocalGatewaySetup(_settings);
+        var nodeService = EnsureNodeService(_settings);
         if (nodeService == null)
         {
             Logger.Warn("MCP-only mode requested but node service could not be initialized");
@@ -1773,7 +1810,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         });
     }
 
-    private NodeService? EnsureNodeServiceForLocalGatewaySetup(SettingsManager settings)
+    private NodeService? EnsureNodeService(SettingsManager settings)
     {
         if (_nodeService != null)
             return _nodeService;
@@ -1958,6 +1995,88 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         if (_suppressNodeDuringSetup) return false;
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
+    }
+
+    /// <summary>
+    /// Re-arms the WSL keepalive process for the local OpenClawGateway distro on every
+    /// tray launch when the active gateway is local. The keepalive runs detached from
+    /// the tray (see <see cref="WslDistroKeepAlive"/>) so the WSL2 VM stays up even after
+    /// the tray exits — addressing the vmIdleTimeout window where Windows tears down the
+    /// distro (and therefore systemd + the gateway service) ~20s after the last
+    /// interactive wsl.exe session ends.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort, fire-and-forget. Cold Windows logon is exactly when LxssManager is
+    /// slow to come up, so a hanging <c>wsl --list</c> probe must never block tray
+    /// startup. We retry with bounded backoff; if every probe times out, we still try
+    /// the spawn and let <c>wsl.exe</c> itself decide whether the distro exists —
+    /// missing a keepalive arm at cold logon is the exact bug this method exists to
+    /// prevent (see PR review feedback).
+    /// </remarks>
+    private async Task TryEnsureLocalGatewayKeepAliveAsync()
+    {
+        try
+        {
+            if (_settings is null) return;
+
+            var gatewayUrl = _settings.GetEffectiveGatewayUrl();
+            var distroName = await ResolveLocalGatewayDistroNameAsync();
+
+            if (string.IsNullOrWhiteSpace(gatewayUrl) || !LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl))
+            {
+                // User is no longer using the local gateway (mode switch since the last
+                // launch). Tear down any keepalive marker that a prior session left
+                // behind so the WSL VM is allowed to idle out; we never reach
+                // EnsureStarted in this branch.
+                if (!string.IsNullOrWhiteSpace(distroName))
+                    WslDistroKeepAlive.Stop(distroName, new AppLogger());
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(distroName)) return;
+
+            var runner = new WslExeCommandRunner(new AppLogger(), defaultTimeout: TimeSpan.FromSeconds(4));
+            await WslKeepAliveStartupArmer.ArmAsync(
+                distroName,
+                cancellationToken => runner.RunAsync(["--list", "--verbose"], cancellationToken),
+                () => WslDistroKeepAlive.EnsureStarted(distroName, new AppLogger()),
+                Logger.Warn);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Startup keepalive failed (non-fatal): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Resolves the WSL distro name to keep alive. Prefers the value persisted by
+    /// onboarding in <c>setup-state.json</c> so the keepalive always targets the distro
+    /// the user actually installed. In DEBUG / test builds, an
+    /// <c>OPENCLAW_WSL_DISTRO_NAME</c> environment override is honored to match
+    /// <see cref="LocalGatewaySetupRuntimeConfiguration.FromEnvironment"/>. Falls back
+    /// to the upstream default <c>OpenClawGateway</c>.
+    /// </summary>
+    private async Task<string?> ResolveLocalGatewayDistroNameAsync()
+    {
+        try
+        {
+            var store = new LocalGatewaySetupStateStore();
+            var state = await store.LoadAsync();
+            if (state is not null && !string.IsNullOrWhiteSpace(state.DistroName))
+                return state.DistroName;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Failed to read setup-state.json: {ex.Message}");
+        }
+
+#if DEBUG || OPENCLAW_TRAY_TESTS
+        var envOverride = Environment.GetEnvironmentVariable(LocalGatewaySetupRuntimeConfiguration.DistroNameVariable);
+        if (!string.IsNullOrWhiteSpace(envOverride))
+            return envOverride;
+#endif
+
+        return "OpenClawGateway";
     }
 
     // The pre-unification ShouldInitializeNodeService(GatewayRecord, string) overload

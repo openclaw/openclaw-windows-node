@@ -2778,6 +2778,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Chat_Status_Error" xml:space="preserve">
     <value>Fout</value>
   </data>
+  <data name="Chat_Status_Interrupted" xml:space="preserve">
+    <value>Onderbroken</value>
+  </data>
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>Eerdere berichten laden</value>
   </data>

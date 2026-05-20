@@ -62,6 +62,20 @@ public class NodeConnectorTests
     }
 
     [Fact]
+    public async Task ConnectAsync_WhenClientCreatedHandlerThrows_RecordsDiagnostic()
+    {
+        var diagnostics = new ConnectionDiagnostics();
+        using var connector = new NodeConnector(new StubLogger(), diagnostics);
+        connector.ClientCreated += (_, _) => throw new InvalidOperationException("boom");
+
+        await connector.ConnectAsync("ws://127.0.0.1:9", new GatewayCredential("tok", false, "test"), "id-path");
+
+        var evt = Assert.Single(diagnostics.GetAll(), e => e.Category == "node");
+        Assert.Equal("ClientCreated handler failed; node may connect without capabilities", evt.Message);
+        Assert.Equal("boom", evt.Detail);
+    }
+
+    [Fact]
     public async Task DisconnectAsync_WhenNotConnected_CompletesWithoutError()
     {
         using var connector = new NodeConnector(new StubLogger());
