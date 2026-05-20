@@ -162,19 +162,16 @@ public sealed partial class ChatPage : Page
     {
         if (CurrentApp.Settings is null) return;
 
-        // HIGH 3: re-resolve the chat URL from the current settings on every
-        // surface application — _chatUrl was previously computed once in
-        // Initialize() and never refreshed, so SettingsSaved (e.g. token /
-        // gateway URL change) would leave the WebView pointing at a stale URL.
-        var freshUrl = TryComputeChatUrl(CurrentApp.Settings);
-        var urlChanged = !string.Equals(freshUrl, _chatUrl, StringComparison.Ordinal);
-        _chatUrl = freshUrl;
+        var decision = ChatSurfaceResolver.Resolve(
+            ChatSurfaceTarget.HubChat,
+            CurrentApp.Settings.UseLegacyWebChat,
+            _chatUrl,
+            TryComputeChatUrl(CurrentApp.Settings));
 
-        var useLegacy = OpenClawTray.Chat.DebugChatSurfaceOverrides.ResolveUseLegacy(
-            OpenClawTray.Chat.DebugChatSurfaceOverrides.HubChat,
-            CurrentApp.Settings.UseLegacyWebChat);
-        if (useLegacy)
-            ShowWebViewSurface(forceNavigate: urlChanged);
+        _chatUrl = decision.ChatUrl;
+
+        if (decision.UseLegacyWebChat)
+            ShowWebViewSurface(forceNavigate: decision.ChatUrlChanged);
         else
             ShowFunctionalSurface();
     }
@@ -189,9 +186,8 @@ public sealed partial class ChatPage : Page
             settings.LegacyToken,
             settings.LegacyBootstrapToken,
             out var credential) &&
-            credential is { IsBootstrapToken: false } &&
-            GatewayChatUrlBuilder.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var url, out _)
-            ? url
+            credential is { IsBootstrapToken: false }
+            ? ChatSurfaceResolver.BuildChatUrl(credential.GatewayUrl, credential.Token)
             : null;
     }
 

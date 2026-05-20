@@ -24,7 +24,7 @@ public sealed partial class ChatWindow : WindowEx
 {
     private string _gatewayUrl;
     private string _token;
-    private string _chatUrl;
+    private string? _chatUrl;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
     private bool _webViewInitialized;
@@ -69,7 +69,7 @@ public sealed partial class ChatWindow : WindowEx
     {
         _gatewayUrl = gatewayUrl;
         _token = token;
-        _chatUrl = BuildChatUrl(gatewayUrl, token);
+        _chatUrl = ChatSurfaceResolver.BuildChatUrl(gatewayUrl, token);
         InitializeComponent();
 
         this.SetWindowSize(DefaultChatWidth, DefaultChatHeight);
@@ -201,10 +201,15 @@ public sealed partial class ChatWindow : WindowEx
     private void ApplyChatSurface()
     {
         var setting = (App.Current as App)?.Settings?.UseLegacyWebChat ?? false;
-        var useLegacy = OpenClawTray.Chat.DebugChatSurfaceOverrides.ResolveUseLegacy(
-            OpenClawTray.Chat.DebugChatSurfaceOverrides.TrayChat,
-            setting);
-        if (useLegacy)
+        var decision = ChatSurfaceResolver.Resolve(
+            ChatSurfaceTarget.TrayChat,
+            setting,
+            _chatUrl,
+            ChatSurfaceResolver.BuildChatUrl(_gatewayUrl, _token));
+
+        _chatUrl = decision.ChatUrl;
+
+        if (decision.UseLegacyWebChat)
             ShowWebViewSurface();
         else
             ShowFunctionalSurface();
@@ -295,7 +300,7 @@ public sealed partial class ChatWindow : WindowEx
 
         _gatewayUrl = gatewayUrl;
         _token = token;
-        _chatUrl = BuildChatUrl(_gatewayUrl, _token);
+        _chatUrl = ChatSurfaceResolver.BuildChatUrl(_gatewayUrl, _token);
 
         // HIGH 4: never log the full chat URL — its query string contains the
         // auth token. Strip the query before logging.
@@ -552,13 +557,6 @@ public sealed partial class ChatWindow : WindowEx
             await dialog.ShowAsync();
         }
         catch { /* dialog display failed, already logged */ }
-    }
-
-    private static string BuildChatUrl(string gatewayUrl, string token)
-    {
-        return GatewayChatUrlBuilder.TryBuildChatUrl(gatewayUrl, token, out var url, out _)
-            ? url
-            : string.Empty;
     }
 
     private bool _backdropAppliedOnce;
