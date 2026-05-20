@@ -216,25 +216,20 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
-    public void Tray_TileBackground_IsStableNonAccentColorForSettingsPrivacyLists()
+    public void Tray_TileBackground_UsesTransparentAdaptiveColor()
     {
         var doc = LoadTrayManifest();
         var visualElements = doc.Descendants(XName.Get("VisualElements", AppxUapNs)).Single();
 
-        Assert.Equal("#202020", (string?)visualElements.Attribute("BackgroundColor"));
+        Assert.Equal("transparent", (string?)visualElements.Attribute("BackgroundColor"));
     }
 
     [Fact]
-    public void Tray_PrivacyListIcon_HasAllRequiredUnplatedTargetSizes()
+    public void Tray_AppListIcon_HasMinimumUnplatedTargetSizes()
     {
-        // Settings > Privacy lists (Camera, Microphone, Location) render the per-app
-        // icon at small sizes (16, 20, 24, 32, 48 px). When a fitting altform-unplated
-        // variant is missing, Windows falls back to the plated tile with the manifest
-        // BackgroundColor as fill — which appears as a system-accent (blue) square
-        // behind our lobster. Reported by Mike during the MSIX-E2E manual test pass.
-        //
-        // Required minimum set covers the sizes Settings > Privacy is documented to
-        // request. Add more if you observe additional blue-background fallbacks.
+        // These unplated assets keep Taskbar, Search, and Start using the icon
+        // without an extra contrast backplate. Windows Settings privacy pages
+        // still render their own system-accent tile behind packaged app icons.
         var assetsDir = Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Assets");
 
@@ -242,7 +237,7 @@ public sealed class MsixManifestAssertionTests
         {
             var fileName = $"Square44x44Logo.targetsize-{size}_altform-unplated.png";
             Assert.True(File.Exists(Path.Combine(assetsDir, fileName)),
-                $"Missing unplated icon variant '{fileName}'. Settings > Privacy will fall back to the plated tile, rendering with the manifest BackgroundColor.");
+                $"Missing unplated icon variant '{fileName}'. Taskbar, Search, and Start may fall back to a plated icon.");
         }
     }
 

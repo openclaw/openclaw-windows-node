@@ -44,7 +44,7 @@
       <uap:VisualElements
         DisplayName="OpenClaw Companion"
         Description="OpenClaw Windows system tray for gateway management, node capabilities, and agent interaction"
-        BackgroundColor="#202020"
+        BackgroundColor="transparent"
         AppListEntry="default"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

@@ -605,13 +605,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Check for protocol activation (MSIX packaged apps receive deep links this way)
         string? protocolUri = GetProtocolActivationUri();
 
+        var deepLink = protocolUri
+            ?? (_startupArgs.Length > 1 && _startupArgs[1].StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase)
+                ? _startupArgs[1] : null);
+
         // Single instance check - keep mutex alive for app lifetime.
-        // When running with an isolated data dir (tests), suffix the mutex name so
-        // the test instance does not collide with the user's regular tray app.
-        // String.GetHashCode() is randomized per process since .NET Core 2.1, so
-        // two test runs against the same data dir would otherwise pick different
-        // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
-        // SHA-256 prefix instead.
         // NOTE: Historically the bare "OpenClawTray" mutex name was also referenced
         // by installer.iss `AppMutex=` for install/uninstall race coordination.
         // installer.iss has been removed (MSIX-only distribution); the mutex name
@@ -619,23 +617,23 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // single-instance check, and (b) the merged LocalGatewayUninstall flow
         // (PR #310) and any future Reset & remove path still need a stable name
         // to detect a running tray.
-        var mutexName = "OpenClawTray";
-        if (DataDirOverride is not null)
-        {
-            var hash = System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(DataDirOverride));
-            mutexName = $"OpenClawTray-{Convert.ToHexString(hash, 0, 4)}";
-        }
-        _mutex = new Mutex(true, mutexName, out bool createdNew);
-        if (!createdNew)
+        var mutexName = SingleInstanceLaunchGuard.BuildMutexName(DataDirOverride);
+        var singleInstance = SingleInstanceLaunchGuard.Acquire(
+            mutexName,
+            ShouldRetrySingleInstanceForPackagedLaunch(deepLink),
+            SingleInstanceLaunchGuard.PackagedLaunchRetryTimeout,
+            SingleInstanceLaunchGuard.PackagedLaunchRetryDelay,
+            phase => WriteStartupBreadcrumb($"singleInstance.{phase}"));
+        _mutex = singleInstance.Mutex;
+        if (!singleInstance.HasMutex)
         {
             // Forward deep link args to running instance (command-line or protocol activation)
-            var deepLink = protocolUri
-                ?? (_startupArgs.Length > 1 && _startupArgs[1].StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase)
-                    ? _startupArgs[1] : null);
             if (deepLink != null)
             {
-                SendDeepLinkToRunningInstance(deepLink);
+                if (SendDeepLinkToRunningInstance(deepLink))
+                    WriteStartupBreadcrumb("singleInstance.forwardedDeepLink");
+                else
+                    WriteStartupBreadcrumb("singleInstance.deepLinkForwardFailed");
             }
             Exit();
             return;
@@ -1145,6 +1143,43 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                arg.Contains("password", StringComparison.OrdinalIgnoreCase)
             ? "<redacted>"
             : arg;
+    }
+
+    private static bool ShouldRetrySingleInstanceForPackagedLaunch(string? deepLink)
+    {
+        if (deepLink is not null ||
+            DataDirOverride is not null ||
+            !OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        {
+            return false;
+        }
+
+        if (CanReachRunningInstance())
+        {
+            WriteStartupBreadcrumb("singleInstance.liveInstancePipe");
+            return false;
+        }
+
+        WriteStartupBreadcrumb("singleInstance.noLiveInstancePipe");
+        return true;
+    }
+
+    private static bool CanReachRunningInstance()
+    {
+        try
+        {
+            using var pipe = new NamedPipeClientStream(
+                ".",
+                DeepLinkPipeName,
+                PipeDirection.Out,
+                PipeOptions.CurrentUserOnly);
+            pipe.Connect(150);
+            return true;
+        }
+        catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private void OnTrayMenuItemClicked(object? sender, string action)
@@ -3662,20 +3697,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         SpeakerMuteChanged?.Invoke(muted);
     }
 
-    private static void SendDeepLinkToRunningInstance(string uri)
+    private static bool SendDeepLinkToRunningInstance(string uri)
     {
         try
         {
             if (!DeepLinkSecurityPolicy.IsIpcPayloadWithinLimit(uri))
             {
                 Logger.Warn($"Rejected oversized deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-                return;
+                return false;
             }
 
             if (DeepLinkParser.ParseDeepLink(uri) == null)
             {
                 Logger.Warn($"Rejected invalid deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-                return;
+                return false;
             }
 
             var payload = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
@@ -3689,10 +3724,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             pipe.Write(payload, 0, payload.Length);
             pipe.Flush();
             pipe.WaitForPipeDrain();
+            return true;
         }
         catch (Exception ex)
         {
             Logger.Warn($"Failed to forward deep link: {ex.Message}");
+            return false;
         }
     }
 

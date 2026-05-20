@@ -70,8 +70,10 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
    the `AppCapability.AccessChanged` subscription wired up by
    `PermissionChecker.SubscribeToAccessChangesPackaged` is firing.
 4. Toggle it back ON and **assert** the row returns to "Granted".
-5. **Assert** each Windows Settings privacy/permission app icon uses the
-   OpenClaw icon without the system-accent blue tile background.
+5. **Note** Windows Settings privacy/permission pages may render the OpenClaw
+   icon on the user's system-accent tile background. That background is owned by
+   Windows Settings and is not controlled by the MSIX icon assets or manifest
+   `BackgroundColor`.
 
 ### 3a. Notification settings registration
 
