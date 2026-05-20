@@ -1127,6 +1127,15 @@ public interface IGatewayConfigurationPreparer
 
 public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurationPreparer
 {
+    private static readonly string[] s_defaultLocalGatewayAllowCommands =
+    [
+        "system.run",
+        "system.run.prepare",
+        "system.which",
+        "browser.proxy",
+        "screen.snapshot"
+    ];
+
     private readonly IWslCommandRunner _wsl;
 
     public OpenClawCliGatewayConfigurationPreparer(IWslCommandRunner wsl)
@@ -1137,6 +1146,7 @@ public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurat
     public async Task<GatewayConfigurationResult> PrepareAsync(LocalGatewaySetupOptions options, string sharedGatewayToken, CancellationToken cancellationToken = default)
     {
         var openClaw = ShellQuote(options.OpenClawInstallPrefix + "/bin/openclaw");
+        var allowCommandsJson = JsonSerializer.Serialize(s_defaultLocalGatewayAllowCommands);
         var script = string.Join("\n", new[]
         {
             "set -euo pipefail",
@@ -1147,6 +1157,7 @@ public sealed class OpenClawCliGatewayConfigurationPreparer : IGatewayConfigurat
             openClaw + " config set gateway.port " + options.GatewayPort.ToString(CultureInfo.InvariantCulture) + " --strict-json",
             openClaw + " config set gateway.auth.mode token",
             "xargs -r " + openClaw + " config set gateway.auth.token </var/lib/openclaw/gateway-token",
+            openClaw + " config set gateway.nodes.allowCommands " + ShellQuote(allowCommandsJson) + " --strict-json --replace",
             // Suppress restart-required reloads triggered by config writes the V2 setup
             // wizard makes mid-flow. With the default "hybrid" mode, the gateway-side
             // wizard at src/wizard/setup.ts:750 commits the wizard's collected snapshot

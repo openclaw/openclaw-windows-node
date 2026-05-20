@@ -437,7 +437,7 @@ public class LocalGatewaySetupTests
     }
 
     [Fact]
-    public async Task GatewayConfigurationPreparer_WritesLoopbackOnlyConfigWithoutBindOrTokenValue()
+    public async Task GatewayConfigurationPreparer_WritesLoopbackOnlyConfigWithNodeAllowCommands()
     {
         var wsl = new FakeWslCommandRunner();
         var preparer = new OpenClawCliGatewayConfigurationPreparer(wsl);
@@ -457,6 +457,14 @@ public class LocalGatewaySetupTests
             && !command[7].Contains("lan", StringComparison.Ordinal));
         Assert.Contains(": \"${OPENCLAW_SHARED_GATEWAY_TOKEN:?missing shared gateway token}\"", command[7]);
         Assert.Contains("printf '%s' \"$OPENCLAW_SHARED_GATEWAY_TOKEN\" >/var/lib/openclaw/gateway-token", command[7]);
+        const string expectedAllowCommandsJson =
+            "[\"system.run\",\"system.run.prepare\",\"system.which\",\"browser.proxy\",\"screen.snapshot\"]";
+        Assert.Contains("config set gateway.nodes.allowCommands '" + expectedAllowCommandsJson + "' --strict-json --replace", command[7]);
+        Assert.DoesNotContain("python3", command[7]);
+        Assert.DoesNotContain("--merge", command[7]);
+        Assert.DoesNotContain("camera.snap", command[7]);
+        Assert.DoesNotContain("camera.clip", command[7]);
+        Assert.DoesNotContain("screen.record", command[7]);
         Assert.DoesNotContain("od -An -N32", command[7]);
         Assert.DoesNotContain(sharedToken, string.Join(" ", command));
         var environment = Assert.Single(wsl.Environments);

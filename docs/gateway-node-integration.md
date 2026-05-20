@@ -335,30 +335,35 @@ Recommended gateway defaults:
 
 | Command bucket | Windows default? | Reason |
 |----------------|------------------|--------|
-| Safe declared companion commands: `canvas.*`, `camera.list`, `location.get`, `screen.snapshot`, `device.info`, `device.status` | Yes | Matches macOS parity and only applies when declared by the node |
+| Safe declared companion commands: `camera.list`, `location.get`, `device.info`, `device.status` | Yes | Existing gateway model already allows these for Windows nodes |
+| Desktop-host runtime commands filtered by the upstream gateway change: `system.run`, `system.run.prepare`, `system.which`, `browser.proxy`, `screen.snapshot` | Yes, via managed WSL local setup | Restores commands that were in the Windows default set before the gateway started filtering desktop-host defaults at runtime |
 | Dangerous/privacy-heavy commands: `camera.snap`, `camera.clip`, `screen.record`, write commands like `contacts.add` | No | Existing gateway model already requires explicit `gateway.nodes.allowCommands` |
-| Exec commands: `system.run`, `system.run.prepare`, `system.which`, `system.notify`, `browser.proxy` | Yes | Existing Windows headless-host behavior |
+| `system.notify` | Yes | Still remains in the gateway's Windows defaults and does not need local setup allowlisting |
 
-Until the gateway expands Windows safe defaults, the practical local solution is:
+Until the gateway restores those Windows runtime defaults, the practical local solution is:
 
 1. Keep declaring the correct command names from the Windows node.
-2. Configure `gateway.nodes.allowCommands` for the Windows companion features.
+2. Configure `gateway.nodes.allowCommands` for the desktop-host commands that were previously in the upstream Windows defaults.
 3. Re-pair after command-list changes because the gateway snapshots commands at approval time.
 
 ### 5.1 Gateway Node Allowlist Configuration
 
-`gateway.nodes.allowCommands` is the explicit opt-in list the gateway uses after platform defaults. It should contain exact command names, not broad wildcard grants, for commands that are safe but not yet in the Windows default policy.
+`gateway.nodes.allowCommands` is the explicit opt-in list the gateway uses after platform defaults. It should contain exact command names, not broad wildcard grants.
 
-Recommended safe Windows companion allowlist:
+Recommended Windows local-gateway allowlist:
 
 ```bash
-openclaw config set gateway.nodes.allowCommands '["canvas.present","canvas.hide","canvas.navigate","canvas.eval","canvas.snapshot","canvas.a2ui.push","canvas.a2ui.pushJSONL","canvas.a2ui.reset","camera.list","location.get","screen.snapshot","device.info","device.status","system.execApprovals.get","system.execApprovals.set"]'
+openclaw config set gateway.nodes.allowCommands '["system.run","system.run.prepare","system.which","browser.proxy","screen.snapshot"]' --strict-json --replace
 openclaw gateway restart
 ```
 
+The OpenClaw-managed WSL local gateway setup writes this allowlist before first gateway start, so the easy-button flow does not require a manual restart or manual config command for the Windows desktop-host runtime surface.
+
+For manually managed gateways, `config set` replaces array values. If `gateway.nodes.allowCommands` already contains other opt-ins, include those existing entries in the JSON before writing the replacement array.
+
 `gateway.nodes.denyCommands` can be used as a final explicit blocklist when you want to suppress a command even if a platform default or allowlist entry would otherwise allow it.
 
-Privacy-sensitive commands should stay out of the default safe list and should only be added deliberately:
+For manually managed or remote gateways, privacy-sensitive commands should still be added deliberately:
 
 ```text
 camera.snap
@@ -436,12 +441,12 @@ When shipping the Windows node, README/wiki should tell users:
 
 > **First-time setup**: After pairing your Windows node, add these commands to your gateway config:
 > ```bash
-> openclaw config set gateway.nodes.allowCommands '["canvas.present", "canvas.hide", "canvas.navigate", "canvas.eval", "canvas.snapshot", "canvas.a2ui.push", "canvas.a2ui.pushJSONL", "canvas.a2ui.reset", "camera.list", "screen.snapshot", "location.get", "device.info", "device.status", "system.execApprovals.get", "system.execApprovals.set"]'
+> openclaw config set gateway.nodes.allowCommands '["system.run","system.run.prepare","system.which","browser.proxy","screen.snapshot"]' --strict-json --replace
 > openclaw gateway restart
 > ```
 > Then re-pair the node (`openclaw devices reject <old-id>` + re-approve).
 >
-> Add `camera.snap`, `camera.clip`, and `screen.record` only when you explicitly want to allow privacy-sensitive camera or screen capture.
+> The OpenClaw-managed WSL local gateway setup performs this write automatically. On manually managed gateways, preserve any existing array entries when writing the replacement, and add `camera.snap`, `camera.clip`, and `screen.record` only when you explicitly want the Windows-permission-gated camera or screen capture features.
 >
 > The Windows tray Command Center (`openclaw://commandcenter`) surfaces these policy problems directly: it separates safe companion allowlist fixes from privacy-sensitive opt-ins and provides copyable repair text for safe fixes or pending pairing approval.
 
