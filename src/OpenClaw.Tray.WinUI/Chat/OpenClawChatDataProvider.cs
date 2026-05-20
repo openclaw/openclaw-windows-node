@@ -62,6 +62,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly IChatGatewayBridge _bridge;
     private readonly Action<Action>? _post;
     private readonly object _gate = new();
+    private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
     private readonly Dictionary<string, string> _activeRunIds = new();   // sessionKey → runId
     private readonly Dictionary<string, int> _pendingAbortCounts = new(); // threads → count of pending aborts waiting for lifecycle.start
@@ -2266,7 +2267,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // ── Tool metadata persistence ─────────────────────────────────────
 
     /// <summary>Cached tool call metadata entry persisted to disk.</summary>
-    private sealed class CachedToolMeta
+    internal sealed class CachedToolMeta
     {
         public long Ts { get; set; }
         public string ToolName { get; set; } = "";
@@ -2278,10 +2279,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         "OpenClawTray", "tool-metadata.json");
 
     /// <summary>Max sessions to keep in the tool metadata cache.</summary>
-    private const int MaxCachedSessions = 20;
+    internal const int MaxCachedSessions = 20;
 
     /// <summary>Max tool entries per session in the cache.</summary>
-    private const int MaxToolEntriesPerSession = 500;
+    internal const int MaxToolEntriesPerSession = 500;
 
     private static Dictionary<string, List<CachedToolMeta>> LoadToolMetaCache()
     {
@@ -2322,7 +2323,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             var json = System.Text.Json.JsonSerializer.Serialize(snapshot,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(ToolMetaCacheFilePath, json);
+
+            // Write to temp file then atomic move to avoid partial JSON on crash
+            var tempPath = ToolMetaCacheFilePath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, ToolMetaCacheFilePath, overwrite: true);
         }
         catch { /* best-effort persistence */ }
     }
@@ -2356,8 +2361,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 list.RemoveRange(0, list.Count - MaxToolEntriesPerSession);
         }
 
-        // Fire-and-forget save on a background thread to avoid blocking event processing
-        _ = Task.Run(SaveToolMetaCache);
+        // Debounce save — reset the timer on each cache addition so we only
+        // write once after 500ms of quiescence, avoiding concurrent file writes.
+        _toolMetaSaveTimer?.Dispose();
+        _toolMetaSaveTimer = new System.Threading.Timer(_ => SaveToolMetaCache(), null, 500, Timeout.Infinite);
     }
 
     /// <summary>
@@ -2382,7 +2389,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// history stores tool-result timestamps (which can be minutes later),
     /// so we match by order rather than timestamp proximity.
     /// </summary>
-    private static CachedToolMeta? TryMatchCachedTool(Queue<CachedToolMeta>? cache, long historyTsMs)
+    internal static CachedToolMeta? TryMatchCachedTool(Queue<CachedToolMeta>? cache, long historyTsMs)
     {
         if (cache is null || cache.Count == 0) return null;
 

@@ -139,11 +139,10 @@ public sealed class OpenClawChatRoot : Component
             EventHandler h = (_, _) =>
             {
                 explorationRevRef.Current++;
-                var val = explorationRevRef.Current;
                 if (dq is not null)
-                    dq.TryEnqueue(() => explorationRev.Set(val));
+                    dq.TryEnqueue(() => explorationRev.Set(explorationRevRef.Current));
                 else
-                    explorationRev.Set(val);
+                    explorationRev.Set(explorationRevRef.Current);
             };
             ChatExplorationState.Changed += h;
             return () => ChatExplorationState.Changed -= h;

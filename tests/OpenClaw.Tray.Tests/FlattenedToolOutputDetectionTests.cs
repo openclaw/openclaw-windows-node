@@ -249,4 +249,29 @@ public class FlattenedToolOutputDetectionTests
         var kind = OpenClawChatDataProvider.ClassifyFlattenedToolOutput(text);
         Assert.False(string.IsNullOrEmpty(kind), $"Empty kind for: {text}");
     }
+
+    // ── Additional classifier edge cases ──
+
+    [Theory]
+    [InlineData("Cloning into 'repo'...\nremote: Enumerating objects: 100", "exec")]
+    [InlineData("On branch main\nYour branch is up to date with 'origin/main'.", "exec")]
+    [InlineData("fatal: not a git repository", "exec")]
+    [InlineData("src/foo.cs\nsrc/bar.cs\nsrc/baz.cs", "exec")]
+    [InlineData("  1. first line\n  2. second line\n  3. third line", "view")]
+    [InlineData("--- a/src/main.cs\n+++ b/src/main.cs\n@@ -1,3 +1,4 @@", "exec")]
+    public void ClassifiesAdditionalKindsCorrectly(string text, string expected)
+    {
+        Assert.Equal(expected, OpenClawChatDataProvider.ClassifyFlattenedToolOutput(text));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("x")]
+    public void ClassifyFlattenedToolOutput_EmptyOrTiny_ReturnsExecDefault(string text)
+    {
+        // Even empty/tiny text should return a non-empty kind (default "exec")
+        var kind = OpenClawChatDataProvider.ClassifyFlattenedToolOutput(text);
+        Assert.False(string.IsNullOrEmpty(kind));
+    }
 }

@@ -266,11 +266,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         if (lastCollapseVersion.Current != ChatExplorationState.CollapseToolChipsVersion)
         {
             lastCollapseVersion.Current = ChatExplorationState.CollapseToolChipsVersion;
-            // Clear expanded state without triggering another render —
-            // mutate in-place since we're already inside a render pass.
-            // The state will be observed as empty on the next render.
-            if (expandedToolChips.Value is { Count: > 0 } chips)
-                chips.Clear();
+            if (expandedToolChips.Value.Count > 0)
+                expandedToolChips.Set(new HashSet<string>());
         }
 
         // When showToolCalls changes, pre-clear the native StackPanel so the
