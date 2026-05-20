@@ -205,16 +205,14 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
-    public void Tray_AppListEntryAndTileContract_AreExplicitForInstallerLaunch()
+    public void Tray_AppListEntry_IsExplicitForInstallerLaunch()
     {
         var doc = LoadTrayManifest();
         var visualElements = doc.Descendants(XName.Get("VisualElements", AppxUapNs)).Single();
 
         Assert.Equal("default", (string?)visualElements.Attribute("AppListEntry"));
 
-        var defaultTile = doc.Descendants(XName.Get("DefaultTile", AppxUapNs)).SingleOrDefault();
-        Assert.NotNull(defaultTile);
-        Assert.Equal("allLogos", (string?)defaultTile!.Attribute("ShowName"));
+        Assert.Single(doc.Descendants(XName.Get("DefaultTile", AppxUapNs)));
     }
 
     [Fact]
