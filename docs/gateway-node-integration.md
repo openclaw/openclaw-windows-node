@@ -28,11 +28,14 @@ The gateway has hardcoded defaults per platform (from `PLATFORM_DEFAULTS`):
 | **macOS** | canvas.*, camera.list, location.get, device.info/status, contacts.search, calendar.events, reminders.list, photos.latest, motion.*, system.run/which/notify, screen.snapshot, browser.proxy |
 | **iOS** | canvas.*, camera.list, location.get, device.info/status, contacts.*, calendar.*, reminders.*, photos.latest, motion.*, system.notify |
 | **Android** | canvas.*, camera.list, location.get, notifications.*, device.*, contacts.*, calendar.*, callLog.search, reminders.*, photos.latest, motion.*, system.notify |
-| **Windows** | **system.run, system.run.prepare, system.which, system.notify, browser.proxy** |
+| **Windows** | camera.list, location.get, device.info, device.status, system.*, browser.proxy, screen.snapshot |
 | **Linux** | system.run, system.run.prepare, system.which, system.notify, browser.proxy |
 | **Unknown** | canvas.*, camera.list, location.get, system.notify |
 
-**Windows and Linux get almost nothing by default** — only system commands. No canvas, no camera, no screen, no location. This is because Windows/Linux were originally designed as headless "node host" platforms (exec-only), not full companion apps like macOS/iOS.
+Desktop host commands such as `system.run`, `browser.proxy`, and
+`screen.snapshot` are filtered unless the node reports canonical desktop
+metadata and the command is approved through pairing/live session state or
+explicit config.
 
 ### 1.2 "Dangerous" Commands (Always Need Explicit Opt-In)
 
@@ -49,46 +52,21 @@ SMS_DANGEROUS_COMMANDS = ["sms.send", "sms.search"]
 
 Even macOS doesn't get `camera.snap` or `camera.clip` by default! They must be added via `gateway.nodes.allowCommands`.
 
-### 1.3 How to Enable Commands for Windows
+### 1.3 How to Enable Privacy-Sensitive Commands for Windows
 
-Add ALL needed commands to `gateway.nodes.allowCommands` in `~/.openclaw/openclaw.json`:
+Normal first-party Windows companion commands should work after pairing when the
+node reports canonical `platform: "windows"` and `deviceFamily: "Windows"`.
+Only add privacy-sensitive commands when you explicitly want the gateway to
+allow camera capture or screen recording:
 
 ```json5
 {
   gateway: {
     nodes: {
       allowCommands: [
-        // Canvas
-        "canvas.present",
-        "canvas.hide",
-        "canvas.navigate",
-        "canvas.eval",
-        "canvas.snapshot",
-        "canvas.a2ui.push",
-        "canvas.a2ui.pushJSONL",
-        "canvas.a2ui.reset",
-        // Camera (all are dangerous or not in Windows defaults)
-        "camera.list",
         "camera.snap",
         "camera.clip",
-        // Screen
-        "screen.snapshot",
         "screen.record",
-        // Location
-        "location.get",
-        // Device metadata/status
-        "device.info",
-        "device.status",
-        // Text-to-speech playback (enable only when agent-driven audio is desired)
-        "tts.speak",
-        // System (already in Windows defaults, but listed for completeness)
-        // "system.run",
-        // "system.run.prepare",
-        // "system.which",
-        // "system.notify",
-        // Exec approvals
-        "system.execApprovals.get",
-        "system.execApprovals.set",
       ]
     }
   }
@@ -199,29 +177,19 @@ client: {
 }
 ```
 
-Detection logic (from `node-command-policy.ts`):
-1. Normalize `platform` → lowercase
-2. Match against prefix rules: `"win"` → windows, `"mac"/"darwin"` → macos, etc.
-3. If no match, try `deviceFamily` field
-4. If still no match → `"unknown"` (gets conservative defaults)
+Detection logic (from `node-command-policy.ts`) now treats desktop command
+defaults as a stricter, canonical-platform path:
 
-Our node sends `platform: "windows"` which correctly matches the `windows` prefix rule.
+1. Normalize `platform` and `deviceFamily`.
+2. Match only canonical platform IDs such as `windows`, `macos`, and `linux`.
+3. Require desktop platforms to have a matching desktop family, for example
+   `platform: "windows"` with `deviceFamily: "Windows"`.
+4. If metadata is missing or noncanonical, fall back to `"unknown"` and a
+   conservative allowlist.
 
-**The problem isn't detection — it's that the `windows` platform intentionally gets a minimal allowlist.** The gateway team designed Windows as a headless exec host, not a full companion app with camera/canvas/screen.
-
-### 3.1 What "Unknown" Gets (and Why It's Actually Better)
-
-Ironically, the `unknown` platform gets MORE than Windows:
-```typescript
-unknown: [
-  ...CANVAS_COMMANDS,
-  ...CAMERA_COMMANDS,     // camera.list
-  ...LOCATION_COMMANDS,   // location.get
-  NODE_SYSTEM_NOTIFY_COMMAND,
-]
-```
-
-If we sent `platform: "windows-desktop"` (which wouldn't match any prefix rule), we'd fall through to `unknown` and actually get canvas/camera/location defaults. But that would be a hack — the right fix is `gateway.nodes.allowCommands`.
+Our node should therefore send canonical Windows metadata instead of relying on
+gateway-wide `gateway.nodes.allowCommands` for the normal first-party Windows
+companion flow.
 
 ---
 
@@ -339,22 +307,20 @@ Recommended gateway defaults:
 | Dangerous/privacy-heavy commands: `camera.snap`, `camera.clip`, `screen.record`, write commands like `contacts.add` | No | Existing gateway model already requires explicit `gateway.nodes.allowCommands` |
 | Exec commands: `system.run`, `system.run.prepare`, `system.which`, `system.notify`, `browser.proxy` | Yes | Existing Windows headless-host behavior |
 
-Until the gateway expands Windows safe defaults, the practical local solution is:
+For the first-party Windows companion node, the practical local solution is:
 
 1. Keep declaring the correct command names from the Windows node.
-2. Configure `gateway.nodes.allowCommands` for the Windows companion features.
+2. Send canonical connect metadata: `platform: "windows"` and
+   `deviceFamily: "Windows"`.
 3. Re-pair after command-list changes because the gateway snapshots commands at approval time.
 
 ### 5.1 Gateway Node Allowlist Configuration
 
-`gateway.nodes.allowCommands` is the explicit opt-in list the gateway uses after platform defaults. It should contain exact command names, not broad wildcard grants, for commands that are safe but not yet in the Windows default policy.
-
-Recommended safe Windows companion allowlist:
-
-```bash
-openclaw config set gateway.nodes.allowCommands '["canvas.present","canvas.hide","canvas.navigate","canvas.eval","canvas.snapshot","canvas.a2ui.push","canvas.a2ui.pushJSONL","canvas.a2ui.reset","camera.list","location.get","screen.snapshot","device.info","device.status","system.execApprovals.get","system.execApprovals.set"]'
-openclaw gateway restart
-```
+`gateway.nodes.allowCommands` is the explicit opt-in list the gateway uses after
+platform defaults. It should contain exact command names, not broad wildcard
+grants, and should not be needed for the normal first-party Windows companion
+commands that are allowed by canonical Windows platform policy and declared by
+the live node.
 
 `gateway.nodes.denyCommands` can be used as a final explicit blocklist when you want to suppress a command even if a platform default or allowlist entry would otherwise allow it.
 
@@ -384,66 +350,29 @@ After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyComman
 - [x] Handle bootstrap token expiry gracefully when setup code payloads include expiry metadata (`expiresAt`, `expires_at`, `expires`, `expiry`, or `exp`)
 - [x] Add Settings toggles for optional Windows node capability groups (`canvas`, `screen`, `camera`, `location`, `browser.proxy`)
 
-### 5.4 Upstream Contributions / Issues to File
+### 5.4 Upstream Alignment
 
-- [x] **Request Windows/macOS parity for safe declared commands** — Windows should allow the same safe companion commands macOS does, while dangerous commands stay explicit opt-in. Draft included below.
-- [x] **Document `gateway.nodes.allowCommands`** — local Windows integration docs now describe allowCommands, denyCommands, safe parity commands, privacy-sensitive opt-ins, and re-pair requirements.
+- [x] **Use canonical Windows node metadata** — Windows sends
+  `platform: "windows"` and `deviceFamily: "Windows"` so the gateway can apply
+  desktop command policy without a global allowlist workaround.
+- [x] **Keep privacy-sensitive commands explicit opt-in** — `camera.snap`,
+  `camera.clip`, and `screen.record` remain behind `gateway.nodes.allowCommands`.
 - [x] **Add `canvas.a2ui.pushJSONL`** — current Mac supports it as a legacy JSONL alias; Windows routes it through the same A2UI push handler
 
-#### Upstream issue draft
-
-**Title:** Expand Windows node default allowlist for safe declared companion commands
-
-**Body:**
-
-Windows nodes are currently treated like Linux/headless exec hosts in `src/gateway/node-command-policy.ts`:
-
-```ts
-windows: [...SYSTEM_COMMANDS]
-```
-
-That means the gateway filters out safe companion-app commands that a Windows node explicitly declares, including `canvas.*`, `camera.list`, `location.get`, and `screen.snapshot`. The Windows tray app is now a full companion node, not just an exec host, so this causes confusing behavior: the node can implement and advertise a command, but the gateway drops/rejects it unless users manually configure `gateway.nodes.allowCommands`.
-
-Proposal:
-
-- Add safe declared companion commands to Windows defaults, similar to macOS:
-  - `canvas.present`
-  - `canvas.hide`
-  - `canvas.navigate`
-  - `canvas.eval`
-  - `canvas.snapshot`
-  - `canvas.a2ui.push`
-  - `canvas.a2ui.pushJSONL`
-  - `canvas.a2ui.reset`
-  - `camera.list`
-  - `location.get`
-  - `screen.snapshot`
-  - `device.info`
-  - `device.status`
-- Keep dangerous/privacy-heavy commands explicit opt-in via `gateway.nodes.allowCommands`:
-  - `camera.snap`
-  - `camera.clip`
-  - `screen.record`
-  - write commands such as `contacts.add`, `calendar.add`, etc.
-
-This does not grant capabilities to headless Windows hosts by itself. A command still has to pass both gates: the node must declare it in `commands`, and the gateway policy must allow it. Headless Windows node hosts that only declare `system.run` / `system.which` remain exec-only.
-
-Related documentation gap: `gateway.nodes.allowCommands` and `gateway.nodes.denyCommands` should be documented in the gateway configuration reference, including the requirement to re-pair after command-list changes because approved pairing records snapshot declared commands.
+The gateway still enforces both gates: the node must declare a command in
+`commands`, and gateway policy must allow it. Headless Windows node hosts that
+only declare `system.run` / `system.which` remain exec-only.
 
 ### 5.5 User-Facing Documentation
 
-When shipping the Windows node, README/wiki should tell users:
-
-> **First-time setup**: After pairing your Windows node, add these commands to your gateway config:
-> ```bash
-> openclaw config set gateway.nodes.allowCommands '["canvas.present", "canvas.hide", "canvas.navigate", "canvas.eval", "canvas.snapshot", "canvas.a2ui.push", "canvas.a2ui.pushJSONL", "canvas.a2ui.reset", "camera.list", "screen.snapshot", "location.get", "device.info", "device.status", "system.execApprovals.get", "system.execApprovals.set"]'
-> openclaw gateway restart
-> ```
-> Then re-pair the node (`openclaw devices reject <old-id>` + re-approve).
->
-> Add `camera.snap`, `camera.clip`, and `screen.record` only when you explicitly want to allow privacy-sensitive camera or screen capture.
->
-> The Windows tray Command Center (`openclaw://commandcenter`) surfaces these policy problems directly: it separates safe companion allowlist fixes from privacy-sensitive opt-ins and provides copyable repair text for safe fixes or pending pairing approval.
+When shipping the Windows node, README/wiki should tell users that normal
+first-party companion commands are available after pairing when the node reports
+canonical Windows metadata. Users should add `camera.snap`, `camera.clip`, and
+`screen.record` to `gateway.nodes.allowCommands` only when they explicitly want
+to allow privacy-sensitive camera or screen capture.
+> The Windows tray Command Center (`openclaw://commandcenter`) surfaces policy
+> problems directly, including pending pairing approval and privacy-sensitive
+> opt-ins.
 
 ---
 

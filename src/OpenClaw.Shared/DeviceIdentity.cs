@@ -330,7 +330,24 @@ public class DeviceIdentity
         var safeToken = authToken ?? string.Empty;
         var safeNonce = nonce ?? string.Empty;
 
-        return $"v3|{_deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{safeToken}|{safeNonce}|{platform}|{deviceFamily}";
+        return $"v3|{_deviceId}|{clientId}|{clientMode}|{role}|{scopesCsv}|{signedAtMs}|{safeToken}|{safeNonce}|{NormalizeAuthMetadata(platform)}|{NormalizeAuthMetadata(deviceFamily)}";
+    }
+
+    private static string NormalizeAuthMetadata(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var trimmed = value.Trim();
+        var builder = new StringBuilder(trimmed.Length);
+        foreach (var character in trimmed)
+        {
+            builder.Append(character is >= 'A' and <= 'Z'
+                ? (char)(character + 32)
+                : character);
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>

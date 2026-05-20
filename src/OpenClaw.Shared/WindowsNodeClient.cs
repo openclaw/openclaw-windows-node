@@ -22,6 +22,8 @@ public class WindowsNodeClient : WebSocketClientBase
     private readonly List<INodeCapability> _capabilities = new();
     private FrozenDictionary<string, INodeCapability> _commandMap = FrozenDictionary<string, INodeCapability>.Empty;
     private readonly NodeRegistration _registration;
+    private const string WindowsPlatform = "windows";
+    private const string WindowsDeviceFamily = "Windows";
     
     // Connection state
     private bool _isConnected;
@@ -121,7 +123,8 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             Id = _deviceIdentity.DeviceId,
             Version = "1.0.0",
-            Platform = "windows",
+            Platform = WindowsPlatform,
+            DeviceFamily = WindowsDeviceFamily,
             DisplayName = $"Windows Node ({Environment.MachineName})"
         };
     }
@@ -592,7 +595,7 @@ public class WindowsNodeClient : WebSocketClientBase
         _logger.Info($"[HANDSHAKE]   isBootstrap={usingBootstrap}, hasNodeDeviceToken={isPaired}");
         _logger.Info($"[HANDSHAKE]   deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
         _logger.Info($"[HANDSHAKE]   nonce={nonce?[..Math.Min(15, nonce?.Length ?? 0)]}...");
-        _logger.Info($"[HANDSHAKE]   signature format={(_useV2Signature ? "v2" : "v3")}, platform=windows, family=desktop");
+        _logger.Info($"[HANDSHAKE]   signature format={(_useV2Signature ? "v2" : "v3")}, platform={_registration.Platform}, family={_registration.DeviceFamily}");
         _logger.Info($"[HANDSHAKE]   auth: {{{authType}}}");
 
         await SendRawAsync(BuildNodeConnectMessage(nonce, ts));
@@ -616,7 +619,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     : _deviceIdentity.SignConnectPayloadV3(
                         nonce, signedAt, ClientId, "node", "node",
                         Array.Empty<string>(), tokenForSignature,
-                        "windows", "desktop");
+                        _registration.Platform, _registration.DeviceFamily);
             }
             catch (Exception ex)
             {
@@ -639,6 +642,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     id = ClientId,  // Must match what we sign in payload
                     version = _registration.Version,
                     platform = _registration.Platform,
+                    deviceFamily = _registration.DeviceFamily,
                     mode = "node",
                     displayName = _registration.DisplayName
                 },

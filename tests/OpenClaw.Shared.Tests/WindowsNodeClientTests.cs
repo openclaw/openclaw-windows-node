@@ -872,6 +872,30 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public void BuildNodeConnectMessage_IncludesCanonicalWindowsDeviceFamily()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "gateway-token", dataPath);
+
+            var json = InvokeBuildNodeConnectMessage(client);
+            using var doc = JsonDocument.Parse(json);
+            var clientPayload = doc.RootElement.GetProperty("params").GetProperty("client");
+
+            Assert.Equal("windows", clientPayload.GetProperty("platform").GetString());
+            Assert.Equal("Windows", clientPayload.GetProperty("deviceFamily").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public void RegisterCapability_AddsToCapabilitiesListAndRegistration()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
