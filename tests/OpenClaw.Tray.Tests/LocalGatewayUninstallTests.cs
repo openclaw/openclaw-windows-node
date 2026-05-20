@@ -1435,4 +1435,82 @@ public sealed class LocalGatewayUninstallTests
         Assert.True(result.Success);
         Assert.Empty(result.Errors);
     }
+
+    // -----------------------------------------------------------------------
+    // Test: WslParentDirCleanup — wsl\ dir removed when empty after VHD cleanup
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task WslParentDirCleanup_EmptyAfterVhdCleanup_ExecutedAndDeleted()
+    {
+        using var env = new UninstallTestEnv();
+        var vhdDir = Path.Combine(env.LocalDataDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(vhdDir);
+        File.WriteAllText(Path.Combine(vhdDir, "ext4.vhdx"), "fake vhd");
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var wslDir = Path.Combine(env.LocalDataDir, "wsl");
+        Assert.False(Directory.Exists(wslDir));
+        var step = result.Steps.FirstOrDefault(s => s.Name == "WSL parent dir cleanup");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Executed, step.Status);
+        Assert.True(result.Postconditions.WslParentDirAbsent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: WslParentDirCleanup — wsl\ dir preserved when non-empty
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task WslParentDirCleanup_NonEmpty_Skipped()
+    {
+        using var env = new UninstallTestEnv();
+        var wslDir = Path.Combine(env.LocalDataDir, "wsl");
+        Directory.CreateDirectory(wslDir);
+        // Put an unrelated file in wsl\ to make it non-empty after VHD dir is gone
+        File.WriteAllText(Path.Combine(wslDir, "other-distro-marker.txt"), "preserved");
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        Assert.True(Directory.Exists(wslDir), "wsl\\ dir should be preserved when non-empty");
+        var step = result.Steps.FirstOrDefault(s => s.Name == "WSL parent dir cleanup");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
+        Assert.False(result.Postconditions.WslParentDirAbsent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: WslParentDirCleanup — wsl\ dir already absent → Skipped (idempotent)
+    // -----------------------------------------------------------------------
+
+    [WindowsFact]
+    public async Task WslParentDirCleanup_AlreadyAbsent_Skipped()
+    {
+        using var env = new UninstallTestEnv();
+        var wslDir = Path.Combine(env.LocalDataDir, "wsl");
+        Assert.False(Directory.Exists(wslDir));
+
+        var engine = env.BuildEngine();
+        var result = await engine.RunAsync(new LocalGatewayUninstallOptions
+        {
+            DryRun = false,
+            ConfirmDestructive = true
+        });
+
+        var step = result.Steps.FirstOrDefault(s => s.Name == "WSL parent dir cleanup");
+        Assert.NotNull(step);
+        Assert.Equal(UninstallStepStatus.Skipped, step.Status);
+        Assert.True(result.Postconditions.WslParentDirAbsent);
+    }
 }
