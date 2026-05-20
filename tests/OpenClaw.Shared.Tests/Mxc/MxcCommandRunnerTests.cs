@@ -20,7 +20,8 @@ public class MxcCommandRunnerTests
         ISandboxExecutor executor,
         ICommandRunner hostFallback,
         SettingsData settings,
-        bool sandboxAvailable = true)
+        bool sandboxAvailable = true,
+        IOpenClawLogger? logger = null)
     {
         return new MxcCommandRunner(
             executor,
@@ -29,7 +30,7 @@ public class MxcCommandRunnerTests
             () => "C:\\test\\settings",
             () => sandboxAvailable,
             invalidateAvailability: null,
-            NullLogger.Instance);
+            logger ?? NullLogger.Instance);
     }
 
     [Fact]
@@ -281,6 +282,16 @@ public class MxcCommandRunnerTests
         }
     }
 
+    private sealed class CapturingLogger : IOpenClawLogger
+    {
+        public List<string> DebugMessages { get; } = new();
+
+        public void Info(string message) { }
+        public void Debug(string message) => DebugMessages.Add(message);
+        public void Warn(string message) { }
+        public void Error(string message, Exception? ex = null) { }
+    }
+
     [Theory]
     [InlineData(0, null, 0)]              // both unset → 0 (no cap)
     [InlineData(30_000, null, 30_000)]    // agent only
@@ -306,6 +317,36 @@ public class MxcCommandRunnerTests
 
         Assert.NotNull(executor.LastRequest);
         Assert.Equal(16L * 1024L * 1024L, executor.LastRequest!.MaxOutputBytes);
+    }
+
+    [Fact]
+    public async Task RunAsync_LogsSandboxSettingsSnapshotAndPolicy()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var settings = NewSettings(sandboxEnabled: true);
+        settings.SystemRunAllowOutbound = true;
+        settings.SandboxClipboard = SandboxClipboardMode.Both;
+        settings.SandboxDocumentsAccess = SandboxFolderAccess.ReadOnly;
+        settings.SandboxCustomFolders = new()
+        {
+            new SandboxCustomFolder { Path = "C:\\Code\\repo", Access = SandboxFolderAccess.ReadWrite },
+        };
+        var logger = new CapturingLogger();
+        var runner = NewRunner(executor, fallback, settings, logger: logger);
+
+        await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+        var requestLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request", StringComparison.Ordinal));
+        Assert.Contains("sandboxSettingsJson=", requestLog);
+        Assert.Contains("\"securityLevel\":\"Custom\"", requestLog);
+        Assert.Contains("\"systemRunAllowOutbound\":true", requestLog);
+        Assert.Contains("\"sandboxClipboard\":\"both\"", requestLog);
+        Assert.Contains("\"path\":\"C:\\\\Code\\\\repo\"", requestLog);
+        Assert.Contains("\"access\":\"readWrite\"", requestLog);
+        Assert.Contains("policyJson=", requestLog);
+        Assert.Contains("\"network\":{\"allowOutbound\":true", requestLog);
+        Assert.Contains("\"readwritePaths\":[\"C:\\\\Code\\\\repo\"", requestLog);
     }
 
     [Fact]

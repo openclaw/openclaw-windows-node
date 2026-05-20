@@ -36,6 +36,13 @@ const os = require('node:os');
 
 const DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024; // mirrors C# DefaultMaxOutputBytes
 const HARD_MAX_OUTPUT_BYTES = 256 * 1024 * 1024;  // safety ceiling regardless of caller
+const DIRECT_DEBUG_LOG_PATH = path.join(
+  process.env.OPENCLAW_TRAY_DATA_DIR ||
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'OpenClawTray') ||
+    os.tmpdir(),
+  'openclaw-mxc-debug.log');
+const DIRECT_DEBUG_DIR = path.dirname(DIRECT_DEBUG_LOG_PATH);
+const PREFLIGHT_ONLY = true;
 
 /**
  * Match a drive root like "C:\", "D:", "c:\\", etc. The MXC SDK's
@@ -74,20 +81,61 @@ function isUserTempRoot(p) {
  * a new array; doesn't mutate the input.
  */
 function filterOutDenied(allowed, denied) {
-  if (!Array.isArray(allowed) || allowed.length === 0) return allowed || [];
-  if (!Array.isArray(denied) || denied.length === 0) return allowed;
+  return filterOutDeniedWithReasons(allowed, denied).allowed;
+}
+
+function filterOutDeniedWithReasons(allowed, denied) {
+  const source = Array.isArray(allowed) ? allowed : [];
+  if (source.length === 0) return { allowed: [], removed: [] };
+  if (!Array.isArray(denied) || denied.length === 0) return { allowed: source, removed: [] };
   const normalizedDenied = denied
-    .map(normalizePath)
-    .filter(Boolean);
-  if (normalizedDenied.length === 0) return allowed;
-  return allowed.filter(a => {
-    const na = normalizePath(a);
-    if (!na) return false;
-    for (const d of normalizedDenied) {
-      if (pathsOverlap(na, d)) return false;
+    .map(d => ({ original: d, normalized: normalizePath(d) }))
+    .filter(d => d.normalized);
+  if (normalizedDenied.length === 0) return { allowed: source, removed: [] };
+
+  const kept = [];
+  const removed = [];
+  for (const candidate of source) {
+    const normalizedCandidate = normalizePath(candidate);
+    if (!normalizedCandidate) {
+      removed.push({ path: candidate, reason: 'invalid-path' });
+      continue;
     }
-    return true;
-  });
+
+    const matchedDeny = normalizedDenied.find(d => pathsOverlap(normalizedCandidate, d.normalized));
+    if (matchedDeny) {
+      removed.push({ path: candidate, reason: 'overlaps-denied-path', deniedPath: matchedDeny.original });
+      continue;
+    }
+
+    kept.push(candidate);
+  }
+
+  return { allowed: kept, removed };
+}
+
+function buildPathAccounting(callerPolicy, tools, temp, mergedPolicy) {
+  const callerFs = callerPolicy?.filesystem ?? {};
+  const toolReadonly = tools?.readonlyPaths ?? [];
+  const tempReadwrite = temp?.readwritePaths ?? [];
+  return {
+    caller: {
+      readonlyPaths: callerFs.readonlyPaths ?? [],
+      readwritePaths: callerFs.readwritePaths ?? [],
+      deniedPaths: callerFs.deniedPaths ?? [],
+    },
+    sdkAdds: {
+      toolReadonlyPaths: toolReadonly,
+      tempReadwritePaths: tempReadwrite,
+    },
+    mergedBeforeScopeFilters: {
+      readonlyPaths: mergedPolicy?.filesystem?.readonlyPaths ?? [],
+      readwritePaths: mergedPolicy?.filesystem?.readwritePaths ?? [],
+      deniedPaths: mergedPolicy?.filesystem?.deniedPaths ?? [],
+    },
+    network: mergedPolicy?.network ?? null,
+    ui: mergedPolicy?.ui ?? null,
+  };
 }
 
 function pathsOverlap(left, right) {
@@ -130,8 +178,12 @@ async function main() {
   // Compose host-discovered tool/temp paths into the policy supplied by C#.
   const tools = getAvailableToolsPolicy(process.env, { containerType: 'appcontainer' });
   const temp = getTemporaryFilesPolicy(process.env);
+  diag('input policy', summarizePolicy(req.policy));
+  diag('sdk tools policy', summarizePolicy({ filesystem: tools }));
+  diag('sdk temp policy', summarizePolicy({ filesystem: temp }));
 
   const policy = mergePolicy(req.policy, tools, temp);
+  diag('policy merge path accounting', buildPathAccounting(req.policy, tools, temp, policy));
 
   // SCOPE the merged policy: strip the SDK's "convenience" grants that
   // bypass the user's explicit choices in the Sandbox UI.
@@ -142,8 +194,18 @@ async function main() {
   //     We substitute a fresh per-invocation scratch dir as the only writable
   //     temp area, and override TEMP/TMP/TMPDIR in the spawned process's env
   //     so commands that write to %TEMP% land in our scratch dir.
-  policy.filesystem.readonlyPaths = (policy.filesystem.readonlyPaths || []).filter(p => !isDriveRoot(p));
-  policy.filesystem.readwritePaths = (policy.filesystem.readwritePaths || []).filter(p => !isUserTempRoot(p));
+  const beforeScopeReadonly = policy.filesystem.readonlyPaths || [];
+  const beforeScopeReadwrite = policy.filesystem.readwritePaths || [];
+  const driveRootRemovals = beforeScopeReadonly.filter(isDriveRoot);
+  const tempRootRemovals = beforeScopeReadwrite.filter(isUserTempRoot);
+  policy.filesystem.readonlyPaths = beforeScopeReadonly.filter(p => !isDriveRoot(p));
+  policy.filesystem.readwritePaths = beforeScopeReadwrite.filter(p => !isUserTempRoot(p));
+  if (driveRootRemovals.length || tempRootRemovals.length) {
+    diag('policy scope filtered sdk convenience grants', {
+      removedReadonlyDriveRoots: driveRootRemovals,
+      removedReadwriteTempRoots: tempRootRemovals,
+    });
+  }
 
   // Mirror the C# MxcPolicyBuilder.FilterOutDenied logic on the JS side after
   // merging the SDK's tools/temp policies. The C# side already stripped any
@@ -153,8 +215,16 @@ async function main() {
   // parent of a denied path — e.g., %LOCALAPPDATA% which contains the browser
   // profile dirs we deny in MxcPolicyBuilder. Belt-and-suspenders deny precedence
   // independent of the @microsoft/mxc-sdk's (undocumented, alpha) deny semantics.
-  policy.filesystem.readonlyPaths = filterOutDenied(policy.filesystem.readonlyPaths, policy.filesystem.deniedPaths);
-  policy.filesystem.readwritePaths = filterOutDenied(policy.filesystem.readwritePaths, policy.filesystem.deniedPaths);
+  const readonlyDeniedFilter = filterOutDeniedWithReasons(policy.filesystem.readonlyPaths, policy.filesystem.deniedPaths);
+  const readwriteDeniedFilter = filterOutDeniedWithReasons(policy.filesystem.readwritePaths, policy.filesystem.deniedPaths);
+  policy.filesystem.readonlyPaths = readonlyDeniedFilter.allowed;
+  policy.filesystem.readwritePaths = readwriteDeniedFilter.allowed;
+  if (readonlyDeniedFilter.removed.length || readwriteDeniedFilter.removed.length) {
+    diag('policy denied-overlap filtered allow grants', {
+      removedReadonlyPaths: readonlyDeniedFilter.removed,
+      removedReadwritePaths: readwriteDeniedFilter.removed,
+    });
+  }
 
   let scratchDir = null;
   try {
@@ -163,18 +233,29 @@ async function main() {
     return emit(failResponse(-1, `Failed to create scratch dir: ${e.message}`, startTime));
   }
   policy.filesystem.readwritePaths.push(scratchDir);
+  diag('policy scratch grant added', { scratchDir });
+  diag('effective policy before config', summarizePolicy(policy));
 
   try {
     let config;
     try {
       config = createConfigFromPolicy(policy, 'process');
+      diag('sandbox config after policy conversion', summarizeConfig(config));
     } catch (e) {
+      diag('policy conversion failed', { error: e.message, effectivePolicy: summarizePolicy(policy) });
       return emit(failResponse(-1, `Policy invalid: ${e.message}`, startTime));
     }
 
     // Build the shell command line. Quote the inner command for the chosen shell.
     config.process.commandLine = buildShellCommandLine(shell, command, argv);
     if (req.cwd) config.process.cwd = req.cwd;
+    diag('sandbox process command prepared', {
+      shell,
+      commandLength: command.length,
+      argCount: argv.length,
+      cwd: config.process.cwd || null,
+      timeoutMs: req.timeoutMs,
+    });
 
     // Override TEMP/TMP/TMPDIR so commands inside the sandbox write to our
     // scratch dir, not the user's real %TEMP% (which we stripped above).
@@ -182,6 +263,11 @@ async function main() {
     config.process.env = buildSandboxEnv(req.env, scratchDir);
     const sdkTimeoutMs = req.timeoutMs > 0 ? req.timeoutMs : 30000;
     config.process.timeout = sdkTimeoutMs;
+    diag('sandbox process env prepared', {
+      envKeys: config.process.env.map(e => String(e).split('=')[0]).sort(),
+      scratchDir,
+      sdkTimeoutMs,
+    });
 
     // CRITICAL: usePty:false — the @microsoft/mxc-sdk default uses node-pty which
     // conflates stdout/stderr and rounds exit codes through PTY signals. We want
@@ -194,11 +280,44 @@ async function main() {
     if (req.wxcExecPath) {
       spawnOptions.executablePath = req.wxcExecPath;
     }
+    diag('spawnSandboxFromConfig before', {
+      spawnOptions,
+      config: summarizeConfig(config),
+      effectivePolicy: summarizePolicy(policy),
+    });
+
+    const artifactPaths = writePreflightArtifacts(policy, config, spawnOptions);
+    diag('preflight artifacts written', artifactPaths);
+
+    if (PREFLIGHT_ONLY) {
+      diag('spawnSandboxFromConfig skipped', {
+        reason: 'preflight-only mode; sandbox execution intentionally disabled',
+        artifactPaths,
+      });
+      return emit({
+        exitCode: 0,
+        stdout:
+          "MXC preflight completed; sandbox execution intentionally skipped.\n" +
+          `Effective policy: ${artifactPaths.effectivePolicyPath}\n` +
+          `Container config: ${artifactPaths.configPath}\n` +
+          `Spawn options: ${artifactPaths.spawnOptionsPath}\n`,
+        stderr: '',
+        timedOut: false,
+        durationMs: Math.max(0, Date.now() - startTime),
+        containmentTag: 'mxc-preflight',
+      });
+    }
 
     let child;
     try {
       child = spawnSandboxFromConfig(config, spawnOptions);
+      diag('spawnSandboxFromConfig after', {
+        pid: child && typeof child.pid === 'number' ? child.pid : null,
+        stdout: Boolean(child?.stdout),
+        stderr: Boolean(child?.stderr),
+      });
     } catch (e) {
+      diag('spawnSandboxFromConfig failed', { error: e.message, config: summarizeConfig(config) });
       return emit(failResponse(-1, `spawnSandboxFromConfig failed: ${e.message}`, startTime));
     }
 
@@ -249,6 +368,14 @@ async function main() {
     // the cleanest signal available without poking SDK internals.
     const durationMs = Date.now() - startTime;
     const timedOut = exitCode !== 0 && durationMs >= sdkTimeoutMs;
+    diag('sandbox child closed', {
+      exitCode,
+      durationMs,
+      timedOut,
+      stdoutBytes,
+      stderrBytes,
+      truncated,
+    });
 
     emit({
       exitCode,
@@ -473,6 +600,76 @@ function readJsonFromStdin() {
 
 function emit(response) {
   process.stdout.write(JSON.stringify(response));
+}
+
+function diag(label, detail) {
+  const line = `[${new Date().toISOString()}] [openclaw-mxc-debug] ${label}: ${JSON.stringify(detail)}\n`;
+  try {
+    process.stderr.write(line);
+  } catch {
+    // Diagnostics must never affect sandbox execution.
+  }
+  try {
+    fs.mkdirSync(DIRECT_DEBUG_DIR, { recursive: true });
+    fs.appendFileSync(DIRECT_DEBUG_LOG_PATH, line, 'utf8');
+  } catch {
+    // Diagnostics must never affect sandbox execution.
+  }
+}
+
+function writePreflightArtifacts(policy, config, spawnOptions) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
+  const prefix = path.join(DIRECT_DEBUG_DIR, `openclaw-mxc-preflight-${stamp}-${process.pid}`);
+  const effectivePolicyPath = `${prefix}.effective-policy.json`;
+  const configPath = `${prefix}.container-config.json`;
+  const spawnOptionsPath = `${prefix}.spawn-options.json`;
+
+  fs.mkdirSync(DIRECT_DEBUG_DIR, { recursive: true });
+  fs.writeFileSync(effectivePolicyPath, JSON.stringify(policy, null, 2), 'utf8');
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  fs.writeFileSync(spawnOptionsPath, JSON.stringify(spawnOptions, null, 2), 'utf8');
+
+  return { effectivePolicyPath, configPath, spawnOptionsPath };
+}
+
+function summarizePolicy(policy) {
+  const fsPolicy = policy?.filesystem ?? {};
+  return {
+    version: policy?.version ?? null,
+    filesystem: {
+      readonlyPaths: fsPolicy.readonlyPaths ?? [],
+      readwritePaths: fsPolicy.readwritePaths ?? [],
+      deniedPaths: fsPolicy.deniedPaths ?? [],
+      clearPolicyOnExit: fsPolicy.clearPolicyOnExit ?? null,
+    },
+    network: policy?.network ?? null,
+    ui: policy?.ui ?? null,
+    timeoutMs: policy?.timeoutMs ?? null,
+  };
+}
+
+function summarizeConfig(config) {
+  const processConfig = config?.process ?? {};
+  return {
+    keys: config && typeof config === 'object' ? Object.keys(config).sort() : [],
+    policyPath: firstString(config, ['policyPath', 'policyFile', 'policyFilePath', 'configPath', 'configFilePath']),
+    process: {
+      commandLineLength: typeof processConfig.commandLine === 'string' ? processConfig.commandLine.length : 0,
+      cwd: processConfig.cwd ?? null,
+      timeout: processConfig.timeout ?? null,
+      envKeys: Array.isArray(processConfig.env)
+        ? processConfig.env.map(e => String(e).split('=')[0]).sort()
+        : [],
+    },
+  };
+}
+
+function firstString(source, names) {
+  if (!source || typeof source !== 'object') return null;
+  for (const name of names) {
+    if (typeof source[name] === 'string') return source[name];
+  }
+  return null;
 }
 
 function failResponse(exitCode, errorMessage, startTime = Date.now()) {

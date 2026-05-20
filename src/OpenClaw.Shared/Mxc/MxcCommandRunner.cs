@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -80,7 +82,8 @@ public sealed class MxcCommandRunner : ICommandRunner
             return await _hostFallback.RunAsync(request, ct);
         }
 
-        var policy = MxcPolicyBuilder.ForSystemRun(settings, _settingsDirectoryPathProvider());
+        var settingsDirectoryPath = _settingsDirectoryPathProvider();
+        var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
         var argsJson = SerializeArgs(request);
 
         // Compute the effective timeout: take the smaller of the agent-supplied
@@ -101,7 +104,9 @@ public sealed class MxcCommandRunner : ICommandRunner
 
         try
         {
+            LogSandboxRequest(sandboxRequest, request, settings, settingsDirectoryPath, policy);
             var sandboxed = await _executor.ExecuteAsync(sandboxRequest, ct);
+            LogSandboxResult(sandboxed);
             return new CommandResult
             {
                 Stdout = sandboxed.Stdout,
@@ -176,6 +181,98 @@ public sealed class MxcCommandRunner : ICommandRunner
         return doc.RootElement.Clone();
     }
 
+    private void LogSandboxRequest(
+        SandboxExecutionRequest sandboxRequest,
+        CommandRequest commandRequest,
+        SettingsData settings,
+        string settingsDirectoryPath,
+        SandboxPolicy policy)
+    {
+        var settingsJson = JsonSerializer.Serialize(ToSandboxSettingsDiagnostic(settings, settingsDirectoryPath), DiagnosticJson);
+        var policyJson = JsonSerializer.Serialize(policy, DiagnosticJson);
+        var message =
+            "[mxc] system.run sandbox request " +
+            $"executor={_executor.Name}; contained={_executor.IsContained}; " +
+            $"sandboxSettingsJson={settingsJson}; " +
+            $"shell={commandRequest.Shell ?? "powershell"}; " +
+            $"commandLength={commandRequest.Command?.Length ?? 0}; " +
+            $"cwd={commandRequest.Cwd ?? "<null>"}; " +
+            $"envKeys=[{string.Join(",", commandRequest.Env?.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase) ?? Enumerable.Empty<string>())}]; " +
+            $"timeoutMs={sandboxRequest.TimeoutMs}; maxOutputBytes={sandboxRequest.MaxOutputBytes?.ToString() ?? "<default>"}; " +
+            $"policyJson={policyJson}";
+        LogMxcDiagnostic(message);
+    }
+
+    private static object ToSandboxSettingsDiagnostic(SettingsData settings, string settingsDirectoryPath)
+    {
+        var preset = DetectPreset(settings);
+        return new
+        {
+            systemRunSandboxEnabled = settings.SystemRunSandboxEnabled,
+            securityLevel = preset,
+            systemRunAllowOutbound = settings.SystemRunAllowOutbound,
+            sandboxClipboard = settings.SandboxClipboard,
+            sandboxDocumentsAccess = settings.SandboxDocumentsAccess,
+            sandboxDownloadsAccess = settings.SandboxDownloadsAccess,
+            sandboxDesktopAccess = settings.SandboxDesktopAccess,
+            sandboxCustomFolders = settings.SandboxCustomFolders?.Select<SandboxCustomFolder, object>(f => new
+            {
+                path = f.Path,
+                access = f.Access,
+            }).ToArray() ?? Array.Empty<object>(),
+            sandboxTimeoutMs = settings.SandboxTimeoutMs,
+            sandboxMaxOutputBytes = settings.SandboxMaxOutputBytes,
+            settingsDirectoryPath,
+        };
+    }
+
+    private static string DetectPreset(SettingsData settings)
+    {
+        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: false, documents: null, downloads: null, desktop: null, clipboard: SandboxClipboardMode.None, timeoutMs: 30_000, maxOutputBytes: 4 * 1024 * 1024))
+            return "LockedDown";
+        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: true, documents: SandboxFolderAccess.ReadOnly, downloads: SandboxFolderAccess.ReadOnly, desktop: SandboxFolderAccess.ReadOnly, clipboard: SandboxClipboardMode.Read, timeoutMs: 60_000, maxOutputBytes: 16 * 1024 * 1024))
+            return "Balanced";
+        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: true, documents: SandboxFolderAccess.ReadWrite, downloads: SandboxFolderAccess.ReadWrite, desktop: SandboxFolderAccess.ReadWrite, clipboard: SandboxClipboardMode.Both, timeoutMs: 300_000, maxOutputBytes: 64 * 1024 * 1024))
+            return "Permissive";
+        return "Custom";
+    }
+
+    private static bool MatchesPreset(
+        SettingsData settings,
+        bool sandboxEnabled,
+        bool allowOutbound,
+        SandboxFolderAccess? documents,
+        SandboxFolderAccess? downloads,
+        SandboxFolderAccess? desktop,
+        SandboxClipboardMode clipboard,
+        int timeoutMs,
+        long maxOutputBytes)
+    {
+        return settings.SystemRunSandboxEnabled == sandboxEnabled
+            && settings.SystemRunAllowOutbound == allowOutbound
+            && settings.SandboxDocumentsAccess == documents
+            && settings.SandboxDownloadsAccess == downloads
+            && settings.SandboxDesktopAccess == desktop
+            && settings.SandboxClipboard == clipboard
+            && settings.SandboxTimeoutMs == timeoutMs
+            && settings.SandboxMaxOutputBytes == maxOutputBytes;
+    }
+
+    private void LogSandboxResult(SandboxExecutionResult result)
+    {
+        LogMxcDiagnostic(
+            "[mxc] system.run sandbox result " +
+            $"exitCode={result.ExitCode}; timedOut={result.TimedOut}; durationMs={result.DurationMs}; " +
+            $"containment={result.ContainmentTag}; stdoutChars={result.Stdout?.Length ?? 0}; " +
+            $"stderrChars={result.Stderr?.Length ?? 0}; structured={result.StructuredResult.HasValue}");
+    }
+
+    private void LogMxcDiagnostic(string message)
+    {
+        _logger.Debug(message);
+        Trace.WriteLine(message);
+    }
+
     internal static int CombineTimeouts(int agentMs, int? policyMs)
     {
         // Treat <= 0 as "no cap on this side."
@@ -186,4 +283,15 @@ public sealed class MxcCommandRunner : ICommandRunner
         if (hasPolicy) return policyMs!.Value;
         return 0;
     }
+
+    private static readonly JsonSerializerOptions DiagnosticJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false,
+        Converters =
+        {
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase),
+        },
+    };
 }

@@ -41,6 +41,7 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
         _logger = logger ?? NullLogger.Instance;
         _nodeExecutablePath = nodeExecutableOverride
             ?? Environment.GetEnvironmentVariable(NodeExecutableOverrideEnvVar)
+            ?? ResolveExecutableOnPath("node.exe")
             ?? "node.exe";
     }
 
@@ -76,6 +77,13 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
             WxcExecPath: _availability.WxcExecPath);
 
         var requestJson = JsonSerializer.Serialize(bridgeRequest, BridgeJson);
+        LogDiagnostic(
+            "[mxc] bridge request prepared " +
+            $"node={_nodeExecutablePath}; script={_runCommandScriptPath}; " +
+            $"wxcExec={_availability.WxcExecPath ?? "<null>"}; timeoutMs={request.TimeoutMs}; " +
+            $"maxOutputBytes={capBytes}; cwd={request.Cwd ?? "<null>"}; " +
+            $"envKeys=[{string.Join(",", request.Env?.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase) ?? Enumerable.Empty<string>())}]; " +
+            $"requestBytes={Encoding.UTF8.GetByteCount(requestJson)}");
 
         var psi = new ProcessStartInfo
         {
@@ -97,6 +105,7 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
         try
         {
             process.Start();
+            LogDiagnostic($"[mxc] bridge process started pid={process.Id}");
         }
         catch (Exception ex)
         {
@@ -116,6 +125,7 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
             await process.StandardInput.WriteAsync(requestJson.AsMemory(), cts.Token);
             await process.StandardInput.FlushAsync(cts.Token);
             process.StandardInput.Close();
+            LogDiagnostic($"[mxc] bridge request written pid={process.Id}; bytes={Encoding.UTF8.GetByteCount(requestJson)}");
         }
         catch (OperationCanceledException)
         {
@@ -157,6 +167,13 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
         var stderr = await stderrTask;
 
         sw.Stop();
+        if (!string.IsNullOrWhiteSpace(stderr))
+            LogDiagnostic($"[mxc] bridge diagnostics pid={SafeProcessId(process)}; stderr={Truncate(stderr, 4000)}");
+        LogDiagnostic(
+            "[mxc] bridge process completed " +
+            $"pid={SafeProcessId(process)}; exitCode={(process.HasExited ? process.ExitCode : -1)}; " +
+            $"durationMs={sw.ElapsedMilliseconds}; timedOut={timedOut}; " +
+            $"stdoutChars={stdout.Length}; stderrChars={stderr.Length}");
 
         if (timedOut)
         {
@@ -173,6 +190,12 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
         // Bridge writes a single JSON envelope to stdout on completion.
         if (TryParseBridgeResponse(stdout, out var response))
         {
+            LogDiagnostic(
+                "[mxc] bridge response parsed " +
+                $"exitCode={response.ExitCode}; timedOut={response.TimedOut}; " +
+                $"durationMs={response.DurationMs}; containment={response.ContainmentTag ?? "mxc"}; " +
+                $"stdoutChars={response.Stdout?.Length ?? 0}; stderrChars={response.Stderr?.Length ?? 0}; " +
+                $"structured={response.StructuredResult.HasValue}");
             return new SandboxExecutionResult(
                 ExitCode: response.ExitCode,
                 Stdout: response.Stdout,
@@ -231,6 +254,41 @@ public sealed class OneShotAppContainerExecutor : ISandboxExecutor
                 process.Kill(entireProcessTree: true);
         }
         catch { /* best-effort */ }
+    }
+
+    private void LogDiagnostic(string message)
+    {
+        _logger.Debug(message);
+        Trace.WriteLine(message);
+    }
+
+    private static int SafeProcessId(Process process)
+    {
+        try { return process.Id; }
+        catch { return -1; }
+    }
+
+    private static string? ResolveExecutableOnPath(string fileName)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(directory.Trim(), fileName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch
+            {
+                // Ignore malformed PATH entries.
+            }
+        }
+
+        return null;
     }
 
     private static bool TryParseBridgeResponse(string json, out BridgeResponse response)
