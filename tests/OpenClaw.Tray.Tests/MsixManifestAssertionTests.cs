@@ -172,6 +172,61 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
+    public void Tray_SeedsNotificationSettingsWithSuppressedPackagedToast()
+    {
+        // Windows Settings > Notifications does not reliably show a packaged
+        // desktop app merely because the manifest declares a toast activator.
+        // The app must exercise the packaged toast channel once. This source
+        // contract pins a suppressed registration toast so first launch seeds
+        // Settings without showing a user-visible notification.
+        var appXamlCs = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var service = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "NotificationSettingsRegistrationService.cs"));
+
+        Assert.Contains("NotificationSettingsRegistrationService.EnsureRegistered();", appXamlCs);
+        Assert.Contains("ToastNotificationManagerCompat.CreateToastNotifier", service);
+        Assert.Contains("SuppressPopup = true", service);
+        Assert.Contains("RegistrationToastTag", service);
+        Assert.Contains("RegistrationToastGroup", service);
+        Assert.Contains("ToastNotificationManagerCompat.History.Remove", service);
+    }
+
+    [Fact]
+    public void Tray_WritesEarlyStartupBreadcrumbForPostInstallLaunchDiagnostics()
+    {
+        var appXamlCs = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+
+        Assert.Contains("WriteStartupBreadcrumb(\"App.ctor.begin\")", appXamlCs);
+        Assert.Contains("WriteStartupBreadcrumb(\"OnLaunched.begin\")", appXamlCs);
+        Assert.Contains("startup.log", appXamlCs);
+        Assert.Contains("TryGetActivationKindForBreadcrumb", appXamlCs);
+    }
+
+    [Fact]
+    public void Tray_AppListEntryAndTileContract_AreExplicitForInstallerLaunch()
+    {
+        var doc = LoadTrayManifest();
+        var visualElements = doc.Descendants(XName.Get("VisualElements", AppxUapNs)).Single();
+
+        Assert.Equal("default", (string?)visualElements.Attribute("AppListEntry"));
+
+        var defaultTile = doc.Descendants(XName.Get("DefaultTile", AppxUapNs)).SingleOrDefault();
+        Assert.NotNull(defaultTile);
+        Assert.Equal("allLogos", (string?)defaultTile!.Attribute("ShowName"));
+    }
+
+    [Fact]
+    public void Tray_TileBackground_IsStableNonAccentColorForSettingsPrivacyLists()
+    {
+        var doc = LoadTrayManifest();
+        var visualElements = doc.Descendants(XName.Get("VisualElements", AppxUapNs)).Single();
+
+        Assert.Equal("#202020", (string?)visualElements.Attribute("BackgroundColor"));
+    }
+
+    [Fact]
     public void Tray_PrivacyListIcon_HasAllRequiredUnplatedTargetSizes()
     {
         // Settings > Privacy lists (Camera, Microphone, Location) render the per-app

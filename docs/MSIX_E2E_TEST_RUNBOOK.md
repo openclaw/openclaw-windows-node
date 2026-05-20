@@ -30,12 +30,15 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
 2. Download the signed MSIX for the machine architecture:
    `OpenClawCompanion-X.Y.Z-win-x64.msix` or
    `OpenClawCompanion-X.Y.Z-win-arm64.msix`.
-3. **Assert** Windows AppInstaller opens with:
+3. Ensure **Launch when ready** is checked, then **assert** Windows AppInstaller
+   opens with:
    - Publisher: `CN=Scott Hanselman, O=Scott Hanselman, …` (no "untrusted")
    - DisplayName: `OpenClaw Companion`
    - Version: the tag version
 4. Click **Install**.
-5. **Assert** the tray icon appears in the notification area within 5 s.
+5. **Assert** the installer closes and the tray icon appears in the notification
+   area within 5 s. If it does not, collect the packaged startup breadcrumb at
+   `%LOCALAPPDATA%\Packages\OpenClaw.Companion_*\LocalState\startup.log`.
 6. **Assert** `Get-AppxPackage OpenClaw.Companion*` returns one row with the
    expected `Publisher` and a 4-part `Version`.
 7. **Assert** `Package.GetAppInstallerInfo()` or an equivalent package query
@@ -67,6 +70,16 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
    the `AppCapability.AccessChanged` subscription wired up by
    `PermissionChecker.SubscribeToAccessChangesPackaged` is firing.
 4. Toggle it back ON and **assert** the row returns to "Granted".
+5. **Assert** each Windows Settings privacy/permission app icon uses the
+   OpenClaw icon without the system-accent blue tile background.
+
+### 3a. Notification settings registration
+
+1. Open Settings → System → Notifications.
+2. **Assert** "OpenClaw Companion" appears as an app-level notification entry.
+3. Toggle notifications OFF and ON for OpenClaw Companion.
+4. Trigger a toast from the tray (for example copy device/node summary after a
+   gateway is paired) and **assert** the OS setting gates notification delivery.
 
 ### 4. StartupTask (replaces the legacy HKCU\\…\\Run autostart)
 

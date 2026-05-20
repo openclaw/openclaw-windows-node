@@ -273,6 +273,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public App()
     {
+        WriteStartupBreadcrumb("App.ctor.begin");
+
         // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
         var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
         if (!string.IsNullOrEmpty(langOverride))
@@ -326,6 +328,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private static void LogCrash(string source, Exception? ex)
     {
+        WriteStartupBreadcrumb($"crash.{source}", ex);
+
         try
         {
             var dir = Path.GetDirectoryName(CrashLogPath);
@@ -561,6 +565,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         _startupArgs = Environment.GetCommandLineArgs();
+        WriteStartupBreadcrumb("OnLaunched.begin");
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
         // -----------------------------------------------------------------------
@@ -670,11 +675,28 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             useSshTunnel = _settings.UseSshTunnel
         });
 
+        // Initialize tray icon FIRST (window-less pattern from WinUIEx).
+        // The tray is application chrome and must always survive any failure
+        // in the onboarding wizard. OnLaunched is async void, so a synchronous
+        // throw in optional startup work would otherwise abort OnLaunched before
+        // the post-install "launch when ready" path creates visible app chrome.
+        InitializeTrayIcon();
+        // Apply the user's saved default chat preset (if any) before any chat
+        // surface mounts so initial render uses their preferred styling.
+        OpenClawTray.Chat.Explorations.ChatExplorationPresetStore.ApplyDefaultIfPresent();
+
+        // Register toast activation handler and seed Windows notification
+        // settings after tray creation so notification-registration failures
+        // cannot make the post-install launch path look like a no-op.
+        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        NotificationSettingsRegistrationService.EnsureRegistered();
+        ShowSurfaceImprovementsTipIfNeeded();
+
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
-        // Check for updates before launching. Skip in test instances — no UI dialogs,
-        // no network calls, no startup delay.
+        // Check for updates after tray creation. Packaged builds skip startup
+        // polling and let Windows AppInstaller handle background update checks.
         if (DataDirOverride is null &&
             Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
@@ -686,23 +708,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
         }
 
-        // Register toast activation handler
-        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
-
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
-
-        // Initialize tray icon FIRST (window-less pattern from WinUIEx).
-        // The tray is application chrome and must always survive any failure
-        // in the onboarding wizard. OnLaunched is async void, so a synchronous
-        // throw inside the OnboardingWindow constructor would otherwise
-        // propagate through `await ShowOnboardingAsync()` and abort OnLaunched
-        // before the tray ever initializes.
-        InitializeTrayIcon();
-        // Apply the user's saved default chat preset (if any) before any chat
-        // surface mounts so initial render uses their preferred styling.
-        OpenClawTray.Chat.Explorations.ChatExplorationPresetStore.ApplyDefaultIfPresent();
-        ShowSurfaceImprovementsTipIfNeeded();
 
         // Initialize connection manager BEFORE onboarding so CreateLocalGatewaySetupEngine()
         // (called by the easy-button flow) can wire ConnectionManagerOperatorConnector +
@@ -817,6 +824,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         Logger.Info("Application started (WinUI 3)");
+        WriteStartupBreadcrumb("OnLaunched.complete");
     }
 
     private void InitializeKeepAliveWindow()
@@ -1056,6 +1064,87 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             LogCrash("ShowTrayMenuPopup", ex);
             Logger.Error($"Failed to show tray menu: {ex.Message}");
         }
+    }
+
+    private static void WriteStartupBreadcrumb(string phase, Exception? exception = null)
+    {
+        try
+        {
+            var directory = TryGetPackagedLocalStatePath() ?? DataPath;
+            Directory.CreateDirectory(directory);
+            var payload = new
+            {
+                timestamp = DateTimeOffset.UtcNow,
+                phase,
+                pid = Environment.ProcessId,
+                packaged = TryDetectPackagedForBreadcrumb(),
+                activationKind = TryGetActivationKindForBreadcrumb(),
+                args = Environment.GetCommandLineArgs().Select(RedactStartupArg).ToArray(),
+                exception = exception?.ToString()
+            };
+            File.AppendAllText(
+                Path.Combine(directory, "startup.log"),
+                JsonSerializer.Serialize(payload) + Environment.NewLine);
+        }
+        catch
+        {
+            // Last-ditch startup breadcrumbs must never break app launch.
+        }
+    }
+
+    private static string? TryGetPackagedLocalStatePath()
+    {
+        try
+        {
+            return global::Windows.Storage.ApplicationData.Current.LocalFolder.Path;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryDetectPackagedForBreadcrumb()
+    {
+        try
+        {
+            _ = global::Windows.ApplicationModel.Package.Current;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? TryGetActivationKindForBreadcrumb()
+    {
+        try
+        {
+            return Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent()
+                .GetActivatedEventArgs()
+                .Kind
+                .ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string RedactStartupArg(string arg)
+    {
+        if (string.IsNullOrWhiteSpace(arg))
+            return arg;
+
+        if (arg.StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase))
+            return DeepLinkSecurityPolicy.RedactForLog(arg);
+
+        return arg.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+               arg.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+               arg.Contains("password", StringComparison.OrdinalIgnoreCase)
+            ? "<redacted>"
+            : arg;
     }
 
     private void OnTrayMenuItemClicked(object? sender, string action)
