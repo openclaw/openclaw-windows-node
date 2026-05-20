@@ -119,7 +119,7 @@
                 <SvgImageSource x:Key="Usage_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Usage.svg"/>
                 <SvgImageSource x:Key="Cron_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Cron.svg"/>
                 <SvgImageSource x:Key="Voice_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Voice.svg"/>
-                <SvgImageSource x:Key="Settings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Settings.svg"/>
+                <SvgImageSource x:Key="Settings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/SettingsBlueLobster.svg"/>
                 <SvgImageSource x:Key="Permissions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Permissions.svg"/>
                 <SvgImageSource x:Key="Sandbox_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sandbox.svg"/>
                 <SvgImageSource x:Key="Activity_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
