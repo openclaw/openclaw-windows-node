@@ -316,6 +316,25 @@ jobs:
         $xml.Save((Resolve-Path $manifest))
         Write-Host "Patched CommandPalette MSIX manifest to identity $cmdpalIdentity, publisher '$publisher', version $version"
 
+    - name: Render embedded AppInstaller
+      shell: pwsh
+      run: |
+        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
+        $assetVersion = "${{ needs.test.outputs.semVer }}"
+        $tag = "${{ github.ref_name }}"
+        $arch = if ("${{ matrix.rid }}" -eq "win-arm64") { "arm64" } else { "x64" }
+        $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+        $msixUri = "$base/OpenClawCompanion-$assetVersion-${{ matrix.rid }}.msix"
+        $appInstallerUri = "https://openclaw.github.io/openclaw-windows-node/openclaw-$arch.appinstaller"
+        ./scripts/render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -ProcessorArchitecture $arch `
+          -MsixUri $msixUri `
+          -AppInstallerUri $appInstallerUri `
+          -OutputPath "src/OpenClaw.Tray.WinUI/openclaw.appinstaller"
+
     - name: Build MSIX Package
       run: >
         msbuild src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj
@@ -488,11 +507,9 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    # Render the .appinstaller XML that drives non-Store auto-update for the MSIX.
-    # Windows AppInstaller polls the URL embedded in this file (see docs/RELEASING.md
-    # for the four update triggers). The rendered file is attached to the GitHub
-    # release alongside the .msix bundles AND must also be published at a stable
-    # URL so Windows AppInstaller has a non-tagged URL to poll over time.
+    # Render the hosted .appinstaller XML files that Windows AppInstaller polls
+    # after install. Each architecture has its own stable URL because the release
+    # currently publishes separate .msix packages, not a multi-arch .msixbundle.
     - name: Render AppInstaller
       if: steps.msix-x64.outcome == 'success'
       shell: pwsh
@@ -503,21 +520,22 @@ jobs:
         $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
         $x64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
         $arm64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
-        # The stable channel URL is served by GitHub Pages from the gh-pages branch.
-        # Publishing TO gh-pages is intentionally separate (see follow-up issue);
-        # the URL still has to be embedded here so installs from this tag know where
-        # to poll for the next update.
-        $appInstallerUri = "https://openclaw.github.io/openclaw-windows-node/latest.appinstaller"
         ./scripts/render-appinstaller.ps1 `
           -Version $version `
           -Publisher $publisher `
-          -MsixX64Uri $x64Uri `
-          -MsixArm64Uri $arm64Uri `
-          -AppInstallerUri $appInstallerUri `
-          -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller"
-        # Also copy to a stable filename so the gh-pages publishing step (or a
-        # manual operator running the release) has a predictable filename.
-        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller" "latest.appinstaller"
+          -ProcessorArchitecture x64 `
+          -MsixUri $x64Uri `
+          -AppInstallerUri "https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller" `
+          -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller"
+        ./scripts/render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -ProcessorArchitecture arm64 `
+          -MsixUri $arm64Uri `
+          -AppInstallerUri "https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller" `
+          -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller"
+        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller" "openclaw-x64.appinstaller"
+        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller" "openclaw-arm64.appinstaller"
 
     - name: Create Release
       uses: softprops/action-gh-release@v3
@@ -526,18 +544,22 @@ jobs:
         files: |
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller
-          latest.appinstaller
+          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller
+          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller
+          openclaw-x64.appinstaller
+          openclaw-arm64.appinstaller
         prerelease: ${{ contains(github.ref_name, '-') }}
         make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         body: |
           ## OpenClaw Companion ${{ github.ref_name }}
 
           ### Downloads
-          - **AppInstaller (recommended)**: `latest.appinstaller` — install once and Windows auto-updates from then on (see docs/RELEASING.md for the 4 update triggers)
-          - **Tag-pinned AppInstaller**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}.appinstaller`
-          - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` — offline / power-user install (no auto-update)
-          - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` — Windows on ARM (Surface, Snapdragon)
+          - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` — Intel / AMD 64-bit, with embedded AppInstaller metadata
+          - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` — Windows on ARM, with embedded AppInstaller metadata
+          - **AppInstaller x64**: `openclaw-x64.appinstaller` — stable hosted update source for Intel / AMD 64-bit
+          - **AppInstaller ARM64**: `openclaw-arm64.appinstaller` — stable hosted update source for Windows on ARM
+          - **Tag-pinned AppInstaller x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller`
+          - **Tag-pinned AppInstaller ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller`
 
           ### Features
           - 🦞 System tray integration with gateway status
@@ -553,6 +575,6 @@ jobs:
           - PowerToys (for Command Palette extension)
 
           ### Quick Start
-          1. Click the `latest.appinstaller` link above — Windows AppInstaller will install the signed MSIX and wire up auto-update.
+          1. Install the signed MSIX for your architecture. On supported Windows builds, the package includes embedded AppInstaller metadata for automatic background updates.
           2. Launch from Start Menu or system tray.
           3. Right-click tray icon → Settings to configure.

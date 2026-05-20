@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests;
@@ -14,12 +15,11 @@ namespace OpenClaw.Tray.Tests;
 /// 1. The template is well-formed XML against the AppInstaller schema URI.
 /// 2. The five placeholder tokens are present (so the CI render script's
 ///    substitution table is exhaustive).
-/// 3. The UpdateSettings block has the documented OnLaunch / Force /
-///    AutomaticBackgroundTask values (silent regression here would change
-///    user-visible behavior).
+/// 3. The UpdateSettings block stays quiet: AutomaticBackgroundTask only,
+///    no OnLaunch UI and no downgrade rollback.
 /// 4. The in-app service points at the same hosted URL the release pipeline
 ///    publishes (drift here would split-brain installs that polled the
-///    "stable" URL against installs that polled the "in-app" URL).
+///    stable architecture URL against installs that polled the in-app URL).
 /// </summary>
 public sealed class AppInstallerTemplateAssertionTests
 {
@@ -62,8 +62,8 @@ public sealed class AppInstallerTemplateAssertionTests
     [Theory]
     [InlineData("{{VERSION}}")]
     [InlineData("{{PUBLISHER}}")]
-    [InlineData("{{MSIX_X64_URI}}")]
-    [InlineData("{{MSIX_ARM64_URI}}")]
+    [InlineData("{{PROCESSOR_ARCHITECTURE}}")]
+    [InlineData("{{MSIX_URI}}")]
     [InlineData("{{APPINSTALLER_URI}}")]
     public void Template_DeclaresExpectedPlaceholder(string token)
     {
@@ -75,51 +75,73 @@ public sealed class AppInstallerTemplateAssertionTests
     }
 
     [Fact]
-    public void Template_HasDocumentedUpdateSettings()
+    public void Template_UsesQuietBackgroundUpdateSettingsOnly()
     {
         var doc = XDocument.Parse(LoadTemplate());
         XNamespace ns = "http://schemas.microsoft.com/appx/appinstaller/2018";
 
-        var onLaunch = doc.Descendants(ns + "OnLaunch").SingleOrDefault();
-        Assert.NotNull(onLaunch);
-        Assert.Equal("24",   (string?)onLaunch!.Attribute("HoursBetweenUpdateChecks"));
-        Assert.Equal("true", (string?)onLaunch.Attribute("ShowPrompt"));
-        Assert.Equal("false", (string?)onLaunch.Attribute("UpdateBlocksActivation"));
+        Assert.Empty(doc.Descendants(ns + "OnLaunch"));
+        Assert.Empty(doc.Descendants(ns + "ForceUpdateFromAnyVersion"));
 
-        Assert.Contains(doc.Descendants(ns + "ForceUpdateFromAnyVersion"),
-            e => e.Value == "true");
-        Assert.Contains(doc.Descendants(ns + "AutomaticBackgroundTask"), _ => true);
+        var backgroundTasks = doc.Descendants(ns + "AutomaticBackgroundTask").ToArray();
+        Assert.Single(backgroundTasks);
     }
 
     [Fact]
-    public void Template_MainBundleNameMatchesProductionPackageIdentity()
+    public void Template_UsesArchitectureSpecificMainPackage()
     {
-        // The MainBundle Name must equal Package.appxmanifest Identity Name
-        // (after CI patches it to OpenClaw.Companion). Drift here = Windows
-        // refuses to apply the update because it sees a different package.
         var doc = XDocument.Parse(LoadTemplate());
         XNamespace ns = "http://schemas.microsoft.com/appx/appinstaller/2018";
-        var mainBundle = doc.Descendants(ns + "MainBundle").Single();
-        Assert.Equal("OpenClaw.Companion", (string?)mainBundle.Attribute("Name"));
+        Assert.Empty(doc.Descendants(ns + "MainBundle"));
+
+        var mainPackage = doc.Descendants(ns + "MainPackage").Single();
+        Assert.Equal("OpenClaw.Companion", (string?)mainPackage.Attribute("Name"));
+        Assert.Equal("{{PROCESSOR_ARCHITECTURE}}", (string?)mainPackage.Attribute("ProcessorArchitecture"));
+        Assert.Equal("{{MSIX_URI}}", (string?)mainPackage.Attribute("Uri"));
     }
 
     [Fact]
-    public void InAppService_PointsAtSameStableUrlAsReleaseChannel()
+    public void InAppService_PointsAtSameStableArchitectureUrlsAsReleaseChannel()
     {
-        // The CI release job copies the rendered file to "latest.appinstaller"
-        // and the README documents the gh-pages URL. The in-app
-        // AppInstallerUpdateService MUST poll that same URL; otherwise the
-        // in-app "Check for updates" button and the OS background poll see
-        // different versions.
         var service = File.ReadAllText(Path.Combine(
             GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
 
-        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/latest.appinstaller", service);
+        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller", service);
+        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller", service);
 
-        // And the same URL must appear in the CI workflow (the render step) so
-        // the rendered file points at the same stable URL it is hosted at.
         var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
-        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/latest.appinstaller", ci);
+        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller", ci);
+        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller", ci);
+    }
+
+    [Fact]
+    public void InAppService_DoesNotForceShutdownByDefault()
+    {
+        var service = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
+        var app = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+
+        Assert.Contains("bool forceRestart = false", service);
+        Assert.Contains("AddPackageByAppInstallerOptions.None", service);
+        Assert.Contains("TryApplyUpdateAsync()", app);
+        Assert.DoesNotContain("TryApplyUpdateAsync(forceRestart: true", app);
+    }
+
+    [Fact]
+    public void HostingValidationScript_ChecksMimeLengthAndRange()
+    {
+        var script = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(), "scripts", "validate-appinstaller-hosting.ps1"));
+
+        Assert.Contains("application/appinstaller", script);
+        Assert.Contains("application/msix", script);
+        Assert.Contains("Scheme -ne 'https'", script);
+        Assert.Contains("Content-Length", script);
+        Assert.Contains("Range = 'bytes=0-0'", script);
+        Assert.Contains("StatusCode -ne 206", script);
     }
 }

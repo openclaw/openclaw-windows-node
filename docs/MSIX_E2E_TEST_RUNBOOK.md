@@ -24,10 +24,12 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
 
 ## Scenarios
 
-### 1. Clean install via `.appinstaller`
+### 1. Clean install via signed MSIX
 
 1. Open the GitHub release page in Edge.
-2. Click `latest.appinstaller`.
+2. Download the signed MSIX for the machine architecture:
+   `OpenClawCompanion-X.Y.Z-win-x64.msix` or
+   `OpenClawCompanion-X.Y.Z-win-arm64.msix`.
 3. **Assert** Windows AppInstaller opens with:
    - Publisher: `CN=Scott Hanselman, O=Scott Hanselman, …` (no "untrusted")
    - DisplayName: `OpenClaw Companion`
@@ -36,8 +38,9 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
 5. **Assert** the tray icon appears in the notification area within 5 s.
 6. **Assert** `Get-AppxPackage OpenClaw.Companion*` returns one row with the
    expected `Publisher` and a 4-part `Version`.
-7. **Assert** Settings → Apps shows "OpenClaw Companion" with the AppInstaller
-   source URL visible under "Installed from".
+7. **Assert** `Package.GetAppInstallerInfo()` or an equivalent package query
+   reports the embedded architecture-specific AppInstaller URL on Windows builds
+   that support embedded App Installer metadata.
 
 ### 2. First-run permission consent (packaged path)
 
@@ -128,23 +131,21 @@ support recipe works.
 
 ### 8. `.appinstaller` auto-update (vN → vN+1)
 
-1. Install vN via `latest.appinstaller`.
+1. Install vN via the signed MSIX on Windows 11 24H2 and via the hosted
+   architecture-specific `.appinstaller` on a downlevel Windows target.
 2. Publish vN+1 by tagging `vX.Y.Z+1` and re-uploading the rendered
-   `latest.appinstaller` to GitHub Pages (the release pipeline produces the
-   file; the gh-pages publish is currently manual — see RELEASING.md).
-3. **Trigger 1 (OnLaunch, passive):** Launch the tray. Wait up to 24 h
-   (or temporarily set `HoursBetweenUpdateChecks="0"` in a test render to
-   force the check on this launch). **Assert** the tray exits and relaunches
-   on the next start at vN+1.
-4. **Trigger 2 (in-app, on demand):** From a fresh vN install, click
-   tray menu → "Check for updates". **Assert** the tray exits within ~5 s
-   and Windows restarts it at vN+1. **Assert** the in-app status surfaces
-   `UpdateQueued` (or `Current` if vN+1 wasn't published yet).
-5. **Trigger 3 (Windows background scan):** Reinstall vN, sign out, sign
-   back in, give Windows 1–2 minutes. **Assert** the tray eventually
-   updates to vN+1 without any user interaction. Note: this trigger is
-   best-effort per Microsoft docs; do not fail the release if it doesn't
-   fire — just record the observation.
+   `openclaw-x64.appinstaller` / `openclaw-arm64.appinstaller` files to GitHub
+   Pages (the release pipeline produces the files; the gh-pages publish is
+   currently manual — see RELEASING.md).
+3. **Trigger 1 (AutomaticBackgroundTask):** Leave the tray running and give
+   Windows enough time to poll the stable URL. **Assert** no App Installer UI
+   appears during normal launch.
+4. **Trigger 2 (in-app, on demand):** From a fresh vN install, click tray menu
+   → "Check for updates". **Assert** the tray is not force-closed by default and
+   the in-app status surfaces `Ready` / "restart when convenient" or `Current`
+   if vN+1 was not published.
+5. **Trigger 3 (explicit restart):** If a manual "Update now" affordance is
+   exposed, invoke it and assert Windows applies vN+1 after the explicit restart.
 
 ### 9. Sideload trust on a stock no-dev-mode box
 
@@ -173,5 +174,6 @@ Record outcomes per scenario in the release tracking issue with:
 - Pass / Fail / Skip
 - Notes for any partial passes or unexpected dialogs
 
-Promote `latest.appinstaller` to GitHub Pages only after scenarios 1, 2, 5,
-6, 7, 8 (triggers 1 and 2), 9, and 10 all pass on at least one VM.
+Promote `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` to
+GitHub Pages only after scenarios 1, 2, 5, 6, 7, 8 (triggers 1 and 2), 9, and
+10 all pass on at least one VM.

@@ -612,18 +612,21 @@ When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
 
 1. **Build & Sign:**
    - MSIX packages built for x64 and ARM64
-   - Both `.msix` files and the rendered `.appinstaller` are signed with the Azure Trusted Signing certificate
+   - Both `.msix` files are signed with the Azure Trusted Signing certificate after the architecture-specific AppInstaller metadata is embedded
 
 2. **Render AppInstaller:**
-   - `scripts/render-appinstaller.ps1` produces both `OpenClawCompanion-X.Y.Z.appinstaller` (per-tag) and `latest.appinstaller` (stable filename for the gh-pages URL)
-   - See [`docs/RELEASING.md`](./docs/RELEASING.md) for the four AppInstaller update triggers
+   - `scripts/render-appinstaller.ps1` produces architecture-specific AppInstaller files:
+     `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`,
+     `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`,
+     `openclaw-x64.appinstaller`, and `openclaw-arm64.appinstaller`
+   - See [`docs/RELEASING.md`](./docs/RELEASING.md) for the AppInstaller update flow
 
 3. **GitHub Release:**
    - Automatic release created with tag name
    - Attached assets:
-     - `latest.appinstaller` (recommended user download)
-     - `OpenClawCompanion-X.Y.Z.appinstaller` (tag-pinned)
-     - `OpenClawCompanion-X.Y.Z-win-x64.msix` and `-win-arm64.msix` (offline / power-user)
+     - `OpenClawCompanion-X.Y.Z-win-x64.msix` and `-win-arm64.msix`
+     - `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` (stable update sources)
+     - `OpenClawCompanion-X.Y.Z-win-x64.appinstaller` and `-win-arm64.appinstaller` (tag-pinned)
    - Release notes auto-generated from commits
 
 ### Monitoring CI

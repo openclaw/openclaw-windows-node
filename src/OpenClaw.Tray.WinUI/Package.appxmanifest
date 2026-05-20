@@ -4,10 +4,12 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:uap13="http://schemas.microsoft.com/appx/manifest/uap/windows10/13"
+  xmlns:uap17="http://schemas.microsoft.com/appx/manifest/uap/windows10/17"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap5 com desktop rescap">
+  IgnorableNamespaces="uap uap5 uap13 uap17 com desktop rescap">
 
   <!-- IMPORTANT: Publisher must exactly match Azure Trusted Signing certificate subject.
        Check your certificate profile at: Azure Portal > Trusted Signing > hanselman > WindowsEdgeLight
@@ -21,6 +23,10 @@
     <DisplayName>OpenClaw Companion</DisplayName>
     <PublisherDisplayName>Scott Hanselman</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
+    <uap13:AutoUpdate>
+      <uap13:AppInstaller File="openclaw.appinstaller" />
+    </uap13:AutoUpdate>
+    <uap17:UpdateWhileInUse>defer</uap17:UpdateWhileInUse>
   </Properties>
 
   <Dependencies>

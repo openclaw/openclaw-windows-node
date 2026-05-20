@@ -9,7 +9,7 @@
   XML and the PackageManager.AddPackageByAppInstallerFileAsync wiring
   *without* needing a real GitHub release / GitHub Pages cycle. Run this
   before a release tag goes out; if it fails, the same failure will happen
-  to every user that installs from latest.appinstaller.
+  to every user that installs from the stable architecture-specific AppInstaller URL.
 
   Steps:
    1. Launch a tiny HTTP server (HttpListener) on localhost:8765 that serves
@@ -75,10 +75,11 @@ try {
     & "$repoRoot\scripts\render-appinstaller.ps1" `
       -Version $Version `
       -Publisher $Publisher `
-      -MsixX64Uri "$baseUri/$MsixFileName" `
-      -MsixArm64Uri "$baseUri/$MsixFileName" `
+      -ProcessorArchitecture x64 `
+      -MsixUri "$baseUri/$MsixFileName" `
       -AppInstallerUri "$baseUri/openclaw.appinstaller" `
-      -OutputPath $OutputPath
+      -OutputPath $OutputPath `
+      -AllowHttpForLocalTest
   }
 
   Render-AppInstaller -Version $VnVersion  -MsixFileName 'vN.msix'      -OutputPath (Join-Path $tmp 'openclaw.appinstaller')
@@ -131,7 +132,7 @@ try {
     $pm = [Windows.Management.Deployment.PackageManager,Windows.Management.Deployment,ContentType=WindowsRuntime]::new()
     $op = $pm.AddPackageByAppInstallerFileAsync(
         [Uri]"$baseUri/openclaw.appinstaller",
-        [Windows.Management.Deployment.AddPackageByAppInstallerOptions]::ForceTargetAppShutdown,
+        [Windows.Management.Deployment.AddPackageByAppInstallerOptions]::None,
         $pm.GetDefaultPackageVolume())
     $result = $op.AsTask().GetAwaiter().GetResult()
     if (-not $result.IsRegistered) {

@@ -53,54 +53,62 @@ After pushing a tag, confirm in GitHub Actions:
 ## Non-Store auto-update via `.appinstaller`
 
 OpenClaw Companion ships outside the Microsoft Store but still wants
-silent-ish updates. The supported pattern is a hosted `.appinstaller` XML file
-that Windows AppInstaller polls; the CI release job renders one per tag from
+quiet updates. The supported pattern is a signed MSIX with embedded
+`.appinstaller` metadata plus a hosted `.appinstaller` XML file that Windows
+AppInstaller polls. The CI release job renders one file per architecture from
 `installer/openclaw-companion.appinstaller.template` via
-`scripts/render-appinstaller.ps1` and attaches it to the GitHub release as
-both `OpenClawCompanion-X.Y.Z.appinstaller` (per-tag) and `latest.appinstaller`
-(stable filename for the published gh-pages URL).
+`scripts/render-appinstaller.ps1` and attaches both tag-pinned and stable
+filenames to the GitHub release:
 
-### Four ways an `.appinstaller` install gets to a new version
+- `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`
+- `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`
+- `openclaw-x64.appinstaller`
+- `openclaw-arm64.appinstaller`
 
-When a user installs by clicking the `.appinstaller` (not the raw `.msix`),
-Windows AppInstaller persists the source URL and the embedded
-`<UpdateSettings>` block. After that the following triggers can update the
-install:
+The `.appinstaller` policy intentionally uses only:
 
-1. **OnLaunch (passive)** — `HoursBetweenUpdateChecks="24" ShowPrompt="true"
-   UpdateBlocksActivation="false"`. Windows polls the URL no more than once per
-   24 hours at app launch, prompts the user, and applies the update on the
-   *next* launch. This is the default path most users will see.
-2. **OnLaunch (blocking)** — same poll, but with `UpdateBlocksActivation="true"`
-   the app waits while the update applies. We leave this OFF because it adds
-   user-visible cold-start latency.
-3. **In-app, on demand** — the tray's "Check for updates" menu (when running
-   packaged) calls `PackageManager.AddPackageByAppInstallerFileAsync` against
-   `https://openclaw.github.io/openclaw-windows-node/latest.appinstaller`. This
-   bypasses the 24 h poll window and applies any newer published version
-   immediately (and restarts the app).
-4. **Windows background scan** — Windows historically re-polls on user sign-in
-   and on Start-menu launches. This is best-effort and not contractually
-   guaranteed; never depend on it as the only update path for a particular
-   user cohort.
+```xml
+<UpdateSettings>
+  <AutomaticBackgroundTask />
+</UpdateSettings>
+```
+
+Do not add `OnLaunch` or `ForceUpdateFromAnyVersion` to production output.
+Updates should happen quietly in the background and bad releases should be
+fixed by shipping a higher roll-forward version.
+
+### How an install gets to a new version
+
+1. **Embedded App Installer metadata** — on Windows builds that support
+   `uap13:AutoUpdate`, double-clicking the signed MSIX seeds the stable
+   architecture-specific `.appinstaller` URL.
+2. **Hosted `.appinstaller` install** — users or enterprise tools can install
+   from `openclaw-x64.appinstaller` or `openclaw-arm64.appinstaller`, which
+   records the same stable source URL.
+3. **Windows background task** — `AutomaticBackgroundTask` lets Windows poll
+   that source URL without cold-start App Installer UI.
+4. **In-app, on demand** — the tray's "Check for updates" command asks Windows
+   to fetch the architecture-specific `.appinstaller` and avoids force-closing
+   the tray by default. If an update is accepted while the app is in use, the UI
+   should tell the user to restart OpenClaw when convenient.
 
 ### Important caveats for the release operator
 
-- The `Version` attribute in the rendered `.appinstaller` AND the `Version`
-  attribute inside `<MainBundle>` AND the `<Identity Version=…>` of the
-  attached MSIX must all match exactly. The CI rendering step asserts this;
-  if you hand-edit the rendered file before publishing, re-validate manually.
-- The release notes "Quick Start" link should point at the **`.appinstaller`**
-  URL, not the raw `.msix`. A user who installs from a raw `.msix` does not
-  get the AppInstaller poll wired up and is stuck on that version until they
-  re-install via `.appinstaller`.
-- The `latest.appinstaller` URL on GitHub Pages must keep pointing at the
-  currently shipping stable; pre-release alpha builds use their tag-specific
-  filename and never overwrite `latest.appinstaller`.
-- Publishing `latest.appinstaller` to GitHub Pages is **a separate step** from
-  attaching it to the release. Until that's automated, the release operator
-  copies the file from the GitHub release into the `gh-pages` branch by hand
-  after the release artifacts are validated.
+- The `Version` attribute in the rendered `.appinstaller`, the `Version`
+  attribute inside `<MainPackage>`, and the `<Identity Version=…>` of the
+  matching MSIX must all match exactly.
+- The rendered `<MainPackage ProcessorArchitecture=…>` must match the MSIX URL:
+  x64 files point at x64 MSIX assets and arm64 files point at ARM64 assets.
+- The hosted stable URLs must serve correct headers before promotion:
+  `.appinstaller` as `application/appinstaller`, `.msix` as `application/msix`,
+  `Content-Length`, and MSIX range requests.
+- Validate those headers before promotion:
+  `.\scripts\validate-appinstaller-hosting.ps1 -AppInstallerUri https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller`
+  and repeat for `openclaw-arm64.appinstaller`.
+- Publishing `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` to
+  GitHub Pages is **a separate step** from attaching them to the release. Until
+  that's automated, the release operator copies the files from the GitHub
+  release into the `gh-pages` branch by hand after validation.
 
 ## If you need to retag
 

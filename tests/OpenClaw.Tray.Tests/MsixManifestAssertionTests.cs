@@ -24,6 +24,8 @@ public sealed class MsixManifestAssertionTests
     private const string AppxFoundationNs = "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
     private const string AppxUapNs = "http://schemas.microsoft.com/appx/manifest/uap/windows10";
     private const string AppxUap5Ns = "http://schemas.microsoft.com/appx/manifest/uap/windows10/5";
+    private const string AppxUap13Ns = "http://schemas.microsoft.com/appx/manifest/uap/windows10/13";
+    private const string AppxUap17Ns = "http://schemas.microsoft.com/appx/manifest/uap/windows10/17";
     private const string AppxUap3Ns = "http://schemas.microsoft.com/appx/manifest/uap/windows10/3";
     private const string AppxRescapNs = "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities";
 
@@ -114,6 +116,28 @@ public sealed class MsixManifestAssertionTests
         Assert.NotNull(startupTask);
         Assert.Equal("OpenClawCompanionStartup", (string?)startupTask!.Attribute("TaskId"));
         Assert.Equal("false", (string?)startupTask.Attribute("Enabled"));
+    }
+
+    [Fact]
+    public void Tray_DeclaresEmbeddedAppInstallerAndDeferredInUseUpdates()
+    {
+        var doc = LoadTrayManifest();
+
+        var ignorableNamespaces = (string?)doc.Root!.Attribute("IgnorableNamespaces") ?? string.Empty;
+        Assert.Contains("uap13", ignorableNamespaces.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Contains("uap17", ignorableNamespaces.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        var appInstaller = doc.Descendants(XName.Get("AppInstaller", AppxUap13Ns)).SingleOrDefault();
+        Assert.NotNull(appInstaller);
+        Assert.Equal("openclaw.appinstaller", (string?)appInstaller!.Attribute("File"));
+
+        var updateWhileInUse = doc.Descendants(XName.Get("UpdateWhileInUse", AppxUap17Ns)).SingleOrDefault();
+        Assert.NotNull(updateWhileInUse);
+        Assert.Equal("defer", updateWhileInUse!.Value);
+
+        var project = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        Assert.Contains("openclaw.appinstaller", project);
     }
 
     [Fact]

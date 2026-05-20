@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using OpenClawTray.Helpers;
 
@@ -8,29 +9,33 @@ namespace OpenClawTray.Services;
 /// MSIX-only update path. When the tray is running as a packaged app the
 /// canonical non-Store auto-update channel is an <c>.appinstaller</c> file
 /// hosted at a stable URL (see <c>installer/openclaw-companion.appinstaller.template</c>
-/// and <c>docs/RELEASING.md</c>). Windows AppInstaller polls that URL on
-/// launch automatically via the <c>OnLaunch</c> settings embedded in the
-/// AppInstaller XML. This service exposes the *manual* path the user takes
-/// when they click "Check for updates" — it asks PackageManager to apply
-/// whatever the AppInstaller URL currently advertises, which is the same
-/// machinery the OnLaunch poll uses but bypasses the 24 h check window.
+/// and <c>docs/RELEASING.md</c>). Windows AppInstaller polls that URL via
+/// its background task and applies package registration when the app is not
+/// in use. This service exposes the manual path the user takes when they
+/// click "Check for updates" without making force-shutdown the default.
 ///
 /// This service is only invoked when <see cref="PackageHelper.IsPackaged"/>
 /// is true. The unpackaged dev / debug path is intentionally unchanged
-/// (it short-circuits via the <c>#if DEBUG</c> in <c>App.xaml.cs</c>; once
-/// Updatum and Inno are sunset in Track 3, the unpackaged update path
-/// disappears entirely).
+/// (it stamps status in <c>App.xaml.cs</c> and does not try to self-update).
 /// </summary>
 internal static class AppInstallerUpdateService
 {
     /// <summary>
-    /// Stable URL of the AppInstaller XML on GitHub Pages. The CI release job
-    /// (.github/workflows/ci.yml, step "Render AppInstaller") publishes both a
-    /// per-tag file and this stable <c>latest.appinstaller</c> alias; embedded
-    /// installs poll this URL according to the OnLaunch settings.
+    /// Stable x64 URL of the AppInstaller XML on GitHub Pages.
     /// </summary>
-    public const string LatestAppInstallerUri =
-        "https://openclaw.github.io/openclaw-windows-node/latest.appinstaller";
+    public const string LatestX64AppInstallerUri =
+        "https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller";
+
+    /// <summary>
+    /// Stable ARM64 URL of the AppInstaller XML on GitHub Pages.
+    /// </summary>
+    public const string LatestArm64AppInstallerUri =
+        "https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller";
+
+    public static string LatestAppInstallerUri =>
+        RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? LatestArm64AppInstallerUri
+            : LatestX64AppInstallerUri;
 
     /// <summary>
     /// Reflects the outcome of <see cref="TryApplyUpdateAsync"/> so the caller
@@ -38,7 +43,7 @@ internal static class AppInstallerUpdateService
     /// </summary>
     public enum UpdateOutcome
     {
-        /// <summary>An upgrade was queued; the tray will be restarted by Windows.</summary>
+        /// <summary>Windows accepted the update request; registration may complete after restart.</summary>
         UpdateQueued,
         /// <summary>No newer version is currently published at the AppInstaller URL.</summary>
         NoUpdateAvailable,
@@ -51,19 +56,18 @@ internal static class AppInstallerUpdateService
     public record UpdateResult(UpdateOutcome Outcome, string? DetailMessage);
 
     /// <summary>
-    /// Asks Windows to fetch and apply the MSIX advertised at the AppInstaller URL.
-    /// Returns when Windows has accepted (or rejected) the request; the actual
-    /// upgrade may continue asynchronously and finishes by restarting the app
-    /// (PackageManager invokes <c>ForceApplicationShutdown</c> so we don't fight
-    /// the OS for the package container).
+    /// Asks Windows to fetch the MSIX advertised at the AppInstaller URL.
+    /// By default this does not force-close the tray; callers that expose an
+    /// explicit "Update now and restart" affordance may opt in to force restart.
     /// </summary>
-    public static async Task<UpdateResult> TryApplyUpdateAsync(string? appInstallerUri = null)
+    public static async Task<UpdateResult> TryApplyUpdateAsync(
+        string? appInstallerUri = null,
+        bool forceRestart = false)
     {
         if (!PackageHelper.IsPackaged)
         {
             return new UpdateResult(UpdateOutcome.NotPackaged,
                 "AppInstallerUpdateService called from an unpackaged process. " +
-                "The unpackaged update path uses Updatum (see App.xaml.cs); " +
                 "branch on PackageHelper.IsPackaged before invoking this service.");
         }
 
@@ -76,19 +80,22 @@ internal static class AppInstallerUpdateService
             // Same global:: prefix dance as AutoStartManager — `Windows` resolves
             // to OpenClawTray.Windows here otherwise.
             var manager = new global::Windows.Management.Deployment.PackageManager();
+            var options = forceRestart
+                ? global::Windows.Management.Deployment.AddPackageByAppInstallerOptions.ForceTargetAppShutdown
+                : global::Windows.Management.Deployment.AddPackageByAppInstallerOptions.None;
             var deploymentOperation = manager.AddPackageByAppInstallerFileAsync(
                 uri,
-                global::Windows.Management.Deployment.AddPackageByAppInstallerOptions.ForceTargetAppShutdown,
+                options,
                 manager.GetDefaultPackageVolume());
 
             var result = await deploymentOperation.AsTask();
 
             if (result.IsRegistered)
             {
-                // Successfully registered the new version. Windows will restart
-                // the app per the ForceTargetAppShutdown flag.
                 return new UpdateResult(UpdateOutcome.UpdateQueued,
-                    "Update applied; Windows will restart the app.");
+                    forceRestart
+                        ? "Update applied; Windows will restart the app."
+                        : "Update accepted; restart OpenClaw when convenient to finish.");
             }
 
             // ExtendedErrorCode is the canonical "why didn't it install" surface.

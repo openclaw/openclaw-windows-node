@@ -19,38 +19,43 @@
   Publisher subject from the MSIX manifest, with quoting preserved. Example:
   "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
 
-.PARAMETER MsixX64Uri
-  Absolute https:// URL of the x64 .msix release asset.
+.PARAMETER ProcessorArchitecture
+  MSIX processor architecture for this AppInstaller file. Must be x64 or arm64.
 
-.PARAMETER MsixArm64Uri
-  Absolute https:// URL of the arm64 .msix release asset.
+.PARAMETER MsixUri
+  Absolute https:// URL of the matching architecture .msix release asset.
 
 .PARAMETER AppInstallerUri
   Absolute https:// URL of THIS rendered .appinstaller file on the stable
-  channel (e.g. https://openclaw.github.io/openclaw-windows-node/latest.appinstaller).
+  channel (e.g. https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller).
   Embedded inside the AppInstaller so Windows AppInstaller knows where to poll.
 
 .PARAMETER OutputPath
   Destination path for the rendered .appinstaller file.
 
+.PARAMETER AllowHttpForLocalTest
+  Allows http:// loopback URIs for local AppInstaller smoke tests. Production
+  release rendering must omit this switch and use https:// URLs.
+
 .EXAMPLE
   ./scripts/render-appinstaller.ps1 `
     -Version 0.5.3.0 `
     -Publisher 'CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US' `
-    -MsixX64Uri https://github.com/.../v0.5.3/OpenClawCompanion-0.5.3-win-x64.msix `
-    -MsixArm64Uri https://github.com/.../v0.5.3/OpenClawCompanion-0.5.3-win-arm64.msix `
-    -AppInstallerUri https://openclaw.github.io/openclaw-windows-node/latest.appinstaller `
-    -OutputPath OpenClawCompanion-0.5.3.appinstaller
+    -ProcessorArchitecture x64 `
+    -MsixUri https://github.com/.../v0.5.3/OpenClawCompanion-0.5.3-win-x64.msix `
+    -AppInstallerUri https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller `
+    -OutputPath OpenClawCompanion-0.5.3-win-x64.appinstaller
 #>
 
 [CmdletBinding()]
 param(
   [Parameter(Mandatory)] [string] $Version,
   [Parameter(Mandatory)] [string] $Publisher,
-  [Parameter(Mandatory)] [string] $MsixX64Uri,
-  [Parameter(Mandatory)] [string] $MsixArm64Uri,
+  [Parameter(Mandatory)] [ValidateSet('x64', 'arm64')] [string] $ProcessorArchitecture,
+  [Parameter(Mandatory)] [string] $MsixUri,
   [Parameter(Mandatory)] [string] $AppInstallerUri,
-  [Parameter(Mandatory)] [string] $OutputPath
+  [Parameter(Mandatory)] [string] $OutputPath,
+  [switch] $AllowHttpForLocalTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,15 +73,19 @@ foreach ($p in $parts) {
   }
 }
 
-# Validate URIs are absolute https://. AppInstaller refuses to poll http:// in
-# Windows 11 23H2+ (security policy) and a relative URL crashes the renderer.
+# Validate URIs are absolute https:// for production. Local smoke tests may use
+# http://127.0.0.1 with -AllowHttpForLocalTest.
 foreach ($pair in @(
-    @{ Name = 'MsixX64Uri';      Value = $MsixX64Uri },
-    @{ Name = 'MsixArm64Uri';    Value = $MsixArm64Uri },
+    @{ Name = 'MsixUri';         Value = $MsixUri },
     @{ Name = 'AppInstallerUri'; Value = $AppInstallerUri }
   )) {
   $u = $null
-  if (-not [Uri]::TryCreate($pair.Value, 'Absolute', [ref]$u) -or $u.Scheme -ne 'https') {
+  if (-not [Uri]::TryCreate($pair.Value, 'Absolute', [ref]$u)) {
+    throw "$($pair.Name) must be an absolute URL. Got: '$($pair.Value)'"
+  }
+
+  $isAllowedHttpLoopback = $AllowHttpForLocalTest -and $u.Scheme -eq 'http' -and $u.IsLoopback
+  if ($u.Scheme -ne 'https' -and -not $isAllowedHttpLoopback) {
     throw "$($pair.Name) must be an absolute https:// URL. Got: '$($pair.Value)'"
   }
 }
@@ -93,11 +102,14 @@ $template = Get-Content $templatePath -Raw
 # regex-metacharacter surprises from values like a publisher subject that
 # contains literal commas/quotes or a URI with a percent-encoded character.
 $rendered = $template
-$rendered = $rendered.Replace('{{VERSION}}',          $Version)
-$rendered = $rendered.Replace('{{PUBLISHER}}',        $Publisher)
-$rendered = $rendered.Replace('{{MSIX_X64_URI}}',     $MsixX64Uri)
-$rendered = $rendered.Replace('{{MSIX_ARM64_URI}}',   $MsixArm64Uri)
-$rendered = $rendered.Replace('{{APPINSTALLER_URI}}', $AppInstallerUri)
+$rendered = $rendered.Replace('{{VERSION}}',                $Version)
+$rendered = $rendered.Replace('{{PUBLISHER}}',              $Publisher)
+$rendered = $rendered.Replace('{{PROCESSOR_ARCHITECTURE}}', $ProcessorArchitecture)
+$rendered = $rendered.Replace('{{MSIX_URI}}',               $MsixUri)
+$rendered = $rendered.Replace('{{APPINSTALLER_URI}}',       $AppInstallerUri)
+if ($rendered -match '\{\{[A-Z0-9_]+\}\}') {
+  throw "Rendered XML still contains unresolved template token(s): $($Matches[0])"
+}
 
 # Validate the rendered XML parses. A bad template / bad substitution surfaces
 # here instead of at deploy time when Windows refuses to install.
@@ -105,8 +117,18 @@ $rendered = $rendered.Replace('{{APPINSTALLER_URI}}', $AppInstallerUri)
 if ($xml.AppInstaller.Version -ne $Version) {
   throw "Rendered XML has Version '$($xml.AppInstaller.Version)' but expected '$Version'. Substitution failure."
 }
-if ($xml.AppInstaller.MainBundle.Publisher -ne $Publisher) {
-  throw "Rendered XML has Publisher '$($xml.AppInstaller.MainBundle.Publisher)' but expected '$Publisher'."
+$mainPackage = $xml.AppInstaller.MainPackage
+if ($null -eq $mainPackage) {
+  throw "Rendered XML must contain exactly one MainPackage element."
+}
+if ($mainPackage.Publisher -ne $Publisher) {
+  throw "Rendered XML has Publisher '$($mainPackage.Publisher)' but expected '$Publisher'."
+}
+if ($mainPackage.ProcessorArchitecture -ne $ProcessorArchitecture) {
+  throw "Rendered XML has ProcessorArchitecture '$($mainPackage.ProcessorArchitecture)' but expected '$ProcessorArchitecture'."
+}
+if ($mainPackage.Uri -ne $MsixUri) {
+  throw "Rendered XML has package Uri '$($mainPackage.Uri)' but expected '$MsixUri'."
 }
 
 $outDir = Split-Path -Parent $OutputPath
@@ -118,6 +140,6 @@ Set-Content -Path $OutputPath -Value $rendered -Encoding UTF8
 Write-Host "Rendered AppInstaller: $OutputPath"
 Write-Host "  Version:         $Version"
 Write-Host "  Publisher:       $Publisher"
-Write-Host "  MSIX x64 URI:    $MsixX64Uri"
-Write-Host "  MSIX ARM64 URI:  $MsixArm64Uri"
+Write-Host "  Architecture:    $ProcessorArchitecture"
+Write-Host "  MSIX URI:        $MsixUri"
 Write-Host "  AppInstaller URI: $AppInstallerUri"

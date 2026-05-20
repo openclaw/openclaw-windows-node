@@ -33,15 +33,11 @@ dotnet build -p:Version=${{ needs.test.outputs.semVer }}
 
 This `-p:Version=...` argument overrides the `<Version>` property in the csproj, and consequently also sets `FileVersion` and `AssemblyVersion` to match.
 
-### Auto-Updater Version Detection
+### AppInstaller Version Detection
 
-The Updatum auto-updater determines the current application version by reading the **AssemblyVersion** from the running executable using:
+Windows AppInstaller compares the 4-part MSIX package identity version from `Package.appxmanifest` with the `Version` attributes in the hosted `.appinstaller` and its `<MainPackage>` entry. CI patches the manifest to `${majorMinorPatch}.0` before packaging and renders the `.appinstaller` with the same value.
 
-```csharp
-Assembly.GetExecutingAssembly().GetName().Version
-```
-
-This is why it's critical that `AssemblyVersion` (and `FileVersion`) match the semantic version - otherwise, the updater will get confused and keep offering the same update repeatedly.
+The tray still reports its managed assembly version in diagnostics, so `AssemblyVersion` and `FileVersion` should continue to match the semantic version for supportability.
 
 ## Historical Issue
 
@@ -56,9 +52,8 @@ Previously, the csproj files had hardcoded values:
 This caused a version mismatch:
 - The semantic version was 0.3.0
 - But the file and assembly versions were stuck at 0.2.0
-- Updatum would read 0.2.0 from the running EXE
-- It would see 0.4.0 available on GitHub
-- It would offer to update from "0.2.0" to "0.4.0" even though the user was already on 0.3.0 or 0.4.0
+- The updater would read/report 0.2.0 from the running EXE
+- It could offer or diagnose an update from "0.2.0" to "0.4.0" even though the user was already on 0.3.0 or 0.4.0
 
 ## Solution
 
@@ -74,5 +69,5 @@ By removing the hardcoded `FileVersion` and `AssemblyVersion` properties, they n
 ## References
 
 - [Microsoft Docs: Assembly Versioning](https://learn.microsoft.com/en-us/dotnet/standard/assembly/versioning)
-- [Updatum Library](https://github.com/sn4k3/Updatum)
+- [Microsoft Docs: App Installer file overview](https://learn.microsoft.com/en-us/windows/msix/app-installer/app-installer-file-overview)
 - [GitVersion Documentation](https://gitversion.net/)

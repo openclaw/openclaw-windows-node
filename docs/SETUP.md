@@ -14,19 +14,20 @@ Before installing, make sure you have:
 
 ### 1. Download the Installer
 
-Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the **AppInstaller** file:
+Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the signed **MSIX** for your architecture:
 
 | File | Description |
 |------|-------------|
-| `latest.appinstaller` | Recommended — install once, Windows auto-updates from then on |
-| `OpenClawCompanion-X.Y.Z-win-x64.msix` | Offline / power-user install for Intel / AMD (no auto-update) |
-| `OpenClawCompanion-X.Y.Z-win-arm64.msix` | Offline / power-user install for ARM64 (Surface Pro X, Snapdragon laptops; no auto-update) |
+| `OpenClawCompanion-X.Y.Z-win-x64.msix` | Recommended for Intel / AMD 64-bit; includes embedded AppInstaller metadata on supported Windows builds |
+| `OpenClawCompanion-X.Y.Z-win-arm64.msix` | Recommended for ARM64 (Surface Pro X, Snapdragon laptops); includes embedded AppInstaller metadata on supported Windows builds |
+| `openclaw-x64.appinstaller` | Stable hosted update source / alternate install path for Intel / AMD 64-bit |
+| `openclaw-arm64.appinstaller` | Stable hosted update source / alternate install path for ARM64 |
 
-If you're unsure, click **`latest.appinstaller`** — Windows AppInstaller will pick the right architecture for your machine and wire up automatic updates.
+If you're unsure which architecture you need, most Intel/AMD PCs use x64 and Snapdragon/Surface-on-ARM devices use ARM64. A future MSIX bundle can collapse this to one download, but the current release uses architecture-specific packages.
 
-### 2. Run the AppInstaller
+### 2. Install the MSIX
 
-Click `latest.appinstaller`. Windows AppInstaller opens, shows the publisher (Scott Hanselman, code-signed via Azure Trusted Signing), and offers to install.
+Double-click the signed MSIX. Windows AppInstaller opens, shows the publisher (Scott Hanselman, code-signed via Azure Trusted Signing), and offers to install. On supported Windows builds, the MSIX also seeds the stable hosted `.appinstaller` URL for background updates.
 
 The install runs without requiring administrator privileges.
 

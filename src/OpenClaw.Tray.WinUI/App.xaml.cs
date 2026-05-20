@@ -3271,16 +3271,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task<bool> CheckForUpdatesAsync()
     {
-        // Packaged apps under MSIX don't need an in-app startup poll — Windows
-        // AppInstaller polls our hosted .appinstaller per the OnLaunch settings
-        // embedded in the AppInstaller XML and applies updates on the NEXT
-        // launch (see docs/RELEASING.md for the four update triggers). Calling
-        // Updatum here would silently double-publish a "vN+1 available" toast
-        // for the upgrade the OS already has staged. Return true so the caller
-        // launches the app normally.
+        // Packaged apps under MSIX don't need an in-app startup poll. Windows
+        // AppInstaller polls our hosted .appinstaller with AutomaticBackgroundTask
+        // and the tray only surfaces pending/manual update state on demand.
         if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
         {
-            Logger.Info("Skipping in-app update check (packaged build; AppInstaller polls OnLaunch)");
+            Logger.Info("Skipping startup update check (packaged build; AppInstaller polls in the background)");
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Managed",
@@ -3294,7 +3290,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             // Unpackaged builds (dev / debug / CI hosts) have no shipping update
-            // channel — there's no MSIX to apply and Updatum has been removed.
+            // channel — there's no MSIX to apply.
             // Just stamp the UpdateInfo so the diagnostics panel reflects the
             // current state and let the app launch.
             Logger.Info("Skipping update check (unpackaged build; no update channel available)");
@@ -3325,10 +3321,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         Logger.Info("Manual update check requested");
 
-        // Packaged: bypass any in-app dance and go directly to
-        // PackageManager.AddPackageByAppInstallerFileAsync. The AppInstaller URL
-        // is the single source of truth; if a newer version is published Windows
-        // will restart the app, otherwise we surface "already up to date".
+        // Packaged: ask Windows AppInstaller to check the stable architecture URL.
+        // The default path avoids force-closing the tray; Windows can finish
+        // package registration when OpenClaw exits or the user explicitly restarts.
         if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
         {
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
@@ -3345,10 +3340,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
                 {
-                    Status = "Updating",
+                    Status = "Ready",
                     CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
                     CheckedAt = DateTime.UtcNow,
-                    Detail = outcome.DetailMessage ?? "update queued; Windows will restart the app"
+                    Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
                 },
                 AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
                 {
