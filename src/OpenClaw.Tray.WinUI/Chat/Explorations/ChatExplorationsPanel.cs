@@ -25,9 +25,14 @@ public class ChatExplorationsPanel : Component
     public override Element Render()
     {
         var rev = UseState(0, threadSafe: true);
+        var revRef = UseRef(0);
         UseEffect((Func<Action>)(() =>
         {
-            EventHandler h = (_, _) => rev.Set(rev.Value + 1);
+            EventHandler h = (_, _) =>
+            {
+                revRef.Current++;
+                rev.Set(revRef.Current);
+            };
             ChatExplorationState.Changed += h;
             return () => ChatExplorationState.Changed -= h;
         }));

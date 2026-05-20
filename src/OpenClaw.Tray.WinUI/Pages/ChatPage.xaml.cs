@@ -251,7 +251,8 @@ public sealed partial class ChatPage : Page
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
             onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted),
-            initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false);
+            initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false,
+            suppressAutoDispose: true);
         _mountedProvider = provider;
 
         // If the V hotkey (or another caller) requested auto-start voice,

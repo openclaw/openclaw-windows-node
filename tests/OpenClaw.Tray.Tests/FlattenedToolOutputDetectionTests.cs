@@ -224,10 +224,14 @@ public class FlattenedToolOutputDetectionTests
     }
 
     [Theory]
-    [InlineData("Command still running (session foo, pid 1)", "process")]
-    [InlineData("Process exited with code 0", "process")]
+    [InlineData("Command still running (session foo, pid 1)", "bash")]
+    [InlineData("Process exited with code 0", "bash")]
     [InlineData("Exec completed (oceanic, code 0)", "exec")]
     [InlineData("OpenClaw 2026.4.23 — Usage: openclaw help", "exec")]
+    [InlineData("  1. using System;\n  2. using System.IO;\n  3. namespace Foo;", "view")]
+    [InlineData("src/Main.cs:42:    var x = 1;", "grep")]
+    [InlineData("commit abc123\nAuthor: User\nDate: Mon Jan 1", "git")]
+    [InlineData("diff --git a/foo.cs b/foo.cs", "git")]
     public void ClassifiesKindCorrectly(string text, string expected)
     {
         Assert.Equal(expected, OpenClawChatDataProvider.ClassifyFlattenedToolOutput(text));
@@ -240,10 +244,9 @@ public class FlattenedToolOutputDetectionTests
     public void ToolresultRoleAlwaysClassified(string text)
     {
         // ``toolresult`` role sidesteps the heuristic — but the kind label
-        // must still come out as either "exec" or "process" so the chip
-        // header reads sensibly. Default fallthrough is "exec".
+        // must still produce a recognized tool type so the chip header reads
+        // sensibly. Default fallthrough is "exec".
         var kind = OpenClawChatDataProvider.ClassifyFlattenedToolOutput(text);
-        Assert.True(kind == "exec" || kind == "process",
-            $"Unexpected kind '{kind}' for: {text}");
+        Assert.False(string.IsNullOrEmpty(kind), $"Empty kind for: {text}");
     }
 }

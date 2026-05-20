@@ -86,9 +86,14 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // be called from an extension method). Same pattern in
         // OpenClawChatTimeline + OpenClawChatRoot.
         var explorationRev = UseState(0, threadSafe: true);
+        var explorationRevRef = UseRef(0);
         UseEffect((Func<Action>)(() =>
         {
-            EventHandler h = (_, _) => explorationRev.Set(explorationRev.Value + 1);
+            EventHandler h = (_, _) =>
+            {
+                explorationRevRef.Current++;
+                explorationRev.Set(explorationRevRef.Current);
+            };
             ChatExplorationState.Changed += h;
             return () => ChatExplorationState.Changed -= h;
         }));
@@ -468,7 +473,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
                 .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
                 .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
-            .AutomationName(tip);
+            .AutomationName(tip)
+            .SetToolTip(tip);
 
         // 5 icons (Send/Stop/Attach/Voice/More) honor ChatExplorationState
         // Show + Glyph overrides set from the explorations panel.
@@ -517,6 +523,22 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 Props.IsSpeakerMuted ? "Unmute" : "Mute",
                 () => Props.OnSpeakerToggle())
             : Empty();
+        // Toggle tool-call visibility. Same wrench icon in both states;
+        // reduced opacity when tool calls are hidden to indicate "off"
+        // without looking disabled. Tooltip clarifies the action.
+        var showTools = ChatExplorationState.ShowToolCalls;
+        var toolToggleBtn = IconButton(
+            "\uE90F",  // Wrench
+            showTools ? "Hide tool calls" : "Show tool calls",
+            () =>
+            {
+                var next = !ChatExplorationState.ShowToolCalls;
+                if (!next)
+                    ChatExplorationState.CollapseToolChipsVersion++;
+                ChatExplorationState.ShowToolCalls = next;
+            })
+            .Set(b => b.Opacity = showTools ? 1.0 : 0.55);
+
         var settingsBtn = Props.OnSettingsClick is not null
             ? IconButton("\uE713", "Settings", () => Props.OnSettingsClick())
             : Empty();
@@ -739,7 +761,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             // Wrapping in FlexRow caused the Button to stretch to the Star column width.
             var bottomRow = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
                 combinedPill.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
-                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, settingsBtn, actionBtn, stopBtn) with { ColumnGap = 4 })                    .HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 1)
+                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, settingsBtn, actionBtn, stopBtn) with { ColumnGap = 4 })                    .HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 1)
             );
 
             return VStack(0,
@@ -757,7 +779,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }
 
         var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, settingsBtn, actionBtn, stopBtn)
+            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, settingsBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
             .Grid(row: 0, column: 1)

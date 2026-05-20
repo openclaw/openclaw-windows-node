@@ -206,9 +206,18 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // timeline. Same inline pattern as OpenClawComposer (UseState +
         // UseEffect — extension methods can't access protected hooks).
         var explorationRev = UseState(0, threadSafe: true);
+        var explorationRevRef = UseRef(0);
         UseEffect((Func<Action>)(() =>
         {
-            EventHandler h = (_, _) => explorationRev.Set(explorationRev.Value + 1);
+            // Use a Ref for the counter to avoid stale-closure: the effect
+            // runs once, so explorationRev.Value would be stuck at 0. The
+            // Ref's .Current is always live, ensuring every Changed event
+            // produces a unique value → always triggers a re-render.
+            EventHandler h = (_, _) =>
+            {
+                explorationRevRef.Current++;
+                explorationRev.Set(explorationRevRef.Current);
+            };
             ChatExplorationState.Changed += h;
             return () => ChatExplorationState.Changed -= h;
         }));
@@ -249,6 +258,31 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // toggle independently. HashSet so the empty default is "all
         // collapsed" — matches the web's default-collapsed look.
         var expandedToolChips = UseState<HashSet<string>>(new HashSet<string>(), threadSafe: true);
+
+        // Track the last-seen CollapseToolChipsVersion so we clear expanded
+        // state when the user toggles tool calls off (collapsed view should
+        // start fresh when re-shown).
+        var lastCollapseVersion = UseRef(ChatExplorationState.CollapseToolChipsVersion);
+        if (lastCollapseVersion.Current != ChatExplorationState.CollapseToolChipsVersion)
+        {
+            lastCollapseVersion.Current = ChatExplorationState.CollapseToolChipsVersion;
+            // Clear expanded state without triggering another render —
+            // mutate in-place since we're already inside a render pass.
+            // The state will be observed as empty on the next render.
+            if (expandedToolChips.Value is { Count: > 0 } chips)
+                chips.Clear();
+        }
+
+        // When showToolCalls changes, pre-clear the native StackPanel so the
+        // reconciler (SyncChildren) only does inserts into an empty panel
+        // instead of expensive per-element RemoveAt calls that cascade
+        // Unloaded events through deep visual subtrees.
+        var prevShowToolCallsRef = UseRef(showToolCalls);
+        if (prevShowToolCallsRef.Current != showToolCalls)
+        {
+            prevShowToolCallsRef.Current = showToolCalls;
+            contentRef.Current?.Children.Clear();
+        }
 
         // Hover state — set of entry ids currently under the pointer. Used to
         // reveal the trash / speak action icons beside user / assistant
@@ -1667,7 +1701,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         static bool IsAgentSide(ChatTimelineItemKind k) =>
             k == ChatTimelineItemKind.Assistant || k == ChatTimelineItemKind.ToolCall;
 
-        var renderedEntries = new Element[Props.Entries.Count];
+        var renderedEntries = new Element?[Props.Entries.Count];
         for (int i = 0; i < Props.Entries.Count; i++)
         {
             var entry = Props.Entries[i];
@@ -1682,16 +1716,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // block instead of N separate chips with repeated footers.
             if (entry.Kind == ChatTimelineItemKind.ToolCall)
             {
-                if (!showToolCalls)
-                {
-                    renderedEntries[i] = Empty().WithKey(entry.Id);
-                    continue;
-                }
                 if (!startsBurst)
                 {
                     // Non-start tool entries collapsed into the burst rendered
-                    // at startsBurst; render Empty here to avoid duplication.
-                    renderedEntries[i] = Empty().WithKey(entry.Id);
+                    // at startsBurst; render null here to avoid duplication.
+                    renderedEntries[i] = null;
                     continue;
                 }
                 var burst = new System.Collections.Generic.List<ChatTimelineItem> { entry };
@@ -1700,6 +1729,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 {
                     burst.Add(Props.Entries[j]);
                     j++;
+                }
+                if (!showToolCalls)
+                {
+                    renderedEntries[i] = null;
+                    continue;
                 }
                 renderedEntries[i] = RenderToolBurst(burst, showAvatar).WithKey(entry.Id);
                 continue;

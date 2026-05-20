@@ -340,6 +340,20 @@ public static class ChatExplorationState
         set { if (_showToolCalls != value) { _showToolCalls = value; RaiseChanged(); } }
     }
 
+    /// <summary>
+    /// Monotonic counter incremented when all tool chip expanded states
+    /// should be reset. The timeline checks this and clears its local
+    /// <c>expandedToolChips</c> set when the value changes.
+    /// </summary>
+    public static int CollapseToolChipsVersion { get; internal set; }
+
+    /// <summary>Signal all tool chip expanded states to collapse.</summary>
+    public static void CollapseAllToolChips()
+    {
+        CollapseToolChipsVersion++;
+        RaiseChanged();
+    }
+
     public static double BubbleMaxWidth
     {
         get => _bubbleMaxWidth;
@@ -394,7 +408,7 @@ public static class ChatExplorationState
 
     // ---- Tool burst (H) ----
 
-    private static ToolBurstStyle _toolBurstStyle = ToolBurstStyle.Plain;
+    private static ToolBurstStyle _toolBurstStyle = ToolBurstStyle.CompactSummary;
     private static bool _showStepNumbers;
 
     /// <summary>

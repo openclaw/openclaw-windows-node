@@ -107,6 +107,7 @@ public sealed class OpenClawChatRoot : Component
         // they receive don't change. Bumping this Root's state invalidates
         // the whole tree so toggles always show in the live preview.
         var explorationRev = UseState(0, threadSafe: true);
+        var explorationRevRef = UseRef(0);
         var pendingAttachment = UseState<ChatAttachment?>(null, threadSafe: true);
         var speakerMuted = UseState(_initialMuted, threadSafe: true);
         var voiceTranscript = UseState<string?>(null, threadSafe: true);
@@ -137,10 +138,12 @@ public sealed class OpenClawChatRoot : Component
             var dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             EventHandler h = (_, _) =>
             {
+                explorationRevRef.Current++;
+                var val = explorationRevRef.Current;
                 if (dq is not null)
-                    dq.TryEnqueue(() => explorationRev.Set(explorationRev.Value + 1));
+                    dq.TryEnqueue(() => explorationRev.Set(val));
                 else
-                    explorationRev.Set(explorationRev.Value + 1);
+                    explorationRev.Set(val);
             };
             ChatExplorationState.Changed += h;
             return () => ChatExplorationState.Changed -= h;

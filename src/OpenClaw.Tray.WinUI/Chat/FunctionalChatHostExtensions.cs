@@ -53,7 +53,8 @@ public static class FunctionalChatHostExtensions
         Action? onSettingsClick = null,
         Action<bool>? onSpeakerMuteChanged = null,
         bool initialMuted = false,
-        bool isCompact = false)
+        bool isCompact = false,
+        bool suppressAutoDispose = false)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
@@ -61,6 +62,7 @@ public static class FunctionalChatHostExtensions
 
         var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onStopSpeaking, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted, isCompact);
         var host = new FunctionalHostControl();
+        host.SuppressAutoDispose = suppressAutoDispose;
         host.Mount(root);
         target.Child = host;
         return new MountedFunctionalChat(target, host, root);
