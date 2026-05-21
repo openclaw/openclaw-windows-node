@@ -115,7 +115,6 @@ public class MxcConfigBuilderTests
             request,
             scratchDir: P.Scratch,
             containerId: GoldenContainerId,
-            toolNames: Array.Empty<string>(),
             pathEnvVar: "");
 
         // Strip the process bag the harness dropped, plus normalize containerId.
@@ -246,43 +245,16 @@ public class MxcConfigBuilderTests
         Assert.DoesNotContain(Path.Combine(P.Ssh, "keys"), config.Filesystem!.ReadonlyPaths!);
     }
 
-    [Theory]
-    [InlineData("MY_SECRET",          true)]
-    [InlineData("my_secret",          true)]
-    [InlineData("AWS_ACCESS_KEY_ID",  true)]
-    [InlineData("aws_access_key_id",  true)]
-    [InlineData("GITHUB_TOKEN",       true)]
-    [InlineData("GitHub_Token",       true)]
-    [InlineData("MY_API_KEY",         true)]
-    [InlineData("MY_PASSWORD",        true)]
-    [InlineData("PATH",               true)]
-    [InlineData("path",               true)]
-    [InlineData("NODE_OPTIONS",       true)]
-    [InlineData("LD_PRELOAD",         true)]
-    [InlineData("DYLD_INSERT_LIBRARIES", true)]
-    [InlineData("AZURE_CONNECTION_STRING", true)]
-    [InlineData("SQL_CONNSTR",            true)]
-    [InlineData("SOME_HARMLESS_VAR",  false)]
-    [InlineData("CARGO_HOME",         false)]
-    public void IsRequestEnvNameBlocked_IsCaseInsensitive_AndCoversCommonSpoofs(string name, bool expected)
-    {
-        Assert.Equal(expected, MxcConfigBuilder.IsRequestEnvNameBlocked(name));
-    }
-
     [Fact]
-    public void ResolveToolDirsFromPath_ReturnsParentDirsOfFoundTools()
+    public void ResolvePathDirsForReadonly_ReturnsExistingPathDirs()
     {
-        // Synthesize a "tool" present at a temp path; ensure its parent dir shows up.
+        // Synthesize an existing dir on PATH; ensure it shows up as a readonly
+        // grant candidate. No tool-name filter — every existing PATH dir
+        // counts (mirrors the SDK's getAvailableToolsPolicy behavior).
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-tool-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
-            var toolPath = Path.Combine(tempDir, "fake-tool.exe");
-            File.WriteAllBytes(toolPath, new byte[] { 0 });
-
-            var dirs = MxcConfigBuilder.ResolveToolDirsFromPath(
-                toolNames: new[] { "fake-tool.exe" },
-                pathEnvVar: tempDir);
-
+            var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: tempDir);
             Assert.Contains(tempDir, dirs);
         }
         finally
@@ -292,11 +264,17 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void ResolveToolDirsFromPath_SkipsToolsNotPresent()
+    public void ResolvePathDirsForReadonly_SkipsNonExistentDirs()
     {
-        var dirs = MxcConfigBuilder.ResolveToolDirsFromPath(
-            toolNames: new[] { "definitely-not-real-xyzqq.exe" },
-            pathEnvVar: Path.GetTempPath());
+        var fake = Path.Combine(Path.GetTempPath(), "definitely-not-real-xyzqq-" + Guid.NewGuid().ToString("N"));
+        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: fake);
+        Assert.Empty(dirs);
+    }
+
+    [Fact]
+    public void ResolvePathDirsForReadonly_SkipsDriveRoots()
+    {
+        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: "C:\\");
         Assert.Empty(dirs);
     }
 

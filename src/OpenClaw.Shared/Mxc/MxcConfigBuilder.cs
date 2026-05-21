@@ -26,66 +26,8 @@ namespace OpenClaw.Shared.Mxc;
 public static class MxcConfigBuilder
 {
     /// <summary>
-    /// Whitelist of executables to look up on PATH. Their parent directories
-    /// become readonly grants. Drive roots are explicitly skipped to avoid
-    /// granting the whole system drive (the SDK's <c>getAvailableToolsPolicy</c>
-    /// had that bug when pwsh was on PATH).
-    /// </summary>
-    public static readonly IReadOnlyList<string> DefaultToolNames = new[]
-    {
-        "git.exe",
-        "pwsh.exe",
-        "powershell.exe",
-        "python.exe",
-        "node.exe",
-        "npm.cmd",
-        "npx.cmd",
-        "dotnet.exe",
-        "gh.exe",
-        "cmd.exe",
-        "cargo.exe",
-        "uv.exe",
-    };
-
-    /// <summary>
-    /// Env vars copied from the host. Mirrors <c>BASE_ENV_ALLOWLIST</c> in the
-    /// legacy <c>run-command.cjs</c> bridge.
-    /// </summary>
-    public static readonly IReadOnlyList<string> BaseEnvAllowList = new[]
-    {
-        "ALLUSERSPROFILE",
-        "APPDATA",
-        "ComSpec",
-        "CommonProgramFiles",
-        "CommonProgramFiles(x86)",
-        "CommonProgramW6432",
-        "HOMEDRIVE",
-        "HOMEPATH",
-        "LOCALAPPDATA",
-        "NUMBER_OF_PROCESSORS",
-        "OS",
-        "PATH",
-        "PATHEXT",
-        "PROCESSOR_ARCHITECTURE",
-        "PROCESSOR_IDENTIFIER",
-        "PROCESSOR_LEVEL",
-        "PROCESSOR_REVISION",
-        "ProgramData",
-        "ProgramFiles",
-        "ProgramFiles(x86)",
-        "ProgramW6432",
-        "PUBLIC",
-        "SystemDrive",
-        "SystemRoot",
-        "USERDOMAIN",
-        "USERNAME",
-        "USERPROFILE",
-        "windir",
-    };
-
-    /// <summary>
     /// Default per-process timeout in milliseconds when the caller doesn't
-    /// supply one. Matches the legacy bridge default.
+    /// supply one. Mirrors the MXC SDK's <c>SandboxPolicy.timeoutMs</c> default.
     /// </summary>
     public const int DefaultProcessTimeoutMs = 30_000;
 
@@ -95,16 +37,12 @@ public static class MxcConfigBuilder
     /// <param name="request">Capability invocation request.</param>
     /// <param name="scratchDir">Per-invocation scratch directory the executor created.</param>
     /// <param name="containerId">Optional explicit container id (test/diagnostic use). Random GUID when null.</param>
-    /// <param name="toolNames">Optional override for the PATH tool whitelist (test use).</param>
     /// <param name="pathEnvVar">Optional override for the PATH env-var contents (test use).</param>
-    /// <param name="getExecutableExtension">Optional override for which extension a tool maps to (test use).</param>
     public static MxcConfig Build(
         SandboxExecutionRequest request,
         string scratchDir,
         string? containerId = null,
-        IReadOnlyList<string>? toolNames = null,
-        string? pathEnvVar = null,
-        Func<string, string>? executableLookup = null)
+        string? pathEnvVar = null)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
         if (string.IsNullOrWhiteSpace(scratchDir)) throw new ArgumentException("scratchDir required", nameof(scratchDir));
@@ -112,41 +50,46 @@ public static class MxcConfigBuilder
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
 
-        // (4) commandLine — shell-quoted.
+        // commandLine — shell-quoted.
         var commandLine = ShellCommandLine.Build(args.Shell, args.Command, args.Argv);
 
-        // (9) readonly = user grants + PATH-derived tool dirs.
+        // readonly = user-configured grants + every existing PATH dir (mirrors
+        // the MXC SDK's getAvailableToolsPolicy, minus drive roots which the
+        // SDK itself has a documented bug around when pwsh.exe is on PATH).
         var roFromPolicy = (policy?.Filesystem?.ReadonlyPaths ?? Array.Empty<string>()).ToList();
-        var toolDirs = ResolveToolDirsFromPath(toolNames ?? DefaultToolNames, pathEnvVar, executableLookup);
-        foreach (var dir in toolDirs)
+        var pathDirs = ResolvePathDirsForReadonly(pathEnvVar);
+        foreach (var dir in pathDirs)
             if (!roFromPolicy.Contains(dir, StringComparer.OrdinalIgnoreCase))
                 roFromPolicy.Add(dir);
 
-        // (10) readwrite = user grants + scratch dir.
+        // readwrite = user grants + scratch dir.
         var rwFromPolicy = (policy?.Filesystem?.ReadwritePaths ?? Array.Empty<string>()).ToList();
         if (!rwFromPolicy.Contains(scratchDir, StringComparer.OrdinalIgnoreCase))
             rwFromPolicy.Add(scratchDir);
 
-        // (11) denied list from policy (settings dir, ~/.ssh, browser profiles, ...).
+        // denied list from policy (settings dir, ~/.ssh, browser profiles, ...).
         var denied = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
 
-        // (5) cwd auto-grant — if request.Cwd isn't already nested in any allow,
-        // add it to readonly. Skip if cwd overlaps a deny.
+        // cwd auto-grant — AppContainer does not auto-grant the working directory,
+        // so without this every command run inside the user's repo would fail
+        // with permission errors. Added to readonly when not already covered by
+        // an explicit allow; skipped if the cwd overlaps a deny.
         if (!string.IsNullOrWhiteSpace(request.Cwd) && !IsCoveredBy(request.Cwd, roFromPolicy.Concat(rwFromPolicy)))
         {
             if (!IsCoveredBy(request.Cwd, denied))
                 roFromPolicy.Add(request.Cwd);
         }
 
-        // Re-apply deny precedence after every merge. (Same as MxcPolicyBuilder.FilterOutDenied
-        // but applied at the final config layer, after tool/scratch/cwd additions.)
+        // Re-apply deny precedence after every merge (defense-in-depth — keeps
+        // a SDK or caller bug from accidentally granting a denied subtree).
         roFromPolicy = FilterOutDenied(roFromPolicy, denied);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, denied);
 
-        // (6) env — host allowlist + agent env (scrubbed) + TEMP/TMP/TMPDIR override.
+        // env — agent-supplied vars only, plus TEMP/TMP/TMPDIR forced to scratch.
+        // No host env allow-list — the agent owns what env to pass in.
         var env = BuildEnv(request.Env, scratchDir);
 
-        // (7) timeout — caller-supplied or default.
+        // timeout — caller-supplied or default.
         var timeoutMs = request.TimeoutMs > 0 ? request.TimeoutMs : DefaultProcessTimeoutMs;
 
         // (8) capabilities + appContainer.ui — mirror SDK output exactly.
@@ -214,15 +157,12 @@ public static class MxcConfigBuilder
     }
 
     /// <summary>
-    /// Walk PATH looking for each whitelisted tool; return the dedup'd set of
-    /// parent directories. Drive roots (e.g. <c>C:\</c>) are skipped so a
-    /// misconfigured PATH entry with a tool at a drive root doesn't grant the
-    /// entire drive as readonly inside the sandbox.
+    /// Walk PATH and return each existing directory as a readonly grant
+    /// candidate. Mirrors the SDK's <c>getAvailableToolsPolicy</c> approach
+    /// (every PATH dir, dedup'd, minus drive roots which the SDK has a bug
+    /// around). No tool-name whitelist — the SDK doesn't have one either.
     /// </summary>
-    public static List<string> ResolveToolDirsFromPath(
-        IReadOnlyList<string> toolNames,
-        string? pathEnvVar = null,
-        Func<string, string>? executableLookup = null)
+    public static List<string> ResolvePathDirsForReadonly(string? pathEnvVar = null)
     {
         var path = pathEnvVar ?? Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         var pathDirs = path
@@ -234,13 +174,17 @@ public static class MxcConfigBuilder
         var dirs = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var tool in toolNames)
+        foreach (var dir in pathDirs)
         {
-            string? full = executableLookup?.Invoke(tool) ?? FindOnPath(tool, pathDirs);
-            if (full is null) continue;
-            var dir = Path.GetDirectoryName(full);
-            if (string.IsNullOrWhiteSpace(dir)) continue;
             if (IsDriveRoot(dir)) continue;
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+            }
+            catch
+            {
+                continue;
+            }
             if (seen.Add(dir)) dirs.Add(dir);
         }
 
@@ -263,47 +207,38 @@ public static class MxcConfigBuilder
         }
     }
 
-    private static string? FindOnPath(string toolName, IReadOnlyList<string> pathDirs)
-    {
-        foreach (var dir in pathDirs)
-        {
-            string candidate;
-            try { candidate = Path.Combine(dir, toolName); }
-            catch { continue; }
-            if (File.Exists(candidate)) return candidate;
-        }
-        return null;
-    }
-
     /// <summary>
-    /// Build the env array (KEY=VALUE strings) from host allowlist + agent env.
-    /// TEMP/TMP/TMPDIR are forced to <paramref name="scratchDir"/> so commands
-    /// inside the sandbox write into our scratch, not the user's real %TEMP%.
+    /// Build the env array (KEY=VALUE strings). Only agent-supplied env from
+    /// <paramref name="requestEnv"/> is passed through; TEMP/TMP/TMPDIR are
+    /// forced to <paramref name="scratchDir"/> so commands inside the sandbox
+    /// write into our scratch, not the user's real %TEMP%. The host env is
+    /// not allow-listed in — the agent owns env-var policy.
     /// </summary>
     public static IReadOnlyList<string> BuildEnv(
         IReadOnlyDictionary<string, string>? requestEnv,
         string scratchDir)
     {
-        // Windows env vars are case-insensitive; using OrdinalIgnoreCase here
-        // prevents an agent-supplied case-variant (e.g. "appdata") from being
-        // emitted alongside the host-allowlisted "APPDATA", which would let
-        // the agent override host vars depending on which the C runtime picks.
+        // Windows env vars are case-insensitive — use OrdinalIgnoreCase so
+        // duplicate-case agent entries don't end up as separate strings.
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var hostEnv = Environment.GetEnvironmentVariables();
-        foreach (var name in BaseEnvAllowList)
-        {
-            if (hostEnv.Contains(name))
-            {
-                var v = hostEnv[name]?.ToString();
-                if (v is not null) env[name] = v;
-            }
-        }
 
         if (requestEnv is not null)
         {
             foreach (var (name, value) in requestEnv)
             {
-                if (IsRequestEnvNameBlocked(name) || value is null) continue;
+                if (string.IsNullOrEmpty(name) || value is null) continue;
+                // Reject names with NUL/CR/LF/'=' so an agent can't smuggle
+                // a second KEY=VALUE pair into a single name field.
+                bool malformed = false;
+                foreach (var ch in name)
+                {
+                    if (ch == '=' || ch == '\0' || ch == '\r' || ch == '\n')
+                    {
+                        malformed = true;
+                        break;
+                    }
+                }
+                if (malformed) continue;
                 env[name] = value;
             }
         }
@@ -313,78 +248,6 @@ public static class MxcConfigBuilder
         env["TMPDIR"] = scratchDir;
 
         return env.Select(kvp => $"{kvp.Key}={kvp.Value}").ToList();
-    }
-
-    /// <summary>
-    /// True if <paramref name="name"/> is forbidden from being set by the agent.
-    /// Matches the JS bridge's <c>isRequestEnvNameBlocked</c> rules:
-    /// shell-injection vectors (PATH/PATHEXT/NODE_OPTIONS/LD_*/DYLD_*/...) plus
-    /// credential markers (TOKEN/SECRET/PASSWORD/API_KEY/...). Case-insensitive.
-    /// </summary>
-    public static bool IsRequestEnvNameBlocked(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return true;
-        foreach (var ch in name)
-        {
-            if (ch == '=' || ch == '\0' || ch == '\r' || ch == '\n' || char.IsWhiteSpace(ch))
-                return true;
-        }
-        var upper = name.ToUpperInvariant();
-        switch (upper)
-        {
-            case "PATH":
-            case "PATHEXT":
-            case "COMSPEC":
-            case "PSMODULEPATH":
-            case "NODE_OPTIONS":
-            case "NODE_PATH":
-            case "PYTHONPATH":
-            case "PYTHONSTARTUP":
-            case "PYTHONUSERBASE":
-            case "RUBYOPT":
-            case "RUBYLIB":
-            case "PERL5OPT":
-            case "PERL5LIB":
-            case "PERLIO":
-            case "GIT_SSH":
-            case "GIT_SSH_COMMAND":
-            case "GIT_EXEC_PATH":
-            case "GIT_PROXY_COMMAND":
-            case "GIT_ASKPASS":
-            case "BASH_ENV":
-            case "ENV":
-            case "CDPATH":
-            case "PROMPT_COMMAND":
-            case "ZDOTDIR":
-                return true;
-        }
-        if (upper.StartsWith("LD_", StringComparison.Ordinal) || upper.StartsWith("DYLD_", StringComparison.Ordinal))
-            return true;
-        return HasCredentialMarker(upper);
-    }
-
-    private static bool HasCredentialMarker(string upperName)
-    {
-        var segments = upperName.Split(new[] { '_', '-', '.' }, StringSplitOptions.RemoveEmptyEntries);
-        bool Has(string seg) => Array.IndexOf(segments, seg) >= 0;
-        bool HasPair(string a, string b)
-        {
-            for (int i = 0; i < segments.Length - 1; i++)
-                if (segments[i] == a && segments[i + 1] == b) return true;
-            return false;
-        }
-        return Has("TOKEN")
-            || Has("SECRET")
-            || Has("PASSWORD")
-            || Has("PASSWD")
-            || Has("CREDENTIAL")
-            || Has("CREDENTIALS")
-            || Has("CONNSTR")
-            || HasPair("API", "KEY")
-            || HasPair("ACCESS", "KEY")
-            || HasPair("PRIVATE", "KEY")
-            || HasPair("CLIENT", "SECRET")
-            || HasPair("CONNECTION", "STRING");
     }
 
     private static List<string> FilterOutDenied(List<string> allowed, List<string> denied)
