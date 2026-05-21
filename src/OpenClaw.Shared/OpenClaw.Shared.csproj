@@ -11,13 +11,6 @@
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
   </ItemGroup>
 
-  <!-- Canonical host env security policy. Source of truth is
-       openclaw/openclaw:src/infra/host-env-security-policy.json; this is a
-       copy. When the upstream JSON changes, re-copy and rerun tests. -->
-  <ItemGroup>
-    <EmbeddedResource Include="Mxc\HostEnvSecurityPolicy.json" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
   </ItemGroup>

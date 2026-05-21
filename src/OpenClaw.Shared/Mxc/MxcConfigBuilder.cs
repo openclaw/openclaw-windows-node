@@ -214,29 +214,19 @@ public static class MxcConfigBuilder
     /// Build the env array (KEY=VALUE strings) the wxc-exec sandbox will inherit.
     /// </summary>
     /// <remarks>
-    /// <para><b>What flows in:</b> only the agent-supplied
-    /// <paramref name="requestEnv"/>. The host env is intentionally NOT
-    /// allow-listed in — the agent owns env-var policy and decides what to
-    /// pass. TEMP/TMP/TMPDIR are then forced to <paramref name="scratchDir"/>
-    /// so any tool inside the sandbox writes scratch files into our
-    /// throwaway dir, not the user's real <c>%TEMP%</c>.</para>
-    /// <para><b>Why we scrub:</b> openclaw's exec security model sanitizes
-    /// at every spawn boundary, not just at "the gateway". This mirrors
-    /// the macOS consumer <c>HostEnvSanitizer.sanitize</c>
-    /// (<c>apps/macos/Sources/OpenClaw/HostEnvSanitizer.swift</c>) that runs
-    /// inside <c>ExecApprovalEvaluation.swift</c>. We are the Windows-node
-    /// analog: every <c>system.run</c> we forward to wxc-exec gets the
-    /// canonical openclaw blocklist applied so the agent can't smuggle in
-    /// vars like <c>NODE_OPTIONS</c>, <c>GITHUB_TOKEN</c>, <c>LD_PRELOAD</c>,
-    /// <c>GIT_SSH_COMMAND</c>, or
-    /// <c>BASH_FUNC_*</c>/<c>DYLD_*</c>/<c>LD_*</c> prefixes.</para>
+    /// <para><b>What flows in:</b> agent-supplied <paramref name="requestEnv"/>
+    /// only — by the time we get here, <c>SystemCapability.HandleRunAsync</c>
+    /// has already run env through <c>ExecEnvSanitizer.Sanitize</c> at the
+    /// front door and rejected the command if any dangerous vars were present.
+    /// We don't scrub again. TEMP/TMP/TMPDIR are then forced to
+    /// <paramref name="scratchDir"/> so any tool inside the sandbox writes
+    /// scratch files into our throwaway dir, not the user's real
+    /// <c>%TEMP%</c>.</para>
     /// </remarks>
     public static IReadOnlyList<string> BuildEnv(
         IReadOnlyDictionary<string, string>? requestEnv,
-        string scratchDir,
-        HostEnvSecurityPolicy? policy = null)
+        string scratchDir)
     {
-        policy ??= HostEnvSecurityPolicy.Default;
         // Windows env vars are case-insensitive — use OrdinalIgnoreCase so
         // duplicate-case agent entries don't end up as separate strings.
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -245,8 +235,19 @@ public static class MxcConfigBuilder
         {
             foreach (var (name, value) in requestEnv)
             {
-                if (value is null) continue;
-                if (policy.IsBlocked(name)) continue;
+                if (string.IsNullOrEmpty(name) || value is null) continue;
+                // Reject names with NUL/CR/LF/'=' so an agent can't smuggle
+                // a second KEY=VALUE pair into a single name field.
+                bool malformed = false;
+                foreach (var ch in name)
+                {
+                    if (ch == '=' || ch == '\0' || ch == '\r' || ch == '\n')
+                    {
+                        malformed = true;
+                        break;
+                    }
+                }
+                if (malformed) continue;
                 env[name] = value;
             }
         }
