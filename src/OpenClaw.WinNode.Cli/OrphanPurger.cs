@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 
@@ -41,16 +42,23 @@ internal static class OrphanPurger
     /// name used by the WSL gateway installer (still in production as of
     /// 2026-05; observed on Mike's dev box during the MSIX-E2E manual test
     /// prep).</description></item>
-    /// <item><description><c>openclaw-*</c> — the newer kebab-case
+    /// <item><description>Known kebab-case names — the newer
     /// convention adopted for variants like <c>openclaw-local</c>,
     /// <c>openclaw-staging</c>.</description></item>
     /// </list>
     /// Match is case-insensitive because <c>wsl --list --quiet</c> echoes
     /// the user-specified case verbatim and we cannot rely on either form.
-    /// Matching is intentionally anchored/exact so a user-created distro named
-    /// <c>my-openclaw-experiments</c> is never destroyed by the cleanup tool.
+    /// Matching is intentionally exact so user-created distros named
+    /// <c>my-openclaw-experiments</c> or <c>openclaw-personal</c> are never
+    /// destroyed by the cleanup tool.
     /// </remarks>
     internal const string LegacyOpenClawGatewayDistroName = "OpenClawGateway";
+    internal static readonly string[] OpenClawOwnedWslDistroNames = new[]
+    {
+        LegacyOpenClawGatewayDistroName,
+        "openclaw-local",
+        "openclaw-staging",
+    };
 
     /// <summary>
     /// Retained for backward compatibility with <c>OrphanPurgerContractTests</c>
@@ -59,6 +67,13 @@ internal static class OrphanPurger
     /// <see cref="IsOpenClawOwnedWslDistroName"/>.
     /// </summary>
     internal const string OrphanWslDistroPrefix = "openclaw-";
+    internal const string ForceEvenIfInstalledFlag = "--force-even-if-installed";
+    internal const string TrayMutexName = "OpenClawTray";
+    internal static readonly string[] CompanionPackageNames = new[]
+    {
+        "OpenClaw.Companion",
+        "OpenClaw.Companion.Alpha",
+    };
 
     /// <summary>
     /// Registry subkeys under <c>HKCU\Software\Classes</c> we treat as
@@ -79,14 +94,16 @@ internal static class OrphanPurger
         IReadOnlyList<OrphanItem> Orphans,
         IReadOnlyList<OrphanItem> Removed,
         IReadOnlyList<OrphanItem> Failed,
-        bool ConfirmDestructive);
+        bool ConfirmDestructive,
+        string? BlockedReason = null);
 
     public static async Task<int> RunAsync(
         bool confirmDestructive,
         bool jsonOutput,
         TextWriter stdout,
         TextWriter stderr,
-        Func<string, string?>? envLookup = null)
+        Func<string, string?>? envLookup = null,
+        bool forceEvenIfInstalled = false)
     {
         envLookup ??= Environment.GetEnvironmentVariable;
 
@@ -97,8 +114,15 @@ internal static class OrphanPurger
 
         var removed = new List<OrphanItem>();
         var failed = new List<OrphanItem>();
+        string? blockedReason = null;
 
-        if (confirmDestructive)
+        if (confirmDestructive && orphans.Count > 0 && !forceEvenIfInstalled &&
+            TryGetLiveInstallBlockReason(stderr, out blockedReason))
+        {
+            stderr.WriteLine($"[purge] Refusing destructive cleanup: {blockedReason}");
+            stderr.WriteLine($"[purge] Run Reset & remove from the installed app first, or pass {ForceEvenIfInstalledFlag} if you already verified the install is gone.");
+        }
+        else if (confirmDestructive)
         {
             foreach (var orphan in orphans)
             {
@@ -114,7 +138,7 @@ internal static class OrphanPurger
             }
         }
 
-        var report = new PurgeReport(orphans, removed, failed, confirmDestructive);
+        var report = new PurgeReport(orphans, removed, failed, confirmDestructive, blockedReason);
         if (jsonOutput)
         {
             stdout.WriteLine(JsonSerializer.Serialize(report,
@@ -125,6 +149,7 @@ internal static class OrphanPurger
             WriteHumanReport(report, stdout);
         }
 
+        if (blockedReason is not null) return 2;
         if (failed.Count > 0) return 2;
         if (!confirmDestructive && orphans.Count > 0) return 1;
         return 0;
@@ -188,8 +213,98 @@ internal static class OrphanPurger
     }
 
     internal static bool IsOpenClawOwnedWslDistroName(string distroName) =>
-        distroName.Equals(LegacyOpenClawGatewayDistroName, StringComparison.OrdinalIgnoreCase) ||
-        distroName.StartsWith(OrphanWslDistroPrefix, StringComparison.OrdinalIgnoreCase);
+        OpenClawOwnedWslDistroNames.Any(owned =>
+            distroName.Equals(owned, StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryGetLiveInstallBlockReason(TextWriter stderr, out string reason)
+    {
+        if (IsTrayMutexPresent())
+        {
+            reason = "OpenClaw tray is still running";
+            return true;
+        }
+
+        var packageState = TryGetCompanionPackageInstalledForCurrentUser(stderr);
+        if (packageState == true)
+        {
+            reason = "OpenClaw Companion MSIX is still installed for the current user";
+            return true;
+        }
+
+        if (packageState is null)
+        {
+            reason = "could not verify that the OpenClaw Companion MSIX is removed";
+            return true;
+        }
+
+        reason = string.Empty;
+        return false;
+    }
+
+    private static bool IsTrayMutexPresent()
+    {
+        try
+        {
+            if (!Mutex.TryOpenExisting(TrayMutexName, out var mutex))
+                return false;
+
+            mutex.Dispose();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool? TryGetCompanionPackageInstalledForCurrentUser(TextWriter stderr)
+    {
+        try
+        {
+            var packageNameList = string.Join(",",
+                CompanionPackageNames.Select(name => $"'{name.Replace("'", "''")}'"));
+            var script = $"$names=@({packageNameList}); " +
+                         "$pkg=@(); foreach ($name in $names) { " +
+                         "$pkg += @(Get-AppxPackage -Name $name -ErrorAction SilentlyContinue) }; " +
+                         "if ($pkg.Count -gt 0) { exit 0 }; exit 1";
+            var psi = new ProcessStartInfo("powershell.exe")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-NonInteractive");
+            psi.ArgumentList.Add("-ExecutionPolicy");
+            psi.ArgumentList.Add("Bypass");
+            psi.ArgumentList.Add("-Command");
+            psi.ArgumentList.Add(script);
+
+            using var proc = Process.Start(psi);
+            if (proc is null)
+                return null;
+
+            if (!proc.WaitForExit(10_000))
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
+                stderr.WriteLine("[purge] timed out verifying MSIX package registration");
+                return null;
+            }
+
+            return proc.ExitCode switch
+            {
+                0 => true,
+                1 => false,
+                _ => null
+            };
+        }
+        catch (Exception ex)
+        {
+            stderr.WriteLine($"[purge] failed to verify MSIX package registration ({ex.Message})");
+            return null;
+        }
+    }
 
     private static IEnumerable<OrphanItem> DetectFileOrphans(Func<string, string?> envLookup)
     {

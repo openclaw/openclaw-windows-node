@@ -116,7 +116,8 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
 5. **Assert** the following are absent: `%APPDATA%\OpenClawTray\`,
    `%LOCALAPPDATA%\OpenClawTray\`, `HKCU:\Software\Classes\openclaw`,
    `HKCU:\Software\Microsoft\Windows\CurrentVersion\Run\OpenClawTray`,
-   `openclaw-*` WSL distros.
+   and known app-owned WSL distros such as `OpenClawGateway` or
+   `openclaw-local`.
 
 ### 7. Dirty uninstall + recovery (proves `--purge-wsl-orphans`)
 

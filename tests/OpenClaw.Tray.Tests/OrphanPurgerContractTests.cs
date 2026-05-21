@@ -45,31 +45,48 @@ public sealed class OrphanPurgerContractTests
     [Fact]
     public void OrphanWslDistroPrefix_IsTheOpenclawPrefix()
     {
-        // The local-gateway flow names every distro it installs with an
-        // openclaw- prefix. Drift here means a real orphan goes undetected
-        // (we silently miss what we promised to clean) — pin it. Retained
-        // for backward compat after the 2026-05 case-insensitive fix added
-        // exact legacy-name matching for OpenClawGateway.
+        // Retained for backward compat with support/docs that mention the
+        // historical openclaw- prefix, even though destructive matching now
+        // uses an exact allow-list.
         Assert.Contains("OrphanWslDistroPrefix = \"openclaw-\"", LoadOrphanPurgerSource());
     }
 
     [Fact]
-    public void WslDistroDetection_IsCaseInsensitive_Anchored_AndCatchesLegacyOpenClawGateway()
+    public void WslDistroDetection_IsCaseInsensitive_Exact_AndCatchesKnownOwnedDistros()
     {
         // Regression: during MSIX-E2E manual test prep we found Mike's box
         // had an OpenClawGateway (PascalCase, no dash) distro installed by
         // the historical local-gateway flow. The original "openclaw-"
         // case-sensitive prefix would silently miss it, meaning a user who
         // ran --purge-wsl-orphans would be told "no orphans" while a 2.6 GB
-        // .vhdx orphan was still on disk. Pin the case-insensitive exact legacy
-        // name + anchored prefix strategy so future refactors cannot drift back
-        // to destructive substring matching.
+        // .vhdx orphan was still on disk. Pin the case-insensitive exact-name
+        // strategy so future refactors cannot drift back to destructive
+        // substring or prefix matching.
         var src = LoadOrphanPurgerSource();
+        Assert.Contains("OpenClawOwnedWslDistroNames", src);
         Assert.Contains("LegacyOpenClawGatewayDistroName = \"OpenClawGateway\"", src);
-        Assert.Contains("StartsWith(OrphanWslDistroPrefix, StringComparison.OrdinalIgnoreCase)", src);
-        Assert.Contains("Equals(LegacyOpenClawGatewayDistroName, StringComparison.OrdinalIgnoreCase)", src);
+        Assert.Contains("\"openclaw-local\"", src);
+        Assert.Contains("\"openclaw-staging\"", src);
+        Assert.Contains("distroName.Equals(owned, StringComparison.OrdinalIgnoreCase)", src);
         Assert.Contains("StringComparison.OrdinalIgnoreCase", src);
         Assert.DoesNotContain("line.Contains(pattern", src);
+        Assert.DoesNotContain("StartsWith(OrphanWslDistroPrefix", src);
+    }
+
+    [Fact]
+    public void DestructivePurge_IsBlockedWhenCompanionIsInstalledOrRunning()
+    {
+        var src = LoadOrphanPurgerSource();
+        var program = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(), "src", "OpenClaw.WinNode.Cli", "Program.cs"));
+
+        Assert.Contains("TryGetLiveInstallBlockReason", src);
+        Assert.Contains("IsTrayMutexPresent", src);
+        Assert.Contains("TryGetCompanionPackageInstalledForCurrentUser", src);
+        Assert.Contains("CompanionPackageNames", src);
+        Assert.Contains("OpenClaw.Companion.Alpha", src);
+        Assert.Contains("ForceEvenIfInstalledFlag = \"--force-even-if-installed\"", src);
+        Assert.Contains("forceEvenIfInstalled", program);
     }
 
     [Fact]

@@ -1,7 +1,9 @@
 using System;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Services;
@@ -21,6 +23,8 @@ namespace OpenClawTray.Services;
 /// </summary>
 internal static class AppInstallerUpdateService
 {
+    private static readonly HttpClient SharedHttpClient = new();
+
     /// <summary>
     /// Stable x64 URL of the AppInstaller XML on GitHub Pages.
     /// </summary>
@@ -44,6 +48,8 @@ internal static class AppInstallerUpdateService
     /// </summary>
     public enum UpdateOutcome
     {
+        /// <summary>A newer version is advertised by the AppInstaller feed.</summary>
+        UpdateAvailable,
         /// <summary>Windows accepted the update request; registration may complete after restart.</summary>
         UpdateQueued,
         /// <summary>An update is available but Windows needs OpenClaw to exit before registration can finish.</summary>
@@ -60,6 +66,37 @@ internal static class AppInstallerUpdateService
 
     internal const int HResultPackagesInUse = unchecked((int)0x80073D02);
     internal const int HResultPackageAlreadyExists = unchecked((int)0x80073CFB);
+
+    /// <summary>
+    /// Reads the hosted AppInstaller XML and compares its version with the
+    /// installed package version without staging or registering any package.
+    /// </summary>
+    public static async Task<UpdateResult> CheckForUpdateAsync(
+        string? appInstallerUri = null,
+        HttpClient? httpClient = null)
+    {
+        if (!PackageHelper.IsPackaged)
+        {
+            return new UpdateResult(UpdateOutcome.NotPackaged,
+                "AppInstallerUpdateService called from an unpackaged process. " +
+                "branch on PackageHelper.IsPackaged before invoking this service.");
+        }
+
+        var uri = new Uri(appInstallerUri ?? LatestAppInstallerUri, UriKind.Absolute);
+
+        try
+        {
+            var client = httpClient ?? SharedHttpClient;
+            var xml = await client.GetStringAsync(uri);
+            var publishedVersion = ParseAppInstallerVersion(xml);
+            var currentVersion = GetCurrentPackageVersion();
+            return ClassifyPublishedVersion(currentVersion, publishedVersion);
+        }
+        catch (Exception ex)
+        {
+            return new UpdateResult(UpdateOutcome.Failed, ex.Message);
+        }
+    }
 
     /// <summary>
     /// Asks Windows to fetch the MSIX advertised at the AppInstaller URL.
@@ -125,11 +162,41 @@ internal static class AppInstallerUpdateService
         {
             HResultPackagesInUse => new UpdateResult(UpdateOutcome.UpdatePendingRestart,
                 "An update is available, but OpenClaw is running. Close and reopen OpenClaw to finish installing it."),
-            0 or HResultPackageAlreadyExists => new UpdateResult(UpdateOutcome.NoUpdateAvailable,
+            HResultPackageAlreadyExists => new UpdateResult(UpdateOutcome.NoUpdateAvailable,
                 "Already on the latest version published at the AppInstaller URL."),
+            0 => new UpdateResult(UpdateOutcome.Failed,
+                $"PackageManager did not register the package and did not report an HRESULT: {errorText ?? "no error text"}"),
             _ => new UpdateResult(UpdateOutcome.Failed,
                 $"PackageManager reported HRESULT 0x{unchecked((uint)hResult):X8}: {errorText}")
         };
+    }
+
+    internal static UpdateResult ClassifyPublishedVersion(Version currentVersion, Version publishedVersion)
+    {
+        if (publishedVersion.CompareTo(currentVersion) > 0)
+        {
+            return new UpdateResult(UpdateOutcome.UpdateAvailable,
+                $"Version {publishedVersion} is available. Windows AppInstaller will install it in the background when possible.");
+        }
+
+        return new UpdateResult(UpdateOutcome.NoUpdateAvailable,
+            $"Already on version {currentVersion}; latest published version is {publishedVersion}.");
+    }
+
+    internal static Version ParseAppInstallerVersion(string appInstallerXml)
+    {
+        var doc = XDocument.Parse(appInstallerXml);
+        var versionText = (string?)doc.Root?.Attribute("Version");
+        if (!Version.TryParse(versionText, out var version) || version.Revision < 0)
+            throw new FormatException("AppInstaller Version must be a four-part version.");
+
+        return version;
+    }
+
+    private static Version GetCurrentPackageVersion()
+    {
+        var version = global::Windows.ApplicationModel.Package.Current.Id.Version;
+        return new Version(version.Major, version.Minor, version.Build, version.Revision);
     }
 
     private static global::Windows.Management.Deployment.PackageVolume ResolveCurrentPackageVolume(

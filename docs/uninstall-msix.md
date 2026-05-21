@@ -60,11 +60,18 @@ The CLI detects and removes:
 
 | Kind                  | Where                                                                                |
 |-----------------------|--------------------------------------------------------------------------------------|
-| `wsl-distro`          | Any WSL distro whose name starts with `openclaw-`                                    |
+| `wsl-distro`          | Known app-owned WSL distro names such as `OpenClawGateway` and `openclaw-local`      |
 | `appdata-folder`      | `%APPDATA%\OpenClawTray\`                                                            |
 | `localappdata-folder` | `%LOCALAPPDATA%\OpenClawTray\`                                                       |
 | `registry-uri-scheme` | `HKCU\Software\Classes\openclaw` (legacy unpackaged URI scheme)                      |
 | `registry-run-key`    | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\OpenClawTray` (legacy autostart) |
+
+When `--confirm-destructive` is used, the CLI refuses to delete anything if it
+can still see the OpenClaw Companion MSIX registered for the current user or the
+tray mutex is present. Use the in-app cleanup first. The
+`--force-even-if-installed` override exists only for support cases where you
+have independently verified the installed app is gone but Windows' package
+registration check is stale or unavailable.
 
 If the CLI is not available (e.g., the package was uninstalled before this
 fallback was published), the equivalent PowerShell one-liners are:
@@ -72,7 +79,7 @@ fallback was published), the equivalent PowerShell one-liners are:
 ```powershell
 # 1. Unregister the WSL distro(s)
 wsl --list --quiet |
-    Where-Object { $_ -match '^openclaw-' } |
+    Where-Object { $_ -in @('OpenClawGateway', 'openclaw-local', 'openclaw-staging') } |
     ForEach-Object { wsl --unregister $_ }
 
 # 2. Remove autostart registry entry (legacy)

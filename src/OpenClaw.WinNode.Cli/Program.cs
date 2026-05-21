@@ -65,7 +65,8 @@ internal static class CliRunner
         {
             var confirm = args.Contains("--confirm-destructive");
             var json = args.Contains("--json-output");
-            return await OrphanPurger.RunAsync(confirm, json, stdout, stderr, envLookup);
+            var forceEvenIfInstalled = args.Contains(OrphanPurger.ForceEvenIfInstalledFlag);
+            return await OrphanPurger.RunAsync(confirm, json, stdout, stderr, envLookup, forceEvenIfInstalled);
         }
 
         WinNodeOptions options;
@@ -818,6 +819,7 @@ internal static class CliRunner
         stdout.WriteLine("                               skipped the in-app Reset & remove. Dry-run by default;");
         stdout.WriteLine("                               pass --confirm-destructive to actually delete.");
         stdout.WriteLine("    --confirm-destructive      Apply the deletions (otherwise dry-run; exit 1 if dirty)");
+        stdout.WriteLine("    --force-even-if-installed  Override the installed/running safety guard");
         stdout.WriteLine("    --json-output              Emit the orphan/removed/failed report as JSON");
         stdout.WriteLine();
         stdout.WriteLine("Examples:");

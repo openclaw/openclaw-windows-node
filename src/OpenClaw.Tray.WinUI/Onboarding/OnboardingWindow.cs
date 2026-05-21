@@ -43,7 +43,7 @@ public sealed class OnboardingWindow : WindowEx
     private EventHandler? _v2StateCaptureHandler;
     // Single-fire guard so the X button (Closed) and the Finish button don't both
     // dispatch completion. Both paths
-    // route through TryCompleteOnboarding which no-ops after the first call.
+    // route through TryCompleteOnboardingAsync which no-ops after the first call.
     private bool _completionDispatched;
     private bool _incompleteSetupDialogOpen;
 
@@ -235,9 +235,9 @@ public sealed class OnboardingWindow : WindowEx
             freshLocalGatewayUninstall: RunFreshLocalGatewayUninstallAsync);
         _v2Bridge.PrimarySetupRequested += (_, _) => _ = ConfirmAndStartV2SetupAsync();
         _v2Bridge.AdvancedSetupRequested += (_, _) => OpenConnectionsFromAdvancedSetup();
-        _v2Bridge.Finished += (_, _) =>
+        _v2Bridge.Finished += async (_, _) =>
         {
-            if (TryCompleteOnboarding())
+            if (await TryCompleteOnboardingAsync())
             {
                 Close();
             }
@@ -313,7 +313,7 @@ public sealed class OnboardingWindow : WindowEx
     /// </summary>
     private bool _dismissedWithoutCompletion;
 
-    private void OnClosed(object sender, WindowEventArgs args)
+    private async void OnClosed(object sender, WindowEventArgs args)
     {
         // X button path: also runs TryCompleteOnboarding (idempotent via _completionDispatched)
         // so a user who clicks the title-bar X on the Ready page still gets the chat-window
@@ -324,7 +324,7 @@ public sealed class OnboardingWindow : WindowEx
         // must NOT touch settings/AutoStart so the prior gateway connection is preserved.
         if (!_dismissedWithoutCompletion)
         {
-            _ = TryCompleteOnboarding();
+            await TryCompleteOnboardingAsync();
         }
 
         try { _v2Bridge?.Dispose(); } catch { /* ignore */ }
@@ -521,7 +521,7 @@ public sealed class OnboardingWindow : WindowEx
     /// gateway wizard can stop on a later channel step even after credentials/model
     /// setup succeeded, but Finish on All Set still runs this handler.
     /// </summary>
-    private bool TryCompleteOnboarding()
+    private async Task<bool> TryCompleteOnboardingAsync()
     {
         if (_completionDispatched) return true;
         var finishedFromTerminalPage = _v2State?.CurrentRoute == OpenClawTray.Onboarding.V2.V2Route.AllSet;
@@ -547,7 +547,13 @@ public sealed class OnboardingWindow : WindowEx
         // it should still get the default (true) registered. Idempotent.
         try
         {
-            AutoStartManager.SetAutoStart(_settings.AutoStart);
+            var requestedAutoStart = _settings.AutoStart;
+            var autoStartApplied = await AutoStartManager.SetAutoStartAsync(requestedAutoStart);
+            if (!autoStartApplied)
+            {
+                _settings.AutoStart = !requestedAutoStart;
+                _settings.Save();
+            }
         }
         catch (Exception ex)
         {

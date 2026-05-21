@@ -60,12 +60,11 @@ public static class AutoStartManager
         }
     }
 
-    public static void SetAutoStart(bool enable)
+    public static async Task<bool> SetAutoStartAsync(bool enable)
     {
         if (PackageHelper.IsPackaged)
         {
-            _ = SetAutoStartPackagedAsync(enable);
-            return;
+            return await SetAutoStartPackagedAsync(enable);
         }
 
         try
@@ -74,7 +73,7 @@ public static class AutoStartManager
             if (key == null)
             {
                 Logger.Warn($"Auto-start registry key unavailable: HKCU\\{RegistryKey}");
-                return;
+                return false;
             }
 
             if (enable)
@@ -82,20 +81,23 @@ public static class AutoStartManager
                 var exePath = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
                 key.SetValue(AppName, $"\"{exePath}\"");
                 Logger.Info("Auto-start enabled (unpackaged, HKCU\\...\\Run)");
+                return true;
             }
             else
             {
                 key.DeleteValue(AppName, false);
                 Logger.Info("Auto-start disabled (unpackaged, HKCU\\...\\Run)");
+                return true;
             }
         }
         catch (Exception ex)
         {
             Logger.Error($"Failed to set auto-start (unpackaged): {ex.Message}");
+            return false;
         }
     }
 
-    private static async Task SetAutoStartPackagedAsync(bool enable)
+    private static async Task<bool> SetAutoStartPackagedAsync(bool enable)
     {
         try
         {
@@ -108,16 +110,23 @@ public static class AutoStartManager
                 // read-only until they re-enable it there.
                 var state = await task.RequestEnableAsync();
                 Logger.Info($"StartupTask enable requested → state={state}");
+                var enabled = state == global::Windows.ApplicationModel.StartupTaskState.Enabled
+                    || state == global::Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
+                if (!enabled)
+                    Logger.Warn($"StartupTask enable did not take effect; state={state}");
+                return enabled;
             }
             else
             {
                 task.Disable();
                 Logger.Info("StartupTask disabled");
+                return true;
             }
         }
         catch (Exception ex)
         {
             Logger.Error($"Failed to set auto-start (packaged): {ex.Message}");
+            return false;
         }
     }
 }

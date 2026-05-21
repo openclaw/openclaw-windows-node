@@ -2824,8 +2824,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _globalHotkey?.Unregister();
         }
 
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
-
         // Notify ad-hoc listeners (e.g. ChatWindow may be alive but not
         // owned by the hub) that settings have changed. Marshal onto the
         // UI thread because IAppCommands.NotifySettingsSaved is a public
@@ -3264,12 +3262,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void ToggleAutoStart()
+    private async void ToggleAutoStart()
     {
         if (_settings == null) return;
         _settings.AutoStart = !_settings.AutoStart;
         _settings.Save();
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
+        var requestedAutoStart = _settings.AutoStart;
+        var autoStartApplied = await AutoStartManager.SetAutoStartAsync(requestedAutoStart);
+        if (!autoStartApplied)
+        {
+            _settings.AutoStart = !requestedAutoStart;
+            _settings.Save();
+        }
     }
 
     private void OpenLogFile()
@@ -3434,9 +3438,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         Logger.Info("Manual update check requested");
 
-        // Packaged: ask Windows AppInstaller to check the stable architecture URL.
-        // The default path avoids force-closing the tray; Windows can finish
-        // package registration when OpenClaw exits or the user explicitly restarts.
+        // Packaged: read the stable architecture feed and compare versions.
+        // "Check for updates" must not stage/register packages on every click.
         if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
         {
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
@@ -3448,9 +3451,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             };
             UpdateStatusDetailWindow();
 
-            var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync();
+            var outcome = await AppInstallerUpdateService.CheckForUpdateAsync();
             _appState!.UpdateInfo = outcome.Outcome switch
             {
+                AppInstallerUpdateService.UpdateOutcome.UpdateAvailable => new UpdateCommandCenterInfo
+                {
+                    Status = "Available",
+                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update available"
+                },
                 AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
                 {
                     Status = "Ready",

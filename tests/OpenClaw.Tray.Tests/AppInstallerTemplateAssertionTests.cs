@@ -127,7 +127,8 @@ public sealed class AppInstallerTemplateAssertionTests
 
         Assert.Contains("bool forceRestart = false", service);
         Assert.Contains("AddPackageByAppInstallerOptions.None", service);
-        Assert.Contains("TryApplyUpdateAsync()", app);
+        Assert.Contains("CheckForUpdateAsync()", app);
+        Assert.DoesNotContain("TryApplyUpdateAsync()", app);
         Assert.DoesNotContain("TryApplyUpdateAsync(forceRestart: true", app);
     }
 
@@ -145,6 +146,36 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("UpdatePendingRestart", service);
         Assert.Contains("UpdatePendingRestart", app);
         Assert.DoesNotContain("0x80073D02 => new UpdateResult(UpdateOutcome.NoUpdateAvailable", service);
+    }
+
+    [Fact]
+    public void InAppService_DoesNotReportMissingDeploymentHResultAsCurrent()
+    {
+        var service = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
+
+        Assert.Contains("HResultPackageAlreadyExists => new UpdateResult(UpdateOutcome.NoUpdateAvailable", service);
+        Assert.Contains("0 => new UpdateResult(UpdateOutcome.Failed", service);
+        Assert.DoesNotContain("0 or HResultPackageAlreadyExists", service);
+    }
+
+    [Fact]
+    public void ManualUpdateCheck_IsMetadataOnly()
+    {
+        var service = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
+        var app = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+
+        Assert.Contains("CheckForUpdateAsync", service);
+        Assert.Contains("ParseAppInstallerVersion", service);
+        Assert.Contains("ClassifyPublishedVersion", service);
+        Assert.Contains("UpdateAvailable", service);
+        Assert.Contains("AppInstallerUpdateService.CheckForUpdateAsync()", app);
+        Assert.DoesNotContain("var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync()", app);
     }
 
     [Fact]

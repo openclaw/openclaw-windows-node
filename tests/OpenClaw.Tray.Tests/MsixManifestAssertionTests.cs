@@ -116,6 +116,25 @@ public sealed class MsixManifestAssertionTests
         Assert.NotNull(startupTask);
         Assert.Equal("OpenClawCompanionStartup", (string?)startupTask!.Attribute("TaskId"));
         Assert.Equal("false", (string?)startupTask.Attribute("Enabled"));
+
+        var autoStartManager = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AutoStartManager.cs"));
+        var app = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var settingsPage = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+        var onboarding = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Onboarding", "OnboardingWindow.cs"));
+
+        Assert.Contains("Task<bool> SetAutoStartAsync", autoStartManager);
+        Assert.DoesNotContain("_ = SetAutoStartPackagedAsync", autoStartManager);
+        Assert.DoesNotContain("public static void SetAutoStart", autoStartManager);
+        Assert.Contains("await AutoStartManager.SetAutoStartAsync", app);
+        Assert.Contains("await AutoStartManager.SetAutoStartAsync", settingsPage);
+        Assert.Contains("await AutoStartManager.SetAutoStartAsync", onboarding);
+        Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", app);
+        Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", settingsPage);
+        Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", onboarding);
     }
 
     [Fact]
