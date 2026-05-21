@@ -1,5 +1,4 @@
 using System.Text;
-using OrcaCore.Models;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -180,11 +179,8 @@ public static class MxcConfigBuilder
         {
             Version = MxcPolicyBuilder.SupportedPolicyVersion,
             ContainerId = containerId ?? Guid.NewGuid().ToString("N"),
-            // SDK omits the top-level "containment" field; isolation lives in
-            // appContainer.ui.isolation. Set null so [JsonIgnore(WhenWritingNull)]
-            // drops it. The original OrcaCore default "appcontainer" stays for
-            // other callers that don't go through this builder.
-            Containment = null,
+            // Top-level "containment" is intentionally omitted; the SDK doesn't
+            // emit it either. Isolation lives in appContainer.ui.isolation.
             Process = new MxcProcess
             {
                 CommandLine = commandLine,

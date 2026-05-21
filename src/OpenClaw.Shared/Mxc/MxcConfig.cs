@@ -1,10 +1,12 @@
-// Shared with the OrcaCore project; keep namespace stable.
-// Original schema (Version/ContainerId/Containment/Process/AppContainer/Filesystem) is unchanged.
-// All additions are init-only, nullable, [JsonIgnore(WhenWritingNull)] so callers that don't
-// set new fields produce byte-identical JSON.
 using System.Text.Json.Serialization;
 
-namespace OrcaCore.Models;
+namespace OpenClaw.Shared.Mxc;
+
+/// <summary>
+/// POCO contract for the JSON config wxc-exec.exe consumes via
+/// <c>--config-base64</c> or <c>--config &lt;file&gt;</c>. Shape mirrors the
+/// SDK's ContainerConfig (captured in tests/.../Mxc/Golden/*.json).
+/// </summary>
 
 public sealed record MxcConfig
 {
@@ -16,7 +18,7 @@ public sealed record MxcConfig
 
     [JsonPropertyName("containment")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Containment { get; init; } = "appcontainer";
+    public string? Containment { get; init; }
 
     [JsonPropertyName("process")]
     public required MxcProcess Process { get; init; }

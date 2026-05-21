@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared.Mxc;
-using OrcaCore.Models;
 
 namespace OpenClaw.Shared.Tests.Mxc;
 
@@ -299,46 +298,6 @@ public class MxcConfigBuilderTests
             toolNames: new[] { "definitely-not-real-xyzqq.exe" },
             pathEnvVar: Path.GetTempPath());
         Assert.Empty(dirs);
-    }
-
-    [Fact]
-    public void MxcConfig_WithOnlyOriginalFields_SerializesByteIdenticalToOriginalShape()
-    {
-        // Callers in OrcaCore that don't touch the additive fields must still
-        // produce the exact same JSON shape as before the migration.
-        var config = new MxcConfig
-        {
-            ContainerId = "abc",
-            Process = new MxcProcess { CommandLine = "echo hi" },
-            AppContainer = new MxcAppContainer { Capabilities = new[] { "internetClient" } },
-            Filesystem = new MxcFilesystem
-            {
-                ReadonlyPaths = new[] { "C:\\ro" },
-                ReadwritePaths = new[] { "C:\\rw" },
-                ExecutablePath = "C:\\bin\\app.exe",
-            },
-        };
-        var json = JsonSerializer.Serialize(config, new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-        });
-        // Must contain the original-shape fields (default Containment kicks in).
-        Assert.Contains("\"version\":\"0.4.0-alpha\"", json);
-        Assert.Contains("\"containerId\":\"abc\"", json);
-        Assert.Contains("\"containment\":\"appcontainer\"", json);
-        Assert.Contains("\"commandLine\":\"echo hi\"", json);
-        Assert.Contains("\"capabilities\":[\"internetClient\"]", json);
-        Assert.Contains("\"readonlyPaths\":[\"C:\\\\ro\"]", json);
-        Assert.Contains("\"readwritePaths\":[\"C:\\\\rw\"]", json);
-        Assert.Contains("\"executablePath\":\"C:\\\\bin\\\\app.exe\"", json);
-        // Must NOT contain additive fields (they're null and ignored).
-        Assert.DoesNotContain("\"network\":", json);
-        Assert.DoesNotContain("\"ui\":", json);
-        Assert.DoesNotContain("\"lifecycle\":", json);
-        Assert.DoesNotContain("\"deniedPaths\":", json);
-        Assert.DoesNotContain("\"clearPolicyOnExit\":", json);
-        Assert.DoesNotContain("\"cwd\":", json);
-        Assert.DoesNotContain("\"env\":", json);
     }
 
     [Fact]

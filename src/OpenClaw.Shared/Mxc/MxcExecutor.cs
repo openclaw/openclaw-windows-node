@@ -1,23 +1,16 @@
-// Shared with the OrcaCore project; keep namespace stable.
-// Original behavior preserved. Additive: optional stdout/stderr cap ctor params,
-// optional --config <file> path (for configs that exceed the cmdline limit),
-// and TimedOut/DurationMs on the result.
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using OrcaCore.Models;
 
-namespace OrcaCore.Services;
+namespace OpenClaw.Shared.Mxc;
 
 /// <summary>
-/// Runs commands inside a Windows AppContainer (or other MXC backend) via wxc-exec.exe.
-/// Throws <see cref="FileNotFoundException"/> on construction if the binary is absent.
+/// Runs commands inside a Windows AppContainer via wxc-exec.exe. Throws
+/// <see cref="FileNotFoundException"/> on construction if the binary is absent.
 /// </summary>
 public sealed class MxcExecutor
 {
-    // Defaults preserved from the original Downloads file so callers that don't pass
-    // explicit caps see identical behavior.
     private const int DefaultStdoutCapBytes = 40_000;
     private const int DefaultStderrCapBytes = 5_000;
 
@@ -31,29 +24,14 @@ public sealed class MxcExecutor
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public MxcExecutor(string? wxcExePath = null, int? stdoutCapBytes = null, int? stderrCapBytes = null)
+    public MxcExecutor(string wxcExePath, int? stdoutCapBytes = null, int? stderrCapBytes = null)
     {
-        _wxcExePath = wxcExePath ?? ResolveExePath();
-        if (!File.Exists(_wxcExePath))
-            throw new FileNotFoundException($"wxc-exec.exe not found at: {_wxcExePath}", _wxcExePath);
+        if (string.IsNullOrEmpty(wxcExePath)) throw new ArgumentException("wxcExePath required", nameof(wxcExePath));
+        if (!File.Exists(wxcExePath))
+            throw new FileNotFoundException($"wxc-exec.exe not found at: {wxcExePath}", wxcExePath);
+        _wxcExePath = wxcExePath;
         _stdoutCapBytes = stdoutCapBytes is > 0 ? stdoutCapBytes.Value : DefaultStdoutCapBytes;
         _stderrCapBytes = stderrCapBytes is > 0 ? stderrCapBytes.Value : DefaultStderrCapBytes;
-    }
-
-    /// <summary>
-    /// Returns the default path for wxc-exec.exe: tools/mxc/x64/ relative to the app binary.
-    /// </summary>
-    public static string ResolveExePath()
-        => Path.Combine(AppContext.BaseDirectory, "tools", "mxc", "x64", "wxc-exec.exe");
-
-    /// <summary>
-    /// Creates an <see cref="MxcExecutor"/> if the binary exists, otherwise returns null.
-    /// Use this in startup code where MXC is optional.
-    /// </summary>
-    public static MxcExecutor? TryCreate(string? wxcExePath = null)
-    {
-        try { return new MxcExecutor(wxcExePath); }
-        catch (FileNotFoundException) { return null; }
     }
 
     public async Task<MxcResult> RunAsync(MxcConfig config, CancellationToken ct = default, bool experimental = false)
