@@ -780,11 +780,12 @@
                                  Header="Gateway URL"
                                  PlaceholderText="ws://host.local:18790"
                                  TextChanged="OnDirectInputChanged"
+                                 LostFocus="OnDirectUrlLostFocus"
                                  AutomationProperties.AutomationId="AddDirectUrl"/>
-                        <PasswordBox x:Name="DirectTokenBox"
-                                     Header="Shared token"
-                                     PlaceholderText="Paste shared gateway token"
-                                     AutomationProperties.AutomationId="AddDirectToken"/>
+                        <TextBox x:Name="DirectTokenBox"
+                                 Header="Shared token"
+                                 PlaceholderText="Paste shared gateway token"
+                                 AutomationProperties.AutomationId="AddDirectToken"/>
                         <TextBox x:Name="DirectNameBox"
                                  Header="Name (optional)"
                                  PlaceholderText="My gateway"

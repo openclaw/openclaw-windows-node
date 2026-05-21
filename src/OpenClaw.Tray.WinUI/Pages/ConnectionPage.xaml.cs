@@ -463,7 +463,9 @@ public sealed partial class ConnectionPage : Page
         // — without this the fingerprint can be identical when daily list
         // appears/empties at $0.00, leaving a stale chip state.
         int dailyCount = cost?.Daily?.Count ?? 0;
-        var fp = $"{topology}|{hostname}|{presence}|{channelOk}/{channelTotal}|{dailyCount}|${todayAmount:0.00}";
+        var sharedToken = activeRec?.SharedGatewayToken;
+        var hasSharedToken = !string.IsNullOrEmpty(sharedToken);
+        var fp = $"{topology}|{hostname}|{presence}|{channelOk}/{channelTotal}|{dailyCount}|${todayAmount:0.00}|st={sharedToken?.Length ?? 0}";
         if (_glanceChipsFingerprint == fp) return;
         _glanceChipsFingerprint = fp;
 
@@ -507,6 +509,18 @@ public sealed partial class ConnectionPage : Page
                 ? $"${todayAmount:0.00} today"
                 : "$0.00 today";
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true));
+        }
+
+        // 6. Shared token — click to copy.
+        if (hasSharedToken)
+        {
+            var chip = BuildGlanceChip(Helpers.FluentIconCatalog.Lock, "Shared token", neutral: true);
+            ToolTipService.SetToolTip(chip, "Tap to copy shared token");
+            chip.Tapped += (_, _) =>
+            {
+                ClipboardHelper.CopyText(sharedToken!);
+            };
+            chips.Add(chip);
         }
 
         GlanceChipsHost.ItemsSource = chips;
@@ -1330,6 +1344,11 @@ public sealed partial class ConnectionPage : Page
         _editingGatewayId = null;
         _userIntent = UserIntent.AddingGateway;
         // Direct is default — make sure the selector is on Direct.
+        // Pre-fill the most common local gateway URL.
+        DirectUrlBox.Text = "ws://127.0.0.1:18789";
+        DirectTokenBox.Text = "";
+        DirectNameBox.Text = "";
+        AutoFillTokenForUrl(DirectUrlBox.Text);
         ShowAddPane("direct");
         AddDirectItem.IsSelected = true;
         RefreshFromSnapshot(_lastSnapshot);
@@ -1502,7 +1521,7 @@ public sealed partial class ConnectionPage : Page
         _editingGatewayId = rec.Id;
         _userIntent = UserIntent.AddingGateway;
         DirectUrlBox.Text = rec.Url;
-        DirectTokenBox.Password = rec.SharedGatewayToken ?? "";
+        DirectTokenBox.Text = rec.SharedGatewayToken ?? "";
         DirectNameBox.Text = rec.FriendlyName ?? "";
         if (rec.SshTunnel != null)
         {
@@ -1597,7 +1616,7 @@ public sealed partial class ConnectionPage : Page
         _editingGatewayId = gwId;
         _userIntent = UserIntent.AddingGateway;
         DirectUrlBox.Text = rec.Url;
-        DirectTokenBox.Password = rec.SharedGatewayToken ?? "";
+        DirectTokenBox.Text = rec.SharedGatewayToken ?? "";
         DirectNameBox.Text = rec.FriendlyName ?? "";
         if (rec.SshTunnel != null)
         {
@@ -1653,7 +1672,29 @@ public sealed partial class ConnectionPage : Page
 
     private void OnDirectInputChanged(object sender, RoutedEventArgs e)
     {
-        ScheduleConnectivityTest(DirectUrlBox.Text?.Trim());
+        var url = DirectUrlBox.Text?.Trim();
+        ScheduleConnectivityTest(url);
+        AutoFillTokenForUrl(url);
+    }
+
+    private void OnDirectUrlLostFocus(object sender, RoutedEventArgs e)
+    {
+        var url = DirectUrlBox.Text?.Trim();
+        ScheduleConnectivityTest(url);
+        // On focus-out, overwrite token even if already populated (user finished editing URL).
+        AutoFillTokenForUrl(url, force: true);
+    }
+
+    private void AutoFillTokenForUrl(string? url, bool force = false)
+    {
+        if (string.IsNullOrWhiteSpace(url) || (!force && !string.IsNullOrEmpty(DirectTokenBox.Text)))
+            return;
+        var match = _gatewayRegistry?.GetAll().FirstOrDefault(g =>
+            string.Equals(g.Url?.TrimEnd('/'), url!.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(match?.SharedGatewayToken))
+            DirectTokenBox.Text = match!.SharedGatewayToken;
+        else if (force)
+            DirectTokenBox.Text = "";
     }
 
     private void ScheduleConnectivityTest(string? rawUrl)
@@ -1762,7 +1803,7 @@ public sealed partial class ConnectionPage : Page
         if (_connectionManager == null || _gatewayRegistry == null) return;
 
         var url = DirectUrlBox.Text?.Trim();
-        var token = DirectTokenBox.Password?.Trim();
+        var token = DirectTokenBox.Text?.Trim();
         var friendly = DirectNameBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -2282,7 +2323,7 @@ public sealed partial class ConnectionPage : Page
         // the token there and clicks Save & connect.
         _editingGatewayId = null;
         DirectUrlBox.Text = url;
-        DirectTokenBox.Password = "";
+        DirectTokenBox.Text = "";
         DirectNameBox.Text = "";
         AddDirectItem.IsSelected = true;
         ShowAddPane("direct");
