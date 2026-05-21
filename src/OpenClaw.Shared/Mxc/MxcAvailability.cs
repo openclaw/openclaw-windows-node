@@ -153,7 +153,7 @@ public sealed class MxcAvailability
         if (!string.IsNullOrWhiteSpace(overridePath) && File.Exists(overridePath))
             return (true, overridePath);
 
-        var arch = MxcArchHelper.GetSdkArchString();
+        var arch = GetSdkArchString();
         var probeRoots = new[]
         {
             AppContext.BaseDirectory,
@@ -181,12 +181,9 @@ public sealed class MxcAvailability
 
         return (false, null);
     }
-}
 
-internal static class MxcArchHelper
-{
-    /// <summary>Returns "arm64" or "x64" matching the @microsoft/mxc-sdk bin/&lt;arch&gt;/ layout.</summary>
-    public static string GetSdkArchString() => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture switch
+    /// <summary>Returns "arm64" or "x64" matching the <c>@microsoft/mxc-sdk</c> <c>bin/&lt;arch&gt;/</c> layout.</summary>
+    private static string GetSdkArchString() => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture switch
     {
         System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
         System.Runtime.InteropServices.Architecture.X64 => "x64",

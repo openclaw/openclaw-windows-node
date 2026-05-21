@@ -188,11 +188,9 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     private static object ToSandboxSettingsDiagnostic(SettingsData settings, string settingsDirectoryPath)
     {
-        var preset = DetectPreset(settings);
         return new
         {
             systemRunSandboxEnabled = settings.SystemRunSandboxEnabled,
-            securityLevel = preset,
             systemRunAllowOutbound = settings.SystemRunAllowOutbound,
             sandboxClipboard = settings.SandboxClipboard,
             sandboxDocumentsAccess = settings.SandboxDocumentsAccess,
@@ -207,38 +205,6 @@ public sealed class MxcCommandRunner : ICommandRunner
             sandboxMaxOutputBytes = settings.SandboxMaxOutputBytes,
             settingsDirectoryPath,
         };
-    }
-
-    private static string DetectPreset(SettingsData settings)
-    {
-        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: false, documents: null, downloads: null, desktop: null, clipboard: SandboxClipboardMode.None, timeoutMs: 30_000, maxOutputBytes: 4 * 1024 * 1024))
-            return "LockedDown";
-        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: true, documents: SandboxFolderAccess.ReadOnly, downloads: SandboxFolderAccess.ReadOnly, desktop: SandboxFolderAccess.ReadOnly, clipboard: SandboxClipboardMode.Read, timeoutMs: 60_000, maxOutputBytes: 16 * 1024 * 1024))
-            return "Balanced";
-        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: true, documents: SandboxFolderAccess.ReadWrite, downloads: SandboxFolderAccess.ReadWrite, desktop: SandboxFolderAccess.ReadWrite, clipboard: SandboxClipboardMode.Both, timeoutMs: 300_000, maxOutputBytes: 64 * 1024 * 1024))
-            return "Permissive";
-        return "Custom";
-    }
-
-    private static bool MatchesPreset(
-        SettingsData settings,
-        bool sandboxEnabled,
-        bool allowOutbound,
-        SandboxFolderAccess? documents,
-        SandboxFolderAccess? downloads,
-        SandboxFolderAccess? desktop,
-        SandboxClipboardMode clipboard,
-        int timeoutMs,
-        long maxOutputBytes)
-    {
-        return settings.SystemRunSandboxEnabled == sandboxEnabled
-            && settings.SystemRunAllowOutbound == allowOutbound
-            && settings.SandboxDocumentsAccess == documents
-            && settings.SandboxDownloadsAccess == downloads
-            && settings.SandboxDesktopAccess == desktop
-            && settings.SandboxClipboard == clipboard
-            && settings.SandboxTimeoutMs == timeoutMs
-            && settings.SandboxMaxOutputBytes == maxOutputBytes;
     }
 
     private void LogSandboxResult(SandboxExecutionResult result)

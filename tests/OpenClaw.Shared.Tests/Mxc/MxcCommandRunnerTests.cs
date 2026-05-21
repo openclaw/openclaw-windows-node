@@ -351,7 +351,6 @@ public class MxcCommandRunnerTests
 
         var requestLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request", StringComparison.Ordinal));
         Assert.Contains("sandboxSettingsJson=", requestLog);
-        Assert.Contains("\"securityLevel\":\"Custom\"", requestLog);
         Assert.Contains("\"systemRunAllowOutbound\":true", requestLog);
         Assert.Contains("\"sandboxClipboard\":\"both\"", requestLog);
         Assert.Contains("\"path\":\"C:\\\\Code\\\\repo\"", requestLog);

@@ -345,7 +345,7 @@ public static class MxcConfigBuilder
 /// <c>powershell.exe -EncodedCommand &lt;utf16le-base64&gt;</c> so it can be
 /// passed verbatim to <c>CreateProcessW</c> inside the AppContainer.
 /// </summary>
-public static class ShellCommandLine
+internal static class ShellCommandLine
 {
     public static string Build(string shell, string command, IReadOnlyList<string> argv)
     {

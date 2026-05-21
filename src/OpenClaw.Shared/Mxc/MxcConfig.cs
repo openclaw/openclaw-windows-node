@@ -7,7 +7,6 @@ namespace OpenClaw.Shared.Mxc;
 /// <c>--config-base64</c> or <c>--config &lt;file&gt;</c>. Shape mirrors the
 /// SDK's ContainerConfig (captured in tests/.../Mxc/Golden/*.json).
 /// </summary>
-
 public sealed record MxcConfig
 {
     [JsonPropertyName("version")]
@@ -31,17 +30,14 @@ public sealed record MxcConfig
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MxcFilesystem? Filesystem { get; init; }
 
-    // Additive (OpenClaw): network policy. Null = wxc-exec defaults.
     [JsonPropertyName("network")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MxcNetwork? Network { get; init; }
 
-    // Additive (OpenClaw): top-level UI policy (clipboard, injection, disable).
     [JsonPropertyName("ui")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MxcUi? Ui { get; init; }
 
-    // Additive (OpenClaw): lifecycle controls. Set only when golden capture proves SDK does.
     [JsonPropertyName("lifecycle")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MxcLifecycle? Lifecycle { get; init; }
@@ -52,12 +48,10 @@ public sealed record MxcProcess
     [JsonPropertyName("commandLine")]
     public required string CommandLine { get; init; }
 
-    // Additive (OpenClaw): explicit cwd inside the container.
     [JsonPropertyName("cwd")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Cwd { get; init; }
 
-    // Additive (OpenClaw): environment as KEY=VALUE strings.
     [JsonPropertyName("env")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Env { get; init; }
@@ -73,18 +67,10 @@ public sealed record MxcAppContainer
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? Capabilities { get; init; }
 
-    // Additive (OpenClaw): mirror SDK fields when golden capture shows them set.
-    [JsonPropertyName("name")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Name { get; init; }
-
     [JsonPropertyName("leastPrivilege")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? LeastPrivilege { get; init; }
 
-    // Additive (OpenClaw): per-process BaseProcess UI block. wxc-exec accepts either
-    // appContainer.ui or top-level ui depending on its mode; we serialize whichever
-    // the golden capture confirms.
     [JsonPropertyName("ui")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MxcBaseProcessUi? Ui { get; init; }
@@ -119,22 +105,15 @@ public sealed record MxcFilesystem
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? ReadwritePaths { get; init; }
 
-    // Additive (OpenClaw): explicit deny list (wins over allow).
     [JsonPropertyName("deniedPaths")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? DeniedPaths { get; init; }
 
-    // Additive (OpenClaw): tear down policy on container exit.
     [JsonPropertyName("clearPolicyOnExit")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? ClearPolicyOnExit { get; init; }
-
-    [JsonPropertyName("executablePath")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? ExecutablePath { get; init; }
 }
 
-// Additive (OpenClaw): network policy block.
 public sealed record MxcNetwork
 {
     [JsonPropertyName("enforcementMode")]
@@ -154,7 +133,6 @@ public sealed record MxcNetwork
     public string[]? BlockedHosts { get; init; }
 }
 
-// Additive (OpenClaw): top-level UI policy.
 public sealed record MxcUi
 {
     [JsonPropertyName("disable")]
@@ -170,7 +148,6 @@ public sealed record MxcUi
     public bool? Injection { get; init; }
 }
 
-// Additive (OpenClaw): lifecycle block.
 public sealed record MxcLifecycle
 {
     [JsonPropertyName("destroyOnExit")]
@@ -182,16 +159,13 @@ public sealed record MxcLifecycle
     public bool? PreservePolicy { get; init; }
 }
 
+/// <summary>Result returned by <see cref="MxcExecutor"/> after running wxc-exec.</summary>
 public sealed record MxcResult
 {
     public bool Success { get; init; }
     public int ExitCode { get; init; }
     public string? Output { get; init; }
     public string? Error { get; init; }
-
-    // Additive (OpenClaw): true if WaitForExit cancelled via host-side timeout/cancellation.
     public bool TimedOut { get; init; }
-
-    // Additive (OpenClaw): wall-clock duration of the wxc-exec invocation.
     public long DurationMs { get; init; }
 }
