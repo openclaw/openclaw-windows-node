@@ -831,7 +831,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 [GridSize.Star(), GridSize.Auto],
                 [GridSize.Auto],
                 content.HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 0),
-                rightSlot.Grid(row: 0, column: 1).Margin(bubbleSideMargin, 0, 0, 0)
+                rightSlot.Grid(row: 0, column: 1).Margin(showUserAvatar ? bubbleSideMargin : 0, 0, 0, 0)
             ).HAlign(HorizontalAlignment.Stretch);
 
             Element footer = Empty();
