@@ -37,6 +37,7 @@ public static class FluentIconCatalog
     public const string Voice = "\uE767";          // Volume (speaker, for TTS)
     public const string Speech = "\uF12E";         // Dictate (speech-to-text)
     public const string System = "\uE839";         // PC1 — "this PC as a node" (per CDR-0001 — was TVMonitor \uE7F4)
+    public const string Terminal = "\uE756";       // CommandPrompt — system.run shell-command capability
     public const string Operator = "\uE77B";       // ContactInfo — operator role (a human controlling agents)
 
     // ── Actions ────────────────────────────────────────────────────

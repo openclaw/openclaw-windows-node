@@ -18,7 +18,7 @@ public sealed class FluentIconCatalogTests
     {
         "StatusOk", "StatusWarn", "StatusErr",
         "Sessions", "Approvals", "Devices", "Hostname", "Permissions",
-        "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Operator",
+        "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
         "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings", "QuickSend",
         "Setup", "About", "Exit",
         "Add", "Back", "Sync", "Lock", "Plug", "MoreOverflow",
