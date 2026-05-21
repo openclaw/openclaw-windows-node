@@ -28,16 +28,7 @@ public class MxcCommandRunnerIntegrationTests
             return null;
         }
 
-        if (availability.RunCommandScriptPath is null)
-        {
-            Console.WriteLine("[mxc-integration] SKIPPING: tools/mxc/run-command.cjs not resolvable.");
-            return null;
-        }
-
-        var executor = new OneShotAppContainerExecutor(
-            availability,
-            availability.RunCommandScriptPath,
-            new ConsoleLogger());
+        var executor = new DirectAppContainerExecutor(availability, new ConsoleLogger());
 
         var settings = new SettingsData
         {

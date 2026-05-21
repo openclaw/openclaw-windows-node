@@ -196,7 +196,7 @@ public sealed class MxcCommandRunner : ICommandRunner
             $"sandboxSettingsJson={settingsJson}; " +
             $"shell={commandRequest.Shell ?? "powershell"}; " +
             $"commandLength={commandRequest.Command?.Length ?? 0}; " +
-            $"cwd={commandRequest.Cwd ?? "<null>"}; " +
+            $"cwd={(string.IsNullOrEmpty(commandRequest.Cwd) ? "<null>" : "<set>")}; " +
             $"envKeys=[{string.Join(",", commandRequest.Env?.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase) ?? Enumerable.Empty<string>())}]; " +
             $"timeoutMs={sandboxRequest.TimeoutMs}; maxOutputBytes={sandboxRequest.MaxOutputBytes?.ToString() ?? "<default>"}; " +
             $"policyJson={policyJson}";

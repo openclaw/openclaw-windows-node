@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Implementations:
 /// <list type="bullet">
-/// <item><see cref="OneShotAppContainerExecutor"/> — per-call AppContainer via Node + mxc-sdk.</item>
+/// <item><see cref="DirectAppContainerExecutor"/> — per-call AppContainer via direct wxc-exec.exe spawn.</item>
 /// <item><c>HostFallbackExecutor</c> — when containment unavailable in BestEffort mode.</item>
 /// </list>
 /// All implementations are expected to throw <see cref="SandboxUnavailableException"/>

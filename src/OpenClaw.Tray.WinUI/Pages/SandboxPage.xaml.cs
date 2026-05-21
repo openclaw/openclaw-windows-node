@@ -205,8 +205,7 @@ public sealed partial class SandboxPage : Page
             r.Contains("Windows build", StringComparison.OrdinalIgnoreCase) ||
             r.Contains("Windows UBR", StringComparison.OrdinalIgnoreCase));
 
-        var isSetupIssue = !availability.IsWxcExecResolvable
-            || availability.RunCommandScriptPath is null;
+        var isSetupIssue = !availability.IsWxcExecResolvable;
 
         if (isWindowsIssue)
         {

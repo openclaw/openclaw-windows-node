@@ -39,25 +39,16 @@ public sealed class MxcAvailability
     public string? WxcExecPath { get; }
 
     /// <summary>
-    /// Resolved path to <c>tools/mxc/run-command.cjs</c> (the productized Node bridge
-    /// for MxcCommandRunner). The tray build copies this under the app base
-    /// directory; probing intentionally does not walk parent directories so a
-    /// user-writable parent cannot inject a replacement bridge.
-    /// </summary>
-    public string? RunCommandScriptPath { get; }
-
-    /// <summary>
     /// Human-readable list of reasons MXC may not be available. Empty when fully supported.
     /// Surface to UX so users know why the sandbox toggle is disabled.
     /// </summary>
     public IReadOnlyList<string> UnsupportedReasons { get; }
 
-    /// <summary>True iff at least one MXC backend is supported, the bridge script is found,
-    /// AND <c>wxc-exec.exe</c> is resolvable. (Without wxc-exec the executor will refuse
+    /// <summary>True iff at least one MXC backend is supported AND
+    /// <c>wxc-exec.exe</c> is resolvable. (Without wxc-exec the executor will refuse
     /// to run, so reporting "available" would lie to the UI.)</summary>
     public bool HasAnyBackend =>
         (IsAppContainerAvailable || IsIsolationSessionAvailable)
-        && RunCommandScriptPath is not null
         && IsWxcExecResolvable;
 
     public MxcAvailability(
@@ -65,14 +56,12 @@ public sealed class MxcAvailability
         bool isIsolationSessionAvailable,
         bool isWxcExecResolvable,
         string? wxcExecPath,
-        string? runCommandScriptPath,
         IReadOnlyList<string> unsupportedReasons)
     {
         IsAppContainerAvailable = isAppContainerAvailable;
         IsIsolationSessionAvailable = isIsolationSessionAvailable;
         IsWxcExecResolvable = isWxcExecResolvable;
         WxcExecPath = wxcExecPath;
-        RunCommandScriptPath = runCommandScriptPath;
         UnsupportedReasons = unsupportedReasons;
     }
 
@@ -88,7 +77,7 @@ public sealed class MxcAvailability
         if (!OperatingSystem.IsWindows())
         {
             reasons.Add("MXC requires Windows.");
-            return new MxcAvailability(false, false, false, null, null, reasons);
+            return new MxcAvailability(false, false, false, null, reasons);
         }
 
         var (build, ubr) = ReadWindowsBuildAndUbr();
@@ -111,10 +100,6 @@ public sealed class MxcAvailability
         if (!wxcResolvable)
             reasons.Add($"wxc-exec.exe not found. Set {WxcExecOverrideEnvVar} or run `npm ci` at the repository root.");
 
-        var runCommandScriptPath = ResolveRunCommandScript();
-        if (runCommandScriptPath is null)
-            reasons.Add("tools/mxc/run-command.cjs not found in any expected location.");
-
         // isolation_session additionally requires Feature_IsoBrokerSessionApis on the OS
         // and IsolationProxy.exe in System32. We currently only check file presence.
         var isolationProxyPath = Path.Combine(
@@ -128,7 +113,6 @@ public sealed class MxcAvailability
             $"[mxc] availability: appcontainer={isAppContainerSupported} " +
             $"isolation_session={isIsolationSessionSupported} " +
             $"wxc-exec={(wxcResolvable ? wxcPath : "<missing>")} " +
-            $"run-command.cjs={(runCommandScriptPath ?? "<missing>")} " +
             $"reasons=[{string.Join(", ", reasons)}]");
 
         return new MxcAvailability(
@@ -136,7 +120,6 @@ public sealed class MxcAvailability
             isIsolationSessionSupported,
             wxcResolvable,
             wxcPath,
-            runCommandScriptPath,
             reasons);
     }
 
@@ -182,35 +165,21 @@ public sealed class MxcAvailability
             if (string.IsNullOrWhiteSpace(root))
                 continue;
 
-            var candidate = Path.Combine(
+            // Preferred: tools/mxc/<arch>/wxc-exec.exe — the layout the build
+            // target extracts to so we don't ship a node_modules/ tree.
+            var shipped = Path.Combine(root, "tools", "mxc", arch, "wxc-exec.exe");
+            if (File.Exists(shipped))
+                return (true, shipped);
+
+            // Legacy fallback: developer builds with node_modules/ still around.
+            var legacy = Path.Combine(
                 root,
                 "node_modules", "@microsoft", "mxc-sdk", "bin", arch, "wxc-exec.exe");
-            if (File.Exists(candidate))
-                return (true, candidate);
+            if (File.Exists(legacy))
+                return (true, legacy);
         }
 
         return (false, null);
-    }
-
-    private static string? ResolveRunCommandScript()
-    {
-        var probeRoots = new[]
-        {
-            AppContext.BaseDirectory,
-            Path.GetDirectoryName(typeof(MxcAvailability).Assembly.Location) ?? string.Empty,
-        };
-
-        foreach (var root in probeRoots)
-        {
-            if (string.IsNullOrWhiteSpace(root))
-                continue;
-
-            var candidate = Path.Combine(root, "tools", "mxc", "run-command.cjs");
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        return null;
     }
 }
 

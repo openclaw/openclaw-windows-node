@@ -512,23 +512,18 @@ public sealed class NodeService : IDisposable
         var hostRunner = new LocalCommandRunner(_logger);
 
         ISandboxExecutor executor;
-        if (!availability.HasAnyBackend || availability.RunCommandScriptPath is null)
+        if (!availability.HasAnyBackend)
         {
             // No MXC on this host. We still route through MxcCommandRunner so the
             // SystemRunSandboxEnabled toggle is honored: when ON, invocation is
             // denied (fail-closed); when OFF, the inner runner falls back to host.
-            var reason = !availability.HasAnyBackend
-                ? string.Join("; ", availability.UnsupportedReasons)
-                : "tools/mxc/run-command.cjs not found";
+            var reason = string.Join("; ", availability.UnsupportedReasons);
             executor = new UnavailableSandboxExecutor(reason);
             _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable: {reason})");
         }
         else
         {
-            executor = new OneShotAppContainerExecutor(
-                availability,
-                availability.RunCommandScriptPath,
-                _logger);
+            executor = new DirectAppContainerExecutor(availability, _logger);
             _logger.Info(
                 $"[mxc] system.run runner = MxcCommandRunner " +
                 $"(executor={executor.Name}, sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
