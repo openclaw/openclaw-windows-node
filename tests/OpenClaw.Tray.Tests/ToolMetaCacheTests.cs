@@ -1,4 +1,7 @@
+using OpenClaw.Chat;
+using OpenClaw.Shared;
 using OpenClawTray.Chat;
+using System.Text.Json;
 using Xunit;
 
 namespace OpenClaw.Tray.Tests;
@@ -135,5 +138,86 @@ public class ToolMetaCacheTests
     {
         Assert.Equal(20, OpenClawChatDataProvider.MaxCachedSessions);
         Assert.Equal(500, OpenClawChatDataProvider.MaxToolEntriesPerSession);
+    }
+
+    [Fact]
+    public async Task CacheToolMeta_ConcurrentAdds_FlushesCompleteValidJson()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var bridge = new FakeBridge
+        {
+            History = new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                SessionId = "session-1"
+            }
+        };
+        var provider = new OpenClawChatDataProvider(bridge, post: null, toolMetaCacheFilePath: cachePath);
+        await provider.LoadHistoryAsync("main");
+
+        Parallel.For(0, 100, i =>
+            provider.CacheToolMeta("main", 1_000 + i, "bash", $"echo {i}"));
+
+        await provider.DisposeAsync();
+
+        var json = File.ReadAllText(cachePath);
+        var cache = JsonSerializer.Deserialize<Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>>(json);
+
+        Assert.NotNull(cache);
+        Assert.True(cache!.TryGetValue("session-1", out var entries));
+        Assert.Equal(100, entries!.Count);
+        Assert.Empty(Directory.EnumerateFiles(tempDir.DirectoryPath, "*.tmp"));
+    }
+
+    private sealed class FakeBridge : IChatGatewayBridge
+    {
+        public bool IsConnected { get; set; }
+        public ConnectionStatus CurrentStatus { get; set; }
+        public string? MainSessionKey { get; set; }
+        public bool HasHandshakeSnapshot { get; set; }
+        public ChatHistoryInfo History { get; set; } = new() { SessionKey = "main" };
+
+        public SessionInfo[] GetSessionList() => Array.Empty<SessionInfo>();
+        public ModelsListInfo? GetCurrentModelsList() => null;
+        public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.CompletedTask;
+        public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
+        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) => Task.FromResult(History);
+        public Task SendChatAbortAsync(string runId, string? sessionKey = null) => Task.CompletedTask;
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler<SessionInfo[]>? SessionsUpdated;
+        public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
+        public event EventHandler<AgentEventInfo>? AgentEventReceived;
+        public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+        public void RaiseStatus(ConnectionStatus status) => StatusChanged?.Invoke(this, status);
+        public void RaiseSessions(SessionInfo[] sessions) => SessionsUpdated?.Invoke(this, sessions);
+        public void RaiseChat(ChatMessageInfo message) => ChatMessageReceived?.Invoke(this, message);
+        public void RaiseAgent(AgentEventInfo evt) => AgentEventReceived?.Invoke(this, evt);
+        public void RaiseModels(ModelsListInfo models) => ModelsListUpdated?.Invoke(this, models);
+        public void Dispose() { }
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), "openclaw-tool-meta-" + Guid.NewGuid().ToString("N"));
+
+        public TempDirectory()
+        {
+            Directory.CreateDirectory(DirectoryPath);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(DirectoryPath))
+                    Directory.Delete(DirectoryPath, recursive: true);
+            }
+            catch
+            {
+                // Test cleanup is best-effort.
+            }
+        }
     }
 }
