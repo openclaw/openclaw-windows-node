@@ -83,7 +83,6 @@ public sealed class NodeService : IDisposable
     private TtsCapability? _ttsCapability;
     private TextToSpeechService? _textToSpeechService;
     private VoiceService? _voiceService;
-    private AppCapability? _appCapability;
     private readonly string _dataPath;
     // Identity store location for the role-aware DeviceIdentity. Defaults to
     // _dataPath when no separate path is supplied (preserves existing test
@@ -104,6 +103,11 @@ public sealed class NodeService : IDisposable
     // bridge snapshot can't race a re-register.
     private readonly List<INodeCapability> _capabilities = new();
     private readonly object _capabilitiesLock = new();
+
+    // MCP-only capabilities — visible to local MCP clients but NOT registered
+    // on the gateway WebSocket. Used for app-level testing/control tools that
+    // should not be callable by remote agents.
+    private readonly List<INodeCapability> _mcpOnlyCapabilities = new();
 
     // Serializes AttachClient ↔ DisconnectAsync so a reconnect that overlaps a
     // disconnect can't leave stale subscriptions on an old client or double-
@@ -137,11 +141,10 @@ public sealed class NodeService : IDisposable
     /// </summary>
     public static string McpTokenPath =>
         System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "mcp-token.txt");
-    private readonly bool _enableMcpServer;
+    private volatile bool _enableMcpServer;
     private McpHttpServer? _mcpServer;
     private string? _mcpStartupError;
     public bool IsMcpRunning => _mcpServer != null;
-    public AppCapability? AppCapability => _appCapability;
     public VoiceService? VoiceService => _voiceService;
     public TextToSpeechService? TextToSpeech => _textToSpeechService;
     public string McpEndpoint => McpServerUrl;
@@ -272,10 +275,6 @@ public sealed class NodeService : IDisposable
         {
         _capabilities.Clear();
 
-        // App operations capability (always registered, not gated by a toggle)
-        _appCapability = new AppCapability(_logger);
-        Register(_appCapability);
-
         // System capability (notifications + command execution)
         _systemCapability = new SystemCapability(_logger);
         _systemCapability.NotifyRequested += OnSystemNotify;
@@ -391,6 +390,18 @@ public sealed class NodeService : IDisposable
     {
         _capabilities.Add(capability);
         _nodeClient?.RegisterCapability(capability);
+    }
+
+    /// <summary>
+    /// Register a capability that is only visible to local MCP clients, not
+    /// the gateway. Used for app-level testing/control tools.
+    /// </summary>
+    public void RegisterMcpOnlyCapability(INodeCapability capability)
+    {
+        lock (_capabilitiesLock)
+        {
+            _mcpOnlyCapabilities.Add(capability);
+        }
     }
 
     /// <summary>
@@ -591,11 +602,23 @@ public sealed class NodeService : IDisposable
         {
             // Bridge reads the live _capabilities list every tools/list, so any
             // future Register(...) call is exposed via MCP automatically.
+            // MCP-only capabilities (e.g. AppCapability) are merged in so
+            // they appear in tools/list but never touch the gateway client.
             // The snapshot takes the same lock RegisterCapabilities holds,
             // so a tools/list arriving mid-rebuild observes either the old
             // or the new set — never a partially-cleared list.
             var bridge = new McpToolBridge(
-                () => { lock (_capabilitiesLock) return _capabilities.ToArray(); },
+                () => {
+                    lock (_capabilitiesLock)
+                    {
+                        if (_mcpOnlyCapabilities.Count == 0)
+                            return _capabilities.ToArray();
+                        var merged = new List<INodeCapability>(_capabilities.Count + _mcpOnlyCapabilities.Count);
+                        merged.AddRange(_capabilities);
+                        merged.AddRange(_mcpOnlyCapabilities);
+                        return merged.ToArray();
+                    }
+                },
                 _logger,
                 serverName: "openclaw-tray-mcp",
                 serverVersion: typeof(NodeService).Assembly.GetName().Version?.ToString() ?? "0.0.0");
@@ -664,6 +687,42 @@ public sealed class NodeService : IDisposable
         _mcpServer?.UpdateAuthToken(token);
         _logger.Info("[MCP] Bearer token rotated");
         return token;
+    }
+
+    /// <summary>
+    /// Update the MCP server state at runtime (e.g. when the user toggles
+    /// EnableMcpServer in the Settings UI). Starts or stops the HTTP server
+    /// and ensures capabilities are registered for MCP-only mode.
+    /// </summary>
+    public void SetMcpEnabled(bool enabled)
+    {
+        _enableMcpServer = enabled;
+
+        if (enabled)
+        {
+            if (_mcpServer != null) return; // already running
+
+            _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
+
+            bool needsCapabilities;
+            lock (_capabilitiesLock) { needsCapabilities = _capabilities.Count == 0; }
+            if (needsCapabilities)
+            {
+                RegisterCapabilities();
+            }
+            else
+            {
+                StartMcpServer();
+            }
+        }
+        else
+        {
+            _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
+            // Always call StopMcpServer to clear stale startup errors even
+            // if the server isn't running. StopMcpServer is lock-protected
+            // and handles _mcpServer == null safely.
+            StopMcpServer();
+        }
     }
 
     public GatewayNodeInfo? GetLocalNodeInfo()

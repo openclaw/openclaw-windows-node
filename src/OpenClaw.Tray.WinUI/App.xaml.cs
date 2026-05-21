@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -251,6 +252,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
+    // MCP-only app capability — local testing/control, not exposed to gateway
+    private AppCapability? _appCapability;
     
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
@@ -741,6 +744,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
 
                 _nodeService.AttachClient(args.Client, args.BearerToken);
+                WireAppCapabilityHandlers();
                 var client = args.Client;
                 diagnostics.Record("node", $"After AttachClient: caps={client.Capabilities.Count}, cmds={client.RegisteredCommandCount}");
                 if (client.RegisteredCommandCount > 0)
@@ -1719,6 +1723,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             nodeService.StartLocalOnlyAsync().GetAwaiter().GetResult();
+            WireAppCapabilityHandlers();
             Logger.Info("Started MCP-only node service without gateway connection");
             return true;
         }
@@ -1853,8 +1858,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private void WireAppCapabilityHandlers()
     {
-        var app = _nodeService?.AppCapability;
-        if (app == null) return;
+        if (_nodeService == null) return;
+        if (_appCapability != null) return; // already wired
+
+        _appCapability = new AppCapability(new AppLogger());
+        _nodeService.RegisterMcpOnlyCapability(_appCapability);
+        var app = _appCapability;
 
         app.NavigateHandler = async (page) =>
         {
@@ -2797,6 +2806,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case SettingsChangeImpact.NoOp:
                 // No connection changes needed
                 break;
+        }
+
+        // MCP server lifecycle — handled separately from gateway reconnects
+        // because MCP-only mode doesn't involve a gateway at all. SetMcpEnabled
+        // checks actual runtime state (_mcpServer != null), so it's safe to
+        // call unconditionally. Only create NodeService when MCP is being
+        // enabled or the service already exists.
+        if (_settings != null && (_nodeService != null || _settings.EnableMcpServer))
+        {
+            var nodeService = EnsureNodeService(_settings);
+            nodeService?.SetMcpEnabled(_settings.EnableMcpServer);
+            WireAppCapabilityHandlers();
         }
 
         // Non-connection settings always applied regardless of impact

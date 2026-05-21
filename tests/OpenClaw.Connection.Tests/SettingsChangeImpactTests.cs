@@ -104,4 +104,31 @@ public class SettingsChangeImpactTests
         Assert.Equal(SettingsChangeImpact.UiOnly,
             SettingsChangeClassifier.Classify(prev, next));
     }
+
+    [Fact]
+    public void McpServerToggled_ReturnsUiOnly()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: false);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: true);
+        Assert.Equal(SettingsChangeImpact.UiOnly,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void McpServerToggledOff_ReturnsUiOnly()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: true);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: false);
+        Assert.Equal(SettingsChangeImpact.UiOnly,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void McpAndNodeModeToggled_ReturnsNodeReconnect()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", enableNodeMode: false, enableMcpServer: false);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", enableNodeMode: true, enableMcpServer: true);
+        Assert.Equal(SettingsChangeImpact.NodeReconnectRequired,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
 }
