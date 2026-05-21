@@ -279,7 +279,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "OpenClawTray");
     private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
-    private static readonly string RunMarkerPath = Path.Combine(DataPath, "run.marker");
+    private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
     public App()
     {
@@ -297,8 +297,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         InitializeComponent();
         
-        CheckPreviousRun();
-        MarkRunStarted();
+        s_runMarker.Check();
+        s_runMarker.MarkStarted();
         
         // Hook up crash handlers
         this.UnhandledException += OnUnhandledException;
@@ -326,7 +326,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     
     private void OnProcessExit(object? sender, EventArgs e)
     {
-        MarkRunEnded();
+        s_runMarker.MarkEnded();
         try
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
@@ -511,42 +511,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return value;
     }
     
-    private static void CheckPreviousRun()
-    {
-        try
-        {
-            if (File.Exists(RunMarkerPath))
-            {
-                var startedAt = File.ReadAllText(RunMarkerPath);
-                Logger.Error($"Previous session did not exit cleanly (started {startedAt})");
-                File.Delete(RunMarkerPath);
-            }
-        }
-        catch { }
-    }
-    
-    private static void MarkRunStarted()
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(RunMarkerPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-            File.WriteAllText(RunMarkerPath, DateTime.Now.ToString("O"));
-        }
-        catch { }
-    }
-    
-    private static void MarkRunEnded()
-    {
-        try
-        {
-            if (File.Exists(RunMarkerPath))
-                File.Delete(RunMarkerPath);
-        }
-        catch { }
-    }
-
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
 
     /// <summary>
