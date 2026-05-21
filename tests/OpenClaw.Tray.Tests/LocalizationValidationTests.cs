@@ -77,6 +77,8 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_Tts_Description",
         "PermissionsPage_Cap_Stt_Label",
         "PermissionsPage_Cap_Stt_Description",
+        "PermissionsPage_Cap_SystemRun_Label",
+        "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_SttHint_Ready",
         "PermissionsPage_SttHint_Downloading",
         "PermissionsPage_SttHint_FailedFormat",

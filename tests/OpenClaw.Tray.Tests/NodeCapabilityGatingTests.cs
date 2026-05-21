@@ -43,6 +43,7 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.True(NodeCapabilityGating.ShouldRegisterCamera(null));
         Assert.True(NodeCapabilityGating.ShouldRegisterLocation(null));
         Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(null));
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(null));
     }
 
     [Fact]
@@ -72,6 +73,18 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.True(NodeCapabilityGating.ShouldRegisterCamera(s));
         Assert.True(NodeCapabilityGating.ShouldRegisterLocation(s));
         Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(s));
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+    }
+
+    [Fact]
+    public void SystemRun_OnlyDisabledWhenExplicitlySetToFalse()
+    {
+        var s = NewSettings();
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+        s.NodeSystemRunEnabled = false;
+        Assert.False(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+        s.NodeSystemRunEnabled = true;
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
     }
 
     [Fact]
@@ -122,11 +135,13 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         s.NodeCameraEnabled = false;
         s.NodeLocationEnabled = false;
         s.NodeBrowserProxyEnabled = false;
+        s.NodeSystemRunEnabled = false;
 
         Assert.False(NodeCapabilityGating.ShouldRegisterCanvas(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterScreen(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterCamera(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterLocation(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s));
+        Assert.False(NodeCapabilityGating.ShouldRegisterSystemRun(s));
     }
 }

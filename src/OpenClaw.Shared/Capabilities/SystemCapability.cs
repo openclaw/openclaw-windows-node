@@ -17,11 +17,19 @@ public class SystemCapability : NodeCapabilityBase
     private const int DefaultRunTimeoutMs = 30_000;
     private const int MaxRunTimeoutMs = 600_000; // 10 minutes
 
-    private static readonly string[] _commands = new[]
+    private static readonly string[] _commandsWithRun = new[]
     {
         "system.notify",
         "system.run",
         "system.run.prepare",
+        "system.which",
+        "system.execApprovals.get",
+        "system.execApprovals.set"
+    };
+
+    private static readonly string[] _commandsWithoutRun = new[]
+    {
+        "system.notify",
         "system.which",
         "system.execApprovals.get",
         "system.execApprovals.set"
@@ -47,8 +55,11 @@ public class SystemCapability : NodeCapabilityBase
         "net "
     ];
     
-    public override IReadOnlyList<string> Commands => _commands;
-    
+    private readonly bool _includeRunCommands;
+
+    public override IReadOnlyList<string> Commands =>
+        _includeRunCommands ? _commandsWithRun : _commandsWithoutRun;
+
     // Event to let UI handle the actual notification display
     public event EventHandler<SystemNotifyArgs>? NotifyRequested;
     
@@ -62,8 +73,18 @@ public class SystemCapability : NodeCapabilityBase
     // V2 exec approval handler (null = legacy path; inert until explicitly set)
     private IExecApprovalV2Handler? _v2Handler;
     
-    public SystemCapability(IOpenClawLogger logger) : base(logger)
+    /// <param name="logger">Capability logger.</param>
+    /// <param name="includeRunCommands">
+    /// When false, <c>system.run</c> and <c>system.run.prepare</c> are dropped
+    /// from <see cref="Commands"/> and <see cref="ExecuteAsync"/> rejects them
+    /// with a clear error before any V2/legacy dispatch. The rest of the
+    /// <c>system</c> category (notify/which/execApprovals.get/set) is
+    /// unaffected. Wired from the tray "Run system tools" permission toggle
+    /// via <c>NodeCapabilityGating.ShouldRegisterSystemRun</c>.
+    /// </param>
+    public SystemCapability(IOpenClawLogger logger, bool includeRunCommands = true) : base(logger)
     {
+        _includeRunCommands = includeRunCommands;
     }
     
     /// <summary>
@@ -98,6 +119,16 @@ public class SystemCapability : NodeCapabilityBase
     
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
     {
+        // "Run system tools" kill switch — applied before V2/legacy dispatch
+        // so stale gateway allowlists and cached MCP clients still see the
+        // capability as disabled when the user turned it off.
+        if (!_includeRunCommands &&
+            (request.Command == "system.run" || request.Command == "system.run.prepare"))
+        {
+            Logger.Info($"[system.run] rejected: 'Run system tools' is disabled (command={request.Command})");
+            return Error("system.run is disabled by user setting (Permissions → Run system tools).");
+        }
+
         return request.Command switch
         {
             "system.notify" => await HandleNotifyAsync(request),

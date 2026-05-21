@@ -40,6 +40,16 @@ public class SettingsData
     public bool CameraRecordingConsentGiven { get; set; } = false;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    /// <summary>
+    /// Master switch for the <c>system.run</c> + <c>system.run.prepare</c>
+    /// commands. When <c>false</c>, those commands are dropped from the
+    /// capability's declared command list (so they don't appear in the
+    /// connect handshake or in MCP <c>tools/list</c>) and invocations are
+    /// rejected defensively. Per-command exec approvals still apply when
+    /// enabled. Default <c>true</c> for backward compatibility — exec has
+    /// been part of the Windows node since day one.
+    /// </summary>
+    public bool NodeSystemRunEnabled { get; set; } = true;
     public bool NodeSttEnabled { get; set; } = false;
     /// <summary>STT language: "auto" for Whisper auto-detect, or a BCP-47 tag like "en-US".</summary>
     public string SttLanguage { get; set; } = "auto";
