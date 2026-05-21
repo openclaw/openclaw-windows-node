@@ -646,12 +646,12 @@ public sealed partial class ConnectionPage : Page
         NodeCardBorder.Visibility = Visibility.Visible;
 
         var settings = CurrentApp.Settings;
-        var enabledCaps = settings != null ? CountEnabledCapabilities(settings) : 0;
 
-        // Body text + chips (defined below) cover every Node state. The
-        // legacy "var (_, body) = …" block was dropped — its prose is no
-        // longer used (showBody handles the warning/error subset).
-        _ = settings; // settings still consumed by chip builder + toggle sync
+        // Read capability list from the same GatewayNodeInfo source used by
+        // the tray menu and instances page — single source of truth.
+        var nodeCapabilities = NodeCapabilityGating.GetLocalNodeCapabilities(
+            _appState?.Nodes, CurrentApp.NodeFullDeviceId);
+        var capCount = nodeCapabilities?.Count ?? 0;
 
         // Body text (warning/error detail under the status text) only surfaces
         // for warning/error/pairing states.
@@ -679,13 +679,12 @@ public sealed partial class ConnectionPage : Page
         NodeBodyText.Visibility = showBody ? Visibility.Visible : Visibility.Collapsed;
 
         // Status sub-row: dot color + status label, mirrors PermissionsPage.
-        var caps = settings != null ? CountEnabledCapabilities(settings) : 0;
         var (nodeGlyph, nodeBrushKey, nodeStatusText) = plan.NodeCard switch
         {
             NodeCardState.OnHealthy => (
                 Helpers.FluentIconCatalog.StatusOk,
                 "SystemFillColorSuccessBrush",
-                caps == 1 ? "Node active · 1 capability" : $"Node active · {caps} capabilities"),
+                capCount == 1 ? "Node active · 1 capability" : $"Node active · {capCount} capabilities"),
             NodeCardState.OnPermissionsIncomplete => (
                 Helpers.FluentIconCatalog.StatusWarn,
                 "SystemFillColorCautionBrush",
@@ -723,15 +722,16 @@ public sealed partial class ConnectionPage : Page
             : ResolveBrush("TextFillColorPrimaryBrush");
 
         // Canonical capability list per design naming.md:
-        //   "Providing N capabilities: browser, camera, canvas, screen, location, tts, stt"
+        //   "Providing N capabilities: browser, camera, canvas, …"
         //   Empty list renders as "Providing no capabilities".
         // Hidden when Node mode is off (no concept of a "list" then).
+        // Reads from the same GatewayNodeInfo source as tray/instances.
         bool showCaps = settings != null && plan.NodeCard != NodeCardState.Off
                                          && plan.NodeCard != NodeCardState.Hidden;
         NodeCapabilityText.Visibility = showCaps ? Visibility.Visible : Visibility.Collapsed;
         if (showCaps)
         {
-            NodeCapabilityText.Text = BuildCapabilityListString(settings!);
+            NodeCapabilityText.Text = BuildCapabilityListString(nodeCapabilities);
         }
 
         // Sync toggle from current settings (suppress event)
@@ -753,15 +753,17 @@ public sealed partial class ConnectionPage : Page
         }
 
         // Capability chips — skip the rebuild if the rendered output would
-        // be identical (e.g. mid-reconnect snapshot ticks where settings and
-        // node state haven't actually changed). Includes ALL 7 capabilities
-        // because BuildCapabilityChips renders all of them — missing any
-        // here would silently swallow that capability's toggle.
-        var capFp = $"{plan.NodeCard}|{settings?.NodeBrowserProxyEnabled}|{settings?.NodeCameraEnabled}|{settings?.NodeCanvasEnabled}|{settings?.NodeScreenEnabled}|{settings?.NodeLocationEnabled}|{settings?.NodeTtsEnabled}|{settings?.NodeSttEnabled}";
+        // be identical. Fingerprint includes the full capability list from
+        // the gateway (same source as tray/instances) so new capabilities
+        // trigger a rebuild automatically.
+        var capNames = nodeCapabilities != null
+            ? string.Join(",", nodeCapabilities.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))
+            : "";
+        var capFp = $"{plan.NodeCard}|{capNames}";
         if (_capabilityChipsFingerprint != capFp)
         {
             _capabilityChipsFingerprint = capFp;
-            NodeCapabilityChipsHost.ItemsSource = BuildCapabilityChips(settings, plan.NodeCard);
+            NodeCapabilityChipsHost.ItemsSource = BuildCapabilityChips(nodeCapabilities, plan.NodeCard);
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
@@ -861,10 +863,10 @@ public sealed partial class ConnectionPage : Page
         return new Border { Child = grid };
     }
 
-    private List<Border> BuildCapabilityChips(SettingsManager? s, NodeCardState state)
+    private List<Border> BuildCapabilityChips(IReadOnlyList<string>? capabilities, NodeCardState state)
     {
         var chips = new List<Border>();
-        if (s == null) return chips;
+        if (capabilities == null || capabilities.Count == 0) return chips;
         if (state == NodeCardState.Off || state == NodeCardState.Hidden) return chips;
 
         void Add(string label, bool enabled, bool warn = false, bool error = false)
@@ -921,56 +923,31 @@ public sealed partial class ConnectionPage : Page
             });
         }
 
-        bool permsWarn = state == NodeCardState.OnPermissionsIncomplete;
-        // Order matches the canonical capability list (naming.md):
-        //   browser, camera, canvas, screen, location, tts, stt
-        Add("Browser",  s.NodeBrowserProxyEnabled);
-        Add("Camera",   s.NodeCameraEnabled);
-        Add("Canvas",   s.NodeCanvasEnabled);
-        Add("Screen",   s.NodeScreenEnabled);
-        Add("Location", s.NodeLocationEnabled);
-        Add("TTS",      s.NodeTtsEnabled);
-        Add("STT",      s.NodeSttEnabled);
-        // Trailing summary chip — surfaces when permissions are incomplete.
-        if (permsWarn)
+        // Render a chip for each capability reported by the gateway —
+        // same source as tray menu and instances page.
+        foreach (var cap in capabilities)
         {
-            int caps = CountEnabledCapabilities(s);
-            Add($"{caps}/7 enabled", false, warn: true);
+            if (string.IsNullOrEmpty(cap)) continue;
+            // Capitalize first letter for display (e.g. "browser" → "Browser")
+            var label = char.ToUpperInvariant(cap[0]) + cap[1..];
+            Add(label, enabled: true);
         }
+
         return chips;
     }
 
     /// <summary>
     /// Canonical "Providing N capabilities: …" line per design naming.md.
-    /// Order matches the canonical capability list (browser, camera, canvas,
-    /// screen, location, tts, stt). Empty → "Providing no capabilities".
+    /// Reads from the gateway-reported capability list (same source as
+    /// tray menu and instances page). Empty → "Providing no capabilities".
     /// </summary>
-    private static string BuildCapabilityListString(SettingsManager s)
+    private static string BuildCapabilityListString(IReadOnlyList<string>? capabilities)
     {
-        var caps = new List<string>(7);
-        if (s.NodeBrowserProxyEnabled) caps.Add("browser");
-        if (s.NodeCameraEnabled)       caps.Add("camera");
-        if (s.NodeCanvasEnabled)       caps.Add("canvas");
-        if (s.NodeScreenEnabled)       caps.Add("screen");
-        if (s.NodeLocationEnabled)     caps.Add("location");
-        if (s.NodeTtsEnabled)          caps.Add("tts");
-        if (s.NodeSttEnabled)          caps.Add("stt");
-        if (caps.Count == 0) return "Providing no capabilities";
-        return $"Providing {caps.Count} capabilit{(caps.Count == 1 ? "y" : "ies")}: {string.Join(", ", caps)}";
+        if (capabilities == null || capabilities.Count == 0)
+            return "Providing no capabilities";
+        return $"Providing {capabilities.Count} capabilit{(capabilities.Count == 1 ? "y" : "ies")}: {string.Join(", ", capabilities)}";
     }
 
-    private static int CountEnabledCapabilities(SettingsManager s)
-    {
-        int n = 0;
-        if (s.NodeBrowserProxyEnabled) n++;
-        if (s.NodeCameraEnabled) n++;
-        if (s.NodeCanvasEnabled) n++;
-        if (s.NodeScreenEnabled) n++;
-        if (s.NodeLocationEnabled) n++;
-        if (s.NodeTtsEnabled) n++;
-        if (s.NodeSttEnabled) n++;
-        return n;
-    }
 
     private Brush ResolveBrush(string themeKey)
     {

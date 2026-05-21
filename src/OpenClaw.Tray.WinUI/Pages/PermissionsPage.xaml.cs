@@ -489,15 +489,11 @@ public sealed partial class PermissionsPage : Page
             NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.LimeGreen);
             NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Active");
 
-            var caps = new List<string>();
-            if (CurrentApp.Settings?.NodeBrowserProxyEnabled == true) caps.Add("browser");
-            if (CurrentApp.Settings?.NodeCameraEnabled == true) caps.Add("camera");
-            if (CurrentApp.Settings?.NodeCanvasEnabled == true) caps.Add("canvas");
-            if (CurrentApp.Settings?.NodeScreenEnabled == true) caps.Add("screen");
-            if (CurrentApp.Settings?.NodeLocationEnabled == true) caps.Add("location");
-            if (CurrentApp.Settings?.NodeTtsEnabled == true) caps.Add("tts");
-            if (CurrentApp.Settings?.NodeSttEnabled == true) caps.Add("stt");
-            NodeDetailsText.Text = caps.Count > 0
+            // Read capability list from GatewayNodeInfo — same source of truth
+            // used by the tray menu, instances page, and connection page.
+            var caps = NodeCapabilityGating.GetLocalNodeCapabilities(
+                CurrentApp.AppState?.Nodes, CurrentApp.NodeFullDeviceId);
+            NodeDetailsText.Text = caps != null && caps.Count > 0
                 ? LocalizationHelper.Format(
                     "PermissionsPage_NodeStatus_ActiveDetailsFormat",
                     caps.Count, string.Join(", ", caps))

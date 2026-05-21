@@ -23,4 +23,25 @@ internal static class NodeCapabilityGating
     public static bool ShouldRegisterBrowserProxy(SettingsManager? s) => s?.NodeBrowserProxyEnabled != false;
     public static bool ShouldRegisterTts(SettingsManager? s)          => s?.NodeTtsEnabled          == true;
     public static bool ShouldRegisterStt(SettingsManager? s)          => s?.NodeSttEnabled          == true;
+
+    /// <summary>
+    /// Resolve the local node's capability list from the gateway-reported
+    /// <see cref="OpenClaw.Shared.GatewayNodeInfo"/> array — the single source
+    /// of truth used by the tray menu, instances page, connection page, and
+    /// permissions page.
+    /// </summary>
+    /// <param name="nodes">Current <see cref="AppState.Nodes"/> snapshot.</param>
+    /// <param name="localDeviceId">The local node's full device id (from <c>App.NodeFullDeviceId</c>).</param>
+    /// <returns>The capability list, or <c>null</c> when the node info is not yet available.</returns>
+    public static System.Collections.Generic.IReadOnlyList<string>? GetLocalNodeCapabilities(
+        OpenClaw.Shared.GatewayNodeInfo[]? nodes, string? localDeviceId)
+    {
+        if (string.IsNullOrEmpty(localDeviceId) || nodes == null || nodes.Length == 0)
+            return null;
+
+        var localNode = System.Array.Find(nodes, n =>
+            string.Equals(n.NodeId, localDeviceId, System.StringComparison.OrdinalIgnoreCase));
+
+        return localNode?.Capabilities?.ToArray();
+    }
 }
