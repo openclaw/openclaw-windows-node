@@ -6,13 +6,11 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.Mxc;
 
 /// <summary>
-/// Implements <see cref="ISandboxExecutor"/> by invoking <c>wxc-exec.exe</c>
-/// directly via the <see cref="MxcExecutor"/> from <c>OrcaCore.Services</c>.
-/// Replaces <c>OneShotAppContainerExecutor</c> + <c>tools/mxc/run-command.cjs</c>;
-/// no Node.js runtime required.
+/// Implements <see cref="ISandboxExecutor"/> by spawning <c>wxc-exec.exe</c>
+/// directly via <see cref="MxcExecutor"/>. No Node.js runtime required.
 /// </summary>
 /// <remarks>
-/// Responsibilities owned here (previously split with the JS bridge):
+/// Responsibilities:
 /// <list type="bullet">
 /// <item>Per-invocation scratch dir lifecycle.</item>
 /// <item>Logging the final <see cref="MxcConfig"/> before sending — structured

@@ -45,9 +45,8 @@ public interface ISandboxExecutor
 /// Pass &lt;= 0 to let the executor use its default.
 /// </param>
 /// <param name="MaxOutputBytes">
-/// Maximum stdout/stderr the executor will return. Pass <c>null</c> to use the
-/// executor's default (typically 4 MiB). The host capture cap and the bridge
-/// cap (run-command.cjs) honor this value.
+/// Maximum stdout/stderr the executor will return. Pass <c>null</c> to use
+/// the executor's default (typically 4 MiB).
 /// </param>
 public sealed record SandboxExecutionRequest(
     string CapabilityCommand,

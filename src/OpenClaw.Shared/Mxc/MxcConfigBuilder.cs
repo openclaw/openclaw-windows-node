@@ -5,29 +5,32 @@ namespace OpenClaw.Shared.Mxc;
 /// <summary>
 /// Pure function: <see cref="SandboxExecutionRequest"/> + scratch directory →
 /// <see cref="MxcConfig"/> for direct invocation of <c>wxc-exec.exe</c>.
-/// Replaces the SDK's <c>createConfigFromPolicy</c> + JS-bridge merge pipeline.
 /// </summary>
 /// <remarks>
-/// What this class owns (previously split between SDK + JS bridge):
+/// What this class does:
 /// <list type="bullet">
-/// <item><see cref="ResolveToolDirsFromPath"/> — PATH-derived tool dirs (git/pwsh/python/...)
-///   that replace the SDK's <c>getAvailableToolsPolicy</c>. Whitelist-only —
-///   never adds drive roots.</item>
-/// <item>Scratch dir injection — overrides TEMP/TMP/TMPDIR so commands write into
-///   our per-invocation directory, not the user's real %TEMP%.</item>
-/// <item>Env allowlist + credential / shell-injection scrub.</item>
+/// <item>Translates <see cref="SandboxPolicy"/> (from the Sandbox page) and the
+///   agent's request into the JSON shape wxc-exec consumes.</item>
+/// <item><see cref="ResolvePathDirsForReadonly"/> — grants every existing
+///   <c>$PATH</c> directory as readonly so command-line tools (git, node,
+///   python, ...) can be read from inside the sandbox. Drive roots skipped.</item>
+/// <item>Scratch dir injection — adds the per-invocation scratch dir as
+///   readwrite and forces <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> at it so
+///   commands don't write to the user's real <c>%TEMP%</c>.</item>
+/// <item>Cwd auto-grant — adds <c>request.Cwd</c> as readonly when not already
+///   covered by an allow grant. AppContainer does NOT auto-grant cwd, so this
+///   is required for commands to even start.</item>
+/// <item>Defensive re-filter of allow lists against the deny list.</item>
 /// <item>Shell command-line construction (cmd <c>/S /C</c>, powershell
 ///   <c>-EncodedCommand</c>).</item>
-/// <item>Cwd auto-grant — adds <c>request.Cwd</c> to readonly paths when not
-///   already nested in a grant. AppContainer does NOT auto-grant the cwd.</item>
-/// <item>Defensive re-filter of allow-lists against deny-list.</item>
 /// </list>
+/// Env scrubbing happens upstream in <c>SystemCapability.HandleRunAsync</c>
+/// via <c>ExecEnvSanitizer.Sanitize</c>; this class doesn't scrub env.
 /// </remarks>
 public static class MxcConfigBuilder
 {
     /// <summary>
-    /// Default per-process timeout in milliseconds when the caller doesn't
-    /// supply one. Mirrors the MXC SDK's <c>SandboxPolicy.timeoutMs</c> default.
+    /// Default per-process timeout when the caller doesn't supply one.
     /// </summary>
     public const int DefaultProcessTimeoutMs = 30_000;
 
@@ -53,16 +56,16 @@ public static class MxcConfigBuilder
         // commandLine — shell-quoted.
         var commandLine = ShellCommandLine.Build(args.Shell, args.Command, args.Argv);
 
-        // readonly = user-configured grants + every existing PATH dir (mirrors
-        // the MXC SDK's getAvailableToolsPolicy, minus drive roots which the
-        // SDK itself has a documented bug around when pwsh.exe is on PATH).
+        // readonly = UI grants + every existing PATH dir (so tools like git,
+        // node, python can be read inside the sandbox). Drive roots are
+        // skipped — see ResolvePathDirsForReadonly.
         var roFromPolicy = (policy?.Filesystem?.ReadonlyPaths ?? Array.Empty<string>()).ToList();
         var pathDirs = ResolvePathDirsForReadonly(pathEnvVar);
         foreach (var dir in pathDirs)
             if (!roFromPolicy.Contains(dir, StringComparer.OrdinalIgnoreCase))
                 roFromPolicy.Add(dir);
 
-        // readwrite = user grants + scratch dir.
+        // readwrite = UI grants + scratch dir.
         var rwFromPolicy = (policy?.Filesystem?.ReadwritePaths ?? Array.Empty<string>()).ToList();
         if (!rwFromPolicy.Contains(scratchDir, StringComparer.OrdinalIgnoreCase))
             rwFromPolicy.Add(scratchDir);
@@ -70,29 +73,28 @@ public static class MxcConfigBuilder
         // denied list from policy (settings dir, ~/.ssh, browser profiles, ...).
         var denied = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
 
-        // cwd auto-grant — AppContainer does not auto-grant the working directory,
-        // so without this every command run inside the user's repo would fail
-        // with permission errors. Added to readonly when not already covered by
-        // an explicit allow; skipped if the cwd overlaps a deny.
+        // cwd auto-grant — AppContainer does not auto-grant the working
+        // directory. Without this, commands run inside a user's repo fail
+        // with permission errors. Skipped when cwd overlaps a denied path.
         if (!string.IsNullOrWhiteSpace(request.Cwd) && !IsCoveredBy(request.Cwd, roFromPolicy.Concat(rwFromPolicy)))
         {
             if (!IsCoveredBy(request.Cwd, denied))
                 roFromPolicy.Add(request.Cwd);
         }
 
-        // Re-apply deny precedence after every merge (defense-in-depth — keeps
-        // a SDK or caller bug from accidentally granting a denied subtree).
+        // Deny wins: strip any allow that overlaps a deny after the merges above.
         roFromPolicy = FilterOutDenied(roFromPolicy, denied);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, denied);
 
-        // env — agent-supplied vars only, plus TEMP/TMP/TMPDIR forced to scratch.
-        // No host env allow-list — the agent owns what env to pass in.
+        // env — agent-supplied vars (already scrubbed upstream by
+        // ExecEnvSanitizer in SystemCapability) plus TEMP/TMP/TMPDIR forced
+        // to scratch.
         var env = BuildEnv(request.Env, scratchDir);
 
         // timeout — caller-supplied or default.
         var timeoutMs = request.TimeoutMs > 0 ? request.TimeoutMs : DefaultProcessTimeoutMs;
 
-        // (8) capabilities + appContainer.ui — mirror SDK output exactly.
+        // capabilities — only network for now.
         var capabilities = new List<string>();
         if (policy?.Network?.AllowOutbound == true)
             capabilities.Add("internetClient");
@@ -158,12 +160,8 @@ public static class MxcConfigBuilder
 
     /// <summary>
     /// Walk PATH and return each existing directory as a readonly grant
-    /// candidate. Mirrors the SDK's <c>getAvailableToolsPolicy</c>
-    /// (<c>@microsoft/mxc-sdk:dist/policy.js</c>): every existing PATH dir
-    /// is granted, drive roots are skipped (the SDK has a documented bug
-    /// where pwsh.exe on PATH would otherwise grant the entire system
-    /// drive — we strip that the same way the legacy JS bridge did).
-    /// No tool-name whitelist — the SDK doesn't have one either.
+    /// candidate. Drive roots (e.g. <c>C:\</c>) are skipped so a misconfigured
+    /// PATH entry can't grant the entire system drive.
     /// </summary>
     public static List<string> ResolvePathDirsForReadonly(string? pathEnvVar = null)
     {
@@ -214,14 +212,12 @@ public static class MxcConfigBuilder
     /// Build the env array (KEY=VALUE strings) the wxc-exec sandbox will inherit.
     /// </summary>
     /// <remarks>
-    /// <para><b>What flows in:</b> agent-supplied <paramref name="requestEnv"/>
-    /// only — by the time we get here, <c>SystemCapability.HandleRunAsync</c>
-    /// has already run env through <c>ExecEnvSanitizer.Sanitize</c> at the
-    /// front door and rejected the command if any dangerous vars were present.
-    /// We don't scrub again. TEMP/TMP/TMPDIR are then forced to
-    /// <paramref name="scratchDir"/> so any tool inside the sandbox writes
-    /// scratch files into our throwaway dir, not the user's real
-    /// <c>%TEMP%</c>.</para>
+    /// Env from the agent has already been scrubbed upstream in
+    /// <c>SystemCapability.HandleRunAsync</c> via
+    /// <c>ExecEnvSanitizer.Sanitize</c> (which rejects the whole command if
+    /// anything dangerous is present). We pass the surviving entries through
+    /// and force <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> to <paramref name="scratchDir"/>
+    /// so tools inside the sandbox don't write into the user's real <c>%TEMP%</c>.
     /// </remarks>
     public static IReadOnlyList<string> BuildEnv(
         IReadOnlyDictionary<string, string>? requestEnv,
@@ -344,8 +340,10 @@ public static class MxcConfigBuilder
 }
 
 /// <summary>
-/// Shell command-line construction for the contained payload.
-/// Mirrors <c>buildShellCommandLine</c> from the legacy <c>run-command.cjs</c>.
+/// Shell command-line construction for the sandboxed payload — wraps the
+/// agent's command in <c>cmd.exe /S /C "..."</c> or
+/// <c>powershell.exe -EncodedCommand &lt;utf16le-base64&gt;</c> so it can be
+/// passed verbatim to <c>CreateProcessW</c> inside the AppContainer.
 /// </summary>
 public static class ShellCommandLine
 {
