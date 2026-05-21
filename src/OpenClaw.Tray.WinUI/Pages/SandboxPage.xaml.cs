@@ -143,10 +143,10 @@ public sealed partial class SandboxPage : Page
     /// MXC availability AND the current sandbox toggle state. Three visual states:
     ///   1. Available + ON   → 🛡 "Sandbox is on" + toggle visible
     ///   2. Available + OFF  → ⚠ "Sandbox is off — high risk" + toggle visible
-    ///   3. Unavailable      → ⚠ "Sandbox unavailable — commands blocked" + toggle hidden
-    /// When MXC is unavailable the toggle is hidden AND the runner fails closed
-    /// (MxcCommandRunner.RunAsync short-circuits to a deny response). The user
-    /// cannot opt out of the block on an unsupported machine — they must fix MXC.
+    ///   3. Unavailable + ON → ⚠ "Sandbox unavailable — commands blocked" + toggle visible
+    ///   4. Unavailable + OFF→ ⚠ "Sandbox unavailable — unprotected mode" + toggle visible
+    /// When MXC is unavailable and sandbox remains ON, commands fail closed.
+    /// Users on unsupported machines can still turn sandbox OFF to run unprotected.
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
@@ -158,10 +158,18 @@ public sealed partial class SandboxPage : Page
 
         if (!available)
         {
+            SandboxEnabledToggle.Visibility = Visibility.Visible;
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox unavailable — commands blocked";
-            SandboxStatusSubtext.Text = "Containment isn't available on this PC.";
-            SandboxEnabledToggle.Visibility = Visibility.Collapsed;
+            if (enabled)
+            {
+                SandboxStatusTitle.Text = "Node Sandbox unavailable — commands blocked";
+                SandboxStatusSubtext.Text = "Containment isn't available on this PC. Turn off Node Sandbox to run commands unprotected.";
+            }
+            else
+            {
+                SandboxStatusTitle.Text = "Node Sandbox unavailable — unprotected mode";
+                SandboxStatusSubtext.Text = "Containment isn't available on this PC. Commands run directly on the host.";
+            }
             return;
         }
 
@@ -213,7 +221,8 @@ public sealed partial class SandboxPage : Page
             UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
             UnavailableActionMessage.Text =
                 $"{reasonText}\n\nMXC sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
-                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds).";
+                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds). " +
+                "You can temporarily turn off Node Sandbox above to run commands unprotected.";
             UnavailablePrimaryButton.Content = "Open Windows Update";
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
@@ -224,7 +233,7 @@ public sealed partial class SandboxPage : Page
             UnavailableActionMessage.Text =
                 $"{reasonText}\n\nThe MXC bridge script or the wxc-exec binary couldn't be located. " +
                 "If this is a developer build, run `npm ci` at the repository root. " +
-                "Otherwise reinstall the companion app.";
+                "Otherwise reinstall the companion app. You can temporarily turn off Node Sandbox above to run commands unprotected.";
             UnavailablePrimaryButton.Content = "Show install instructions";
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;

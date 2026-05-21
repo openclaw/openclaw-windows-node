@@ -54,32 +54,29 @@ public sealed class MxcCommandRunner : ICommandRunner
     {
         var settings = _settingsProvider();
 
-        // Fail-closed when MXC is unavailable. We do NOT route to host even if the
-        // persisted toggle is OFF — the UI hides the toggle in that state so any
-        // OFF value is stale (e.g., flipped on a previous run / different machine).
-        // The UI's "Sandbox unavailable — commands blocked" claim must match
-        // actual behavior or it's a lie.
+        // Explicit user opt-out always routes through the host runner.
+        if (!settings.SystemRunSandboxEnabled)
+        {
+            _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
+            return await _hostFallback.RunAsync(request, ct);
+        }
+
+        // Fail-closed when sandboxing is enabled but MXC is unavailable.
         if (!_isSandboxAvailable())
         {
             _logger.Warn(
-                "[mxc] system.run DENIED: sandbox unavailable. " +
+                "[mxc] system.run DENIED: sandbox enabled but unavailable. " +
                 "Update Windows or install missing components to enable.");
             return new CommandResult
             {
                 Stdout = string.Empty,
                 Stderr =
-                    "Sandboxing is unavailable on this machine, so agent-started Windows " +
-                    "commands are blocked. Open the Sandbox page for fix instructions.",
+                    "Sandboxing is enabled but unavailable on this machine, so agent-started Windows " +
+                    "commands are blocked. Open the Sandbox page to turn off Node Sandbox or for fix instructions.",
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
             };
-        }
-
-        if (!settings.SystemRunSandboxEnabled)
-        {
-            _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
-            return await _hostFallback.RunAsync(request, ct);
         }
 
         var settingsDirectoryPath = _settingsDirectoryPathProvider();

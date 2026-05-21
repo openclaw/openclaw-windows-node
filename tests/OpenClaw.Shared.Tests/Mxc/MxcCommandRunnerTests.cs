@@ -68,12 +68,10 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_MxcUnavailable_BlocksEvenWithSandboxToggleOff()
+    public async Task RunAsync_MxcUnavailable_RoutesToHostWhenSandboxToggleOff()
     {
-        // The UI hides the toggle when MXC is unavailable. A persisted toggle=OFF
-        // (from a previous run or different machine) must NOT cause the runner to
-        // silently route to host — the page says "commands blocked" and the
-        // runner must match that promise.
+        // User opted out of sandboxing. Even if MXC is unavailable, we should
+        // route through host execution.
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner
         {
@@ -87,12 +85,11 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("unavailable", result.Stderr, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("blocked", result.Stderr, StringComparison.OrdinalIgnoreCase);
-        // Neither the sandbox executor nor the host fallback should have run.
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
+        // Sandbox executor should not have run.
         Assert.Null(executor.LastRequest);
-        Assert.Null(fallback.LastRequest);
+        Assert.NotNull(fallback.LastRequest);
     }
 
     [Fact]
