@@ -153,7 +153,7 @@ public class DeviceIdentityIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
-    [IntegrationFact]
+    [Fact]
     public void BuildConnectPayloadV3_NormalizesPlatformMetadataForGatewayAuth()
     {
         var dir = CreateTempDir();
