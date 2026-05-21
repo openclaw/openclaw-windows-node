@@ -31,9 +31,7 @@ namespace OpenClaw.WinNode.Cli;
 internal static class OrphanPurger
 {
     /// <summary>
-    /// Substrings that identify a WSL distro as belonging to the OpenClaw
-    /// local-gateway flow. We match these case-insensitively against the
-    /// distro name returned by <c>wsl --list --quiet</c>.
+    /// WSL distro names that belong to the OpenClaw local-gateway flow.
     /// </summary>
     /// <remarks>
     /// The local-gateway installer has used two naming conventions across the
@@ -49,17 +47,16 @@ internal static class OrphanPurger
     /// </list>
     /// Match is case-insensitive because <c>wsl --list --quiet</c> echoes
     /// the user-specified case verbatim and we cannot rely on either form.
+    /// Matching is intentionally anchored/exact so a user-created distro named
+    /// <c>my-openclaw-experiments</c> is never destroyed by the cleanup tool.
     /// </remarks>
-    internal static readonly string[] OrphanWslDistroPatterns = new[]
-    {
-        "openclaw",   // matches both "openclaw-*" and "OpenClawGateway" case-insensitively
-    };
+    internal const string LegacyOpenClawGatewayDistroName = "OpenClawGateway";
 
     /// <summary>
     /// Retained for backward compatibility with <c>OrphanPurgerContractTests</c>
     /// and for any external script that pattern-matches the historical
     /// "openclaw-" prefix. New detection logic should use
-    /// <see cref="OrphanWslDistroPatterns"/>.
+    /// <see cref="IsOpenClawOwnedWslDistroName"/>.
     /// </summary>
     internal const string OrphanWslDistroPrefix = "openclaw-";
 
@@ -182,25 +179,17 @@ internal static class OrphanPurger
         {
             var line = rawLine.Trim().Trim('\u0000');
             if (line.Length == 0) continue;
-            // Match against every documented pattern, case-insensitive. See
-            // OrphanWslDistroPatterns for why we accept both PascalCase and
-            // kebab-case forms.
-            var matched = false;
-            foreach (var pattern in OrphanWslDistroPatterns)
-            {
-                if (line.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                {
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) continue;
+            if (!IsOpenClawOwnedWslDistroName(line)) continue;
             yield return new OrphanItem(
                 Kind: "wsl-distro",
                 Name: line,
                 Detail: $"WSL distribution installed by the OpenClaw local-gateway flow");
         }
     }
+
+    internal static bool IsOpenClawOwnedWslDistroName(string distroName) =>
+        distroName.Equals(LegacyOpenClawGatewayDistroName, StringComparison.OrdinalIgnoreCase) ||
+        distroName.StartsWith(OrphanWslDistroPrefix, StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<OrphanItem> DetectFileOrphans(Func<string, string?> envLookup)
     {
@@ -329,16 +318,18 @@ internal static class OrphanPurger
 
     private static async Task RunWslUnregister(string distroName, TextWriter stderr)
     {
-        // We deliberately do NOT shell out via cmd /c — wsl.exe arguments don't
-        // need quoting in this case and going through cmd lets a maliciously
-        // named distro inject extra commands.
-        var psi = new ProcessStartInfo("wsl.exe", $"--unregister {distroName}")
+        // We deliberately do NOT shell out via cmd /c. ArgumentList keeps distro
+        // names with spaces as a single argv element without opening command
+        // injection risk.
+        var psi = new ProcessStartInfo("wsl.exe")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("--unregister");
+        psi.ArgumentList.Add(distroName);
         var proc = Process.Start(psi)
             ?? throw new InvalidOperationException("wsl.exe failed to launch");
         await proc.WaitForExitAsync();

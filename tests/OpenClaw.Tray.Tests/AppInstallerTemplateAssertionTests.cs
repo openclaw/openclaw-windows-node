@@ -132,6 +132,65 @@ public sealed class AppInstallerTemplateAssertionTests
     }
 
     [Fact]
+    public void InAppService_DoesNotReportPackagesInUseAsNoUpdateAvailable()
+    {
+        var service = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
+        var app = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+
+        Assert.Contains("HResultPackagesInUse", service);
+        Assert.Contains("UpdatePendingRestart", service);
+        Assert.Contains("UpdatePendingRestart", app);
+        Assert.DoesNotContain("0x80073D02 => new UpdateResult(UpdateOutcome.NoUpdateAvailable", service);
+    }
+
+    [Fact]
+    public void InAppService_UsesCurrentPackageVolumeBeforeDefaultFallback()
+    {
+        var service = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
+
+        Assert.Contains("ResolveCurrentPackageVolume(manager)", service);
+        Assert.Contains("Package.Current.InstalledLocation.Path", service);
+        Assert.Contains("manager.FindPackageVolumes()", service);
+        Assert.Contains("manager.GetDefaultPackageVolume()", service);
+    }
+
+    [Fact]
+    public void ToastActivatorColdLaunch_DoesNotExitBeforeSingleInstanceGuard()
+    {
+        var app = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+
+        Assert.Contains("SingleInstanceLaunchGuard.Acquire", app);
+        Assert.DoesNotContain("Environment.Exit(0);", app);
+    }
+
+    [Fact]
+    public void ProductionSettingsUi_DoesNotContainBlueLobsterTestMarker()
+    {
+        var hub = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
+        var settings = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
+
+        Assert.Contains("Assets/SidebarIcons/Settings.svg", hub);
+        Assert.DoesNotContain("SettingsBlueLobster", hub);
+        Assert.DoesNotContain("SettingsBlueLobster", settings);
+        Assert.DoesNotContain("Blue lobster update test icon", settings);
+        Assert.False(File.Exists(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Assets", "SidebarIcons", "SettingsBlueLobster.svg")));
+    }
+
+    [Fact]
     public void HostingValidationScript_ChecksMimeLengthAndRange()
     {
         var script = File.ReadAllText(Path.Combine(
@@ -143,5 +202,16 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("Content-Length", script);
         Assert.Contains("Range = 'bytes=0-0'", script);
         Assert.Contains("StatusCode -ne 206", script);
+    }
+
+    [Fact]
+    public void AppInstallerUpdateSmokeScript_BindsSingleHttpListenerAndSelfChecks()
+    {
+        var script = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(), "scripts", "test-appinstaller-update.ps1"));
+
+        Assert.DoesNotContain("$listener = [System.Net.HttpListener]::new()", script);
+        Assert.Contains("Invoke-WebRequest \"$baseUri/openclaw.appinstaller\"", script);
+        Assert.Contains("$listenerJob.State -eq 'Failed'", script);
     }
 }

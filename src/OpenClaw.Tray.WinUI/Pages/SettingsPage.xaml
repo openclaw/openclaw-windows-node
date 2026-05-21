@@ -7,7 +7,6 @@
     <Page.Resources>
         <Thickness x:Key="SettingsRowPadding">16,14,16,14</Thickness>
         <Thickness x:Key="SectionHeaderMargin">4,18,4,4</Thickness>
-        <SvgImageSource x:Key="SettingsUpdateBlueLobsterIcon" UriSource="ms-appx:///Assets/SidebarIcons/SettingsBlueLobster.svg"/>
     </Page.Resources>
 
     <Grid>
@@ -20,15 +19,9 @@
             <StackPanel Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
                 <!-- Page header -->
-                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,8" VerticalAlignment="Center">
-                    <Image Width="36"
-                           Height="36"
-                           Source="{StaticResource SettingsUpdateBlueLobsterIcon}"
-                           AutomationProperties.Name="Blue lobster update test icon"/>
-                    <TextBlock Text="Settings"
-                               Style="{StaticResource TitleTextBlockStyle}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+                <TextBlock Text="Settings"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           Margin="0,0,0,8"/>
 
                 <!-- ═════════ General ═════════ -->
                 <TextBlock Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"

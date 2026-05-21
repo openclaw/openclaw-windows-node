@@ -84,16 +84,11 @@ try {
 
   Render-AppInstaller -Version $VnVersion  -MsixFileName 'vN.msix'      -OutputPath (Join-Path $tmp 'openclaw.appinstaller')
 
-  # Spin up a HttpListener; HttpListenerPrefix needs http://+:Port/ for
-  # admin-less, http://127.0.0.1:Port/ for non-admin in restricted ACLs.
-  $listener = [System.Net.HttpListener]::new()
-  $listener.Prefixes.Add("$baseUri/")
-  $listener.Start()
-  Write-Host "Listening on $baseUri/" -ForegroundColor Cyan
-
+  # Spin up exactly one HttpListener in a background job. Binding the same
+  # prefix in both parent and job makes the smoke test fail before AppInstaller
+  # is exercised.
   $listenerJob = Start-Job -ScriptBlock {
     param($prefix, $root)
-    Add-Type -AssemblyName System.Net.HttpListener
     $l = [System.Net.HttpListener]::new()
     $l.Prefixes.Add("$prefix/")
     $l.Start()
@@ -112,6 +107,26 @@ try {
       $ctx.Response.Close()
     }
   } -ArgumentList $baseUri, $tmp
+
+  $listenerReady = $false
+  for ($i = 0; $i -lt 20; $i++) {
+    if ($listenerJob.State -eq 'Failed') {
+      Receive-Job $listenerJob -Keep | Out-String | Write-Error
+      throw "AppInstaller test HTTP listener failed to start."
+    }
+
+    try {
+      Invoke-WebRequest "$baseUri/openclaw.appinstaller" -UseBasicParsing -TimeoutSec 2 | Out-Null
+      $listenerReady = $true
+      break
+    } catch {
+      Start-Sleep -Milliseconds 250
+    }
+  }
+  if (-not $listenerReady) {
+    throw "AppInstaller test HTTP listener did not serve $baseUri/openclaw.appinstaller."
+  }
+  Write-Host "Listening on $baseUri/" -ForegroundColor Cyan
 
   try {
     # Step 2: install vN via the .appinstaller URL.
@@ -151,7 +166,6 @@ try {
   }
   finally {
     if ($listenerJob) { Stop-Job $listenerJob -ErrorAction SilentlyContinue; Remove-Job $listenerJob -Force -ErrorAction SilentlyContinue }
-    if ($listener.IsListening) { $listener.Stop(); $listener.Close() }
   }
 }
 finally {

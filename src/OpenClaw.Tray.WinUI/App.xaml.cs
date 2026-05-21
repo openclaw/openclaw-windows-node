@@ -585,22 +585,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Toast activator launch path. The manifest declares a windows.comServer +
         // windows.toastNotificationActivation pair (CLSID D4E7F816-…) so the app
         // shows up in Settings > Notifications immediately on install. When the
-        // user clicks an actionable toast, Windows spawns
-        //   OpenClaw.Tray.WinUI.exe -ToastActivator
-        // expecting us to register the COM class with the matching CLSID and
-        // handle the activation. We don't currently consume click callbacks, but
-        // we still need to short-circuit this launch — otherwise Windows starts
-        // a second tray instance that immediately fights the single-instance
-        // mutex check below and either crashes or steals the user's running
-        // tray's state.
+        // tray is cold and Windows starts us with -ToastActivator, continue
+        // through normal launch so the user gets visible app chrome instead of a
+        // no-op. If the tray is already running, the single-instance guard below
+        // exits this secondary process without fighting the primary instance.
         // -----------------------------------------------------------------------
-        if (_startupArgs.Contains("-ToastActivator", StringComparer.OrdinalIgnoreCase))
-        {
-            // Windows already activated (or will already activate) the primary
-            // tray instance via the toast's argument string; nothing else to do.
-            Environment.Exit(0);
-            return;
-        }
 
         // Check for protocol activation (MSIX packaged apps receive deep links this way)
         string? protocolUri = GetProtocolActivationUri();
@@ -3468,6 +3457,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
                     CheckedAt = DateTime.UtcNow,
                     Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
+                },
+                AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
+                {
+                    Status = "Ready",
+                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
                 },
                 AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
                 {

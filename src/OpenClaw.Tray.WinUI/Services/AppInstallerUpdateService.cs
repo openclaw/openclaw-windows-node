@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using OpenClawTray.Helpers;
@@ -45,6 +46,8 @@ internal static class AppInstallerUpdateService
     {
         /// <summary>Windows accepted the update request; registration may complete after restart.</summary>
         UpdateQueued,
+        /// <summary>An update is available but Windows needs OpenClaw to exit before registration can finish.</summary>
+        UpdatePendingRestart,
         /// <summary>No newer version is currently published at the AppInstaller URL.</summary>
         NoUpdateAvailable,
         /// <summary>The call ran but Windows reported a non-fatal failure (e.g. network).</summary>
@@ -54,6 +57,9 @@ internal static class AppInstallerUpdateService
     }
 
     public record UpdateResult(UpdateOutcome Outcome, string? DetailMessage);
+
+    internal const int HResultPackagesInUse = unchecked((int)0x80073D02);
+    internal const int HResultPackageAlreadyExists = unchecked((int)0x80073CFB);
 
     /// <summary>
     /// Asks Windows to fetch the MSIX advertised at the AppInstaller URL.
@@ -86,34 +92,91 @@ internal static class AppInstallerUpdateService
             var deploymentOperation = manager.AddPackageByAppInstallerFileAsync(
                 uri,
                 options,
-                manager.GetDefaultPackageVolume());
+                ResolveCurrentPackageVolume(manager));
 
             var result = await deploymentOperation.AsTask();
-
-            if (result.IsRegistered)
-            {
-                return new UpdateResult(UpdateOutcome.UpdateQueued,
-                    forceRestart
-                        ? "Update applied; Windows will restart the app."
-                        : "Update accepted; restart OpenClaw when convenient to finish.");
-            }
-
-            // ExtendedErrorCode is the canonical "why didn't it install" surface.
-            // 0x80073D02 (E_PACKAGES_IN_USE) is the typical "no update available"
-            // shape from AppInstaller; treat unknown failures as Failed not
-            // NoUpdateAvailable so the UI never silently lies about being up to date.
-            var hr = (uint)result.ExtendedErrorCode.HResult;
-            return hr switch
-            {
-                0x80073D02 => new UpdateResult(UpdateOutcome.NoUpdateAvailable,
-                    "Already on the latest version published at the AppInstaller URL."),
-                _ => new UpdateResult(UpdateOutcome.Failed,
-                    $"PackageManager reported HRESULT 0x{hr:X8}: {result.ErrorText}")
-            };
+            return ClassifyDeploymentResult(
+                result.IsRegistered,
+                result.ExtendedErrorCode?.HResult ?? 0,
+                result.ErrorText,
+                forceRestart);
         }
         catch (Exception ex)
         {
             return new UpdateResult(UpdateOutcome.Failed, ex.Message);
         }
+    }
+
+    internal static UpdateResult ClassifyDeploymentResult(
+        bool isRegistered,
+        int hResult,
+        string? errorText,
+        bool forceRestart)
+    {
+        if (isRegistered)
+        {
+            return new UpdateResult(UpdateOutcome.UpdateQueued,
+                forceRestart
+                    ? "Update applied; Windows will restart the app."
+                    : "Update accepted; restart OpenClaw when convenient to finish.");
+        }
+
+        return hResult switch
+        {
+            HResultPackagesInUse => new UpdateResult(UpdateOutcome.UpdatePendingRestart,
+                "An update is available, but OpenClaw is running. Close and reopen OpenClaw to finish installing it."),
+            0 or HResultPackageAlreadyExists => new UpdateResult(UpdateOutcome.NoUpdateAvailable,
+                "Already on the latest version published at the AppInstaller URL."),
+            _ => new UpdateResult(UpdateOutcome.Failed,
+                $"PackageManager reported HRESULT 0x{unchecked((uint)hResult):X8}: {errorText}")
+        };
+    }
+
+    private static global::Windows.Management.Deployment.PackageVolume ResolveCurrentPackageVolume(
+        global::Windows.Management.Deployment.PackageManager manager)
+    {
+        var fallback = manager.GetDefaultPackageVolume();
+
+        try
+        {
+            var installedPath = global::Windows.ApplicationModel.Package.Current.InstalledLocation.Path;
+            foreach (var volume in manager.FindPackageVolumes())
+            {
+                if (PathIsUnderRoot(installedPath, volume.MountPoint))
+                    return volume;
+            }
+        }
+        catch (COMException ex)
+        {
+            LogPackageVolumeFallback(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogPackageVolumeFallback(ex);
+        }
+        catch (IOException ex)
+        {
+            LogPackageVolumeFallback(ex);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            LogPackageVolumeFallback(ex);
+        }
+
+        return fallback;
+    }
+
+    private static void LogPackageVolumeFallback(Exception ex) =>
+        Logger.Warn($"Failed to resolve current package volume; falling back to default volume: {ex.Message}");
+
+    private static bool PathIsUnderRoot(string path, string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+            return false;
+
+        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 }

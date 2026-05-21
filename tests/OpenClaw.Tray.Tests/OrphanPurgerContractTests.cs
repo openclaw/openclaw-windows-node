@@ -49,24 +49,36 @@ public sealed class OrphanPurgerContractTests
         // openclaw- prefix. Drift here means a real orphan goes undetected
         // (we silently miss what we promised to clean) — pin it. Retained
         // for backward compat after the 2026-05 case-insensitive fix added
-        // OrphanWslDistroPatterns.
+        // exact legacy-name matching for OpenClawGateway.
         Assert.Contains("OrphanWslDistroPrefix = \"openclaw-\"", LoadOrphanPurgerSource());
     }
 
     [Fact]
-    public void WslDistroDetection_IsCaseInsensitive_AndCatchesLegacyOpenClawGateway()
+    public void WslDistroDetection_IsCaseInsensitive_Anchored_AndCatchesLegacyOpenClawGateway()
     {
         // Regression: during MSIX-E2E manual test prep we found Mike's box
         // had an OpenClawGateway (PascalCase, no dash) distro installed by
         // the historical local-gateway flow. The original "openclaw-"
         // case-sensitive prefix would silently miss it, meaning a user who
         // ran --purge-wsl-orphans would be told "no orphans" while a 2.6 GB
-        // .vhdx orphan was still on disk. Pin the case-insensitive substring
-        // strategy so future refactors can't reintroduce the bug.
+        // .vhdx orphan was still on disk. Pin the case-insensitive exact legacy
+        // name + anchored prefix strategy so future refactors cannot drift back
+        // to destructive substring matching.
         var src = LoadOrphanPurgerSource();
-        Assert.Contains("OrphanWslDistroPatterns", src);
+        Assert.Contains("LegacyOpenClawGatewayDistroName = \"OpenClawGateway\"", src);
+        Assert.Contains("StartsWith(OrphanWslDistroPrefix, StringComparison.OrdinalIgnoreCase)", src);
+        Assert.Contains("Equals(LegacyOpenClawGatewayDistroName, StringComparison.OrdinalIgnoreCase)", src);
         Assert.Contains("StringComparison.OrdinalIgnoreCase", src);
-        Assert.Contains("OpenClawGateway", src); // documented in the remarks
+        Assert.DoesNotContain("line.Contains(pattern", src);
+    }
+
+    [Fact]
+    public void WslUnregister_UsesArgumentListForDistroNames()
+    {
+        var src = LoadOrphanPurgerSource();
+        Assert.Contains("psi.ArgumentList.Add(\"--unregister\")", src);
+        Assert.Contains("psi.ArgumentList.Add(distroName)", src);
+        Assert.DoesNotContain("$\"--unregister {distroName}\"", src);
     }
 
     [Fact]

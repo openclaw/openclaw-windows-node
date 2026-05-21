@@ -155,6 +155,8 @@ public sealed class MsixManifestAssertionTests
         var comClass = doc.Descendants(XName.Get("Class", AppxComNs)).SingleOrDefault();
         Assert.NotNull(comClass);
         var comClassId = (string?)comClass!.Attribute("Id");
+        var exeServer = doc.Descendants(XName.Get("ExeServer", AppxComNs)).SingleOrDefault();
+        Assert.NotNull(exeServer);
 
         var toastActivation = doc.Descendants(XName.Get("ToastNotificationActivation", AppxDesktopNs)).SingleOrDefault();
         Assert.NotNull(toastActivation);
@@ -163,12 +165,15 @@ public sealed class MsixManifestAssertionTests
         Assert.False(string.IsNullOrEmpty(comClassId), "COM class Id missing from manifest");
         Assert.False(string.IsNullOrEmpty(toastClsid), "ToastActivatorCLSID missing from manifest");
         Assert.Equal(comClassId, toastClsid);
+        Assert.Equal("-ToastActivator", (string?)exeServer!.Attribute("Arguments"));
 
-        // App.OnLaunched MUST short-circuit '-ToastActivator' or Windows-spawned
-        // activator instances will fight the singleton mutex. Pin the early-exit.
+        // Cold toast activator launches must continue through normal startup so
+        // toast clicks are not silent no-ops. The single-instance guard handles
+        // the already-running case.
         var appXamlCs = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
-        Assert.Contains("\"-ToastActivator\"", appXamlCs);
+        Assert.Contains("SingleInstanceLaunchGuard.Acquire", appXamlCs);
+        Assert.DoesNotContain("Environment.Exit(0);", appXamlCs);
     }
 
     [Fact]
