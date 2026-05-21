@@ -86,7 +86,7 @@ Exactly one of `valueString` / `valueNumber` / `valueBoolean` / `valueMap` shoul
 | **List** | `children: { "explicitList": [...] }` | `direction`: `vertical` (default) or `horizontal`; `alignment`. Wrapped in a `ScrollViewer`. **Template/data-bound rows are not supported in v1** — supply explicit child ids. |
 | **Card** | `child: "<id>"` (single string, not explicitList) | None. Renders as a themed `Border` with 16 px padding and rounded corners. |
 | **Tabs** | per-tab via `tabItems` | `tabItems: [{ "title": <A2UIValue>, "child": "<id>" }, ...]`. Renders as a `TabView` with non-closable, non-reorderable tabs. |
-| **Modal** | `entryPointChild: "<id>"`, `contentChild: "<id>"` | None. **Currently rendered inline as an `Expander`**, not a real dialog. The entryPointChild becomes the header; the contentChild becomes the expanded body. |
+| **Modal** | `entryPointChild: "<id>"`, `contentChild: "<id>"` | `title`: optional `A2UIValue<string>`. Renders as a native `ContentDialog` triggered by the entryPointChild; the contentChild becomes the dialog body. |
 | **Divider** | — | `axis`: `horizontal` (default) or `vertical`. Renders as a 1 px rectangle. |
 
 Children are referenced by **id**, not nested in place. Build the surface as a flat array of components and let `beginRendering.root` pick the entry point.
@@ -234,7 +234,7 @@ The single biggest UX difference between a Windows-node A2UI surface that "just 
 
 - **Inline children.** Always declare components flat and reference by id via `children.explicitList` (containers) or `child` (Card/Button/Modal halves) or per-tab `child` (Tabs).
 - **Template/data-bound List rows.** Not implemented — pre-expand or use repeated explicit children.
-- **Modal as a real dialog.** It currently renders as an inline Expander. Don't rely on focus-trapping or backdrop dismiss.
+- **Inline modal bodies.** Modal renders as a native `ContentDialog`, so don't design content that only works when expanded inline in the surface layout.
 - **Custom icon names.** Anything outside the icon enum becomes the Help glyph. Don't ship Material/Fluent codepoints directly.
 - **Putting secrets in implicit context.** `obscured` TextField paths only flow into `action.context` when listed in the source component's `dataBinding`. Make the opt-in explicit.
 - **v0.9 envelope kinds.** `canvas.a2ui.schema`, `canvas.a2ui.dump`, etc. are not supported on this node; they will land in `UnknownEnvelopeMessage` and be dropped.

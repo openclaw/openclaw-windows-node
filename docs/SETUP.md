@@ -190,4 +190,4 @@ OpenClaw Tray checks for updates automatically and shows a notification when a n
 
 Go to **Settings → Apps → Installed apps**, find **OpenClaw Tray**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel.
 
-Your settings file at `%APPDATA%\OpenClawTray\settings.json` and device key at `%LOCALAPPDATA%\OpenClawTray\device-key-ed25519.json` are not removed automatically — delete them manually if you want a clean uninstall.
+Your settings file at `%APPDATA%\OpenClawTray\settings.json` and device identity files under `%APPDATA%\OpenClawTray\` (including per-gateway keys at `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`) are not removed automatically — delete them manually if you want a clean uninstall.
