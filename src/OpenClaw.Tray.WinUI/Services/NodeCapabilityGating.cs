@@ -13,6 +13,11 @@ namespace OpenClawTray.Services;
 /// Defaults: capabilities default ON (a missing or null settings object
 /// counts as enabled) except <c>tts.speak</c> and <c>stt.transcribe</c>,
 /// which are privacy-sensitive and require an explicit opt-in.
+///
+/// <see cref="ShouldRegisterSystemRun"/> gates the <c>system.run</c> /
+/// <c>system.run.prepare</c> commands inside <c>SystemCapability</c>, not
+/// the whole <c>system</c> category — <c>system.notify</c>, <c>system.which</c>,
+/// and the exec-approval read/write commands stay registered regardless.
 /// </summary>
 internal static class NodeCapabilityGating
 {
@@ -23,4 +28,5 @@ internal static class NodeCapabilityGating
     public static bool ShouldRegisterBrowserProxy(SettingsManager? s) => s?.NodeBrowserProxyEnabled != false;
     public static bool ShouldRegisterTts(SettingsManager? s)          => s?.NodeTtsEnabled          == true;
     public static bool ShouldRegisterStt(SettingsManager? s)          => s?.NodeSttEnabled          == true;
+    public static bool ShouldRegisterSystemRun(SettingsManager? s)    => s?.NodeSystemRunEnabled    != false;
 }

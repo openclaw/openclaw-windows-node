@@ -276,8 +276,13 @@ public sealed class NodeService : IDisposable
         _appCapability = new AppCapability(_logger);
         Register(_appCapability);
 
-        // System capability (notifications + command execution)
-        _systemCapability = new SystemCapability(_logger);
+        // System capability (notifications + command execution). The
+        // "Run system tools" toggle gates the run/run.prepare commands
+        // inside the capability — the rest (notify/which/execApprovals)
+        // stay registered regardless.
+        _systemCapability = new SystemCapability(
+            _logger,
+            includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
@@ -457,32 +462,17 @@ public sealed class NodeService : IDisposable
 
         _logger.Info($"[NodeService] AttachClient: capabilitiesBuilt={capabilitiesBuilt}, _capabilities.Count={_capabilities.Count}");
 
-        // First connect after app startup may not have built capability objects yet.
-        // RegisterCapabilities() populates _capabilities and registers them on _nodeClient.
-        if (!capabilitiesBuilt)
-        {
-            _logger.Info("[NodeService] AttachClient: capabilities not yet built, calling RegisterCapabilities()");
-            RegisterCapabilities();
-        }
-        else
-        {
-            // Reconnect path: capabilities already exist, just re-bind to the new client.
-            lock (_capabilitiesLock)
-            {
-                foreach (var capability in _capabilities)
-                {
-                    try
-                    {
-                        client.RegisterCapability(capability);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Warn($"[NodeService] AttachClient: failed to register {capability.Category}: {ex.Message}");
-                    }
-                }
-            }
-            _logger.Info($"[NodeService] AttachClient: re-registered {_capabilities.Count} capabilities on new client");
-        }
+        // Always rebuild from current settings. The previous reconnect path
+        // re-registered the cached _capabilities instances, but _capabilities
+        // is only cleared in DisconnectAsync — which is never invoked on the
+        // reconnect path used by App.OnSettingsSaved (CapabilityReload calls
+        // ReconnectAsync, not DisconnectAsync). That left toggles like
+        // NodeCanvasEnabled / NodeSystemRunEnabled silently requiring a full
+        // app restart to take effect. RegisterCapabilities() clears the list,
+        // rebuilds with current settings, and registers on the new _nodeClient
+        // — correct for first-attach AND reconnect.
+        _logger.Info("[NodeService] AttachClient: rebuilding capabilities from current settings");
+        RegisterCapabilities();
 
         // Log final registration state for diagnostics
         _logger.Info($"[NodeService] AttachClient DONE: client.Registration.Capabilities={client.RegisteredCapabilityCount}, client.Registration.Commands={client.RegisteredCommandCount}");
@@ -705,6 +695,8 @@ public sealed class NodeService : IDisposable
             disabled.AddRange(CommandCenterCommandGroups.SafeCompanionCommands.Where(command => command.StartsWith("location.", StringComparison.OrdinalIgnoreCase)));
         if (_settings?.NodeBrowserProxyEnabled == false)
             disabled.Add("browser.proxy");
+        if (_settings?.NodeSystemRunEnabled == false)
+            disabled.AddRange(new[] { "system.run", "system.run.prepare" });
         if (_settings?.NodeSttEnabled != true)
             disabled.Add(SttCapability.TranscribeCommand);
         if (_settings?.NodeTtsEnabled != true)

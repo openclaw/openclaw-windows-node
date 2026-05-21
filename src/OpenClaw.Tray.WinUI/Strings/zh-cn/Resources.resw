@@ -2942,6 +2942,12 @@
   <data name="PermissionsPage_Cap_Stt_Description" xml:space="preserve">
     <value>Lets agents transcribe microphone audio locally using Whisper. Turning this on downloads the Whisper model (~140 MB) on first use.</value>
   </data>
+  <data name="PermissionsPage_Cap_SystemRun_Label" xml:space="preserve">
+    <value>Run system tools</value>
+  </data>
+  <data name="PermissionsPage_Cap_SystemRun_Description" xml:space="preserve">
+    <value>Lets agents run shell commands on this PC via system.run. Individual commands are still gated by your exec approval policy; turn this off to drop the capability from the node entirely.</value>
+  </data>
   <data name="PermissionsPage_SttHint_Ready" xml:space="preserve">
     <value>Whisper model is ready. Speech-to-text runs fully on this PC; no audio leaves the device.</value>
   </data>

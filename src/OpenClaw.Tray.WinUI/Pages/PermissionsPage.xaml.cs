@@ -114,9 +114,10 @@ public sealed partial class PermissionsPage : Page
     {
         if (CurrentApp.Settings == null || _featureToggles.Count == 0) return;
         var s = CurrentApp.Settings;
-        // Order matches BuildCapabilityToggles: browser, camera, canvas, screen, location, tts, stt.
+        // Order matches BuildCapabilityToggles: system-run, browser, camera, canvas, screen, location, tts, stt.
         bool[] expected =
         {
+            s.NodeSystemRunEnabled,
             s.NodeBrowserProxyEnabled, s.NodeCameraEnabled, s.NodeCanvasEnabled,
             s.NodeScreenEnabled, s.NodeLocationEnabled, s.NodeTtsEnabled, s.NodeSttEnabled,
         };
@@ -151,6 +152,10 @@ public sealed partial class PermissionsPage : Page
         // OnToggleSideEffect runs after the new value is persisted.
         var capabilities = new (string Icon, string Label, string Description, bool Value, Action<bool> Setter, Action<bool>? OnToggleSideEffect)[]
         {
+            ("⚡",
+                LocalizationHelper.GetString("PermissionsPage_Cap_SystemRun_Label"),
+                LocalizationHelper.GetString("PermissionsPage_Cap_SystemRun_Description"),
+                settings.NodeSystemRunEnabled, v => settings.NodeSystemRunEnabled = v, null),
             ("🌐",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Browser_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Browser_Description"),

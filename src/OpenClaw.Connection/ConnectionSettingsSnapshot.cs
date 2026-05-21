@@ -20,4 +20,5 @@ public sealed record ConnectionSettingsSnapshot(
     bool NodeBrowserProxyEnabled,
     bool NodeSttEnabled,
     bool NodeTtsEnabled,
+    bool NodeSystemRunEnabled,
     string? FullSettingsJson);

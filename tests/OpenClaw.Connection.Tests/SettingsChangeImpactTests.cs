@@ -20,6 +20,7 @@ public class SettingsChangeImpactTests
         bool nodeBrowserProxyEnabled = false,
         bool nodeSttEnabled = false,
         bool nodeTtsEnabled = false,
+        bool nodeSystemRunEnabled = true,
         string? fullSettingsJson = null) => new(
         gatewayUrl,
         useSshTunnel,
@@ -36,6 +37,7 @@ public class SettingsChangeImpactTests
         nodeBrowserProxyEnabled,
         nodeSttEnabled,
         nodeTtsEnabled,
+        nodeSystemRunEnabled,
         fullSettingsJson);
 
     [Fact]
@@ -92,6 +94,18 @@ public class SettingsChangeImpactTests
     {
         var prev = MakeSnapshot(gatewayUrl: "wss://test", nodeCanvasEnabled: true);
         var next = MakeSnapshot(gatewayUrl: "wss://test", nodeCanvasEnabled: false);
+        Assert.Equal(SettingsChangeImpact.CapabilityReload,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void SystemRunCapabilityChanged_ReturnsCapabilityReload()
+    {
+        // Flipping the "Run system tools" toggle must trigger a capability
+        // reload — without it the App.OnSettingsSaved branch falls through to
+        // UiOnly and the connect-handshake commands list stays stale.
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", nodeSystemRunEnabled: true);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", nodeSystemRunEnabled: false);
         Assert.Equal(SettingsChangeImpact.CapabilityReload,
             SettingsChangeClassifier.Classify(prev, next));
     }

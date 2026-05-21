@@ -54,7 +54,8 @@ public static class SettingsChangeClassifier
             prev.NodeLocationEnabled != next.NodeLocationEnabled ||
             prev.NodeBrowserProxyEnabled != next.NodeBrowserProxyEnabled ||
             prev.NodeSttEnabled != next.NodeSttEnabled ||
-            prev.NodeTtsEnabled != next.NodeTtsEnabled)
+            prev.NodeTtsEnabled != next.NodeTtsEnabled ||
+            prev.NodeSystemRunEnabled != next.NodeSystemRunEnabled)
             return SettingsChangeImpact.CapabilityReload;
 
         // Check if anything else changed (UI-only changes)
