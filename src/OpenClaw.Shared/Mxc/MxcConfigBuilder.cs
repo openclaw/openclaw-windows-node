@@ -158,9 +158,12 @@ public static class MxcConfigBuilder
 
     /// <summary>
     /// Walk PATH and return each existing directory as a readonly grant
-    /// candidate. Mirrors the SDK's <c>getAvailableToolsPolicy</c> approach
-    /// (every PATH dir, dedup'd, minus drive roots which the SDK has a bug
-    /// around). No tool-name whitelist — the SDK doesn't have one either.
+    /// candidate. Mirrors the SDK's <c>getAvailableToolsPolicy</c>
+    /// (<c>@microsoft/mxc-sdk:dist/policy.js</c>): every existing PATH dir
+    /// is granted, drive roots are skipped (the SDK has a documented bug
+    /// where pwsh.exe on PATH would otherwise grant the entire system
+    /// drive — we strip that the same way the legacy JS bridge did).
+    /// No tool-name whitelist — the SDK doesn't have one either.
     /// </summary>
     public static List<string> ResolvePathDirsForReadonly(string? pathEnvVar = null)
     {
@@ -208,15 +211,26 @@ public static class MxcConfigBuilder
     }
 
     /// <summary>
-    /// Build the env array (KEY=VALUE strings). Only agent-supplied env from
-    /// <paramref name="requestEnv"/> is passed through, filtered against the
-    /// canonical openclaw <see cref="HostEnvSecurityPolicy"/> so the agent
-    /// can't smuggle in dangerous vars (NODE_OPTIONS, GITHUB_TOKEN, LD_PRELOAD,
-    /// GIT_SSH_COMMAND, etc.). TEMP/TMP/TMPDIR are forced to
-    /// <paramref name="scratchDir"/> so commands inside the sandbox write
-    /// into our scratch, not the user's real %TEMP%. The host env is not
-    /// allow-listed in — the agent owns env-var policy.
+    /// Build the env array (KEY=VALUE strings) the wxc-exec sandbox will inherit.
     /// </summary>
+    /// <remarks>
+    /// <para><b>What flows in:</b> only the agent-supplied
+    /// <paramref name="requestEnv"/>. The host env is intentionally NOT
+    /// allow-listed in — the agent owns env-var policy and decides what to
+    /// pass. TEMP/TMP/TMPDIR are then forced to <paramref name="scratchDir"/>
+    /// so any tool inside the sandbox writes scratch files into our
+    /// throwaway dir, not the user's real <c>%TEMP%</c>.</para>
+    /// <para><b>Why we scrub:</b> openclaw's exec security model sanitizes
+    /// at every spawn boundary, not just at "the gateway". This mirrors
+    /// the macOS consumer <c>HostEnvSanitizer.sanitize</c>
+    /// (<c>apps/macos/Sources/OpenClaw/HostEnvSanitizer.swift</c>) that runs
+    /// inside <c>ExecApprovalEvaluation.swift</c>. We are the Windows-node
+    /// analog: every <c>system.run</c> we forward to wxc-exec gets the
+    /// canonical openclaw blocklist applied so the agent can't smuggle in
+    /// vars like <c>NODE_OPTIONS</c>, <c>GITHUB_TOKEN</c>, <c>LD_PRELOAD</c>,
+    /// <c>GIT_SSH_COMMAND</c>, or
+    /// <c>BASH_FUNC_*</c>/<c>DYLD_*</c>/<c>LD_*</c> prefixes.</para>
+    /// </remarks>
     public static IReadOnlyList<string> BuildEnv(
         IReadOnlyDictionary<string, string>? requestEnv,
         string scratchDir,

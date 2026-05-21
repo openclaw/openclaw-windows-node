@@ -5,16 +5,34 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.Mxc;
 
 /// <summary>
-/// Loads the canonical host env security policy from
-/// <c>openclaw/openclaw:src/infra/host-env-security-policy.json</c>, embedded
-/// in this assembly as <c>Mxc/HostEnvSecurityPolicy.json</c>. Mirrors the
-/// macOS consumer <c>HostEnvSecurityPolicy.generated.swift</c>.
+/// Host env security policy: which environment variables an executor must
+/// refuse to set on a spawned child process.
 /// </summary>
 /// <remarks>
-/// We treat the agent-supplied env in <see cref="MxcConfigBuilder.BuildEnv"/>
-/// as untrusted, so for our sandbox-boundary purposes a key is "blocked" if
-/// it appears in any of the policy's block sets, OR if it starts with any
-/// blocked prefix (case-insensitive on both sides).
+/// <para><b>Provenance.</b> The policy data lives upstream in
+/// <c>openclaw/openclaw</c> at
+/// <c>src/infra/host-env-security-policy.json</c>. We keep a byte-identical
+/// copy at <c>src/OpenClaw.Shared/Mxc/HostEnvSecurityPolicy.json</c> embedded
+/// as an assembly resource. When the upstream JSON changes, re-copy and rerun
+/// the <c>HostEnvSecurityPolicyTests</c> tests.</para>
+/// <para><b>Why we enforce this on the Windows node side.</b> openclaw does
+/// not centralize env scrubbing at "the gateway"; it scrubs at every exec
+/// boundary as defense-in-depth (see CHANGELOG references like *"on both
+/// node host and macOS companion paths"*). This class is the Windows-node
+/// analog of the macOS consumer
+/// <c>apps/macos/Sources/OpenClaw/HostEnvSanitizer.swift</c> +
+/// <c>HostEnvSecurityPolicy.generated.swift</c>. The macOS code is generated
+/// from the same JSON via <c>scripts/generate-host-env-security-policy-swift.mjs</c>;
+/// we just load the JSON directly at runtime instead of code-generating.</para>
+/// <para><b>Threat model.</b> Agent-supplied env in
+/// <see cref="MxcConfigBuilder.BuildEnv"/> is untrusted. For our sandbox-boundary
+/// purposes, a key is "blocked" if it appears in any of the policy's block
+/// sets (<c>blockedEverywhereKeys</c> ∪ <c>blockedOverrideOnlyKeys</c>) OR if
+/// it starts with any blocked prefix (<c>blockedPrefixes</c> ∪
+/// <c>blockedOverridePrefixes</c>), all case-insensitive. We merge the
+/// "everywhere" and "override-only" buckets because for the agent we are the
+/// override path — they're setting env explicitly, not inheriting it from
+/// host process state.</para>
 /// </remarks>
 public sealed class HostEnvSecurityPolicy
 {
