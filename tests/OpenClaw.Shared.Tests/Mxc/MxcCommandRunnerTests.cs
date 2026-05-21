@@ -382,7 +382,11 @@ public class MxcCommandRunnerTests
     {
         // Issue #494: executor reports unavailable at runtime → fall back to
         // host runner with a warning, not a -1 deny.
-        var executor = new UnavailableSandboxExecutor("test: MXC not installed");
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsUnavailable = true,
+            UnavailableReason = "test: MXC not installed",
+        };
         var fallback = new FakeCommandRunner
         {
             Result = new CommandResult { ExitCode = 0, Stdout = "host" },
