@@ -54,26 +54,18 @@ public sealed class MxcCommandRunner : ICommandRunner
     {
         var settings = _settingsProvider();
 
-        // Fail-closed when MXC is unavailable. We do NOT route to host even if the
-        // persisted toggle is OFF — the UI hides the toggle in that state so any
-        // OFF value is stale (e.g., flipped on a previous run / different machine).
-        // The UI's "Sandbox unavailable — commands blocked" claim must match
-        // actual behavior or it's a lie.
+        // When MXC sandboxing isn't available on this host (e.g. Windows 10,
+        // build < 26100, or missing wxc-exec.exe), fall back to the host runner
+        // so the agent can still execute commands instead of being completely
+        // blocked. The Sandbox page is read-only in that state and tells the
+        // user their commands are running uncontained.
         if (!_isSandboxAvailable())
         {
             _logger.Warn(
-                "[mxc] system.run DENIED: sandbox unavailable. " +
-                "Update Windows or install missing components to enable.");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr =
-                    "Sandboxing is unavailable on this machine, so agent-started Windows " +
-                    "commands are blocked. Open the Sandbox page for fix instructions.",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
+                "[mxc] system.run UNCONTAINED: sandbox unavailable on this host. " +
+                "Commands will run on the host without containment. " +
+                "Update Windows to enable sandboxing.");
+            return await _hostFallback.RunAsync(request, ct);
         }
 
         if (!settings.SystemRunSandboxEnabled)
@@ -119,25 +111,16 @@ public sealed class MxcCommandRunner : ICommandRunner
         catch (SandboxUnavailableException ex)
         {
             // Invalidate any cached availability — what we thought was available
-            // turned out not to be. Next command re-probes. This handles the
-            // case where MXC components were uninstalled (or wxc-exec moved)
-            // between this NodeService starting and now.
+            // turned out not to be at runtime. Next command re-probes and the
+            // top-level !_isSandboxAvailable() branch will handle the fallback.
+            // We also fall back to host execution for THIS call instead of
+            // denying it, matching the policy from issue #494.
             _invalidateAvailability?.Invoke();
 
             _logger.Warn(
-                $"[mxc] system.run DENIED (sandbox enabled but unavailable: {ex.Message}). " +
-                "Disable the sandbox toggle in Debug to fall back to host execution.");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr =
-                    "Sandboxing is enabled for system.run on this machine, but MXC is unavailable. " +
-                    $"Reason: {ex.Message}. " +
-                    "Update Windows or disable the system.run sandbox in the Debug page to run on host.",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
+                $"[mxc] system.run UNCONTAINED (sandbox enabled but unavailable at runtime: {ex.Message}). " +
+                "Falling back to host execution. Update Windows to enable sandboxing.");
+            return await _hostFallback.RunAsync(request, ct);
         }
         catch (OperationCanceledException)
         {

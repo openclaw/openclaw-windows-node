@@ -211,8 +211,8 @@ public sealed partial class SandboxPage : Page
         {
             UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
             UnavailableActionMessage.Text =
-                $"{reasonText}\n\nMXC sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
-                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds).";
+                $"{reasonText}\n\nCommands run uncontained on this machine — sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
+                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.";
             UnavailablePrimaryButton.Content = "Open Windows Update";
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
@@ -221,16 +221,16 @@ public sealed partial class SandboxPage : Page
         {
             UnavailableActionBar.Title = "Sandboxing components are missing";
             UnavailableActionMessage.Text =
-                $"{reasonText}\n\nThe MXC bridge script or the wxc-exec binary couldn't be located. " +
+                $"{reasonText}\n\nThe wxc-exec binary couldn't be located, so commands run uncontained. " +
                 "If this is a developer build, run `npm ci` at the repository root. " +
-                "Otherwise reinstall the companion app.";
+                "Otherwise reinstall the companion app to restore sandboxing.";
             UnavailablePrimaryButton.Content = "Show install instructions";
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else
         {
-            UnavailableActionBar.Title = "Sandbox unavailable";
+            UnavailableActionBar.Title = "Sandbox unavailable — commands run uncontained";
             UnavailableActionMessage.Text = reasonText;
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }
