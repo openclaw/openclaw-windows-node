@@ -24,6 +24,19 @@ Displays the OpenClaw lobster icon, app title, and a brief description. If an ap
 ### Local setup progress
 Installs and connects a new app-owned `OpenClawGateway` WSL instance. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
+**WSL platform auto-install.** On hosts where the Windows Subsystem for Linux is not installed (clean Windows 11 ARM64 images, locked-down enterprise builds, etc.) the wizard:
+
+1. Detects the missing platform in <2 s during preflight via `WslPlatformProbe` (anchors on the `aka.ms/wslinstall` URL that wsl.exe's banner emits across every locale, falls back to English text, and short-circuits the otherwise-30 s `wsl --list --verbose` probe).
+2. Emits a non-blocking `wsl_platform_not_installed` warning so the engine proceeds past preflight instead of dead-ending with the generic "This PC is not ready" message.
+3. In the `EnsureWslEnabled` phase, runs `wsl.exe --install --no-distribution` elevated (single UAC prompt — no separate Yes/No dialog asks for permission to install). `--no-distribution` is intentional: the OpenClawGateway distro is installed later through the normal `WslStoreInstanceInstaller` path, so we don't drop a stray Ubuntu.
+4. Re-probes after the elevated process exits and classifies the outcome:
+   - **InstalledNoRestart** → engine continues to `CreateWslInstance`.
+   - **InstalledRequiresRestart** (`exit 3010` or post-install probe still says NotInstalled) → engine surfaces `Status = RequiresRestart` with failure code `wsl_install_requires_restart` and asks the user to reboot and reopen OpenClaw.
+   - **UserDeclinedElevation** → retryable block with `wsl_install_elevation_declined`.
+   - **Failed** → retryable block with `wsl_install_failed`, preserving the wsl.exe stderr tail.
+
+The install runs inline under the existing **Check system** stage row in the wizard; no new V2 stage row is introduced.
+
 ### Wizard
 Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The gateway controls the flow — steps can be:
 - **Note** — informational messages

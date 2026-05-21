@@ -113,6 +113,15 @@ When the node connects, it advertises these capabilities:
 - If you see "Camera access blocked", enable camera access for desktop apps in Windows Privacy settings
 - Packaged MSIX builds will show the system consent prompt automatically
 
+### "Set up locally" stalls or shows "This PC is not ready" on a host without WSL
+- Fresh Windows 11 images (especially ARM64 Cadmus laptops) sometimes ship without the WSL platform. Confirm with `wsl --status` from an elevated prompt — the banner "Windows Subsystem for Linux is not installed" with the `aka.ms/wslinstall` URL is the signal.
+- Current builds detect this in <2 s during preflight and run `wsl --install --no-distribution` elevated from the wizard itself; you should see a UAC prompt within a few seconds of clicking **Set up locally**, not a one-minute hang.
+- After install, expected outcomes:
+  - **No restart needed** → wizard continues automatically to "Creating OpenClaw Gateway WSL instance".
+  - **Restart required** → wizard ends in the `wsl_install_requires_restart` Restart-required terminal state. Reboot and reopen OpenClaw to resume.
+  - **UAC declined / install failed** → wizard surfaces a retryable error (`wsl_install_elevation_declined` or `wsl_install_failed`) with the wsl.exe stderr tail. Click **Try again** or run `wsl --install` from an elevated terminal manually and retry.
+- Manual smoke (cannot fully automate): on a known-clean ARM64 Cadmus laptop without WSL, click **Set up locally** and verify the next page appears within ~5 s, the UAC prompt is the only user interaction required for the platform install, and one of the three terminal states above is reached cleanly.
+
 ## Remaining Work (Roadmap)
 
 1. ~~**system.run + exec approvals**~~ ✅ Implemented

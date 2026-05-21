@@ -961,7 +961,7 @@ public class LocalGatewaySetupTests
         }
     }
 
-    private sealed class FakeProvisioner : IBootstrapTokenProvisioner, IOperatorPairingService, IWindowsTrayNodeProvisioner
+    internal sealed class FakeProvisioner : IBootstrapTokenProvisioner, IOperatorPairingService, IWindowsTrayNodeProvisioner
     {
         public int BootstrapMintCalls { get; private set; }
         public int OperatorPairCalls { get; private set; }

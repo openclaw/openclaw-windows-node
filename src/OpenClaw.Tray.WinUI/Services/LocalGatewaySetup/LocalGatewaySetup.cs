@@ -592,11 +592,13 @@ public sealed class LocalGatewayPreflightProbe : ILocalGatewayPreflightProbe
 {
     private readonly IWslCommandRunner _wsl;
     private readonly IPortProbe _portProbe;
+    private readonly IWslPlatformProbe _platformProbe;
 
-    public LocalGatewayPreflightProbe(IWslCommandRunner wsl, IPortProbe? portProbe = null)
+    public LocalGatewayPreflightProbe(IWslCommandRunner wsl, IPortProbe? portProbe = null, IWslPlatformProbe? platformProbe = null)
     {
         _wsl = wsl;
         _portProbe = portProbe ?? new TcpPortProbe();
+        _platformProbe = platformProbe ?? new WslPlatformProbe(wsl);
     }
 
     public async Task<LocalGatewayPreflightResult> RunAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default)
@@ -609,37 +611,67 @@ public sealed class LocalGatewayPreflightProbe : ILocalGatewayPreflightProbe
         if (Environment.Is64BitOperatingSystem is false)
             issues.Add(new LocalGatewaySetupIssue("unsupported_architecture", "OpenClaw local WSL gateway setup requires a 64-bit Windows installation.", LocalGatewaySetupSeverity.Blocking));
 
-        var wslStatus = await _wsl.RunAsync(["--status"], cancellationToken);
-        if (!wslStatus.Success)
+        // Fast-detect "WSL platform not installed" BEFORE running wsl --status
+        // / wsl --list --verbose with their default 30s timeouts. When the
+        // platform is missing, those commands either return immediately with
+        // the not-installed banner or hang for the full timeout depending on
+        // SKU; we short-circuit either way.
+        var platform = await _platformProbe.ProbeAsync(cancellationToken);
+        if (platform.State == WslPlatformState.NotInstalled)
         {
-            issues.Add(new LocalGatewaySetupIssue("wsl_unavailable", WslLogsHelp("WSL is not available or is blocked by policy."), LocalGatewaySetupSeverity.Blocking));
+            // Non-blocking: the engine's EnsureWslEnabled phase will offer to
+            // install the WSL platform automatically via the elevated
+            // IWslPlatformInstaller. Surfacing this as a Warning lets the
+            // engine proceed past preflight; the install path then either
+            // succeeds, asks for a reboot, or fails with a clearer message
+            // than the generic "wsl_unavailable" we used to emit.
+            issues.Add(new LocalGatewaySetupIssue(
+                "wsl_platform_not_installed",
+                "Windows Subsystem for Linux is not installed. OpenClaw will install it for you.",
+                LocalGatewaySetupSeverity.Warning,
+                Detail: platform.Detail));
         }
         else
         {
-            var status = WslExeCommandRunner.ParseStatus(wslStatus.StandardOutput);
-            if (status.DefaultVersion == 1)
-                issues.Add(new LocalGatewaySetupIssue("wsl_default_version_1", "The host default WSL version is WSL1. OpenClaw creates its dedicated gateway instance as WSL2.", LocalGatewaySetupSeverity.Warning));
-        }
-
-        var distros = await _wsl.ListDistrosAsync(cancellationToken);
-        if (!options.AllowExistingDistro && distros.Any(d => string.Equals(d.Name, options.DistroName, StringComparison.OrdinalIgnoreCase)))
-            issues.Add(new LocalGatewaySetupIssue("distro_exists", $"A WSL distro named {options.DistroName} already exists.", LocalGatewaySetupSeverity.Blocking));
-
-        if (distros.Any(d => d.Version == 1))
-            issues.Add(new LocalGatewaySetupIssue("wsl1_present", "WSL1 distros are present. OpenClaw uses WSL2 and does not modify existing distros.", LocalGatewaySetupSeverity.Warning));
-
-        if (!_portProbe.IsPortAvailable(options.GatewayPort))
-        {
-            if (options.AllowExistingDistro && await IsExistingGatewayPortAsync(options, cancellationToken))
+            var wslStatus = platform.StatusResult ?? await _wsl.RunAsync(["--status"], cancellationToken);
+            if (!wslStatus.Success)
             {
-                issues.Add(new LocalGatewaySetupIssue(
-                    "gateway_port_already_active",
-                    $"Local gateway port {options.GatewayPort} is already served by the OpenClawGateway WSL instance; setup will resume against it.",
-                    LocalGatewaySetupSeverity.Warning));
+                issues.Add(new LocalGatewaySetupIssue("wsl_unavailable", WslLogsHelp("WSL is not available or is blocked by policy."), LocalGatewaySetupSeverity.Blocking));
             }
             else
             {
-                issues.Add(new LocalGatewaySetupIssue("port_in_use", $"Local gateway port {options.GatewayPort} is already in use.", LocalGatewaySetupSeverity.Blocking));
+                var status = WslExeCommandRunner.ParseStatus(wslStatus.StandardOutput);
+                if (status.DefaultVersion == 1)
+                    issues.Add(new LocalGatewaySetupIssue("wsl_default_version_1", "The host default WSL version is WSL1. OpenClaw creates its dedicated gateway instance as WSL2.", LocalGatewaySetupSeverity.Warning));
+            }
+        }
+
+        // Only enumerate distros and probe ports when WSL is actually present.
+        // When wsl --status reported "not installed", `wsl --list --verbose`
+        // is guaranteed to fail/hang too — skipping it shaves another 30s off
+        // the perceived "click → next page" delay.
+        if (platform.State != WslPlatformState.NotInstalled)
+        {
+            var distros = await _wsl.ListDistrosAsync(cancellationToken);
+            if (!options.AllowExistingDistro && distros.Any(d => string.Equals(d.Name, options.DistroName, StringComparison.OrdinalIgnoreCase)))
+                issues.Add(new LocalGatewaySetupIssue("distro_exists", $"A WSL distro named {options.DistroName} already exists.", LocalGatewaySetupSeverity.Blocking));
+
+            if (distros.Any(d => d.Version == 1))
+                issues.Add(new LocalGatewaySetupIssue("wsl1_present", "WSL1 distros are present. OpenClaw uses WSL2 and does not modify existing distros.", LocalGatewaySetupSeverity.Warning));
+
+            if (!_portProbe.IsPortAvailable(options.GatewayPort))
+            {
+                if (options.AllowExistingDistro && await IsExistingGatewayPortAsync(options, cancellationToken))
+                {
+                    issues.Add(new LocalGatewaySetupIssue(
+                        "gateway_port_already_active",
+                        $"Local gateway port {options.GatewayPort} is already served by the OpenClawGateway WSL instance; setup will resume against it.",
+                        LocalGatewaySetupSeverity.Warning));
+                }
+                else
+                {
+                    issues.Add(new LocalGatewaySetupIssue("port_in_use", $"Local gateway port {options.GatewayPort} is already in use.", LocalGatewaySetupSeverity.Blocking));
+                }
             }
         }
 
@@ -3366,6 +3398,7 @@ public sealed class LocalGatewaySetupEngine
     private readonly IBootstrapTokenProvisioner _bootstrapTokenProvisioner;
     private readonly IOperatorPairingService _operatorPairing;
     private readonly IWindowsTrayNodeProvisioner _windowsTrayNode;
+    private readonly IWslPlatformInstaller? _wslPlatformInstaller;
     private readonly IOpenClawLogger _logger;
 
     public event Action<LocalGatewaySetupState>? StateChanged;
@@ -3414,7 +3447,8 @@ public sealed class LocalGatewaySetupEngine
         IGatewayConfigurationPreparer? gatewayConfigurationPreparer = null,
         IGatewayServiceManager? gatewayServiceManager = null,
         ILocalGatewayEndpointResolver? endpointResolver = null,
-        ISharedGatewayTokenProvisioner? sharedGatewayTokenProvisioner = null)
+        ISharedGatewayTokenProvisioner? sharedGatewayTokenProvisioner = null,
+        IWslPlatformInstaller? wslPlatformInstaller = null)
     {
         _options = options;
         _stateStore = stateStore;
@@ -3431,6 +3465,7 @@ public sealed class LocalGatewaySetupEngine
         _bootstrapTokenProvisioner = bootstrapTokenProvisioner;
         _operatorPairing = operatorPairing;
         _windowsTrayNode = windowsTrayNode;
+        _wslPlatformInstaller = wslPlatformInstaller;
         _logger = logger ?? NullLogger.Instance;
     }
 
@@ -3470,7 +3505,91 @@ public sealed class LocalGatewaySetupEngine
             return true;
         }, cancellationToken);
 
-        await RunPhaseAsync(state, LocalGatewaySetupPhase.EnsureWslEnabled, "Checking WSL support", () => Task.FromResult(state.Status == LocalGatewaySetupStatus.Running), cancellationToken);
+        await RunPhaseAsync(state, LocalGatewaySetupPhase.EnsureWslEnabled, "Checking WSL support", async () =>
+        {
+            if (state.Status != LocalGatewaySetupStatus.Running)
+                return false;
+
+            // If preflight flagged WSL platform as missing, install it now.
+            // The issue is non-blocking (Warning severity) precisely so we
+            // can reach this phase and run the elevated install rather than
+            // dead-ending the wizard with "This PC is not ready".
+            var missing = state.Issues.FirstOrDefault(i =>
+                string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
+            if (missing is null)
+                return true;
+
+            if (_wslPlatformInstaller is null)
+            {
+                state.Block(
+                    "wsl_install_unavailable",
+                    "Windows Subsystem for Linux is not installed and OpenClaw cannot install it automatically in this build. Run `wsl --install` from an elevated terminal, then retry.",
+                    retryable: true);
+                return false;
+            }
+
+            state.UserMessage = "Installing Windows Subsystem for Linux\u2026";
+            StateChanged?.Invoke(state);
+
+            WslPlatformInstallResult installResult;
+            try
+            {
+                installResult = await _wslPlatformInstaller.InstallAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"[WslInstall] InstallAsync threw: {ex.Message}");
+                state.Block(
+                    "wsl_install_failed",
+                    "Couldn't install Windows Subsystem for Linux: " + ex.Message,
+                    retryable: true);
+                return false;
+            }
+
+            switch (installResult.Outcome)
+            {
+                case WslPlatformInstallOutcome.InstalledNoRestart:
+                    // Drop the warning so the engine doesn't re-trigger the
+                    // install path on a retry, and continue on.
+                    state.Issues.RemoveAll(i =>
+                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
+                    state.UserMessage = "Windows Subsystem for Linux installed.";
+                    return true;
+
+                case WslPlatformInstallOutcome.InstalledRequiresRestart:
+                    state.Phase = LocalGatewaySetupPhase.Failed;
+                    state.Status = LocalGatewaySetupStatus.RequiresRestart;
+                    state.FailureCode = "wsl_install_requires_restart";
+                    state.UserMessage = "Windows Subsystem for Linux was installed. Restart your PC, then reopen OpenClaw to continue setup.";
+                    state.Issues.Add(new LocalGatewaySetupIssue(
+                        "wsl_install_requires_restart",
+                        state.UserMessage,
+                        LocalGatewaySetupSeverity.Blocking));
+                    state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+                    return false;
+
+                case WslPlatformInstallOutcome.UserDeclinedElevation:
+                    state.Block(
+                        "wsl_install_elevation_declined",
+                        installResult.ErrorMessage ?? "Administrator approval is required to install Windows Subsystem for Linux.",
+                        retryable: true,
+                        detail: installResult.Detail);
+                    return false;
+
+                case WslPlatformInstallOutcome.Failed:
+                default:
+                    state.Block(
+                        "wsl_install_failed",
+                        installResult.ErrorMessage ?? "Couldn't install Windows Subsystem for Linux. Try again, or run `wsl --install` from an elevated terminal.",
+                        retryable: true,
+                        detail: installResult.Detail);
+                    return false;
+            }
+        }, cancellationToken);
 
         await RunPhaseAsync(state, LocalGatewaySetupPhase.CreateWslInstance, "Creating OpenClaw Gateway WSL instance", async () =>
         {
@@ -3968,7 +4087,8 @@ public static class LocalGatewaySetupEngineFactory
             new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector, pendingDeviceApprover),
             logger,
             gatewayConfigurationPreparer: gatewayConfigurationPreparer,
-            sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settingsAdapter, sharedGatewayTokenProvider, gatewayConfigurationPreparer));
+            sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settingsAdapter, sharedGatewayTokenProvider, gatewayConfigurationPreparer),
+            wslPlatformInstaller: new ElevatedWslPlatformInstaller(new WslPlatformProbe(wsl), logger));
     }
 
     private static string ResolveDistroName(LocalGatewaySetupRuntimeConfiguration runtime, string? explicitDistroName)
