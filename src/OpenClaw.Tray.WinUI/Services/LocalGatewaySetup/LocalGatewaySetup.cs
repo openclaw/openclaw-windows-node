@@ -138,6 +138,7 @@ public sealed class LocalGatewaySetupState
 {
     public int SchemaVersion { get; set; } = 1;
     public string RunId { get; set; } = Guid.NewGuid().ToString("N");
+    public string InstallId { get; set; } = Guid.NewGuid().ToString("N");
     public LocalGatewaySetupPhase Phase { get; set; } = LocalGatewaySetupPhase.NotStarted;
     public LocalGatewaySetupStatus Status { get; set; } = LocalGatewaySetupStatus.Pending;
     public string DistroName { get; set; } = "OpenClawGateway";
@@ -266,12 +267,18 @@ public interface IWslCommandRunner
 public sealed class WslExeCommandRunner : IWslCommandRunner
 {
     private readonly IOpenClawLogger _logger;
+    private readonly ILocalGatewaySetupDiagnosticsSink _diagnostics;
     private readonly TimeSpan _defaultTimeout;
     private readonly TimeSpan _streamDrainTimeout;
 
-    public WslExeCommandRunner(IOpenClawLogger? logger = null, TimeSpan? defaultTimeout = null, TimeSpan? streamDrainTimeout = null)
+    public WslExeCommandRunner(
+        IOpenClawLogger? logger = null,
+        TimeSpan? defaultTimeout = null,
+        TimeSpan? streamDrainTimeout = null,
+        ILocalGatewaySetupDiagnosticsSink? diagnostics = null)
     {
         _logger = logger ?? NullLogger.Instance;
+        _diagnostics = diagnostics ?? NullLocalGatewaySetupDiagnosticsSink.Instance;
         _defaultTimeout = defaultTimeout ?? TimeSpan.FromSeconds(30);
         _streamDrainTimeout = streamDrainTimeout ?? TimeSpan.FromSeconds(5);
     }
@@ -377,7 +384,9 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
 
         ApplyEnvironment(psi, environment);
 
-        _logger.Info($"[WSL] {fileName} {string.Join(" ", arguments.Select(RedactArgument))}");
+        _logger.Info($"[WSL] {fileName} {string.Join(" ", RedactArguments(arguments))}");
+        var commandId = _diagnostics.CommandStarted(fileName, arguments, _defaultTimeout);
+        var sw = Stopwatch.StartNew();
 
         using var process = new Process { StartInfo = psi };
         try
@@ -386,7 +395,10 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         }
         catch (Exception ex)
         {
-            return new WslCommandResult(-1, string.Empty, $"Failed to start wsl.exe: {ex.Message}");
+            var result = new WslCommandResult(-1, string.Empty, $"Failed to start wsl.exe: {ex.Message}");
+            sw.Stop();
+            _diagnostics.CommandCompleted(commandId, fileName, arguments, sw.Elapsed, result, timedOut: false);
+            return result;
         }
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -424,6 +436,14 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             {
                 _logger.Warn($"[WSL] Failed to kill cancelled process: {ex.Message}");
             }
+            sw.Stop();
+            _diagnostics.CommandCompleted(
+                commandId,
+                fileName,
+                arguments,
+                sw.Elapsed,
+                new WslCommandResult(-1, string.Empty, "wsl.exe cancelled"),
+                timedOut: false);
             throw;
         }
 
@@ -437,10 +457,13 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         var stdout = await DrainAsync(stdoutTask, _streamDrainTimeout, _logger, isStderr: false);
         var stderr = await DrainAsync(stderrTask, _streamDrainTimeout, _logger, isStderr: true);
 
-        if (timedOut)
-            return new WslCommandResult(-1, stdout, "wsl.exe timed out");
+        var finalResult = timedOut
+            ? new WslCommandResult(-1, stdout, "wsl.exe timed out")
+            : new WslCommandResult(process.ExitCode, stdout, stderr);
 
-        return new WslCommandResult(process.ExitCode, stdout, stderr);
+        sw.Stop();
+        _diagnostics.CommandCompleted(commandId, fileName, arguments, sw.Elapsed, finalResult, timedOut);
+        return finalResult;
     }
 
     internal static async Task<string> DrainAsync(Task<string> readTask, TimeSpan drainTimeout, IOpenClawLogger logger, bool isStderr)
@@ -509,12 +532,8 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         environment["WSLENV"] = string.IsNullOrWhiteSpace(existing) ? entry : existing + ":" + entry;
     }
 
-    private static string RedactArgument(string argument) =>
-        SecretRedactor.Redact(argument.Contains("token", StringComparison.OrdinalIgnoreCase)
-            || argument.Contains("private", StringComparison.OrdinalIgnoreCase)
-            || argument.Contains("setupCode", StringComparison.OrdinalIgnoreCase)
-                ? "<redacted>"
-                : argument);
+    private static IEnumerable<string> RedactArguments(IReadOnlyList<string> arguments) =>
+        SetupDiagnosticsRedactor.RedactArguments(arguments);
 }
 
 public sealed record LocalGatewayPreflightResult(
@@ -3367,6 +3386,7 @@ public sealed class LocalGatewaySetupEngine
     private readonly IOperatorPairingService _operatorPairing;
     private readonly IWindowsTrayNodeProvisioner _windowsTrayNode;
     private readonly IOpenClawLogger _logger;
+    private readonly ILocalGatewaySetupDiagnosticsSink _diagnostics;
 
     public event Action<LocalGatewaySetupState>? StateChanged;
 
@@ -3414,7 +3434,8 @@ public sealed class LocalGatewaySetupEngine
         IGatewayConfigurationPreparer? gatewayConfigurationPreparer = null,
         IGatewayServiceManager? gatewayServiceManager = null,
         ILocalGatewayEndpointResolver? endpointResolver = null,
-        ISharedGatewayTokenProvisioner? sharedGatewayTokenProvisioner = null)
+        ISharedGatewayTokenProvisioner? sharedGatewayTokenProvisioner = null,
+        ILocalGatewaySetupDiagnosticsSink? diagnosticsSink = null)
     {
         _options = options;
         _stateStore = stateStore;
@@ -3432,13 +3453,19 @@ public sealed class LocalGatewaySetupEngine
         _operatorPairing = operatorPairing;
         _windowsTrayNode = windowsTrayNode;
         _logger = logger ?? NullLogger.Instance;
+        _diagnostics = diagnosticsSink ?? NullLocalGatewaySetupDiagnosticsSink.Instance;
     }
 
     public async Task<LocalGatewaySetupState> RunLocalOnlyAsync(CancellationToken cancellationToken = default)
     {
+        var runStopwatch = Stopwatch.StartNew();
         var state = await _stateStore.LoadAsync(cancellationToken) ?? LocalGatewaySetupState.Create(_options);
+        state.RunId = Guid.NewGuid().ToString("N");
+        if (string.IsNullOrWhiteSpace(state.InstallId))
+            state.InstallId = Guid.NewGuid().ToString("N");
         state.DistroName = _options.DistroName;
         state.GatewayUrl = LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(_options);
+        _diagnostics.RunStarted(state, _options);
         var distroExists = await HasDistroAsync(cancellationToken);
         var allowExistingDistroForRun = ShouldAllowExistingDistroForRun(state, distroExists, _options.AllowExistingDistro);
         var preflightOptions = _options with { AllowExistingDistro = allowExistingDistroForRun };
@@ -3509,6 +3536,8 @@ public sealed class LocalGatewaySetupEngine
         await RunPhaseAsync(state, LocalGatewaySetupPhase.InstallOpenClawCli, "Installing OpenClaw inside WSL", async () =>
         {
             var result = await _openClawLinuxInstaller.InstallAsync(_options, cancellationToken);
+            foreach (var installerEvent in result.Events ?? Array.Empty<OpenClawLinuxInstallerEvent>())
+                _diagnostics.InstallerEvent(LocalGatewaySetupPhase.InstallOpenClawCli, installerEvent);
             if (!result.Success)
             {
                 if (!string.IsNullOrWhiteSpace(result.Detail))
@@ -3609,6 +3638,9 @@ public sealed class LocalGatewaySetupEngine
             await SaveAndPublishAsync(state, cancellationToken);
         }
 
+        runStopwatch.Stop();
+        _diagnostics.RunCompleted(state, runStopwatch.Elapsed);
+        await _diagnostics.FlushAsync(TimeSpan.FromSeconds(2), cancellationToken);
         return state;
     }
 
@@ -3672,7 +3704,9 @@ public sealed class LocalGatewaySetupEngine
         if (state.Status is not LocalGatewaySetupStatus.Pending and not LocalGatewaySetupStatus.Running)
             return;
 
+        var phaseStopwatch = Stopwatch.StartNew();
         state.StartPhase(phase, message);
+        _diagnostics.PhaseStarted(state, phase, message);
         await SaveAndPublishAsync(state, cancellationToken);
         bool completed;
         try
@@ -3686,6 +3720,9 @@ public sealed class LocalGatewaySetupEngine
             // Persist cancelled state so restarts don't resume from stale Running phase
             try { await _stateStore.SaveAsync(state, CancellationToken.None); } catch { }
             StateChanged?.Invoke(state);
+            phaseStopwatch.Stop();
+            _diagnostics.PhaseCompleted(state, phase, message, phaseStopwatch.Elapsed);
+            await _diagnostics.FlushAsync(TimeSpan.FromSeconds(2), CancellationToken.None);
             throw;
         }
         catch (Exception ex)
@@ -3693,18 +3730,27 @@ public sealed class LocalGatewaySetupEngine
             _logger.Error($"Local gateway setup phase {phase} failed.", ex);
             var retryable = ex is not (UnauthorizedAccessException or NotSupportedException or InvalidOperationException or ArgumentException);
             state.Block($"{phase.ToString().ToLowerInvariant()}_failed", ex.Message, retryable: retryable, detail: SecretRedactor.Redact(ex.ToString()));
+            phaseStopwatch.Stop();
+            _diagnostics.PhaseCompleted(state, phase, message, phaseStopwatch.Elapsed);
             await SaveAndPublishAsync(state, cancellationToken);
+            await _diagnostics.FlushAsync(TimeSpan.FromSeconds(2), cancellationToken);
             return;
         }
 
         if (completed && state.Status == LocalGatewaySetupStatus.Running)
         {
             state.CompletePhase(phase, message);
+            phaseStopwatch.Stop();
+            _diagnostics.PhaseCompleted(state, phase, message, phaseStopwatch.Elapsed);
             await SaveAndPublishAsync(state, cancellationToken);
         }
         else if (!completed)
         {
+            phaseStopwatch.Stop();
+            _diagnostics.PhaseCompleted(state, phase, message, phaseStopwatch.Elapsed);
             await SaveAndPublishAsync(state, cancellationToken);
+            if (state.Status is LocalGatewaySetupStatus.FailedRetryable or LocalGatewaySetupStatus.FailedTerminal or LocalGatewaySetupStatus.Blocked)
+                await _diagnostics.FlushAsync(TimeSpan.FromSeconds(2), cancellationToken);
         }
     }
 
@@ -3764,71 +3810,106 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
     private readonly ILocalGatewayHealthProbe _healthProbe;
     private readonly ILocalGatewaySetupSettings? _settings;
     private readonly IOpenClawLogger? _logger;
+    private readonly ILocalGatewaySetupDiagnosticsSink _diagnostics;
 
-    public LocalGatewayLifecycleManager(LocalGatewaySetupOptions options, IWslCommandRunner wsl, ILocalGatewayHealthProbe healthProbe, ILocalGatewaySetupSettings? settings = null, IOpenClawLogger? logger = null)
+    public LocalGatewayLifecycleManager(
+        LocalGatewaySetupOptions options,
+        IWslCommandRunner wsl,
+        ILocalGatewayHealthProbe healthProbe,
+        ILocalGatewaySetupSettings? settings = null,
+        IOpenClawLogger? logger = null,
+        ILocalGatewaySetupDiagnosticsSink? diagnosticsSink = null)
     {
         _options = options;
         _wsl = wsl;
         _healthProbe = healthProbe;
         _settings = settings;
         _logger = logger;
+        _diagnostics = diagnosticsSink ?? NullLocalGatewaySetupDiagnosticsSink.Instance;
     }
 
     public async Task<LocalGatewayLifecycleResult> RepairAsync(CancellationToken cancellationToken = default)
     {
+        var lifecycleStopwatch = Stopwatch.StartNew();
+        _diagnostics.LifecycleStarted("repair");
         var steps = new List<string>();
         var distros = await _wsl.ListDistrosAsync(cancellationToken);
         if (!distros.Any(d => d.Name.Equals(_options.DistroName, StringComparison.OrdinalIgnoreCase) && d.Version == 2))
-            return Fail("distro_missing", $"The OpenClaw WSL distro '{_options.DistroName}' was not found.", steps);
+        {
+            _diagnostics.LifecycleStep("repair", "distro_present", success: false, "distro_missing", $"The OpenClaw WSL distro '{_options.DistroName}' was not found.");
+            return await CompleteLifecycleAsync("repair", Fail("distro_missing", $"The OpenClaw WSL distro '{_options.DistroName}' was not found.", steps), lifecycleStopwatch, cancellationToken);
+        }
 
         // Tear down any stale keepalive before terminating; we'll spawn a fresh one
         // after the gateway becomes healthy. Without this, the old keepalive lingers
         // pointing at a now-restarted VM but is no longer tracked by our marker.
         WslDistroKeepAlive.Stop(_options.DistroName, _logger);
         steps.Add("keepalive_stopped");
+        _diagnostics.LifecycleStep("repair", "keepalive_stopped", success: true);
 
         await _wsl.TerminateDistroAsync(_options.DistroName, cancellationToken);
         steps.Add("distro_terminated");
+        _diagnostics.LifecycleStep("repair", "distro_terminated", success: true);
 
         var daemonReload = await RunInDistroAsRootAsync(["systemctl", "daemon-reload"], cancellationToken);
         steps.Add("daemon_reloaded");
         if (!daemonReload.Success)
-            return Fail("daemon_reload_failed", "Failed to reload OpenClaw Gateway systemd units.", steps);
+        {
+            _diagnostics.LifecycleStep("repair", "daemon_reloaded", success: false, "daemon_reload_failed", "Failed to reload OpenClaw Gateway systemd units.");
+            return await CompleteLifecycleAsync("repair", Fail("daemon_reload_failed", "Failed to reload OpenClaw Gateway systemd units.", steps), lifecycleStopwatch, cancellationToken);
+        }
+        _diagnostics.LifecycleStep("repair", "daemon_reloaded", success: true);
 
         var gateway = await RestartGatewayServiceAsync(steps, cancellationToken);
         if (!gateway.Success)
-            return gateway;
+            return await CompleteLifecycleAsync("repair", gateway, lifecycleStopwatch, cancellationToken);
 
         var health = await _healthProbe.WaitForHealthyAsync(LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(_options), cancellationToken);
         steps.Add("gateway_health_checked");
         if (!health.Success)
-            return Fail("gateway_unhealthy", health.Error ?? WslLogsHelp("Gateway did not become healthy after repair."), steps);
+        {
+            _diagnostics.LifecycleStep("repair", "gateway_health_checked", success: false, "gateway_unhealthy", health.Error ?? WslLogsHelp("Gateway did not become healthy after repair."));
+            return await CompleteLifecycleAsync("repair", Fail("gateway_unhealthy", health.Error ?? WslLogsHelp("Gateway did not become healthy after repair."), steps), lifecycleStopwatch, cancellationToken);
+        }
+        _diagnostics.LifecycleStep("repair", "gateway_health_checked", success: true);
 
         // Re-arm the keepalive so the VM stays up after repair completes, even if the
         // tray that triggered repair exits before the next OnLaunched hook runs.
         WslDistroKeepAlive.EnsureStarted(_options.DistroName, _logger);
         steps.Add("keepalive_started");
+        _diagnostics.LifecycleStep("repair", "keepalive_started", success: true);
 
-        return new LocalGatewayLifecycleResult(true, Steps: steps);
+        return await CompleteLifecycleAsync("repair", new LocalGatewayLifecycleResult(true, Steps: steps), lifecycleStopwatch, cancellationToken);
     }
 
     public async Task<LocalGatewayLifecycleResult> RemoveAsync(LocalGatewayRemoveRequest request, CancellationToken cancellationToken = default)
     {
+        var lifecycleStopwatch = Stopwatch.StartNew();
+        _diagnostics.LifecycleStarted("remove");
         var steps = new List<string>();
         if (!request.ConfirmRemove)
-            return Fail("confirmation_required", "Removing the local OpenClaw Gateway requires explicit confirmation.", steps);
+        {
+            _diagnostics.LifecycleStep("remove", "confirmation_required", success: false, "confirmation_required", "Removing the local OpenClaw Gateway requires explicit confirmation.");
+            return await CompleteLifecycleAsync("remove", Fail("confirmation_required", "Removing the local OpenClaw Gateway requires explicit confirmation.", steps), lifecycleStopwatch, cancellationToken);
+        }
 
         // Stop the keepalive before terminating so the marker file does not survive
         // distro removal and confuse a future install with the same name.
         WslDistroKeepAlive.Stop(_options.DistroName, _logger);
         steps.Add("keepalive_stopped");
+        _diagnostics.LifecycleStep("remove", "keepalive_stopped", success: true);
 
         await _wsl.TerminateDistroAsync(_options.DistroName, cancellationToken);
         steps.Add("distro_terminated");
+        _diagnostics.LifecycleStep("remove", "distro_terminated", success: true);
         var unregister = await _wsl.UnregisterDistroAsync(_options.DistroName, cancellationToken);
         steps.Add("distro_unregistered");
         if (!unregister.Success)
-            return Fail("distro_unregister_failed", $"Failed to unregister WSL distro '{_options.DistroName}'.", steps);
+        {
+            _diagnostics.LifecycleStep("remove", "distro_unregistered", success: false, "distro_unregister_failed", $"Failed to unregister WSL distro '{_options.DistroName}'.");
+            return await CompleteLifecycleAsync("remove", Fail("distro_unregister_failed", $"Failed to unregister WSL distro '{_options.DistroName}'.", steps), lifecycleStopwatch, cancellationToken);
+        }
+        _diagnostics.LifecycleStep("remove", "distro_unregistered", success: true);
 
         if (request.ClearLocalCredentials && _settings is not null)
         {
@@ -3838,12 +3919,13 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
             _settings.UseSshTunnel = false;
             _settings.Save();
             steps.Add("local_credentials_cleared");
+            _diagnostics.LifecycleStep("remove", "local_credentials_cleared", success: true);
         }
 
         if (request.PreserveRelayRegistration)
             steps.Add("relay_registration_preserved");
 
-        return new LocalGatewayLifecycleResult(true, Steps: steps);
+        return await CompleteLifecycleAsync("remove", new LocalGatewayLifecycleResult(true, Steps: steps), lifecycleStopwatch, cancellationToken);
     }
 
     private async Task<LocalGatewayLifecycleResult> RestartGatewayServiceAsync(List<string> steps, CancellationToken cancellationToken)
@@ -3852,17 +3934,29 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
         var enable = await RunInDistroAsRootAsync(["systemctl", "enable", "--now", $"{serviceName}.service"], cancellationToken);
         steps.Add($"{serviceName}_enabled");
         if (!enable.Success)
+        {
+            _diagnostics.LifecycleStep("repair", $"{serviceName}_enabled", success: false, "service_enable_failed", $"Failed to enable {serviceName}.service.");
             return Fail("service_enable_failed", $"Failed to enable {serviceName}.service.", steps);
+        }
+        _diagnostics.LifecycleStep("repair", $"{serviceName}_enabled", success: true);
 
         var restart = await RunInDistroAsRootAsync(["systemctl", "restart", $"{serviceName}.service"], cancellationToken);
         steps.Add($"{serviceName}_restarted");
         if (!restart.Success)
+        {
+            _diagnostics.LifecycleStep("repair", $"{serviceName}_restarted", success: false, "service_restart_failed", $"Failed to restart {serviceName}.service.");
             return Fail("service_restart_failed", $"Failed to restart {serviceName}.service.", steps);
+        }
+        _diagnostics.LifecycleStep("repair", $"{serviceName}_restarted", success: true);
 
         var active = await RunInDistroAsRootAsync(["systemctl", "is-active", "--quiet", $"{serviceName}.service"], cancellationToken);
         steps.Add($"{serviceName}_active_checked");
         if (!active.Success)
+        {
+            _diagnostics.LifecycleStep("repair", $"{serviceName}_active_checked", success: false, "service_inactive", $"{serviceName}.service is not active after repair.");
             return Fail("service_inactive", $"{serviceName}.service is not active after repair.", steps);
+        }
+        _diagnostics.LifecycleStep("repair", $"{serviceName}_active_checked", success: true);
 
         return new LocalGatewayLifecycleResult(true, Steps: steps);
     }
@@ -3872,6 +3966,18 @@ public sealed class LocalGatewayLifecycleManager : ILocalGatewayLifecycleManager
         var args = new List<string> { "-d", _options.DistroName, "-u", "root", "--" };
         args.AddRange(command);
         return _wsl.RunAsync(args, cancellationToken);
+    }
+
+    private async Task<LocalGatewayLifecycleResult> CompleteLifecycleAsync(
+        string operation,
+        LocalGatewayLifecycleResult result,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        stopwatch.Stop();
+        _diagnostics.LifecycleCompleted(operation, result, stopwatch.Elapsed);
+        await _diagnostics.FlushAsync(TimeSpan.FromSeconds(2), cancellationToken);
+        return result;
     }
 
     private static string WslLogsHelp(string message) => message + " Follow aka.ms/wsllogs for WSL diagnostic collection instructions.";
@@ -3950,7 +4056,8 @@ public static class LocalGatewaySetupEngineFactory
             catch { /* best-effort — engine will overwrite on first save */ }
         }
 
-        var wsl = new WslExeCommandRunner(logger, TimeSpan.FromMinutes(30));
+        var diagnostics = new LocalGatewaySetupDiagnosticsService();
+        var wsl = new WslExeCommandRunner(logger, TimeSpan.FromMinutes(30), diagnostics: diagnostics);
         var settingsAdapter = new SettingsManagerLocalGatewaySetupSettings(settings, gatewayRegistry);
         var bootstrapTokenProvider = new WslGatewayCliBootstrapTokenProvider(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
         var sharedGatewayTokenProvider = new WslGatewayCliSharedGatewayTokenProvider(wsl);
@@ -3968,7 +4075,8 @@ public static class LocalGatewaySetupEngineFactory
             new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector, pendingDeviceApprover),
             logger,
             gatewayConfigurationPreparer: gatewayConfigurationPreparer,
-            sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settingsAdapter, sharedGatewayTokenProvider, gatewayConfigurationPreparer));
+            sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settingsAdapter, sharedGatewayTokenProvider, gatewayConfigurationPreparer),
+            diagnosticsSink: diagnostics);
     }
 
     private static string ResolveDistroName(LocalGatewaySetupRuntimeConfiguration runtime, string? explicitDistroName)

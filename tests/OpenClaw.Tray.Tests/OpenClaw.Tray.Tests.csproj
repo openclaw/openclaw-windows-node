@@ -65,6 +65,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalSetupProgressStageMap.cs" Link="Imported\LocalSetupProgressStageMap.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalGatewayApprover.cs" Link="Imported\LocalGatewayApprover.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewaySetupDiagnostics.cs" Link="Imported\LocalGatewaySetupDiagnostics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewaySetup.cs" Link="Imported\LocalGatewaySetup.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewayUninstall.cs" Link="Imported\LocalGatewayUninstall.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\GatewayHealthCheck.cs" Link="Imported\GatewayHealthCheck.cs" />
