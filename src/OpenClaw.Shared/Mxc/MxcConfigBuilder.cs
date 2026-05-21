@@ -209,15 +209,20 @@ public static class MxcConfigBuilder
 
     /// <summary>
     /// Build the env array (KEY=VALUE strings). Only agent-supplied env from
-    /// <paramref name="requestEnv"/> is passed through; TEMP/TMP/TMPDIR are
-    /// forced to <paramref name="scratchDir"/> so commands inside the sandbox
-    /// write into our scratch, not the user's real %TEMP%. The host env is
-    /// not allow-listed in — the agent owns env-var policy.
+    /// <paramref name="requestEnv"/> is passed through, filtered against the
+    /// canonical openclaw <see cref="HostEnvSecurityPolicy"/> so the agent
+    /// can't smuggle in dangerous vars (NODE_OPTIONS, GITHUB_TOKEN, LD_PRELOAD,
+    /// GIT_SSH_COMMAND, etc.). TEMP/TMP/TMPDIR are forced to
+    /// <paramref name="scratchDir"/> so commands inside the sandbox write
+    /// into our scratch, not the user's real %TEMP%. The host env is not
+    /// allow-listed in — the agent owns env-var policy.
     /// </summary>
     public static IReadOnlyList<string> BuildEnv(
         IReadOnlyDictionary<string, string>? requestEnv,
-        string scratchDir)
+        string scratchDir,
+        HostEnvSecurityPolicy? policy = null)
     {
+        policy ??= HostEnvSecurityPolicy.Default;
         // Windows env vars are case-insensitive — use OrdinalIgnoreCase so
         // duplicate-case agent entries don't end up as separate strings.
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -226,19 +231,8 @@ public static class MxcConfigBuilder
         {
             foreach (var (name, value) in requestEnv)
             {
-                if (string.IsNullOrEmpty(name) || value is null) continue;
-                // Reject names with NUL/CR/LF/'=' so an agent can't smuggle
-                // a second KEY=VALUE pair into a single name field.
-                bool malformed = false;
-                foreach (var ch in name)
-                {
-                    if (ch == '=' || ch == '\0' || ch == '\r' || ch == '\n')
-                    {
-                        malformed = true;
-                        break;
-                    }
-                }
-                if (malformed) continue;
+                if (value is null) continue;
+                if (policy.IsBlocked(name)) continue;
                 env[name] = value;
             }
         }

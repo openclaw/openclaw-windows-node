@@ -200,6 +200,34 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void Build_BlocksDangerousAgentEnv_PerCanonicalOpenclawPolicy()
+    {
+        // Agent attempts to inject env vars on the canonical openclaw blocklist
+        // (NODE_OPTIONS, GITHUB_TOKEN, LD_PRELOAD). The builder must drop them.
+        var request = RequestFor(BalancedPolicy()) with
+        {
+            Env = new Dictionary<string, string>
+            {
+                ["NODE_OPTIONS"] = "--inspect-brk=0.0.0.0:1234",
+                ["GITHUB_TOKEN"] = "ghp_FAKE",
+                ["LD_PRELOAD"] = "/tmp/evil.so",
+                ["DYLD_INSERT_LIBRARIES"] = "/tmp/evil.dylib",
+                ["GIT_SSH_COMMAND"] = "ssh -o ProxyCommand=evil",
+                ["MY_OK_VAR"] = "passthrough",
+            },
+        };
+        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var envKeys = config.Process.Env!.Select(s => s.Split('=', 2)[0]).ToArray();
+
+        Assert.DoesNotContain("NODE_OPTIONS", envKeys);
+        Assert.DoesNotContain("GITHUB_TOKEN", envKeys);
+        Assert.DoesNotContain("LD_PRELOAD", envKeys);
+        Assert.DoesNotContain("DYLD_INSERT_LIBRARIES", envKeys);
+        Assert.DoesNotContain("GIT_SSH_COMMAND", envKeys);
+        Assert.Contains("MY_OK_VAR", envKeys);
+    }
+
+    [Fact]
     public void Build_OverridesTempEnvVarsToScratch()
     {
         var request = RequestFor(BalancedPolicy()) with
