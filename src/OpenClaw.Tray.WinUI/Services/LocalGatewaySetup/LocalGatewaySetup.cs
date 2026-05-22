@@ -3656,9 +3656,24 @@ public sealed class LocalGatewaySetupEngine
     /// kernel/host-compute signature and return false for blank Detail.
     /// </summary>
     internal static bool LooksLikePostInstallKernelIssue(string? detail)
+        => LooksLikePostInstallKernelIssue(detail, postFreshInstall: false);
+
+    /// <summary>
+    /// Overload that lets the caller signal "we already know WSL was just
+    /// installed in this session". In that case, an empty/blank Detail
+    /// defaults to <c>true</c> — many real post-install kernel failures
+    /// (<c>WslRegisterDistribution</c> HRESULTs, host-compute service
+    /// not-yet-warmed errors) write to the Windows event log rather than
+    /// stderr, so the engine's collected Detail is often empty. Keeping
+    /// the strict default for non-fresh-install callers preserves the
+    /// round-2 win (no misleading reboot suggestion for unrelated
+    /// failures) while restoring the round-1 protection for the case the
+    /// gate was originally designed to catch.
+    /// </summary>
+    internal static bool LooksLikePostInstallKernelIssue(string? detail, bool postFreshInstall)
     {
         if (string.IsNullOrWhiteSpace(detail))
-            return false;
+            return postFreshInstall;
         var d = detail.Replace("\0", string.Empty);
         return d.Contains("WslRegisterDistribution", StringComparison.OrdinalIgnoreCase)
             || d.Contains("Wsl/Service", StringComparison.OrdinalIgnoreCase)
@@ -3976,10 +3991,10 @@ public sealed class LocalGatewaySetupEngine
                 // users hitting those errors here would see
                 // "wsl_instance_install_failed" ("Couldn't download Ubuntu")
                 // and have no idea a reboot would fix it.
-                var failureCode = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(detail)
+                var failureCode = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(detail, postFreshInstall: true)
                     ? "wsl_firstboot_config_failed_after_install"
                     : (result.ErrorCode ?? "wsl_instance_install_failed");
-                var failureMessage = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(detail)
+                var failureMessage = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(detail, postFreshInstall: true)
                     ? "Couldn't create the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup."
                     : (result.ErrorMessage ?? "Failed to create the OpenClaw Gateway WSL instance.");
 
@@ -4011,10 +4026,10 @@ public sealed class LocalGatewaySetupEngine
                 // a reboot won't fix (e.g., curl pulling a script, missing
                 // package, a script syntax error) — that wastes their time
                 // and erodes trust.
-                var failureCode = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(result.Detail)
+                var failureCode = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(result.Detail, postFreshInstall: true)
                     ? "wsl_firstboot_config_failed_after_install"
                     : (result.ErrorCode ?? "wsl_instance_config_failed");
-                var failureMessage = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(result.Detail)
+                var failureMessage = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(result.Detail, postFreshInstall: true)
                     ? "Couldn't configure the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup."
                     : (result.ErrorMessage ?? "Failed to configure the OpenClaw Gateway WSL instance.");
 

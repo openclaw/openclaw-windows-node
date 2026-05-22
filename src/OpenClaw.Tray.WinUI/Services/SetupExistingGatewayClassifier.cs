@@ -109,9 +109,24 @@ public static class SetupExistingGatewayClassifier
             var platform = await new OpenClawTray.Services.LocalGatewaySetup.WslPlatformProbe(wsl)
                 .ProbeAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (platform.State != OpenClawTray.Services.LocalGatewaySetup.WslPlatformState.Installed)
+
+            // Round-3 fix: distinguish NotInstalled (definitive) from
+            // Unknown (transient — probe timed out / policy-blocked / etc).
+            // For NotInstalled, fall back to local-setup evidence (no
+            // distro could possibly exist). For Unknown we should NOT
+            // confidently label setup as AppOwnedLocalWsl based on
+            // evidence alone — that would steer the user into the
+            // "replace existing local gateway" UX path even though we
+            // couldn't actually confirm the distro exists. Treat Unknown
+            // conservatively as "no app-owned distro confirmed".
+            if (platform.State == OpenClawTray.Services.LocalGatewaySetup.WslPlatformState.NotInstalled)
             {
                 return hasLocalSetupEvidence;
+            }
+            if (platform.State == OpenClawTray.Services.LocalGatewaySetup.WslPlatformState.Unknown)
+            {
+                Logger.Warn("[SetupExistingGatewayClassifier] WSL platform probe returned Unknown; cannot confirm app-owned distro — treating as not present.");
+                return false;
             }
 
             var distros = await wsl.ListDistrosAsync(cancellationToken).ConfigureAwait(false);

@@ -2853,78 +2853,82 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Info($"[App] Released node-pair auto-approve suppression ({reason}).");
         }
 
-        _onboardingWindow.OnboardingCompleted += (s, e) =>
-        {
-            onboardingCompleted = true;
-            Logger.Info("Onboarding completed");
-            // Release the suppression BEFORE clearing _onboardingWindow so an
-            // in-flight gateway-event-pump callback (e.g. OnGatewayConnected)
-            // doesn't observe _onboardingWindow==null AND active suppression
-            // simultaneously — that race would fast-fail the post-onboarding
-            // local-node connect on PairingRequired.
-            ReleaseNodeAutoApproveSuppression("onboarding completed");
-            _onboardingWindow = null;
-
-            // If the persistent client was already initialized during onboarding, keep it
-            if (_connectionManager?.OperatorClient is OpenClawGatewayClient { IsConnectedToGateway: true })
-            {
-                Logger.Info("Gateway client already connected from onboarding — keeping");
-                return;
-            }
-
-            // If a reconnect is already in flight (e.g. the user clicked Finish while
-            // the gateway was mid-restart from a V2 GatewayWelcome wizard config save —
-            // the gateway emits a `shutdown` event with reason="gateway restarting" when
-            // provider/model config changes), let the existing auto-reconnect timer
-            // finish rather than canceling it and starting a fresh one. Canceling adds
-            // a visible ~5s churn (cancel + new connect attempt against a still-warming
-            // gateway + retry) on top of the gateway's own ~1.5s restart window.
-            if (_connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connecting)
-            {
-                Logger.Info("Gateway client reconnect already in flight — keeping");
-                return;
-            }
-
-            // Reconnect only if there's an active gateway with credentials —
-            // don't blindly reconnect a pre-setup gateway the user may be replacing.
-            var activeRecord = _gatewayRegistry?.GetActive();
-            if (activeRecord != null && TryConnectGatewayIfCredentialAvailable(activeRecord, "post-onboarding"))
-            {
-                Logger.Info("Reconnecting to active gateway after onboarding");
-            }
-            else
-            {
-                Logger.Info("No previously connected gateway after onboarding — skipping reconnect");
-                TryStartLocalMcpOnlyNode();
-            }
-
-            // Keep hub window in sync with new client — no shadow state to push,
-            // hub observes AppState directly.
-        };
-        _onboardingWindow.Closed += (s, e) =>
-        {
-            // Mirror the Completed ordering: release suppression first, then
-            // clear the window reference.
-            ReleaseNodeAutoApproveSuppression("onboarding window closed");
-            _onboardingWindow = null;
-            if (!onboardingCompleted && disconnectedForOnboarding && restoreGatewayId != null)
-            {
-                Logger.Info("Onboarding closed before completion — restoring previous gateway connection");
-                _ = _connectionManager?.ConnectAsync(restoreGatewayId);
-            }
-        };
-        // Round-2 fix: if event wiring or Activate() throws AFTER we acquired
-        // the suppression token, the Completed/Closed handlers may never fire
-        // and the token would leak for the entire process lifetime —
-        // permanently suppressing local-loopback node auto-approve. Wrap the
-        // remainder of setup so any throw releases the token.
+        // Round-2 + Round-3: if event wiring OR Activate() throws AFTER we
+        // acquired the suppression token, the Completed/Closed handlers may
+        // never fire and the token would leak for the entire process
+        // lifetime — permanently suppressing local-loopback node
+        // auto-approve. Wrap the entire wire-up region so any throw inside
+        // `+= …` or `Activate()` releases the token, and clear the
+        // half-broken window reference so the next ShowOnboardingAsync()
+        // doesn't trip over it.
         try
         {
+            _onboardingWindow.OnboardingCompleted += (s, e) =>
+            {
+                onboardingCompleted = true;
+                Logger.Info("Onboarding completed");
+                // Release suppression before clearing _onboardingWindow so
+                // any code that uses `_onboardingWindow == null` as a signal
+                // for "onboarding finished" also observes suppression as
+                // released — preserving the invariant "no onboarding in
+                // progress => no local-loopback suppression active".
+                ReleaseNodeAutoApproveSuppression("onboarding completed");
+                _onboardingWindow = null;
+
+                // If the persistent client was already initialized during onboarding, keep it
+                if (_connectionManager?.OperatorClient is OpenClawGatewayClient { IsConnectedToGateway: true })
+                {
+                    Logger.Info("Gateway client already connected from onboarding — keeping");
+                    return;
+                }
+
+                // If a reconnect is already in flight (e.g. the user clicked Finish while
+                // the gateway was mid-restart from a V2 GatewayWelcome wizard config save —
+                // the gateway emits a `shutdown` event with reason="gateway restarting" when
+                // provider/model config changes), let the existing auto-reconnect timer
+                // finish rather than canceling it and starting a fresh one. Canceling adds
+                // a visible ~5s churn (cancel + new connect attempt against a still-warming
+                // gateway + retry) on top of the gateway's own ~1.5s restart window.
+                if (_connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connecting)
+                {
+                    Logger.Info("Gateway client reconnect already in flight — keeping");
+                    return;
+                }
+
+                // Reconnect only if there's an active gateway with credentials —
+                // don't blindly reconnect a pre-setup gateway the user may be replacing.
+                var activeRecord = _gatewayRegistry?.GetActive();
+                if (activeRecord != null && TryConnectGatewayIfCredentialAvailable(activeRecord, "post-onboarding"))
+                {
+                    Logger.Info("Reconnecting to active gateway after onboarding");
+                }
+                else
+                {
+                    Logger.Info("No previously connected gateway after onboarding — skipping reconnect");
+                    TryStartLocalMcpOnlyNode();
+                }
+
+                // Keep hub window in sync with new client — no shadow state to push,
+                // hub observes AppState directly.
+            };
+            _onboardingWindow.Closed += (s, e) =>
+            {
+                // Mirror the Completed ordering: release suppression first, then
+                // clear the window reference.
+                ReleaseNodeAutoApproveSuppression("onboarding window closed");
+                _onboardingWindow = null;
+                if (!onboardingCompleted && disconnectedForOnboarding && restoreGatewayId != null)
+                {
+                    Logger.Info("Onboarding closed before completion — restoring previous gateway connection");
+                    _ = _connectionManager?.ConnectAsync(restoreGatewayId);
+                }
+            };
             _onboardingWindow.Activate();
         }
         catch
         {
             ReleaseNodeAutoApproveSuppression("onboarding window setup failed");
+            _onboardingWindow = null;
             throw;
         }
     }

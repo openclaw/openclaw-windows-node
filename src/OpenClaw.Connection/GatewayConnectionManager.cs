@@ -88,10 +88,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     // caller (V2 onboarding engine) can drive its own approval via WSL CLI.
     // Volatile so the UI-thread setter and the gateway event-pump reader
     // both observe a coherent value (ARM64 reordering safety).
-    private volatile int _suppressNodeAutoApproveCount;
+    // Reference-counted suppression: Interlocked operations already provide
+    // full memory barriers, so the field does NOT need `volatile`. Pairing
+    // `volatile` with `Interlocked.*(ref …)` triggers CS0420 ("a reference
+    // to a volatile field will not be treated as volatile"), which would
+    // break the build if TreatWarningsAsErrors is ever rolled to this
+    // project. Bare reads in IsNodeAutoApproveSuppressionActive /
+    // IsNodeAutoApproveSuppressed use Volatile.Read to keep an explicit
+    // acquire barrier.
+    private int _suppressNodeAutoApproveCount;
 
     /// <summary>Backwards-compat property kept for tests / diagnostics; reflects whether any token is active.</summary>
-    internal bool IsNodeAutoApproveSuppressionActive => _suppressNodeAutoApproveCount > 0;
+    internal bool IsNodeAutoApproveSuppressionActive => Volatile.Read(ref _suppressNodeAutoApproveCount) > 0;
 
     /// <inheritdoc />
     public IDisposable AcquireNodeAutoApproveSuppression()
@@ -114,7 +122,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         int next;
         do
         {
-            observed = _suppressNodeAutoApproveCount;
+            observed = Volatile.Read(ref _suppressNodeAutoApproveCount);
             if (observed <= 0)
             {
                 _diagnostics.Record("node", $"Node auto-approve suppression over-release ignored (count={observed})");
@@ -148,7 +156,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     /// </summary>
     private bool IsNodeAutoApproveSuppressed(string? activeGatewayUrl)
     {
-        if (_suppressNodeAutoApproveCount <= 0)
+        if (Volatile.Read(ref _suppressNodeAutoApproveCount) <= 0)
             return false;
         return IsLocalLoopbackGatewayUrl(activeGatewayUrl);
     }
@@ -168,16 +176,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (uri.Scheme is not ("ws" or "wss"))
             return false;
 
-        // Strip the brackets WHATWG-style. Uri.Host returns "[::1]" with the
-        // brackets for IPv6 literals; IPAddress.TryParse wants them unwrapped.
-        var host = uri.Host;
-        if (host.Length >= 2 && host[0] == '[' && host[^1] == ']')
-            host = host.Substring(1, host.Length - 2);
-
-        if (System.Net.IPAddress.TryParse(host, out var ip))
-            return System.Net.IPAddress.IsLoopback(ip);
-
-        return string.Equals(host, "localhost", System.StringComparison.OrdinalIgnoreCase);
+        // Uri.IsLoopback handles localhost, 127.0.0.0/8, [::1], and
+        // [::ffff:127.0.0.1] — subsumes both string-literal and IP cases
+        // including IPv6 zone IDs (`[fe80::1%eth0]`) that the previous
+        // manual bracket-strip + IPAddress.TryParse approach mishandled.
+        // Note: wildcard 0.0.0.0 is intentionally NOT loopback (it's the
+        // "any" bind address — packets routed through it can reach remote
+        // peers, so suppression must not apply).
+        return uri.IsLoopback;
     }
 
     // ─── Lifecycle ───

@@ -327,6 +327,12 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
         // Unknown on transient wsl.exe timeouts during lifted-WSL warmup,
         // and bailing early would misclassify a successful install on slow
         // hosts (ARM64, fresh installs) as Failed.
+        // Round-3 considered (but rejected): break early on a second
+        // NotInstalled reading. Conflicts with the pinned 3-attempt
+        // convergence test (Installer_RetriesPostProbe_RidingOutFinalizeRace)
+        // where multiple consecutive NotInstalled readings precede
+        // eventual Installed. The wasted ~2.5s on a confirmed failure is
+        // acceptable.
         WslPlatformProbeResult postProbe = await _probe.ProbeAsync(cancellationToken);
         for (int attempt = 1;
              attempt < _postInstallProbeAttempts

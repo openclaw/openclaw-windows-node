@@ -835,6 +835,19 @@ public class WslPlatformInstallTests
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("exit=100; stderr=E: Unable to fetch some archives; stdout="));
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("bash: line 12: syntax error near unexpected token"));
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("Permission denied: /etc/openclaw/config"));
+
+        // Round-3 overload: when postFreshInstall=true (caller already
+        // knows WSL was just installed in this session), blank Detail
+        // should default to true. Many real WslRegisterDistribution
+        // HRESULTs / host-compute warmup errors write to the Windows
+        // event log, not stderr — so collected Detail is often empty.
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(null, postFreshInstall: true));
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("", postFreshInstall: true));
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("   ", postFreshInstall: true));
+        // But postFreshInstall=true must still reject confirmed-unrelated
+        // signatures — strict signature wins over the post-install default.
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("bash: syntax error", postFreshInstall: true));
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("E: Unable to fetch some archives", postFreshInstall: true));
     }
 
     private sealed class FailingConfigurator : IWslInstanceConfigurator
