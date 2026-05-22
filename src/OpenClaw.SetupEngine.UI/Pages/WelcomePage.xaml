@@ -5,42 +5,42 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                    MaxWidth="520" Padding="56,48,56,48" Spacing="20">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="56,28,56,40">
 
-            <!-- Logo -->
+        <!-- Top: Logo + Title + Description -->
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
             <Image Source="ms-appx:///Assets/Setup/Lobster.png"
                    Width="170" Height="170"
                    HorizontalAlignment="Center" />
-
-            <!-- Title -->
             <TextBlock Text="Get started with OpenClaw"
                        FontSize="28" FontWeight="SemiBold"
                        HorizontalAlignment="Center" />
-
-            <!-- Description -->
             <TextBlock TextWrapping="Wrap" TextAlignment="Center"
                        FontSize="14" Opacity="0.7" MaxWidth="440"
+                       HorizontalAlignment="Center"
                        Text="OpenClaw lets agents run commands, read and write files, and capture screenshots on this PC. Only set it up on a computer you trust." />
+        </StackPanel>
+
+        <!-- Bottom: Info card + Button + Link (pushed to bottom) -->
+        <StackPanel Grid.Row="2" Spacing="16">
 
             <!-- Info card -->
-            <Border x:Name="InfoCard" CornerRadius="8" Padding="16,14,16,14">
+            <Border x:Name="InfoCard" CornerRadius="8" Padding="20,18,20,18">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                    <Border Width="20" Height="20" CornerRadius="10"
+                    <Border Width="22" Height="22" CornerRadius="11"
                             Background="#60C8F8" VerticalAlignment="Top">
-                        <TextBlock Text="i" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Text="i" FontSize="13" FontWeight="SemiBold"
                                    Foreground="Black"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <TextBlock x:Name="InfoText" Grid.Column="1" TextWrapping="Wrap" FontSize="13"
-                               Opacity="0.8" />
+                               Opacity="0.85" />
                 </Grid>
             </Border>
 
             <!-- Start button -->
             <Button x:Name="StartButton"
-                    Content="Set up locally"
+                    Content="Install new WSL Gateway"
                     HorizontalAlignment="Stretch"
                     Height="44" FontSize="15" FontWeight="SemiBold"
                     Click="StartButton_Click">
@@ -54,6 +54,13 @@
                 </Button.Resources>
             </Button>
 
+            <!-- Advanced setup link -->
+            <HyperlinkButton Content="Advanced setup"
+                             HorizontalAlignment="Center"
+                             Foreground="#60C8F8" FontSize="14"
+                             Click="AdvancedSetup_Click" />
+
         </StackPanel>
-    </ScrollViewer>
+
+    </Grid>
 </Page>

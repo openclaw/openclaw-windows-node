@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using System.Diagnostics;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -29,11 +30,47 @@ public sealed partial class WelcomePage : Page
             : Color.FromArgb(255, 0xF0, 0xF0, 0xF0));
 
         InfoText.Text = "This local setup installs a small WSL Linux instance dedicated to OpenClaw. "
-                      + $"Distro: {_config!.DistroName} • Port: {_config.GatewayPort}";
+                      + "If you'd rather connect to an existing or remote gateway, choose Advanced setup.";
     }
 
-    private void StartButton_Click(object sender, RoutedEventArgs e)
+    private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
-        App.MainWindow?.NavigateToCapabilities();
+        var dialog = new ContentDialog
+        {
+            Title = "Install a new WSL gateway?",
+            Content = $"Your current OpenClaw WSL gateway and its {_config!.DistroName} distro will be deleted. Setup will then install and connect to a new local WSL gateway.",
+            PrimaryButtonText = "Continue",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+            App.MainWindow?.NavigateToCapabilities();
+    }
+
+    private void AdvancedSetup_Click(object sender, RoutedEventArgs e)
+    {
+        // Launch tray app navigated to connection settings
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray", "OpenClaw.Tray.WinUI.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "OpenClaw.Tray.WinUI", "bin", "x64", "Debug", "net10.0-windows10.0.22621.0", "win-x64", "OpenClaw.Tray.WinUI.exe"),
+        };
+
+        var trayPath = candidates.FirstOrDefault(File.Exists);
+        var args = "--page connection";
+
+        if (trayPath != null)
+            Process.Start(new ProcessStartInfo(trayPath, args) { UseShellExecute = true });
+        else
+        {
+            try { Process.Start(new ProcessStartInfo("OpenClaw.Tray.WinUI.exe", args) { UseShellExecute = true }); }
+            catch { /* best effort */ }
+        }
+
+        App.MainWindow?.Close();
     }
 }

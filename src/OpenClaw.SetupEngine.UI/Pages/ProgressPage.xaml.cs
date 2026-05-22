@@ -85,7 +85,11 @@ public sealed partial class ProgressPage : Page
         _pipeline.StepProgress -= OnStepProgress;
         _logger.Dispose();
 
-        App.MainWindow?.NavigateToComplete(result.Outcome == PipelineOutcome.Success, sw.Elapsed, config.LogPath);
+        var success = result.Outcome == PipelineOutcome.Success;
+        if (success)
+            App.MainWindow?.NavigateToPermissions();
+        else
+            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath);
     }
 
     private void OnStepProgress(object? sender, StepProgressEvent e)

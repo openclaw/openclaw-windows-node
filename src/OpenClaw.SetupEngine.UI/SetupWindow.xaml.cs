@@ -21,7 +21,7 @@ public sealed partial class SetupWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetDpiForWindow(hwnd);
         var scale = dpi / 96.0;
-        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(700 * scale)));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(820 * scale)));
 
         // Extend into title bar for modern look
         ExtendsContentIntoTitleBar = true;
@@ -43,6 +43,7 @@ public sealed partial class SetupWindow : Window
 
     public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
+    public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath));
 

@@ -5,35 +5,54 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                MaxWidth="480" Padding="56,40,56,40" Spacing="16">
+    <Grid RowDefinitions="*,Auto" Padding="56,40,56,32">
 
-        <!-- Party popper / Error icon -->
-        <Image x:Name="ResultImage"
-               Width="120" Height="120"
-               HorizontalAlignment="Center" />
+        <!-- Main content -->
+        <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="12"
+                    HorizontalAlignment="Stretch">
 
-        <!-- Title -->
-        <TextBlock x:Name="TitleText"
-                   FontSize="32" FontWeight="SemiBold"
-                   HorizontalAlignment="Center" />
+            <!-- Party popper -->
+            <Image Source="ms-appx:///Assets/Setup/PartyPopper.png"
+                   Width="120" Height="120"
+                   HorizontalAlignment="Center" Margin="0,0,0,8" />
 
-        <!-- Subtitle -->
-        <TextBlock x:Name="SubtitleText"
-                   FontSize="14" Opacity="0.6"
-                   HorizontalAlignment="Center" />
+            <!-- Title -->
+            <TextBlock x:Name="TitleText" Text="All set!"
+                       FontSize="32" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
 
-        <!-- Elapsed time -->
-        <TextBlock x:Name="ElapsedText"
-                   FontSize="13" Opacity="0.5"
-                   HorizontalAlignment="Center" />
+            <!-- Subtitle -->
+            <TextBlock x:Name="SubtitleText" Text="OpenClaw is ready to go"
+                       FontSize="14" Opacity="0.6"
+                       HorizontalAlignment="Center" />
 
-        <!-- Spacer -->
-        <Border Height="24" />
+            <!-- Node Mode Active banner (amber/orange) -->
+            <Border x:Name="NodeModeBanner" CornerRadius="8" Padding="20,16,20,16"
+                    Margin="0,20,0,0">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                   VerticalAlignment="Center" Foreground="#FFC107" />
+                        <TextBlock Text="Node Mode Active" FontSize="15" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                               Text="This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine." />
+                </StackPanel>
+            </Border>
 
-        <!-- Launch Tray button -->
-        <Button x:Name="LaunchButton"
-                Content="Launch OpenClaw Tray"
+            <!-- Launch at startup toggle -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,24,0,0">
+                <TextBlock Text="Launch OpenClaw at startup?" FontSize="14"
+                           VerticalAlignment="Center" Grid.Column="0" />
+                <ToggleSwitch x:Name="StartupToggle" Grid.Column="1"
+                              OnContent="On" OffContent="Off" />
+            </Grid>
+
+        </StackPanel>
+
+        <!-- Bottom: Finish button -->
+        <Button Grid.Row="1" x:Name="LaunchButton"
+                Content="Finish"
                 HorizontalAlignment="Stretch"
                 Height="44" FontSize="15" FontWeight="SemiBold"
                 Click="LaunchButton_Click">
@@ -47,12 +66,5 @@
             </Button.Resources>
         </Button>
 
-        <!-- View log link -->
-        <HyperlinkButton x:Name="ViewLogLink"
-                         Content="View full log"
-                         HorizontalAlignment="Center"
-                         FontSize="13"
-                         Click="ViewLog_Click" />
-
-    </StackPanel>
+    </Grid>
 </Page>
