@@ -26,6 +26,11 @@ public class IsLocalLoopbackGatewayUrlTests
     [InlineData("ws://[::1]:18789")]            // IPv6 loopback
     [InlineData("wss://[::1]:18789")]
     [InlineData("ws://[::ffff:127.0.0.1]:18789")] // IPv4-mapped IPv6 loopback
+    // Round-4 coverage extensions: pin behavior so a future .NET runtime
+    // change to Uri.IsLoopback can't silently shift the security gate.
+    [InlineData("ws://LOCALHOST:18789")]        // host comparison case-insensitive
+    [InlineData("ws://user@localhost:18789")]   // userinfo doesn't affect host
+    [InlineData("ws://2130706433:18789")]       // decimal-encoded 127.0.0.1 — also loopback
     public void Accepts_RealLoopbackTargets(string url)
     {
         Assert.True(GatewayConnectionManager.IsLocalLoopbackGatewayUrl(url),
@@ -55,6 +60,7 @@ public class IsLocalLoopbackGatewayUrlTests
     [InlineData("not-a-url")]
     [InlineData("")]
     [InlineData(null)]
+    [InlineData("ws://%6cocalhost:18789")]      // percent-encoded "localhost" — Uri rejects parse
     public void Rejects_NonLoopbackOrInvalid(string? url)
     {
         Assert.False(GatewayConnectionManager.IsLocalLoopbackGatewayUrl(url),

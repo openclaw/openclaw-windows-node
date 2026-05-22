@@ -125,7 +125,12 @@ public static class SetupExistingGatewayClassifier
             }
             if (platform.State == OpenClawTray.Services.LocalGatewaySetup.WslPlatformState.Unknown)
             {
-                Logger.Warn("[SetupExistingGatewayClassifier] WSL platform probe returned Unknown; cannot confirm app-owned distro — treating as not present.");
+                // Use the caller-supplied logger (probeLogger) so this
+                // breadcrumb lands in the same diagnostic stream as the
+                // rest of setup — see the comment ~30 lines above on
+                // why NullLogger swallowing this kind of signal made
+                // first-run hangs hard to correlate.
+                probeLogger.Warn("[SetupExistingGatewayClassifier] WSL platform probe returned Unknown; cannot confirm app-owned distro — treating as not present.");
                 return false;
             }
 

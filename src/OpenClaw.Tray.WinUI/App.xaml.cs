@@ -2929,6 +2929,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             ReleaseNodeAutoApproveSuppression("onboarding window setup failed");
             _onboardingWindow = null;
+            // Round-4 fix: if we disconnected an existing gateway to make
+            // room for onboarding (see disconnectedForOnboarding +
+            // restoreGatewayId capture earlier in this method) and setup
+            // never reached the point of wiring the Closed handler, the
+            // user is stranded — silently disconnected with no onboarding
+            // window and no way to reconnect without restarting the app.
+            // Callers fire-and-forget (`_ = ShowOnboardingAsync()`), so
+            // this is otherwise invisible. Restore the previous connection
+            // before rethrowing so the user keeps the gateway they had.
+            if (disconnectedForOnboarding && restoreGatewayId != null)
+            {
+                Logger.Info("Onboarding setup threw — restoring previous gateway connection before propagating exception.");
+                _ = _connectionManager?.ConnectAsync(restoreGatewayId);
+            }
             throw;
         }
     }
