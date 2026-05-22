@@ -57,6 +57,18 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
         if (!distros.Any(d => d.Equals(distro, StringComparison.OrdinalIgnoreCase)))
         {
+            // Distro not registered, but disk directory may still exist from prior crash
+            var wslDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenClawTray", "wsl", distro);
+            if (Directory.Exists(wslDir))
+            {
+                ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
+                // Shut down WSL VM to release VHD locks
+                await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+                await Task.Delay(2000, ct);
+                Directory.Delete(wslDir, recursive: true);
+            }
             ctx.Logger.Decision("No stale distro found", "skip cleanup");
             return StepResult.Ok("No stale distro to clean");
         }
@@ -71,6 +83,16 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
         if (unregister.ExitCode == 0)
         {
+            // Also remove the on-disk WSL vhdx directory (--import fails if it exists)
+            var wslDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenClawTray", "wsl", distro);
+            if (Directory.Exists(wslDir))
+            {
+                ctx.Logger.Info($"Removing leftover WSL directory: {wslDir}");
+                Directory.Delete(wslDir, recursive: true);
+            }
+
             // Wait for port to be released
             ctx.Logger.Info("Waiting for port release after distro termination...");
             await Task.Delay(3000, ct);

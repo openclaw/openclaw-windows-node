@@ -26,6 +26,20 @@
                        FontSize="14" Opacity="0.6"
                        HorizontalAlignment="Center" />
 
+            <!-- Error details (hidden on success) -->
+            <Border x:Name="ErrorCard" CornerRadius="8" Padding="16,12,16,12"
+                    Margin="0,16,0,0" Visibility="Collapsed"
+                    Background="#3CFF4444">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
+                               FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
+                               Foreground="#FF6B6B" />
+                    <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
+                                     Click="ViewLog_Click" Padding="0"
+                                     FontSize="13" />
+                </StackPanel>
+            </Border>
+
             <!-- Node Mode Active banner (amber/orange) -->
             <Border x:Name="NodeModeBanner" CornerRadius="8" Padding="20,16,20,16"
                     Margin="0,20,0,0">
@@ -41,7 +55,7 @@
             </Border>
 
             <!-- Launch at startup toggle -->
-            <Grid ColumnDefinitions="*,Auto" Margin="0,24,0,0">
+            <Grid x:Name="StartupRow" ColumnDefinitions="*,Auto" Margin="0,24,0,0">
                 <TextBlock Text="Launch OpenClaw at startup?" FontSize="14"
                            VerticalAlignment="Center" Grid.Column="0" />
                 <ToggleSwitch x:Name="StartupToggle" Grid.Column="1"

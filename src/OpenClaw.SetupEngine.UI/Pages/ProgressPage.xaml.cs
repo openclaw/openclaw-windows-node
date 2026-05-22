@@ -89,7 +89,12 @@ public sealed partial class ProgressPage : Page
         if (success)
             App.MainWindow?.NavigateToPermissions();
         else
-            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath);
+        {
+            var errorMsg = result.FailedStepId != null
+                ? $"Step '{result.FailedStepId}' failed: {result.Message}"
+                : result.Message;
+            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, errorMsg);
+        }
     }
 
     private void OnStepProgress(object? sender, StepProgressEvent e)

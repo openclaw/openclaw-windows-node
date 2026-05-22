@@ -1,62 +1,183 @@
-# Setup Engine Redesign — Detailed Plan
+# Setup Engine — Architecture & Reference
 
-## Problem Statement
+## Overview
 
-The current onboarding/setup system (`LocalGatewaySetup.cs` at 4,092 lines) works but has accumulated complexity:
-- Deep nesting, complex branching, ad-hoc error plumbing
-- 16 phases baked into one monolithic orchestrator
-- UI tightly coupled to engine internals
-- Hard to automate/script — requires WinUI window
-- Debugging requires correlating multiple log sources
-- No transactional semantics (partial failures leave ambiguous state)
+The Setup Engine is a **standalone, config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two projects:
 
-## Proposed Approach
+1. **`OpenClaw.SetupEngine`** — Headless pipeline (console exe). Runs 16 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+2. **`OpenClaw.SetupEngine.UI`** — WinUI3 app that wraps the same pipeline with a 5-page fluent wizard UI.
 
-Build a **standalone setup engine** as a new project (`OpenClaw.SetupEngine`) with:
-- A **pipeline of discrete steps** (not a monolithic switch/case)
-- **Transactional semantics** — each step declares preconditions, execution, and rollback
-- **Pervasive structured logging** (JSONL) — every decision, command, and state transition logged
-- **Config-file driven** — entire setup can run headless from a YAML/JSON config
-- **Thin WinUI shell** — optional UI that observes engine events (doesn't drive logic)
-- **Reuses** `OpenClaw.Connection` and `OpenClaw.Shared` for gateway/credential/WebSocket code
+Both require a JSON config file to run — there are **no hardcoded defaults** anywhere. A bundled `default-config.json` ships with each exe.
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  OpenClaw.SetupEngine (net10.0, no UI dependency)       │
-│                                                         │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐    │
-│  │ Pipeline │──│  Steps   │──│ TransactionJournal  │    │
-│  └──────────┘  └──────────┘  └────────────────────┘    │
-│       │              │               │                  │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐    │
-│  │ Config   │  │ Runners  │  │ StructuredLogger    │    │
-│  │ (YAML)   │  │ (WSL,Cmd)│  └────────────────────┘    │
-│  └──────────┘  └──────────┘                             │
-│       │                                                  │
-│  refs: OpenClaw.Connection, OpenClaw.Shared              │
-└─────────────────────────────────────────────────────────┘
-         ▲ events (IProgress<T>, IObservable)
+┌─────────────────────────────────────────────────────────────┐
+│  OpenClaw.SetupEngine (net10.0, console exe)                │
+│                                                             │
+│  SetupPipeline ──→ 16 SetupStep classes ──→ StepResult      │
+│       │                    │                                │
+│  SetupContext         CommandRunner (WSL + Process)          │
+│  SetupConfig          TransactionJournal (JSONL)            │
+│  SetupLogger          RetryExecutor                         │
+│                                                             │
+│  refs: OpenClaw.Connection, OpenClaw.Shared                 │
+└─────────────────────────────────────────────────────────────┘
+         ▲ callback: Action<string, StepStatus>
          │
-┌─────────────────────────────────────────────────────────┐
-│  OpenClaw.SetupEngine.UI (net10.0-windows, WinUI3)      │
-│  Thin shell: renders pipeline progress, no logic        │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  OpenClaw.SetupEngine.UI (net10.0-windows10.0.22621, WinUI3)│
+│  5 pages, direct code-behind, no MVVM                       │
+│  Welcome → Capabilities → Progress → Permissions → Complete │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Core Design Principles
+---
 
-### 1. Steps as Small Classes (Abstract Base)
+## Project Structure
+
+```
+src/OpenClaw.SetupEngine/
+├── OpenClaw.SetupEngine.csproj    # net10.0, console exe
+├── Program.cs                     # CLI entry: --config, --headless, --dry-run, --rollback-on-failure
+├── SetupPipeline.cs               # Sequential step orchestrator (132 lines)
+├── SetupContext.cs                # Config model + shared state bag (217 lines)
+├── SetupSteps.cs                  # All 16 step implementations (1222 lines)
+├── TransactionJournal.cs          # Append-only JSONL journal (77 lines)
+├── SetupLogger.cs                 # Structured JSONL logger (112 lines)
+├── CommandRunner.cs               # WslCommandRunner + ProcessRunner (122 lines)
+├── RetryExecutor.cs               # Exponential backoff retry
+├── StubNodeCapability.cs          # Minimal capability stubs for pairing
+└── default-config.json            # THE source of truth for all config values
+
+src/OpenClaw.SetupEngine.UI/
+├── OpenClaw.SetupEngine.UI.csproj # WinAppSDK 2.0.1, self-contained
+├── App.xaml / App.xaml.cs         # Application entry
+├── Program.cs                     # Main with WinUI activation
+├── SetupWindow.xaml / .xaml.cs    # 720×820 window, Mica, title bar, navigation
+└── Pages/
+    ├── WelcomePage.xaml / .cs     # Logo, info card, Install button + ContentDialog
+    ├── CapabilitiesPage.xaml / .cs # 2-column grid with icons + descriptions
+    ├── ProgressPage.xaml / .cs    # Live step rows + streaming log viewer
+    ├── PermissionsPage.xaml / .cs # 5 permission checks + Open Settings buttons
+    └── CompletePage.xaml / .cs    # Party popper, amber banner, startup toggle
+```
+
+**Total engine code: ~1,882 lines across 8 files.** UI adds ~10 more files.
+
+---
+
+## Config File (`default-config.json`)
+
+**Config is required.** Neither the headless exe nor the UI will run without one. The bundled `default-config.json` is auto-loaded from `AppContext.BaseDirectory` if no `--config` is specified.
+
+```json
+{
+  "DistroName": "OpenClawDev",
+  "GatewayPort": 18899,
+  "BaseDistro": "Ubuntu-24.04",
+  "Headless": true,
+  "AutoApprovePairing": true,
+  "CleanBeforeRun": true,
+  "SkipPermissions": true,
+  "SkipWizard": true,
+  "LogLevel": "trace",
+  "LogPath": null,
+  "GatewayUrl": null,
+  "BootstrapToken": null,
+  "RollbackOnFailure": false,
+
+  "Wsl": {
+    "User": "openclaw",
+    "Systemd": true,
+    "Interop": false,
+    "AppendWindowsPath": false,
+    "Automount": false,
+    "MountFsTab": false,
+    "UseWindowsTimezone": true,
+    "Memory": null,
+    "Swap": null
+  },
+
+  "Gateway": {
+    "Bind": "lan",
+    "InstallUrl": null,
+    "Version": null,
+    "HealthTimeoutSeconds": 90,
+    "ReloadMode": "hot",
+    "AuthMode": "token",
+    "ExtraConfig": null
+  },
+
+  "Capabilities": {
+    "System": true, "Canvas": true, "Screen": true,
+    "Camera": true, "Location": true, "Browser": true,
+    "Device": true, "Tts": false, "Stt": false
+  },
+
+  "Settings": {
+    "EnableNodeMode": true,
+    "AutoStart": false,
+    "NodeSystemRunEnabled": true,
+    "NodeCanvasEnabled": true,
+    "NodeScreenEnabled": true,
+    "NodeCameraEnabled": true,
+    "NodeLocationEnabled": true,
+    "NodeBrowserProxyEnabled": true,
+    "NodeTtsEnabled": false,
+    "NodeSttEnabled": false
+  },
+
+  "Pairing": {
+    "OperatorScopes": "operator.read,operator.write,operator.pairing",
+    "NodeScopes": "node.read,node.write",
+    "CliScopes": "operator.read,operator.write,operator.pairing",
+    "TimeoutSeconds": 60
+  }
+}
+```
+
+### Config Layering (priority, highest wins)
+
+1. CLI flags (`--headless`, `--log-path`, `--rollback-on-failure`)
+2. Config file (explicit `--config` or bundled `default-config.json`)
+3. Environment variables (`OPENCLAW_SETUP_DISTRO_NAME`, etc.)
+
+---
+
+## Pipeline Steps (16 total)
+
+Executed sequentially. Each step is a small class (30–120 lines) in `SetupSteps.cs`.
+
+| # | Step Class | What It Does |
+|---|-----------|-------------|
+| 1 | `CleanupStaleDistroStep` | Unregister leftover WSL distro if `CleanBeforeRun` |
+| 2 | `CleanupStaleGatewayStep` | Stop orphaned gateway service, remove config |
+| 3 | `PreflightOsStep` | Validate Windows 64-bit, version ≥ 22H2 |
+| 4 | `PreflightWslStep` | Verify WSL installed and version ≥ 2 |
+| 5 | `PreflightPortStep` | Check gateway port is available |
+| 6 | `CreateWslInstanceStep` | Export base distro → import as new instance |
+| 7 | `ConfigureWslInstanceStep` | Write wsl.conf, create user, set dirs |
+| 8 | `InstallCliStep` | Run install script inside WSL |
+| 9 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
+| 10 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
+| 11 | `StartGatewayStep` | Start service, poll health endpoint (90s timeout) |
+| 12 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
+| 13 | `PairOperatorStep` | WebSocket operator connection + device approval |
+| 14 | `PairNodeStep` | WebSocket node connection + capability registration |
+| 15 | `VerifyEndToEndStep` | End-to-end health check (operator → node round trip) |
+| 16 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
+
+### Step Base Class
 
 ```csharp
 public abstract class SetupStep
 {
     public abstract string Id { get; }
     public abstract string DisplayName { get; }
-    
     public abstract Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct);
-    
     public virtual Task RollbackAsync(SetupContext ctx, CancellationToken ct) => Task.CompletedTask;
     public virtual bool CanSkip(SetupContext ctx) => false;
     public virtual bool CanRetry => true;
@@ -64,321 +185,162 @@ public abstract class SetupStep
 }
 ```
 
-No interfaces. Abstract base with sensible defaults — most steps only override `ExecuteAsync`. Each step is a small focused class (~30-80 lines), all living in `SetupSteps.cs`.
-
-### 2. Transactional Pipeline (Clean-Start Guarantee)
+### StepResult
 
 ```csharp
-public sealed class SetupPipeline
-{
-    // ALWAYS starts clean. Before running steps:
-    //   1. Detect leftover state (stale distro, partial config, orphan services)
-    //   2. Clean it up (unregister distro, stop services, delete config)
-    //   3. Then run steps sequentially
-    //
-    // On failure:
-    //   - If step.CanRetry: retry up to N times with backoff
-    //   - If terminal failure + rollbackOnFailure: rollback completed steps in reverse
-    //   - Journal records every transition for forensic replay
-    
-    public async Task<PipelineResult> RunAsync(SetupConfig config, CancellationToken ct);
-    public async Task<PipelineResult> ResumeAsync(JournalSnapshot snapshot, CancellationToken ct);
-}
+public record StepResult(bool Success, string? Error = null, bool Skipped = false);
 ```
 
-**Clean-start guarantee**: Every run begins by ensuring a clean slate. If a previous run left a half-installed distro, a stale gateway service, or orphaned config files, the pipeline detects and cleans them *before* proceeding. This eliminates the "works on second try" class of bugs.
-
-The pipeline is also **resumable** — if the process crashes mid-run, the journal enables an explicit `--resume` that picks up from last good state (opt-in, not default — default is clean start).
-
-### 3. Structured Logging (Everything)
-
-```csharp
-public interface ISetupLogger
-{
-    IDisposable BeginStep(string stepId, IReadOnlyDictionary<string, object>? properties = null);
-    void Event(string eventName, LogLevel level, object? payload = null);
-    void Command(string exe, string[] args, TimeSpan timeout);
-    void CommandResult(int exitCode, string stdout, string stderr, TimeSpan elapsed);
-    void Decision(string description, string chosen, string[] alternatives);
-    void StateTransition(string from, string to, string reason);
-}
-```
-
-Log format: JSONL with correlation IDs. Every single shell command, its full output, timing, and exit code logged. Secrets auto-redacted.
-
-### 4. Config-File Driven
-
-```json
-{
-  "mode": "local-wsl",
-  "distroName": "OpenClawGateway",
-  "gatewayPort": 18789,
-  "baseDistro": "Ubuntu-24.04",
-  "skipPermissions": false,
-  "skipWizard": false,
-  "headless": true,
-  "autoApprovePairing": true,
-  "rollbackOnFailure": false,
-  "cleanBeforeRun": true,
-  "logLevel": "trace",
-  "logPath": "./setup-trace.jsonl",
-  "gatewayUrl": "ws://localhost:18789",
-  "bootstrapToken": null,
-  "wizardAnswers": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-20250514",
-    "api_key": "sk-ant-..."
-  }
-}
-```
-
-**Headless mode**: Pipeline runs without UI. All decisions come from config. For CI/automation/fleet deployment.
-
-**Interactive mode**: Thin WinUI shell subscribes to pipeline events and renders progress.
-
-## Step Inventory
-
-Each step is its own class file. Steps grouped by category:
-
-### Category: Cleanup (runs first, always)
-| Step ID | Purpose | Rollback |
-|---------|---------|----------|
-| `cleanup-stale-distro` | Detect & unregister leftover WSL distro from prior run | — |
-| `cleanup-stale-service` | Stop & remove orphaned gateway systemd service | — |
-| `cleanup-stale-config` | Remove stale gateway config, tokens, setup-state.json | — |
-
-### Category: Preflight
-| Step ID | Purpose | Rollback |
-|---------|---------|----------|
-| `preflight-os` | Validate Windows 64-bit, version ≥ 22H2 | — (check only) |
-| `preflight-wsl` | Verify WSL installed and version ≥ 2 | — |
-| `preflight-port` | Check gateway port (18789) available | — |
-| `preflight-existing` | Detect existing distro, decide reuse/replace | — |
-
-### Category: WSL
-| Step ID | Purpose | Rollback |
-|---------|---------|----------|
-| `wsl-enable` | Ensure WSL feature enabled (may need reboot) | — |
-| `wsl-create-instance` | Create WSL2 distro from base image | Unregister distro |
-| `wsl-configure` | Write wsl.conf, create user, dirs | — (idempotent) |
-
-### Category: Gateway Install
-| Step ID | Purpose | Rollback |
-|---------|---------|----------|
-| `install-cli` | Run upstream install script in WSL | Remove /opt/openclaw |
-| `configure-gateway` | Write gateway config + token | Remove config files |
-| `install-service` | `openclaw gateway install --force` | `openclaw gateway uninstall` |
-| `start-gateway` | Start service, wait for health (90s) | Stop service |
-
-### Category: Pairing
-| Step ID | Purpose | Rollback |
-|---------|---------|----------|
-| `mint-token` | Mint bootstrap token via CLI | — |
-| `pair-operator` | Connect operator WebSocket + approve device | Disconnect |
-| `pair-node` | Connect node WebSocket + register capabilities | Disconnect |
-| `verify-e2e` | End-to-end health check | — |
-
-### Category: Post-Setup
-| Step ID | Purpose | Rollback |
-|---------|---------|----------|
-| `gateway-wizard` | Run provider/model wizard via RPC; answers from config (headless) or UI (interactive) | — (optional) |
-| `permissions-check` | Verify Windows permissions | — (advisory) |
-| `save-state` | Persist gateway record + settings | — |
+---
 
 ## Key Components
 
-### SetupContext (Shared State Bag)
+### SetupPipeline
 
-```csharp
-public sealed class SetupContext
-{
-    public SetupConfig Config { get; }
-    public ISetupLogger Logger { get; }
-    public TransactionJournal Journal { get; }
-    
-    // Accumulated state from steps
-    public string? DistroName { get; set; }
-    public string? GatewayUrl { get; set; }
-    public string? BootstrapToken { get; set; }
-    public string? GatewayRecordId { get; set; }
-    public GatewayRegistry GatewayRegistry { get; }
-    public IGatewayConnectionManager? ConnectionManager { get; set; }
-}
-```
+Sequential orchestrator. For each step:
+1. Check `CanSkip` → skip if true
+2. Execute with retry (via `RetryExecutor`)
+3. On failure + `RollbackOnFailure` → rollback completed steps in reverse
+4. Journal records every start/complete/rollback
+
+### SetupContext
+
+Shared state bag passed to all steps. Contains:
+- `Config` — the loaded `SetupConfig`
+- `Logger` — structured JSONL logger
+- `Journal` — transaction journal
+- `Commands` — `ICommandRunner` for executing WSL/process commands
+- Accumulated runtime state: `DistroName`, `GatewayUrl`, `BootstrapToken`, `GatewayRecordId`
+
+### CommandRunner
+
+Two implementations:
+- **WslCommandRunner**: `wsl.exe -d <distro> -- <cmd>` with 5s bounded drain
+- **ProcessCommandRunner**: Direct Windows process execution
+
+Every command is fully logged: exe, args, timeout, exit code, stdout, stderr, elapsed time.
 
 ### TransactionJournal
 
-```csharp
-public sealed class TransactionJournal
-{
-    // Append-only log of step executions
-    // Enables: resume after crash, forensic replay, rollback decisions
-    
-    public void RecordStepStarted(string stepId, DateTimeOffset timestamp);
-    public void RecordStepCompleted(string stepId, StepResult result, DateTimeOffset timestamp);
-    public void RecordRollbackStarted(string stepId);
-    public void RecordRollbackCompleted(string stepId, bool success);
-    
-    public JournalSnapshot GetSnapshot();
-    public static TransactionJournal LoadFrom(string path);
-    public void SaveTo(string path);
-}
-```
+Append-only JSONL file (`.journal.jsonl`) recording step transitions. Enables:
+- Forensic replay of what happened
+- Future `--resume` from last good state
+- Rollback decision tracking
 
-Persisted as JSONL alongside logs. If process dies mid-step, resume knows exactly where it stopped.
+### SetupLogger
 
-### CommandRunner (WSL Abstraction)
+Structured JSONL logger. Records:
+- Step start/complete with timing
+- Every shell command and its full output
+- Decisions made (e.g., "chose to clean existing distro")
+- State transitions
+- Errors with stack traces
 
-```csharp
-public interface ICommandRunner
-{
-    Task<CommandResult> RunAsync(CommandSpec spec, CancellationToken ct);
-}
+Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-<timestamp>.log`
 
-public record CommandSpec(
-    string Executable,
-    string[] Arguments,
-    TimeSpan Timeout,
-    string? WorkingDirectory = null,
-    IReadOnlyDictionary<string, string>? Environment = null,
-    bool RedactOutput = false,
-    string? StdinInput = null
-);
+---
 
-public record CommandResult(
-    int ExitCode,
-    string Stdout,
-    string Stderr,
-    TimeSpan Elapsed,
-    bool TimedOut
-);
-```
+## UI Flow
 
-**WslCommandRunner** wraps this for `wsl.exe -d <distro> -- <cmd>` with the proven bounded-drain logic from the current implementation (5s drain timeout for orphan processes).
+The WinUI app is a **thin shell** — no business logic, just rendering pipeline state.
 
-### RetryPolicy
+### Page Flow: Welcome → Capabilities → Progress → Permissions → Complete
 
-```csharp
-public record RetryPolicy(
-    int MaxAttempts = 3,
-    TimeSpan InitialDelay = default,  // 2s
-    double BackoffMultiplier = 2.0,
-    TimeSpan MaxDelay = default       // 30s
-);
-```
+**WelcomePage**
+- Lobster icon + "OpenClaw Setup" title bar
+- Info card explaining what will be installed
+- "Install new WSL Gateway" button with ContentDialog confirmation
+- "Advanced setup" link → launches tray with `--page connection`
 
-Steps declare their own retry policy. Pipeline handles retry orchestration — steps don't implement retry loops internally.
+**CapabilitiesPage**
+- 2-column grid showing capabilities from config
+- Icons + descriptions for each (System, Canvas, Screen, Camera, etc.)
+- "Continue" proceeds to Progress
 
-## UI Design
+**ProgressPage**
+- Step rows with spinning ProgressRing → ✓/✗ badges
+- Live streaming log viewer (monospace, auto-scroll)
+- On success → navigates to Permissions
+- On failure → navigates to Complete(success=false)
 
-The WinUI shell is a **thin observer** for progress steps, but has an **interactive role** during the gateway wizard phase — the gateway sends dynamic page definitions (select, text, confirm, note) via RPC and the UI must render them and relay user selections back.
+**PermissionsPage**
+- 5 permission rows: Notifications, Camera, Microphone, Location, Screen Capture
+- Live status checks (registry, DeviceAccessInformation, GraphicsCaptureSession)
+- "Open Settings" buttons launch `ms-settings://` URIs
+- "Refresh status" button, "Continue" proceeds to Complete
 
-### Two Interaction Models
+**CompletePage**
+- Party popper image
+- "All set!" / error heading
+- Amber "Node Mode Active" warning banner
+- "Launch OpenClaw at startup?" toggle (writes HKCU Run registry)
+- "Finish" button launches tray and closes
 
-**1. Automated (headless)**: Wizard step answers come from the config file's `wizardAnswers` map:
-```json
-{
-  "wizardAnswers": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-20250514",
-    "api_key": "sk-..."
-  }
-}
-```
-When a wizard step arrives, the engine looks up the answer in config → sends it back via RPC → no UI needed.
+### Window Properties
+- 720×820 logical pixels (DPI-scaled)
+- Mica backdrop
+- Custom title bar with lobster icon
 
-**2. Interactive (UI)**: The engine emits a `WizardStepReceived` event with the step definition. The UI renders the appropriate control (radio buttons for Select, text box for Text, etc.) and relays the user's choice back to the engine, which forwards it via `wizard.next(answer)`.
+---
 
-```csharp
-// Engine exposes a channel for wizard interaction
-public interface IWizardInteraction
-{
-    event EventHandler<WizardStep> StepReceived;      // engine → UI
-    void SubmitAnswer(string stepId, object answer);  // UI → engine
-}
-```
+## CLI Usage
 
-This keeps the engine in control of flow while the UI is a pluggable input/output adapter.
-
-### UI Modes:
-1. **Full wizard** — multi-page flow with progress, interactive wizard, permissions
-2. **Compact** — single-page progress view (for "re-run setup" scenarios)
-3. **None** — headless, answers from config
-
-### UI doesn't drive orchestration logic:
-- No `if (phase == X && status == Y)` in UI code
-- UI maps step states to visual rows (1:1 step→row or N:1 via display groups)
-- Wizard pages are dynamically rendered from step definitions — no hardcoded page layouts
-
-## Project Structure
+### Headless (Console Exe)
 
 ```
-src/
-  OpenClaw.SetupEngine/
-    OpenClaw.SetupEngine.csproj       # net10.0-windows, WinUI3, standalone exe
-    Program.cs                        # Entry point: --headless or UI mode
-    SetupPipeline.cs                  # Orchestrator + abstract SetupStep base + StepResult
-    SetupContext.cs                   # Shared state bag + SetupConfig model (JSON)
-    SetupSteps.cs                     # ALL step implementations in one file
-    TransactionJournal.cs             # Append-only JSONL journal for crash recovery
-    SetupLogger.cs                    # Structured JSONL logger + secret redactor
-    CommandRunner.cs                  # WslCommandRunner + ProcessCommandRunner
-    RetryExecutor.cs                  # Retry with exponential backoff
-    SetupWindow.cs                    # WinUI host window + progress + log tail
-    WizardPage.cs                     # Dynamic gateway wizard renderer
+OpenClaw.SetupEngine.exe                                    # uses bundled default-config.json
+OpenClaw.SetupEngine.exe --config custom.json               # explicit config
+OpenClaw.SetupEngine.exe --config custom.json --headless    # force headless
+OpenClaw.SetupEngine.exe --dry-run                          # validate config, don't execute
+OpenClaw.SetupEngine.exe --rollback-on-failure              # clean up on failure
+OpenClaw.SetupEngine.exe --log-path ./trace.log             # override log location
 ```
 
-**11 source files. One project. One exe.**
+Exit codes: 0 = success, 1 = failure
 
-- No interfaces — abstract base class `SetupStep` with `ExecuteAsync`, `RollbackAsync`, `CanSkip`
-- All steps live in `SetupSteps.cs` (each step is a small class, ~30-80 lines; file stays under 800 lines)
-- Single exe: launches UI by default, `--headless` for automation
-- References `OpenClaw.Connection` and `OpenClaw.Shared` for WebSocket/credential/protocol code only
-- Does NOT reference any existing setup/onboarding code — clean implementation
-
-## Scope
-
-This session builds a **standalone setup engine**. Replacing the current tray setup flow is out of scope. The engine will:
-- Install WSL, configure it, install the gateway, pair, and verify
-- Work headless from a JSON config or interactively via UI
-- Log everything in structured JSONL
-- Be transactional with clean-start and rollback support
-
-It will NOT:
-- Integrate into the existing tray app
-- Replace `LocalGatewaySetup.cs`
-- Modify existing projects (ask first if changes are needed)
-
-## Automation & Config
-
-### CLI Usage (Headless)
+### UI (WinUI Exe)
 
 ```
-openclaw-setup.exe --config setup.json --headless
-openclaw-setup.exe --config setup.json --headless --log-path ./trace.jsonl
-openclaw-setup.exe --resume ./journal.jsonl              # resume from crash
-openclaw-setup.exe --dry-run --config setup.json         # validate config only
-openclaw-setup.exe --config setup.json --rollback-on-failure  # clean up on failure
+OpenClaw.SetupEngine.UI.exe                                 # uses bundled default-config.json
+OpenClaw.SetupEngine.UI.exe --config custom.json            # explicit config
 ```
 
-Exit codes: 0 = success, 1 = retryable failure, 2 = terminal failure, 3 = cancelled
+Exits with error to stderr if no config file found.
 
-### Config Layering
+---
 
-Priority (highest wins):
-1. CLI flags (`--gateway-port 18790`)
-2. Config file (`setup.json`)
-3. Environment variables (`OPENCLAW_SETUP_*`)
-4. Built-in defaults
+## Build & Run
 
-## Migration Strategy (Future — Out of Scope)
+```powershell
+# Build headless engine
+dotnet build src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj
 
-This session builds the standalone engine only. Future integration:
-1. **Phase 1** (this session): Build engine + standalone exe. Validate it works end-to-end.
-2. **Phase 2** (future): Wire into Tray app as an alternative to `LocalGatewaySetup`. Feature-flag switchover.
-3. **Phase 3** (future): Remove old code once stable.
+# Build UI app (requires Platform specification)
+dotnet build src\OpenClaw.SetupEngine.UI\OpenClaw.SetupEngine.UI.csproj -p:Platform=x64
 
-## What We Reuse from Existing Code
+# Run UI
+Start-Process "src\OpenClaw.SetupEngine.UI\bin\x64\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.SetupEngine.UI.exe"
+
+# Run headless
+& "src\OpenClaw.SetupEngine\bin\Debug\net10.0\OpenClaw.SetupEngine.exe"
+```
+
+---
+
+## Design Principles
+
+1. **Config is required** — no hardcoded defaults for port, distro, or any operational parameter
+2. **Log everything** — every command, decision, and state change in structured JSONL
+3. **Steps are small** — each step is a focused class, 30–120 lines
+4. **No deep nesting** — pipeline is flat sequential; steps don't branch internally
+5. **Clean-start guarantee** — stale state from prior runs is cleaned before proceeding
+6. **UI is optional** — engine works identically without UI; UI is a passive observer
+7. **Direct code-behind** — no MVVM, no ViewModels, no framework abstractions in UI
+8. **Transactional** — journal + optional rollback on failure
+
+---
+
+## What We Reuse
 
 | Component | Source | How |
 |-----------|--------|-----|
@@ -387,28 +349,31 @@ This session builds the standalone engine only. Future integration:
 | Credential resolver | `OpenClaw.Connection` | Direct use |
 | Node connector | `OpenClaw.Connection` | Direct use |
 | Setup code decoder | `OpenClaw.Connection` | Direct use |
-| Secret redaction | Current `SecretRedactor` | Copy/adapt |
-| Bounded WSL drain | Current `WslExeCommandRunner` | Reimplement cleanly |
-| Permission checker | Current `PermissionChecker.cs` | Copy/adapt to step |
-| Wizard protocol | Current `WizardFlowController` | Adapt to step interface |
+| Bounded WSL drain logic | Reimplemented cleanly | 5s timeout pattern |
 
-## Design Decisions (Resolved)
+---
+
+## Future Work
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Interactive gateway wizard in UI | Not started | RPC wizard protocol exists; needs dynamic page renderer |
+| Resume from journal (`--resume`) | Designed, not implemented | Journal records state; pipeline can skip completed steps |
+| Retry button in Progress UI | Not started | Pipeline supports retry; UI needs "Retry" affordance |
+| Tray integration (invoke engine from tray) | Not started | Engine is standalone exe; tray could spawn it |
+| Replace `LocalGatewaySetup.cs` | Out of scope | Requires feature-flag switchover in tray |
+
+---
+
+## Design Decisions
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
-| 1 | Config format | **JSON** | No extra dependency; simpler parsing; config is machine-authored more often than human-edited |
-| 2 | Log viewer | **Yes — real-time JSONL tail** in collapsible panel | Essential for debugging; makes iteration fast |
-| 3 | Rollback scope | **Configurable** — leave artifacts by default, `--rollback-on-failure` flag to clean up | Debugging needs artifacts; CI/fleet needs clean slate |
-| 4 | Gateway wizard | Keep RPC wizard protocol as-is (adapt to step interface) | Proven protocol, gateway owns the flow |
-| 5 | Packaging | **Both** — standalone exe that tray app can also invoke | Independent updates + tray integration |
-| 6 | Step parallelism | **No** — sequential only | Preflight is fast; simplicity wins; design doesn't preclude future parallelism |
-
-## Success Criteria
-
-- [ ] Setup runs headless from config file with zero UI interaction
-- [ ] Every shell command and its output appears in JSONL trace
-- [ ] Crash mid-setup → resume from journal picks up where it left off
-- [ ] Each step file is < 200 lines (maintainable, focused)
-- [ ] Total engine code (excluding tests) < 3000 lines
-- [ ] Existing connection/pairing tests pass with new engine
-- [ ] UI is purely reactive — removing it doesn't break engine
+| 1 | Config format | JSON | No extra dependency; commented JSON for readability |
+| 2 | Config requirement | Required (no built-in defaults) | Prevents port/distro confusion across environments |
+| 3 | Log viewer | Real-time streaming in Progress page | Essential for debugging; makes iteration fast |
+| 4 | Rollback scope | Opt-in via `RollbackOnFailure` | Debugging needs artifacts; clean slate for CI |
+| 5 | UI framework | Direct code-behind, no MVVM | Minimal code; setup UI is write-once, low-churn |
+| 6 | Two projects | Engine (console) + UI (WinUI) | Engine testable/automatable independently |
+| 7 | Step parallelism | Sequential only | Simplicity; steps have ordering dependencies |
+| 8 | Gateway bind | LAN (`0.0.0.0`) by default | Required for reliable WSL2 networking |

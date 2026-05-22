@@ -9,6 +9,8 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class CompletePage : Page
 {
+    private string? _logPath;
+
     public CompletePage()
     {
         InitializeComponent();
@@ -19,17 +21,29 @@ public sealed partial class CompletePage : Page
     {
         if (e.Parameter is CompletePageArgs args)
         {
+            _logPath = args.LogPath;
+
             if (args.Success)
             {
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
+                ErrorCard.Visibility = Visibility.Collapsed;
             }
             else
             {
                 TitleText.Text = "Setup failed";
-                SubtitleText.Text = "Check the log for details";
+                SubtitleText.Text = args.ErrorMessage ?? "An error occurred during setup";
                 NodeModeBanner.Visibility = Visibility.Collapsed;
+                StartupRow.Visibility = Visibility.Collapsed;
                 LaunchButton.Content = "Close";
+
+                // Show error card with details and log link
+                ErrorCard.Visibility = Visibility.Visible;
+                ErrorText.Text = args.ErrorMessage ?? "Unknown error";
+                if (args.LogPath != null)
+                    ViewLogLink.Content = $"View full log → {Path.GetFileName(args.LogPath)}";
+                else
+                    ViewLogLink.Visibility = Visibility.Collapsed;
             }
         }
     }
@@ -49,31 +63,34 @@ public sealed partial class CompletePage : Page
     private void LaunchButton_Click(object sender, RoutedEventArgs e)
     {
         // Register startup if toggled on
-        if (StartupToggle.IsOn)
+        if (StartupToggle.Visibility == Visibility.Visible && StartupToggle.IsOn)
             RegisterStartup();
 
-        // Launch tray and close
-        LaunchTray();
+        // Launch tray on success, just close on failure
+        if (LaunchButton.Content?.ToString() != "Close")
+            LaunchTray();
         App.MainWindow?.Close();
+    }
+
+    private void ViewLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (_logPath != null && File.Exists(_logPath))
+            Process.Start(new ProcessStartInfo(_logPath) { UseShellExecute = true });
     }
 
     private static void LaunchTray()
     {
-        var candidates = new[]
+        // Kill any existing tray instances so fresh one picks up new gateway
+        foreach (var proc in Process.GetProcessesByName("OpenClaw.Tray.WinUI"))
         {
-            Path.Combine(AppContext.BaseDirectory, "..", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.exe"),
-            Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "OpenClaw.Tray.WinUI", "bin", "x64", "Debug", "net10.0-windows10.0.22621.0", "win-x64", "OpenClaw.Tray.WinUI.exe"),
-        };
-
-        var trayPath = candidates.FirstOrDefault(File.Exists);
-        if (trayPath != null)
-            Process.Start(new ProcessStartInfo(trayPath) { UseShellExecute = true });
-        else
-        {
-            try { Process.Start(new ProcessStartInfo("OpenClaw.Tray.WinUI.exe") { UseShellExecute = true }); }
-            catch { /* best effort */ }
+            try { proc.Kill(); } catch { }
         }
+
+        // Brief pause for process cleanup
+        Thread.Sleep(1000);
+
+        // Launch via protocol deep link — opens tray and navigates to chat
+        Process.Start(new ProcessStartInfo("openclaw://chat") { UseShellExecute = true });
     }
 
     private static void RegisterStartup()

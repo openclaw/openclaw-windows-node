@@ -57,8 +57,8 @@ public sealed partial class SetupWindow : Window
     public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
     public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
-    public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath)
-        => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath));
+    public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
+        => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
 
     private static string? GetArg(string[] args, string name)
     {
@@ -69,4 +69,4 @@ public sealed partial class SetupWindow : Window
     }
 }
 
-public sealed record CompletePageArgs(bool Success, TimeSpan Elapsed, string? LogPath);
+public sealed record CompletePageArgs(bool Success, TimeSpan Elapsed, string? LogPath, string? ErrorMessage = null);
