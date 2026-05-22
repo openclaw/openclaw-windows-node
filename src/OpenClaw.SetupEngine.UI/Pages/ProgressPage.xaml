@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.ProgressPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Padding="56,28,56,0" Spacing="6">
+            <Image Source="Assets/Setup/Lobster.png" Width="56" Height="56"
+                   HorizontalAlignment="Center" Margin="0,0,0,4" />
+            <TextBlock Text="Setting up locally"
+                       FontSize="28" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+            <TextBlock x:Name="SubtitleText"
+                       FontSize="14" Opacity="0.6"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Step rows -->
+        <StackPanel x:Name="StepsPanel" Grid.Row="1"
+                    Padding="56,32,56,16" Spacing="28"
+                    VerticalAlignment="Top">
+            <!-- Populated in code-behind -->
+        </StackPanel>
+
+        <!-- Log viewer (bottom panel) -->
+        <Grid Grid.Row="2" Padding="16,0,16,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Button x:Name="LogToggleButton" Grid.Row="0"
+                    Content="Show logs ▼" FontSize="12"
+                    HorizontalAlignment="Left"
+                    Click="LogToggle_Click"
+                    Padding="8,4,8,4" />
+
+            <Border x:Name="LogPanel" Grid.Row="1"
+                    CornerRadius="6" Padding="12,8,12,8"
+                    Height="180" Visibility="Collapsed"
+                    Margin="0,8,0,0">
+                <ScrollViewer x:Name="LogScroller"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="LogText"
+                               FontFamily="Consolas"
+                               FontSize="11"
+                               TextWrapping="NoWrap"
+                               IsTextSelectionEnabled="True" />
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+    </Grid>
+</Page>

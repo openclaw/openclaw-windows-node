@@ -23,6 +23,12 @@
     </Project>
     <Project Path="src/OpenClawTray.FunctionalUI/OpenClawTray.FunctionalUI.csproj" />
     <Project Path="src/OpenClawTray.OnboardingV2/OpenClawTray.OnboardingV2.csproj" />
+    <Project Path="src/OpenClaw.SetupEngine/OpenClaw.SetupEngine.csproj" />
+    <Project Path="src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
     <Project Path="src/OpenClaw.SetupPreview/OpenClaw.SetupPreview.csproj">
       <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
       <Platform Solution="*|Any CPU" Project="x64" />

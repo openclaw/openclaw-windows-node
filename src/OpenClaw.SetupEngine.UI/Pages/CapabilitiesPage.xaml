@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.CapabilitiesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="40,28,40,28">
+
+        <!-- Header with lobster icon -->
+        <StackPanel Grid.Row="0" Spacing="6" HorizontalAlignment="Center">
+            <Image Source="Assets/Setup/Lobster.png" Width="64" Height="64"
+                   HorizontalAlignment="Center" Margin="0,0,0,8" />
+            <TextBlock Text="Configure capabilities"
+                       FontSize="24" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+            <TextBlock TextWrapping="Wrap" TextAlignment="Center"
+                       FontSize="13" Opacity="0.6" MaxWidth="440"
+                       Text="Choose which capabilities this node will advertise. You can change these later." />
+        </StackPanel>
+
+        <!-- 2-column capability grid -->
+        <ScrollViewer Grid.Row="1" Margin="0,20,0,0"
+                      VerticalScrollBarVisibility="Auto">
+            <Grid x:Name="CapGrid" ColumnSpacing="16" RowSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <!-- Rows added in code-behind -->
+            </Grid>
+        </ScrollViewer>
+
+        <!-- Continue button -->
+        <Button Grid.Row="2" Content="Continue"
+                HorizontalAlignment="Stretch" Margin="0,16,0,0"
+                Height="44" FontSize="15" FontWeight="SemiBold"
+                Click="Continue_Click">
+            <Button.Resources>
+                <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
+                <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
+                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
+                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
+            </Button.Resources>
+        </Button>
+
+    </Grid>
+</Page>
