@@ -220,8 +220,11 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
 
     /// <summary>
     /// Max number of post-install probe attempts (including the first call).
-    /// 6 × 500ms = 3s upper bound — long enough to ride out the finalize race
-    /// without making a real "needs reboot" outcome wait an annoying time.
+    /// 6 attempts × (worst-case ~5s per probe + 500ms delay) is a hard upper
+    /// bound on the order of ~33s, but in practice the finalize race resolves
+    /// in 1-2 probes (~1-2s) on a fresh install or a single probe (~immediate)
+    /// when the install genuinely needs a reboot. The first probe outside the
+    /// loop runs synchronously without the inter-attempt delay.
     /// </summary>
     public const int DefaultPostInstallProbeAttempts = 6;
 
@@ -359,7 +362,30 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
     {
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Process.Start returned null for elevated wsl.exe --install invocation.");
-        await process.WaitForExitAsync(cancellationToken);
-        return process.ExitCode;
+
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+            return process.ExitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            // ShellExecute "runas" returns a Process for a non-elevated
+            // launcher; the actual elevated wsl.exe runs under a different
+            // token and Process.Kill from this (non-elevated) parent will
+            // typically fail with Win32Exception(5 — access denied). We
+            // try anyway as a best-effort: it succeeds when the launcher
+            // hasn't yet detached, and fails harmlessly otherwise. The
+            // important contract is that cancellation propagates (rethrow)
+            // so the caller (engine) can mark state Cancelled. Documented
+            // limitation: once UAC has been granted, the wsl --install
+            // child cannot be reliably cancelled from this process — it
+            // may complete in the background and leave the platform
+            // installed despite a "cancelled" wizard state. Subsequent
+            // launches will see the platform installed and proceed normally.
+            try { process.Kill(entireProcessTree: true); }
+            catch { /* expected for elevated child; best-effort */ }
+            throw;
+        }
     }
 }

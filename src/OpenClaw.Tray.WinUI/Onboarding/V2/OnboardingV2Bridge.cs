@@ -429,8 +429,9 @@ public sealed class OnboardingV2Bridge : IDisposable
         var errorMessage = (status == LocalGatewaySetupStatus.FailedRetryable
                          || status == LocalGatewaySetupStatus.FailedTerminal
                          || status == LocalGatewaySetupStatus.Blocked
+                         || status == LocalGatewaySetupStatus.RequiresAdmin
                          || status == LocalGatewaySetupStatus.RequiresRestart)
-            ? AppendSetupDiagnosticsHint(LocalizeFailureMessage(st.FailureCode, st.UserMessage))
+            ? MaybeAppendSetupDiagnosticsHint(LocalizeFailureMessage(st.FailureCode, st.UserMessage, out var isGenericFallback), isGenericFallback)
             : null;
 
         // Hanselman review: only FailedRetryable should expose Try-again.
@@ -649,7 +650,20 @@ public sealed class OnboardingV2Bridge : IDisposable
     /// failure codes still surface their message.
     /// </summary>
     internal static string? LocalizeFailureMessage(string? failureCode, string? engineUserMessage)
+        => LocalizeFailureMessage(failureCode, engineUserMessage, out _);
+
+    /// <inheritdoc cref="LocalizeFailureMessage(string?, string?)" />
+    /// <param name="isGenericFallback">
+    /// Set to true only when we couldn't find a code-specific localization
+    /// and the engine UserMessage was also blank — meaning we returned the
+    /// generic "Setup failed" placeholder. Callers should NOT then append
+    /// another "Find diagnostics at…" hint, because the generic message is
+    /// already designed to send the user to the logs (the hint becomes a
+    /// duplicate / overflows the small error card on the V2 page).
+    /// </param>
+    internal static string? LocalizeFailureMessage(string? failureCode, string? engineUserMessage, out bool isGenericFallback)
     {
+        isGenericFallback = false;
         if (string.IsNullOrEmpty(failureCode))
             return string.IsNullOrWhiteSpace(engineUserMessage) ? null : engineUserMessage;
 
@@ -686,6 +700,7 @@ public sealed class OnboardingV2Bridge : IDisposable
         if (!string.IsNullOrWhiteSpace(engineUserMessage))
             return engineUserMessage;
 
+        isGenericFallback = true;
         var generic = LocalizationHelper.GetString("V2_Progress_GenericFailure");
         return string.IsNullOrWhiteSpace(generic)
             ? "Setup failed. See logs for details."
@@ -704,10 +719,11 @@ public sealed class OnboardingV2Bridge : IDisposable
         LocalGatewaySetupStatus status,
         LocalGatewaySetupState st)
     {
-        // Failures / restart-needed: error card takes over.
+        // Failures / restart-needed / admin-needed: error card takes over.
         if (status is LocalGatewaySetupStatus.FailedRetryable
             or LocalGatewaySetupStatus.FailedTerminal
             or LocalGatewaySetupStatus.Blocked
+            or LocalGatewaySetupStatus.RequiresAdmin
             or LocalGatewaySetupStatus.RequiresRestart
             or LocalGatewaySetupStatus.Complete
             or LocalGatewaySetupStatus.Cancelled)
@@ -725,7 +741,13 @@ public sealed class OnboardingV2Bridge : IDisposable
             return LocalizationHelper.GetString("V2_Progress_Wsl_Installing");
         }
 
-        if (phase is LocalGatewaySetupPhase.NotStarted or LocalGatewaySetupPhase.Preflight or LocalGatewaySetupPhase.EnsureWslEnabled)
+        // Tightened predicate: only emit the generic "Check system" hint
+        // while the engine is actively running an early phase. If we've
+        // already moved past EnsureWslEnabled or hit a non-Running status
+        // (e.g. transient Pending between phases), the downstream rows
+        // own their own labels and the hint just clutters the page.
+        if (status == LocalGatewaySetupStatus.Running
+            && phase <= LocalGatewaySetupPhase.EnsureWslEnabled)
         {
             return LocalizationHelper.GetString("V2_Progress_CheckSystem_Hint");
         }
@@ -889,6 +911,23 @@ public sealed class OnboardingV2Bridge : IDisposable
             ? "Local setup failed."
             : message;
         return baseMessage + Environment.NewLine + "Setup diagnostics: " + LocalGatewaySetupDiagnosticsService.LatestSummaryPathForCurrentUser();
+    }
+
+    /// <summary>
+    /// Like <see cref="AppendSetupDiagnosticsHint"/> but skips the wrap when
+    /// <paramref name="isGenericFallback"/> is true. The generic fallback
+    /// string ("Setup failed. See logs for details.") already directs the
+    /// user to logs; tacking on a separate "Setup diagnostics: …" line
+    /// duplicates that intent and overflows the small error card on the
+    /// V2 page. For specific failure codes we still append because their
+    /// localized strings are problem-specific and benefit from a pointer
+    /// to the full bundle.
+    /// </summary>
+    private static string? MaybeAppendSetupDiagnosticsHint(string? message, bool isGenericFallback)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return null;
+        return isGenericFallback ? message : AppendSetupDiagnosticsHint(message);
     }
 
     private void ApplyFreshLocalReplacementRow(Dictionary<V2Stage, V2RowState> rows)

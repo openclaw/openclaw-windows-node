@@ -127,6 +127,38 @@ public sealed record LocalGatewaySetupIssue(
     LocalGatewaySetupSeverity Severity,
     string? Detail = null);
 
+/// <summary>
+/// Issue codes that belong to the "WSL install cycle" — the warnings and
+/// failures the engine emits while trying to install / approve / configure
+/// the local WSL platform + distro. Listed in one place so that:
+///  (a) the engine's on-entry self-heal can wipe them with a single source
+///      of truth before re-running preflight, and
+///  (b) the EnsureWslEnabled branches that cycle through Install / Block
+///      states stay in sync — adding a new code only requires updating
+///      this list, not 4 duplicated `Issues.RemoveAll` sites.
+/// </summary>
+internal static class WslInstallCycleIssueCodes
+{
+    public const string PlatformNotInstalled = "wsl_platform_not_installed";
+    public const string InstallRequiresRestart = "wsl_install_requires_restart";
+    public const string InstallFailed = "wsl_install_failed";
+    public const string InstallElevationDeclined = "wsl_install_elevation_declined";
+    public const string InstallUnavailable = "wsl_install_unavailable";
+    public const string Unavailable = "wsl_unavailable";
+    public const string PreflightBlocked = "preflight_blocked";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        PlatformNotInstalled,
+        InstallRequiresRestart,
+        InstallFailed,
+        InstallElevationDeclined,
+        InstallUnavailable,
+        Unavailable,
+        PreflightBlocked,
+    };
+}
+
 public sealed record LocalGatewaySetupPhaseRecord(
     LocalGatewaySetupPhase Phase,
     LocalGatewaySetupStatus Status,
@@ -679,14 +711,12 @@ public sealed class LocalGatewayPreflightProbe : ILocalGatewayPreflightProbe
             }
         }
 
-        // Only enumerate distros and probe ports when WSL is actually present
-        // AND responsive. When the platform probe returned NotInstalled (we'll
-        // install it in EnsureWslEnabled) or Unknown (the probe timed out /
-        // unrecognized failure — already surfaced as wsl_unavailable above),
-        // both `wsl --list --verbose` and the port probe are guaranteed to
-        // either hang on the 30s engine runner timeout or return useless data.
-        // Gating on `Installed` (not `!= NotInstalled`) is what prevents the
-        // post-probe-timeout hang the round-3 review found.
+        // WSL-side probes (distro enumeration + in-distro existing gateway
+        // recognition) only make sense when the platform is actually present
+        // and responsive — when NotInstalled (we'll install it in
+        // EnsureWslEnabled) or Unknown (probe timed out), `wsl --list
+        // --verbose` will hang on the 30s engine runner timeout or return
+        // useless data.
         if (platform.State == WslPlatformState.Installed)
         {
             var distros = await _wsl.ListDistrosAsync(cancellationToken);
@@ -695,20 +725,33 @@ public sealed class LocalGatewayPreflightProbe : ILocalGatewayPreflightProbe
 
             if (distros.Any(d => d.Version == 1))
                 issues.Add(new LocalGatewaySetupIssue("wsl1_present", "WSL1 distros are present. OpenClaw uses WSL2 and does not modify existing distros.", LocalGatewaySetupSeverity.Warning));
+        }
 
-            if (!_portProbe.IsPortAvailable(options.GatewayPort))
+        // The host-side port probe is independent of WSL state and is
+        // cheap (no wsl.exe involvement) — run it unconditionally so a
+        // Windows-side process already holding the gateway port is
+        // caught BEFORE we sink effort into a WSL install/distro setup.
+        // Without this gate-on-Installed-only, a missing-WSL user would
+        // get past preflight, install WSL, install the distro, and only
+        // then discover a port conflict — a much worse UX than failing
+        // fast here.
+        if (!_portProbe.IsPortAvailable(options.GatewayPort))
+        {
+            // The "this is OUR existing gateway" recovery path needs to
+            // talk to WSL to confirm — only attempt it when WSL is
+            // present, otherwise treat any port collision as blocking.
+            if (platform.State == WslPlatformState.Installed
+                && options.AllowExistingDistro
+                && await IsExistingGatewayPortAsync(options, cancellationToken))
             {
-                if (options.AllowExistingDistro && await IsExistingGatewayPortAsync(options, cancellationToken))
-                {
-                    issues.Add(new LocalGatewaySetupIssue(
-                        "gateway_port_already_active",
-                        $"Local gateway port {options.GatewayPort} is already served by the OpenClawGateway WSL instance; setup will resume against it.",
-                        LocalGatewaySetupSeverity.Warning));
-                }
-                else
-                {
-                    issues.Add(new LocalGatewaySetupIssue("port_in_use", $"Local gateway port {options.GatewayPort} is already in use.", LocalGatewaySetupSeverity.Blocking));
-                }
+                issues.Add(new LocalGatewaySetupIssue(
+                    "gateway_port_already_active",
+                    $"Local gateway port {options.GatewayPort} is already served by the OpenClawGateway WSL instance; setup will resume against it.",
+                    LocalGatewaySetupSeverity.Warning));
+            }
+            else
+            {
+                issues.Add(new LocalGatewaySetupIssue("port_in_use", $"Local gateway port {options.GatewayPort} is already in use.", LocalGatewaySetupSeverity.Blocking));
             }
         }
 
@@ -3592,8 +3635,41 @@ public sealed class LocalGatewaySetupEngine
     /// by later phases (notably ConfigureWslInstance) to recognise that any
     /// downstream WSL failure may actually be a "needs reboot" symptom of
     /// the fresh platform install rather than a true configuration error.
+    /// Gated by <see cref="LooksLikePostInstallKernelIssue"/> so unrelated
+    /// configure errors (script bugs, missing packages) don't get a
+    /// spurious "restart your PC" recommendation.
     /// </summary>
     private bool _wslPlatformJustInstalled;
+
+    /// <summary>
+    /// Pattern-matches a configure-phase diagnostic detail for signatures
+    /// that indicate the WSL kernel / lifted-WSL service hasn't fully
+    /// picked up a fresh platform install. When we see one of these, AND
+    /// we know we just installed WSL in this session, recommend a reboot.
+    /// For unrelated configure errors (script syntax, missing packages,
+    /// permissions inside the distro) we keep the generic message so the
+    /// user doesn't get a misleading "reboot to fix" suggestion.
+    /// Loose match — false positives just mean we suggest reboot in cases
+    /// where a reboot won't hurt; false negatives fall through to the
+    /// generic configure-failed message.
+    /// </summary>
+    internal static bool LooksLikePostInstallKernelIssue(string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail))
+            return true; // No detail to disambiguate — be conservative and assume kernel issue post-install.
+        var d = detail.Replace("\0", string.Empty);
+        return d.Contains("WslRegisterDistribution", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("Wsl/Service", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("HCS_E_", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("kernel", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("vmcompute", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("LxssManager", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("0x80370102", StringComparison.OrdinalIgnoreCase)   // virtual machine could not be started
+            || d.Contains("instance is corrupted", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("WSL2 requires", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("class not registered", StringComparison.OrdinalIgnoreCase);
+    }
 
     public event Action<LocalGatewaySetupState>? StateChanged;
 
@@ -3701,14 +3777,7 @@ public sealed class LocalGatewaySetupEngine
             state.UserMessage = null;
             // Wipe any WSL-install-cycle issues. Preflight will repopulate
             // state.Issues with fresh signals on its next run.
-            state.Issues.RemoveAll(i =>
-                string.Equals(i.Code, "wsl_install_requires_restart", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(i.Code, "wsl_install_failed", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(i.Code, "wsl_install_elevation_declined", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(i.Code, "wsl_install_unavailable", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(i.Code, "wsl_unavailable", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(i.Code, "preflight_blocked", StringComparison.OrdinalIgnoreCase));
+            state.Issues.RemoveAll(i => WslInstallCycleIssueCodes.All.Contains(i.Code));
         }
 
         _diagnostics.RunStarted(state, _options);
@@ -3833,8 +3902,7 @@ public sealed class LocalGatewaySetupEngine
                 case WslPlatformInstallOutcome.InstalledNoRestart:
                     // Drop the warning so the engine doesn't re-trigger the
                     // install path on a retry, and continue on.
-                    state.Issues.RemoveAll(i =>
-                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
+                    state.Issues.RemoveAll(i => string.Equals(i.Code, WslInstallCycleIssueCodes.PlatformNotInstalled, StringComparison.OrdinalIgnoreCase));
                     state.UserMessage = "Windows Subsystem for Linux installed.";
                     _wslPlatformJustInstalled = true;
                     return true;
@@ -3849,17 +3917,15 @@ public sealed class LocalGatewaySetupEngine
                     // covers both shapes by keying off Status only.)
                     state.UserMessage = "Windows Subsystem for Linux was installed. Restart your PC, then reopen OpenClaw to continue setup.";
                     state.Status = LocalGatewaySetupStatus.RequiresRestart;
-                    state.FailureCode = "wsl_install_requires_restart";
-                    state.Issues.RemoveAll(i =>
-                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
+                    state.FailureCode = WslInstallCycleIssueCodes.InstallRequiresRestart;
+                    state.Issues.RemoveAll(i => string.Equals(i.Code, WslInstallCycleIssueCodes.PlatformNotInstalled, StringComparison.OrdinalIgnoreCase));
                     state.UpdatedAtUtc = DateTimeOffset.UtcNow;
                     return false;
 
                 case WslPlatformInstallOutcome.UserDeclinedElevation:
-                    state.Issues.RemoveAll(i =>
-                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
+                    state.Issues.RemoveAll(i => string.Equals(i.Code, WslInstallCycleIssueCodes.PlatformNotInstalled, StringComparison.OrdinalIgnoreCase));
                     state.Block(
-                        "wsl_install_elevation_declined",
+                        WslInstallCycleIssueCodes.InstallElevationDeclined,
                         installResult.ErrorMessage ?? "Administrator approval is required to install Windows Subsystem for Linux.",
                         retryable: true,
                         detail: installResult.Detail);
@@ -3867,10 +3933,9 @@ public sealed class LocalGatewaySetupEngine
 
                 case WslPlatformInstallOutcome.Failed:
                 default:
-                    state.Issues.RemoveAll(i =>
-                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
+                    state.Issues.RemoveAll(i => string.Equals(i.Code, WslInstallCycleIssueCodes.PlatformNotInstalled, StringComparison.OrdinalIgnoreCase));
                     state.Block(
-                        "wsl_install_failed",
+                        WslInstallCycleIssueCodes.InstallFailed,
                         installResult.ErrorMessage ?? "Couldn't install Windows Subsystem for Linux. Try again, or run `wsl --install` from an elevated terminal.",
                         retryable: true,
                         detail: installResult.Detail);
@@ -3905,17 +3970,20 @@ public sealed class LocalGatewaySetupEngine
                 if (!string.IsNullOrWhiteSpace(result.Detail))
                     _logger.Warn($"WSL instance configuration diagnostics: {SecretRedactor.Redact(result.Detail!)}");
 
-                // If we just installed the WSL platform in this session and
-                // the configure step failed, the most likely cause is that
-                // the WSL kernel / lifted-WSL service hasn't fully picked
-                // up the new platform install. Microsoft's own guidance is
-                // to reboot after `wsl --install`. Surface a specific
-                // failure code + message instead of the generic one so the
-                // user knows what to do (reboot) instead of just "Try again".
-                var failureCode = _wslPlatformJustInstalled
+                // If we just installed the WSL platform in this session AND
+                // the configure error's signature looks like a kernel/lifted-
+                // WSL platform issue (rather than an unrelated bash/systemd/
+                // package problem), remap to the "restart your PC" failure
+                // code. Microsoft's own guidance is to reboot after
+                // `wsl --install`. The stderr-signature gate avoids telling
+                // the user to reboot when the underlying cause is something
+                // a reboot won't fix (e.g., curl pulling a script, missing
+                // package, a script syntax error) — that wastes their time
+                // and erodes trust.
+                var failureCode = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(result.Detail)
                     ? "wsl_firstboot_config_failed_after_install"
                     : (result.ErrorCode ?? "wsl_instance_config_failed");
-                var failureMessage = _wslPlatformJustInstalled
+                var failureMessage = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(result.Detail)
                     ? "Couldn't configure the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup."
                     : (result.ErrorMessage ?? "Failed to configure the OpenClaw Gateway WSL instance.");
 
@@ -4460,6 +4528,22 @@ public static class LocalGatewaySetupEngineFactory
         var gatewayConfigurationPreparer = new OpenClawCliGatewayConfigurationPreparer(wsl);
         var pendingDeviceApprover = new WslGatewayCliPendingDeviceApprover(wsl, options.OpenClawInstallPrefix + "/bin/openclaw");
 
+        // Resolve the pair retry delay from the environment to allow ops
+        // override without rebuilding. Falls back to
+        // SettingsWindowsTrayNodeProvisioner.DefaultPairRetryDelay (5s) which
+        // is conservatively below the gateway's internal ~10s pending-
+        // approval timer. Power users on slow ARM64 hardware can raise it;
+        // tests want zero.
+        TimeSpan? pairRetryDelay = null;
+        var pairRetryDelayMsRaw = Environment.GetEnvironmentVariable("OPENCLAW_PAIR_RETRY_DELAY_MS");
+        if (!string.IsNullOrWhiteSpace(pairRetryDelayMsRaw)
+            && int.TryParse(pairRetryDelayMsRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var pairRetryDelayMs)
+            && pairRetryDelayMs >= 0)
+        {
+            pairRetryDelay = TimeSpan.FromMilliseconds(pairRetryDelayMs);
+            logger?.Info($"[Engine] OPENCLAW_PAIR_RETRY_DELAY_MS override: pairRetryDelay={pairRetryDelay}");
+        }
+
         return new LocalGatewaySetupEngine(
             options,
             new LocalGatewaySetupStateStore(),
@@ -4468,7 +4552,7 @@ public static class LocalGatewaySetupEngineFactory
             new LocalGatewayHealthProbe(),
             new SettingsBootstrapTokenProvisioner(settingsAdapter, bootstrapTokenProvider),
             new SettingsOperatorPairingService(settingsAdapter, operatorConnector, pendingDeviceApprover),
-            new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector, pendingDeviceApprover),
+            new SettingsWindowsTrayNodeProvisioner(settingsAdapter, windowsNodeConnector, pendingDeviceApprover, pairRetryDelay),
             logger,
             gatewayConfigurationPreparer: gatewayConfigurationPreparer,
             sharedGatewayTokenProvisioner: new SettingsSharedGatewayTokenProvisioner(settingsAdapter, sharedGatewayTokenProvider, gatewayConfigurationPreparer),

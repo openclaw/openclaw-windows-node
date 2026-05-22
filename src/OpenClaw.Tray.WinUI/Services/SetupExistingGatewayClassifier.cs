@@ -32,14 +32,16 @@ public static class SetupExistingGatewayClassifier
         string dataPath,
         IWslCommandRunner? wsl = null,
         CancellationToken cancellationToken = default,
-        string? localDataPath = null)
+        string? localDataPath = null,
+        IOpenClawLogger? logger = null)
     {
         var hasAnyGateway = HasAnyExistingGatewayConnection(registry, settings, dataPath);
         if (await HasAppOwnedLocalWslGatewayAsync(
                 registry,
                 localDataPath ?? GetLocalDataPath(),
                 wsl,
-                cancellationToken).ConfigureAwait(false))
+                cancellationToken,
+                logger).ConfigureAwait(false))
         {
             return SetupExistingGatewayKind.AppOwnedLocalWsl;
         }
@@ -83,10 +85,17 @@ public static class SetupExistingGatewayClassifier
         GatewayRegistry? registry,
         string localDataPath,
         IWslCommandRunner? wsl,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IOpenClawLogger? logger = null)
     {
         var hasLocalSetupEvidence = HasLocalSetupEvidence(registry, localDataPath);
-        wsl ??= new WslExeCommandRunner(NullLogger.Instance);
+        // Use the caller-supplied logger so probe failures / WSL stderr
+        // surface in the same diagnostic stream as the rest of setup.
+        // NullLogger.Instance swallows the most useful breadcrumbs ("WSL
+        // platform not installed", "wsl --list timed out") that would
+        // otherwise let us correlate "first-run hangs ~30s" reports.
+        var probeLogger = logger ?? NullLogger.Instance;
+        wsl ??= new WslExeCommandRunner(probeLogger);
         try
         {
             // Bound the WSL probe with a fast-fail platform check first. On

@@ -703,6 +703,143 @@ public class WslPlatformInstallTests
         Assert.Contains("inconclusive", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Engine_SelfHeal_ResetsCancelledStatus()
+    {
+        // Pins #5: a previous run that ended in Status=Cancelled (e.g. user
+        // closed the wizard mid-install, or pressed Cancel during UAC) must
+        // self-heal on re-entry so the next "Set up locally" click doesn't
+        // short-circuit out of every phase via RunPhaseAsync's
+        // `Status is Pending or Running` guard. Without this the user sees
+        // an instant "nothing happened" with no error card, which is worse
+        // than the original failure because there's no actionable hint.
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var statePath = System.IO.Path.Combine(temp.Path, "setup-state.json");
+
+        var seed = LocalGatewaySetupState.Create(new LocalGatewaySetupOptions());
+        seed.Status = LocalGatewaySetupStatus.Cancelled;
+        seed.Phase = LocalGatewaySetupPhase.ConfigureWslInstance;
+        seed.UserMessage = "Cancelled by user.";
+        await new LocalGatewaySetupStateStore(statePath).SaveAsync(seed);
+
+        var wsl = new LocalGatewaySetupTests.FakeWslCommandRunner
+        {
+            WslStatusExitCode = 0,
+            WslStatusOutput = "Default Version: 2\nWSL version: 2.1.5.0",
+        };
+        var preflightProbe = new WslPlatformProbe(wsl, fileExists: _ => true, wslExePath: @"C:\Windows\System32\wsl.exe");
+        var provisioning = new LocalGatewaySetupTests.FakeProvisioner();
+        var engine = new LocalGatewaySetupEngine(
+            new LocalGatewaySetupOptions { EnableWindowsTrayNodeByDefault = false },
+            new LocalGatewaySetupStateStore(statePath),
+            new LocalGatewayPreflightProbe(wsl, new LocalGatewaySetupTests.FixedPortProbe(available: true), preflightProbe),
+            wsl,
+            new LocalGatewaySetupTests.SuccessfulHealthProbe(),
+            provisioning,
+            provisioning,
+            provisioning,
+            wslInstanceInstaller: new WslStoreInstanceInstaller(wsl, createDirectory: _ => { }),
+            wslInstanceConfigurator: new LocalGatewaySetupTests.FakeWslInstanceConfigurator(),
+            openClawLinuxInstaller: new LocalGatewaySetupTests.FakeOpenClawLinuxInstaller(),
+            gatewayConfigurationPreparer: new LocalGatewaySetupTests.FakeGatewayConfigurationPreparer(),
+            gatewayServiceManager: new LocalGatewaySetupTests.FakeGatewayServiceManager());
+
+        var state = await engine.RunLocalOnlyAsync();
+
+        Assert.Equal(LocalGatewaySetupStatus.Complete, state.Status);
+    }
+
+    [Fact]
+    public async Task Engine_ConfigureFails_AfterJustInstalled_DoesNotRemapUnrelatedFailure()
+    {
+        // Pins #4: when the WSL platform was just installed in this session
+        // (InstalledNoRestart outcome) AND a later configure step fails for
+        // an unrelated reason (e.g. apt repo down, script bug, distro disk
+        // full) — the failure must NOT be remapped to
+        // "wsl_firstboot_config_failed_after_install" because telling the
+        // user to reboot won't fix anything that doesn't look like a WSL
+        // kernel issue. We keep the original failure code so the
+        // localization layer can show the correct message.
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var statePath = System.IO.Path.Combine(temp.Path, "setup-state.json");
+
+        var wsl = new LocalGatewaySetupTests.FakeWslCommandRunner
+        {
+            // First preflight: wsl --status reports not-installed; probe
+            // says NotInstalled and the engine drives the WSL install path.
+            WslStatusExitCode = -1,
+            WslStatusOutput = "The Windows Subsystem for Linux is not installed. https://aka.ms/wslinstall",
+        };
+        var preflightProbe = new WslPlatformProbe(wsl, fileExists: _ => true, wslExePath: @"C:\Windows\System32\wsl.exe");
+        var installerCalls = 0;
+        var installer = new FakeWslPlatformInstaller(() =>
+        {
+            installerCalls++;
+            // After install succeeds, flip the runner so subsequent preflight
+            // / configure probes see WSL as installed and healthy.
+            wsl.WslStatusExitCode = 0;
+            wsl.WslStatusOutput = "Default Version: 2\nWSL version: 2.1.5.0";
+            return new WslPlatformInstallResult(WslPlatformInstallOutcome.InstalledNoRestart, 0);
+        });
+        var failingConfigurator = new FailingConfigurator(
+            new WslInstanceConfigurationResult(
+                Success: false,
+                ErrorCode: "apt_repository_unreachable",
+                ErrorMessage: "apt-get update failed: temporary failure resolving archive.ubuntu.com",
+                Detail: "exit=100; stderr=W: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/noble/main; stdout="));
+        var provisioning = new LocalGatewaySetupTests.FakeProvisioner();
+        var engine = new LocalGatewaySetupEngine(
+            new LocalGatewaySetupOptions { EnableWindowsTrayNodeByDefault = false },
+            new LocalGatewaySetupStateStore(statePath),
+            new LocalGatewayPreflightProbe(wsl, new LocalGatewaySetupTests.FixedPortProbe(available: true), preflightProbe),
+            wsl,
+            new LocalGatewaySetupTests.SuccessfulHealthProbe(),
+            provisioning,
+            provisioning,
+            provisioning,
+            wslInstanceInstaller: new WslStoreInstanceInstaller(wsl, createDirectory: _ => { }),
+            wslInstanceConfigurator: failingConfigurator,
+            openClawLinuxInstaller: new LocalGatewaySetupTests.FakeOpenClawLinuxInstaller(),
+            gatewayConfigurationPreparer: new LocalGatewaySetupTests.FakeGatewayConfigurationPreparer(),
+            gatewayServiceManager: new LocalGatewaySetupTests.FakeGatewayServiceManager(),
+            wslPlatformInstaller: installer);
+
+        var state = await engine.RunLocalOnlyAsync();
+
+        Assert.Equal(1, installerCalls);
+        Assert.NotEqual(LocalGatewaySetupStatus.Complete, state.Status);
+        Assert.Equal("apt_repository_unreachable", state.FailureCode);
+        Assert.DoesNotContain("restart your PC", state.UserMessage ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LooksLikePostInstallKernelIssue_MatchesKnownKernelSignatures()
+    {
+        // Pins #4: the gate that decides whether to remap a configure-phase
+        // failure to "restart your PC after WSL install" must positively
+        // match the known WSL-kernel-y signatures and negatively reject
+        // unrelated configure errors.
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("exit=4294967295; stderr=Error: 0x80370102 The virtual machine could not be started; stdout="));
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("WslRegisterDistribution failed with error: 0x80004002"));
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("Error: 0x800401f0  Class not registered"));
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("WSL2 requires an update to its kernel component"));
+        // Conservative null/blank fallback: assume kernel issue post-install.
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(null));
+        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(""));
+
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("exit=100; stderr=E: Unable to fetch some archives; stdout="));
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("bash: line 12: syntax error near unexpected token"));
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("Permission denied: /etc/openclaw/config"));
+    }
+
+    private sealed class FailingConfigurator : IWslInstanceConfigurator
+    {
+        private readonly WslInstanceConfigurationResult _result;
+        public FailingConfigurator(WslInstanceConfigurationResult result) { _result = result; }
+        public Task<WslInstanceConfigurationResult> ConfigureAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default)
+            => Task.FromResult(_result);
+    }
+
     // --- helpers ---
 
     private sealed class RecordingWslCommandRunner : IWslCommandRunner

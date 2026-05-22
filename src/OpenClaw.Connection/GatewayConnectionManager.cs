@@ -79,8 +79,80 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     internal OpenClawGatewayClient? ConcreteOperatorClient => _activeLifecycle?.DataClient;
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
+    // ─── Node-pair auto-approve suppression ───
+    //
+    // Reference-counted suppression of the manager's own node.pair.approve
+    // RPC flow. While `_suppressNodeAutoApproveCount > 0` AND the active
+    // gateway URL is local-loopback, OnNodePairingStatusChanged skips the
+    // RPC and EnsureNodeConnectedAsync fast-fails on PairingRequired so the
+    // caller (V2 onboarding engine) can drive its own approval via WSL CLI.
+    // Volatile so the UI-thread setter and the gateway event-pump reader
+    // both observe a coherent value (ARM64 reordering safety).
+    private volatile int _suppressNodeAutoApproveCount;
+
+    /// <summary>Backwards-compat property kept for tests / diagnostics; reflects whether any token is active.</summary>
+    internal bool IsNodeAutoApproveSuppressionActive => _suppressNodeAutoApproveCount > 0;
+
     /// <inheritdoc />
-    public bool SuppressNodeAutoApprove { get; set; }
+    public IDisposable AcquireNodeAutoApproveSuppression()
+    {
+        Interlocked.Increment(ref _suppressNodeAutoApproveCount);
+        _diagnostics.Record("node", "Node auto-approve suppression acquired");
+        return new NodeAutoApproveSuppressionToken(this);
+    }
+
+    private void ReleaseNodeAutoApproveSuppression()
+    {
+        var newCount = Interlocked.Decrement(ref _suppressNodeAutoApproveCount);
+        if (newCount < 0)
+        {
+            // Over-release would underflow the counter and effectively never
+            // re-enter suppression. Clamp at zero defensively.
+            Interlocked.Exchange(ref _suppressNodeAutoApproveCount, 0);
+        }
+        _diagnostics.Record("node", $"Node auto-approve suppression released (count={Math.Max(newCount, 0)})");
+    }
+
+    private sealed class NodeAutoApproveSuppressionToken : IDisposable
+    {
+        private GatewayConnectionManager? _owner;
+
+        public NodeAutoApproveSuppressionToken(GatewayConnectionManager owner) => _owner = owner;
+
+        public void Dispose()
+        {
+            // Idempotent — repeated Dispose calls are a no-op.
+            var owner = Interlocked.Exchange(ref _owner, null);
+            owner?.ReleaseNodeAutoApproveSuppression();
+        }
+    }
+
+    /// <summary>
+    /// True when (a) at least one suppression token is alive AND (b) the active
+    /// gateway URL is a local-loopback target. The local-gateway gate ensures
+    /// a pairing attempt against a REMOTE gateway is never inadvertently
+    /// suppressed even if a stale token is somehow still alive.
+    /// </summary>
+    private bool IsNodeAutoApproveSuppressed(string? activeGatewayUrl)
+    {
+        if (_suppressNodeAutoApproveCount <= 0)
+            return false;
+        return IsLocalLoopbackGatewayUrl(activeGatewayUrl);
+    }
+
+    internal static bool IsLocalLoopbackGatewayUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        // Cheap prefix match — sufficient for the role-upgrade auto-approve
+        // scope. The wizard's local gateway always lives at ws://localhost:port
+        // or ws://127.0.0.1:port (loopback). Anything else is treated as remote
+        // and the suppression does not apply.
+        return url.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("ws://127.", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("wss://localhost", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("wss://127.", StringComparison.OrdinalIgnoreCase);
+    }
 
     // ─── Lifecycle ───
 
@@ -644,15 +716,19 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node connection failed."));
                     break;
-                case RoleConnectionState.PairingRequired when SuppressNodeAutoApprove:
+                case RoleConnectionState.PairingRequired when IsNodeAutoApproveSuppressed(s.GatewayUrl):
                     // When the caller has suppressed the manager's own auto-approve
-                    // (V2 onboarding engine does this — see SuppressNodeAutoApprove),
-                    // we MUST fail fast on PairingRequired so the caller can drive
-                    // its own approval path before the gateway times out. Observed:
-                    // the gateway restarts (1012 - service restart) ~10 seconds after 
-                    // a role-upgrade PAIRING_REQUIRED if nothing approves it. Waiting 
-                    // the default 35s for a Connected terminal state guarantees the 
-                    // gateway is already gone by the time the caller gets control to approve.
+                    // (V2 onboarding engine does this — see
+                    // AcquireNodeAutoApproveSuppression), we MUST fail fast on
+                    // PairingRequired so the caller can drive its own approval
+                    // path before the gateway times out. Observed: the gateway
+                    // restarts (1012 - service restart) ~10 seconds after a
+                    // role-upgrade PAIRING_REQUIRED if nothing approves it.
+                    // Waiting the default 35s for a Connected terminal state
+                    // guarantees the gateway is already gone by the time the
+                    // caller gets control to approve. The IsLocalLoopback
+                    // scope inside IsNodeAutoApproveSuppressed ensures a stale
+                    // token can never suppress remote-gateway pairings.
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node pairing required — caller must approve before retrying."));
                     break;
@@ -861,17 +937,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // and node-reconnect handshake to settle (which can take 5–30s on
         // first connect via WSL cold-start).
         //
-        // SuppressNodeAutoApprove gate: during V2 onboarding setup the engine
-        // drives its own canonical approval via the WSL CLI (`openclaw
-        // devices approve`). A role-upgrade pending event has a DEVICE-pair
-        // requestId; calling node.pair.approve on it fails with "unknown
-        // requestId" and triggers a gateway service restart that breaks the 
-        // in-flight setup. Skipping the auto-approve here lets the engine's 
-        // WSL CLI path complete cleanly. Post-setup the flag is cleared so the 
-        // normal auto-approve path is unchanged.
+        // Suppression gate: during V2 onboarding setup the engine drives its
+        // own canonical approval via the WSL CLI (`openclaw devices approve`).
+        // A role-upgrade pending event has a DEVICE-pair requestId; calling
+        // node.pair.approve on it fails with "unknown requestId" and triggers
+        // a gateway service restart that breaks the in-flight setup. Skipping
+        // the auto-approve here lets the engine's WSL CLI path complete cleanly.
+        // Scope is local-gateway-only via IsNodeAutoApproveSuppressed so
+        // remote-gateway pairings stay unaffected even if a stale token
+        // somehow survives the onboarding lifecycle.
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
             && e.RequestId != _lastAutoApprovedRequestId
-            && !SuppressNodeAutoApprove)
+            && !IsNodeAutoApproveSuppressed(_stateMachine.Current.GatewayUrl))
         {
             if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
             {

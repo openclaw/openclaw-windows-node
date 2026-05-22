@@ -58,16 +58,29 @@ public interface IGatewayConnectionManager : IDisposable
     ConnectionDiagnostics Diagnostics { get; }
 
     /// <summary>
-    /// When true, the manager skips its automatic node-pair auto-approve flow
-    /// (the operator-side `node.pair.approve` RPC it normally fires on a
-    /// PairingStatus.Pending event). Set to true while an external owner —
-    /// notably the V2 onboarding engine — is driving its own canonical
-    /// approval flow via the WSL CLI (`openclaw devices approve`). Without
-    /// this, the manager's auto-approve fires for a role-upgrade pending
-    /// (which carries a DEVICE-pair requestId, not a NODE-pair one) and
-    /// the gateway responds with "unknown requestId" before service-restarting,
-    /// breaking the in-flight setup. Defaults to false so post-setup
-    /// behavior is unchanged.
+    /// Acquires a scoped suppression of the manager's own node-pair auto-approve
+    /// flow. While at least one suppression token is alive AND the active
+    /// gateway is a local-loopback URL, <see cref="OnNodePairingStatusChanged"/>
+    /// skips its operator-side `node.pair.approve` RPC and
+    /// <see cref="EnsureNodeConnectedAsync"/> fast-fails on
+    /// <see cref="RoleConnectionState.PairingRequired"/>. The local-gateway
+    /// scope check ensures an active remote-gateway pairing is never
+    /// inadvertently suppressed if the caller forgets to release the token.
+    /// <para>
+    /// Owner contract: dispose the returned <see cref="IDisposable"/> when
+    /// suppression is no longer needed. Multiple concurrent tokens are
+    /// reference-counted via <see cref="Interlocked"/>; suppression remains
+    /// in effect until the count reaches zero. The token's Dispose is
+    /// idempotent — calling it twice is a no-op.
+    /// </para>
+    /// <para>
+    /// Used by the V2 onboarding engine which drives canonical approval via
+    /// the WSL CLI (`openclaw devices approve`). Without this, the manager's
+    /// RPC-based auto-approve races against the engine with the wrong
+    /// requestId namespace (DEVICE-pair requestIds surface on node-pair
+    /// pending events during role-upgrade), causing the gateway to
+    /// "unknown requestId" and then service-restart mid-pair.
+    /// </para>
     /// </summary>
-    bool SuppressNodeAutoApprove { get; set; }
+    IDisposable AcquireNodeAutoApproveSuppression();
 }

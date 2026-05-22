@@ -193,6 +193,59 @@ public class WindowsTrayNodePairingApprovalTests
         Assert.Equal(0, approver.ApproveCalls);
     }
 
+    [Fact]
+    public async Task PairAsync_AwaitsConfiguredDelay()
+    {
+        // Pins #15: ensure `_delayAsync` is invoked with the exact configured
+        // pairRetryDelay between the first failed connect and the retry, so
+        // the env-var override (OPENCLAW_PAIR_RETRY_DELAY_MS) actually
+        // affects the wait. A regression would silently fall back to the
+        // 5-second default and slow down every CI run.
+        var settings = new FakeNodeSettings { Token = "redacted-device-token", BootstrapToken = "" };
+        var connector = new ScriptedNodeConnector(
+            new TimeoutException("Timed out waiting for the Windows tray node to pair with the gateway."),
+            null);
+        var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
+        var observedDelays = new List<TimeSpan>();
+        var configuredDelay = TimeSpan.FromMilliseconds(1234);
+        var service = new SettingsWindowsTrayNodeProvisioner(
+            settings, connector, approver,
+            pairRetryDelay: configuredDelay,
+            delayAsync: (d, _) => { observedDelays.Add(d); return Task.CompletedTask; });
+
+        var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
+
+        Assert.True(result.Success);
+        Assert.Contains(configuredDelay, observedDelays);
+    }
+
+    [Fact]
+    public async Task PairAsync_CancellationDuringDelay_Propagates()
+    {
+        // Pins #15: cancellation during the retry-wait must propagate as
+        // OperationCanceledException without swallowing or remapping to a
+        // pairing-failed error. The engine sets state.Status = Cancelled
+        // from this signal.
+        var settings = new FakeNodeSettings { Token = "redacted-device-token", BootstrapToken = "" };
+        var connector = new ScriptedNodeConnector(
+            new TimeoutException("Timed out waiting for the Windows tray node to pair with the gateway."));
+        var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
+        using var cts = new CancellationTokenSource();
+        var service = new SettingsWindowsTrayNodeProvisioner(
+            settings, connector, approver,
+            pairRetryDelay: TimeSpan.FromMilliseconds(50),
+            delayAsync: (_, token) =>
+            {
+                cts.Cancel();
+                return Task.FromException(new OperationCanceledException(token));
+            });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.PairAsync(
+                new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" },
+                cts.Token));
+    }
+
     private sealed class FakeNodeSettings : ILocalGatewaySetupSettings
     {
         public string GatewayUrl { get; set; } = "";

@@ -2828,28 +2828,37 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         var onboardingCompleted = false;
         _onboardingWindow = new OnboardingWindow(_settings, IdentityDataPath);
-        // Suppress the connection manager's own node-pair auto-approve while
-        // the onboarding engine is alive — the V2 engine drives canonical
-        // approval via the WSL CLI (`openclaw devices approve`) and the
-        // manager's RPC-based auto-approve would race against it with the
-        // wrong requestId namespace (DEVICE-pair requestIds surface on
-        // node-pair pending events during role-upgrade), causing the
-        // gateway to "unknown requestId" and then service-restart mid-pair.
-        if (_connectionManager is not null)
+        // Acquire scoped suppression of the connection manager's own node-pair
+        // auto-approve while the onboarding engine is alive — the V2 engine
+        // drives canonical approval via the WSL CLI (`openclaw devices
+        // approve`) and the manager's RPC-based auto-approve would race
+        // against it with the wrong requestId namespace (DEVICE-pair
+        // requestIds surface on node-pair pending events during role-upgrade),
+        // causing the gateway to "unknown requestId" and then service-restart
+        // mid-pair. The token is reference-counted and idempotent: disposing
+        // twice (Completed + Closed) is a no-op. Scope is local-loopback-only
+        // inside the manager so remote-gateway pairings are unaffected even
+        // if the token leaks past the onboarding window's lifetime.
+        IDisposable? nodeAutoApproveSuppression = _connectionManager?.AcquireNodeAutoApproveSuppression();
+        if (nodeAutoApproveSuppression is not null)
         {
-            _connectionManager.SuppressNodeAutoApprove = true;
-            Logger.Info("[App] SuppressNodeAutoApprove=true while onboarding window is open.");
+            Logger.Info("[App] Acquired node-pair auto-approve suppression for the onboarding window's lifetime.");
         }
+        void ReleaseNodeAutoApproveSuppression(string reason)
+        {
+            if (nodeAutoApproveSuppression is null) return;
+            try { nodeAutoApproveSuppression.Dispose(); }
+            catch (Exception ex) { Logger.Warn($"[App] Suppression token disposal threw: {ex.Message}"); }
+            nodeAutoApproveSuppression = null;
+            Logger.Info($"[App] Released node-pair auto-approve suppression ({reason}).");
+        }
+
         _onboardingWindow.OnboardingCompleted += (s, e) =>
         {
             onboardingCompleted = true;
             Logger.Info("Onboarding completed");
             _onboardingWindow = null;
-            if (_connectionManager is not null)
-            {
-                _connectionManager.SuppressNodeAutoApprove = false;
-                Logger.Info("[App] SuppressNodeAutoApprove=false (onboarding completed).");
-            }
+            ReleaseNodeAutoApproveSuppression("onboarding completed");
 
             // If the persistent client was already initialized during onboarding, keep it
             if (_connectionManager?.OperatorClient is OpenClawGatewayClient { IsConnectedToGateway: true })
@@ -2890,11 +2899,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _onboardingWindow.Closed += (s, e) =>
         {
             _onboardingWindow = null;
-            if (_connectionManager is not null)
-            {
-                _connectionManager.SuppressNodeAutoApprove = false;
-                Logger.Info("[App] SuppressNodeAutoApprove=false (onboarding window closed).");
-            }
+            // Belt-and-braces: even if OnboardingCompleted didn't fire (window
+            // dismissed, exception during teardown, etc.) we MUST release the
+            // suppression here so post-onboarding node pairings auto-approve
+            // normally. Idempotent if Completed already disposed.
+            ReleaseNodeAutoApproveSuppression("onboarding window closed");
             if (!onboardingCompleted && disconnectedForOnboarding && restoreGatewayId != null)
             {
                 Logger.Info("Onboarding closed before completion — restoring previous gateway connection");
