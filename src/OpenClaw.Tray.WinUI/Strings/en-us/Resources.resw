@@ -2179,7 +2179,28 @@ On your gateway host (Mac/Linux), run:
     <value>Daily Cost</value>
   </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
-    <value>📂 Workspace</value>
+    <value>Workspace</value>
+  </data>
+  <data name="WorkspacePage_FilesHeader.Text" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Rendered.Text" xml:space="preserve">
+    <value>Rendered</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Raw.Text" xml:space="preserve">
+    <value>Raw</value>
+  </data>
+  <data name="WorkspacePage_DisconnectedMessage" xml:space="preserve">
+    <value>Connect to gateway to view workspace files.</value>
+  </data>
+  <data name="WorkspacePage_NoFilesMessage" xml:space="preserve">
+    <value>No workspace files found for this agent.</value>
+  </data>
+  <data name="WorkspacePage_LoadingContent" xml:space="preserve">
+    <value>Loading content…</value>
+  </data>
+  <data name="WorkspacePage_MissingFile" xml:space="preserve">
+    <value>(file not found on disk)</value>
   </data>
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Refresh</value>

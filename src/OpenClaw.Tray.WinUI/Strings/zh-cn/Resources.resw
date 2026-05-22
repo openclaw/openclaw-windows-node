@@ -2131,7 +2131,28 @@
     <value>æ¯æ—¥æˆæœ¬</value>
   </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
-    <value>📂 工作区</value>
+    <value>工作区</value>
+  </data>
+  <data name="WorkspacePage_FilesHeader.Text" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Rendered.Text" xml:space="preserve">
+    <value>渲染</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Raw.Text" xml:space="preserve">
+    <value>原始</value>
+  </data>
+  <data name="WorkspacePage_DisconnectedMessage" xml:space="preserve">
+    <value>连接到网关以查看工作区文件。</value>
+  </data>
+  <data name="WorkspacePage_NoFilesMessage" xml:space="preserve">
+    <value>此代理未找到工作区文件。</value>
+  </data>
+  <data name="WorkspacePage_LoadingContent" xml:space="preserve">
+    <value>正在加载内容…</value>
+  </data>
+  <data name="WorkspacePage_MissingFile" xml:space="preserve">
+    <value>(磁盘上找不到文件)</value>
   </data>
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>åˆ·æ–°</value>

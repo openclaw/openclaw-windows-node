@@ -2132,7 +2132,28 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Dagelijkse kosten</value>
   </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
-    <value>📂 Werkruimte</value>
+    <value>Werkruimte</value>
+  </data>
+  <data name="WorkspacePage_FilesHeader.Text" xml:space="preserve">
+    <value>Bestanden</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Rendered.Text" xml:space="preserve">
+    <value>Weergegeven</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Raw.Text" xml:space="preserve">
+    <value>Onbewerkt</value>
+  </data>
+  <data name="WorkspacePage_DisconnectedMessage" xml:space="preserve">
+    <value>Maak verbinding met de gateway om werkruimtebestanden te bekijken.</value>
+  </data>
+  <data name="WorkspacePage_NoFilesMessage" xml:space="preserve">
+    <value>Geen werkruimtebestanden gevonden voor deze agent.</value>
+  </data>
+  <data name="WorkspacePage_LoadingContent" xml:space="preserve">
+    <value>Inhoud laden…</value>
+  </data>
+  <data name="WorkspacePage_MissingFile" xml:space="preserve">
+    <value>(bestand niet gevonden op schijf)</value>
   </data>
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Vernieuwen</value>

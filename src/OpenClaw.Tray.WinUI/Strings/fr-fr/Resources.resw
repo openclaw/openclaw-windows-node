@@ -2131,7 +2131,28 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Coût quotidien</value>
   </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
-    <value>📂 Espace de travail</value>
+    <value>Espace de travail</value>
+  </data>
+  <data name="WorkspacePage_FilesHeader.Text" xml:space="preserve">
+    <value>Fichiers</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Rendered.Text" xml:space="preserve">
+    <value>Rendu</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Raw.Text" xml:space="preserve">
+    <value>Brut</value>
+  </data>
+  <data name="WorkspacePage_DisconnectedMessage" xml:space="preserve">
+    <value>Connectez-vous à la passerelle pour afficher les fichiers de l'espace de travail.</value>
+  </data>
+  <data name="WorkspacePage_NoFilesMessage" xml:space="preserve">
+    <value>Aucun fichier d'espace de travail trouvé pour cet agent.</value>
+  </data>
+  <data name="WorkspacePage_LoadingContent" xml:space="preserve">
+    <value>Chargement du contenu…</value>
+  </data>
+  <data name="WorkspacePage_MissingFile" xml:space="preserve">
+    <value>(fichier introuvable sur le disque)</value>
   </data>
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Actualiser</value>
