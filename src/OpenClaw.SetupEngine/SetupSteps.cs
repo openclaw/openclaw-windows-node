@@ -1222,7 +1222,76 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Write settings.json with EnableNodeMode + capability toggles from config
         WriteSettingsJson(ctx);
 
+        // Drain any remaining pending approvals (device or node) so tray starts clean
+        await DrainPendingApprovalsAsync(ctx, ct);
+
         return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
+    }
+
+    private static async Task DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var token = ctx.SharedGatewayToken!;
+        var pathPrefix = ctx.WslPathPrefix;
+
+        // Approve pending device requests (up to 5 iterations to drain all)
+        for (int i = 0; i < 5; i++)
+        {
+            var preview = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{pathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
+                TimeSpan.FromSeconds(15), ct: ct);
+
+            if (preview.ExitCode != 0 || preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase))
+                break;
+
+            // Parse and approve
+            string? requestId = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(preview.Stdout.Trim());
+                if (doc.RootElement.TryGetProperty("selected", out var selected) &&
+                    selected.TryGetProperty("requestId", out var rid))
+                    requestId = rid.GetString();
+            }
+            catch { break; }
+
+            if (string.IsNullOrEmpty(requestId)) break;
+
+            ctx.Logger.Info($"Draining pending device approval: {requestId}");
+            await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{pathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
+                TimeSpan.FromSeconds(15), ct: ct);
+        }
+
+        // Approve pending node requests
+        for (int i = 0; i < 5; i++)
+        {
+            var nodeList = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{pathPrefix} && openclaw nodes list --json --token "{token}" """,
+                TimeSpan.FromSeconds(15), ct: ct);
+
+            if (nodeList.ExitCode != 0) break;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(nodeList.Stdout.Trim());
+                if (!doc.RootElement.TryGetProperty("pending", out var pending) || pending.GetArrayLength() == 0)
+                    break;
+
+                var requestId = pending[0].GetProperty("requestId").GetString();
+                if (string.IsNullOrEmpty(requestId)) break;
+
+                ctx.Logger.Info($"Draining pending node approval: {requestId}");
+                await ctx.Commands.RunInWslAsync(
+                    distro,
+                    $"""{pathPrefix} && openclaw nodes approve "{requestId}" --json --token "{token}" """,
+                    TimeSpan.FromSeconds(15), ct: ct);
+            }
+            catch { break; }
+        }
     }
 
     private static void WriteSettingsJson(SetupContext ctx)
