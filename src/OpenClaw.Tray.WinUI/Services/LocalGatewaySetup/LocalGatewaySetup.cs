@@ -3649,20 +3649,25 @@ public sealed class LocalGatewaySetupEngine
     /// For unrelated configure errors (script syntax, missing packages,
     /// permissions inside the distro) we keep the generic message so the
     /// user doesn't get a misleading "reboot to fix" suggestion.
-    /// Loose match — false positives just mean we suggest reboot in cases
-    /// where a reboot won't hurt; false negatives fall through to the
-    /// generic configure-failed message.
+    /// Strict match — round-2 review noted that defaulting to true on
+    /// null/empty Detail (or matching the bare substring "kernel") was
+    /// too permissive and re-introduced exactly the false-positive the
+    /// gate is supposed to eliminate, so we now require a positive
+    /// kernel/host-compute signature and return false for blank Detail.
     /// </summary>
     internal static bool LooksLikePostInstallKernelIssue(string? detail)
     {
         if (string.IsNullOrWhiteSpace(detail))
-            return true; // No detail to disambiguate — be conservative and assume kernel issue post-install.
+            return false;
         var d = detail.Replace("\0", string.Empty);
         return d.Contains("WslRegisterDistribution", StringComparison.OrdinalIgnoreCase)
             || d.Contains("Wsl/Service", StringComparison.OrdinalIgnoreCase)
             || d.Contains("HCS_E_", StringComparison.OrdinalIgnoreCase)
             || d.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase)
-            || d.Contains("kernel", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("WSL kernel", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("WSL2 kernel", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("kernel component", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("kernel image", StringComparison.OrdinalIgnoreCase)
             || d.Contains("vmcompute", StringComparison.OrdinalIgnoreCase)
             || d.Contains("LxssManager", StringComparison.OrdinalIgnoreCase)
             || d.Contains("0x80370102", StringComparison.OrdinalIgnoreCase)   // virtual machine could not be started
@@ -3750,6 +3755,15 @@ public sealed class LocalGatewaySetupEngine
             state.InstallId = Guid.NewGuid().ToString("N");
         state.DistroName = _options.DistroName;
         state.GatewayUrl = LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(_options);
+
+        // Round-2 fix: reset the per-run "we just installed WSL" flag at the
+        // top of every RunLocalOnlyAsync. Engines created by the factory are
+        // typically single-use, but nothing in the API contract prevents a
+        // caller from invoking RunLocalOnlyAsync twice on the same instance.
+        // Without this reset, a stale flag from a prior run would cause
+        // unrelated configure failures on the second run to be misclassified
+        // as "needs reboot".
+        _wslPlatformJustInstalled = false;
 
         // Self-heal persisted non-running statuses on entry. Without this,
         // RunPhaseAsync's `Status is Pending or Running` guard short-circuits
@@ -3952,7 +3966,24 @@ public sealed class LocalGatewaySetupEngine
                 var detail = string.Join(Environment.NewLine, result.Warnings ?? Array.Empty<string>());
                 if (!string.IsNullOrWhiteSpace(detail))
                     _logger.Warn($"WSL instance install diagnostics: {SecretRedactor.Redact(detail)}");
-                state.Block(result.ErrorCode ?? "wsl_instance_install_failed", result.ErrorMessage ?? "Failed to create the OpenClaw Gateway WSL instance.", retryable: true, detail: detail);
+
+                // Symmetric with the ConfigureWslInstance remap below: a
+                // fresh WSL platform install can leave the kernel / lifted-
+                // WSL service in a half-initialised state where the
+                // *instance* install (`wsl --install <distro>`) trips the
+                // same HCS / WslRegisterDistribution / 0x80370102 family
+                // of errors that get fixed by a reboot. Without this branch,
+                // users hitting those errors here would see
+                // "wsl_instance_install_failed" ("Couldn't download Ubuntu")
+                // and have no idea a reboot would fix it.
+                var failureCode = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(detail)
+                    ? "wsl_firstboot_config_failed_after_install"
+                    : (result.ErrorCode ?? "wsl_instance_install_failed");
+                var failureMessage = _wslPlatformJustInstalled && LooksLikePostInstallKernelIssue(detail)
+                    ? "Couldn't create the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup."
+                    : (result.ErrorMessage ?? "Failed to create the OpenClaw Gateway WSL instance.");
+
+                state.Block(failureCode, failureMessage, retryable: true, detail: detail);
                 return false;
             }
 
@@ -4533,15 +4564,30 @@ public static class LocalGatewaySetupEngineFactory
         // SettingsWindowsTrayNodeProvisioner.DefaultPairRetryDelay (5s) which
         // is conservatively below the gateway's internal ~10s pending-
         // approval timer. Power users on slow ARM64 hardware can raise it;
-        // tests want zero.
+        // tests want zero. Round-2 review: clamp to a sane upper bound
+        // (60s) so a misconfigured env var (extra zero) doesn't hang the
+        // wizard for hours with no UI feedback; warn on unparseable values
+        // instead of silently ignoring them.
+        const int PairRetryDelayUpperBoundMs = 60_000;
         TimeSpan? pairRetryDelay = null;
         var pairRetryDelayMsRaw = Environment.GetEnvironmentVariable("OPENCLAW_PAIR_RETRY_DELAY_MS");
-        if (!string.IsNullOrWhiteSpace(pairRetryDelayMsRaw)
-            && int.TryParse(pairRetryDelayMsRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var pairRetryDelayMs)
-            && pairRetryDelayMs >= 0)
+        if (!string.IsNullOrWhiteSpace(pairRetryDelayMsRaw))
         {
-            pairRetryDelay = TimeSpan.FromMilliseconds(pairRetryDelayMs);
-            logger?.Info($"[Engine] OPENCLAW_PAIR_RETRY_DELAY_MS override: pairRetryDelay={pairRetryDelay}");
+            if (int.TryParse(pairRetryDelayMsRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var pairRetryDelayMs)
+                && pairRetryDelayMs >= 0)
+            {
+                if (pairRetryDelayMs > PairRetryDelayUpperBoundMs)
+                {
+                    logger?.Warn($"[Engine] OPENCLAW_PAIR_RETRY_DELAY_MS={pairRetryDelayMs} exceeds the {PairRetryDelayUpperBoundMs}ms ceiling; clamping.");
+                    pairRetryDelayMs = PairRetryDelayUpperBoundMs;
+                }
+                pairRetryDelay = TimeSpan.FromMilliseconds(pairRetryDelayMs);
+                logger?.Info($"[Engine] OPENCLAW_PAIR_RETRY_DELAY_MS override: pairRetryDelay={pairRetryDelay}");
+            }
+            else
+            {
+                logger?.Warn($"[Engine] OPENCLAW_PAIR_RETRY_DELAY_MS='{pairRetryDelayMsRaw}' is not a valid non-negative integer; ignoring (default 5s applies).");
+            }
         }
 
         return new LocalGatewaySetupEngine(

@@ -2857,8 +2857,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             onboardingCompleted = true;
             Logger.Info("Onboarding completed");
-            _onboardingWindow = null;
+            // Release the suppression BEFORE clearing _onboardingWindow so an
+            // in-flight gateway-event-pump callback (e.g. OnGatewayConnected)
+            // doesn't observe _onboardingWindow==null AND active suppression
+            // simultaneously — that race would fast-fail the post-onboarding
+            // local-node connect on PairingRequired.
             ReleaseNodeAutoApproveSuppression("onboarding completed");
+            _onboardingWindow = null;
 
             // If the persistent client was already initialized during onboarding, keep it
             if (_connectionManager?.OperatorClient is OpenClawGatewayClient { IsConnectedToGateway: true })
@@ -2898,19 +2903,30 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         };
         _onboardingWindow.Closed += (s, e) =>
         {
-            _onboardingWindow = null;
-            // Belt-and-braces: even if OnboardingCompleted didn't fire (window
-            // dismissed, exception during teardown, etc.) we MUST release the
-            // suppression here so post-onboarding node pairings auto-approve
-            // normally. Idempotent if Completed already disposed.
+            // Mirror the Completed ordering: release suppression first, then
+            // clear the window reference.
             ReleaseNodeAutoApproveSuppression("onboarding window closed");
+            _onboardingWindow = null;
             if (!onboardingCompleted && disconnectedForOnboarding && restoreGatewayId != null)
             {
                 Logger.Info("Onboarding closed before completion — restoring previous gateway connection");
                 _ = _connectionManager?.ConnectAsync(restoreGatewayId);
             }
         };
-        _onboardingWindow.Activate();
+        // Round-2 fix: if event wiring or Activate() throws AFTER we acquired
+        // the suppression token, the Completed/Closed handlers may never fire
+        // and the token would leak for the entire process lifetime —
+        // permanently suppressing local-loopback node auto-approve. Wrap the
+        // remainder of setup so any throw releases the token.
+        try
+        {
+            _onboardingWindow.Activate();
+        }
+        catch
+        {
+            ReleaseNodeAutoApproveSuppression("onboarding window setup failed");
+            throw;
+        }
     }
 
     private void ShowSurfaceImprovementsTipIfNeeded()

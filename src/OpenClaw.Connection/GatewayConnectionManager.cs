@@ -103,14 +103,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private void ReleaseNodeAutoApproveSuppression()
     {
-        var newCount = Interlocked.Decrement(ref _suppressNodeAutoApproveCount);
-        if (newCount < 0)
+        // Saturating decrement via CAS loop. The prior implementation used
+        // `Interlocked.Decrement` followed by an unconditional
+        // `Interlocked.Exchange(0)` on underflow — but if a concurrent
+        // `Acquire` had already incremented from -1 to 0 (or beyond), the
+        // unconditional Exchange would clobber that legitimate active
+        // suppression count back to zero. Bound the decrement to never go
+        // below zero; if we observe zero, no-op (over-release) and warn.
+        int observed;
+        int next;
+        do
         {
-            // Over-release would underflow the counter and effectively never
-            // re-enter suppression. Clamp at zero defensively.
-            Interlocked.Exchange(ref _suppressNodeAutoApproveCount, 0);
+            observed = _suppressNodeAutoApproveCount;
+            if (observed <= 0)
+            {
+                _diagnostics.Record("node", $"Node auto-approve suppression over-release ignored (count={observed})");
+                return;
+            }
+            next = observed - 1;
         }
-        _diagnostics.Record("node", $"Node auto-approve suppression released (count={Math.Max(newCount, 0)})");
+        while (Interlocked.CompareExchange(ref _suppressNodeAutoApproveCount, next, observed) != observed);
+        _diagnostics.Record("node", $"Node auto-approve suppression released (count={next})");
     }
 
     private sealed class NodeAutoApproveSuppressionToken : IDisposable
@@ -144,14 +157,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         if (string.IsNullOrWhiteSpace(url))
             return false;
-        // Cheap prefix match — sufficient for the role-upgrade auto-approve
-        // scope. The wizard's local gateway always lives at ws://localhost:port
-        // or ws://127.0.0.1:port (loopback). Anything else is treated as remote
-        // and the suppression does not apply.
-        return url.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase)
-            || url.StartsWith("ws://127.", StringComparison.OrdinalIgnoreCase)
-            || url.StartsWith("wss://localhost", StringComparison.OrdinalIgnoreCase)
-            || url.StartsWith("wss://127.", StringComparison.OrdinalIgnoreCase);
+
+        // Parse the URL so we evaluate the actual Host component rather than
+        // a string prefix. Round-2 review found `StartsWith("ws://localhost")`
+        // matched `ws://localhost.evil.example.com:1234/` and `ws://127.`
+        // matched `ws://127.attacker.com` — defeating the loopback gate that
+        // scopes node-auto-approve suppression to the local wizard's gateway.
+        if (!System.Uri.TryCreate(url, System.UriKind.Absolute, out var uri))
+            return false;
+        if (uri.Scheme is not ("ws" or "wss"))
+            return false;
+
+        // Strip the brackets WHATWG-style. Uri.Host returns "[::1]" with the
+        // brackets for IPv6 literals; IPAddress.TryParse wants them unwrapped.
+        var host = uri.Host;
+        if (host.Length >= 2 && host[0] == '[' && host[^1] == ']')
+            host = host.Substring(1, host.Length - 2);
+
+        if (System.Net.IPAddress.TryParse(host, out var ip))
+            return System.Net.IPAddress.IsLoopback(ip);
+
+        return string.Equals(host, "localhost", System.StringComparison.OrdinalIgnoreCase);
     }
 
     // ─── Lifecycle ───

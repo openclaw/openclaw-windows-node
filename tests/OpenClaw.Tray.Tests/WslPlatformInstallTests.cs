@@ -684,13 +684,14 @@ public class WslPlatformInstallTests
     }
 
     [Fact]
-    public async Task Installer_ReturnsFailed_OnPostProbeUnknownEvenWhenExitCodeIsZero()
+    public async Task Installer_RemapsUnknownProbeToRequiresRestart_WhenExitCodeIsZero()
     {
-        // Round-3 Codex MEDIUM: (Unknown, 0) used to map to InstalledNoRestart,
-        // which would let the engine proceed into CreateWslInstance with
-        // unverified WSL and produce confusing downstream failures. We now
-        // fail explicitly with a "verification inconclusive" message so the
-        // user gets clear guidance at the right layer.
+        // Round-3 Codex MEDIUM (revised in Round-2 of WSLInstall1 review):
+        // exit=0 with the post-install probe still returning Unknown after
+        // exhausting retries means the install succeeded but the lifted-WSL
+        // service is racing warmup. RequiresRestart is closer to ground
+        // truth than Failed (the documented Microsoft fix is to reboot,
+        // not to re-launch UAC for another install).
         var probe = new SequencedPlatformProbe(WslPlatformState.Unknown);
         var installer = new ElevatedWslPlatformInstaller(
             probe,
@@ -699,8 +700,7 @@ public class WslPlatformInstallTests
 
         var result = await installer.InstallAsync();
 
-        Assert.Equal(WslPlatformInstallOutcome.Failed, result.Outcome);
-        Assert.Contains("inconclusive", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(WslPlatformInstallOutcome.InstalledRequiresRestart, result.Outcome);
     }
 
     [Fact]
@@ -823,9 +823,14 @@ public class WslPlatformInstallTests
         Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("WslRegisterDistribution failed with error: 0x80004002"));
         Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("Error: 0x800401f0  Class not registered"));
         Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("WSL2 requires an update to its kernel component"));
-        // Conservative null/blank fallback: assume kernel issue post-install.
-        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(null));
-        Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(""));
+        // Round-2 fix: blank Detail must NOT default to true (was a permissive
+        // catch-all that re-introduced the false-positive the gate is meant
+        // to eliminate).
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(null));
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(""));
+        // Bare substring "kernel" is too weak on its own (matches "kernel
+        // panic in user script", etc). Require kernel-component context.
+        Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("kernel panic in custom init script"));
 
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("exit=100; stderr=E: Unable to fetch some archives; stdout="));
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("bash: line 12: syntax error near unexpected token"));

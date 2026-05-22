@@ -323,9 +323,16 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
         // install the Store/lifted-WSL service can take a few seconds to mark
         // the platform as queryable. If we don't retry, exit-0 + NotInstalled
         // looks like "reboot required" when it's actually just "wait 2 more
-        // seconds". We bail out early on any state change.
+        // seconds". Round-2 fix: also retry on Unknown — the probe returns
+        // Unknown on transient wsl.exe timeouts during lifted-WSL warmup,
+        // and bailing early would misclassify a successful install on slow
+        // hosts (ARM64, fresh installs) as Failed.
         WslPlatformProbeResult postProbe = await _probe.ProbeAsync(cancellationToken);
-        for (int attempt = 1; attempt < _postInstallProbeAttempts && postProbe.State == WslPlatformState.NotInstalled && exitCode == 0; attempt++)
+        for (int attempt = 1;
+             attempt < _postInstallProbeAttempts
+                && postProbe.State != WslPlatformState.Installed
+                && exitCode == 0;
+             attempt++)
         {
             await _delayAsync(_postInstallProbeDelay, cancellationToken);
             postProbe = await _probe.ProbeAsync(cancellationToken);
@@ -343,12 +350,14 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
                     exitCode,
                     "Windows Subsystem for Linux install reported failure.",
                     Detail: postProbe.Detail),
-            // Probe returned Unknown — wsl --status either timed out or
-            // returned an unrecognized failure. Even if wsl.exe exited 0,
-            // we cannot confirm the platform is healthy; downstream phases
-            // (CreateWslInstance etc.) would fail with confusing errors.
-            // Fail explicitly so the user gets clear guidance now instead
-            // of a misdiagnosed downstream error.
+            // Probe still Unknown after exhausting retries AND wsl.exe exited
+            // 0 — the install command succeeded but verification is racing
+            // lifted-WSL warmup. RequiresRestart is closer to ground truth
+            // than Failed (Failed would block the user with a "Try again"
+            // re-UAC, RequiresRestart prompts the documented reboot which
+            // actually resolves this state on slow hosts).
+            (WslPlatformState.Unknown, 0) =>
+                new WslPlatformInstallResult(WslPlatformInstallOutcome.InstalledRequiresRestart, exitCode),
             _ =>
                 new WslPlatformInstallResult(
                     WslPlatformInstallOutcome.Failed,
