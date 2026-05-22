@@ -239,6 +239,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _gatewayNeedsV2Signature = true;
             };
 
+            // Local gateways only support v2 signatures — skip the v3 attempt entirely
+            // to avoid a spurious "metadata-upgrade" re-pairing triggered by the v3→v2 fallback.
+            if (record.IsLocal)
+                _gatewayNeedsV2Signature = true;
+
             // If we already know this gateway needs v2, tell the client upfront
             if (_gatewayNeedsV2Signature)
                 lifecycle.DataClient.UseV2Signature = true;

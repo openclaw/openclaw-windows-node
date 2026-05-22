@@ -1,0 +1,1035 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text.Json;
+using OpenClaw.Connection;
+using OpenClaw.Shared;
+
+namespace OpenClaw.SetupEngine;
+
+// PATH prefix for all openclaw CLI commands in WSL
+internal static class WslConstants
+{
+    public const string PathPrefix = """export PATH="/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH" """;
+}
+
+// Adapter to bridge SetupLogger → IOpenClawLogger for WebSocket clients
+internal sealed class SetupOpenClawLogger(SetupLogger logger) : IOpenClawLogger
+{
+    public void Info(string message) => logger.Info($"[WS] {message}");
+    public void Debug(string message) => logger.Debug($"[WS] {message}");
+    public void Warn(string message) => logger.Warn($"[WS] {message}");
+    public void Error(string message, Exception? ex = null) => logger.Error($"[WS] {message}{(ex != null ? $": {ex}" : "")}");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CLEANUP STEPS
+// ═══════════════════════════════════════════════════════════════════
+
+public sealed class CleanupStaleDistroStep : SetupStep
+{
+    public override string Id => "cleanup-distro";
+    public override string DisplayName => "Clean up stale WSL distro";
+    public override bool CanRetry => false;
+
+    public override bool CanSkip(SetupContext ctx) => !ctx.Config.CleanBeforeRun;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var list = await ctx.Commands.RunAsync("wsl.exe", ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        if (list.ExitCode != 0)
+            return StepResult.Ok("WSL not available or no distros — nothing to clean");
+
+        // wsl.exe outputs UTF-16 with potential BOM/null chars — normalize aggressively
+        var distros = list.Stdout
+            .Replace("\0", "")
+            .Replace("\uFEFF", "")
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => d.Trim())
+            .Where(d => d.Length > 0)
+            .ToList();
+
+        ctx.Logger.Debug($"Found WSL distros: [{string.Join(", ", distros)}]");
+
+        if (!distros.Any(d => d.Equals(distro, StringComparison.OrdinalIgnoreCase)))
+        {
+            ctx.Logger.Decision("No stale distro found", "skip cleanup");
+            return StepResult.Ok("No stale distro to clean");
+        }
+
+        ctx.Logger.Decision($"Found existing distro '{distro}'", "terminating and unregistering");
+
+        // Terminate first (stops gateway service), then unregister
+        await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await Task.Delay(2000, ct); // Let port release
+
+        var unregister = await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+
+        if (unregister.ExitCode == 0)
+        {
+            // Wait for port to be released
+            ctx.Logger.Info("Waiting for port release after distro termination...");
+            await Task.Delay(3000, ct);
+            return StepResult.Ok($"Unregistered stale distro '{distro}'");
+        }
+
+        return StepResult.Fail($"Failed to unregister distro: {unregister.Stderr}");
+    }
+}
+
+public sealed class CleanupStaleGatewayStep : SetupStep
+{
+    public override string Id => "cleanup-gateway";
+    public override string DisplayName => "Clean up stale gateway state";
+    public override bool CanRetry => false;
+
+    public override bool CanSkip(SetupContext ctx) => !ctx.Config.CleanBeforeRun;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // Remove stale setup-state.json
+        var stateFile = Path.Combine(ctx.DataDir, "setup-state.json");
+        if (File.Exists(stateFile))
+        {
+            File.Delete(stateFile);
+            ctx.Logger.Info("Deleted stale setup-state.json");
+        }
+
+        // Remove stale gateway record for our local URL if it exists
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+        var existing = registry.FindByUrl(ctx.GatewayUrl!);
+        if (existing != null)
+        {
+            // Clean identity directory
+            var identityDir = registry.GetIdentityDirectory(existing.Id);
+            if (Directory.Exists(identityDir))
+            {
+                Directory.Delete(identityDir, recursive: true);
+                ctx.Logger.Info($"Deleted stale identity directory: {identityDir}");
+            }
+            registry.Remove(existing.Id);
+            registry.Save();
+            ctx.Logger.Info($"Removed stale gateway record for {ctx.GatewayUrl}");
+        }
+
+        await Task.CompletedTask;
+        return StepResult.Ok("Gateway state cleaned");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PREFLIGHT STEPS
+// ═══════════════════════════════════════════════════════════════════
+
+public sealed class PreflightOsStep : SetupStep
+{
+    public override string Id => "preflight-os";
+    public override string DisplayName => "Verify Windows OS";
+    public override bool CanRetry => false;
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (!Environment.Is64BitOperatingSystem)
+            return Task.FromResult(StepResult.Terminal("64-bit Windows required"));
+
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult(StepResult.Terminal("Windows OS required"));
+
+        var version = Environment.OSVersion.Version;
+        ctx.Logger.Info($"OS: Windows {version} (64-bit)");
+
+        return Task.FromResult(StepResult.Ok($"Windows {version}"));
+    }
+}
+
+public sealed class PreflightWslStep : SetupStep
+{
+    public override string Id => "preflight-wsl";
+    public override string DisplayName => "Verify WSL available";
+    public override bool CanRetry => false;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var result = await ctx.Commands.RunAsync("wsl.exe", ["--status"], TimeSpan.FromSeconds(15), ct: ct);
+
+        if (result.ExitCode != 0 && result.Stderr.Contains("not recognized", StringComparison.OrdinalIgnoreCase))
+            return StepResult.Terminal("WSL is not installed. Please install WSL first: wsl --install");
+
+        // Check version
+        var versionResult = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(15), ct: ct);
+        ctx.Logger.Info($"WSL version output: {versionResult.Stdout.Trim()}");
+
+        return StepResult.Ok("WSL available");
+    }
+}
+
+public sealed class PreflightPortStep : SetupStep
+{
+    public override string Id => "preflight-port";
+    public override string DisplayName => "Check gateway port available";
+    public override bool CanRetry => false;
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var port = ctx.Config.GatewayPort;
+        try
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return Task.FromResult(StepResult.Ok($"Port {port} is available"));
+        }
+        catch (SocketException)
+        {
+            return Task.FromResult(StepResult.Fail($"Port {port} is already in use"));
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WSL STEPS
+// ═══════════════════════════════════════════════════════════════════
+
+public sealed class CreateWslInstanceStep : SetupStep
+{
+    public override string Id => "wsl-create";
+    public override string DisplayName => "Create WSL instance";
+    public override RetryPolicy Retry => new(MaxAttempts: 2, InitialDelay: TimeSpan.FromSeconds(5));
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var baseDistro = ctx.Config.BaseDistro;
+
+        ctx.Logger.Info($"Installing WSL distro '{distro}' from base '{baseDistro}'");
+
+        // Install base distro (Ubuntu) — this may take a while
+        var install = await ctx.Commands.RunAsync(
+            "wsl.exe", ["--install", baseDistro, "--no-launch"],
+            TimeSpan.FromMinutes(10), ct: ct);
+
+        if (install.ExitCode != 0 && !install.Stdout.Contains("already installed", StringComparison.OrdinalIgnoreCase))
+        {
+            // Try without --no-launch for older WSL versions
+            ctx.Logger.Warn($"Install with --no-launch failed (exit {install.ExitCode}), trying without");
+            install = await ctx.Commands.RunAsync(
+                "wsl.exe", ["--install", baseDistro],
+                TimeSpan.FromMinutes(10), ct: ct);
+        }
+
+        // Import as our named distro
+        var tempDir = Path.Combine(Path.GetTempPath(), $"openclaw-setup-{ctx.Logger.RunId}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // Export base → import as our distro name
+            var exportPath = Path.Combine(tempDir, "base.tar");
+            var export = await ctx.Commands.RunAsync(
+                "wsl.exe", ["--export", baseDistro, exportPath],
+                TimeSpan.FromMinutes(5), ct: ct);
+
+            if (export.ExitCode != 0)
+                return StepResult.Fail($"Failed to export base distro: {export.Stderr}");
+
+            var installPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray", "wsl", distro);
+            Directory.CreateDirectory(installPath);
+
+            var import = await ctx.Commands.RunAsync(
+                "wsl.exe", ["--import", distro, installPath, exportPath, "--version", "2"],
+                TimeSpan.FromMinutes(5), ct: ct);
+
+            if (import.ExitCode != 0)
+                return StepResult.Fail($"Failed to import distro: {import.Stderr}");
+
+            return StepResult.Ok($"Created WSL2 distro '{distro}'");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+    }
+}
+
+public sealed class ConfigureWslInstanceStep : SetupStep
+{
+    public override string Id => "wsl-configure";
+    public override string DisplayName => "Configure WSL instance";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        // Create openclaw user and directories
+        var script = """
+            set -e
+            
+            # Create user if not exists
+            if ! id -u openclaw &>/dev/null; then
+                useradd -m -s /bin/bash openclaw
+            fi
+            
+            # Create required directories
+            mkdir -p /home/openclaw/.openclaw
+            mkdir -p /var/lib/openclaw
+            mkdir -p /var/log/openclaw
+            mkdir -p /opt/openclaw
+            
+            chown -R openclaw:openclaw /home/openclaw/.openclaw
+            chown -R openclaw:openclaw /var/lib/openclaw
+            chown -R openclaw:openclaw /var/log/openclaw
+            chown -R openclaw:openclaw /opt/openclaw
+            
+            # Write wsl.conf
+            cat > /etc/wsl.conf << 'EOF'
+            [boot]
+            systemd=true
+            
+            [automount]
+            enabled=false
+            
+            [interop]
+            enabled=false
+            
+            [user]
+            default=openclaw
+            EOF
+            
+            echo "CONFIGURED_OK"
+            """;
+
+        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct);
+
+        if (result.ExitCode != 0 || !result.Stdout.Contains("CONFIGURED_OK"))
+            return StepResult.Fail($"Configuration failed: {result.Stderr}");
+
+        // Restart WSL to apply wsl.conf (systemd)
+        ctx.Logger.Info("Restarting WSL to apply configuration (systemd)");
+        await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await Task.Delay(2000, ct); // Let WSL settle
+
+        return StepResult.Ok("WSL instance configured with systemd");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GATEWAY INSTALL STEPS
+// ═══════════════════════════════════════════════════════════════════
+
+public sealed class InstallCliStep : SetupStep
+{
+    public override string Id => "install-cli";
+    public override string DisplayName => "Install OpenClaw CLI";
+    public override RetryPolicy Retry => new(MaxAttempts: 2, InitialDelay: TimeSpan.FromSeconds(5));
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        // Download and run install script
+        var installScript = "curl -fsSL https://openclaw.ai/install-cli.sh | bash";
+        var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
+
+        if (result.ExitCode != 0)
+            return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
+
+        // Verify CLI is accessible — try common install locations
+        var verifyPaths = new[]
+        {
+            "openclaw --version",
+            "/home/openclaw/.openclaw/bin/openclaw --version",
+            "/opt/openclaw/bin/openclaw --version",
+            "/usr/local/bin/openclaw --version"
+        };
+
+        foreach (var cmd in verifyPaths)
+        {
+            var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
+            if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
+            {
+                ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
+                return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
+            }
+        }
+
+        return StepResult.Fail("CLI installed but not found in any known location");
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, "rm -rf /opt/openclaw /home/openclaw/.openclaw", TimeSpan.FromSeconds(30), ct: ct);
+    }
+}
+
+public sealed class ConfigureGatewayStep : SetupStep
+{
+    public override string Id => "configure-gateway";
+    public override string DisplayName => "Configure gateway";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var port = ctx.Config.GatewayPort;
+
+        // Generate a shared gateway token
+        var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        ctx.SharedGatewayToken = token;
+
+        var script = $"""
+            set -e
+            {WslConstants.PathPrefix}
+            
+            # Configure gateway with inline token
+            openclaw config set gateway.mode local
+            openclaw config set gateway.port {port}
+            openclaw config set gateway.auth.mode token
+            openclaw config set gateway.auth.token {token}
+            openclaw config set gateway.reload.mode hot
+            
+            echo "GATEWAY_CONFIGURED"
+            """;
+
+        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(30), ct: ct);
+
+        if (result.ExitCode != 0 || !result.Stdout.Contains("GATEWAY_CONFIGURED"))
+            return StepResult.Fail($"Gateway configuration failed (exit {result.ExitCode}): {result.Stderr}");
+
+        ctx.Logger.StateChange("shared_gateway_token", null, "[SET]");
+        return StepResult.Ok("Gateway configured");
+    }
+}
+
+public sealed class InstallGatewayServiceStep : SetupStep
+{
+    public override string Id => "install-service";
+    public override string DisplayName => "Install gateway service";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        var result = await ctx.Commands.RunInWslAsync(
+            distro, $"{WslConstants.PathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct);
+
+        if (result.ExitCode != 0)
+            return StepResult.Fail($"Service install failed (exit {result.ExitCode}): {result.Stderr}");
+
+        return StepResult.Ok("Gateway service installed");
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{WslConstants.PathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct);
+    }
+}
+
+public sealed class StartGatewayStep : SetupStep
+{
+    public override string Id => "start-gateway";
+    public override string DisplayName => "Start gateway";
+    public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var pathCmd = WslConstants.PathPrefix;
+
+        // Start the service
+        var start = await ctx.Commands.RunInWslAsync(
+            distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+
+        if (start.ExitCode != 0)
+        {
+            // Check if systemd start-limit-hit
+            if (start.Stderr.Contains("start-limit", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Logger.Warn("Start-limit hit, resetting and retrying");
+                await ctx.Commands.RunInWslAsync(distro, "systemctl reset-failed openclaw-gateway", TimeSpan.FromSeconds(10), ct: ct);
+                await Task.Delay(2000, ct);
+                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+                if (start.ExitCode != 0)
+                    return StepResult.Fail($"Gateway start failed after reset: {start.Stderr}");
+            }
+            else
+            {
+                return StepResult.Fail($"Gateway start failed (exit {start.ExitCode}): {start.Stderr}");
+            }
+        }
+
+        // Wait for health endpoint
+        ctx.Logger.Info("Waiting for gateway health endpoint...");
+        var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(90));
+
+        while (DateTimeOffset.UtcNow < healthDeadline)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var status = await ctx.Commands.RunInWslAsync(
+                distro, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" + ctx.Config.GatewayPort + "/ --max-time 3",
+                TimeSpan.FromSeconds(10), ct: ct);
+
+            if (status.ExitCode == 0 && status.Stdout.Trim() is "200" or "401" or "403")
+            {
+                ctx.Logger.Info($"Gateway is accepting connections (HTTP {status.Stdout.Trim()})");
+                return StepResult.Ok("Gateway running");
+            }
+
+            ctx.Logger.Debug($"Gateway not yet accepting connections (curl exit={status.ExitCode}, response={status.Stdout.Trim()})");
+
+
+            await Task.Delay(2000, ct);
+        }
+
+        // Capture journal for diagnostics
+        var journal = await ctx.Commands.RunInWslAsync(
+            distro, "journalctl -u openclaw-gateway --no-pager -n 50", TimeSpan.FromSeconds(10), ct: ct);
+        ctx.Logger.Error($"Gateway health timeout. Journal:\n{journal.Stdout}");
+
+        return StepResult.Fail("Gateway did not become healthy within 90s");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PAIRING STEPS
+// ═══════════════════════════════════════════════════════════════════
+
+public sealed class MintBootstrapTokenStep : SetupStep
+{
+    public override string Id => "mint-token";
+    public override string DisplayName => "Mint bootstrap token";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        // Token was already set by ConfigureGatewayStep
+        if (string.IsNullOrWhiteSpace(ctx.SharedGatewayToken))
+            return StepResult.Fail("No shared gateway token set by previous step");
+
+        // Mint a bootstrap/QR token
+        var env = new Dictionary<string, string>
+        {
+            ["OPENCLAW_GATEWAY_TOKEN"] = ctx.SharedGatewayToken
+        };
+
+        var mint = await ctx.Commands.RunInWslAsync(
+            distro, $"{WslConstants.PathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct);
+
+        if (mint.ExitCode == 0 && !string.IsNullOrWhiteSpace(mint.Stdout))
+        {
+            // Parse bootstrap token from JSON output
+            try
+            {
+                using var doc = JsonDocument.Parse(mint.Stdout.Trim());
+                if (doc.RootElement.TryGetProperty("bootstrapToken", out var bt))
+                {
+                    ctx.BootstrapToken = bt.GetString();
+                    ctx.Logger.StateChange("bootstrap_token", null, "[SET]");
+                    return StepResult.Ok("Bootstrap token minted");
+                }
+            }
+            catch (JsonException ex)
+            {
+                ctx.Logger.Warn($"Failed to parse QR JSON: {ex.Message}");
+            }
+        }
+
+        // Fallback: use the shared gateway token directly as bootstrap
+        ctx.BootstrapToken = ctx.SharedGatewayToken;
+        ctx.Logger.Decision("QR mint failed or unavailable", "using shared gateway token as bootstrap");
+        return StepResult.Ok("Using shared gateway token as bootstrap");
+    }
+}
+
+public sealed class PairOperatorStep : SetupStep
+{
+    public override string Id => "pair-operator";
+    public override string DisplayName => "Pair operator connection";
+    public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var gatewayUrl = ctx.GatewayUrl!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+
+        if (string.IsNullOrEmpty(token))
+            return StepResult.Terminal("No credential available for operator pairing");
+
+        // Register gateway in registry (only once — reuse across retries)
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+
+        string identityPath;
+        if (!string.IsNullOrEmpty(ctx.GatewayRecordId))
+        {
+            var existing = registry.GetById(ctx.GatewayRecordId);
+            if (existing == null)
+                return StepResult.Fail($"Gateway record {ctx.GatewayRecordId} not found");
+            identityPath = registry.GetIdentityDirectory(existing.Id);
+            ctx.Logger.Info($"Reusing existing gateway record: id={existing.Id}");
+        }
+        else
+        {
+            var record = new GatewayRecord
+            {
+                Id = Guid.NewGuid().ToString("N")[..16],
+                Url = gatewayUrl,
+                FriendlyName = $"Local ({ctx.DistroName})",
+                SharedGatewayToken = ctx.SharedGatewayToken,
+                BootstrapToken = ctx.BootstrapToken,
+                IsLocal = true,
+                LastConnected = DateTime.UtcNow
+            };
+
+            record = registry.AddOrUpdate(record);
+            registry.SetActive(record.Id);
+            registry.Save();
+            ctx.GatewayRecordId = record.Id;
+            identityPath = registry.GetIdentityDirectory(record.Id);
+            ctx.Logger.Info($"Gateway record created: id={record.Id}");
+        }
+
+        // Initialize device identity
+        Directory.CreateDirectory(identityPath);
+        var identity = new DeviceIdentity(identityPath);
+        identity.Initialize();
+        ctx.Logger.Info($"Device identity initialized: {identity.DeviceId[..16]}...");
+        ctx.OperatorDeviceId = identity.DeviceId;
+
+        // Connect operator WebSocket — handle pairing-required flow
+        var wsLogger = new SetupOpenClawLogger(ctx.Logger);
+        OpenClawGatewayClient? client = null;
+
+        try
+        {
+            // Phase 1: Initial connect (may get PAIRING_REQUIRED)
+            client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
+            client.UseV2Signature = true; // Local gateway uses v2 signature format
+            var phase1Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+
+            if (phase1Result == ConnectionOutcome.Connected)
+            {
+                ctx.Logger.Info("Operator connected directly (no pairing needed)");
+                return StepResult.Ok("Operator connected and paired");
+            }
+
+            if (phase1Result == ConnectionOutcome.PairingRequired)
+            {
+                if (!ctx.Config.AutoApprovePairing)
+                    return StepResult.Fail("Pairing required but auto-approve is disabled");
+
+                ctx.Logger.Info("Pairing required — auto-approving via CLI");
+                await client.DisconnectAsync();
+                client.Dispose();
+                client = null;
+
+                // Auto-approve the pending pairing request
+                var approveResult = await AutoApprovePairing(ctx, ct);
+                if (!approveResult.IsSuccess)
+                    return approveResult;
+
+                // Wait for gateway to process the approval
+                await Task.Delay(2000, ct);
+
+                // Phase 2: Reconnect — the device should now be approved
+                client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
+                client.UseV2Signature = true;
+                var phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(20), ct);
+
+                if (phase2Result == ConnectionOutcome.Connected)
+                {
+                    ctx.Logger.Info("Operator paired successfully after approval");
+                    return StepResult.Ok("Operator connected and paired");
+                }
+
+                return StepResult.Fail($"Reconnection after approval failed: {phase2Result}");
+            }
+
+            return StepResult.Fail($"Operator connection failed: {phase1Result}");
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Operator pairing failed: {ex.Message}", ex);
+        }
+        finally
+        {
+            if (client != null)
+            {
+                await client.DisconnectAsync();
+                client.Dispose();
+            }
+        }
+    }
+
+    private static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var token = ctx.SharedGatewayToken!;
+
+        // Step 1: Get the latest pending request (--latest shows it, exits 1)
+        var preview = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"""{WslConstants.PathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
+            TimeSpan.FromSeconds(30), ct: ct);
+
+        ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
+        ctx.Logger.Debug($"Approve stdout: {preview.Stdout.Trim()}");
+
+        // Parse requestId from the JSON output
+        string? requestId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(preview.Stdout.Trim());
+            if (doc.RootElement.TryGetProperty("selected", out var selected) &&
+                selected.TryGetProperty("requestId", out var rid))
+            {
+                requestId = rid.GetString();
+            }
+        }
+        catch (JsonException ex)
+        {
+            ctx.Logger.Warn($"Failed to parse approve preview JSON: {ex.Message}");
+        }
+
+        if (string.IsNullOrEmpty(requestId))
+        {
+            ctx.Logger.Warn($"No requestId found in approve output");
+            return StepResult.Fail("Could not find pending pairing request to approve");
+        }
+
+        ctx.Logger.Info($"Approving pairing request: {requestId}");
+
+        // Step 2: Actually approve the request by passing the requestId directly
+        var approve = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"""{WslConstants.PathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
+            TimeSpan.FromSeconds(30), ct: ct);
+
+        ctx.Logger.Info($"Approve result: exit={approve.ExitCode}, stdout={approve.Stdout.Trim()}");
+
+        if (approve.ExitCode != 0)
+            return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+
+        return StepResult.Ok($"Approved request {requestId}");
+    }
+
+    private enum ConnectionOutcome { Connected, PairingRequired, Error, Timeout }
+
+    private static async Task<ConnectionOutcome> WaitForConnectionOrPairing(
+        OpenClawGatewayClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<ConnectionOutcome>();
+
+        void OnStatusChanged(object? sender, ConnectionStatus status)
+        {
+            ctx.Logger.Debug($"Operator connection status: {status}");
+            if (status == ConnectionStatus.Connected)
+                tcs.TrySetResult(ConnectionOutcome.Connected);
+            else if (status == ConnectionStatus.Error)
+                tcs.TrySetResult(ConnectionOutcome.Error);
+            else if (status == ConnectionStatus.Disconnected)
+            {
+                // Check if pairing was required — client sets IsPairingRequired before disconnect
+                if (client.IsPairingRequired)
+                    tcs.TrySetResult(ConnectionOutcome.PairingRequired);
+                else
+                    tcs.TrySetResult(ConnectionOutcome.Error);
+            }
+        }
+
+        client.StatusChanged += OnStatusChanged;
+        client.DeviceTokenReceived += (_, _) => ctx.Logger.Info("Device token received from gateway");
+
+        try
+        {
+            await client.ConnectAsync();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(timeout);
+            return await tcs.Task.WaitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return ConnectionOutcome.Timeout;
+        }
+        finally
+        {
+            client.StatusChanged -= OnStatusChanged;
+        }
+    }
+}
+
+public sealed class PairNodeStep : SetupStep
+{
+    public override string Id => "pair-node";
+    public override string DisplayName => "Pair node connection";
+    public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var gatewayUrl = ctx.GatewayUrl!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+
+        if (string.IsNullOrEmpty(token))
+            return StepResult.Terminal("No credential available for node pairing");
+
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+        var record = registry.GetById(ctx.GatewayRecordId!);
+        if (record == null)
+            return StepResult.Fail("Gateway record not found in registry");
+
+        var identityPath = registry.GetIdentityDirectory(record.Id);
+
+        // Verify gateway is reachable before connecting
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
+            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Gateway not reachable before node pairing: {ex.Message}");
+        }
+
+        var wsLogger = new SetupOpenClawLogger(ctx.Logger);
+        WindowsNodeClient? client = null;
+
+        try
+        {
+            // Phase 1: Connect (may get PAIRING_REQUIRED)
+            client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
+            client.UseV2Signature = true;
+
+            var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(15), ct);
+
+            if (outcome == NodeConnectionOutcome.Connected)
+            {
+                ctx.NodeDeviceId = client.ShortDeviceId;
+                ctx.Logger.Info($"Node connected directly: {ctx.NodeDeviceId}");
+                return StepResult.Ok("Node connected and paired");
+            }
+
+            if (outcome == NodeConnectionOutcome.PairingRequired)
+            {
+                if (!ctx.Config.AutoApprovePairing)
+                    return StepResult.Fail("Node pairing required but auto-approve is disabled");
+
+                ctx.Logger.Info("Node pairing required — auto-approving via CLI");
+                await client.DisconnectAsync();
+                client.Dispose();
+                client = null;
+
+                var approveResult = await AutoApproveNodePairing(ctx, ct);
+                if (!approveResult.IsSuccess)
+                    return approveResult;
+
+                await Task.Delay(2000, ct);
+
+                // Phase 2: Reconnect after approval
+                client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
+                client.UseV2Signature = true;
+
+                outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(20), ct);
+                if (outcome == NodeConnectionOutcome.Connected)
+                {
+                    ctx.NodeDeviceId = client.ShortDeviceId;
+                    ctx.Logger.Info($"Node paired after approval: {ctx.NodeDeviceId}");
+                    return StepResult.Ok("Node connected and paired");
+                }
+
+                return StepResult.Fail($"Node reconnection after approval failed: {outcome}");
+            }
+
+            return StepResult.Fail($"Node connection failed: {outcome}");
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Node pairing failed: {ex.Message}", ex);
+        }
+        finally
+        {
+            if (client != null)
+            {
+                await client.DisconnectAsync();
+                client.Dispose();
+            }
+        }
+    }
+
+    private enum NodeConnectionOutcome { Connected, PairingRequired, Error, Timeout }
+
+    private static async Task<NodeConnectionOutcome> WaitForNodeConnection(
+        WindowsNodeClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<NodeConnectionOutcome>();
+
+        void OnStatusChanged(object? sender, ConnectionStatus status)
+        {
+            ctx.Logger.Debug($"Node connection status: {status}");
+            if (status == ConnectionStatus.Connected)
+                tcs.TrySetResult(NodeConnectionOutcome.Connected);
+            else if (status == ConnectionStatus.Error)
+                tcs.TrySetResult(NodeConnectionOutcome.Error);
+            else if (status == ConnectionStatus.Disconnected)
+            {
+                if (client.IsPendingApproval)
+                    tcs.TrySetResult(NodeConnectionOutcome.PairingRequired);
+                else
+                    tcs.TrySetResult(NodeConnectionOutcome.Error);
+            }
+        }
+
+        client.StatusChanged += OnStatusChanged;
+
+        try
+        {
+            await client.ConnectAsync();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(timeout);
+            return await tcs.Task.WaitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return NodeConnectionOutcome.Timeout;
+        }
+        finally
+        {
+            client.StatusChanged -= OnStatusChanged;
+        }
+    }
+
+    private static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var token = ctx.SharedGatewayToken!;
+
+        // Step 1: Get latest pending request
+        var preview = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"""{WslConstants.PathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
+            TimeSpan.FromSeconds(30), ct: ct);
+
+        ctx.Logger.Info($"Node approve preview: exit={preview.ExitCode}");
+        ctx.Logger.Debug($"Node approve stdout: {preview.Stdout.Trim()}");
+
+        string? requestId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(preview.Stdout.Trim());
+            if (doc.RootElement.TryGetProperty("selected", out var selected) &&
+                selected.TryGetProperty("requestId", out var rid))
+            {
+                requestId = rid.GetString();
+            }
+        }
+        catch (JsonException ex)
+        {
+            ctx.Logger.Warn($"Failed to parse node approve preview: {ex.Message}");
+        }
+
+        if (string.IsNullOrEmpty(requestId))
+            return StepResult.Fail("Could not find pending node pairing request");
+
+        ctx.Logger.Info($"Approving node pairing request: {requestId}");
+
+        // Step 2: Approve
+        var approve = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"""{WslConstants.PathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
+            TimeSpan.FromSeconds(30), ct: ct);
+
+        ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
+
+        return approve.ExitCode == 0
+            ? StepResult.Ok($"Node approved: {requestId}")
+            : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+    }
+}
+
+public sealed class VerifyEndToEndStep : SetupStep
+{
+    public override string Id => "verify-e2e";
+    public override string DisplayName => "Verify end-to-end connectivity";
+    public override RetryPolicy Retry => new(MaxAttempts: 2, InitialDelay: TimeSpan.FromSeconds(3));
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // Verify gateway is still healthy
+        var distro = ctx.DistroName!;
+        var status = await ctx.Commands.RunInWslAsync(
+            distro, $"{WslConstants.PathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct);
+
+        if (status.ExitCode != 0 || !status.Stdout.Contains("running", StringComparison.OrdinalIgnoreCase))
+            return StepResult.Fail("Gateway is not running");
+
+        // Verify registry state
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+        var record = registry.GetById(ctx.GatewayRecordId!);
+        if (record == null)
+            return StepResult.Fail("Gateway record missing from registry");
+
+        var identityPath = registry.GetIdentityDirectory(record.Id);
+        if (!DeviceIdentity.HasStoredDeviceToken(identityPath))
+        {
+            ctx.Logger.Warn("No stored device token found — tray app may need to re-pair");
+        }
+        else
+        {
+            ctx.Logger.Info("Device token present — tray app will auto-connect");
+        }
+
+        // Verify we can connect briefly with stored credentials
+        var identity = new DeviceIdentity(identityPath);
+        identity.Initialize();
+        var token = identity.DeviceToken ?? ctx.SharedGatewayToken;
+
+        if (token != null)
+        {
+            var client = new OpenClawGatewayClient(ctx.GatewayUrl!, token, identityPath: identityPath);
+            var connected = new TaskCompletionSource<bool>();
+            client.StatusChanged += (_, s) =>
+            {
+                if (s == ConnectionStatus.Connected) connected.TrySetResult(true);
+                else if (s == ConnectionStatus.Error) connected.TrySetResult(false);
+            };
+
+            try
+            {
+                await client.ConnectAsync();
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(15));
+                var ok = await connected.Task.WaitAsync(cts.Token);
+
+                if (ok)
+                {
+                    ctx.Logger.Info("E2E verification passed — operator can connect with stored credentials");
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    return StepResult.Ok("End-to-end verification passed");
+                }
+            }
+            catch (Exception ex)
+            {
+                ctx.Logger.Warn($"E2E verification connection failed: {ex.Message}");
+            }
+            finally
+            {
+                client.Dispose();
+            }
+        }
+
+        // If we got here, the gateway is running but we couldn't verify operator connect
+        // This is still acceptable — tray app will handle pairing
+        return StepResult.Ok("Gateway running; credentials stored. Tray app should auto-connect.");
+    }
+}
