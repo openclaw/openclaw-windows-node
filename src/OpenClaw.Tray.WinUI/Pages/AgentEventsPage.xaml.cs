@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -23,6 +22,17 @@ public sealed partial class AgentEventsPage : Page
     public Action? ClearCentralCache { get; set; }
 
     public int EventCount => _allEvents.Count;
+
+    // UI-only policy: true when expanding the row reveals content beyond the summary line.
+    private static bool CanExpand(AgentEventInfo evt)
+    {
+        if (evt.IsAssistantStream)
+        {
+            var full = evt.FullAssistantText;
+            return !string.IsNullOrEmpty(full) && full != evt.SummaryLine;
+        }
+        return evt.ShowDataJson;
+    }
 
     /// <summary>Filter events to a specific agent by session key prefix.</summary>
     public void SetAgentFilter(string? agentId)
@@ -121,18 +131,10 @@ public sealed partial class AgentEventsPage : Page
         }
     }
 
-    private void OnFilterClick(object sender, RoutedEventArgs e)
+    private void OnFilterSelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (sender is not ToggleButton clicked) return;
-        var tag = clicked.Tag?.ToString() ?? "all";
-
-        foreach (var child in ((StackPanel)clicked.Parent).Children)
-        {
-            if (child is ToggleButton tb)
-                tb.IsChecked = tb == clicked;
-        }
-
-        _activeFilter = tag;
+        var tag = sender.SelectedItem?.Tag as string;
+        _activeFilter = string.IsNullOrEmpty(tag) ? "all" : tag;
         ApplyFilter();
     }
 
@@ -169,7 +171,6 @@ public sealed partial class AgentEventsPage : Page
         if (args.Item is not AgentEventInfo evt || args.ItemContainer?.ContentTemplateRoot is not Grid grid)
             return;
 
-        // Row 0: header Grid with badge (col 0), timestamp (col 1), chevron (col 3)
         if (grid.Children[0] is Grid headerGrid && headerGrid.Children[0] is Border badge)
         {
             var hex = evt.BadgeColorHex;
@@ -190,18 +191,18 @@ public sealed partial class AgentEventsPage : Page
                     Microsoft.UI.ColorHelper.FromArgb(40, 100, 100, 100));
             }
 
-            // Update chevron glyph based on model state
             if (headerGrid.Children.Count > 2 && headerGrid.Children[2] is FontIcon chevron)
+            {
+                chevron.Visibility = CanExpand(evt) ? Visibility.Visible : Visibility.Collapsed;
                 chevron.Glyph = evt.IsExpanded ? "\uE70E" : "\uE70D";
+            }
         }
 
-        // Row 1: summary
         if (grid.Children.Count > 1 && grid.Children[1] is TextBlock summaryBlock)
         {
             summaryBlock.Visibility = evt.HasSummary ? Visibility.Visible : Visibility.Collapsed;
             if (evt.IsAssistantStream)
             {
-                // Swap between truncated summary and full text
                 summaryBlock.Text = evt.IsExpanded ? (evt.FullAssistantText ?? evt.SummaryLine) : evt.SummaryLine;
                 summaryBlock.MaxLines = evt.IsExpanded ? 0 : 3;
             }
@@ -212,38 +213,28 @@ public sealed partial class AgentEventsPage : Page
             }
         }
 
-        // Row 2: detail panel — only for streams that still need raw JSON
         if (grid.Children.Count > 2 && grid.Children[2] is Grid detailGrid)
         {
-            if (!evt.ShowDataJson)
-            {
-                // Assistant/error/lifecycle events show enough context in the summary row.
-                detailGrid.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                detailGrid.Visibility = evt.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
-            }
+            detailGrid.Visibility = (evt.IsExpanded && evt.ShowDataJson)
+                ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
     private void EventsList_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not AgentEventInfo evt) return;
+        if (!CanExpand(evt)) return;
         evt.IsExpanded = !evt.IsExpanded;
 
-        // Update the visual container
         if (sender is ListView listView)
         {
             var container = listView.ContainerFromItem(e.ClickedItem) as ListViewItem;
             if (container?.ContentTemplateRoot is Grid grid)
             {
-                // Update chevron
                 if (grid.Children[0] is Grid headerGrid
                     && headerGrid.Children.Count > 2 && headerGrid.Children[2] is FontIcon chevron)
                     chevron.Glyph = evt.IsExpanded ? "\uE70E" : "\uE70D";
 
-                // Update summary text and MaxLines
                 if (grid.Children.Count > 1 && grid.Children[1] is TextBlock summaryBlock)
                 {
                     summaryBlock.Text = evt.IsAssistantStream && evt.IsExpanded
@@ -252,7 +243,6 @@ public sealed partial class AgentEventsPage : Page
                     summaryBlock.MaxLines = evt.IsExpanded ? 0 : 3;
                 }
 
-                // Toggle detail panel only for streams where raw JSON is still useful.
                 if (grid.Children.Count > 2 && grid.Children[2] is Grid detailGrid)
                     detailGrid.Visibility = (evt.IsExpanded && evt.ShowDataJson)
                         ? Visibility.Visible : Visibility.Collapsed;

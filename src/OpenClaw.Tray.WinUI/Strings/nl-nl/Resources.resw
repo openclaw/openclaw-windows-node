@@ -1504,31 +1504,37 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Softwareagent</value>
   </data>
+  <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
+    <value>Alle agents</value>
+  </data>
+  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
+    <value>Realtime stroom van agentactiviteit — toolaanroepen, antwoorden, fouten en levenscyclusgebeurtenissen.</value>
+  </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>Alle agents</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
     <value>Hulpmiddel</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
     <value>Assistent</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
     <value>Fout</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
     <value>Levenscyclus</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
     <value>Planning</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
     <value>Goedkeuring</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
     <value>Denken</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
     <value>Correctie</value>
   </data>
   <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
@@ -3280,7 +3286,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
     <value>Keep my setup</value>
   </data>
-  <data name="FilterAllButton.Content" xml:space="preserve">
+  <data name="FilterAllButton.Text" xml:space="preserve">
     <value>Alles</value>
   </data>
   <data name="ChannelsPage_Title.Text" xml:space="preserve">

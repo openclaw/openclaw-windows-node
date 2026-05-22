@@ -1551,31 +1551,37 @@ On your gateway host (Mac/Linux), run:
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Agent</value>
   </data>
+  <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
+    <value>All Agents</value>
+  </data>
+  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
+    <value>Real-time stream of agent activity — tool calls, responses, errors, and lifecycle events.</value>
+  </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>All Agents</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
     <value>Tool</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
     <value>Assistant</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
     <value>Error</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
     <value>Lifecycle</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
     <value>Plan</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
     <value>Approval</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
     <value>Thinking</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
     <value>Patch</value>
   </data>
   <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
@@ -3327,7 +3333,7 @@ On your gateway host (Mac/Linux), run:
   <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
     <value>Keep my setup</value>
   </data>
-  <data name="FilterAllButton.Content" xml:space="preserve">
+  <data name="FilterAllButton.Text" xml:space="preserve">
     <value>All</value>
   </data>
   <data name="ChannelsPage_Title.Text" xml:space="preserve">

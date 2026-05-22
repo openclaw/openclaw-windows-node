@@ -1503,31 +1503,37 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Agent logiciel</value>
   </data>
+  <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
+    <value>Tous les agents</value>
+  </data>
+  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
+    <value>Flux en temps réel de l'activité des agents — appels d'outils, réponses, erreurs et événements de cycle de vie.</value>
+  </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>Tous les agents</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
     <value>Outil</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
     <value>Assistant virtuel</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
     <value>Erreur</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
     <value>Cycle de vie</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
     <value>Planification</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
     <value>Approbation</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
     <value>Réflexion</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
     <value>Correctif</value>
   </data>
   <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
@@ -3279,7 +3285,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
     <value>Keep my setup</value>
   </data>
-  <data name="FilterAllButton.Content" xml:space="preserve">
+  <data name="FilterAllButton.Text" xml:space="preserve">
     <value>Tout</value>
   </data>
   <data name="ChannelsPage_Title.Text" xml:space="preserve">

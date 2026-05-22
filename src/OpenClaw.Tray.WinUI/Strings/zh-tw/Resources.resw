@@ -1503,31 +1503,37 @@
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>代理程式</value>
   </data>
+  <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
+    <value>所有代理程式</value>
+  </data>
+  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
+    <value>代理程式活動的即時串流——工具呼叫、回應、錯誤和生命週期事件。</value>
+  </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>所有代理程式</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
     <value>工具</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
     <value>助理</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
     <value>錯誤</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
     <value>生命週期</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
     <value>計畫</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
     <value>核准</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
     <value>思考中</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
     <value>修補程式</value>
   </data>
   <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
@@ -3279,7 +3285,7 @@
   <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
     <value>Keep my setup</value>
   </data>
-  <data name="FilterAllButton.Content" xml:space="preserve">
+  <data name="FilterAllButton.Text" xml:space="preserve">
     <value>全部</value>
   </data>
   <data name="ChannelsPage_Title.Text" xml:space="preserve">
