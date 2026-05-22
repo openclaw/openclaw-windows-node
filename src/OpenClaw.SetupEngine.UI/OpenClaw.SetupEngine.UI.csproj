@@ -40,4 +40,11 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Bundle default config -->
+  <ItemGroup>
+    <Content Include="..\OpenClaw.SetupEngine\default-config.json"
+             Link="default-config.json"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

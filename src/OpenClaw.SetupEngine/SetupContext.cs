@@ -7,15 +7,15 @@ namespace OpenClaw.SetupEngine;
 
 public sealed class SetupConfig
 {
-    public string DistroName { get; set; } = "OpenClawGateway";
-    public int GatewayPort { get; set; } = 18789;
-    public string BaseDistro { get; set; } = "Ubuntu-24.04";
+    public string DistroName { get; set; } = "";
+    public int GatewayPort { get; set; }
+    public string BaseDistro { get; set; } = "";
     public bool SkipPermissions { get; set; }
     public bool SkipWizard { get; set; }
     public bool Headless { get; set; }
-    public bool AutoApprovePairing { get; set; } = true;
+    public bool AutoApprovePairing { get; set; }
     public bool RollbackOnFailure { get; set; }
-    public bool CleanBeforeRun { get; set; } = true;
+    public bool CleanBeforeRun { get; set; }
     public string LogLevel { get; set; } = "trace";
     public string? LogPath { get; set; }
     public string? GatewayUrl { get; set; }

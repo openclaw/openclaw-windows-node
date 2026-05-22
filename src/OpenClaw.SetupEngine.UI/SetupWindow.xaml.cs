@@ -8,7 +8,7 @@ namespace OpenClaw.SetupEngine.UI;
 
 public sealed partial class SetupWindow : Window
 {
-    private SetupConfig _config;
+    private SetupConfig _config = null!;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -30,12 +30,25 @@ public sealed partial class SetupWindow : Window
         // Mica backdrop
         SystemBackdrop = new MicaBackdrop();
 
-        // Load config (CLI --config arg or default)
+        // Load config: explicit --config arg, or bundled default-config.json (required)
         var args = Environment.GetCommandLineArgs();
         var configPath = GetArg(args, "--config");
-        _config = (configPath != null && File.Exists(configPath))
-            ? SetupConfig.LoadFromFile(configPath)
-            : new SetupConfig();
+        if (configPath == null)
+        {
+            var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
+            if (File.Exists(defaultPath))
+                configPath = defaultPath;
+        }
+
+        if (configPath == null || !File.Exists(configPath))
+        {
+            // Cannot run without config
+            Console.Error.WriteLine("ERROR: No config file found. Place default-config.json next to the exe or pass --config <path>.");
+            Environment.Exit(1);
+            return;
+        }
+
+        _config = SetupConfig.LoadFromFile(configPath);
         _config = SetupConfig.FromEnvironment(_config);
 
         RootFrame.Navigate(typeof(WelcomePage), _config);

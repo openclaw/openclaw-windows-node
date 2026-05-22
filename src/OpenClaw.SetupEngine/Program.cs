@@ -23,7 +23,18 @@ public static class Program
         }
         else
         {
-            config = new SetupConfig();
+            // Look for default-config.json next to the exe
+            var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
+            if (File.Exists(defaultPath))
+            {
+                Console.WriteLine($"Loading config from: {defaultPath}");
+                config = SetupConfig.LoadFromFile(defaultPath);
+            }
+            else
+            {
+                Console.Error.WriteLine("ERROR: No config file found. Provide --config or place default-config.json next to the exe.");
+                return 1;
+            }
         }
 
         // Apply CLI overrides
