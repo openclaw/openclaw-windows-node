@@ -1,14 +1,123 @@
 {
-  // Default config for OpenClaw Setup Engine
-  // Uses distinct port/distro to avoid conflict with production tray setup
+  // ─── Core Setup ───
+  // Mode: "local-wsl" (WSL2 gateway), future: "remote", "docker"
   "Mode": "local-wsl",
+  // WSL distro name to create (use distinct name to avoid conflicts)
   "DistroName": "OpenClawDev",
+  // Gateway WebSocket port (tray connects here)
   "GatewayPort": 18899,
+  // Base Ubuntu distro to export/import from
   "BaseDistro": "Ubuntu-24.04",
+  // Run without UI prompts
   "Headless": true,
+  // Auto-approve all pairing requests during setup
   "AutoApprovePairing": true,
+  // Unregister existing distro + clean gateway state before starting
   "CleanBeforeRun": true,
+  // Skip Windows permission elevation checks
   "SkipPermissions": true,
+  // Skip interactive gateway wizard (model providers, etc.)
   "SkipWizard": true,
-  "LogLevel": "trace"
+  // Log verbosity: "trace", "debug", "info", "warn", "error"
+  "LogLevel": "trace",
+  // Override log file path (null = %APPDATA%\OpenClawTray\Logs\Setup\)
+  "LogPath": null,
+  // Override gateway WebSocket URL (null = ws://localhost:{GatewayPort})
+  "GatewayUrl": null,
+  // Pre-shared bootstrap token (null = auto-mint during setup)
+  "BootstrapToken": null,
+  // Rollback completed steps on failure (transactional undo)
+  "RollbackOnFailure": false,
+
+  // ─── WSL Instance Configuration ───
+  // Controls wsl.conf and distro user setup
+  "Wsl": {
+    // Linux user created in distro (owns all openclaw dirs)
+    "User": "openclaw",
+    // Enable systemd (required for gateway service)
+    "Systemd": true,
+    // Allow WSL-Windows interop (false = isolated sandbox)
+    "Interop": false,
+    // Append Windows PATH into WSL (false = clean Linux PATH)
+    "AppendWindowsPath": false,
+    // Auto-mount Windows drives into /mnt/
+    "Automount": false,
+    // Mount entries from /etc/fstab
+    "MountFsTab": false,
+    // Sync timezone from Windows host
+    "UseWindowsTimezone": true,
+    // WSL memory limit (null = WSL default, e.g. "4GB")
+    "Memory": null,
+    // WSL swap limit (null = WSL default, e.g. "2GB")
+    "Swap": null
+  },
+
+  // ─── Gateway Configuration ───
+  // Controls how the openclaw gateway is configured inside WSL
+  "Gateway": {
+    // Network bind: "lan" (0.0.0.0, reliable for WSL2), "loopback" (127.0.0.1)
+    "Bind": "lan",
+    // Override CLI install script URL (null = https://openclaw.ai/install-cli.sh)
+    "InstallUrl": null,
+    // Pin gateway version (null = latest)
+    "Version": null,
+    // Seconds to wait for gateway health endpoint before failing
+    "HealthTimeoutSeconds": 90,
+    // Config reload strategy: "hot" (no restart), "restart"
+    "ReloadMode": "hot",
+    // Auth mode: "token" (shared secret)
+    "AuthMode": "token",
+    // Additional gateway config key/value pairs (applied via `openclaw config set`)
+    "ExtraConfig": null
+  },
+
+  // ─── Node Capabilities ───
+  // Which capabilities to advertise to the gateway during node pairing.
+  // The tray handles actual command execution; setup just registers the declarations.
+  "Capabilities": {
+    "System": true,
+    "Canvas": true,
+    "Screen": true,
+    "Camera": true,
+    "Location": true,
+    "Browser": true,
+    // Device (info/status) is always-on
+    "Device": true,
+    // Opt-in: text-to-speech
+    "Tts": false,
+    // Opt-in: speech-to-text
+    "Stt": false
+  },
+
+  // ─── Tray Settings ───
+  // Written to %APPDATA%\OpenClawTray\settings.json after setup.
+  // Merged with existing settings (preserves user prefs, overwrites these keys).
+  "Settings": {
+    // Master switch: tray starts node mode on launch
+    "EnableNodeMode": true,
+    // Start tray on Windows login
+    "AutoStart": false,
+    // Per-capability toggles (must match Capabilities above for consistency)
+    "NodeSystemRunEnabled": true,
+    "NodeCanvasEnabled": true,
+    "NodeScreenEnabled": true,
+    "NodeCameraEnabled": true,
+    "NodeLocationEnabled": true,
+    "NodeBrowserProxyEnabled": true,
+    "NodeTtsEnabled": false,
+    "NodeSttEnabled": false
+  },
+
+  // ─── Pairing Configuration ───
+  // Controls scopes and timeouts for device pairing
+  "Pairing": {
+    // Scopes granted to operator connection
+    "OperatorScopes": "operator.read,operator.write,operator.pairing",
+    // Scopes granted to node connection
+    "NodeScopes": "node.read,node.write",
+    // Scopes for the CLI device inside WSL
+    "CliScopes": "operator.read,operator.write,operator.pairing",
+    // Max seconds to wait for pairing handshake
+    "TimeoutSeconds": 60
+  }
 }

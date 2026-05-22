@@ -9,6 +9,10 @@ namespace OpenClaw.SetupEngine;
 // PATH prefix for all openclaw CLI commands in WSL
 internal static class WslConstants
 {
+    public static string GetPathPrefix(string user) =>
+        $"""export PATH="/home/{user}/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH" """;
+
+    // Default (for backward compat with steps that don't have user context yet)
     public const string PathPrefix = """export PATH="/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH" """;
 }
 
@@ -267,41 +271,52 @@ public sealed class ConfigureWslInstanceStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
+        var wsl = ctx.Config.Wsl;
 
-        // Create openclaw user and directories
-        var script = """
+        // Build wsl.conf from config
+        var wslConf = $"""
+[boot]
+systemd={wsl.Systemd.ToString().ToLower()}
+
+[automount]
+enabled={wsl.Automount.ToString().ToLower()}
+mountFsTab={wsl.MountFsTab.ToString().ToLower()}
+
+[interop]
+enabled={wsl.Interop.ToString().ToLower()}
+appendWindowsPath={wsl.AppendWindowsPath.ToString().ToLower()}
+
+[user]
+default={wsl.User}
+
+[time]
+useWindowsTimezone={wsl.UseWindowsTimezone.ToString().ToLower()}
+""";
+
+        // Create user and directories
+        var script = $"""
             set -e
             
             # Create user if not exists
-            if ! id -u openclaw &>/dev/null; then
-                useradd -m -s /bin/bash openclaw
+            if ! id -u {wsl.User} &>/dev/null; then
+                useradd -m -s /bin/bash {wsl.User}
             fi
             
             # Create required directories
-            mkdir -p /home/openclaw/.openclaw
+            mkdir -p /home/{wsl.User}/.openclaw
             mkdir -p /var/lib/openclaw
             mkdir -p /var/log/openclaw
             mkdir -p /opt/openclaw
             
-            chown -R openclaw:openclaw /home/openclaw/.openclaw
-            chown -R openclaw:openclaw /var/lib/openclaw
-            chown -R openclaw:openclaw /var/log/openclaw
-            chown -R openclaw:openclaw /opt/openclaw
+            chown -R {wsl.User}:{wsl.User} /home/{wsl.User}/.openclaw
+            chown -R {wsl.User}:{wsl.User} /var/lib/openclaw
+            chown -R {wsl.User}:{wsl.User} /var/log/openclaw
+            chown -R {wsl.User}:{wsl.User} /opt/openclaw
             
             # Write wsl.conf
-            cat > /etc/wsl.conf << 'EOF'
-            [boot]
-            systemd=true
-            
-            [automount]
-            enabled=false
-            
-            [interop]
-            enabled=false
-            
-            [user]
-            default=openclaw
-            EOF
+            cat > /etc/wsl.conf << 'WSLCONF'
+            {wslConf}
+            WSLCONF
             
             echo "CONFIGURED_OK"
             """;
@@ -316,7 +331,7 @@ public sealed class ConfigureWslInstanceStep : SetupStep
         await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let WSL settle
 
-        return StepResult.Ok("WSL instance configured with systemd");
+        return StepResult.Ok("WSL instance configured");
     }
 }
 
@@ -333,9 +348,11 @@ public sealed class InstallCliStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
+        var user = ctx.Config.Wsl.User;
 
-        // Download and run install script
-        var installScript = "curl -fsSL https://openclaw.ai/install-cli.sh | bash";
+        // Download and run install script (URL configurable)
+        var installUrl = ctx.Config.Gateway.InstallUrl ?? "https://openclaw.ai/install-cli.sh";
+        var installScript = $"curl -fsSL {installUrl} | bash";
         var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
 
         if (result.ExitCode != 0)
@@ -345,7 +362,7 @@ public sealed class InstallCliStep : SetupStep
         var verifyPaths = new[]
         {
             "openclaw --version",
-            "/home/openclaw/.openclaw/bin/openclaw --version",
+            $"/home/{user}/.openclaw/bin/openclaw --version",
             "/opt/openclaw/bin/openclaw --version",
             "/usr/local/bin/openclaw --version"
         };
@@ -365,7 +382,8 @@ public sealed class InstallCliStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, "rm -rf /opt/openclaw /home/openclaw/.openclaw", TimeSpan.FromSeconds(30), ct: ct);
+        var user = ctx.Config.Wsl.User;
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"rm -rf /opt/openclaw /home/{user}/.openclaw", TimeSpan.FromSeconds(30), ct: ct);
     }
 }
 
@@ -378,22 +396,36 @@ public sealed class ConfigureGatewayStep : SetupStep
     {
         var distro = ctx.DistroName!;
         var port = ctx.Config.GatewayPort;
+        var gw = ctx.Config.Gateway;
 
         // Generate a shared gateway token
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         ctx.SharedGatewayToken = token;
 
-        var script = $"""
-            set -e
-            {WslConstants.PathPrefix}
-            
-            # Configure gateway with inline token
+        var configCommands = $"""
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
-            openclaw config set gateway.bind lan
-            openclaw config set gateway.auth.mode token
+            openclaw config set gateway.bind {gw.Bind}
+            openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token {token}
-            openclaw config set gateway.reload.mode hot
+            openclaw config set gateway.reload.mode {gw.ReloadMode}
+            """;
+
+        // Apply any extra config key/value pairs from config
+        if (gw.ExtraConfig is { Count: > 0 })
+        {
+            foreach (var (key, value) in gw.ExtraConfig)
+            {
+                configCommands += $"\n            openclaw config set {key} {value}";
+            }
+        }
+
+        var pathPrefix = ctx.WslPathPrefix;
+        var script = $"""
+            set -e
+            {pathPrefix}
+            
+            {configCommands}
             
             echo "GATEWAY_CONFIGURED"
             """;
@@ -418,7 +450,7 @@ public sealed class InstallGatewayServiceStep : SetupStep
         var distro = ctx.DistroName!;
 
         var result = await ctx.Commands.RunInWslAsync(
-            distro, $"{WslConstants.PathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"Service install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -428,7 +460,7 @@ public sealed class InstallGatewayServiceStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{WslConstants.PathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{ctx.WslPathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct);
     }
 }
 
@@ -441,7 +473,7 @@ public sealed class StartGatewayStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var pathCmd = WslConstants.PathPrefix;
+        var pathCmd = ctx.WslPathPrefix;
 
         // Start the service
         var start = await ctx.Commands.RunInWslAsync(
@@ -467,7 +499,7 @@ public sealed class StartGatewayStep : SetupStep
 
         // Wait for health endpoint
         ctx.Logger.Info("Waiting for gateway health endpoint...");
-        var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(90));
+        var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(ctx.Config.Gateway.HealthTimeoutSeconds));
 
         while (DateTimeOffset.UtcNow < healthDeadline)
         {
@@ -494,7 +526,7 @@ public sealed class StartGatewayStep : SetupStep
             distro, "journalctl -u openclaw-gateway --no-pager -n 50", TimeSpan.FromSeconds(10), ct: ct);
         ctx.Logger.Error($"Gateway health timeout. Journal:\n{journal.Stdout}");
 
-        return StepResult.Fail("Gateway did not become healthy within 90s");
+        return StepResult.Fail($"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s");
     }
 }
 
@@ -522,7 +554,7 @@ public sealed class MintBootstrapTokenStep : SetupStep
         };
 
         var mint = await ctx.Commands.RunInWslAsync(
-            distro, $"{WslConstants.PathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct);
 
         if (mint.ExitCode == 0 && !string.IsNullOrWhiteSpace(mint.Stdout))
         {
@@ -768,7 +800,7 @@ public sealed class PairOperatorStep : SetupStep
         // Step 1: Get the latest pending request (--latest shows it, exits 1)
         var preview = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{WslConstants.PathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
+            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
             TimeSpan.FromSeconds(30), ct: ct);
 
         ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
@@ -801,7 +833,7 @@ public sealed class PairOperatorStep : SetupStep
         // Step 2: Actually approve the request by passing the requestId directly
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{WslConstants.PathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
+            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
             TimeSpan.FromSeconds(30), ct: ct);
 
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}, stdout={approve.Stdout.Trim()}");
@@ -900,6 +932,9 @@ public sealed class PairNodeStep : SetupStep
             client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
             client.UseV2Signature = true;
 
+            // Register capabilities BEFORE connect — gateway stores them from hello message
+            RegisterCapabilitiesFromConfig(client, ctx);
+
             var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(15), ct);
 
             if (outcome == NodeConnectionOutcome.Connected)
@@ -928,6 +963,7 @@ public sealed class PairNodeStep : SetupStep
                 // Phase 2: Reconnect after approval
                 client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
                 client.UseV2Signature = true;
+                RegisterCapabilitiesFromConfig(client, ctx);
 
                 outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(20), ct);
                 if (outcome == NodeConnectionOutcome.Connected)
@@ -1088,7 +1124,7 @@ public sealed class PairNodeStep : SetupStep
         // Step 1: Get latest pending request
         var preview = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{WslConstants.PathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
+            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
             TimeSpan.FromSeconds(30), ct: ct);
 
         ctx.Logger.Info($"Node approve preview: exit={preview.ExitCode}");
@@ -1117,7 +1153,7 @@ public sealed class PairNodeStep : SetupStep
         // Step 2: Approve
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{WslConstants.PathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
+            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
             TimeSpan.FromSeconds(30), ct: ct);
 
         ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
@@ -1125,6 +1161,16 @@ public sealed class PairNodeStep : SetupStep
         return approve.ExitCode == 0
             ? StepResult.Ok($"Node approved: {requestId}")
             : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+    }
+
+    private static void RegisterCapabilitiesFromConfig(WindowsNodeClient client, SetupContext ctx)
+    {
+        var capabilities = ctx.Config.Capabilities.GetEnabledCapabilities();
+        foreach (var (category, commands) in capabilities)
+        {
+            client.RegisterCapability(new StubNodeCapability(category, commands));
+        }
+        ctx.Logger.Info($"Registered {capabilities.Count} capability categories with {capabilities.Sum(c => c.Commands.Length)} total commands");
     }
 }
 
@@ -1139,7 +1185,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Verify gateway is still healthy
         var distro = ctx.DistroName!;
         var status = await ctx.Commands.RunInWslAsync(
-            distro, $"{WslConstants.PathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct);
 
         if (status.ExitCode != 0 || !status.Stdout.Contains("running", StringComparison.OrdinalIgnoreCase))
             return StepResult.Fail("Gateway is not running");
@@ -1173,7 +1219,17 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Write setup-state.json so tray knows the distro name for WSL keepalive
         await WriteSetupStateAsync(ctx, ct);
 
-        return StepResult.Ok("Gateway running; operator finalized for tray.");
+        // Write settings.json with EnableNodeMode + capability toggles from config
+        WriteSettingsJson(ctx);
+
+        return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
+    }
+
+    private static void WriteSettingsJson(SetupContext ctx)
+    {
+        var settingsPath = Path.Combine(ctx.DataDir, "settings.json");
+        ctx.Config.Settings.MergeIntoSettingsFile(settingsPath);
+        ctx.Logger.Info($"Wrote settings.json: EnableNodeMode={ctx.Config.Settings.EnableNodeMode}");
     }
 
     /// <summary>
@@ -1319,6 +1375,30 @@ public sealed class StartKeepaliveStep : SetupStep
         }
 
         ctx.Logger.Info($"Keepalive process started (PID {proc.Id}), distro will stay alive for tray launch");
+
+        // Write keepalive marker so tray doesn't spawn a duplicate
+        WriteKeepaliveMarker(ctx, proc.Id);
+
         return Task.FromResult(StepResult.Ok());
+    }
+
+    private static void WriteKeepaliveMarker(SetupContext ctx, int pid)
+    {
+        var markerDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray", "wsl-keepalive");
+        Directory.CreateDirectory(markerDir);
+
+        var markerPath = Path.Combine(markerDir, $"{ctx.DistroName}.json");
+        var marker = new
+        {
+            DistroName = ctx.DistroName,
+            Pid = pid,
+            StartTimeUtc = DateTimeOffset.UtcNow,
+            ProcessName = "wsl"
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(marker, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(markerPath, json);
+        ctx.Logger.Info($"Wrote keepalive marker: {markerPath}");
     }
 }

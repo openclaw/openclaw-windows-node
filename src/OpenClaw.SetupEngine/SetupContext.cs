@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenClaw.SetupEngine;
 
@@ -21,6 +22,13 @@ public sealed class SetupConfig
     public string? GatewayUrl { get; set; }
     public string? BootstrapToken { get; set; }
     public Dictionary<string, string>? WizardAnswers { get; set; }
+
+    // Nested config sections — everything is configurable
+    public WslConfig Wsl { get; set; } = new();
+    public GatewayConfig Gateway { get; set; } = new();
+    public CapabilitiesConfig Capabilities { get; set; } = new();
+    public TraySettingsConfig Settings { get; set; } = new();
+    public PairingConfig Pairing { get; set; } = new();
 
     public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://localhost:{GatewayPort}";
 
@@ -46,12 +54,152 @@ public sealed class SetupConfig
         return config;
     }
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
+        AllowTrailingCommas = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = true
     };
+}
+
+// ─── WSL Configuration ───
+
+public sealed class WslConfig
+{
+    public string User { get; set; } = "openclaw";
+    public bool Systemd { get; set; } = true;
+    public bool Interop { get; set; } = false;
+    public bool AppendWindowsPath { get; set; } = false;
+    public bool Automount { get; set; } = false;
+    public bool MountFsTab { get; set; } = false;
+    public bool UseWindowsTimezone { get; set; } = true;
+    public string? Memory { get; set; }
+    public string? Swap { get; set; }
+}
+
+// ─── Gateway Configuration ───
+
+public sealed class GatewayConfig
+{
+    public string Bind { get; set; } = "lan";
+    public string? InstallUrl { get; set; }
+    public string? Version { get; set; }
+    public int HealthTimeoutSeconds { get; set; } = 90;
+    public string ReloadMode { get; set; } = "hot";
+    public string AuthMode { get; set; } = "token";
+    public Dictionary<string, string>? ExtraConfig { get; set; }
+}
+
+// ─── Capabilities Configuration ───
+
+public sealed class CapabilitiesConfig
+{
+    public bool System { get; set; } = true;
+    public bool Canvas { get; set; } = true;
+    public bool Screen { get; set; } = true;
+    public bool Camera { get; set; } = true;
+    public bool Location { get; set; } = true;
+    public bool Browser { get; set; } = true;
+    public bool Device { get; set; } = true;
+    public bool Tts { get; set; } = false;
+    public bool Stt { get; set; } = false;
+
+    /// <summary>
+    /// Returns the list of enabled capability categories and their commands
+    /// for registration on the WindowsNodeClient.
+    /// </summary>
+    public IReadOnlyList<(string Category, string[] Commands)> GetEnabledCapabilities()
+    {
+        var result = new List<(string, string[])>();
+
+        if (System) result.Add(("system", ["system.notify", "system.run", "system.run.prepare", "system.which", "system.execApprovals.get", "system.execApprovals.set"]));
+        if (Canvas) result.Add(("canvas", ["canvas.present", "canvas.hide", "canvas.navigate", "canvas.eval", "canvas.snapshot", "canvas.a2ui.push", "canvas.a2ui.pushJSONL", "canvas.a2ui.reset", "canvas.a2ui.dump", "canvas.caps"]));
+        if (Screen) result.Add(("screen", ["screen.snapshot", "screen.record"]));
+        if (Camera) result.Add(("camera", ["camera.list", "camera.snap", "camera.clip"]));
+        if (Location) result.Add(("location", ["location.get"]));
+        if (Device) result.Add(("device", ["device.info", "device.status"]));
+        if (Browser) result.Add(("browser", ["browser.proxy"]));
+        if (Tts) result.Add(("tts", ["tts.speak"]));
+        if (Stt) result.Add(("stt", ["stt.transcribe", "stt.listen", "stt.status"]));
+
+        return result;
+    }
+}
+
+// ─── Tray Settings (written to settings.json) ───
+
+public sealed class TraySettingsConfig
+{
+    public bool EnableNodeMode { get; set; } = true;
+    public bool AutoStart { get; set; } = false;
+    public bool NodeSystemRunEnabled { get; set; } = true;
+    public bool NodeCanvasEnabled { get; set; } = true;
+    public bool NodeScreenEnabled { get; set; } = true;
+    public bool NodeCameraEnabled { get; set; } = true;
+    public bool NodeLocationEnabled { get; set; } = true;
+    public bool NodeBrowserProxyEnabled { get; set; } = true;
+    public bool NodeTtsEnabled { get; set; } = false;
+    public bool NodeSttEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Merges these settings into an existing settings.json (or creates a new one).
+    /// Only overwrites the fields we control — preserves all other user settings.
+    /// </summary>
+    public void MergeIntoSettingsFile(string settingsPath)
+    {
+        Dictionary<string, JsonElement>? existing = null;
+
+        if (File.Exists(settingsPath))
+        {
+            try
+            {
+                var content = File.ReadAllText(settingsPath);
+                existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(content, SetupConfig.JsonOptions);
+            }
+            catch { /* corrupt file — overwrite */ }
+        }
+
+        // Build our settings as a dictionary
+        var settings = new Dictionary<string, object>
+        {
+            ["EnableNodeMode"] = EnableNodeMode,
+            ["AutoStart"] = AutoStart,
+            ["NodeSystemRunEnabled"] = NodeSystemRunEnabled,
+            ["NodeCanvasEnabled"] = NodeCanvasEnabled,
+            ["NodeScreenEnabled"] = NodeScreenEnabled,
+            ["NodeCameraEnabled"] = NodeCameraEnabled,
+            ["NodeLocationEnabled"] = NodeLocationEnabled,
+            ["NodeBrowserProxyEnabled"] = NodeBrowserProxyEnabled,
+            ["NodeTtsEnabled"] = NodeTtsEnabled,
+            ["NodeSttEnabled"] = NodeSttEnabled
+        };
+
+        // Merge: our values win, but preserve unknown keys
+        if (existing != null)
+        {
+            foreach (var kvp in existing)
+            {
+                if (!settings.ContainsKey(kvp.Key))
+                    settings[kvp.Key] = kvp.Value;
+            }
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(settingsPath, json);
+    }
+}
+
+// ─── Pairing Configuration ───
+
+public sealed class PairingConfig
+{
+    public string OperatorScopes { get; set; } = "operator.read,operator.write,operator.pairing";
+    public string NodeScopes { get; set; } = "node.read,node.write";
+    public string CliScopes { get; set; } = "operator.read,operator.write,operator.pairing";
+    public int TimeoutSeconds { get; set; } = 60;
 }
 
 // ─── Step Result ───
@@ -89,6 +237,9 @@ public sealed class SetupContext
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }
+
+    // WSL PATH prefix using configured user
+    public string WslPathPrefix => WslConstants.GetPathPrefix(Config.Wsl.User);
 
     public SetupContext(SetupConfig config, SetupLogger logger, TransactionJournal journal, CommandRunner commands, CancellationToken ct)
     {
