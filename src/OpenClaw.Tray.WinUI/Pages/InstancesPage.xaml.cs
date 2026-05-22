@@ -126,7 +126,7 @@ public sealed partial class InstancesPage : Page
     }
 
     private void OnPendingPairBannerClicked(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection");
+        => ((IAppCommands)CurrentApp).Navigate("connection", "instances");
 
     public void UpdateNodes(GatewayNodeInfo[] nodes)
     {

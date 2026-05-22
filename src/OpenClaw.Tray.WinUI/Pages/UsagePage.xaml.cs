@@ -169,7 +169,7 @@ public sealed partial class UsagePage : Page
     }
 
     private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection");
+        => ((IAppCommands)CurrentApp).Navigate("connection", "usage");
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
