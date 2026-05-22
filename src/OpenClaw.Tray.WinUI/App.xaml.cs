@@ -2318,7 +2318,27 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _ = RunHealthCheckAsync();
             // For local gateways, the NodeConnector is suppressed because NodeService
             // owns the identity. Connect the NodeService directly after operator connects.
-            _ = TryConnectLocalNodeServiceAsync();
+            //
+            // EXCEPT during V2 onboarding setup: when _onboardingWindow is active the
+            // V2 engine is in charge of the node-connect sequencing — it explicitly
+            // drives EnsureNodeConnectedAsync during the PairWindowsTrayNode phase
+            // and pairs the device via the WSL CLI approver. The App-side auto-connect
+            // here races with the engine: both fire at the same time, both try to
+            // authenticate as role=node, the gateway parks one of them as
+            // PAIRING_REQUIRED/role-upgrade, and a downstream `node.pair.approve`
+            // call hits "unknown requestId" → the gateway service restarts → the
+            // operator client drops to Error → PairWindowsTrayNode then fails the
+            // EnsureNodeConnectedAsync "operator must be Connected" guard.
+            // Skipping the App-side path during setup lets the engine drive the
+            // single, sequenced node-pair flow it was designed to drive.
+            if (_onboardingWindow == null)
+            {
+                _ = TryConnectLocalNodeServiceAsync();
+            }
+            else
+            {
+                Logger.Info("[App] Suppressing local NodeService auto-connect — V2 onboarding engine owns node pairing for this run.");
+            }
         }
     }
 
@@ -3070,11 +3090,28 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         var onboardingCompleted = false;
         _onboardingWindow = new OnboardingWindow(_settings, IdentityDataPath);
+        // Suppress the connection manager's own node-pair auto-approve while
+        // the onboarding engine is alive — the V2 engine drives canonical
+        // approval via the WSL CLI (`openclaw devices approve`) and the
+        // manager's RPC-based auto-approve would race against it with the
+        // wrong requestId namespace (DEVICE-pair requestIds surface on
+        // node-pair pending events during role-upgrade), causing the
+        // gateway to "unknown requestId" and then service-restart mid-pair.
+        if (_connectionManager is not null)
+        {
+            _connectionManager.SuppressNodeAutoApprove = true;
+            Logger.Info("[App] SuppressNodeAutoApprove=true while onboarding window is open.");
+        }
         _onboardingWindow.OnboardingCompleted += (s, e) =>
         {
             onboardingCompleted = true;
             Logger.Info("Onboarding completed");
             _onboardingWindow = null;
+            if (_connectionManager is not null)
+            {
+                _connectionManager.SuppressNodeAutoApprove = false;
+                Logger.Info("[App] SuppressNodeAutoApprove=false (onboarding completed).");
+            }
 
             // If the persistent client was already initialized during onboarding, keep it
             if (_connectionManager?.OperatorClient is OpenClawGatewayClient { IsConnectedToGateway: true })
@@ -3115,6 +3152,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _onboardingWindow.Closed += (s, e) =>
         {
             _onboardingWindow = null;
+            if (_connectionManager is not null)
+            {
+                _connectionManager.SuppressNodeAutoApprove = false;
+                Logger.Info("[App] SuppressNodeAutoApprove=false (onboarding window closed).");
+            }
             if (!onboardingCompleted && disconnectedForOnboarding && restoreGatewayId != null)
             {
                 Logger.Info("Onboarding closed before completion — restoring previous gateway connection");

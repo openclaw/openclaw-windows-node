@@ -79,6 +79,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     internal OpenClawGatewayClient? ConcreteOperatorClient => _activeLifecycle?.DataClient;
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
+    /// <inheritdoc />
+    public bool SuppressNodeAutoApprove { get; set; }
+
     // ─── Lifecycle ───
 
     public async Task ConnectAsync(string? gatewayId = null)
@@ -641,12 +644,22 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node connection failed."));
                     break;
-                // PairingRequired / Connecting / Idle — keep waiting; the manager's
-                // existing auto-approve flow (OnNodePairingStatusChanged) handles the
-                // node.pair.approve case when operator has admin/pairing scope. The
-                // role-upgrade pending-device-pair case surfaces as a timeout (the
-                // gateway parks the connect without responding) — caller catches and
-                // runs the WSL CLI device-approver before retrying.
+                case RoleConnectionState.PairingRequired when SuppressNodeAutoApprove:
+                    // When the caller has suppressed the manager's own auto-approve
+                    // (V2 onboarding engine does this — see SuppressNodeAutoApprove),
+                    // we MUST fail fast on PairingRequired so the caller can drive
+                    // its own approval path before the gateway times out. Observed:
+                    // the gateway restarts (1012 - service restart) ~10 seconds after 
+                    // a role-upgrade PAIRING_REQUIRED if nothing approves it. Waiting 
+                    // the default 35s for a Connected terminal state guarantees the 
+                    // gateway is already gone by the time the caller gets control to approve.
+                    tcs.TrySetException(new InvalidOperationException(
+                        s.NodeError ?? "Node pairing required — caller must approve before retrying."));
+                    break;
+                // PairingRequired (without suppression) / Connecting / Idle — keep
+                // waiting; the manager's existing auto-approve flow
+                // (OnNodePairingStatusChanged) handles the node.pair.approve case
+                // when operator has admin/pairing scope.
             }
         }
 
@@ -847,8 +860,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // (different requestIds) aren't starved while we wait for the gateway
         // and node-reconnect handshake to settle (which can take 5–30s on
         // first connect via WSL cold-start).
+        //
+        // SuppressNodeAutoApprove gate: during V2 onboarding setup the engine
+        // drives its own canonical approval via the WSL CLI (`openclaw
+        // devices approve`). A role-upgrade pending event has a DEVICE-pair
+        // requestId; calling node.pair.approve on it fails with "unknown
+        // requestId" and triggers a gateway service restart that breaks the 
+        // in-flight setup. Skipping the auto-approve here lets the engine's 
+        // WSL CLI path complete cleanly. Post-setup the flag is cleared so the 
+        // normal auto-approve path is unchanged.
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
-            && e.RequestId != _lastAutoApprovedRequestId)
+            && e.RequestId != _lastAutoApprovedRequestId
+            && !SuppressNodeAutoApprove)
         {
             if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
             {

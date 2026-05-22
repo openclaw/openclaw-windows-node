@@ -3215,19 +3215,62 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="V2_Progress_TryAgain" xml:space="preserve">
     <value>Try again</value>
   </data>
-  <data name="V2_Gateway_Title" xml:space="preserve">
+  <data name="V2_Progress_CheckSystem_Hint" xml:space="preserve">
+    <value>Vérification de votre PC. Si le sous-système Windows pour Linux doit être installé, Windows vous demandera l'autorisation.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Installing" xml:space="preserve">
+    <value>Installation du sous-système Windows pour Linux. Cela peut prendre quelques minutes.</value>
+  </data>
+  <data name="V2_Progress_Wsl_RequiresRestart" xml:space="preserve">
+    <value>Le sous-système Windows pour Linux a été installé. Redémarrez votre PC, puis rouvrez OpenClaw pour poursuivre la configuration.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Failed" xml:space="preserve">
+    <value>Impossible d'installer le sous-système Windows pour Linux. Réessayez ou exécutez wsl --install depuis un terminal en mode administrateur.</value>
+  </data>
+  <data name="V2_Progress_Wsl_ElevationDeclined" xml:space="preserve">
+    <value>L'approbation administrateur est requise pour installer le sous-système Windows pour Linux.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Unavailable" xml:space="preserve">
+    <value>Le sous-système Windows pour Linux n'est pas installé et OpenClaw ne peut pas l'installer automatiquement. Exécutez wsl --install depuis un terminal en mode administrateur, puis réessayez.</value>
+  </data>
+  <data name="V2_Progress_Wsl_NotResponding" xml:space="preserve">
+    <value>Le sous-système Windows pour Linux ne répond pas. Vérifiez qu'il est installé et réessayez.</value>
+  </data>  <data name="V2_Gateway_Title" xml:space="preserve">
     <value>Configuring gateway</value>
   </data>
-  <data name="V2_Gateway_CardHeader" xml:space="preserve">
+  <data name="V2_Progress_Wsl_FirstBootAfterInstall" xml:space="preserve">
+    <value>Impossible de configurer l'instance WSL d'OpenClaw. Le sous-système Windows pour Linux vient d'être installé dans cette session — redémarrez votre PC, puis rouvrez OpenClaw pour poursuivre la configuration.</value>
+  </data>  <data name="V2_Gateway_CardHeader" xml:space="preserve">
     <value>Welcome to OpenClaw gateway</value>
   </data>
-  <data name="V2_Gateway_CardBody1" xml:space="preserve">
+  <data name="V2_Progress_Node_PairingFailed" xml:space="preserve">
+    <value>L'appairage de ce PC en tant que nœud a échoué. La passerelle locale a peut-être redémarré pendant l'approbation de l'appareil — cliquez sur Réessayer.</value>
+  </data>  <data name="V2_Gateway_CardBody1" xml:space="preserve">
     <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
   </data>
-  <data name="V2_Gateway_CardBody2" xml:space="preserve">
+  <data name="V2_Progress_Wsl_NoNetwork" xml:space="preserve">
+    <value>Impossible de télécharger Ubuntu depuis le Microsoft Store. Vérifiez votre connexion Internet et réessayez.</value>
+  </data>
+  <data name="V2_Progress_GenericFailure" xml:space="preserve">
+    <value>L'installation a échoué. Consultez les journaux pour plus de détails.</value>
+  </data>  <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
   </data>
-  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
+  <data name="V2_Progress_Wsl_ConfigFailed" xml:space="preserve">
+    <value>Impossible de configurer l'instance WSL d'OpenClaw. Consultez les journaux ou réessayez.</value>
+  </data>
+  <data name="V2_Progress_Wsl_InstanceInstallFailed" xml:space="preserve">
+    <value>Impossible de créer l'instance WSL OpenClawGateway. Consultez les journaux ou réessayez.</value>
+  </data>
+  <data name="V2_Progress_Preflight_NotReady" xml:space="preserve">
+    <value>Ce PC n'est pas prêt pour la configuration locale de la passerelle WSL.</value>
+  </data>
+  <data name="V2_Progress_OpenClawInstallFailed" xml:space="preserve">
+    <value>Impossible d'installer OpenClaw dans l'instance WSL. Vérifiez votre connexion Internet et réessayez.</value>
+  </data>
+  <data name="V2_Progress_GatewayPortInUse" xml:space="preserve">
+    <value>Le port de la passerelle locale est déjà utilisé dans la distro OpenClawGateway. Arrêtez le processus qui utilise ce port et réessayez.</value>
+  </data>  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
     <value>Open http://localhost:18789 in browser</value>
   </data>
   <data name="V2_Permissions_Title" xml:space="preserve">

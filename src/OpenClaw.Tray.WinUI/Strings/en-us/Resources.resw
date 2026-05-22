@@ -3264,19 +3264,62 @@ On your gateway host (Mac/Linux), run:
   <data name="V2_Progress_TryAgain" xml:space="preserve">
     <value>Try again</value>
   </data>
-  <data name="V2_Gateway_Title" xml:space="preserve">
+  <data name="V2_Progress_CheckSystem_Hint" xml:space="preserve">
+    <value>Checking your PC. If Windows Subsystem for Linux needs to be installed, Windows will ask you for permission.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Installing" xml:space="preserve">
+    <value>Installing Windows Subsystem for Linux. This may take a few minutes.</value>
+  </data>
+  <data name="V2_Progress_Wsl_RequiresRestart" xml:space="preserve">
+    <value>Windows Subsystem for Linux was installed. Restart your PC, then reopen OpenClaw to continue setup.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Failed" xml:space="preserve">
+    <value>Couldn't install Windows Subsystem for Linux. Try again, or run wsl --install from an elevated terminal.</value>
+  </data>
+  <data name="V2_Progress_Wsl_ElevationDeclined" xml:space="preserve">
+    <value>Administrator approval is required to install Windows Subsystem for Linux.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Unavailable" xml:space="preserve">
+    <value>Windows Subsystem for Linux is not installed and OpenClaw cannot install it automatically. Run wsl --install from an elevated terminal, then retry.</value>
+  </data>
+  <data name="V2_Progress_Wsl_NotResponding" xml:space="preserve">
+    <value>Windows Subsystem for Linux is not responding. Make sure it is installed and try again.</value>
+  </data>  <data name="V2_Gateway_Title" xml:space="preserve">
     <value>Configuring gateway</value>
   </data>
-  <data name="V2_Gateway_CardHeader" xml:space="preserve">
+  <data name="V2_Progress_Wsl_FirstBootAfterInstall" xml:space="preserve">
+    <value>Couldn't configure the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup.</value>
+  </data>  <data name="V2_Gateway_CardHeader" xml:space="preserve">
     <value>Welcome to OpenClaw gateway</value>
   </data>
-  <data name="V2_Gateway_CardBody1" xml:space="preserve">
+  <data name="V2_Progress_Node_PairingFailed" xml:space="preserve">
+    <value>Pairing this PC as a node failed. The local gateway may have restarted during device approval — click Try again to retry.</value>
+  </data>  <data name="V2_Gateway_CardBody1" xml:space="preserve">
     <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
   </data>
-  <data name="V2_Gateway_CardBody2" xml:space="preserve">
+  <data name="V2_Progress_Wsl_NoNetwork" xml:space="preserve">
+    <value>Couldn't download Ubuntu from the Microsoft Store. Check your internet connection and try again.</value>
+  </data>
+  <data name="V2_Progress_GenericFailure" xml:space="preserve">
+    <value>Setup failed. See logs for details.</value>
+  </data>  <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
   </data>
-  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
+  <data name="V2_Progress_Wsl_ConfigFailed" xml:space="preserve">
+    <value>Couldn't configure the OpenClaw WSL instance. See logs for details, or try again.</value>
+  </data>
+  <data name="V2_Progress_Wsl_InstanceInstallFailed" xml:space="preserve">
+    <value>Couldn't create the OpenClawGateway WSL instance. See logs for details, or try again.</value>
+  </data>
+  <data name="V2_Progress_Preflight_NotReady" xml:space="preserve">
+    <value>This PC isn't ready for local WSL gateway setup.</value>
+  </data>
+  <data name="V2_Progress_OpenClawInstallFailed" xml:space="preserve">
+    <value>Couldn't install OpenClaw inside the WSL instance. Check your internet connection and try again.</value>
+  </data>
+  <data name="V2_Progress_GatewayPortInUse" xml:space="preserve">
+    <value>Local gateway port is already in use inside the OpenClawGateway distro. Stop the process using the port and try again.</value>
+  </data>  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
     <value>Open http://localhost:18789 in browser</value>
   </data>
   <data name="V2_Permissions_Title" xml:space="preserve">

@@ -56,4 +56,18 @@ public interface IGatewayConnectionManager : IDisposable
 
     // ─── Diagnostics ───
     ConnectionDiagnostics Diagnostics { get; }
+
+    /// <summary>
+    /// When true, the manager skips its automatic node-pair auto-approve flow
+    /// (the operator-side `node.pair.approve` RPC it normally fires on a
+    /// PairingStatus.Pending event). Set to true while an external owner —
+    /// notably the V2 onboarding engine — is driving its own canonical
+    /// approval flow via the WSL CLI (`openclaw devices approve`). Without
+    /// this, the manager's auto-approve fires for a role-upgrade pending
+    /// (which carries a DEVICE-pair requestId, not a NODE-pair one) and
+    /// the gateway responds with "unknown requestId" before service-restarting,
+    /// breaking the in-flight setup. Defaults to false so post-setup
+    /// behavior is unchanged.
+    /// </summary>
+    bool SuppressNodeAutoApprove { get; set; }
 }

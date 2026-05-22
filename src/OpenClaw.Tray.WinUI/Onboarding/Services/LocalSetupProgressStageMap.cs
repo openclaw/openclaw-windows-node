@@ -90,6 +90,20 @@ public static class LocalSetupProgressStageMap
             return StageState.Pending;
         }
 
+        if (currentStatus == LocalGatewaySetupStatus.RequiresRestart)
+        {
+            // Pin the active stage as Failed (red marker, not a spinner) so
+            // the user sees that something needs their attention. The ShouldShowErrorRow
+            // helper additionally surfaces RequiresRestart so the reboot
+            // instruction appears in the inline message row.
+            var lastOrdinal = (int)lastRunningPhase;
+            if (lastOrdinal >= minOrdinalInStage && lastOrdinal <= maxOrdinalInStage)
+                return StageState.Failed;
+            if (lastOrdinal > maxOrdinalInStage)
+                return StageState.Complete;
+            return StageState.Pending;
+        }
+
         var currentOrdinal = (int)currentPhase;
         if (currentOrdinal > maxOrdinalInStage)
             return StageState.Complete;
@@ -116,15 +130,18 @@ public static class LocalSetupProgressStageMap
 
     /// <summary>
     /// True when the page should render the inline error / retry row
-    /// (FailedRetryable or FailedTerminal). All other statuses collapse it.
+    /// (FailedRetryable, FailedTerminal, or RequiresRestart — the last
+    /// surfaces the reboot instruction in the same row).
     /// </summary>
     public static bool ShouldShowErrorRow(LocalGatewaySetupStatus status)
         => status == LocalGatewaySetupStatus.FailedRetryable
-        || status == LocalGatewaySetupStatus.FailedTerminal;
+        || status == LocalGatewaySetupStatus.FailedTerminal
+        || status == LocalGatewaySetupStatus.RequiresRestart;
 
     /// <summary>
     /// True when the inline error row should expose a Try Again button —
-    /// only on FailedRetryable. FailedTerminal forces Back-out.
+    /// only on FailedRetryable. FailedTerminal forces Back-out;
+    /// RequiresRestart needs the user to reboot, not retry.
     /// </summary>
     public static bool ShouldShowRetryButton(LocalGatewaySetupStatus status)
         => status == LocalGatewaySetupStatus.FailedRetryable;

@@ -89,6 +89,22 @@ public static class SetupExistingGatewayClassifier
         wsl ??= new WslExeCommandRunner(NullLogger.Instance);
         try
         {
+            // Bound the WSL probe with a fast-fail platform check first. On
+            // hosts where the WSL platform is not installed, the underlying
+            // `wsl --list --verbose` hangs for the runner's full default
+            // timeout (30s today, 30 minutes in some callers). That blocks
+            // the "Set up locally" click handler before navigation can even
+            // begin. The platform probe completes in ~1s (or its own 5s
+            // ceiling on slow hosts) and tells us we can skip the distro
+            // probe entirely — no platform → no possible app-owned distro.
+            var platform = await new OpenClawTray.Services.LocalGatewaySetup.WslPlatformProbe(wsl)
+                .ProbeAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (platform.State != OpenClawTray.Services.LocalGatewaySetup.WslPlatformState.Installed)
+            {
+                return hasLocalSetupEvidence;
+            }
+
             var distros = await wsl.ListDistrosAsync(cancellationToken).ConfigureAwait(false);
             var hasAppOwnedDistro = distros.Any(d => string.Equals(d.Name, AppOwnedDistroName, StringComparison.OrdinalIgnoreCase));
             return hasAppOwnedDistro && hasLocalSetupEvidence;

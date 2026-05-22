@@ -633,24 +633,42 @@ public sealed class LocalGatewayPreflightProbe : ILocalGatewayPreflightProbe
         }
         else
         {
-            var wslStatus = platform.StatusResult ?? await _wsl.RunAsync(["--status"], cancellationToken);
-            if (!wslStatus.Success)
+            // Re-using the probe's status result keeps us at exactly one
+            // wsl --status invocation. When the probe timed out it returns
+            // Unknown with StatusResult == null; we deliberately do NOT
+            // fall back to a second `_wsl.RunAsync(["--status"])` here —
+            // that runner uses the engine-wide 30s default timeout, which
+            // would silently undo the whole point of WslPlatformProbe's
+            // 5s fast-fail. Surface wsl_unavailable directly instead.
+            if (platform.StatusResult is null)
+            {
+                issues.Add(new LocalGatewaySetupIssue(
+                    "wsl_unavailable",
+                    WslLogsHelp("WSL is not responding. " + (platform.Detail ?? "wsl --status timed out.")),
+                    LocalGatewaySetupSeverity.Blocking,
+                    Detail: platform.Detail));
+            }
+            else if (!platform.StatusResult.Success)
             {
                 issues.Add(new LocalGatewaySetupIssue("wsl_unavailable", WslLogsHelp("WSL is not available or is blocked by policy."), LocalGatewaySetupSeverity.Blocking));
             }
             else
             {
-                var status = WslExeCommandRunner.ParseStatus(wslStatus.StandardOutput);
+                var status = WslExeCommandRunner.ParseStatus(platform.StatusResult.StandardOutput);
                 if (status.DefaultVersion == 1)
                     issues.Add(new LocalGatewaySetupIssue("wsl_default_version_1", "The host default WSL version is WSL1. OpenClaw creates its dedicated gateway instance as WSL2.", LocalGatewaySetupSeverity.Warning));
             }
         }
 
-        // Only enumerate distros and probe ports when WSL is actually present.
-        // When wsl --status reported "not installed", `wsl --list --verbose`
-        // is guaranteed to fail/hang too — skipping it shaves another 30s off
-        // the perceived "click → next page" delay.
-        if (platform.State != WslPlatformState.NotInstalled)
+        // Only enumerate distros and probe ports when WSL is actually present
+        // AND responsive. When the platform probe returned NotInstalled (we'll
+        // install it in EnsureWslEnabled) or Unknown (the probe timed out /
+        // unrecognized failure — already surfaced as wsl_unavailable above),
+        // both `wsl --list --verbose` and the port probe are guaranteed to
+        // either hang on the 30s engine runner timeout or return useless data.
+        // Gating on `Installed` (not `!= NotInstalled`) is what prevents the
+        // post-probe-timeout hang the round-3 review found.
+        if (platform.State == WslPlatformState.Installed)
         {
             var distros = await _wsl.ListDistrosAsync(cancellationToken);
             if (!options.AllowExistingDistro && distros.Any(d => string.Equals(d.Name, options.DistroName, StringComparison.OrdinalIgnoreCase)))
@@ -797,12 +815,61 @@ public sealed class WslStoreInstanceInstaller : IWslInstanceInstaller
         AddDiagnosticOutput(diagnostics, "wsl_install_stdout", install.StandardOutput);
         AddDiagnosticOutput(diagnostics, "wsl_install_stderr", install.StandardError);
         diagnostics.Add("wsl_logs=aka.ms/wsllogs");
+
+        // Network-failure detection: `wsl --install <distro>` downloads the
+        // distro image from the Microsoft Store / Store CDN. When the
+        // machine is offline (or behind a captive portal / restrictive
+        // firewall) this fails with a specific class of errors that all
+        // mention the network / download. Surface a dedicated failure code
+        // + a friendlier user-facing message so the wizard doesn't show
+        // the generic "follow aka.ms/wsllogs" rabbit-hole for a problem
+        // the user can immediately diagnose (and fix) themselves.
+        if (LooksLikeNetworkFailure(install))
+        {
+            return new WslInstanceInstallResult(
+                false,
+                installLocation,
+                diagnostics,
+                "wsl_instance_install_no_network",
+                "Couldn't download Ubuntu from the Microsoft Store. Check your internet connection and try again.");
+        }
+
         return new WslInstanceInstallResult(
             false,
             installLocation,
             diagnostics,
             "wsl_instance_install_failed",
             WslLogsHelp("Creating the OpenClaw Gateway WSL instance failed."));
+    }
+
+    /// <summary>
+    /// Heuristic: does the wsl.exe output look like a download/network
+    /// failure rather than a real install error? Matches common phrases from
+    /// the Store CDN / Lifted-WSL HTTP error paths across English locales.
+    /// We deliberately stay loose — false positives just give the user a
+    /// nicer message; false negatives fall through to the generic path.
+    /// </summary>
+    internal static bool LooksLikeNetworkFailure(WslCommandResult result)
+    {
+        var output = ((result.StandardOutput ?? string.Empty) + "\n" + (result.StandardError ?? string.Empty))
+            .Replace("\0", string.Empty, StringComparison.Ordinal);
+        if (string.IsNullOrWhiteSpace(output))
+            return false;
+
+        return output.Contains("Could not download", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("failed to download", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("Unable to connect", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("network is unreachable", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("could not resolve", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("no such host", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("The remote name could not be resolved", StringComparison.OrdinalIgnoreCase)
+            // Microsoft Store-specific HRESULT for offline / no-route
+            || output.Contains("0x80072EFD", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("0x80072EFE", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("0x80072EE2", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("0x80072EE7", StringComparison.OrdinalIgnoreCase)
+            // WININET_E_CANNOT_CONNECT
+            || output.Contains("INET_E_CANNOT_CONNECT", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string ResolveInstallLocation(LocalGatewaySetupOptions options)
@@ -857,7 +924,8 @@ public sealed record WslInstanceConfigurationResult(
     bool Success,
     IReadOnlyList<string>? Warnings = null,
     string? ErrorCode = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    string? Detail = null);
 
 public interface IWslInstanceConfigurator
 {
@@ -915,10 +983,12 @@ public sealed class WslFirstBootConfigurator : IWslInstanceConfigurator
         var configure = await _wsl.RunAsync(["-d", options.DistroName, "-u", "root", "--", "bash", "-lc", script], cancellationToken);
         if (!configure.Success)
         {
+            var detail = $"exit={configure.ExitCode}; stderr={SanitizeForDiagnostic(configure.StandardError)}; stdout={SanitizeForDiagnostic(configure.StandardOutput)}";
             return new WslInstanceConfigurationResult(
                 false,
                 ErrorCode: "wsl_firstboot_config_failed",
-                ErrorMessage: WslLogsHelp("Failed to configure the OpenClaw WSL instance."));
+                ErrorMessage: WslLogsHelp($"Failed to configure the OpenClaw WSL instance (exit {configure.ExitCode})."),
+                Detail: detail);
         }
 
         var warnings = new List<string>();
@@ -970,6 +1040,20 @@ public sealed class WslFirstBootConfigurator : IWslInstanceConfigurator
 
     private static string WslLogsHelp(string message) => message + " Follow aka.ms/wsllogs for WSL diagnostic collection instructions.";
     private static string ShellQuote(string value) => "'" + value.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
+
+    /// <summary>
+    /// Local copy of the diagnostic sanitizer pattern used elsewhere in this file —
+    /// strips NUL bytes, runs SecretRedactor + TokenSanitizer, and truncates so the
+    /// failure detail can be safely surfaced to the wizard UI without leaking tokens.
+    /// </summary>
+    private static string SanitizeForDiagnostic(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        var sanitized = TokenSanitizer.Sanitize(SecretRedactor.Redact(value)).Replace("\0", string.Empty).Trim();
+        const int maxLength = 600;
+        return sanitized.Length <= maxLength ? sanitized : sanitized[..maxLength] + "...<truncated>";
+    }
 }
 
 public sealed record OpenClawLinuxInstallerEvent(string? Event, string? Phase, string? Message, string RawLine);
@@ -1236,6 +1320,15 @@ public sealed class OpenClawCliGatewayServiceManager : IGatewayServiceManager
 
     public async Task<GatewayServiceOperationResult> InstallAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken = default)
     {
+        // First, defensively stop any pre-existing openclaw-gateway service
+        // that may be left over from a previous setup attempt. Without this,
+        // a "Try again" run from a fresh state (the engine self-heal resets
+        // FailedRetryable to NotStarted) hits the port-conflict probe below
+        // because the prior run's gateway is still bound to options.GatewayPort.
+        // This is idempotent on a clean install (the stop succeeds vacuously
+        // when nothing is running).
+        await StopOpenClawGatewayServiceAsync(options, cancellationToken);
+
         // W2a: If something else is already bound to the gateway port inside WSL, surface
         // an actionable error up front instead of letting `gateway install` or the 90s
         // status poll fail with an opaque message.
@@ -1474,6 +1567,31 @@ public sealed class OpenClawCliGatewayServiceManager : IGatewayServiceManager
         {
             "set +e",
             "systemctl --user reset-failed " + serviceName + " >/dev/null 2>&1"
+        });
+        return _wsl.RunAsync(["-d", options.DistroName, "-u", "openclaw", "--", "bash", "-lc", script], cancellationToken);
+    }
+
+    /// <summary>
+    /// Defensively stop any pre-existing openclaw-gateway service before the
+    /// install/port-conflict probe. A previous setup run (or a tray restart
+    /// mid-flow) can leave the service running and bound to the gateway
+    /// port; without a pre-stop the user sees "port already in use" on Try
+    /// again and has no path forward except `wsl --shutdown` from a
+    /// terminal. Idempotent — `systemctl stop` of a non-running service
+    /// returns 0 silently.
+    /// </summary>
+    private Task<WslCommandResult> StopOpenClawGatewayServiceAsync(LocalGatewaySetupOptions options, CancellationToken cancellationToken)
+    {
+        const string serviceName = "openclaw-gateway.service";
+        var script = string.Join("\n", new[]
+        {
+            "set +e",
+            "systemctl --user stop " + serviceName + " >/dev/null 2>&1",
+            "systemctl --user reset-failed " + serviceName + " >/dev/null 2>&1",
+            // Brief settle so the kernel actually releases the bound port
+            // before the caller probes it. systemctl stop returns when the
+            // process is signaled, not when the socket is fully torn down.
+            "sleep 1"
         });
         return _wsl.RunAsync(["-d", options.DistroName, "-u", "openclaw", "--", "bash", "-lc", script], cancellationToken);
     }
@@ -3277,20 +3395,37 @@ public sealed record PreviewParseResult(bool Success, string? RequestId, string?
 
 public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisioner
 {
+    /// <summary>
+    /// Default wait between approve and the single retry connect after a
+    /// role-upgrade PAIRING_REQUIRED. Gives the gateway a moment to
+    /// register the just-issued approval before the node re-connects.
+    /// </summary>
+    public static readonly TimeSpan DefaultPairRetryDelay = TimeSpan.FromSeconds(5);
+
     private readonly ILocalGatewaySetupSettings _settings;
     private readonly IWindowsNodeConnector? _connector;
     private readonly IPendingDeviceApprover? _pendingApprover;
+    private readonly TimeSpan _pairRetryDelay;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
 
     public SettingsWindowsTrayNodeProvisioner(SettingsManager settings, IWindowsNodeConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
         : this(new SettingsManagerLocalGatewaySetupSettings(settings), connector, pendingApprover)
     {
     }
 
-    public SettingsWindowsTrayNodeProvisioner(ILocalGatewaySetupSettings settings, IWindowsNodeConnector? connector = null, IPendingDeviceApprover? pendingApprover = null)
+    public SettingsWindowsTrayNodeProvisioner(
+        ILocalGatewaySetupSettings settings,
+        IWindowsNodeConnector? connector = null,
+        IPendingDeviceApprover? pendingApprover = null,
+        TimeSpan? pairRetryDelay = null,
+        Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
     {
         _settings = settings;
         _connector = connector;
         _pendingApprover = pendingApprover;
+        var delay = pairRetryDelay ?? DefaultPairRetryDelay;
+        _pairRetryDelay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
+        _delayAsync = delayAsync ?? Task.Delay;
     }
 
     public Task<ProvisioningResult> CheckReadinessAsync(LocalGatewaySetupState state, CancellationToken cancellationToken = default)
@@ -3342,6 +3477,20 @@ public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisi
                 // requestId `a80b5dbe-9ad2-4a32-baa9-d7d93aeb50dc`, isRepair=true.
                 if (_pendingApprover != null && LocalGatewayApprover.IsLocalGateway(state.GatewayUrl))
                 {
+                    // On a fresh local-loopback gateway the Phase 14 node-role
+                    // connect arrives as `reason=role-upgrade` (device is
+                    // approved as `operator` from Phase 12 and is now asking
+                    // for the additional `node` role). The gateway parks the
+                    // request on the pending-pairing list and the connector
+                    // surfaces a PairingRequired-fast-fail (when SuppressNodeAutoApprove
+                    // is set by the V2 host) so we can drive the canonical
+                    // approval via the WSL CLI device-approver — same flow
+                    // Phase 12 used for the operator pending — then retry the
+                    // connect once. The connector's IGatewayConnectionManager
+                    // already has SuppressNodeAutoApprove engaged during V2
+                    // onboarding, which (together with the fast-fail) means
+                    // a single approve+retry consistently lands before the
+                    // gateway's internal ~10s pending-approval timer fires.
                     var approval = await _pendingApprover.ApproveLatestAsync(state, cancellationToken);
                     if (!approval.Success)
                     {
@@ -3351,11 +3500,27 @@ public sealed class SettingsWindowsTrayNodeProvisioner : IWindowsTrayNodeProvisi
                             approval.ErrorMessage ?? "Local gateway pending role-upgrade approval failed.");
                     }
 
+                    // Small settle window so the gateway commits the freshly-
+                    // approved role-upgrade before the retry handshake.
+                    try
+                    {
+                        await _delayAsync(_pairRetryDelay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+
                     try
                     {
                         await _connector.ConnectAsync(state.GatewayUrl, _settings.Token, _settings.BootstrapToken, cancellationToken);
+                        return new ProvisioningResult(true);
                     }
-                    catch (Exception retryEx) when (retryEx is not OperationCanceledException)
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception retryEx)
                     {
                         return new ProvisioningResult(false, "windows_node_pairing_failed", retryEx.Message);
                     }
@@ -3400,6 +3565,15 @@ public sealed class LocalGatewaySetupEngine
     private readonly IWindowsTrayNodeProvisioner _windowsTrayNode;
     private readonly IWslPlatformInstaller? _wslPlatformInstaller;
     private readonly IOpenClawLogger _logger;
+
+    /// <summary>
+    /// Set to true when this run's EnsureWslEnabled phase performed a fresh
+    /// `wsl --install --no-distribution` (InstalledNoRestart outcome). Used
+    /// by later phases (notably ConfigureWslInstance) to recognise that any
+    /// downstream WSL failure may actually be a "needs reboot" symptom of
+    /// the fresh platform install rather than a true configuration error.
+    /// </summary>
+    private bool _wslPlatformJustInstalled;
 
     public event Action<LocalGatewaySetupState>? StateChanged;
 
@@ -3474,7 +3648,62 @@ public sealed class LocalGatewaySetupEngine
         var state = await _stateStore.LoadAsync(cancellationToken) ?? LocalGatewaySetupState.Create(_options);
         state.DistroName = _options.DistroName;
         state.GatewayUrl = LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(_options);
-        var distroExists = await HasDistroAsync(cancellationToken);
+
+        // Self-heal persisted non-running statuses on entry. Without this,
+        // RunPhaseAsync's `Status is Pending or Running` guard short-circuits
+        // every phase on a relaunch / Try-again and the engine silently
+        // replays the cached failure forever. Cases covered:
+        //
+        //   * RequiresRestart  — original M4 (post-reboot resume)
+        //   * FailedRetryable  — the "Try again" button currently has no
+        //     effect without this (OnRetryRequested doesn't touch the state
+        //     file), so the user sees the same error after every retry.
+        //   * FailedTerminal / Blocked / Cancelled / RequiresAdmin — the
+        //     user explicitly relaunched setup; reset to a fresh evaluation
+        //     so preflight gets a chance to re-classify the host.
+        //
+        // Complete stays as-is so we don't redo a successful setup. Pending
+        // / Running stay as-is (fresh / in-flight).
+        if (state.Status is not LocalGatewaySetupStatus.Pending
+            and not LocalGatewaySetupStatus.Running
+            and not LocalGatewaySetupStatus.Complete)
+        {
+            _logger.Info($"[Engine] Previous run ended in Status={state.Status} (FailureCode={state.FailureCode ?? "<null>"}); resetting state so the wizard can re-evaluate the host.");
+            state.Status = LocalGatewaySetupStatus.Pending;
+            state.Phase = LocalGatewaySetupPhase.NotStarted;
+            state.FailureCode = null;
+            state.UserMessage = null;
+            // Wipe any WSL-install-cycle issues. Preflight will repopulate
+            // state.Issues with fresh signals on its next run.
+            state.Issues.RemoveAll(i =>
+                string.Equals(i.Code, "wsl_install_requires_restart", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(i.Code, "wsl_install_failed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(i.Code, "wsl_install_elevation_declined", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(i.Code, "wsl_install_unavailable", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(i.Code, "wsl_unavailable", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(i.Code, "preflight_blocked", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Bound the distro existence check the same way preflight bounds its
+        // own wsl --status probe. On a host without WSL, the underlying
+        // wsl --list --verbose hangs for the engine's 30s default timeout,
+        // showing up to the user as a "blank wizard" pause between the
+        // "Set up locally" click and any UI feedback. The platform probe
+        // takes ~1s and tells us we can skip the distro probe entirely
+        // (no WSL platform → no possible distro).
+        bool distroExists;
+        {
+            // Construct an ad-hoc platform probe sharing the engine's wsl
+            // runner — same 5s short-timeout default as preflight uses. The
+            // engine doesn't (yet) hold a probe field of its own; we keep
+            // this local until/unless another phase needs it.
+            var platformProbe = new WslPlatformProbe(_wsl);
+            var platform = await platformProbe.ProbeAsync(cancellationToken);
+            distroExists = platform.State == WslPlatformState.Installed
+                ? await HasDistroAsync(cancellationToken)
+                : false;
+        }
         var allowExistingDistroForRun = ShouldAllowExistingDistroForRun(state, distroExists, _options.AllowExistingDistro);
         var preflightOptions = _options with { AllowExistingDistro = allowExistingDistroForRun };
 
@@ -3531,6 +3760,27 @@ public sealed class LocalGatewaySetupEngine
             state.UserMessage = "Installing Windows Subsystem for Linux\u2026";
             StateChanged?.Invoke(state);
 
+            // Brief pause before raising UAC so the user has a chance to read
+            // the "we're about to ask for permission to install WSL" hint the
+            // wizard surfaced. Without this, the UAC popup appears in the
+            // same frame the page transitions in and users instinctively
+            // dismiss it before reading the context. Skippable via env var
+            // for automated tests / power users.
+#if !OPENCLAW_TRAY_TESTS
+            var skipPause = Environment.GetEnvironmentVariable("OPENCLAW_SKIP_WSL_INSTALL_PROMPT_PAUSE");
+            if (!(skipPause is "1" or "true" or "TRUE" or "yes" or "YES"))
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+            }
+#endif
+
             WslPlatformInstallResult installResult;
             try
             {
@@ -3558,21 +3808,28 @@ public sealed class LocalGatewaySetupEngine
                     state.Issues.RemoveAll(i =>
                         string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
                     state.UserMessage = "Windows Subsystem for Linux installed.";
+                    _wslPlatformJustInstalled = true;
                     return true;
 
                 case WslPlatformInstallOutcome.InstalledRequiresRestart:
-                    state.Phase = LocalGatewaySetupPhase.Failed;
+                    // Set Status=RequiresRestart (not Failed) so the stage map
+                    // does not paint the "Check system" row as a hard red-X.
+                    // We DO set FailureCode here, intentionally — that's the
+                    // hook for the post-reboot self-heal at the top of
+                    // RunLocalOnlyAsync. (The preflight RequiresRestart branch
+                    // sets neither FailureCode nor an Issue; the self-heal
+                    // covers both shapes by keying off Status only.)
+                    state.UserMessage = "Windows Subsystem for Linux was installed. Restart your PC, then reopen OpenClaw to continue setup.";
                     state.Status = LocalGatewaySetupStatus.RequiresRestart;
                     state.FailureCode = "wsl_install_requires_restart";
-                    state.UserMessage = "Windows Subsystem for Linux was installed. Restart your PC, then reopen OpenClaw to continue setup.";
-                    state.Issues.Add(new LocalGatewaySetupIssue(
-                        "wsl_install_requires_restart",
-                        state.UserMessage,
-                        LocalGatewaySetupSeverity.Blocking));
+                    state.Issues.RemoveAll(i =>
+                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
                     state.UpdatedAtUtc = DateTimeOffset.UtcNow;
                     return false;
 
                 case WslPlatformInstallOutcome.UserDeclinedElevation:
+                    state.Issues.RemoveAll(i =>
+                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
                     state.Block(
                         "wsl_install_elevation_declined",
                         installResult.ErrorMessage ?? "Administrator approval is required to install Windows Subsystem for Linux.",
@@ -3582,6 +3839,8 @@ public sealed class LocalGatewaySetupEngine
 
                 case WslPlatformInstallOutcome.Failed:
                 default:
+                    state.Issues.RemoveAll(i =>
+                        string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase));
                     state.Block(
                         "wsl_install_failed",
                         installResult.ErrorMessage ?? "Couldn't install Windows Subsystem for Linux. Try again, or run `wsl --install` from an elevated terminal.",
@@ -3615,7 +3874,24 @@ public sealed class LocalGatewaySetupEngine
             var result = await _wslInstanceConfigurator.ConfigureAsync(_options, cancellationToken);
             if (!result.Success)
             {
-                state.Block(result.ErrorCode ?? "wsl_instance_config_failed", result.ErrorMessage ?? "Failed to configure the OpenClaw Gateway WSL instance.", retryable: true);
+                if (!string.IsNullOrWhiteSpace(result.Detail))
+                    _logger.Warn($"WSL instance configuration diagnostics: {SecretRedactor.Redact(result.Detail!)}");
+
+                // If we just installed the WSL platform in this session and
+                // the configure step failed, the most likely cause is that
+                // the WSL kernel / lifted-WSL service hasn't fully picked
+                // up the new platform install. Microsoft's own guidance is
+                // to reboot after `wsl --install`. Surface a specific
+                // failure code + message instead of the generic one so the
+                // user knows what to do (reboot) instead of just "Try again".
+                var failureCode = _wslPlatformJustInstalled
+                    ? "wsl_firstboot_config_failed_after_install"
+                    : (result.ErrorCode ?? "wsl_instance_config_failed");
+                var failureMessage = _wslPlatformJustInstalled
+                    ? "Couldn't configure the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup."
+                    : (result.ErrorMessage ?? "Failed to configure the OpenClaw Gateway WSL instance.");
+
+                state.Block(failureCode, failureMessage, retryable: true, detail: result.Detail);
                 return false;
             }
 

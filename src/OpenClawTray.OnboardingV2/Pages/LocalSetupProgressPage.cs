@@ -58,16 +58,35 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
             var rowState = Props.LocalSetupRows.TryGetValue(stage, out var s)
                 ? s
                 : RowState.Idle;
-            rowChildren.Add(BuildStageRow(theme, V2Strings.Get(labelKey), rowState));
 
-            // The error card sits immediately under the failed row in Dialog-6.
-            // The Try-again button only renders when the failure is retryable
-            // (FailedRetryable). Terminal/Blocked failures show only the message.
+            // Optional inline hint — embedded INSIDE the row container so the
+            // reconciler doesn't reuse a stale sibling background when the row
+            // transitions out of Running. Anchored to CheckSystem only since
+            // that's the only stage whose engine phases (Preflight + EnsureWslEnabled)
+            // can dwell long enough to warrant a hint.
+            var inlineHint = (stage == Stage.CheckSystem
+                              && rowState == RowState.Running
+                              && !string.IsNullOrWhiteSpace(Props.LocalSetupInfoMessage)
+                              && Props.LocalSetupErrorMessage is null)
+                ? Props.LocalSetupInfoMessage
+                : null;
+
+            // Optional inline error card — also embedded INSIDE the row
+            // container for the same reconciler-stability reason. Previously
+            // this was a sibling element which produced "pink box around
+            // an unrelated row" artifacts as the engine moved through
+            // different failure modes on successive Try-again clicks
+            // (FunctionalUI position-based reconciliation reuses the error
+            // card's BorderElement slot when the failed row index shifts).
+            string? inlineError = null;
+            Action? inlineRetry = null;
             if (rowState == RowState.Failed && Props.LocalSetupErrorMessage is { } msg)
             {
-                Action? onRetry = Props.LocalSetupCanRetry ? (() => Props.RequestRetry()) : null;
-                rowChildren.Add(BuildErrorCard(theme, msg, onRetry));
+                inlineError = msg;
+                inlineRetry = Props.LocalSetupCanRetry ? (() => Props.RequestRetry()) : null;
             }
+
+            rowChildren.Add(BuildStageRow(theme, V2Strings.Get(labelKey), rowState, inlineHint, inlineError, inlineRetry));
         }
 
         return VStack(0,
@@ -97,9 +116,9 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
         .VAlign(VerticalAlignment.Top);
     }
 
-    private static Element BuildStageRow(ElementTheme theme, string label, RowState state)
+    private static Element BuildStageRow(ElementTheme theme, string label, RowState state, string? inlineHint = null, string? inlineErrorMessage = null, Action? inlineRetry = null)
     {
-        return Grid(
+        var headerGrid = Grid(
             new[] { "*", "auto" },
             new[] { "auto" },
             TextBlock(label)
@@ -113,6 +132,37 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
                 .VAlign(VerticalAlignment.Center)
                 .Grid(row: 0, column: 1)
         );
+
+        // No optional content → just the header. Predictable, single Grid.
+        if (string.IsNullOrWhiteSpace(inlineHint) && string.IsNullOrWhiteSpace(inlineErrorMessage))
+            return headerGrid;
+
+        var stack = new List<Element> { headerGrid };
+
+        if (!string.IsNullOrWhiteSpace(inlineHint))
+        {
+            // Inline hint subtitle. Embedded as a child of the row container
+            // so the row's position in the parent VStack stays stable when
+            // the hint appears/disappears, preventing FunctionalUI from
+            // reusing the hint's element slot for a different row.
+            stack.Add(TextBlock(inlineHint!)
+                .FontSize(14)
+                .TextWrapping()
+                .Set(t => t.Foreground = V2Theme.TextSubtle(theme))
+                .Margin(0, 4, 0, 0));
+        }
+
+        if (!string.IsNullOrWhiteSpace(inlineErrorMessage))
+        {
+            // Inline error card — embedded for the same reconciler-stability
+            // reason as the hint. Keeps the pink failure card glued to the
+            // row that actually failed instead of leaking to whichever row
+            // happens to occupy the previous error card's position after a
+            // re-render shifts the children list.
+            stack.Add(BuildErrorCard(theme, inlineErrorMessage!, inlineRetry));
+        }
+
+        return VStack(8, stack.ToArray());
     }
 
     private static Element BuildStatusBadge(RowState state) => state switch
@@ -174,7 +224,17 @@ public sealed class LocalSetupProgressPage : Component<OnboardingV2State>
     private static Element InvisibleBadge()
     {
         // Reserve the same width so idle rows align with checkmarked rows.
-        return new BorderElement(null).Width(24).Height(24);
+        // CRITICAL: explicit Background(Transparent) is required. Without it,
+        // FunctionalUI's position-based reconciliation can reuse the
+        // BorderElement created for a previous render's CheckmarkBadge or
+        // ErrorBadge at this row position — keeping the green/pink fill
+        // because the next render never overwrites the Background property.
+        // Setting it to Transparent every time guarantees a clean slate.
+        // (Same hazard fixed inline for the row container's hint card.)
+        return new BorderElement(null)
+            .Width(24)
+            .Height(24)
+            .Background(V2Theme.Transparent());
     }
 
     /// <summary>

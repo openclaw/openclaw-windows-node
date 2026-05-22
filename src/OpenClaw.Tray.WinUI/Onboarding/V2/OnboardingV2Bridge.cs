@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Onboarding.V2;
 using OpenClawTray.Services;
@@ -349,6 +350,21 @@ public sealed class OnboardingV2Bridge : IDisposable
 
         Logger.Info($"[V2Bridge] Subscribing to engine.StateChanged + starting RunLocalOnlyAsync (replaceConfirmed={_state.ReplaceExistingConfigurationConfirmed}, generation={_engineGeneration})");
         _engine.StateChanged += OnEngineStateChanged;
+
+        // Pre-emptive UI seed: paint the first stage (Check system) as
+        // Running and surface the WSL-install hint BEFORE the engine starts
+        // its first wsl --status probe (~5s). Without this, the page sits
+        // blank for several seconds and the user sees no feedback between
+        // clicking "Set up locally" and the UAC prompt appearing.
+        DispatchToUi(() =>
+        {
+            var seedRows = AllRowsIdle();
+            seedRows[V2Stage.CheckSystem] = V2RowState.Running;
+            _state.LocalSetupRows = seedRows;
+            _state.LocalSetupInfoMessage = LocalizationHelper.GetString("V2_Progress_CheckSystem_Hint");
+            _state.LocalSetupErrorMessage = null;
+        });
+
         try
         {
             // Capture the current generation. The continuation below MUST
@@ -399,17 +415,30 @@ public sealed class OnboardingV2Bridge : IDisposable
         // Snapshot ON the engine thread so we capture an immutable view.
         var phase = st.Phase;
         var status = st.Status;
+        // Surface the engine's user message for any non-running, non-complete
+        // state that has something the user should see — failures, blocks, AND
+        // RequiresRestart. Without the RequiresRestart entry here, the post-
+        // WSL-install reboot instruction would never reach the UI even though
+        // LocalSetupProgressStageMap renders the offending stage as Failed.
+        //
+        // Localization: when the engine reports a known FailureCode, prefer
+        // the localized string from Resources.resw; otherwise fall back to
+        // the engine's English UserMessage so nothing is lost. The mapping
+        // exists because LocalGatewaySetupEngine itself is locale-agnostic
+        // (no ResourceManager) — translation happens at the V2 boundary.
         var errorMessage = (status == LocalGatewaySetupStatus.FailedRetryable
                          || status == LocalGatewaySetupStatus.FailedTerminal
-                         || status == LocalGatewaySetupStatus.Blocked)
-            ? st.UserMessage
+                         || status == LocalGatewaySetupStatus.Blocked
+                         || status == LocalGatewaySetupStatus.RequiresRestart)
+            ? LocalizeFailureMessage(st.FailureCode, st.UserMessage)
             : null;
 
         // Hanselman review: only FailedRetryable should expose Try-again.
-        // FailedTerminal and Blocked surface the error message but no retry
-        // button — terminal failures are not recoverable by re-running the
-        // same engine, and Blocked usually requires user action elsewhere
-        // (e.g. confirm replace, grant admin) before a retry would succeed.
+        // FailedTerminal, Blocked, and RequiresRestart surface the message
+        // but no retry button — terminal failures are not recoverable by
+        // re-running the same engine, Blocked usually requires user action
+        // elsewhere (e.g. confirm replace, grant admin), and RequiresRestart
+        // requires the user to reboot before any retry could succeed.
         var canRetry = status == LocalGatewaySetupStatus.FailedRetryable;
 
         // Preserve the previous stage-capture semantics: lastRunningPhase is reconstructed from
@@ -442,10 +471,17 @@ public sealed class OnboardingV2Bridge : IDisposable
         ApplyFreshLocalReplacementRow(rows);
         Logger.Info($"[V2Bridge] OnEngineStateChanged: phase={phase} status={status} lastRunning={lastRunningPhase}");
 
+        // Surface a contextual hint under the active row while the engine is
+        // doing slow blocking work the user can't otherwise see (preflight,
+        // WSL install). Clear it once we move past EnsureWslEnabled or hit
+        // a terminal state — the error/restart message takes over there.
+        var infoMessage = ComputeInfoMessage(phase, status, st);
+
         DispatchToUi(() =>
         {
             _state.LocalSetupRows = rows;
             _state.LocalSetupErrorMessage = errorMessage;
+            _state.LocalSetupInfoMessage = infoMessage;
             _state.LocalSetupCanRetry = canRetry;
             // Engine flips Settings.EnableNodeMode mid-run (PairAsync). Mirror
             // it directly to V2 state so AllSet renders the Node-Mode card
@@ -603,6 +639,101 @@ public sealed class OnboardingV2Bridge : IDisposable
                 }
             });
         }, TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// Maps engine FailureCodes to localized Resources.resw strings so the
+    /// V2 UI shows translated messages instead of the engine's English
+    /// UserMessage. Falls back to the engine's UserMessage (or null) when
+    /// no code-specific translation is registered, so unknown / future
+    /// failure codes still surface their message.
+    /// </summary>
+    internal static string? LocalizeFailureMessage(string? failureCode, string? engineUserMessage)
+    {
+        if (string.IsNullOrEmpty(failureCode))
+            return string.IsNullOrWhiteSpace(engineUserMessage) ? null : engineUserMessage;
+
+        var resourceKey = failureCode switch
+        {
+            "wsl_install_requires_restart" => "V2_Progress_Wsl_RequiresRestart",
+            "wsl_install_failed" => "V2_Progress_Wsl_Failed",
+            "wsl_install_elevation_declined" => "V2_Progress_Wsl_ElevationDeclined",
+            "wsl_install_unavailable" => "V2_Progress_Wsl_Unavailable",
+            "wsl_unavailable" => "V2_Progress_Wsl_NotResponding",
+            "wsl_firstboot_config_failed_after_install" => "V2_Progress_Wsl_FirstBootAfterInstall",
+            "wsl_firstboot_config_failed" or "wsl_instance_config_failed" => "V2_Progress_Wsl_ConfigFailed",
+            "wsl_instance_install_failed" => "V2_Progress_Wsl_InstanceInstallFailed",
+            "wsl_instance_install_no_network" => "V2_Progress_Wsl_NoNetwork",
+            "preflight_blocked" => "V2_Progress_Preflight_NotReady",
+            "openclaw_linux_install_failed" => "V2_Progress_OpenClawInstallFailed",
+            "gateway_port_in_use" => "V2_Progress_GatewayPortInUse",
+            "windows_node_pairing_failed" => "V2_Progress_Node_PairingFailed",
+            _ => null,
+        };
+
+        if (resourceKey is not null)
+        {
+            var localized = LocalizationHelper.GetString(resourceKey);
+            if (!string.IsNullOrWhiteSpace(localized))
+                return localized;
+        }
+
+        // Defensive: never surface an empty error card. If the engine's
+        // UserMessage is also empty/whitespace (observed in the wild when
+        // an underlying CLI returned no stderr), fall back to a generic
+        // localized "Setup failed" string so the user gets something
+        // actionable instead of an empty red rectangle.
+        if (!string.IsNullOrWhiteSpace(engineUserMessage))
+            return engineUserMessage;
+
+        var generic = LocalizationHelper.GetString("V2_Progress_GenericFailure");
+        return string.IsNullOrWhiteSpace(generic)
+            ? "Setup failed. See logs for details."
+            : generic;
+    }
+
+    /// <summary>
+    /// Computes the optional informational subtitle for the LocalSetupProgress
+    /// page. Returns null when the page should show no info card (the error
+    /// card takes priority via LocalSetupErrorMessage). Returns a localized
+    /// hint while the engine is still in early phases where slow blocking
+    /// work (WSL probe, WSL platform install) could leave the row blank.
+    /// </summary>
+    internal static string? ComputeInfoMessage(
+        LocalGatewaySetupPhase phase,
+        LocalGatewaySetupStatus status,
+        LocalGatewaySetupState st)
+    {
+        // Failures / restart-needed: error card takes over.
+        if (status is LocalGatewaySetupStatus.FailedRetryable
+            or LocalGatewaySetupStatus.FailedTerminal
+            or LocalGatewaySetupStatus.Blocked
+            or LocalGatewaySetupStatus.RequiresRestart
+            or LocalGatewaySetupStatus.Complete
+            or LocalGatewaySetupStatus.Cancelled)
+        {
+            return null;
+        }
+
+        // While running EnsureWslEnabled with a pending platform install,
+        // surface the "Installing WSL" message so the user sees what UAC
+        // was for. Otherwise (Preflight / NotStarted) keep the generic
+        // "Check system" hint so the row isn't blank during the probe.
+        if (phase == LocalGatewaySetupPhase.EnsureWslEnabled
+            && st.Issues.Any(i => string.Equals(i.Code, "wsl_platform_not_installed", StringComparison.OrdinalIgnoreCase)))
+        {
+            return LocalizationHelper.GetString("V2_Progress_Wsl_Installing");
+        }
+
+        if (phase is LocalGatewaySetupPhase.NotStarted or LocalGatewaySetupPhase.Preflight or LocalGatewaySetupPhase.EnsureWslEnabled)
+        {
+            return LocalizationHelper.GetString("V2_Progress_CheckSystem_Hint");
+        }
+
+        // Past the WSL gate, downstream phases (CreateWslInstance etc.)
+        // already have descriptive stage labels of their own; the info
+        // card just gets in the way.
+        return null;
     }
 
     /// <summary>

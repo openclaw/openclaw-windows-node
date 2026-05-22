@@ -145,11 +145,14 @@ public class WslPlatformInstallTests
     {
         // wsl.exe says it succeeded but the platform isn't actually usable
         // until reboot — classic "ERROR_SUCCESS but kernel module not loaded"
-        // case. We trust the probe over the exit code here.
+        // case. We trust the probe over the exit code here. attempts=1 to
+        // disable the finalize-race retry for this test (the retry has its
+        // own dedicated tests below).
         var probe = new SequencedPlatformProbe(WslPlatformState.NotInstalled);
         var installer = new ElevatedWslPlatformInstaller(
             probe,
-            processRunner: (_, _) => Task.FromResult(0));
+            processRunner: (_, _) => Task.FromResult(0),
+            postInstallProbeAttempts: 1);
 
         var result = await installer.InstallAsync();
 
@@ -348,6 +351,358 @@ public class WslPlatformInstallTests
         Assert.Equal("wsl_install_unavailable", state.FailureCode);
     }
 
+    [Fact]
+    public async Task Probe_ReturnsUnknown_WhenStatusCallExceedsTimeout()
+    {
+        // Simulate wsl --status hanging well past the probe timeout. We must
+        // NOT block the wizard for the full 30s engine timeout in this case —
+        // the whole point of the fast-detect was to bound it.
+        var runner = new HangingWslCommandRunner();
+        var probe = new WslPlatformProbe(
+            runner,
+            fileExists: _ => true,
+            wslExePath: @"C:\Windows\System32\wsl.exe",
+            statusProbeTimeout: TimeSpan.FromMilliseconds(100));
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = await probe.ProbeAsync();
+        sw.Stop();
+
+        Assert.Equal(WslPlatformState.Unknown, result.State);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"Probe should give up promptly; took {sw.Elapsed}");
+    }
+
+    [Fact]
+    public async Task Preflight_TreatsUnknownPlatformAsBlockingUnavailable()
+    {
+        // The platform probe returns Unknown (e.g. policy-blocked wsl --status
+        // that doesn't match the not-installed banner). The preflight should
+        // surface wsl_unavailable as Blocking, NOT silently proceed as if the
+        // platform were missing or installed.
+        var runner = new LocalGatewaySetupTests.FakeWslCommandRunner
+        {
+            WslStatusExitCode = 1,
+            WslStatusOutput = "Access denied by group policy.",
+        };
+        var probe = new WslPlatformProbe(runner, fileExists: _ => true, wslExePath: @"C:\Windows\System32\wsl.exe");
+        var preflight = new LocalGatewayPreflightProbe(runner, new LocalGatewaySetupTests.FixedPortProbe(available: true), probe);
+
+        var result = await preflight.RunAsync(new LocalGatewaySetupOptions());
+
+        Assert.False(result.CanContinue);
+        Assert.Contains(result.Issues, i => i.Code == "wsl_unavailable" && i.Severity == LocalGatewaySetupSeverity.Blocking);
+        Assert.DoesNotContain(result.Issues, i => i.Code == "wsl_platform_not_installed");
+    }
+
+    [Fact]
+    public async Task Installer_RetriesPostProbe_RidingOutFinalizeRace()
+    {
+        // wsl.exe exits 0 immediately, but the first re-probe still says
+        // NotInstalled (Store/lifted-WSL not yet exposed). The installer
+        // should retry briefly and pick up the eventual Installed state
+        // instead of falsely classifying as RequiresRestart.
+        var states = new Queue<WslPlatformState>(
+        [
+            WslPlatformState.NotInstalled,
+            WslPlatformState.NotInstalled,
+            WslPlatformState.Installed,
+        ]);
+        var probe = new QueuedPlatformProbe(states);
+        var delayCalls = 0;
+        var installer = new ElevatedWslPlatformInstaller(
+            probe,
+            processRunner: (_, _) => Task.FromResult(0),
+            postInstallProbeDelay: TimeSpan.FromMilliseconds(1),
+            postInstallProbeAttempts: 6,
+            delayAsync: (_, _) => { delayCalls++; return Task.CompletedTask; });
+
+        var result = await installer.InstallAsync();
+
+        Assert.Equal(WslPlatformInstallOutcome.InstalledNoRestart, result.Outcome);
+        Assert.Equal(2, delayCalls); // two delays between three probe attempts
+    }
+
+    [Fact]
+    public async Task Installer_StopsRetryingOnce_AttemptsExhausted()
+    {
+        var states = new Queue<WslPlatformState>(
+            Enumerable.Range(0, 10).Select(_ => WslPlatformState.NotInstalled));
+        var probe = new QueuedPlatformProbe(states);
+        var installer = new ElevatedWslPlatformInstaller(
+            probe,
+            processRunner: (_, _) => Task.FromResult(0),
+            postInstallProbeDelay: TimeSpan.FromMilliseconds(1),
+            postInstallProbeAttempts: 3,
+            delayAsync: (_, _) => Task.CompletedTask);
+
+        var result = await installer.InstallAsync();
+
+        // Exit 0 + still NotInstalled after retries → restart required.
+        Assert.Equal(WslPlatformInstallOutcome.InstalledRequiresRestart, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Installer_ReturnsFailed_WhenProcessRunnerThrowsGenericException()
+    {
+        var probe = new SequencedPlatformProbe(WslPlatformState.NotInstalled);
+        var installer = new ElevatedWslPlatformInstaller(
+            probe,
+            processRunner: (_, _) => throw new InvalidOperationException("boom"));
+
+        var result = await installer.InstallAsync();
+
+        Assert.Equal(WslPlatformInstallOutcome.Failed, result.Outcome);
+        Assert.Contains("Unexpected error", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Installer_PropagatesCancellation()
+    {
+        var probe = new SequencedPlatformProbe(WslPlatformState.NotInstalled);
+        var installer = new ElevatedWslPlatformInstaller(
+            probe,
+            processRunner: (_, ct) => Task.FromException<int>(new OperationCanceledException(ct)));
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => installer.InstallAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task Engine_EnsureWslEnabled_RequiresRestart_DoesNotPaintCheckSystemAsFailure()
+    {
+        // Regression for Hanselman review H1: the previous implementation
+        // set Phase=Failed for the RequiresRestart outcome, which makes
+        // LocalSetupProgressStageMap render the "Check system" stage row as
+        // a hard failure even though the user just needs to reboot. The
+        // fix mirrors the preflight RequiresRestart pattern: keep Phase at
+        // EnsureWslEnabled, only flip Status.
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var statePath = System.IO.Path.Combine(temp.Path, "setup-state.json");
+
+        var wsl = new LocalGatewaySetupTests.FakeWslCommandRunner
+        {
+            WslStatusExitCode = -1,
+            WslStatusOutput = "The Windows Subsystem for Linux is not installed. https://aka.ms/wslinstall",
+        };
+        var preflightProbe = new WslPlatformProbe(wsl, fileExists: _ => true, wslExePath: @"C:\Windows\System32\wsl.exe");
+        var installer = new FakeWslPlatformInstaller(() =>
+            new WslPlatformInstallResult(WslPlatformInstallOutcome.InstalledRequiresRestart, 3010));
+
+        var provisioning = new LocalGatewaySetupTests.FakeProvisioner();
+        var engine = new LocalGatewaySetupEngine(
+            new LocalGatewaySetupOptions { EnableWindowsTrayNodeByDefault = false },
+            new LocalGatewaySetupStateStore(statePath),
+            new LocalGatewayPreflightProbe(wsl, new LocalGatewaySetupTests.FixedPortProbe(available: true), preflightProbe),
+            wsl,
+            new LocalGatewaySetupTests.SuccessfulHealthProbe(),
+            provisioning,
+            provisioning,
+            provisioning,
+            wslInstanceInstaller: new WslStoreInstanceInstaller(wsl, createDirectory: _ => { }),
+            wslInstanceConfigurator: new LocalGatewaySetupTests.FakeWslInstanceConfigurator(),
+            openClawLinuxInstaller: new LocalGatewaySetupTests.FakeOpenClawLinuxInstaller(),
+            gatewayConfigurationPreparer: new LocalGatewaySetupTests.FakeGatewayConfigurationPreparer(),
+            gatewayServiceManager: new LocalGatewaySetupTests.FakeGatewayServiceManager(),
+            wslPlatformInstaller: installer);
+
+        var state = await engine.RunLocalOnlyAsync();
+
+        Assert.Equal(LocalGatewaySetupStatus.RequiresRestart, state.Status);
+        Assert.Equal(LocalGatewaySetupPhase.EnsureWslEnabled, state.Phase);
+        Assert.DoesNotContain(state.Issues, i => i.Severity == LocalGatewaySetupSeverity.Blocking);
+        Assert.Equal("wsl_install_requires_restart", state.FailureCode);
+
+        // The H1 regression we are guarding: ComputeStageState for the first
+        // visible stage (CheckSystem) must not return Active under
+        // RequiresRestart, otherwise the wizard renders an infinite spinner.
+        // The fix in LocalSetupProgressStageMap pins it to Failed so the user
+        // sees a clear "something needs your attention" marker, with the
+        // reboot instruction surfaced via ShouldShowErrorRow.
+        var firstStage = OpenClawTray.Onboarding.Services.LocalSetupProgressStageMap.VisibleStages[0];
+        var stageState = OpenClawTray.Onboarding.Services.LocalSetupProgressStageMap.ComputeStageState(
+            firstStage.Phases, state.Phase, state.Status, state.Phase);
+        Assert.NotEqual(OpenClawTray.Onboarding.Services.LocalSetupProgressStageMap.StageState.Active, stageState);
+        Assert.True(OpenClawTray.Onboarding.Services.LocalSetupProgressStageMap.ShouldShowErrorRow(state.Status));
+        Assert.False(OpenClawTray.Onboarding.Services.LocalSetupProgressStageMap.ShouldShowRetryButton(state.Status));
+    }
+
+    [Fact]
+    public async Task Engine_ResumesAfterReboot_WhenPersistedStateIsWslInstallRequiresRestart()
+    {
+        // Regression for Hanselman review H1 / M4: after a previous run ended
+        // in RequiresRestart, the persisted setup-state.json must not freeze
+        // the wizard. The engine should reset Status→Pending on entry so the
+        // post-reboot re-launch actually re-runs preflight and continues.
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var statePath = System.IO.Path.Combine(temp.Path, "setup-state.json");
+
+        // Seed a stale persisted state representing the prior RequiresRestart run.
+        var seed = LocalGatewaySetupState.Create(new LocalGatewaySetupOptions());
+        seed.Status = LocalGatewaySetupStatus.RequiresRestart;
+        seed.Phase = LocalGatewaySetupPhase.EnsureWslEnabled;
+        seed.FailureCode = "wsl_install_requires_restart";
+        seed.UserMessage = "Restart required.";
+        await new LocalGatewaySetupStateStore(statePath).SaveAsync(seed);
+
+        // After "reboot": wsl is now installed, no installer call needed.
+        var wsl = new LocalGatewaySetupTests.FakeWslCommandRunner
+        {
+            WslStatusExitCode = 0,
+            WslStatusOutput = "Default Version: 2\nWSL version: 2.1.5.0",
+        };
+        var preflightProbe = new WslPlatformProbe(wsl, fileExists: _ => true, wslExePath: @"C:\Windows\System32\wsl.exe");
+        var installerCalls = 0;
+        var installer = new FakeWslPlatformInstaller(() =>
+        {
+            installerCalls++;
+            return new WslPlatformInstallResult(WslPlatformInstallOutcome.InstalledNoRestart, 0);
+        });
+        var provisioning = new LocalGatewaySetupTests.FakeProvisioner();
+        var engine = new LocalGatewaySetupEngine(
+            new LocalGatewaySetupOptions { EnableWindowsTrayNodeByDefault = false },
+            new LocalGatewaySetupStateStore(statePath),
+            new LocalGatewayPreflightProbe(wsl, new LocalGatewaySetupTests.FixedPortProbe(available: true), preflightProbe),
+            wsl,
+            new LocalGatewaySetupTests.SuccessfulHealthProbe(),
+            provisioning,
+            provisioning,
+            provisioning,
+            wslInstanceInstaller: new WslStoreInstanceInstaller(wsl, createDirectory: _ => { }),
+            wslInstanceConfigurator: new LocalGatewaySetupTests.FakeWslInstanceConfigurator(),
+            openClawLinuxInstaller: new LocalGatewaySetupTests.FakeOpenClawLinuxInstaller(),
+            gatewayConfigurationPreparer: new LocalGatewaySetupTests.FakeGatewayConfigurationPreparer(),
+            gatewayServiceManager: new LocalGatewaySetupTests.FakeGatewayServiceManager(),
+            wslPlatformInstaller: installer);
+
+        var state = await engine.RunLocalOnlyAsync();
+
+        Assert.NotEqual(LocalGatewaySetupStatus.RequiresRestart, state.Status);
+        Assert.Equal(0, installerCalls); // platform is now installed; no need to invoke installer again
+        Assert.Equal(LocalGatewaySetupStatus.Complete, state.Status);
+    }
+
+    [Fact]
+    public async Task Preflight_TreatsProbeTimeoutAsBlockingUnavailable_WithoutFallingBackToLongRunner()
+    {
+        // Regression for Hanselman round 2: when WslPlatformProbe times out
+        // (Unknown + null StatusResult), the preflight must NOT fall back to
+        // _wsl.RunAsync(["--status"]) — that runner inherits the engine's
+        // 30s default timeout, undoing the whole point of the probe's 5s
+        // fast-fail.
+        var runner = new HangingWslCommandRunner();
+        var probe = new WslPlatformProbe(
+            runner,
+            fileExists: _ => true,
+            wslExePath: @"C:\Windows\System32\wsl.exe",
+            statusProbeTimeout: TimeSpan.FromMilliseconds(50));
+        var preflight = new LocalGatewayPreflightProbe(runner, new LocalGatewaySetupTests.FixedPortProbe(available: true), probe);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = await preflight.RunAsync(new LocalGatewaySetupOptions());
+        sw.Stop();
+
+        Assert.False(result.CanContinue);
+        Assert.Contains(result.Issues, i => i.Code == "wsl_unavailable" && i.Severity == LocalGatewaySetupSeverity.Blocking);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3), $"Preflight should not re-invoke wsl --status with the long runner timeout; took {sw.Elapsed}");
+    }
+
+    [Fact]
+    public async Task Engine_ResumesAfterReboot_EvenWhenPersistedStateHasNoFailureCode()
+    {
+        // Forward-compat coverage: today only the EnsureWslEnabled path
+        // produces Status=RequiresRestart (and it sets FailureCode), and the
+        // preflight RequiresRestart branch is unreachable from current code.
+        // The self-heal is keyed off Status alone so any future producer
+        // that surfaces RequiresRestart without a FailureCode (e.g. the
+        // preflight branch, or a new gateway-install reboot path) won't
+        // permanently brick the wizard.
+        using var temp = new LocalGatewaySetupTests.TempDirectory();
+        var statePath = System.IO.Path.Combine(temp.Path, "setup-state.json");
+
+        var seed = LocalGatewaySetupState.Create(new LocalGatewaySetupOptions());
+        seed.Status = LocalGatewaySetupStatus.RequiresRestart;
+        seed.Phase = LocalGatewaySetupPhase.Preflight;
+        seed.FailureCode = null;   // preflight-style RequiresRestart never sets FailureCode
+        seed.UserMessage = "Restart required.";
+        await new LocalGatewaySetupStateStore(statePath).SaveAsync(seed);
+
+        var wsl = new LocalGatewaySetupTests.FakeWslCommandRunner
+        {
+            WslStatusExitCode = 0,
+            WslStatusOutput = "Default Version: 2\nWSL version: 2.1.5.0",
+        };
+        var preflightProbe = new WslPlatformProbe(wsl, fileExists: _ => true, wslExePath: @"C:\Windows\System32\wsl.exe");
+        var provisioning = new LocalGatewaySetupTests.FakeProvisioner();
+        var engine = new LocalGatewaySetupEngine(
+            new LocalGatewaySetupOptions { EnableWindowsTrayNodeByDefault = false },
+            new LocalGatewaySetupStateStore(statePath),
+            new LocalGatewayPreflightProbe(wsl, new LocalGatewaySetupTests.FixedPortProbe(available: true), preflightProbe),
+            wsl,
+            new LocalGatewaySetupTests.SuccessfulHealthProbe(),
+            provisioning,
+            provisioning,
+            provisioning,
+            wslInstanceInstaller: new WslStoreInstanceInstaller(wsl, createDirectory: _ => { }),
+            wslInstanceConfigurator: new LocalGatewaySetupTests.FakeWslInstanceConfigurator(),
+            openClawLinuxInstaller: new LocalGatewaySetupTests.FakeOpenClawLinuxInstaller(),
+            gatewayConfigurationPreparer: new LocalGatewaySetupTests.FakeGatewayConfigurationPreparer(),
+            gatewayServiceManager: new LocalGatewaySetupTests.FakeGatewayServiceManager());
+
+        var state = await engine.RunLocalOnlyAsync();
+
+        Assert.NotEqual(LocalGatewaySetupStatus.RequiresRestart, state.Status);
+        Assert.Equal(LocalGatewaySetupStatus.Complete, state.Status);
+    }
+
+    [Fact]
+    public async Task Installer_ClampsNonSensicalAttemptsAndDelay()
+    {
+        // Round-3 M-3 / L-1: the test must force the retry loop to actually
+        // execute the bad delay, otherwise it cannot distinguish clamped vs
+        // unclamped behavior. Probe sequence forces two delays between three
+        // probes; with the unclamped negative TimeSpan, Task.Delay throws
+        // ArgumentOutOfRangeException. With the clamp, delay degrades to
+        // TimeSpan.Zero and the installer completes happily.
+        var states = new Queue<WslPlatformState>(
+        [
+            WslPlatformState.NotInstalled,
+            WslPlatformState.NotInstalled,
+            WslPlatformState.Installed,
+        ]);
+        var probe = new QueuedPlatformProbe(states);
+        var installer = new ElevatedWslPlatformInstaller(
+            probe,
+            processRunner: (_, _) => Task.FromResult(0),
+            postInstallProbeAttempts: 6,
+            postInstallProbeDelay: TimeSpan.FromMilliseconds(-100));
+            // delayAsync deliberately defaulted to real Task.Delay so the
+            // clamp's behavior matters.
+        var result = await installer.InstallAsync();
+        Assert.Equal(WslPlatformInstallOutcome.InstalledNoRestart, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Installer_ReturnsFailed_OnPostProbeUnknownEvenWhenExitCodeIsZero()
+    {
+        // Round-3 Codex MEDIUM: (Unknown, 0) used to map to InstalledNoRestart,
+        // which would let the engine proceed into CreateWslInstance with
+        // unverified WSL and produce confusing downstream failures. We now
+        // fail explicitly with a "verification inconclusive" message so the
+        // user gets clear guidance at the right layer.
+        var probe = new SequencedPlatformProbe(WslPlatformState.Unknown);
+        var installer = new ElevatedWslPlatformInstaller(
+            probe,
+            processRunner: (_, _) => Task.FromResult(0),
+            postInstallProbeAttempts: 1);
+
+        var result = await installer.InstallAsync();
+
+        Assert.Equal(WslPlatformInstallOutcome.Failed, result.Outcome);
+        Assert.Contains("inconclusive", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     // --- helpers ---
 
     private sealed class RecordingWslCommandRunner : IWslCommandRunner
@@ -370,6 +725,32 @@ public class WslPlatformInstallTests
             => Task.FromResult(new WslCommandResult(0, "", ""));
     }
 
+    private sealed class HangingWslCommandRunner : IWslCommandRunner
+    {
+        public async Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null)
+        {
+            // Wait until cancellation; throws when the probe's timeout CTS fires.
+            await Task.Delay(TimeSpan.FromMinutes(10), cancellationToken);
+            return new WslCommandResult(0, "", "");
+        }
+        public async Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default)
+        {
+            // Also hang. The point of the round-3 H-1 fix is that preflight
+            // must NOT call ListDistrosAsync when the platform probe couldn't
+            // confirm WSL is healthy. If the fix regresses, this fake will
+            // never return and the preflight test will hit its 3s elapsed
+            // assertion, exposing the regression.
+            await Task.Delay(TimeSpan.FromMinutes(10), cancellationToken);
+            return System.Array.Empty<WslDistroInfo>();
+        }
+        public Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WslCommandResult(0, "", ""));
+        public Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WslCommandResult(0, "", ""));
+        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null)
+            => Task.FromResult(new WslCommandResult(0, "", ""));
+    }
+
     private sealed class SequencedPlatformProbe : IWslPlatformProbe
     {
         private readonly Queue<WslPlatformState> _states;
@@ -378,6 +759,19 @@ public class WslPlatformInstallTests
         {
             _states = new Queue<WslPlatformState>(states);
         }
+
+        public Task<WslPlatformProbeResult> ProbeAsync(CancellationToken cancellationToken = default)
+        {
+            var state = _states.Count > 0 ? _states.Dequeue() : WslPlatformState.Installed;
+            return Task.FromResult(new WslPlatformProbeResult(state));
+        }
+    }
+
+    private sealed class QueuedPlatformProbe : IWslPlatformProbe
+    {
+        private readonly Queue<WslPlatformState> _states;
+
+        public QueuedPlatformProbe(Queue<WslPlatformState> states) { _states = states; }
 
         public Task<WslPlatformProbeResult> ProbeAsync(CancellationToken cancellationToken = default)
         {

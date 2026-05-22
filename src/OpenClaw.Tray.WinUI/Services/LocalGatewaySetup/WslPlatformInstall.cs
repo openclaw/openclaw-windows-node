@@ -53,26 +53,49 @@ public interface IWslPlatformProbe
 /// </summary>
 public sealed class WslPlatformProbe : IWslPlatformProbe
 {
+    /// <summary>
+    /// Fast-detect timeout for the single `wsl --status` probe call. We use a
+    /// much shorter bound than the engine's default 30s wsl runner timeout —
+    /// when wsl.exe is present but the platform isn't enabled, the not-installed
+    /// banner returns within a second or two; longer waits buy nothing and turn
+    /// the "click Set up locally" UX into the very hang we are trying to fix.
+    /// If the probe call exceeds this, we classify the platform as Unknown and
+    /// let the regular preflight code path take over.
+    /// </summary>
+    public static readonly TimeSpan DefaultStatusProbeTimeout = TimeSpan.FromSeconds(5);
+
     private readonly IWslCommandRunner _wsl;
     private readonly Func<string, bool> _fileExists;
     private readonly string? _wslExePath;
+    private readonly TimeSpan _statusProbeTimeout;
 
     public WslPlatformProbe(
         IWslCommandRunner wsl,
         Func<string, bool>? fileExists = null,
-        string? wslExePath = null)
+        string? wslExePath = null,
+        TimeSpan? statusProbeTimeout = null)
     {
         _wsl = wsl;
         _fileExists = fileExists ?? File.Exists;
         _wslExePath = wslExePath ?? ResolveDefaultWslExePath();
+        _statusProbeTimeout = statusProbeTimeout ?? DefaultStatusProbeTimeout;
     }
 
+    /// <summary>
+    /// Returns the canonical Windows System32 path for wsl.exe using
+    /// <see cref="Environment.SystemDirectory"/>. We deliberately avoid trusting
+    /// the <c>%SystemRoot%</c> environment variable: the installer launches this
+    /// path with <c>Verb=runas</c> (elevated), and any code that can mutate the
+    /// process environment could otherwise redirect the elevated launch to an
+    /// arbitrary binary. <see cref="Environment.SystemDirectory"/> reads from
+    /// the kernel, not the env block.
+    /// </summary>
     internal static string? ResolveDefaultWslExePath()
     {
-        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
-        if (string.IsNullOrEmpty(systemRoot))
+        var systemDir = Environment.SystemDirectory;
+        if (string.IsNullOrEmpty(systemDir))
             return null;
-        return Path.Combine(systemRoot, "System32", "wsl.exe");
+        return Path.Combine(systemDir, "wsl.exe");
     }
 
     public async Task<WslPlatformProbeResult> ProbeAsync(CancellationToken cancellationToken = default)
@@ -84,7 +107,25 @@ public sealed class WslPlatformProbe : IWslPlatformProbe
                 Detail: $"wsl.exe not found at {_wslExePath}");
         }
 
-        var status = await _wsl.RunAsync(["--status"], cancellationToken);
+        // Bound the `wsl --status` call independently of the engine-wide wsl
+        // runner timeout. On a host without WSL the call returns its banner
+        // within ~1s when it returns at all; we should never block the wizard
+        // for longer than DefaultStatusProbeTimeout just to discover that.
+        using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        probeCts.CancelAfter(_statusProbeTimeout);
+
+        WslCommandResult status;
+        try
+        {
+            status = await _wsl.RunAsync(["--status"], probeCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new WslPlatformProbeResult(
+                WslPlatformState.Unknown,
+                Detail: $"wsl --status did not respond within {_statusProbeTimeout.TotalSeconds:0}s.");
+        }
+
         var combined = (status.StandardOutput ?? string.Empty) + "\n" + (status.StandardError ?? string.Empty);
 
         if (LooksLikeNotInstalled(combined))
@@ -159,19 +200,47 @@ public interface IWslPlatformInstaller
 /// </summary>
 public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
 {
+    // ERROR_CANCELLED (1223) is what ShellExecute returns when the user clicks
+    // No on the UAC prompt. .NET's Win32Exception exposes that bare Win32 code
+    // on `NativeErrorCode` and the wrapped HRESULT (0x800704C7 = SEVERITY_ERROR
+    // | FACILITY_WIN32 | 1223) on `HResult`. Some Process.Start failure paths
+    // populate only one or the other, so we accept either form.
+    private const int ErrorCancelledWin32 = 1223;
     private const int ErrorCancelledHResult = unchecked((int)0x800704C7);
     private const int ErrorSuccessRebootRequired = 3010;
+
+    /// <summary>
+    /// Delay between consecutive post-install probe attempts. The lifted-WSL
+    /// service / Store finalization on a fresh install can take a few seconds
+    /// to expose the platform to a non-elevated `wsl --status`, so we retry
+    /// briefly before classifying "exit 0 + probe says NotInstalled" as
+    /// restart-required.
+    /// </summary>
+    public static readonly TimeSpan DefaultPostInstallProbeDelay = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Max number of post-install probe attempts (including the first call).
+    /// 6 × 500ms = 3s upper bound — long enough to ride out the finalize race
+    /// without making a real "needs reboot" outcome wait an annoying time.
+    /// </summary>
+    public const int DefaultPostInstallProbeAttempts = 6;
 
     private readonly IWslPlatformProbe _probe;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> _processRunner;
     private readonly IOpenClawLogger _logger;
     private readonly string _wslExePath;
+    private readonly TimeSpan _postInstallProbeDelay;
+    private readonly int _postInstallProbeAttempts;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
 
     public ElevatedWslPlatformInstaller(
         IWslPlatformProbe probe,
         IOpenClawLogger? logger = null,
         Func<ProcessStartInfo, CancellationToken, Task<int>>? processRunner = null,
-        string? wslExePath = null)
+        string? wslExePath = null,
+        TimeSpan? postInstallProbeDelay = null,
+        int? postInstallProbeAttempts = null,
+        Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
     {
         _probe = probe;
         _logger = logger ?? NullLogger.Instance;
@@ -179,6 +248,17 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
         _wslExePath = wslExePath
             ?? WslPlatformProbe.ResolveDefaultWslExePath()
             ?? @"C:\Windows\System32\wsl.exe";
+        // `attempts` of 0 or 1 is observably the same (the first probe runs
+        // outside the loop and the loop body is `for (attempt=1; attempt < N; …)`),
+        // so we don't clamp it — passing 0 simply means "no retries", which
+        // is what the caller asked for. The DELAY value, however, is awaited
+        // by `Task.Delay` which throws on negative values; clamp to zero so
+        // a mis-configured negative delay degrades to "retry immediately"
+        // instead of crashing the wizard.
+        _postInstallProbeAttempts = postInstallProbeAttempts ?? DefaultPostInstallProbeAttempts;
+        var delay = postInstallProbeDelay ?? DefaultPostInstallProbeDelay;
+        _postInstallProbeDelay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
+        _delayAsync = delayAsync ?? Task.Delay;
     }
 
     public async Task<WslPlatformInstallResult> InstallAsync(CancellationToken cancellationToken = default)
@@ -200,7 +280,7 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
         {
             exitCode = await _processRunner(psi, cancellationToken);
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelledHResult || ex.NativeErrorCode == 1223 /* ERROR_CANCELLED */)
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelledWin32 || ex.HResult == ErrorCancelledHResult)
         {
             _logger.Warn("[WslInstall] User declined the administrator prompt.");
             return new WslPlatformInstallResult(
@@ -236,7 +316,18 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
         if (exitCode == ErrorSuccessRebootRequired)
             return new WslPlatformInstallResult(WslPlatformInstallOutcome.InstalledRequiresRestart, exitCode);
 
-        var postProbe = await _probe.ProbeAsync(cancellationToken);
+        // Bounded retry to ride out the post-install finalize race: on a fresh
+        // install the Store/lifted-WSL service can take a few seconds to mark
+        // the platform as queryable. If we don't retry, exit-0 + NotInstalled
+        // looks like "reboot required" when it's actually just "wait 2 more
+        // seconds". We bail out early on any state change.
+        WslPlatformProbeResult postProbe = await _probe.ProbeAsync(cancellationToken);
+        for (int attempt = 1; attempt < _postInstallProbeAttempts && postProbe.State == WslPlatformState.NotInstalled && exitCode == 0; attempt++)
+        {
+            await _delayAsync(_postInstallProbeDelay, cancellationToken);
+            postProbe = await _probe.ProbeAsync(cancellationToken);
+        }
+
         return (postProbe.State, exitCode) switch
         {
             (WslPlatformState.Installed, _) =>
@@ -249,8 +340,12 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
                     exitCode,
                     "Windows Subsystem for Linux install reported failure.",
                     Detail: postProbe.Detail),
-            (WslPlatformState.Unknown, 0) =>
-                new WslPlatformInstallResult(WslPlatformInstallOutcome.InstalledNoRestart, exitCode),
+            // Probe returned Unknown — wsl --status either timed out or
+            // returned an unrecognized failure. Even if wsl.exe exited 0,
+            // we cannot confirm the platform is healthy; downstream phases
+            // (CreateWslInstance etc.) would fail with confusing errors.
+            // Fail explicitly so the user gets clear guidance now instead
+            // of a misdiagnosed downstream error.
             _ =>
                 new WslPlatformInstallResult(
                     WslPlatformInstallOutcome.Failed,

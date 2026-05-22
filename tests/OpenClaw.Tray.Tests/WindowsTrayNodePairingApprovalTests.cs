@@ -27,7 +27,7 @@ public class WindowsTrayNodePairingApprovalTests
             // Retry after approve: succeeds.
             null);
         var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
         var state = new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" };
 
         var result = await service.PairAsync(state);
@@ -50,7 +50,7 @@ public class WindowsTrayNodePairingApprovalTests
             new TimeoutException("Timed out waiting for the Windows tray node to pair with the gateway."),
             null);
         var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
 
@@ -70,7 +70,7 @@ public class WindowsTrayNodePairingApprovalTests
             false,
             "operator_pending_approval_failed",
             "Local gateway pending pairing approval CLI failed (commit stage). stage2.exit=1"));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
 
@@ -91,7 +91,7 @@ public class WindowsTrayNodePairingApprovalTests
             false,
             "no_pending_entries",
             "No pending device pairing requests to approve."));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
 
@@ -105,12 +105,18 @@ public class WindowsTrayNodePairingApprovalTests
     [Fact]
     public async Task PairAsync_LocalLoopback_RetryAfterApproveAlsoFails_SurfacesPairingFailed()
     {
+        // After approve+retry still fails, surface windows_node_pairing_failed
+        // with the retry exception's message. Single approve+retry — the
+        // cascade that previously required multi-attempt retries (gateway
+        // service restart on `openclaw devices approve`) was fixed at the
+        // root via IGatewayConnectionManager.SuppressNodeAutoApprove +
+        // EnsureNodeConnectedAsync's PairingRequired fast-fail.
         var settings = new FakeNodeSettings { Token = "redacted-device-token", BootstrapToken = "" };
         var connector = new ScriptedNodeConnector(
             new TimeoutException("first timeout"),
             new TimeoutException("still timing out after approve"));
         var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
 
@@ -128,7 +134,7 @@ public class WindowsTrayNodePairingApprovalTests
         var connector = new ScriptedNodeConnector(
             new TimeoutException("Timed out waiting for the Windows tray node to pair with the gateway."));
         var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = RemoteGatewayUrl, DistroName = "OpenClawGateway" });
 
@@ -144,7 +150,7 @@ public class WindowsTrayNodePairingApprovalTests
         var settings = new FakeNodeSettings { Token = "redacted-device-token", BootstrapToken = "" };
         var connector = new ScriptedNodeConnector((Exception?)null);
         var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         var result = await service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" });
 
@@ -178,7 +184,7 @@ public class WindowsTrayNodePairingApprovalTests
         var settings = new FakeNodeSettings { Token = "redacted-device-token", BootstrapToken = "" };
         var connector = new ScriptedNodeConnector(new OperationCanceledException("cancelled by user"));
         var approver = new RecordingNodeApprover(new PendingDeviceApprovalResult(true));
-        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver);
+        var service = new SettingsWindowsTrayNodeProvisioner(settings, connector, approver, pairRetryDelay: TimeSpan.Zero, delayAsync: (_, _) => Task.CompletedTask);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             service.PairAsync(new LocalGatewaySetupState { GatewayUrl = LocalGatewayUrl, DistroName = "OpenClawGateway" }));

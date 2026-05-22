@@ -3215,19 +3215,62 @@
   <data name="V2_Progress_TryAgain" xml:space="preserve">
     <value>Try again</value>
   </data>
-  <data name="V2_Gateway_Title" xml:space="preserve">
+  <data name="V2_Progress_CheckSystem_Hint" xml:space="preserve">
+    <value>正在檢查您的電腦。如果需要安裝適用於 Linux 的 Windows 子系統，Windows 將請求您的許可。</value>
+  </data>
+  <data name="V2_Progress_Wsl_Installing" xml:space="preserve">
+    <value>正在安裝適用於 Linux 的 Windows 子系統。這可能需要幾分鐘。</value>
+  </data>
+  <data name="V2_Progress_Wsl_RequiresRestart" xml:space="preserve">
+    <value>已安裝適用於 Linux 的 Windows 子系統。請重新啟動電腦，然後重新開啟 OpenClaw 以繼續安裝。</value>
+  </data>
+  <data name="V2_Progress_Wsl_Failed" xml:space="preserve">
+    <value>無法安裝適用於 Linux 的 Windows 子系統。請重試，或從提升權限的終端機中執行 wsl --install。</value>
+  </data>
+  <data name="V2_Progress_Wsl_ElevationDeclined" xml:space="preserve">
+    <value>安裝適用於 Linux 的 Windows 子系統需要管理員授權。</value>
+  </data>
+  <data name="V2_Progress_Wsl_Unavailable" xml:space="preserve">
+    <value>尚未安裝適用於 Linux 的 Windows 子系統，OpenClaw 無法自動安裝。請從提升權限的終端機中執行 wsl --install，然後重試。</value>
+  </data>
+  <data name="V2_Progress_Wsl_NotResponding" xml:space="preserve">
+    <value>適用於 Linux 的 Windows 子系統無回應。請確認已安裝並重試。</value>
+  </data>  <data name="V2_Gateway_Title" xml:space="preserve">
     <value>Configuring gateway</value>
   </data>
-  <data name="V2_Gateway_CardHeader" xml:space="preserve">
+  <data name="V2_Progress_Wsl_FirstBootAfterInstall" xml:space="preserve">
+    <value>無法設定 OpenClaw WSL 實例。本次工作階段剛剛安裝了適用於 Linux 的 Windows 子系統 — 請重新啟動電腦，然後重新開啟 OpenClaw 以繼續安裝。</value>
+  </data>  <data name="V2_Gateway_CardHeader" xml:space="preserve">
     <value>Welcome to OpenClaw gateway</value>
   </data>
-  <data name="V2_Gateway_CardBody1" xml:space="preserve">
+  <data name="V2_Progress_Node_PairingFailed" xml:space="preserve">
+    <value>將本電腦配對為節點失敗。本機閘道可能在裝置批准期間重新啟動 — 請點擊重試。</value>
+  </data>  <data name="V2_Gateway_CardBody1" xml:space="preserve">
     <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
   </data>
-  <data name="V2_Gateway_CardBody2" xml:space="preserve">
+  <data name="V2_Progress_Wsl_NoNetwork" xml:space="preserve">
+    <value>無法從 Microsoft Store 下載 Ubuntu。請檢查您的網際網路連線並重試。</value>
+  </data>
+  <data name="V2_Progress_GenericFailure" xml:space="preserve">
+    <value>安裝失敗。請查看記錄檔以了解詳細資訊。</value>
+  </data>  <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
   </data>
-  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
+  <data name="V2_Progress_Wsl_ConfigFailed" xml:space="preserve">
+    <value>無法設定 OpenClaw WSL 實例。請查看記錄檔或重試。</value>
+  </data>
+  <data name="V2_Progress_Wsl_InstanceInstallFailed" xml:space="preserve">
+    <value>無法建立 OpenClawGateway WSL 實例。請查看記錄檔或重試。</value>
+  </data>
+  <data name="V2_Progress_Preflight_NotReady" xml:space="preserve">
+    <value>此電腦尚未準備好進行本機 WSL 閘道設定。</value>
+  </data>
+  <data name="V2_Progress_OpenClawInstallFailed" xml:space="preserve">
+    <value>無法在 WSL 實例中安裝 OpenClaw。請檢查您的網際網路連線並重試。</value>
+  </data>
+  <data name="V2_Progress_GatewayPortInUse" xml:space="preserve">
+    <value>本機閘道連接埠已被 OpenClawGateway 發行版中的處理程序佔用。請停止佔用該連接埠的處理程序並重試。</value>
+  </data>  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
     <value>Open http://localhost:18789 in browser</value>
   </data>
   <data name="V2_Permissions_Title" xml:space="preserve">

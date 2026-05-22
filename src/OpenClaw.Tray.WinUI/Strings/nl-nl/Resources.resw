@@ -3216,19 +3216,62 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="V2_Progress_TryAgain" xml:space="preserve">
     <value>Try again</value>
   </data>
-  <data name="V2_Gateway_Title" xml:space="preserve">
+  <data name="V2_Progress_CheckSystem_Hint" xml:space="preserve">
+    <value>PC controleren. Als het Windows-subsysteem voor Linux geïnstalleerd moet worden, vraagt Windows om uw toestemming.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Installing" xml:space="preserve">
+    <value>Windows-subsysteem voor Linux installeren. Dit kan enkele minuten duren.</value>
+  </data>
+  <data name="V2_Progress_Wsl_RequiresRestart" xml:space="preserve">
+    <value>Windows-subsysteem voor Linux is geïnstalleerd. Start uw PC opnieuw op en open OpenClaw vervolgens om de setup voort te zetten.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Failed" xml:space="preserve">
+    <value>Kan Windows-subsysteem voor Linux niet installeren. Probeer opnieuw of voer wsl --install uit vanuit een verhoogd terminal.</value>
+  </data>
+  <data name="V2_Progress_Wsl_ElevationDeclined" xml:space="preserve">
+    <value>Administratorgoedkeuring is vereist om Windows-subsysteem voor Linux te installeren.</value>
+  </data>
+  <data name="V2_Progress_Wsl_Unavailable" xml:space="preserve">
+    <value>Windows-subsysteem voor Linux is niet geïnstalleerd en OpenClaw kan het niet automatisch installeren. Voer wsl --install uit vanuit een verhoogd terminal en probeer het opnieuw.</value>
+  </data>
+  <data name="V2_Progress_Wsl_NotResponding" xml:space="preserve">
+    <value>Windows-subsysteem voor Linux reageert niet. Controleer of het is geïnstalleerd en probeer het opnieuw.</value>
+  </data>  <data name="V2_Gateway_Title" xml:space="preserve">
     <value>Configuring gateway</value>
   </data>
-  <data name="V2_Gateway_CardHeader" xml:space="preserve">
+  <data name="V2_Progress_Wsl_FirstBootAfterInstall" xml:space="preserve">
+    <value>Kan de OpenClaw WSL-instantie niet configureren. Windows-subsysteem voor Linux is in deze sessie pas geïnstalleerd — start uw PC opnieuw op en open OpenClaw vervolgens om de setup voort te zetten.</value>
+  </data>  <data name="V2_Gateway_CardHeader" xml:space="preserve">
     <value>Welcome to OpenClaw gateway</value>
   </data>
-  <data name="V2_Gateway_CardBody1" xml:space="preserve">
+  <data name="V2_Progress_Node_PairingFailed" xml:space="preserve">
+    <value>Het koppelen van deze PC als knooppunt is mislukt. De lokale gateway is mogelijk opnieuw gestart tijdens de apparaatgoedkeuring — klik op Opnieuw proberen.</value>
+  </data>  <data name="V2_Gateway_CardBody1" xml:space="preserve">
     <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
   </data>
-  <data name="V2_Gateway_CardBody2" xml:space="preserve">
+  <data name="V2_Progress_Wsl_NoNetwork" xml:space="preserve">
+    <value>Kan Ubuntu niet downloaden uit de Microsoft Store. Controleer uw internetverbinding en probeer het opnieuw.</value>
+  </data>
+  <data name="V2_Progress_GenericFailure" xml:space="preserve">
+    <value>Setup mislukt. Raadpleeg de logbestanden voor meer informatie.</value>
+  </data>  <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
   </data>
-  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
+  <data name="V2_Progress_Wsl_ConfigFailed" xml:space="preserve">
+    <value>Kan de OpenClaw WSL-instantie niet configureren. Bekijk de logbestanden of probeer het opnieuw.</value>
+  </data>
+  <data name="V2_Progress_Wsl_InstanceInstallFailed" xml:space="preserve">
+    <value>Kan de OpenClawGateway WSL-instantie niet maken. Bekijk de logbestanden of probeer het opnieuw.</value>
+  </data>
+  <data name="V2_Progress_Preflight_NotReady" xml:space="preserve">
+    <value>Deze PC is niet klaar voor het instellen van de lokale WSL-gateway.</value>
+  </data>
+  <data name="V2_Progress_OpenClawInstallFailed" xml:space="preserve">
+    <value>Kan OpenClaw niet installeren in de WSL-instantie. Controleer uw internetverbinding en probeer het opnieuw.</value>
+  </data>
+  <data name="V2_Progress_GatewayPortInUse" xml:space="preserve">
+    <value>De lokale gateway-poort is al in gebruik in de OpenClawGateway-distro. Stop het proces dat de poort gebruikt en probeer het opnieuw.</value>
+  </data>  <data name="V2_Gateway_OpenInBrowser" xml:space="preserve">
     <value>Open http://localhost:18789 in browser</value>
   </data>
   <data name="V2_Permissions_Title" xml:space="preserve">

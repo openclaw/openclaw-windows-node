@@ -157,6 +157,20 @@ public sealed class OnboardingV2State
         set { if (_localSetupCanRetry != value) { _localSetupCanRetry = value; NotifyChanged(); } }
     }
 
+    private string? _localSetupInfoMessage;
+    /// <summary>
+    /// Informational subtitle shown under the currently-active LocalSetupProgress
+    /// row. Distinct from <see cref="LocalSetupErrorMessage"/> (which is red /
+    /// failure styled): this is a neutral hint such as "Checking your PC — a
+    /// Windows admin prompt may appear" that the bridge sets pre-emptively so
+    /// the page doesn't sit blank during slow preflight / install operations.
+    /// </summary>
+    public string? LocalSetupInfoMessage
+    {
+        get => _localSetupInfoMessage;
+        set { if (_localSetupInfoMessage != value) { _localSetupInfoMessage = value; NotifyChanged(); } }
+    }
+
     // ---------------------------------------------------------------------
     // Cutover-staged shape (not yet wired by real services). Keeping these
     // here so the Tray-side bridge can populate them in the cutover PR

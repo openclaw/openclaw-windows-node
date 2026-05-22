@@ -107,6 +107,43 @@ public static class V2Strings
         ["V2_Progress_Stage_GeneratingSetupCode"] = "Generating setup code",
         ["V2_Progress_TryAgain"] = "Try again",
 
+        // ---- LocalSetupProgress: WSL platform install hints/messages ----
+        // Pre-emptive hint shown under the "Check system" row from the
+        // moment "Set up locally" is clicked, so the user has something to
+        // read while the probe runs and the UAC prompt is being raised.
+        ["V2_Progress_CheckSystem_Hint"] =
+            "Checking your PC. If Windows Subsystem for Linux needs to be installed, Windows will ask you for permission.",
+        ["V2_Progress_Wsl_Installing"] =
+            "Installing Windows Subsystem for Linux. This may take a few minutes.",
+        ["V2_Progress_Wsl_RequiresRestart"] =
+            "Windows Subsystem for Linux was installed. Restart your PC, then reopen OpenClaw to continue setup.",
+        ["V2_Progress_Wsl_Failed"] =
+            "Couldn't install Windows Subsystem for Linux. Try again, or run wsl --install from an elevated terminal.",
+        ["V2_Progress_Wsl_ElevationDeclined"] =
+            "Administrator approval is required to install Windows Subsystem for Linux.",
+        ["V2_Progress_Wsl_Unavailable"] =
+            "Windows Subsystem for Linux is not installed and OpenClaw cannot install it automatically. Run wsl --install from an elevated terminal, then retry.",
+        ["V2_Progress_Wsl_NotResponding"] =
+            "Windows Subsystem for Linux is not responding. Make sure it is installed and try again.",
+        ["V2_Progress_Wsl_FirstBootAfterInstall"] =
+            "Couldn't configure the OpenClaw WSL instance. Windows Subsystem for Linux was just installed in this session — restart your PC, then reopen OpenClaw to continue setup.",
+        ["V2_Progress_Node_PairingFailed"] =
+            "Pairing this PC as a node failed. The local gateway may have restarted during device approval — click Try again to retry.",
+        ["V2_Progress_Wsl_NoNetwork"] =
+            "Couldn't download Ubuntu from the Microsoft Store. Check your internet connection and try again.",
+        ["V2_Progress_GenericFailure"] =
+            "Setup failed. See logs for details.",
+        ["V2_Progress_Wsl_ConfigFailed"] =
+            "Couldn't configure the OpenClaw WSL instance. See logs for details, or try again.",
+        ["V2_Progress_Wsl_InstanceInstallFailed"] =
+            "Couldn't create the OpenClawGateway WSL instance. See logs for details, or try again.",
+        ["V2_Progress_Preflight_NotReady"] =
+            "This PC isn't ready for local WSL gateway setup.",
+        ["V2_Progress_OpenClawInstallFailed"] =
+            "Couldn't install OpenClaw inside the WSL instance. Check your internet connection and try again.",
+        ["V2_Progress_GatewayPortInUse"] =
+            "Local gateway port is already in use inside the OpenClawGateway distro. Stop the process using the port and try again.",
+
         // ---- GatewayWelcome page ----
         ["V2_Gateway_Title"] = "Configuring gateway",
         ["V2_Gateway_CardHeader"] = "Welcome to OpenClaw gateway",

@@ -156,7 +156,10 @@ public class LocalSetupProgressStageMapTests
     [InlineData(LocalGatewaySetupStatus.Running, false)]
     [InlineData(LocalGatewaySetupStatus.Complete, false)]
     [InlineData(LocalGatewaySetupStatus.RequiresAdmin, false)]
-    [InlineData(LocalGatewaySetupStatus.RequiresRestart, false)]
+    // RequiresRestart now surfaces the reboot instruction in the error row
+    // so the user has a place to read "restart your PC, then reopen OpenClaw".
+    // The retry button stays hidden (see ShouldShowRetryButton below).
+    [InlineData(LocalGatewaySetupStatus.RequiresRestart, true)]
     [InlineData(LocalGatewaySetupStatus.Blocked, false)]
     [InlineData(LocalGatewaySetupStatus.Cancelled, false)]
     public void ShouldShowErrorRow_OnlyOnFailureStates(LocalGatewaySetupStatus status, bool expected)
