@@ -499,39 +499,32 @@ public sealed class NodeService : IDisposable
     }
 
     /// <summary>
-    /// Build the <see cref="ICommandRunner"/> for system.run. Picks
-    /// <see cref="MxcCommandRunner"/> wrapping a one-shot AppContainer when MXC is
-    /// available; falls back to <see cref="LocalCommandRunner"/> with an explanatory
-    /// log when it isn't. The choice respects <see cref="SettingsData.SystemRunSandboxMode"/>:
-    /// Required (default) fail-closes; BestEffort uses a host fallback inside MxcCommandRunner;
-    /// Off bypasses MXC entirely.
+    /// Build the <see cref="ICommandRunner"/> for system.run. Returns an
+    /// <see cref="MxcCommandRunner"/> wrapping <see cref="DirectAppContainerExecutor"/>.
+    /// The runner honors <see cref="SettingsData.SystemRunSandboxEnabled"/>
+    /// and, per issue #494, falls back to <see cref="LocalCommandRunner"/>
+    /// at runtime when MXC isn't available on this host.
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
     {
         var availability = _mxcAvailability ??= MxcAvailability.Probe(_logger);
         var hostRunner = new LocalCommandRunner(_logger);
+        var executor = new DirectAppContainerExecutor(availability, _logger);
 
-        ISandboxExecutor executor;
-        if (!availability.HasAnyBackend || availability.RunCommandScriptPath is null)
+        if (availability.HasAnyBackend)
         {
-            // No MXC on this host. We still route through MxcCommandRunner so the
-            // SystemRunSandboxEnabled toggle is honored: when ON, invocation is
-            // denied (fail-closed); when OFF, the inner runner falls back to host.
-            var reason = !availability.HasAnyBackend
-                ? string.Join("; ", availability.UnsupportedReasons)
-                : "tools/mxc/run-command.cjs not found";
-            executor = new UnavailableSandboxExecutor(reason);
-            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable: {reason})");
-        }
-        else
-        {
-            executor = new OneShotAppContainerExecutor(
-                availability,
-                availability.RunCommandScriptPath,
-                _logger);
             _logger.Info(
                 $"[mxc] system.run runner = MxcCommandRunner " +
                 $"(executor={executor.Name}, sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
+        }
+        else
+        {
+            // MXC unavailable on this host. The runner's top-level
+            // !_isSandboxAvailable() guard will route to the host fallback
+            // for every call; the executor is constructed only to satisfy
+            // the constructor contract and is never invoked.
+            var reason = string.Join("; ", availability.UnsupportedReasons);
+            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable, commands will run uncontained: {reason})");
         }
 
         var settingsDirectory = SettingsManager.SettingsDirectoryPath;

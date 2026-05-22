@@ -1,0 +1,48 @@
+{
+  "version": "0.4.0-alpha",
+  "containerId": "golden-custom",
+  "lifecycle": {
+    "destroyOnExit": true,
+    "preservePolicy": false
+  },
+  "process": {},
+  "filesystem": {
+    "readwritePaths": [
+      "C:\\Golden\\Custom",
+      "C:\\Golden\\Scratch"
+    ],
+    "readonlyPaths": [
+      "C:\\Golden\\Documents"
+    ],
+    "deniedPaths": [
+      "C:\\Golden\\Settings",
+      "C:\\Golden\\.ssh",
+      "C:\\Golden\\Chrome",
+      "C:\\Golden\\Edge",
+      "C:\\Golden\\Brave",
+      "C:\\Golden\\Firefox",
+      "C:\\Golden\\PSReadLine"
+    ]
+  },
+  "ui": {
+    "disable": true,
+    "clipboard": "all",
+    "injection": false
+  },
+  "network": {
+    "defaultPolicy": "allow",
+    "enforcementMode": "capabilities"
+  },
+  "appContainer": {
+    "leastPrivilege": false,
+    "capabilities": [
+      "internetClient"
+    ],
+    "ui": {
+      "isolation": "container",
+      "desktopSystemControl": false,
+      "systemSettings": "none",
+      "ime": false
+    }
+  }
+}

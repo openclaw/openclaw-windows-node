@@ -78,6 +78,13 @@
 
   <PropertyGroup>
     <OpenClawRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</OpenClawRepoRoot>
+    <!-- RID-derived arch for tools/mxc/<arch>/wxc-exec.exe. Falls back to x64
+         when no RID is present (e.g. unpackaged debug builds). -->
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-arm64'">arm64</MxcArch>
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-x64'">x64</MxcArch>
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(PlatformTarget)' == 'ARM64'">arm64</MxcArch>
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == ''">x64</MxcArch>
+    <MxcSdkBinDir>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\bin\$(MxcArch)\</MxcSdkBinDir>
   </PropertyGroup>
 
   <!--
@@ -182,71 +189,67 @@
     <SyncAppxManifestVersion ManifestPath="$(_AppxManifestPath)" FourPartVersion="$(_AppxManifestVersion)" />
   </Target>
 
-  <Target Name="RestoreMxcNodeBridge"
+  <!-- Fail fast on RIDs we have no wxc-exec binary for, so x86/non-Windows
+       builds don't silently fall back to x64 and ship a broken sandbox.
+       Suppress with -p:VerifyWxcExecShipped=false for SDK-less unit-test builds. -->
+  <Target Name="ValidateMxcArchMapping"
           BeforeTargets="Build;Publish"
+          Condition="'$(MxcArch)' == '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Text="Unsupported RuntimeIdentifier '$(RuntimeIdentifier)' for MXC sandbox. Only win-x64 and win-arm64 are supported. Override -p:MxcArch=x64 or -p:MxcArch=arm64 if you know what you are doing." />
+  </Target>
+
+  <Target Name="RestoreMxcNodeBridge"
+          BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish"
           Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
-    <Message Importance="high" Text="Restoring MXC node bridge dependencies with npm ci" />
+    <Message Importance="high" Text="Restoring @microsoft/mxc-sdk to extract wxc-exec.exe ($(MxcArch))" />
     <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(OpenClawRepoRoot)" />
   </Target>
 
-  <Target Name="CopyMxcNodeBridgeToOutput" AfterTargets="Build">
+  <!-- Copy ONLY wxc-exec.exe (and any sibling DLLs) for the active arch into
+       $(TargetDir)tools/mxc/<arch>/. No node_modules ships. The C# probe in
+       MxcAvailability.ResolveWxcExec looks here first. -->
+  <Target Name="CopyWxcExecToOutput" AfterTargets="Build">
     <ItemGroup>
-      <_MxcBridgeFiles Include="$(OpenClawRepoRoot)tools\mxc\**\*" />
-      <_MxcSdkFiles Include="$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\**\*" />
-      <_MxcNodePtyFiles Include="$(OpenClawRepoRoot)node_modules\node-pty\**\*" />
-      <_MxcNodeAddonApiFiles Include="$(OpenClawRepoRoot)node_modules\node-addon-api\**\*" />
-      <_MxcSemverFiles Include="$(OpenClawRepoRoot)node_modules\semver\**\*" />
+      <_WxcExecFiles Include="$(MxcSdkBinDir)wxc-exec.exe" />
+      <_WxcExecFiles Include="$(MxcSdkBinDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(_MxcBridgeFiles)"
-          DestinationFiles="@(_MxcBridgeFiles->'$(TargetDir)tools\mxc\%(RecursiveDir)%(Filename)%(Extension)')"
+    <Copy SourceFiles="@(_WxcExecFiles)"
+          DestinationFiles="@(_WxcExecFiles->'$(TargetDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
-          Condition="'@(_MxcBridgeFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcSdkFiles)"
-          DestinationFiles="@(_MxcSdkFiles->'$(TargetDir)node_modules\@microsoft\mxc-sdk\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcSdkFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcNodePtyFiles)"
-          DestinationFiles="@(_MxcNodePtyFiles->'$(TargetDir)node_modules\node-pty\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcNodePtyFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcNodeAddonApiFiles)"
-          DestinationFiles="@(_MxcNodeAddonApiFiles->'$(TargetDir)node_modules\node-addon-api\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcNodeAddonApiFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcSemverFiles)"
-          DestinationFiles="@(_MxcSemverFiles->'$(TargetDir)node_modules\semver\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcSemverFiles)' != ''" />
+          Condition="'@(_WxcExecFiles)' != ''" />
   </Target>
 
-  <Target Name="CopyMxcNodeBridgeToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+  <!-- Standalone publish copy. Deliberately not chained to Build so
+       dotnet publish with no-build still works. -->
+  <Target Name="CopyWxcExecToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <ItemGroup>
-      <_MxcPublishBridgeFiles Include="$(OpenClawRepoRoot)tools\mxc\**\*" />
-      <_MxcPublishSdkFiles Include="$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\**\*" />
-      <_MxcPublishNodePtyFiles Include="$(OpenClawRepoRoot)node_modules\node-pty\**\*" />
-      <_MxcPublishNodeAddonApiFiles Include="$(OpenClawRepoRoot)node_modules\node-addon-api\**\*" />
-      <_MxcPublishSemverFiles Include="$(OpenClawRepoRoot)node_modules\semver\**\*" />
+      <_WxcExecPublishFiles Include="$(MxcSdkBinDir)wxc-exec.exe" />
+      <_WxcExecPublishFiles Include="$(MxcSdkBinDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(_MxcPublishBridgeFiles)"
-          DestinationFiles="@(_MxcPublishBridgeFiles->'$(PublishDir)tools\mxc\%(RecursiveDir)%(Filename)%(Extension)')"
+    <Copy SourceFiles="@(_WxcExecPublishFiles)"
+          DestinationFiles="@(_WxcExecPublishFiles->'$(PublishDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishBridgeFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishSdkFiles)"
-          DestinationFiles="@(_MxcPublishSdkFiles->'$(PublishDir)node_modules\@microsoft\mxc-sdk\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishSdkFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishNodePtyFiles)"
-          DestinationFiles="@(_MxcPublishNodePtyFiles->'$(PublishDir)node_modules\node-pty\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishNodePtyFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishNodeAddonApiFiles)"
-          DestinationFiles="@(_MxcPublishNodeAddonApiFiles->'$(PublishDir)node_modules\node-addon-api\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishNodeAddonApiFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishSemverFiles)"
-          DestinationFiles="@(_MxcPublishSemverFiles->'$(PublishDir)node_modules\semver\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishSemverFiles)' != ''" />
+          Condition="'@(_WxcExecPublishFiles)' != ''" />
+  </Target>
+
+  <!-- Fail the build if wxc-exec.exe didn't land in the expected output path.
+       Catches RID/arch mismatches and silent npm ci skips. Gated on
+       VerifyWxcExecShipped (default true) so unit-test-only builds without
+       npm available can opt out. -->
+  <Target Name="ValidateWxcExecShipped"
+          AfterTargets="CopyWxcExecToOutput"
+          Condition="'$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Condition="!Exists('$(TargetDir)tools\mxc\$(MxcArch)\wxc-exec.exe')"
+           Text="wxc-exec.exe missing at $(TargetDir)tools\mxc\$(MxcArch)\. Check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir). Run `npm ci` at $(OpenClawRepoRoot)." />
+  </Target>
+
+  <!-- Same validation, but after publish, catches publish-no-build runs that
+       silently ship without wxc-exec. -->
+  <Target Name="ValidateWxcExecPublished"
+          AfterTargets="CopyWxcExecToPublish"
+          Condition="'$(PublishDir)' != '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Condition="!Exists('$(PublishDir)tools\mxc\$(MxcArch)\wxc-exec.exe')"
+           Text="wxc-exec.exe missing at $(PublishDir)tools\mxc\$(MxcArch)\. Publish-time copy did not run; check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir)." />
   </Target>
 
   <!-- Copy WebView2Loader.dll to output root for unpackaged app (not needed for MSIX) -->

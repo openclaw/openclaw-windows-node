@@ -4,4 +4,10 @@
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Mxc\Golden\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
