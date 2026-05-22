@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
@@ -710,6 +711,280 @@ public class ExecApprovalsStoreTests : IDisposable
         var defaults = new ExecApprovalsDefaults { AskFallback = ExecAsk.Deny };
         var json = JsonSerializer.Serialize(defaults, ExecApprovalsStore.JsonOptions);
         Assert.Contains("\"deny\"", json);
+    }
+
+    // ── Write path: AddAllowlistEntryAsync ───────────────────────────────────
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_ExistingFile_AddsEntryWithIdAndMetadata()
+    {
+        WriteFile(MinimalFile());
+        var store = Store();
+        var result = await store.AddAllowlistEntryAsync("main", "**/git.exe");
+
+        Assert.True(result);
+        var resolved = store.ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        var entry = resolved.Allowlist[0];
+        Assert.Equal("**/git.exe", entry.Pattern);
+        Assert.NotNull(entry.Id);
+        Assert.Null(entry.LastUsedAt); // macOS addAllowlistEntry: {id, pattern} only — no lastUsedAt on creation
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_DuplicatePattern_NotAddedCaseInsensitive()
+    {
+        WriteFile(MinimalFile());
+        var store = Store();
+        var first = await store.AddAllowlistEntryAsync("main", "**/git.exe");
+        var second = await store.AddAllowlistEntryAsync("main", "**/GIT.EXE");
+
+        Assert.True(first);
+        Assert.True(second); // already present → true
+        Assert.Single(store.ResolveReadOnly("main").Allowlist);
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_EmptyOrWhitespacePattern_ReturnsFalse()
+    {
+        WriteFile(MinimalFile());
+        var store = Store();
+
+        Assert.False(await store.AddAllowlistEntryAsync("main", ""));
+        Assert.False(await store.AddAllowlistEntryAsync("main", "   "));
+        Assert.Empty(store.ResolveReadOnly("main").Allowlist);
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_NoFile_CreatesFileWithEntry()
+    {
+        var store = Store();
+        var result = await store.AddAllowlistEntryAsync("main", "**/git.exe");
+
+        Assert.True(result);
+        Assert.True(File.Exists(FilePath));
+        var resolved = store.ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        Assert.Equal("**/git.exe", resolved.Allowlist[0].Pattern);
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_MalformedFile_RefusesToWriteAndWarns()
+    {
+        WriteFile("{ bad json }");
+        var original = File.ReadAllText(FilePath);
+        var store = Store();
+
+        var result = await store.AddAllowlistEntryAsync("main", "**/git.exe");
+
+        Assert.False(result);
+        Assert.Equal(original, File.ReadAllText(FilePath));
+        Assert.Contains(_log.Warnings, w => w.Contains("Refusing to write"));
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_AtomicWrite_NoTempFileLeft()
+    {
+        WriteFile(MinimalFile());
+        await Store().AddAllowlistEntryAsync("main", "**/git.exe");
+
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_NewAgent_CreatesAgentWithEntry()
+    {
+        WriteFile("""{"version":1,"agents":{}}""");
+        var store = Store();
+        var result = await store.AddAllowlistEntryAsync("agent-xyz", "**/git.exe");
+
+        Assert.True(result);
+        Assert.Single(store.ResolveReadOnly("agent-xyz").Allowlist);
+    }
+
+    // ── Write path: RecordAllowlistUseAsync ──────────────────────────────────
+
+    [Fact]
+    public async Task RecordAllowlistUseAsync_UpdatesMetadataAndPreservesIdAndPattern()
+    {
+        var id = Guid.NewGuid();
+        WriteFile($$"""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "allowlist": [
+                { "id": "{{id}}", "pattern": "**/git.exe" }
+              ]
+            }
+          }
+        }
+        """);
+        var store = Store();
+        var result = await store.RecordAllowlistUseAsync("main", "**/git.exe", "git status", "/usr/bin/git");
+
+        Assert.True(result);
+        var entry = store.ResolveReadOnly("main").Allowlist[0];
+        Assert.Equal(id, entry.Id);
+        Assert.Equal("**/git.exe", entry.Pattern);
+        Assert.NotNull(entry.LastUsedAt);
+        Assert.Equal("git status", entry.LastUsedCommand);
+        Assert.Equal("/usr/bin/git", entry.LastResolvedPath);
+    }
+
+    [Fact]
+    public async Task RecordAllowlistUseAsync_PatternNotPresent_ReturnsFalse()
+    {
+        WriteFile("""
+        {
+          "version": 1,
+          "agents": {
+            "main": { "allowlist": [{ "pattern": "**/git.exe" }] }
+          }
+        }
+        """);
+        var store = Store();
+        var result = await store.RecordAllowlistUseAsync("main", "**/rg.exe", "rg foo", null);
+
+        Assert.False(result);
+        Assert.Null(store.ResolveReadOnly("main").Allowlist[0].LastUsedCommand);
+    }
+
+    [Fact]
+    public async Task RecordAllowlistUseAsync_AgentNotPresent_ReturnsFalse()
+    {
+        WriteFile("""{"version":1,"agents":{}}""");
+        var store = Store();
+        var result = await store.RecordAllowlistUseAsync("nonexistent", "**/git.exe", "git status", null);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task RecordAllowlistUseAsync_MalformedFile_ReturnsFalse()
+    {
+        WriteFile("{ bad json }");
+        var store = Store();
+        var result = await store.RecordAllowlistUseAsync("main", "**/git.exe", "git status", null);
+
+        Assert.False(result);
+        Assert.Equal("{ bad json }", File.ReadAllText(FilePath));
+    }
+
+    [Fact]
+    public async Task RecordAllowlistUseAsync_DoesNotTouchOtherEntries()
+    {
+        WriteFile("""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "allowlist": [
+                { "pattern": "**/git.exe" },
+                { "pattern": "**/rg.exe" }
+              ]
+            }
+          }
+        }
+        """);
+        var store = Store();
+        await store.RecordAllowlistUseAsync("main", "**/git.exe", "git status", null);
+
+        var allowlist = store.ResolveReadOnly("main").Allowlist;
+        Assert.NotNull(allowlist.First(e => e.Pattern == "**/git.exe").LastUsedCommand);
+        Assert.Null(allowlist.First(e => e.Pattern == "**/rg.exe").LastUsedCommand);
+    }
+
+    [Fact]
+    public async Task RecordAllowlistUseAsync_BestEffort_IoExceptionReturnsFalse()
+    {
+        // Entry present so the mutate lambda returns true (pattern found → something to update).
+        // Without a matching entry the mutate would be a no-op and UpdateFileAsync would return
+        // false before reaching SaveFileAsync — that is the not-found path, not the IOException path.
+        WriteFile("""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "allowlist": [{ "pattern": "**/git.exe" }]
+            }
+          }
+        }
+        """);
+        var store = Store();
+
+        // FileShare.Read: LoadFile succeeds; File.Move(tmp, target, overwrite:true) fails
+        // because the target is open without write/delete sharing → IOException degraded-save path.
+        using (var fs = new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+        {
+            var result = await store.RecordAllowlistUseAsync("main", "**/git.exe", "git status", null);
+            Assert.False(result);           // IOException absorbed, no exception escaped
+            Assert.NotEmpty(_log.Warnings); // write failure logged as Warn
+        }
+    }
+
+    // ── Round-trip and integration ────────────────────────────────────────────
+
+    [Fact]
+    public async Task AddAllowlistEntry_RoundTrip_ResolvedByReadPath()
+    {
+        WriteFile(MinimalFile());
+        var store = Store();
+        await store.AddAllowlistEntryAsync("main", "**/git.exe");
+
+        var resolved = store.ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        Assert.Equal("**/git.exe", resolved.Allowlist[0].Pattern);
+    }
+
+    [Fact]
+    public async Task RoundTrip_WrittenFileIsValidJsonWithCorrectFields()
+    {
+        WriteFile(MinimalFile());
+        var store = Store();
+        await store.AddAllowlistEntryAsync("main", "**/git.exe");
+        // lastUsedAt is absent on creation; RecordAllowlistUseAsync stamps it on first use.
+        await store.RecordAllowlistUseAsync("main", "**/git.exe", "git status", null);
+
+        var json = File.ReadAllText(FilePath);
+        using var doc = System.Text.Json.JsonDocument.Parse(json); // valid JSON
+        Assert.Equal(1, doc.RootElement.GetProperty("version").GetInt32());
+        // lastUsedAt must be a JSON number (Unix epoch ms), not a string.
+        var lastUsedAt = doc.RootElement
+            .GetProperty("agents").GetProperty("main")
+            .GetProperty("allowlist")[0].GetProperty("lastUsedAt");
+        Assert.Equal(System.Text.Json.JsonValueKind.Number, lastUsedAt.ValueKind);
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_Concurrency_SamePattern_SingleEntry()
+    {
+        WriteFile(MinimalFile());
+        var store = Store();
+        var tasks = Enumerable.Range(0, 5)
+            .Select(_ => store.AddAllowlistEntryAsync("main", "**/git.exe"))
+            .ToList();
+        await Task.WhenAll(tasks);
+
+        Assert.Single(store.ResolveReadOnly("main").Allowlist);
+    }
+
+    [Fact]
+    public async Task AddAllowlistEntryAsync_BestEffort_IoExceptionReturnsFalse()
+    {
+        // FileShare.Read: LoadFile (File.ReadAllText / FileAccess.Read) succeeds because
+        // read-sharing is granted. File.Move(tmp, target, overwrite:true) fails because the
+        // target is open without write/delete sharing. This exercises the IOException degraded-save
+        // path, not the malformed-file refusal branch.
+        WriteFile(MinimalFile());
+        var store = Store();
+
+        using (var fs = new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+        {
+            var result = await store.AddAllowlistEntryAsync("main", "**/git.exe");
+            Assert.False(result);                // IOException absorbed, no exception escaped
+            Assert.NotEmpty(_log.Warnings);      // write failure logged as Warn
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

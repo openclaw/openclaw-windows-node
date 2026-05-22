@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.ExecApprovals;
 
 // New store for exec-approvals.json. Separate from legacy ExecApprovalPolicy (exec-policy.json).
-// PR4 scope: read path only. Write path (recordAllowlistUse) is added in PR9.
+// Read path: ResolveReadOnly, LoadFile, EnsureFileAsync. Write path: AddAllowlistEntryAsync, RecordAllowlistUseAsync.
 public sealed class ExecApprovalsStore
 {
     // KebabCaseLower covers all macOS enum values: deny, allowlist, full, off, on-miss, always,
@@ -44,13 +44,82 @@ public sealed class ExecApprovalsStore
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    // No side effects; does not create the file. Used by the evaluator (PR5).
+    // No side effects; does not create the file.
     public ExecApprovalsResolved ResolveReadOnly(string? agentId)
     {
         var result = LoadFile();
         return result.Status != LoadFileStatus.Loaded || result.File is null
             ? DefaultResolved(NormalizeAgentId(agentId))
             : ResolveFromFile(result.File, agentId);
+    }
+
+    // Adds a new allowlist entry for the agent. Best-effort: never throws.
+    // Returns true if the entry is present after the call (added or already there),
+    // false if the pattern was empty or the write was skipped/failed.
+    // Pattern validation is non-empty only — parity with macOS.
+    public async Task<bool> AddAllowlistEntryAsync(string? agentId, string pattern)
+    {
+        var trimmed = pattern?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            _logger.Debug("[EXEC-APPROVALS] AddAllowlistEntry skipped: empty pattern");
+            return false;
+        }
+        var key = NormalizeAgentId(agentId);
+        bool alreadyPresent = false;
+        var wrote = await UpdateFileAsync(file =>
+        {
+            var agents = file.Agents!;
+            if (!agents.TryGetValue(key, out var agent) || agent is null)
+            {
+                agent = new ExecApprovalsAgent();
+                agents[key] = agent;
+            }
+            var allowlist = agent.Allowlist ??= [];
+            // Dedup case-insensitive — consistent with NormalizeAllowlistEntries (OrdinalIgnoreCase HashSet).
+            if (allowlist.Any(e => string.Equals(
+                    e.Pattern?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)))
+            {
+                alreadyPresent = true;
+                return false;
+            }
+            allowlist.Add(new ExecAllowlistEntry
+            {
+                Id = Guid.NewGuid(),  // parity with macOS UUID()
+                Pattern = trimmed,
+                // LastUsedAt intentionally absent: macOS addAllowlistEntry only sets {id, pattern}.
+                // RecordAllowlistUseAsync stamps it on first successful use.
+            });
+            return true;
+        }).ConfigureAwait(false);
+        return wrote || alreadyPresent;
+    }
+
+    // Updates lastUsed* metadata for every allowlist entry whose pattern matches.
+    // Best-effort: never throws. No-op if the agent or pattern is not found.
+    // Returns true if at least one entry was updated and saved; false otherwise.
+    public Task<bool> RecordAllowlistUseAsync(
+        string? agentId, string pattern, string command, string? resolvedPath)
+    {
+        if (string.IsNullOrEmpty(pattern)) return Task.FromResult(false);
+        var key = NormalizeAgentId(agentId);
+        return UpdateFileAsync(file =>
+        {
+            if (!file.Agents!.TryGetValue(key, out var agent) || agent?.Allowlist is null)
+                return false;
+            var changed = false;
+            foreach (var entry in agent.Allowlist)
+            {
+                if (!string.Equals(entry.Pattern?.Trim(), pattern.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                entry.LastUsedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                entry.LastUsedCommand = command;        // STJ escapes control chars on serialize
+                entry.LastResolvedPath = resolvedPath;  // Id and Pattern preserved
+                changed = true;
+            }
+            return changed;
+        });
     }
 
     // Side-effecting resolve: creates the file if missing, initializes agents dict.
@@ -129,7 +198,7 @@ public sealed class ExecApprovalsStore
             return new ExecApprovalsFile { Version = 1, Agents = [] };
         }
 
-        // socket intentionally omitted in Windows v1 (research doc 02 decision 3).
+        // socket intentionally omitted in Windows v1.
         var newFile = new ExecApprovalsFile { Version = 1, Agents = [] };
         await SaveFileAsync(newFile).ConfigureAwait(false);
         _logger.Info($"[EXEC-APPROVALS] Created {_filePath}");
@@ -154,6 +223,46 @@ public sealed class ExecApprovalsStore
             _logger.Error($"[EXEC-APPROVALS] Failed to save {_filePath} ({ex.Message})");
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
             throw;
+        }
+    }
+
+    // Best-effort mutate-and-save. Serialized by the store lock.
+    // Never throws. Refuses to overwrite a malformed file.
+    // Returns true if the file was mutated and saved; false if the mutate was a no-op,
+    // the file was malformed/invalid, or any I/O failure occurred.
+    private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var result = LoadFile();
+            if (result.Status == LoadFileStatus.Invalid)
+            {
+                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: "
+                    + "file is malformed or has an unsupported version");
+                return false;
+            }
+            var file = result.Status == LoadFileStatus.Loaded && result.File is not null
+                ? result.File
+                : new ExecApprovalsFile { Version = 1, Agents = [] };
+            file.Agents ??= new Dictionary<string, ExecApprovalsAgent>();
+
+            if (!mutate(file)) return false; // no-op: nothing to persist
+
+            await SaveFileAsync(file).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Any failure (incl. transient IOException on the atomic move) degrades to a
+            // logged warning. The atomic write guarantees the file on disk is never left corrupt.
+            _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json write failed "
+                + $"({ex.Message}); side effect skipped");
+            return false;
+        }
+        finally
+        {
+            _lock.Release();
         }
     }
 
@@ -239,7 +348,7 @@ public sealed class ExecApprovalsStore
     // Mirrors macOS normalizeAllowlistEntries.
     // dropInvalid=false: discard only null/empty patterns; keep non-empty ones regardless of validity.
     // dropInvalid=true: same in v1 — pattern validity beyond non-empty is enforced by the allowlist
-    //   matcher in PR5, not here. The flag is preserved for API symmetry with macOS.
+    //   matcher, not here. The flag is preserved for API symmetry with macOS.
     internal static List<ExecAllowlistEntry> NormalizeAllowlistEntries(
         IEnumerable<ExecAllowlistEntry> entries, bool dropInvalid)
     {
