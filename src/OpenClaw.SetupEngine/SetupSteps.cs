@@ -390,6 +390,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             # Configure gateway with inline token
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
+            openclaw config set gateway.bind lan
             openclaw config set gateway.auth.mode token
             openclaw config set gateway.auth.token {token}
             openclaw config set gateway.reload.mode hot
@@ -647,7 +648,16 @@ public sealed class PairOperatorStep : SetupStep
                 if (phase2Result == ConnectionOutcome.Connected)
                 {
                     ctx.Logger.Info("Operator paired successfully after approval");
-                    return StepResult.Ok("Operator connected and paired");
+                    // Disconnect before finalization
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    client = null;
+
+                    // Phase 3: Skip operator finalization here — it must happen AFTER node pairing.
+                    // The node pairing changes the device's "current metadata" to node/node-host,
+                    // so operator finalization (as cli/cli) must come last to match what the tray sends.
+                    ctx.Logger.Info("Operator paired — finalization deferred to after node pairing");
+                    return StepResult.Ok("Operator paired (finalization deferred)");
                 }
 
                 return StepResult.Fail($"Reconnection after approval failed: {phase2Result}");
@@ -669,7 +679,88 @@ public sealed class PairOperatorStep : SetupStep
         }
     }
 
-    private static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
+    /// <summary>
+    /// After initial pairing, the gateway knows us via auth.token (shared gateway token).
+    /// The tray will connect using auth.deviceToken (the token we just received).
+    /// This "finalizes" the transition so the gateway doesn't flag it as metadata-upgrade.
+    /// </summary>
+    private static async Task<StepResult> FinalizeWithDeviceToken(
+        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
+    {
+        ctx.Logger.Info("Finalizing: reconnect with device token (like tray will)");
+
+        // Read the device token we just stored
+        var identity = new DeviceIdentity(identityPath);
+        identity.Initialize();
+        var deviceToken = identity.DeviceToken;
+
+        if (string.IsNullOrEmpty(deviceToken))
+        {
+            ctx.Logger.Warn("No device token stored after pairing — skipping finalization");
+            return StepResult.Ok("Operator paired (no finalization needed)");
+        }
+
+        // Wait for the gateway's internal session grace period to expire.
+        // Without this delay, the gateway accepts the deviceToken connect within grace
+        // but would later reject the tray's identical connect as "metadata-upgrade".
+        ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
+        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+
+        // Connect exactly as the tray would: pass deviceToken as the credential
+        var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
+        finalClient.UseV2Signature = true;
+
+        try
+        {
+            var result = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+
+            if (result == ConnectionOutcome.Connected)
+            {
+                ctx.Logger.Info("Finalization connected — tray will connect seamlessly");
+                return StepResult.Ok("Operator paired and finalized for tray");
+            }
+
+            if (result == ConnectionOutcome.PairingRequired)
+            {
+                ctx.Logger.Info("Metadata-upgrade detected during finalization — auto-approving");
+                await finalClient.DisconnectAsync();
+                finalClient.Dispose();
+                finalClient = null;
+
+                // Approve the metadata-upgrade
+                var approveResult = await AutoApprovePairing(ctx, ct);
+                if (!approveResult.IsSuccess)
+                    return StepResult.Fail($"Finalization approval failed: {approveResult.Message}");
+
+                await Task.Delay(2000, ct);
+
+                // One more connect to confirm
+                finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
+                finalClient.UseV2Signature = true;
+                var finalResult = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+
+                if (finalResult == ConnectionOutcome.Connected)
+                {
+                    ctx.Logger.Info("Finalization approved — tray will connect seamlessly");
+                    return StepResult.Ok("Operator paired and finalized for tray");
+                }
+
+                return StepResult.Fail($"Finalization failed after approval: {finalResult}");
+            }
+
+            return StepResult.Fail($"Finalization connect failed: {result}");
+        }
+        finally
+        {
+            if (finalClient != null)
+            {
+                await finalClient.DisconnectAsync();
+                finalClient.Dispose();
+            }
+        }
+    }
+
+    internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken!;
@@ -721,9 +812,9 @@ public sealed class PairOperatorStep : SetupStep
         return StepResult.Ok($"Approved request {requestId}");
     }
 
-    private enum ConnectionOutcome { Connected, PairingRequired, Error, Timeout }
+    internal enum ConnectionOutcome { Connected, PairingRequired, Error, Timeout }
 
-    private static async Task<ConnectionOutcome> WaitForConnectionOrPairing(
+    internal static async Task<ConnectionOutcome> WaitForConnectionOrPairing(
         OpenClawGatewayClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
@@ -843,7 +934,15 @@ public sealed class PairNodeStep : SetupStep
                 {
                     ctx.NodeDeviceId = client.ShortDeviceId;
                     ctx.Logger.Info($"Node paired after approval: {ctx.NodeDeviceId}");
-                    return StepResult.Ok("Node connected and paired");
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    client = null;
+
+                    // Skip node finalization — the operator finalization in VerifyEndToEndStep
+                    // will be the last connect, ensuring operator metadata is "current".
+                    // Node finalization would rotate tokens and potentially invalidate the operator token.
+                    ctx.Logger.Info("Node paired — skipping node finalization (operator finalization is last)");
+                    return StepResult.Ok("Node paired successfully");
                 }
 
                 return StepResult.Fail($"Node reconnection after approval failed: {outcome}");
@@ -861,6 +960,80 @@ public sealed class PairNodeStep : SetupStep
             {
                 await client.DisconnectAsync();
                 client.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// After node pairing, finalize by connecting with the node device token to avoid
+    /// metadata-upgrade when the tray reconnects.
+    /// </summary>
+    private static async Task<StepResult> FinalizeNodeWithDeviceToken(
+        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
+    {
+        ctx.Logger.Info("Finalizing node: reconnect with node device token");
+
+        var identity = new DeviceIdentity(identityPath);
+        identity.Initialize();
+        var nodeToken = identity.NodeDeviceToken;
+
+        if (string.IsNullOrEmpty(nodeToken))
+        {
+            ctx.Logger.Warn("No node device token stored after pairing — skipping node finalization");
+            return StepResult.Ok("Node paired (no finalization needed)");
+        }
+
+        // Wait for grace period (same as operator finalization)
+        ctx.Logger.Info("Waiting for gateway grace period before node finalization...");
+        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+
+        var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
+        finalClient.UseV2Signature = true;
+
+        try
+        {
+            var result = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+
+            if (result == NodeConnectionOutcome.Connected)
+            {
+                ctx.Logger.Info("Node finalization connected — tray will connect seamlessly");
+                return StepResult.Ok("Node paired and finalized for tray");
+            }
+
+            if (result == NodeConnectionOutcome.PairingRequired)
+            {
+                ctx.Logger.Info("Node metadata-upgrade detected — auto-approving");
+                await finalClient.DisconnectAsync();
+                finalClient.Dispose();
+                finalClient = null;
+
+                var approveResult = await AutoApproveNodePairing(ctx, ct);
+                if (!approveResult.IsSuccess)
+                    return StepResult.Fail($"Node finalization approval failed: {approveResult.Message}");
+
+                await Task.Delay(2000, ct);
+
+                finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
+                finalClient.UseV2Signature = true;
+                var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+
+                if (finalResult == NodeConnectionOutcome.Connected)
+                {
+                    ctx.Logger.Info("Node finalization approved — tray will connect seamlessly");
+                    return StepResult.Ok("Node paired and finalized for tray");
+                }
+
+                return StepResult.Fail($"Node finalization failed after approval: {finalResult}");
+            }
+
+            return StepResult.Fail($"Node finalization failed: {result}");
+        }
+        finally
+        {
+            if (finalClient != null)
+            {
+                await finalClient.DisconnectAsync();
+                finalClient.Dispose();
             }
         }
     }
@@ -985,51 +1158,167 @@ public sealed class VerifyEndToEndStep : SetupStep
         }
         else
         {
-            ctx.Logger.Info("Device token present — tray app will auto-connect");
+            ctx.Logger.Info("Device token present — performing final operator handshake");
+
+            // CRITICAL: The operator finalization must happen AFTER node pairing.
+            // Node pairing changes the device's "current metadata" to node-host/node.
+            // The tray connects as operator (cli/cli), so we must re-establish operator
+            // as the device's last-seen metadata. This prevents "metadata-upgrade" errors.
+            var wsLogger = new SetupOpenClawLogger(ctx.Logger);
+            var finalResult = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityPath, wsLogger, ct);
+            if (!finalResult.IsSuccess)
+                return finalResult;
         }
 
-        // Verify we can connect briefly with stored credentials
+        // Write setup-state.json so tray knows the distro name for WSL keepalive
+        await WriteSetupStateAsync(ctx, ct);
+
+        return StepResult.Ok("Gateway running; operator finalized for tray.");
+    }
+
+    /// <summary>
+    /// Final operator connect using device token — establishes operator/cli/cli as the
+    /// device's "current metadata" so the tray can connect without metadata-upgrade.
+    /// </summary>
+    private static async Task<StepResult> FinalizeOperatorForTray(
+        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
+    {
         var identity = new DeviceIdentity(identityPath);
         identity.Initialize();
-        var token = identity.DeviceToken ?? ctx.SharedGatewayToken;
+        var deviceToken = identity.DeviceToken;
 
-        if (token != null)
+        if (string.IsNullOrEmpty(deviceToken))
+            return StepResult.Fail("No device token available for operator finalization");
+
+        // Wait for grace period to expire so this connect is treated as a real metadata change
+        ctx.Logger.Info("Waiting for grace period before final operator handshake...");
+        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+
+        var client = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
+        client.UseV2Signature = true;
+
+        try
         {
-            var client = new OpenClawGatewayClient(ctx.GatewayUrl!, token, identityPath: identityPath);
-            var connected = new TaskCompletionSource<bool>();
-            client.StatusChanged += (_, s) =>
-            {
-                if (s == ConnectionStatus.Connected) connected.TrySetResult(true);
-                else if (s == ConnectionStatus.Error) connected.TrySetResult(false);
-            };
+            var result = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
 
-            try
+            if (result == PairOperatorStep.ConnectionOutcome.Connected)
             {
-                await client.ConnectAsync();
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                cts.CancelAfter(TimeSpan.FromSeconds(15));
-                var ok = await connected.Task.WaitAsync(cts.Token);
+                ctx.Logger.Info("Final operator handshake succeeded — tray will connect seamlessly");
+                return StepResult.Ok("Operator finalized");
+            }
 
-                if (ok)
+            if (result == PairOperatorStep.ConnectionOutcome.PairingRequired)
+            {
+                ctx.Logger.Info("Metadata-upgrade detected — auto-approving for tray");
+                await client.DisconnectAsync();
+                client.Dispose();
+                client = null;
+
+                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, ct);
+                if (!approveResult.IsSuccess)
+                    return StepResult.Fail($"Operator finalization approval failed: {approveResult.Message}");
+
+                await Task.Delay(2000, ct);
+
+                // After approval, the gateway rotates the device token. The old one is invalid.
+                // Clear the stale DeviceToken from the identity file so the client doesn't
+                // try to use it (OpenClawGatewayClient prefers stored DeviceToken over constructor token).
+                ctx.Logger.Info("Clearing stale operator device token from identity file");
+                DeviceIdentity.TryClearDeviceToken(identityPath);
+
+                // Reconnect with the SHARED GATEWAY TOKEN to get a fresh device token.
+                ctx.Logger.Info("Reconnecting with shared token to get fresh device token after approval");
+                client = new OpenClawGatewayClient(gatewayUrl, ctx.SharedGatewayToken!, logger: wsLogger, identityPath: identityPath);
+                client.UseV2Signature = true;
+                var confirmResult = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+
+                if (confirmResult == PairOperatorStep.ConnectionOutcome.Connected)
                 {
-                    ctx.Logger.Info("E2E verification passed — operator can connect with stored credentials");
-                    await client.DisconnectAsync();
-                    client.Dispose();
-                    return StepResult.Ok("End-to-end verification passed");
+                    ctx.Logger.Info("Operator finalization approved — fresh device token stored, tray will connect seamlessly");
+                    return StepResult.Ok("Operator finalized after approval");
                 }
+
+                return StepResult.Fail($"Operator finalization failed after approval: {confirmResult}");
             }
-            catch (Exception ex)
+
+            return StepResult.Fail($"Operator finalization failed: {result}");
+        }
+        finally
+        {
+            if (client != null)
             {
-                ctx.Logger.Warn($"E2E verification connection failed: {ex.Message}");
-            }
-            finally
-            {
+                await client.DisconnectAsync();
                 client.Dispose();
             }
         }
+    }
 
-        // If we got here, the gateway is running but we couldn't verify operator connect
-        // This is still acceptable — tray app will handle pairing
-        return StepResult.Ok("Gateway running; credentials stored. Tray app should auto-connect.");
+    private static async Task WriteSetupStateAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var stateDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray");
+        Directory.CreateDirectory(stateDir);
+
+        var statePath = Path.Combine(stateDir, "setup-state.json");
+        // Phase and Status must be integers matching the tray's LocalGatewaySetupPhase/Status enums.
+        // Phase.Complete = 13, Status.Complete = 7
+        var state = new
+        {
+            SchemaVersion = 1,
+            RunId = Guid.NewGuid().ToString("N"),
+            InstallId = Guid.NewGuid().ToString("N"),
+            Phase = 13,
+            Status = 7,
+            DistroName = ctx.DistroName,
+            GatewayUrl = ctx.GatewayUrl,
+            IsLocalOnly = true,
+            FailureCode = (string?)null,
+            UserMessage = (string?)null,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Issues = Array.Empty<object>(),
+            History = Array.Empty<object>()
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(state, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(statePath, json, ct);
+        ctx.Logger.Info($"Wrote setup-state.json: DistroName={ctx.DistroName}");
+    }
+}
+
+// ─── Step 16: Start WSL Keepalive ───
+
+public sealed class StartKeepaliveStep : SetupStep
+{
+    public override string Id => "start-keepalive";
+    public override string DisplayName => "Start WSL keepalive";
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        ctx.Logger.Info($"Launching persistent keepalive for distro: {distro}");
+
+        // Launch detached keepalive process — keeps the distro alive so port forwarding
+        // remains stable until the tray starts its own keepalive.
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            Arguments = $"-d {distro} -- sleep infinity",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null)
+        {
+            ctx.Logger.Warn("Failed to start keepalive process — tray will start its own");
+            return Task.FromResult(StepResult.Ok());
+        }
+
+        ctx.Logger.Info($"Keepalive process started (PID {proc.Id}), distro will stay alive for tray launch");
+        return Task.FromResult(StepResult.Ok());
     }
 }

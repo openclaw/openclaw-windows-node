@@ -1,0 +1,14 @@
+{
+  // Default config for OpenClaw Setup Engine
+  // Uses distinct port/distro to avoid conflict with production tray setup
+  "Mode": "local-wsl",
+  "DistroName": "OpenClawDev",
+  "GatewayPort": 18899,
+  "BaseDistro": "Ubuntu-24.04",
+  "Headless": true,
+  "AutoApprovePairing": true,
+  "CleanBeforeRun": true,
+  "SkipPermissions": true,
+  "SkipWizard": true,
+  "LogLevel": "trace"
+}

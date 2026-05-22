@@ -132,6 +132,7 @@ public static class Program
         steps.Add(new PairOperatorStep());
         steps.Add(new PairNodeStep());
         steps.Add(new VerifyEndToEndStep());
+        steps.Add(new StartKeepaliveStep());
 
         return steps;
     }
