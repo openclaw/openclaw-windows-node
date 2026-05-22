@@ -4,9 +4,9 @@ using System.Collections.Generic;
 namespace OpenClaw.Shared.ExecApprovals;
 
 // Aggregated evaluation context passed to the stateless evaluator.
-// Shape mirrors macOS ExecApprovalEvaluation struct (research doc 06).
+// Shape mirrors macOS ExecApprovalEvaluation struct.
 // Derived fields are computed once in the constructor and must not be recomputed by callers.
-// Research doc 06 stable conclusion 3: construction belongs to the coordinator (PR7), not the evaluator.
+// Construction belongs to the coordinator, not the evaluator.
 public sealed class ExecApprovalEvaluation
 {
     public IReadOnlyList<string> Command { get; }
@@ -17,7 +17,7 @@ public sealed class ExecApprovalEvaluation
     public IReadOnlyDictionary<string, string>? Env { get; }
 
     // Singular resolution — AllowlistResolutions[0], or null if the list is empty.
-    // Research doc 06: "resolution = allowlistResolutions.first" (not an independent call).
+    // Always the first element of AllowlistResolutions, not an independent resolver call.
     public ExecCommandResolution? Resolution { get; }
 
     public IReadOnlyList<ExecCommandResolution> AllowlistResolutions { get; }
@@ -25,11 +25,11 @@ public sealed class ExecApprovalEvaluation
     public IReadOnlyList<ExecAllowlistEntry> AllowlistMatches { get; }
 
     // true iff security==allowlist && resolutions.Count>0 && matches.Count==resolutions.Count.
-    // Research doc 06 derivation rule — must not be re-derived outside the constructor.
+    // Derived once in the constructor — must not be re-derived outside it.
     public bool AllowlistSatisfied { get; }
 
     // First match when AllowlistSatisfied; null otherwise.
-    // Research doc 06 R5: AllowlistMatch must be null when AllowlistSatisfied is false.
+    // Must be null when AllowlistSatisfied is false.
     public ExecAllowlistEntry? AllowlistMatch { get; }
 
     // Always false in v1. Kept as part of the conceptual model; activation deferred.

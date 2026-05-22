@@ -3,9 +3,9 @@ using System.Threading.Tasks;
 namespace OpenClaw.Shared.ExecApprovals;
 
 /// <summary>
-/// Seam for the V2 exec approval path (rail 10: UI-free, no WinUI types).
+/// Seam for the V2 exec approval path. Implementations must be UI-free (no WinUI types).
 /// Implementations decide whether a system.run request is allowed.
-/// In PR1 only the NullHandler exists; real evaluation arrives in later PRs.
+/// The NullHandler is the default; production wiring installs the real coordinator.
 /// </summary>
 public interface IExecApprovalV2Handler
 {

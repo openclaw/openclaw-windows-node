@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace OpenClaw.Shared.ExecApprovals;
 
 /// <summary>
-/// Phase 1 of the V2 exec approval pipeline: structural input validation (rail 18, step 1).
+/// Phase 1 of the V2 exec approval pipeline: structural input validation.
 /// Parses a raw NodeInvokeRequest into a ValidatedRunRequest or returns validation-failed.
 /// Does not resolve executables, detect shell wrappers, or evaluate policy.
 /// </summary>
