@@ -730,6 +730,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return;
         }
 
+        // Capture the pre-existing PairingRequired requestId so the Handler
+        // can distinguish a STALE PairingRequired snapshot (left over from a
+        // previous failed attempt — the state machine doesn't reset on a new
+        // connect) from a FRESH PairingRequired event tied to this attempt.
+        // Manual test 2026-05-22 showed the retry connect tripping the
+        // fast-fail off the stale snapshot before its own hello-ok arrived,
+        // even though the actual pairing succeeded ~25ms later. Treat
+        // stalePairingRequestId==current as "ignore this PairingRequired
+        // event, wait for a fresh one (or terminal state)".
+        var stalePairingRequestId =
+            snapshot.NodeState == RoleConnectionState.PairingRequired
+                ? snapshot.NodePairingRequestId
+                : null;
+
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void Handler(object? _, GatewayConnectionSnapshot s)
@@ -748,7 +762,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node connection failed."));
                     break;
-                case RoleConnectionState.PairingRequired when IsNodeAutoApproveSuppressed(s.GatewayUrl):
+                case RoleConnectionState.PairingRequired
+                    when IsNodeAutoApproveSuppressed(s.GatewayUrl)
+                        && (stalePairingRequestId == null
+                            || !string.Equals(s.NodePairingRequestId, stalePairingRequestId, StringComparison.Ordinal)):
                     // When the caller has suppressed the manager's own auto-approve
                     // (V2 onboarding engine does this — see
                     // AcquireNodeAutoApproveSuppression), we MUST fail fast on
@@ -761,13 +778,17 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     // caller gets control to approve. The IsLocalLoopback
                     // scope inside IsNodeAutoApproveSuppressed ensures a stale
                     // token can never suppress remote-gateway pairings.
+                    // Guard: only fast-fail on a FRESH PairingRequired (different
+                    // requestId from the pre-existing one) so retry attempts
+                    // after the caller approved their first PairingRequired
+                    // aren't tripped by the lingering snapshot.
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node pairing required — caller must approve before retrying."));
                     break;
-                // PairingRequired (without suppression) / Connecting / Idle — keep
-                // waiting; the manager's existing auto-approve flow
-                // (OnNodePairingStatusChanged) handles the node.pair.approve case
-                // when operator has admin/pairing scope.
+                // PairingRequired (without suppression OR with stale requestId)
+                // / Connecting / Idle — keep waiting; the manager's existing
+                // auto-approve flow (OnNodePairingStatusChanged) handles the
+                // node.pair.approve case when operator has admin/pairing scope.
             }
         }
 
@@ -783,9 +804,35 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             else
             {
-                // Re-evaluate state in case the connector reached terminal state synchronously
-                // (test connectors may; production NodeConnector is async).
-                Handler(this, _stateMachine.Current);
+                // Re-evaluate state in case the connector reached terminal
+                // state synchronously (test connectors may; production
+                // NodeConnector is async).
+                //
+                // Manual test 2026-05-22 surfaced a race: on a RETRY connect
+                // (Phase 14 after V2 engine approved a role-upgrade via WSL
+                // CLI), the snapshot here still showed the STALE
+                // PairingRequired state from the previous failed attempt
+                // (the state machine doesn't reset on a new connect — it
+                // mutates as the connector observes server messages, which
+                // is async). With suppression still active, the PairingRequired
+                // case below would fast-fail BEFORE the new connect's
+                // hello-ok response arrived — surfacing "Pairing failed"
+                // even though the actual pairing succeeded ~25ms later.
+                //
+                // Only act synchronously on TRULY terminal states (Connected
+                // + Paired, PairingRejected, Error). Defer PairingRequired
+                // / Connecting / Idle to the real StateChanged event so we
+                // only react to fresh transitions from the new attempt.
+                var current = _stateMachine.Current;
+                var isTerminal =
+                    (current.NodeState == RoleConnectionState.Connected
+                        && current.NodePairingStatus == PairingStatus.Paired)
+                    || current.NodeState == RoleConnectionState.PairingRejected
+                    || current.NodeState == RoleConnectionState.Error;
+                if (isTerminal)
+                {
+                    Handler(this, current);
+                }
             }
 
             // Hanselman review #3: only apply the default 35s timeout when the caller

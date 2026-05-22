@@ -323,6 +323,68 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureNodeConnectedAsync_StaleSnapshotAfterPrevPairingRequired_DoesNotFastFailNewAttempt()
+    {
+        // Regression for manual test 2026-05-22 (Round-5 ship-readiness check):
+        // After the V2 onboarding engine's first PairAsync attempt got
+        // PairingRequired and the engine approved via WSL CLI, the retry
+        // attempt observed the STALE PairingRequired snapshot via the
+        // explicit Handler invocation in EnsureNodeConnectedAsync. With
+        // suppression still active, the fast-fail tripped BEFORE the new
+        // connect's hello-ok arrived — surfacing "Pairing failed" even
+        // though the actual pairing succeeded ~25ms later.
+        //
+        // The fix: only act synchronously on truly terminal states
+        // (Connected+Paired, PairingRejected, Error). PairingRequired must
+        // come from a fresh StateChanged event tied to the new attempt.
+        SetupGateway("gw-1", "ws://localhost:18789");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+
+        // Retry-attempt connector synchronously walks to Connected+Paired.
+        var node = new ScriptedNodeConnector
+        {
+            ConnectAction = (s, _) =>
+            {
+                s.SimulateStatus(ConnectionStatus.Connected);
+                s.SimulatePairing(PairingStatus.Paired);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node,
+            shouldStartNodeConnection: (_, _) => false);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        // Acquire suppression to mimic the onboarding-window-open state.
+        using var suppression = manager.AcquireNodeAutoApproveSuppression();
+
+        // Poison the state machine: simulate a PRIOR PairingRequired that
+        // never got cleared (the real scenario: first attempt got
+        // PAIRING_REQUIRED, the gateway closed the WebSocket, state machine
+        // still shows NodeState=PairingRequired). Drive Connecting → Pending
+        // through the connector + wait a short tick for the async-void
+        // OnNodePairingStatusChanged to propagate.
+        node.SimulateStatus(ConnectionStatus.Connecting);
+        node.SimulatePairing(PairingStatus.Pending, requestId: "stale-request-id");
+        for (var i = 0; i < 50 && manager.CurrentSnapshot.NodeState != RoleConnectionState.PairingRequired; i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Equal(RoleConnectionState.PairingRequired, manager.CurrentSnapshot.NodeState);
+
+        // The retry attempt: must NOT trip the synchronous fast-fail on the
+        // stale PairingRequired state. The new connect's terminal state
+        // (Connected+Paired) should drive the result instead.
+        await manager.EnsureNodeConnectedAsync();
+
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(PairingStatus.Paired, manager.CurrentSnapshot.NodePairingStatus);
+    }
+
+    [Fact]
     public async Task EnsureNodeConnectedAsync_HappyPath_ReturnsWhenPaired()
     {
         SetupGateway("gw-1", "wss://test");
