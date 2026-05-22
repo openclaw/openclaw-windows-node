@@ -36,6 +36,33 @@ public sealed record PipelineResult(PipelineOutcome Outcome, string? FailedStepI
 
 public sealed record StepProgressEvent(string StepId, string DisplayName, StepOutcome? Outcome, TimeSpan? Elapsed);
 
+public static class SetupStepFactory
+{
+    public static List<SetupStep> BuildDefaultSteps()
+    {
+        return
+        [
+            new CleanupStaleDistroStep(),
+            new CleanupStaleGatewayStep(),
+            new PreflightOsStep(),
+            new PreflightWslStep(),
+            new PreflightPortStep(),
+            new CreateWslInstanceStep(),
+            new ConfigureWslInstanceStep(),
+            new InstallCliStep(),
+            new ConfigureGatewayStep(),
+            new InstallGatewayServiceStep(),
+            new StartGatewayStep(),
+            new MintBootstrapTokenStep(),
+            new PairOperatorStep(),
+            new PairNodeStep(),
+            new VerifyEndToEndStep(),
+            new RunGatewayWizardStep(),
+            new StartKeepaliveStep(),
+        ];
+    }
+}
+
 // ─── Setup Pipeline ───
 
 public sealed class SetupPipeline

@@ -25,12 +25,16 @@ public sealed partial class CompletePage : Page
 
             if (args.Success)
             {
+                SuccessIcon.Visibility = Visibility.Visible;
+                FailureIcon.Visibility = Visibility.Collapsed;
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;
             }
             else
             {
+                SuccessIcon.Visibility = Visibility.Collapsed;
+                FailureIcon.Visibility = Visibility.Visible;
                 TitleText.Text = "Setup failed";
                 SubtitleText.Text = args.ErrorMessage ?? "An error occurred during setup";
                 NodeModeBanner.Visibility = Visibility.Collapsed;

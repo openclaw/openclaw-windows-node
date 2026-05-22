@@ -11,10 +11,19 @@
         <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="12"
                     HorizontalAlignment="Stretch">
 
-            <!-- Party popper -->
-            <Image Source="ms-appx:///Assets/Setup/PartyPopper.png"
+            <!-- Success/failure icon -->
+            <Image x:Name="SuccessIcon" Source="ms-appx:///Assets/Setup/PartyPopper.png"
                    Width="120" Height="120"
                    HorizontalAlignment="Center" Margin="0,0,0,8" />
+            <Border x:Name="FailureIcon" Width="96" Height="96"
+                    CornerRadius="48" HorizontalAlignment="Center"
+                    Margin="0,0,0,20" Visibility="Collapsed"
+                    Background="#3CFF4444">
+                <TextBlock Text="&#xE783;" FontFamily="Segoe Fluent Icons"
+                           FontSize="42" Foreground="#FF6B6B"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+            </Border>
 
             <!-- Title -->
             <TextBlock x:Name="TitleText" Text="All set!"

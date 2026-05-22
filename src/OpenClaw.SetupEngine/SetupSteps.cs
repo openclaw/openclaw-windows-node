@@ -1493,3 +1493,18 @@ public sealed class StartKeepaliveStep : SetupStep
         ctx.Logger.Info($"Wrote keepalive marker: {markerPath}");
     }
 }
+
+public sealed class RunGatewayWizardStep : SetupStep
+{
+    public override string Id => "run-wizard";
+    public override string DisplayName => "Run gateway wizard";
+    public override bool CanRetry => false;
+
+    public override bool CanSkip(SetupContext ctx) => ctx.Config.SkipWizard;
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var runner = new SetupWizardRunner(ctx);
+        return runner.RunAsync(ct);
+    }
+}

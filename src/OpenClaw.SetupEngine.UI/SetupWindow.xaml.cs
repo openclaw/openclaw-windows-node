@@ -50,12 +50,14 @@ public sealed partial class SetupWindow : Window
 
         _config = SetupConfig.LoadFromFile(configPath);
         _config = SetupConfig.FromEnvironment(_config);
+        _config.Headless = false;
 
         RootFrame.Navigate(typeof(WelcomePage), _config);
     }
 
     public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
+    public void NavigateToWizard() => RootFrame.Navigate(typeof(WizardPage), _config);
     public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));

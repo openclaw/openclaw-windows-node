@@ -13,6 +13,7 @@ public static class Program
         var headless = HasFlag(args, "--headless");
         var rollback = HasFlag(args, "--rollback-on-failure");
         var dryRun = HasFlag(args, "--dry-run");
+        var wizardOnly = HasFlag(args, "--wizard-only");
 
         // Load config
         SetupConfig config;
@@ -78,7 +79,9 @@ public static class Program
         var ctx = new SetupContext(config, logger, journal, commands, cts.Token);
 
         // Build step pipeline
-        var steps = BuildSteps(config);
+        var steps = wizardOnly
+            ? [new RunGatewayWizardStep()]
+            : BuildSteps(config);
         var pipeline = new SetupPipeline(steps);
 
         pipeline.StepProgress += (_, e) =>
@@ -115,37 +118,7 @@ public static class Program
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
-    {
-        var steps = new List<SetupStep>();
-
-        // Cleanup (always first if enabled)
-        steps.Add(new CleanupStaleDistroStep());
-        steps.Add(new CleanupStaleGatewayStep());
-
-        // Preflight
-        steps.Add(new PreflightOsStep());
-        steps.Add(new PreflightWslStep());
-        steps.Add(new PreflightPortStep());
-
-        // WSL
-        steps.Add(new CreateWslInstanceStep());
-        steps.Add(new ConfigureWslInstanceStep());
-
-        // Gateway
-        steps.Add(new InstallCliStep());
-        steps.Add(new ConfigureGatewayStep());
-        steps.Add(new InstallGatewayServiceStep());
-        steps.Add(new StartGatewayStep());
-
-        // Pairing
-        steps.Add(new MintBootstrapTokenStep());
-        steps.Add(new PairOperatorStep());
-        steps.Add(new PairNodeStep());
-        steps.Add(new VerifyEndToEndStep());
-        steps.Add(new StartKeepaliveStep());
-
-        return steps;
-    }
+        => SetupStepFactory.BuildDefaultSteps();
 
     private static string? GetArg(string[] args, string name)
     {

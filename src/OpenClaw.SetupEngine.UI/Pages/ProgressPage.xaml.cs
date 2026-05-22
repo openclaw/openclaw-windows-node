@@ -28,7 +28,8 @@ public sealed partial class ProgressPage : Page
         ("install-cli", "Installing OpenClaw", ["install-cli"]),
         ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
         ("start", "Starting gateway", ["start-gateway", "mint-token"]),
-        ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e", "start-keepalive"]),
+        ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),
+        ("finish", "Finishing setup", ["start-keepalive"]),
     ];
 
     public ProgressPage()
@@ -87,7 +88,14 @@ public sealed partial class ProgressPage : Page
 
         var success = result.Outcome == PipelineOutcome.Success;
         if (success)
-            App.MainWindow?.NavigateToPermissions();
+        {
+            if (!config.SkipWizard)
+                App.MainWindow?.NavigateToWizard();
+            else if (config.SkipPermissions)
+                App.MainWindow?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
+            else
+                App.MainWindow?.NavigateToPermissions();
+        }
         else
         {
             var errorMsg = result.FailedStepId != null
@@ -177,27 +185,9 @@ public sealed partial class ProgressPage : Page
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
-    {
-        return
-        [
-            new CleanupStaleDistroStep(),
-            new CleanupStaleGatewayStep(),
-            new PreflightOsStep(),
-            new PreflightWslStep(),
-            new PreflightPortStep(),
-            new CreateWslInstanceStep(),
-            new ConfigureWslInstanceStep(),
-            new InstallCliStep(),
-            new ConfigureGatewayStep(),
-            new InstallGatewayServiceStep(),
-            new StartGatewayStep(),
-            new MintBootstrapTokenStep(),
-            new PairOperatorStep(),
-            new PairNodeStep(),
-            new VerifyEndToEndStep(),
-            new StartKeepaliveStep(),
-        ];
-    }
+        => SetupStepFactory.BuildDefaultSteps()
+            .Where(step => step is not RunGatewayWizardStep)
+            .ToList();
 }
 
 // ─── Step Row UI Element ───

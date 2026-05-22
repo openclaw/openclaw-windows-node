@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.WizardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="48,32,48,32">
+        <StackPanel Grid.Row="0" Spacing="6" HorizontalAlignment="Center">
+            <TextBlock Text="🦞" FontSize="42" HorizontalAlignment="Center" />
+            <TextBlock Text="Gateway setup" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock x:Name="StatusText" Text="Connecting to gateway..." FontSize="13" Opacity="0.65" HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Margin="0,28,0,20" VerticalScrollBarVisibility="Auto">
+            <Border CornerRadius="10" Padding="24" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel Spacing="16">
+                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="TitleText" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="MessageText" FontSize="14" Opacity="0.82" TextWrapping="Wrap" />
+                    <RadioButtons x:Name="SelectOptions" Visibility="Collapsed" MaxColumns="1" />
+                    <StackPanel x:Name="MultiOptions" Visibility="Collapsed" Spacing="8" />
+                    <TextBox x:Name="TextInput" Visibility="Collapsed" PlaceholderText="Enter value" />
+                    <PasswordBox x:Name="SecretInput" Visibility="Collapsed" PlaceholderText="Enter value" />
+                    <TextBlock x:Name="ErrorText" Visibility="Collapsed" Foreground="#FF6B6B" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="12">
+            <Button x:Name="SecondaryButton" Grid.Column="0" Content="Skip" Height="44"
+                    Click="Secondary_Click" IsEnabled="False" />
+            <Button x:Name="PrimaryButton" Grid.Column="1" Content="Continue" Height="44"
+                    Click="Primary_Click" IsEnabled="False">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
+                </Button.Resources>
+            </Button>
+        </Grid>
+    </Grid>
+</Page>

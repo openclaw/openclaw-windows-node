@@ -14,8 +14,24 @@
   "CleanBeforeRun": true,
   // Skip Windows permission elevation checks
   "SkipPermissions": true,
-  // Skip interactive gateway wizard (model providers, etc.)
-  "SkipWizard": true,
+  // Run the gateway wizard. Missing required answers produce a template next to the setup log.
+  "SkipWizard": false,
+  // Answers for the gateway wizard when SkipWizard is false. Keys use stable
+  // normalized step titles/messages; select values must match gateway option values.
+  "WizardAnswers": {
+    "openclaw-setup": "true",
+    "security-disclaimer": "true",
+    "i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue": "true",
+    "setup-mode": "quickstart",
+    "existing-config-detected": "true",
+    "config-handling": "keep",
+    "quickstart": "true",
+    "model-auth-provider": "skip",
+    "default-model": "__keep__",
+    "select-channel-quickstart": "__skip__",
+    "search-provider": "__skip__",
+    "configure-skills-now-recommended": "false"
+  },
   // Log verbosity: "trace", "debug", "info", "warn", "error"
   "LogLevel": "trace",
   // Override log file path (null = %APPDATA%\OpenClawTray\Logs\Setup\)
