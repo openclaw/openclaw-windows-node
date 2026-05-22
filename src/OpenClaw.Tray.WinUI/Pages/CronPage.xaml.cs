@@ -81,7 +81,7 @@ public sealed partial class CronPage : Page
     }
 
     private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection");
+        => ((IAppCommands)CurrentApp).Navigate("connection", "cron");
 
     private void OnRefreshClick(object sender, RoutedEventArgs e)
     {

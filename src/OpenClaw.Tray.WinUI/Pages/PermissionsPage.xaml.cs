@@ -363,7 +363,7 @@ public sealed partial class PermissionsPage : Page
 
     private void OnSttMoreSettingsClick(object sender, RoutedEventArgs e)
     {
-        ((IAppCommands)CurrentApp).Navigate("voice");
+        ((IAppCommands)CurrentApp).Navigate("voice", "permissions");
     }
 
     // ── Text-to-Speech card ──────────────────────────────────────────
