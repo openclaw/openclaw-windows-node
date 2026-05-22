@@ -1507,7 +1507,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Tous les agents</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Real-time stream of agent activity — tool calls, responses, errors, and lifecycle events.</value>
+    <value>Flux en temps réel de l'activité des agents — appels d'outils, réponses, erreurs et événements de cycle de vie.</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>Tous les agents</value>

@@ -1508,7 +1508,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Alle agents</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Real-time stream of agent activity — tool calls, responses, errors, and lifecycle events.</value>
+    <value>Realtime stroom van agentactiviteit — toolaanroepen, antwoorden, fouten en levenscyclusgebeurtenissen.</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>Alle agents</value>

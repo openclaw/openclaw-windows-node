@@ -1776,21 +1776,6 @@ public class AgentEventInfo
         }
     }
 
-    /// <summary>True when expanding the row reveals content beyond <see cref="SummaryLine"/>.</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public bool CanExpand
-    {
-        get
-        {
-            if (IsAssistantStream)
-            {
-                var full = FullAssistantText;
-                return !string.IsNullOrEmpty(full) && full != SummaryLine;
-            }
-            return ShowDataJson;
-        }
-    }
-
     // UI-only state for expand/collapse (not serialized)
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsExpanded { get; set; }

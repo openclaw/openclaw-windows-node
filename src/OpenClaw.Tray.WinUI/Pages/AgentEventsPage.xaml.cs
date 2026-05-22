@@ -23,6 +23,17 @@ public sealed partial class AgentEventsPage : Page
 
     public int EventCount => _allEvents.Count;
 
+    // UI-only policy: true when expanding the row reveals content beyond the summary line.
+    private static bool CanExpand(AgentEventInfo evt)
+    {
+        if (evt.IsAssistantStream)
+        {
+            var full = evt.FullAssistantText;
+            return !string.IsNullOrEmpty(full) && full != evt.SummaryLine;
+        }
+        return evt.ShowDataJson;
+    }
+
     /// <summary>Filter events to a specific agent by session key prefix.</summary>
     public void SetAgentFilter(string? agentId)
     {
@@ -182,7 +193,7 @@ public sealed partial class AgentEventsPage : Page
 
             if (headerGrid.Children.Count > 2 && headerGrid.Children[2] is FontIcon chevron)
             {
-                chevron.Visibility = evt.CanExpand ? Visibility.Visible : Visibility.Collapsed;
+                chevron.Visibility = CanExpand(evt) ? Visibility.Visible : Visibility.Collapsed;
                 chevron.Glyph = evt.IsExpanded ? "\uE70E" : "\uE70D";
             }
         }
@@ -212,7 +223,7 @@ public sealed partial class AgentEventsPage : Page
     private void EventsList_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not AgentEventInfo evt) return;
-        if (!evt.CanExpand) return;
+        if (!CanExpand(evt)) return;
         evt.IsExpanded = !evt.IsExpanded;
 
         if (sender is ListView listView)

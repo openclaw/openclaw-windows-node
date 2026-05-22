@@ -1507,7 +1507,7 @@
     <value>所有代理</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Real-time stream of agent activity — tool calls, responses, errors, and lifecycle events.</value>
+    <value>代理活动的实时流——工具调用、响应、错误和生命周期事件。</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>所有代理</value>
