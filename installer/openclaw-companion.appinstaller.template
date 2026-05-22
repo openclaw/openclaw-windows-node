@@ -9,9 +9,10 @@
     {{PUBLISHER}}            - quoted publisher subject from the MSIX manifest
                                e.g. "CN=Scott Hanselman, O=Scott Hanselman, …"
     {{PROCESSOR_ARCHITECTURE}} - x64 or arm64; must match the MSIX package
+    {{IDENTITY_NAME}}        - MSIX package identity, e.g. OpenClaw.Companion
     {{MSIX_URI}}             - absolute URL of the matching architecture .msix
     {{APPINSTALLER_URI}}     - absolute URL of THIS rendered .appinstaller file
-                               on the stable channel (e.g. GitHub Pages)
+                               on the stable channel
 
   See docs/RELEASING.md for the AppInstaller update flow and hosting caveats.
 -->
@@ -21,7 +22,7 @@
   Uri="{{APPINSTALLER_URI}}">
 
   <MainPackage
-    Name="OpenClaw.Companion"
+    Name="{{IDENTITY_NAME}}"
     Publisher="{{PUBLISHER}}"
     Version="{{VERSION}}"
     ProcessorArchitecture="{{PROCESSOR_ARCHITECTURE}}"

@@ -26,16 +26,16 @@ internal static class AppInstallerUpdateService
     private static readonly HttpClient SharedHttpClient = new();
 
     /// <summary>
-    /// Stable x64 URL of the AppInstaller XML on GitHub Pages.
+    /// Stable x64 URL of the AppInstaller XML in the Windows repo.
     /// </summary>
     public const string LatestX64AppInstallerUri =
-        "https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller";
+        "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller";
 
     /// <summary>
-    /// Stable ARM64 URL of the AppInstaller XML on GitHub Pages.
+    /// Stable ARM64 URL of the AppInstaller XML in the Windows repo.
     /// </summary>
     public const string LatestArm64AppInstallerUri =
-        "https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller";
+        "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller";
 
     public static string LatestAppInstallerUri =>
         RuntimeInformation.ProcessArchitecture == Architecture.Arm64
@@ -186,9 +186,12 @@ internal static class AppInstallerUpdateService
     internal static Version ParseAppInstallerVersion(string appInstallerXml)
     {
         var doc = XDocument.Parse(appInstallerXml);
-        var versionText = (string?)doc.Root?.Attribute("Version");
+        var mainPackage = doc.Root is null
+            ? null
+            : doc.Root.Elements().SingleOrDefault(element => element.Name.LocalName == "MainPackage");
+        var versionText = (string?)mainPackage?.Attribute("Version");
         if (!Version.TryParse(versionText, out var version) || version.Revision < 0)
-            throw new FormatException("AppInstaller Version must be a four-part version.");
+            throw new FormatException("AppInstaller MainPackage Version must be a four-part version.");
 
         return version;
     }

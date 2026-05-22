@@ -326,10 +326,14 @@ jobs:
         $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
         $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
         $msixUri = "$base/OpenClawCompanion-$assetVersion-${{ matrix.rid }}.msix"
-        $appInstallerUri = "https://openclaw.github.io/openclaw-windows-node/openclaw-$arch.appinstaller"
+        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
+        $identityName = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
+        $feedPrefix = if ($isAlpha) { "openclaw-alpha" } else { "openclaw" }
+        $appInstallerUri = "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-$arch.appinstaller"
         ./scripts/render-appinstaller.ps1 `
           -Version $version `
           -Publisher $publisher `
+          -IdentityName $identityName `
           -ProcessorArchitecture $arch `
           -MsixUri $msixUri `
           -AppInstallerUri $appInstallerUri `
@@ -408,6 +412,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: write
 
     steps:
     - uses: actions/checkout@v6
@@ -517,25 +522,30 @@ jobs:
         $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
         $tag = "${{ github.ref_name }}"
         $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
+        $identityName = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
+        $feedPrefix = if ($isAlpha) { "openclaw-alpha" } else { "openclaw" }
         $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
         $x64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
         $arm64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
         ./scripts/render-appinstaller.ps1 `
           -Version $version `
           -Publisher $publisher `
+          -IdentityName $identityName `
           -ProcessorArchitecture x64 `
           -MsixUri $x64Uri `
-          -AppInstallerUri "https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller" `
+          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-x64.appinstaller" `
           -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller"
         ./scripts/render-appinstaller.ps1 `
           -Version $version `
           -Publisher $publisher `
+          -IdentityName $identityName `
           -ProcessorArchitecture arm64 `
           -MsixUri $arm64Uri `
-          -AppInstallerUri "https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller" `
+          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-arm64.appinstaller" `
           -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller"
-        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller" "openclaw-x64.appinstaller"
-        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller" "openclaw-arm64.appinstaller"
+        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller" "$feedPrefix-x64.appinstaller"
+        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller" "$feedPrefix-arm64.appinstaller"
 
     - name: Create Release
       uses: softprops/action-gh-release@v3
@@ -546,8 +556,7 @@ jobs:
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller
-          openclaw-x64.appinstaller
-          openclaw-arm64.appinstaller
+          openclaw*.appinstaller
         prerelease: ${{ contains(github.ref_name, '-') }}
         make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         body: |
@@ -556,8 +565,8 @@ jobs:
           ### Downloads
           - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` — Intel / AMD 64-bit, with embedded AppInstaller metadata
           - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` — Windows on ARM, with embedded AppInstaller metadata
-          - **AppInstaller x64**: `openclaw-x64.appinstaller` — stable hosted update source for Intel / AMD 64-bit
-          - **AppInstaller ARM64**: `openclaw-arm64.appinstaller` — stable hosted update source for Windows on ARM
+          - **AppInstaller x64**: `${{ contains(github.ref_name, '-') && 'openclaw-alpha-x64.appinstaller' || 'openclaw-x64.appinstaller' }}` — architecture update source for Intel / AMD 64-bit
+          - **AppInstaller ARM64**: `${{ contains(github.ref_name, '-') && 'openclaw-alpha-arm64.appinstaller' || 'openclaw-arm64.appinstaller' }}` — architecture update source for Windows on ARM
           - **Tag-pinned AppInstaller x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller`
           - **Tag-pinned AppInstaller ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller`
 
@@ -578,3 +587,14 @@ jobs:
           1. Install the signed MSIX for your architecture. On supported Windows builds, the package includes embedded AppInstaller metadata for automatic background updates.
           2. Launch from Start Menu or system tray.
           3. Right-click tray icon → Settings to configure.
+
+    - name: Request AppInstaller feed PR
+      if: success() && (steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success')
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh workflow run appinstaller-feed-pr.yml `
+          --repo "${{ github.repository }}" `
+          --ref master `
+          -f tag="${{ github.ref_name }}"

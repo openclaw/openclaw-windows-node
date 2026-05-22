@@ -616,16 +616,18 @@ When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
 
 2. **Render AppInstaller:**
    - `scripts/render-appinstaller.ps1` produces architecture-specific AppInstaller files:
-     `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`,
-     `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`,
-     `openclaw-x64.appinstaller`, and `openclaw-arm64.appinstaller`
-   - See [`docs/RELEASING.md`](./docs/RELEASING.md) for the AppInstaller update flow
+      `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`,
+      `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`,
+      `openclaw-x64.appinstaller`, and `openclaw-arm64.appinstaller`
+   - After release creation, a follow-up workflow opens a maintainer-reviewed PR
+     to update the raw GitHub stable feed files under `installer\appinstaller\`.
+     See [`docs/RELEASING.md`](./docs/RELEASING.md) for the AppInstaller update flow.
 
 3. **GitHub Release:**
    - Automatic release created with tag name
    - Attached assets:
      - `OpenClawCompanion-X.Y.Z-win-x64.msix` and `-win-arm64.msix`
-     - `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` (stable update sources)
+      - `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` (stable-name feed copies)
      - `OpenClawCompanion-X.Y.Z-win-x64.appinstaller` and `-win-arm64.appinstaller` (tag-pinned)
    - Release notes auto-generated from commits
 

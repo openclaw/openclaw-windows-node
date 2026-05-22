@@ -13,7 +13,7 @@ namespace OpenClaw.Tray.Tests;
 /// notice. The tests here pin:
 ///
 /// 1. The template is well-formed XML against the AppInstaller schema URI.
-/// 2. The five placeholder tokens are present (so the CI render script's
+    /// 2. The placeholder tokens are present (so the CI render script's
 ///    substitution table is exhaustive).
 /// 3. The UpdateSettings block stays quiet: AutomaticBackgroundTask only,
 ///    no OnLaunch UI and no downgrade rollback.
@@ -62,12 +62,13 @@ public sealed class AppInstallerTemplateAssertionTests
     [Theory]
     [InlineData("{{VERSION}}")]
     [InlineData("{{PUBLISHER}}")]
+    [InlineData("{{IDENTITY_NAME}}")]
     [InlineData("{{PROCESSOR_ARCHITECTURE}}")]
     [InlineData("{{MSIX_URI}}")]
     [InlineData("{{APPINSTALLER_URI}}")]
     public void Template_DeclaresExpectedPlaceholder(string token)
     {
-        // scripts/render-appinstaller.ps1 substitutes exactly these five tokens.
+        // scripts/render-appinstaller.ps1 substitutes exactly these tokens.
         // If you add a new placeholder here, also add a -replace in the script
         // AND a CI step parameter. If you remove one, the renderer silently
         // ships the literal {{TOKEN}} string to AppInstaller which fails to parse.
@@ -95,7 +96,7 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Empty(doc.Descendants(ns + "MainBundle"));
 
         var mainPackage = doc.Descendants(ns + "MainPackage").Single();
-        Assert.Equal("OpenClaw.Companion", (string?)mainPackage.Attribute("Name"));
+        Assert.Equal("{{IDENTITY_NAME}}", (string?)mainPackage.Attribute("Name"));
         Assert.Equal("{{PROCESSOR_ARCHITECTURE}}", (string?)mainPackage.Attribute("ProcessorArchitecture"));
         Assert.Equal("{{MSIX_URI}}", (string?)mainPackage.Attribute("Uri"));
     }
@@ -107,12 +108,12 @@ public sealed class AppInstallerTemplateAssertionTests
             GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Services", "AppInstallerUpdateService.cs"));
 
-        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller", service);
-        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller", service);
+        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller", service);
+        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller", service);
 
         var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
-        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller", ci);
-        Assert.Contains("https://openclaw.github.io/openclaw-windows-node/openclaw-arm64.appinstaller", ci);
+        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-x64.appinstaller", ci);
+        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-arm64.appinstaller", ci);
     }
 
     [Fact]
@@ -172,6 +173,8 @@ public sealed class AppInstallerTemplateAssertionTests
 
         Assert.Contains("CheckForUpdateAsync", service);
         Assert.Contains("ParseAppInstallerVersion", service);
+        Assert.Contains("element.Name.LocalName == \"MainPackage\"", service);
+        Assert.Contains("AppInstaller MainPackage Version must be a four-part version", service);
         Assert.Contains("ClassifyPublishedVersion", service);
         Assert.Contains("UpdateAvailable", service);
         Assert.Contains("AppInstallerUpdateService.CheckForUpdateAsync()", app);
@@ -229,6 +232,9 @@ public sealed class AppInstallerTemplateAssertionTests
 
         Assert.Contains("application/appinstaller", script);
         Assert.Contains("application/msix", script);
+        Assert.Contains("AppInstallerPath", script);
+        Assert.Contains("AllowGitHubContentTypes", script);
+        Assert.Contains("application/octet-stream", script);
         Assert.Contains("Scheme -ne 'https'", script);
         Assert.Contains("Content-Length", script);
         Assert.Contains("Range = 'bytes=0-0'", script);
@@ -244,5 +250,27 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.DoesNotContain("$listener = [System.Net.HttpListener]::new()", script);
         Assert.Contains("Invoke-WebRequest \"$baseUri/openclaw.appinstaller\"", script);
         Assert.Contains("$listenerJob.State -eq 'Failed'", script);
+    }
+
+    [Fact]
+    public void FeedUpdateWorkflow_OpensMaintainerPrAndBlocksPrereleaseFeeds()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(), ".github", "workflows", "appinstaller-feed-pr.yml"));
+        var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+
+        Assert.Contains("appinstaller-feed-pr.yml", ci);
+        Assert.Contains("actions: write", ci);
+        Assert.Contains("workflow_dispatch", workflow);
+        Assert.Contains("pull-requests: write", workflow);
+        Assert.Contains("contents: write", workflow);
+        Assert.Contains("Pre-release AppInstaller feed updates are blocked", workflow);
+        Assert.Contains("installer\\appinstaller", workflow);
+        Assert.Contains("openclaw-x64.appinstaller", workflow);
+        Assert.Contains("openclaw-arm64.appinstaller", workflow);
+        Assert.Contains("gh pr create", workflow);
+        Assert.Contains("--base master", workflow);
+        Assert.Contains("validate-appinstaller-hosting.ps1", workflow);
+        Assert.Contains("-AllowGitHubContentTypes", workflow);
     }
 }

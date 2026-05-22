@@ -22,12 +22,17 @@
 .PARAMETER ProcessorArchitecture
   MSIX processor architecture for this AppInstaller file. Must be x64 or arm64.
 
+.PARAMETER IdentityName
+  MSIX package identity for the MainPackage element. Stable releases use
+  OpenClaw.Companion. Channel-specific releases must pass the patched package
+  identity so AppInstaller never crosses channels.
+
 .PARAMETER MsixUri
   Absolute https:// URL of the matching architecture .msix release asset.
 
 .PARAMETER AppInstallerUri
   Absolute https:// URL of THIS rendered .appinstaller file on the stable
-  channel (e.g. https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller).
+  channel (e.g. https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller).
   Embedded inside the AppInstaller so Windows AppInstaller knows where to poll.
 
 .PARAMETER OutputPath
@@ -41,9 +46,10 @@
   ./scripts/render-appinstaller.ps1 `
     -Version 0.5.3.0 `
     -Publisher 'CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US' `
+    -IdentityName OpenClaw.Companion `
     -ProcessorArchitecture x64 `
     -MsixUri https://github.com/.../v0.5.3/OpenClawCompanion-0.5.3-win-x64.msix `
-    -AppInstallerUri https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller `
+    -AppInstallerUri https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller `
     -OutputPath OpenClawCompanion-0.5.3-win-x64.appinstaller
 #>
 
@@ -51,6 +57,7 @@
 param(
   [Parameter(Mandatory)] [string] $Version,
   [Parameter(Mandatory)] [string] $Publisher,
+  [string] $IdentityName = 'OpenClaw.Companion',
   [Parameter(Mandatory)] [ValidateSet('x64', 'arm64')] [string] $ProcessorArchitecture,
   [Parameter(Mandatory)] [string] $MsixUri,
   [Parameter(Mandatory)] [string] $AppInstallerUri,
@@ -71,6 +78,10 @@ foreach ($p in $parts) {
   if (-not [int]::TryParse($p, [ref]([int]0))) {
     throw "Version segment '$p' is not an integer."
   }
+}
+
+if ([string]::IsNullOrWhiteSpace($IdentityName)) {
+  throw "IdentityName must not be empty."
 }
 
 # Validate URIs are absolute https:// for production. Local smoke tests may use
@@ -104,6 +115,7 @@ $template = Get-Content $templatePath -Raw
 $rendered = $template
 $rendered = $rendered.Replace('{{VERSION}}',                $Version)
 $rendered = $rendered.Replace('{{PUBLISHER}}',              $Publisher)
+$rendered = $rendered.Replace('{{IDENTITY_NAME}}',          $IdentityName)
 $rendered = $rendered.Replace('{{PROCESSOR_ARCHITECTURE}}', $ProcessorArchitecture)
 $rendered = $rendered.Replace('{{MSIX_URI}}',               $MsixUri)
 $rendered = $rendered.Replace('{{APPINSTALLER_URI}}',       $AppInstallerUri)
@@ -124,6 +136,12 @@ if ($null -eq $mainPackage) {
 if ($mainPackage.Publisher -ne $Publisher) {
   throw "Rendered XML has Publisher '$($mainPackage.Publisher)' but expected '$Publisher'."
 }
+if ($mainPackage.Name -ne $IdentityName) {
+  throw "Rendered XML has MainPackage Name '$($mainPackage.Name)' but expected '$IdentityName'."
+}
+if ($mainPackage.Version -ne $Version) {
+  throw "Rendered XML has MainPackage Version '$($mainPackage.Version)' but expected '$Version'."
+}
 if ($mainPackage.ProcessorArchitecture -ne $ProcessorArchitecture) {
   throw "Rendered XML has ProcessorArchitecture '$($mainPackage.ProcessorArchitecture)' but expected '$ProcessorArchitecture'."
 }
@@ -140,6 +158,7 @@ Set-Content -Path $OutputPath -Value $rendered -Encoding UTF8
 Write-Host "Rendered AppInstaller: $OutputPath"
 Write-Host "  Version:         $Version"
 Write-Host "  Publisher:       $Publisher"
+Write-Host "  Identity:        $IdentityName"
 Write-Host "  Architecture:    $ProcessorArchitecture"
 Write-Host "  MSIX URI:        $MsixUri"
 Write-Host "  AppInstaller URI: $AppInstallerUri"

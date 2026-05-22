@@ -57,13 +57,13 @@ quiet updates. The supported pattern is a signed MSIX with embedded
 `.appinstaller` metadata plus a hosted `.appinstaller` XML file that Windows
 AppInstaller polls. The CI release job renders one file per architecture from
 `installer/openclaw-companion.appinstaller.template` via
-`scripts/render-appinstaller.ps1` and attaches both tag-pinned and stable
-filenames to the GitHub release:
+`scripts/render-appinstaller.ps1` and attaches tag-pinned AppInstaller files plus
+stable-name copies to the GitHub release:
 
 - `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`
 - `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`
-- `openclaw-x64.appinstaller`
-- `openclaw-arm64.appinstaller`
+- stable-name copy `openclaw-x64.appinstaller`
+- stable-name copy `openclaw-arm64.appinstaller`
 
 The `.appinstaller` policy intentionally uses only:
 
@@ -99,16 +99,19 @@ fixed by shipping a higher roll-forward version.
   matching MSIX must all match exactly.
 - The rendered `<MainPackage ProcessorArchitecture=…>` must match the MSIX URL:
   x64 files point at x64 MSIX assets and arm64 files point at ARM64 assets.
-- The hosted stable URLs must serve correct headers before promotion:
-  `.appinstaller` as `application/appinstaller`, `.msix` as `application/msix`,
-  `Content-Length`, and MSIX range requests.
-- Validate those headers before promotion:
-  `.\scripts\validate-appinstaller-hosting.ps1 -AppInstallerUri https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller`
-  and repeat for `openclaw-arm64.appinstaller`.
-- Publishing `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` to
-  GitHub Pages is **a separate step** from attaching them to the release. Until
-  that's automated, the release operator copies the files from the GitHub
-  release into the `gh-pages` branch by hand after validation.
+- The embedded stable feed URLs currently point at raw GitHub files in this repo:
+  `installer\appinstaller\openclaw-x64.appinstaller` and
+  `installer\appinstaller\openclaw-arm64.appinstaller`.
+- Raw GitHub mirrors the Mac companion app's Sparkle appcast pattern, but it
+  serves repo files with GitHub-controlled headers. Windows App Installer must
+  still be proven with red/blue E2E validation before this endpoint is treated as
+  durable.
+- After the release is created, CI dispatches
+  `.github\workflows\appinstaller-feed-pr.yml`. That workflow renders the stable
+  feed files from the signed release assets, validates them, and opens a PR.
+  Merging that PR advances the stable update source.
+- Pre-release/alpha feed updates are intentionally blocked until maintainers
+  choose a separate channel strategy.
 
 ## If you need to retag
 

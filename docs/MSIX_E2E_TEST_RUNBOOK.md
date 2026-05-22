@@ -149,10 +149,11 @@ support recipe works.
 
 1. Install vN via the signed MSIX on Windows 11 24H2 and via the hosted
    architecture-specific `.appinstaller` on a downlevel Windows target.
-2. Publish vN+1 by tagging `vX.Y.Z+1` and re-uploading the rendered
-   `openclaw-x64.appinstaller` / `openclaw-arm64.appinstaller` files to GitHub
-   Pages (the release pipeline produces the files; the gh-pages publish is
-   currently manual — see RELEASING.md).
+2. Publish vN+1 by tagging `vX.Y.Z+1`. After the release assets are created,
+   the feed-update workflow opens a PR that updates
+   `installer\appinstaller\openclaw-x64.appinstaller` and
+   `installer\appinstaller\openclaw-arm64.appinstaller`. Merge that PR to advance
+   the raw GitHub stable feed.
 3. **Trigger 1 (AutomaticBackgroundTask):** Leave the tray running and give
    Windows enough time to poll the stable URL. **Assert** no App Installer UI
    appears during normal launch.
@@ -190,6 +191,6 @@ Record outcomes per scenario in the release tracking issue with:
 - Pass / Fail / Skip
 - Notes for any partial passes or unexpected dialogs
 
-Promote `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` to
-GitHub Pages only after scenarios 1, 2, 5, 6, 7, 8 (triggers 1 and 2), 9, and
-10 all pass on at least one VM.
+Promote the generated feed PR, or fall back to a static host/CDN if raw GitHub
+fails, only after scenarios 1, 2, 5, 6, 7, 8 (triggers 1 and 2), 9, and 10 all
+pass on at least one VM.

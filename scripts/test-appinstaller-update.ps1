@@ -7,7 +7,7 @@
 .DESCRIPTION
   The point of this script is to catch regressions in the .appinstaller
   XML and the PackageManager.AddPackageByAppInstallerFileAsync wiring
-  *without* needing a real GitHub release / GitHub Pages cycle. Run this
+  *without* needing a real GitHub release / stable feed PR cycle. Run this
   before a release tag goes out; if it fails, the same failure will happen
   to every user that installs from the stable architecture-specific AppInstaller URL.
 

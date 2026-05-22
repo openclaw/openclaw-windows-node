@@ -20,14 +20,14 @@ Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/rele
 |------|-------------|
 | `OpenClawCompanion-X.Y.Z-win-x64.msix` | Recommended for Intel / AMD 64-bit; includes embedded AppInstaller metadata on supported Windows builds |
 | `OpenClawCompanion-X.Y.Z-win-arm64.msix` | Recommended for ARM64 (Surface Pro X, Snapdragon laptops); includes embedded AppInstaller metadata on supported Windows builds |
-| `openclaw-x64.appinstaller` | Stable hosted update source / alternate install path for Intel / AMD 64-bit |
-| `openclaw-arm64.appinstaller` | Stable hosted update source / alternate install path for ARM64 |
+| `openclaw-x64.appinstaller` | Stable update source / alternate install path for Intel / AMD 64-bit |
+| `openclaw-arm64.appinstaller` | Stable update source / alternate install path for ARM64 |
 
 If you're unsure which architecture you need, most Intel/AMD PCs use x64 and Snapdragon/Surface-on-ARM devices use ARM64. A future MSIX bundle can collapse this to one download, but the current release uses architecture-specific packages.
 
 ### 2. Install the MSIX
 
-Double-click the signed MSIX. Windows AppInstaller opens, shows the publisher (Scott Hanselman, code-signed via Azure Trusted Signing), and offers to install. On supported Windows builds, the MSIX also seeds the stable hosted `.appinstaller` URL for background updates.
+Double-click the signed MSIX. Windows AppInstaller opens, shows the publisher (Scott Hanselman, code-signed via Azure Trusted Signing), and offers to install. On supported Windows builds, the MSIX also seeds the stable `.appinstaller` URL for background updates.
 
 The install runs without requiring administrator privileges.
 
