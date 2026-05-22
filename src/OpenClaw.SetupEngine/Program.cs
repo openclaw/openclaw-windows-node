@@ -38,7 +38,6 @@ public static class Program
             "OpenClawTray", "Logs", "Setup", $"setup-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
 
         Console.WriteLine($"Log file: {config.LogPath}");
-        Console.WriteLine($"Mode: {config.Mode}");
         Console.WriteLine($"Distro: {config.DistroName}");
         Console.WriteLine($"Gateway: {config.EffectiveGatewayUrl}");
         Console.WriteLine($"Headless: {config.Headless}");

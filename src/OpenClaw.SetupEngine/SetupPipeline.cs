@@ -54,7 +54,7 @@ public sealed class SetupPipeline
     {
         var ct = ctx.CancellationToken;
         ctx.Journal.RecordPipelineEvent("pipeline_started", $"steps={_steps.Count}");
-        ctx.Logger.Info($"Pipeline starting with {_steps.Count} steps", new { run_id = ctx.Logger.RunId, config_mode = ctx.Config.Mode });
+        ctx.Logger.Info($"Pipeline starting with {_steps.Count} steps", new { run_id = ctx.Logger.RunId });
 
         var pipelineSw = Stopwatch.StartNew();
 

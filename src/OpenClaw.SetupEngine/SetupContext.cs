@@ -7,7 +7,6 @@ namespace OpenClaw.SetupEngine;
 
 public sealed class SetupConfig
 {
-    public string Mode { get; set; } = "local-wsl";
     public string DistroName { get; set; } = "OpenClawGateway";
     public int GatewayPort { get; set; } = 18789;
     public string BaseDistro { get; set; } = "Ubuntu-24.04";

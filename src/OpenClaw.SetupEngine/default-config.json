@@ -1,7 +1,5 @@
 {
   // ─── Core Setup ───
-  // Mode: "local-wsl" (WSL2 gateway), future: "remote", "docker"
-  "Mode": "local-wsl",
   // WSL distro name to create (use distinct name to avoid conflicts)
   "DistroName": "OpenClawDev",
   // Gateway WebSocket port (tray connects here)
