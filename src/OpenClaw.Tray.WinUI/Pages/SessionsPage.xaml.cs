@@ -246,7 +246,8 @@ public sealed partial class SessionsPage : Page
             {
                 hub.PendingChatSessionKey = key;
             }
-            ((IAppCommands)CurrentApp).Navigate("chat", "sessions");
+            // No origin tag: opening chat should not surface a "Back to Sessions" link.
+            ((IAppCommands)CurrentApp).Navigate("chat");
         }
     }
 

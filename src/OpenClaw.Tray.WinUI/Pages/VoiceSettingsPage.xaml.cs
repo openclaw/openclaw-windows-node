@@ -5,6 +5,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Windows;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -62,7 +63,31 @@ public sealed partial class VoiceSettingsPage : Page
         // TextBlock's Text, never the Button's Content).
         PiperPreviewLabel.Text = L("VoiceSettingsPage_PiperPreviewButtonContent");
         PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewVoiceButtonContent");
+        RefreshBackOriginLink();
         LoadSettings();
+    }
+
+    private string? _backOriginTag;
+
+    private void RefreshBackOriginLink()
+    {
+        var hub = CurrentApp.ActiveHubWindow as HubWindow;
+        var origin = hub?.LastNavigationOrigin;
+        if (string.IsNullOrEmpty(origin))
+        {
+            _backOriginTag = null;
+            BackOriginLink.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _backOriginTag = origin;
+        BackOriginText.Text = NavOriginLabels.BackToLabel(origin);
+        BackOriginLink.Visibility = Visibility.Visible;
+    }
+
+    private void OnBackOriginClicked(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(_backOriginTag))
+            ((IAppCommands)CurrentApp).Navigate(_backOriginTag);
     }
 
     private void OnAppSpeakerMuteChanged(bool muted)

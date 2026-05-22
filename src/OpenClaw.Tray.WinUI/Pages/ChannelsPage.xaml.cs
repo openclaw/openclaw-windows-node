@@ -1346,7 +1346,7 @@ public sealed partial class ChannelsPage : Page
         {
             Content = "Open Config page",
         };
-        openConfigBtn.Click += (_, _) => ((IAppCommands)CurrentApp).Navigate("config");
+        openConfigBtn.Click += (_, _) => ((IAppCommands)CurrentApp).Navigate("config", "channels");
         actionRow.Children.Add(saveBtn);
         actionRow.Children.Add(openConfigBtn);
         stack.Children.Add(actionRow);
@@ -1946,7 +1946,7 @@ public sealed partial class ChannelsPage : Page
         };
         btn.Click += (_, _) =>
         {
-            ((IAppCommands)CurrentApp).Navigate("config");
+            ((IAppCommands)CurrentApp).Navigate("config", "channels");
         };
         stack.Children.Add(btn);
         return stack;

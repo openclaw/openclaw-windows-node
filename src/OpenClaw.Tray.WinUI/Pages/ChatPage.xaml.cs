@@ -266,7 +266,7 @@ public sealed partial class ChatPage : Page
             onStopSpeaking: () => app?.StopChatSpeaking(),
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
-            onSettingsClick: () => _hub?.NavigateTo("voice"),
+            onSettingsClick: () => _hub?.NavigateTo("voice", "chat"),
             onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted),
             initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false,
             suppressAutoDispose: true);
@@ -771,7 +771,7 @@ public sealed partial class ChatPage : Page
     private void NavigateToVoiceSettings()
     {
         if (_hub is not null)
-            _hub.NavigateTo("voice");
+            _hub.NavigateTo("voice", "chat");
         else
             (App.Current as App)?.ShowHub("voice");
     }
