@@ -2,7 +2,7 @@
 
 The colorful sidebar SVG files in `Assets/SidebarIcons/` are derived from the
 **Fluent UI System Icons** project by Microsoft, color variant
-(890 icons, also known as `fluent-color` in the Iconify ecosystem).
+(20 selected icons from the full `fluent-color` set in the Iconify ecosystem).
 
 The app/tray/window lobster icon (`Assets/openclaw.ico`, plus the
 `Square*` / `StoreLogo` / `LockScreenLogo` PNG family) is derived from the

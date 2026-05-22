@@ -22,7 +22,6 @@ using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -243,7 +242,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     // Windows (created on demand)
     private HubWindow? _hubWindow;
     private TrayMenuWindow? _trayMenuWindow;
-    private QuickSendDialog? _quickSendDialog;
     private ChatWindow? _chatWindow;
     private ConnectionStatusWindow? _connectionStatusWindow;
 
@@ -279,7 +277,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "OpenClawTray");
     private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
-    private static readonly string RunMarkerPath = Path.Combine(DataPath, "run.marker");
+    private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
     public App()
     {
@@ -297,8 +295,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         InitializeComponent();
         
-        CheckPreviousRun();
-        MarkRunStarted();
+        s_runMarker.Check();
+        s_runMarker.MarkStarted();
         
         // Hook up crash handlers
         this.UnhandledException += OnUnhandledException;
@@ -326,7 +324,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     
     private void OnProcessExit(object? sender, EventArgs e)
     {
-        MarkRunEnded();
+        s_runMarker.MarkEnded();
         try
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
@@ -359,192 +357,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
         }
         catch { /* Ignore logging failures */ }
-    }
-
-    // -----------------------------------------------------------------------
-    // CLI uninstall path
-    // Invoked when --uninstall is present in argv. Runs headlessly without
-    // creating the tray UI. Attaches to the parent console so stdout/stderr
-    // are visible when invoked from PowerShell or cmd.
-    // -----------------------------------------------------------------------
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AttachConsole(int dwProcessId);
-
-    private const int AttachParentProcess = -1;
-
-    private static async Task RunCliUninstallAsync(string[] args)
-    {
-        // Attach to parent console so output is visible when invoked from
-        // PowerShell or cmd.  Fails silently if no parent console exists.
-        AttachConsole(AttachParentProcess);
-
-        bool dryRun            = args.Contains("--dry-run",            StringComparer.OrdinalIgnoreCase);
-        bool confirmDestructive = args.Contains("--confirm-destructive", StringComparer.OrdinalIgnoreCase);
-
-        // Locate --json-output <path> argument
-        string? jsonOutputPath = null;
-        for (int i = 0; i < args.Length - 1; i++)
-        {
-            if (string.Equals(args[i], "--json-output", StringComparison.OrdinalIgnoreCase))
-            {
-                jsonOutputPath = args[i + 1];
-                break;
-            }
-        }
-
-        if (!confirmDestructive && !dryRun)
-        {
-            Console.Error.WriteLine(
-                "ERROR: --uninstall requires --confirm-destructive (or --dry-run).");
-            Environment.Exit(2);
-            return;
-        }
-
-        var settings = new SettingsManager();
-        var engine   = LocalGatewayUninstall.Build(settings, logger: new AppLogger());
-
-        LocalGatewayUninstallResult result;
-        try
-        {
-            result = await engine.RunAsync(new LocalGatewayUninstallOptions
-            {
-                DryRun             = dryRun,
-                ConfirmDestructive = confirmDestructive
-            });
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"ERROR: Uninstall engine threw: {ex.Message}");
-            Environment.Exit(1);
-            return;
-        }
-
-        // Human-readable summary (tokens already redacted inside engine steps)
-        Console.WriteLine("OpenClaw Local Gateway Uninstall");
-        Console.WriteLine($"DryRun:   {dryRun}");
-        Console.WriteLine($"Success:  {result.Success}");
-        Console.WriteLine($"Steps:    {result.Steps.Count} ({result.SkippedSteps.Count} skipped)");
-        Console.WriteLine($"Errors:   {result.Errors.Count}");
-        foreach (var e in result.Errors)
-            Console.Error.WriteLine($"  ERROR: {CliRedact(e)}");
-        Console.WriteLine("Postconditions:");
-        Console.WriteLine($"  WslDistroAbsent:    {result.Postconditions.WslDistroAbsent}");
-        Console.WriteLine($"  AutostartCleared:   {result.Postconditions.AutostartCleared}");
-        Console.WriteLine($"  SetupStateAbsent:   {result.Postconditions.SetupStateAbsent}");
-        Console.WriteLine($"  DeviceTokenCleared: {result.Postconditions.DeviceTokenCleared}");
-        Console.WriteLine($"  McpTokenPreserved:  {result.Postconditions.McpTokenPreserved}");
-        Console.WriteLine($"  KeepalivesAbsent:   {result.Postconditions.KeepalivesAbsent}");
-        Console.WriteLine($"  VhdDirAbsent:       {result.Postconditions.VhdDirAbsent}");
-        Console.WriteLine($"  LocalGatewayRecordsAbsent:      {result.Postconditions.LocalGatewayRecordsAbsent}");
-        Console.WriteLine($"  LocalGatewayIdentityDirsAbsent: {result.Postconditions.LocalGatewayIdentityDirsAbsent}");
-
-        // JSON output — redaction applied to step details and error strings
-        if (jsonOutputPath != null)
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(jsonOutputPath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-                var payload = new
-                {
-                    success = result.Success,
-                    dry_run = dryRun,
-                    steps   = result.Steps.Select(s => new
-                    {
-                        name   = s.Name,
-                        status = s.Status.ToString(),
-                        detail = CliRedact(s.Detail)
-                    }),
-                    errors       = result.Errors.Select(CliRedact),
-                    skipped_steps = result.SkippedSteps,
-                    postconditions = new
-                    {
-                        wsl_distro_absent     = result.Postconditions.WslDistroAbsent,
-                        autostart_cleared     = result.Postconditions.AutostartCleared,
-                        setup_state_absent    = result.Postconditions.SetupStateAbsent,
-                        device_token_cleared  = result.Postconditions.DeviceTokenCleared,
-                        mcp_token_preserved   = result.Postconditions.McpTokenPreserved,
-                        keepalives_absent     = result.Postconditions.KeepalivesAbsent,
-                        vhd_dir_absent        = result.Postconditions.VhdDirAbsent,
-                        local_gateway_records_absent = result.Postconditions.LocalGatewayRecordsAbsent,
-                        local_gateway_identity_dirs_absent = result.Postconditions.LocalGatewayIdentityDirsAbsent
-                    }
-                };
-
-                File.WriteAllText(jsonOutputPath, JsonSerializer.Serialize(
-                    payload, new JsonSerializerOptions { WriteIndented = true }));
-
-                Console.WriteLine($"JSON result: {jsonOutputPath}");
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine(
-                    $"WARNING: Failed to write JSON output to '{jsonOutputPath}': {ex.Message}");
-            }
-        }
-
-        Environment.Exit(result.Success ? 0 : 1);
-    }
-
-    /// <summary>
-    /// Redacts token/key material from a string before writing it to CLI
-    /// stdout or a JSON output file.  Mirrors the PowerShell Invoke-Redact
-    /// pattern in validate-wsl-gateway-uninstall.ps1.
-    /// </summary>
-    private static string? CliRedact(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return value;
-        // Redact JSON field values for known secret fields.
-        value = System.Text.RegularExpressions.Regex.Replace(
-            value,
-            @"(""(?i:deviceToken|device_token|token|bootstrapToken|bootstrap_token|PrivateKeyBase64|PublicKeyBase64)""\s*:\s*"")[^""]+("")",
-            "$1<redacted>$2");
-        // Redact bare key=value / key: value patterns.
-        value = System.Text.RegularExpressions.Regex.Replace(
-            value,
-            @"(?i)((?:device|bootstrap|gateway|auth|mcp)[_-]?token\s*[:=]\s*)[^\s,""'}{]+",
-            "$1<redacted>");
-        return value;
-    }
-    
-    private static void CheckPreviousRun()
-    {
-        try
-        {
-            if (File.Exists(RunMarkerPath))
-            {
-                var startedAt = File.ReadAllText(RunMarkerPath);
-                Logger.Error($"Previous session did not exit cleanly (started {startedAt})");
-                File.Delete(RunMarkerPath);
-            }
-        }
-        catch { }
-    }
-    
-    private static void MarkRunStarted()
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(RunMarkerPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-            File.WriteAllText(RunMarkerPath, DateTime.Now.ToString("O"));
-        }
-        catch { }
-    }
-    
-    private static void MarkRunEnded()
-    {
-        try
-        {
-            if (File.Exists(RunMarkerPath))
-                File.Delete(RunMarkerPath);
-        }
-        catch { }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -582,7 +394,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // -----------------------------------------------------------------------
         if (_startupArgs.Contains("--uninstall", StringComparer.OrdinalIgnoreCase))
         {
-            await RunCliUninstallAsync(_startupArgs);
+            await CliUninstallHandler.RunAsync(_startupArgs);
             return; // Environment.Exit called inside; defensive return
         }
 
@@ -826,7 +638,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_settings.GlobalHotkeyEnabled)
         {
             _globalHotkey = new GlobalHotkeyService();
-            _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
             _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
             _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
             _globalHotkey.Register();
@@ -1109,7 +920,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 else
                     ShowHub();
                 break;
-            case "quicksend": ShowQuickSend(); break;
+            case "quicksend": break; // Quick Send removed
             case "history": ShowHub("channels"); break;
             case "activity": ShowHub("channels"); break;
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
@@ -2129,30 +1940,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             catch { /* ignore */ }
         }
     }
-    
-    private void OnRecordingStateChanged(object? sender, RecordingStateEventArgs args)
-    {
-        var source = args.Type == RecordingType.Screen ? "Screen" : "Camera";
-        if (args.IsActive)
-        {
-            var title = args.Type == RecordingType.Screen
-                ? LocalizationHelper.GetString("Activity_ScreenRecordingStarted")
-                : LocalizationHelper.GetString("Activity_CameraRecordingStarted");
-            var duration = args.DurationMs > 0 ? $" ({args.DurationMs / 1000.0:0.#}s)" : "";
-            AddRecentActivity($"{title}{duration}", category: "node",
-                icon: "🔴",
-                details: string.Format(LocalizationHelper.GetString("Activity_RecordingRequestedByAgent"), source));
-        }
-        else
-        {
-            var title = args.Type == RecordingType.Screen
-                ? LocalizationHelper.GetString("Activity_ScreenRecordingComplete")
-                : LocalizationHelper.GetString("Activity_CameraRecordingComplete");
-            AddRecentActivity(title, category: "node",
-                icon: "✅",
-                details: string.Format(LocalizationHelper.GetString("Activity_RecordingSentToAgent"), source));
-        }
-    }
 
     private void OnPairingStatusChanged(object? sender, OpenClaw.Shared.PairingStatusEventArgs args)
     {
@@ -2703,7 +2490,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _hubWindow = new HubWindow();
             _hubWindow.AppModel = _appState;
             _hubWindow.ApplyNavPaneState(_settings!);
-            _hubWindow.QuickSendAction = () => ShowQuickSend();
             _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;
             _hubWindow.OpenVoiceAction = () => ShowHub("voice"); // was: ShowVoiceOverlay()
@@ -2844,8 +2630,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_settings!.GlobalHotkeyEnabled)
         {
             _globalHotkey ??= new GlobalHotkeyService();
-            _globalHotkey.HotkeyPressed -= OnGlobalHotkeyPressed;
-            _globalHotkey.HotkeyPressed += OnGlobalHotkeyPressed;
+            _globalHotkey.VoiceHotkeyPressed -= OnVoiceHotkeyPressed;
+            _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
             _globalHotkey.SettingsHotkeyPressed -= OnSettingsHotkeyPressed;
             _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
             _globalHotkey.Register();
@@ -2893,54 +2679,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         ShowHub("chat");
-    }
-
-    private void ShowQuickSend(string? prefillMessage = null)
-    {
-        if (_connectionManager?.OperatorClient == null)
-        {
-            Logger.Warn("QuickSend blocked: gateway client not initialized");
-            return;
-        }
-
-        try
-        {
-            // Keep a strong reference to the window; otherwise the dialog can be GC'd
-            // and appear to not open (especially when triggered from a hotkey).
-            if (_quickSendDialog != null)
-            {
-                // If caller wants a prefill, re-create to apply it.
-                if (!string.IsNullOrEmpty(prefillMessage))
-                {
-                    try { _quickSendDialog.Close(); } catch { }
-                    _quickSendDialog = null;
-                }
-                else
-                {
-                    Logger.Info("QuickSend dialog already open; activating");
-                    _quickSendDialog.ShowAsync();
-                    return;
-                }
-            }
-
-            Logger.Info("Showing QuickSend dialog");
-            // Bug #3: pass a Func that resolves the live OperatorClient on
-            // every Send so post-pair / restart / reinit swaps are observed.
-            var dialog = new QuickSendDialog(() => _connectionManager?.OperatorClient as OpenClawGatewayClient, prefillMessage);
-            dialog.Closed += (s, e) =>
-            {
-                if (ReferenceEquals(_quickSendDialog, dialog))
-                {
-                    _quickSendDialog = null;
-                }
-            };
-            _quickSendDialog = dialog;
-            dialog.ShowAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Failed to show QuickSend dialog: {ex.Message}");
-        }
     }
 
     private void ShowStatusDetail()
@@ -3279,7 +3017,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     }
     void IAppCommands.ShowVoiceOverlay() => ShowHub("voice");
     void IAppCommands.ShowChat() => ShowChatWindow();
-    void IAppCommands.ShowQuickSend() => ShowQuickSend();
     void IAppCommands.CheckForUpdates() => _ = CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
@@ -3372,21 +3109,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
-    {
-        if (_dispatcherQueue == null)
-        {
-            Logger.Warn("Hotkey pressed but DispatcherQueue is null");
-            return;
-        }
-
-        var enqueued = _dispatcherQueue.TryEnqueue(() => ShowQuickSend());
-        if (!enqueued)
-        {
-            Logger.Warn("Hotkey pressed but failed to enqueue QuickSend on UI thread");
-        }
-    }
-
     private void OnVoiceHotkeyPressed(object? sender, EventArgs e)
     {
         if (_dispatcherQueue == null) return;
@@ -3432,29 +3154,64 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private static UpdateCommandCenterInfo BuildInitialUpdateInfo() => new()
     {
         Status = "Not checked",
-        CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown"
+        CurrentVersion = AppVersionInfo.Version
     };
 
-    private async Task<bool> CheckForUpdatesAsync()
+    // Cross-path concurrency for update checks, split into two phases:
+    //  - _updateCheckGate: held only during the metadata/network check.
+    //    Short timeout so contended callers don't block on user thinking.
+    //  - _updateInstallInProgress: Interlocked flag covering the user-facing
+    //    UpdateDialog + download + install. Prevents two parallel installs
+    //    without holding a lock across user interaction.
+    private readonly System.Threading.SemaphoreSlim _updateCheckGate = new(1, 1);
+    private int _updateInstallInProgress;
+
+    private async Task<bool> CheckForUpdatesAsync(bool userInitiated = false)
     {
+        // === Stage 1: metadata check (gate-protected) ===
+        if (!await _updateCheckGate.WaitAsync(TimeSpan.FromSeconds(30)))
+        {
+            Logger.Warn("Update check gate timed out: another check is in progress");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "another update check is already in progress; try again in a moment"
+                };
+            }
+            return true; // Don't block launch
+        }
+
+#if DEBUG
         try
         {
-#if DEBUG
             Logger.Info("Skipping update check in debug build");
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Skipped",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow,
                 Detail = "debug build"
             };
             return true;
+        }
+        finally
+        {
+            _updateCheckGate.Release();
+        }
 #else
+        string releaseTag;
+        string changelog;
+        try
+        {
             Logger.Info("Checking for updates...");
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Checking",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow
             };
             var updateFound = await AppUpdater.CheckForUpdatesAsync();
@@ -3465,7 +3222,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _appState!.UpdateInfo = new UpdateCommandCenterInfo
                 {
                     Status = "Current",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CurrentVersion = AppVersionInfo.Version,
                     CheckedAt = DateTime.UtcNow,
                     Detail = "no updates available"
                 };
@@ -3473,72 +3230,330 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
 
             var release = AppUpdater.LatestRelease!;
-            var changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
-            Logger.Info($"Update available: {release.TagName}");
+            if (string.IsNullOrEmpty(release.TagName))
+            {
+                // Defensive: AppUpdater says an update is available but the
+                // release has no tag. Don't silently claim "up to date" —
+                // surface as Failed so the user sees something is off.
+                Logger.Warn("Update reported available but release has no TagName");
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "update metadata incomplete (missing version tag)"
+                };
+                return true;
+            }
+
+            releaseTag = release.TagName;
+            changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
+            Logger.Info($"Update available: {releaseTag}");
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Available",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
-                LatestVersion = release.TagName,
+                CurrentVersion = AppVersionInfo.Version,
+                LatestVersion = releaseTag,
                 CheckedAt = DateTime.UtcNow,
                 Detail = "prompted"
             };
 
             if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
-                string.Equals(_settings.SkippedUpdateTag, release.TagName, StringComparison.OrdinalIgnoreCase))
+                string.Equals(_settings.SkippedUpdateTag, releaseTag, StringComparison.OrdinalIgnoreCase) &&
+                !userInitiated)
             {
-                Logger.Info($"Skipping update prompt for remembered version {release.TagName}");
+                Logger.Info($"Skipping update prompt for remembered version {releaseTag}");
                 _appState!.UpdateInfo.Detail = "skipped by user";
                 return true;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Info("Update check cancelled");
+            if (_appState != null)
+            {
+                // Avoid leaving Status="Checking" stale for the manual flow
+                // or the command-center UI. Surface as Failed with a clear
+                // "cancelled" detail.
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "update check cancelled"
+                };
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Update check failed: {ex.Message}");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = ex.Message
+                };
+            }
+            return true;
+        }
+        finally
+        {
+            // Release the gate BEFORE user interaction & download/install.
+            // Holding it across these long phases would silently time-out
+            // any concurrent manual click.
+            _updateCheckGate.Release();
+        }
 
-            var dialog = new UpdateDialog(release.TagName, changelog);
-            var result = await dialog.ShowAsync();
+        // === Stage 2: user-interactive prompt + download/install ===
+        // Gate is released. Use Interlocked flag so concurrent callers can't
+        // start a second parallel install while we're prompting/downloading.
+        if (System.Threading.Interlocked.CompareExchange(ref _updateInstallInProgress, 1, 0) != 0)
+        {
+            Logger.Info("Update prompt/install already in progress; skipping");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "an update is already being downloaded or installed"
+                };
+            }
+            return true;
+        }
+
+        try
+        {
+            var dialog = new UpdateDialog(releaseTag, changelog);
+            UpdateDialogResult result;
+            try
+            {
+                result = await dialog.ShowAsync();
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+            {
+                // Visual tree torn down mid-await (e.g. window closed).
+                // Treat as "remind me later" rather than tainting Status with
+                // "Failed" — the network check itself succeeded.
+                Logger.Warn($"[Update] Prompt dialog dismissed before completion: 0x{ex.HResult:X8}");
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Another ContentDialog is already open on this XamlRoot.
+                Logger.Warn($"[Update] Prompt dialog could not be shown: {ex.Message}");
+                return true;
+            }
 
             if (result == UpdateDialogResult.Download)
             {
-                _appState!.UpdateInfo.Detail = "download requested";
+                // Assign a fresh object rather than mutating .Detail in place:
+                // a concurrent loser of the install-flag CAS may have just
+                // overwritten _appState.UpdateInfo with a "Failed" object,
+                // and mutating its Detail would leave Status="Failed" with
+                // our "download requested" detail — briefly inconsistent.
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Available",
+                    CurrentVersion = AppVersionInfo.Version,
+                    LatestVersion = releaseTag,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "download requested"
+                };
                 if (_settings != null)
                 {
                     _settings.SkippedUpdateTag = string.Empty;
                     _settings.Save();
                 }
                 var installed = await DownloadAndInstallUpdateAsync();
+                if (!installed)
+                {
+                    // Surface the failure so callers (and the manual-check
+                    // dialog) don't show stale "download requested" state.
+                    _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                    {
+                        Status = "Failed",
+                        CurrentVersion = AppVersionInfo.Version,
+                        CheckedAt = DateTime.UtcNow,
+                        Detail = "download or install failed"
+                    };
+                }
                 return !installed; // Don't launch if update succeeded
             }
 
             if (result == UpdateDialogResult.Skip && _settings != null)
             {
-                _settings.SkippedUpdateTag = release.TagName ?? string.Empty;
+                _settings.SkippedUpdateTag = releaseTag;
                 _settings.Save();
-                _appState!.UpdateInfo.Detail = "skipped by user";
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Available",
+                    CurrentVersion = AppVersionInfo.Version,
+                    LatestVersion = releaseTag,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "skipped by user"
+                };
+            }
+            else if (userInitiated && _settings != null
+                && string.Equals(_settings.SkippedUpdateTag, releaseTag,
+                                 StringComparison.OrdinalIgnoreCase))
+            {
+                // User explicitly bypassed the remembered skip for THIS
+                // release and picked RemindLater — clear the stale tag.
+                _settings.SkippedUpdateTag = string.Empty;
+                _settings.Save();
             }
 
-            return true; // RemindLater or Skip - continue
-#endif
+            return true; // RemindLater or Skip - continue launch
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Update check failed: {ex.Message}");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            Logger.Warn($"Update prompt/install failed: {ex.Message}");
+            if (_appState != null)
             {
-                Status = "Failed",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
-                CheckedAt = DateTime.UtcNow,
-                Detail = ex.Message
-            };
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = ex.Message
+                };
+            }
             return true;
         }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _updateInstallInProgress, 0);
+        }
+#endif
     }
+
+    // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
+    // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
+    // otherwise open two ContentDialogs on the same XamlRoot which throws
+    // COMException. One in-flight manual check at a time is enough.
+    private int _manualUpdateCheckInFlight;
 
     private async Task CheckForUpdatesUserInitiatedAsync()
     {
-        Logger.Info("Manual update check requested");
-        var shouldContinue = await CheckForUpdatesAsync();
-        UpdateStatusDetailWindow();
-        if (!shouldContinue)
+        if (System.Threading.Interlocked.CompareExchange(ref _manualUpdateCheckInFlight, 1, 0) != 0)
         {
-            Exit();
+            Logger.Info("Manual update check ignored: another check is already in progress");
+            return;
+        }
+
+        try
+        {
+            Logger.Info("Manual update check requested");
+            // Pass userInitiated=true so an explicit click bypasses the
+            // "remind me later" SkippedUpdateTag — the user is asking *now*.
+            var shouldContinue = await CheckForUpdatesAsync(userInitiated: true);
+            UpdateStatusDetailWindow();
+
+            // The "Available" path already prompts via UpdateDialog. For the
+            // other terminal states a manual click would otherwise produce no
+            // UI at all, leaving users wondering whether the click registered.
+            // Surface each explicitly with a small OK dialog.
+            var info = _appState?.UpdateInfo;
+            if (info != null)
+            {
+                switch (info.Status)
+                {
+                    case "Current":
+                        await ShowUpdateInfoDialogAsync(
+                            "UpToDate",
+                            LocalizationHelper.GetString("Update_Title_UpToDate"),
+                            LocalizationHelper.Format("Update_Message_UpToDate", info.CurrentVersion));
+                        break;
+                    case "Failed":
+                        // Format string ends with "\n\n{0}"; an empty Detail
+                        // would leave a dangling blank line. Trim only the
+                        // newline characters we added, never arbitrary
+                        // whitespace from the localized string.
+                        var failedMessage = LocalizationHelper
+                            .Format("Update_Message_Failed", info.Detail ?? "")
+                            .TrimEnd('\r', '\n');
+                        await ShowUpdateInfoDialogAsync(
+                            "Failed",
+                            LocalizationHelper.GetString("Update_Title_Failed"),
+                            failedMessage);
+                        break;
+#if DEBUG
+                    // Status="Skipped" is only produced by the DEBUG short-circuit
+                    // in CheckForUpdatesAsync. User-skipped versions keep
+                    // Status="Available", so this case must not exist in RELEASE
+                    // or it would surface a confusing "disabled in debug builds"
+                    // dialog to end users.
+                    case "Skipped":
+                        await ShowUpdateInfoDialogAsync(
+                            "Skipped",
+                            LocalizationHelper.GetString("Update_Title_Skipped"),
+                            LocalizationHelper.GetString("Update_Message_Skipped_Debug"));
+                        break;
+#endif
+                }
+            }
+
+            if (!shouldContinue)
+            {
+                Exit();
+            }
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _manualUpdateCheckInFlight, 0);
+        }
+    }
+
+    private async Task ShowUpdateInfoDialogAsync(string logKey, string title, string message)
+    {
+        // Prefer the Hub window when open so the dialog appears modal to what
+        // the user is actually looking at; fall back to the hidden keep-alive
+        // window so the dialog still renders if the Hub has been dismissed.
+        XamlRoot? xamlRoot = null;
+        if (_hubWindow != null && !_hubWindow.IsClosed)
+            xamlRoot = (_hubWindow.Content as FrameworkElement)?.XamlRoot;
+        if (xamlRoot == null)
+            xamlRoot = (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
+        if (xamlRoot == null)
+        {
+            // Log the stable English key, not the localized title, so log
+            // grepping works across locales.
+            Logger.Warn($"[Update] No XAML root available to show dialog: {logKey}");
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            CloseButtonText = LocalizationHelper.GetString("Update_OK"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = xamlRoot
+        };
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            // ContentDialog.ShowAsync throws COMException if its XamlRoot's
+            // visual tree is torn down mid-await (e.g. Hub window closed).
+            Logger.Warn($"[Update] Dialog dismissed before completion ({logKey}): 0x{ex.HResult:X8}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            // WinUI throws InvalidOperationException when another ContentDialog
+            // is already open on the same thread/XamlRoot. The re-entrancy
+            // guard only blocks duplicate *update* dialogs; collisions with
+            // other features' dialogs (onboarding, connection, etc.) must be
+            // tolerated here so the fire-and-forget call sites don't crash.
+            Logger.Warn($"[Update] Dialog could not be shown ({logKey}): {ex.Message}");
         }
     }
 
@@ -3552,7 +3567,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             var downloadedAsset = await AppUpdater.DownloadUpdateAsync();
 
-            progressDialog?.Close();
+            TryCloseProgressDialog(progressDialog);
 
             if (downloadedAsset == null || !System.IO.File.Exists(downloadedAsset.FilePath))
             {
@@ -3567,8 +3582,27 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         catch (Exception ex)
         {
             Logger.Error($"Update failed: {ex.Message}");
-            progressDialog?.Close();
+            TryCloseProgressDialog(progressDialog);
             return false;
+        }
+    }
+
+    private static void TryCloseProgressDialog(DownloadProgressDialog? dialog)
+    {
+        if (dialog == null) return;
+        try
+        {
+            dialog.Close();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Window already closed — closing a closed WinUI window throws
+            // COMException 0x80070578. Swallow so a real exception in the
+            // outer catch isn't masked by this cleanup failure.
+        }
+        catch (InvalidOperationException)
+        {
+            // Same as above for other "already-disposed" race variants.
         }
     }
 
@@ -3734,7 +3768,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             OpenActivityStream = ShowActivityStream,
             OpenNotificationHistory = ShowNotificationHistory,
             OpenDashboard = OpenDashboard,
-            OpenQuickSend = ShowQuickSend,
             OpenHub = (page) => ShowHub(page),
             OpenVoice = () => ShowHub("voice"), // was: ShowVoiceOverlay()
             StopVoice = () => _ = StopVoiceAsync(),
@@ -3921,8 +3954,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         SafeShutdownStep("chat window", () => { _chatWindow?.ForceClose(); _chatWindow = null; });
         SafeShutdownStep("tray menu window", () => CloseWindow(_trayMenuWindow));
         _trayMenuWindow = null;
-        SafeShutdownStep("quick send dialog", () => CloseWindow(_quickSendDialog));
-        _quickSendDialog = null;
         SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));
         _keepAliveWindow = null;
 

@@ -189,20 +189,51 @@ public static class ChatTimelineReducer
             }
         }
 
-        if (replace && reconcilePrevious && state.Entries.Count > 0)
+        // A final ChatMessageEvent that arrives without an ActiveAssistantId
+        // must, in certain cases, reconcile into the most recent Assistant
+        // entry instead of creating a duplicate bubble:
+        //
+        //  • `reconcilePrevious` flag: explicit opt-in from the provider,
+        //    used when the gateway emits the final message AFTER tool entries
+        //    have been appended (text → tool → tool output → final text). The
+        //    flag lets the reducer collapse the streaming preview into the
+        //    final text even though the immediate last entry is a ToolCall.
+        //
+        //  • Identical-text safety net: if the most recent Assistant entry
+        //    (within the same turn — i.e. before any User boundary) has
+        //    byte-equal text to the incoming message, collapse them
+        //    regardless of any flag. This catches duplicate ChatMessageEvent
+        //    emissions from the gateway (see the duplicate-bubble screenshot
+        //    bug where the same final text was rendered twice in a row).
+        if (replace && state.Entries.Count > 0)
         {
-            var lastIndex = state.Entries.Count - 1;
-            var last = state.Entries[lastIndex];
-            if (last.Kind == ChatTimelineItemKind.Assistant)
+            // Scan backward for the most recent Assistant entry — not just
+            // the very last one (see reasons above).
+            for (var li = state.Entries.Count - 1; li >= 0; li--)
             {
-                return state with
+                var candidate = state.Entries[li];
+                if (candidate.Kind == ChatTimelineItemKind.Assistant)
                 {
-                    Entries = state.Entries.SetItem(lastIndex, last with
+                    var shouldMerge =
+                        reconcilePrevious
+                        || string.Equals(candidate.Text, text, StringComparison.Ordinal);
+                    if (!shouldMerge)
+                        break;
+
+                    return state with
                     {
-                        Text = text,
-                        IsStreaming = streaming
-                    })
-                };
+                        Entries = state.Entries.SetItem(li, candidate with
+                        {
+                            Text = text,
+                            IsStreaming = streaming
+                        })
+                    };
+                }
+                // Stop scanning once we hit a User entry — that's a turn
+                // boundary, the assistant entry above it belongs to a
+                // previous turn and must not be reconciled into.
+                if (candidate.Kind == ChatTimelineItemKind.User)
+                    break;
             }
         }
 

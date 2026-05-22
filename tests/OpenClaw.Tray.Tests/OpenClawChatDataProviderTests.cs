@@ -453,11 +453,91 @@ public class OpenClawChatDataProviderTests
         bridge.HasHandshakeSnapshot = true;
         bridge.MainSessionKey = "agent:main:main";
         bridge.RaiseStatus(ConnectionStatus.Connected);
+        // Real gateways always send sessions.list after handshake (even an
+        // empty list). The provider waits for that signal before flipping
+        // ComposeTarget.IsReady on — otherwise the UI would briefly render
+        // the welcome zero-state for returning users mid-handshake.
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
         var snap = await provider.LoadAsync();
         Assert.Empty(snap.Threads);
         Assert.True(snap.ComposeTarget.IsReady);
         Assert.Equal("agent:main:main", snap.ComposeTarget.SessionKey);
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HandshakeComplete_NoSessionKey_SignalsIncompatibleGateway()
+    {
+        // When the gateway completes the handshake but does not advertise
+        // a mainSessionKey (or sessionDefaults.mainKey), the provider must surface
+        // an "Incompatible gateway" connection label and a NotReady compose target
+        // so the UI can show a clear "gateway update required" message rather than
+        // silently blocking send. Relates to issue #459.
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = null;   // incompatible gateway: no session key
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var snap = await provider.LoadAsync();
+
+        Assert.Equal("Incompatible gateway", snap.ConnectionStatus);
+        Assert.False(snap.ComposeTarget.IsReady);
+        Assert.Null(snap.ComposeTarget.SessionKey);
+    }
+
+    [Fact]
+    public async Task StatusChanged_IncompatibleGateway_IsReflectedInSnapshotConnectionLabel()
+    {
+        // Raise Connected with handshake present but no session key; the snapshot
+        // must use "Incompatible gateway" rather than the plain "Connected" label.
+        var (bridge, provider, snapshots, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = null;
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        Assert.NotEmpty(snapshots);
+        Assert.Equal("Incompatible gateway", snapshots[^1].ConnectionStatus);
+        Assert.False(snapshots[^1].ComposeTarget.IsReady);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HandshakeKnownButSessionsNotYetReceived_ComposeTargetNotReady()
+    {
+        // Regression: in the brief window between hello-ok (HasHandshakeSnapshot
+        // becomes true) and the first sessions.list, the provider used to expose
+        // a ready ComposeTarget. The chat root would then synthesize a
+        // compose-only thread and render the welcome zero-state — even for a
+        // returning user whose real sessions were about to be delivered. The
+        // sessions-list-received gate keeps ComposeTarget.IsReady=false until
+        // the gateway has confirmed the session list for this connection.
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        // No RaiseSessions yet — simulate the mid-handshake window.
+        var snap = await provider.LoadAsync();
+        Assert.Empty(snap.Threads);
+        Assert.False(snap.ComposeTarget.IsReady);
+    }
+
+    [Fact]
+    public async Task StatusDisconnected_AfterSessionsReceived_ComposeTargetResetsToNotReady()
+    {
+        // The sessions-list-received gate must reset on disconnect — otherwise
+        // a reconnect would keep ComposeTarget ready against a stale session
+        // list from the previous connection.
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+        Assert.True((await provider.LoadAsync()).ComposeTarget.IsReady);
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        var snap = await provider.LoadAsync();
+        Assert.False(snap.ComposeTarget.IsReady);
     }
 
     // ── Parity additions: streaming, lifecycle, reasoning, history, abort ──
@@ -1898,6 +1978,12 @@ public class OpenClawChatDataProviderTests
         bridge.HasHandshakeSnapshot = true;
         bridge.MainSessionKey = canonicalMainKey;
         bridge.RaiseStatus(ConnectionStatus.Connected);
+        // Mirror real gateway behavior: after handshake the gateway always
+        // emits sessions.list (even an empty one). The provider needs that
+        // signal to flip ComposeTarget.IsReady on, so that the UI doesn't
+        // briefly render the welcome zero-state for returning users whose
+        // real sessions are about to be delivered.
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
         return (bridge, provider, snapshots);
     }
 

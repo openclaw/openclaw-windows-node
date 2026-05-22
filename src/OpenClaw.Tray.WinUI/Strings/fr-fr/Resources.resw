@@ -287,9 +287,6 @@
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
     <value>Historique de notifications — OpenClaw Tray</value>
   </data>
-  <data name="WindowTitle_QuickSend" xml:space="preserve">
-    <value>Envoi rapide — OpenClaw</value>
-  </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>Discussion OpenClaw</value>
   </data>
@@ -307,30 +304,6 @@
   </data>
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ Problème de connexion</value>
-  </data>
-  <data name="QuickSend_Header" xml:space="preserve">
-    <value>📤 Envoi rapide</value>
-  </data>
-  <data name="QuickSend_Placeholder" xml:space="preserve">
-    <value>Saisissez votre message...</value>
-  </data>
-  <data name="QuickSend_SendButton" xml:space="preserve">
-    <value>Envoyer</value>
-  </data>
-  <data name="QuickSend_CancelButton" xml:space="preserve">
-    <value>Annuler</value>
-  </data>
-  <data name="QuickSend_Sending" xml:space="preserve">
-    <value>Envoi en cours...</value>
-  </data>
-  <data name="QuickSend_Failed" xml:space="preserve">
-    <value>❌ Échec</value>
-  </data>
-  <data name="QuickSend_ToastTitle" xml:space="preserve">
-    <value>Message envoyé</value>
-  </data>
-  <data name="QuickSend_ToastBody" xml:space="preserve">
-    <value>Votre message a été envoyé à OpenClaw.</value>
   </data>
   <data name="Welcome_Title" xml:space="preserve">
     <value>Bienvenue sur OpenClaw!</value>
@@ -374,14 +347,34 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>Télécharger &amp; Installer</value>
   </data>
+  <data name="Update_Title_UpToDate" xml:space="preserve">
+    <value>Vous êtes à jour</value>
+  </data>
+  <data name="Update_Message_UpToDate" xml:space="preserve">
+    <value>Vous utilisez la dernière version (v{0}).</value>
+  </data>
+  <data name="Update_Title_Failed" xml:space="preserve">
+    <value>Impossible de vérifier les mises à jour</value>
+  </data>
+  <data name="Update_Message_Failed" xml:space="preserve">
+    <value>Une erreur s'est produite lors de la vérification des mises à jour.
+
+{0}</value>
+  </data>
+  <data name="Update_Title_Skipped" xml:space="preserve">
+    <value>Vérification ignorée</value>
+  </data>
+  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
+    <value>La vérification des mises à jour est désactivée dans les builds de débogage.</value>
+  </data>
+  <data name="Update_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
   <data name="Menu_OpenWebChat" xml:space="preserve">
     <value>Ouvrir le chat</value>
-  </data>
-  <data name="Menu_QuickSend" xml:space="preserve">
-    <value>Envoi rapide...</value>
   </data>
   <data name="Menu_ActivityStream" xml:space="preserve">
     <value>Flux d'activité...</value>
@@ -772,25 +765,6 @@ Utilisez l'une de ces options :
   <data name="CameraRecordingToggle.Header" xml:space="preserve">
     <value>Autoriser l'enregistrement caméra</value>
   </data>
-  <!-- ==================== Activity Stream: Recording ==================== -->
-  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
-    <value>Enregistrement d'écran démarré</value>
-  </data>
-  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
-    <value>Enregistrement d'écran terminé</value>
-  </data>
-  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
-    <value>Enregistrement caméra démarré</value>
-  </data>
-  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
-    <value>Enregistrement caméra terminé</value>
-  </data>
-  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
-    <value>Enregistrement {0} demandé par l'agent</value>
-  </data>
-  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
-    <value>Enregistrement {0} envoyé à l'agent</value>
-  </data>
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nouveau: Fil d'activité</value>
@@ -1084,7 +1058,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>OpenClaw a encore besoin d’être configuré avant de pouvoir ouvrir le Hub. Utilisez Retour pour revenir à l’assistant ou aux étapes de connexion, corrigez la configuration manquante, puis réessayez Terminer.</value>
   </data>
   <data name="Onboarding_IncompleteSetup_Close" xml:space="preserve">
-    <value>D'accord</value>
+    <value>OK</value>
   </data>
   <data name="Onboarding_Welcome_Title" xml:space="preserve">
     <value>Bienvenue dans OpenClaw</value>
@@ -1478,9 +1452,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
     <value>OpenClaw Hub</value>
   </data>
-  <data name="VersionText.Text" xml:space="preserve">
-    <value>v0.1.0</value>
-  </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
     <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
   </data>
@@ -1615,6 +1586,12 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Connectez-vous à la passerelle pour commencer la discussion</value>
+  </data>
+  <data name="ChatPage_WaitingTitle.Text" xml:space="preserve">
+    <value>En attente du démarrage du chat…</value>
+  </data>
+  <data name="ChatPage_WaitingStatusText.Text" xml:space="preserve">
+    <value>La passerelle est connectée ; l'interface de chat est encore en cours de démarrage.</value>
   </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
     <value>⚙️ Configuration</value>
@@ -2828,6 +2805,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Composer_Placeholder_NotConnected" xml:space="preserve">
     <value>Non connecté</value>
   </data>
+  <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
+    <value>Gateway update required — incompatible version</value>
+  </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>Joindre</value>
   </data>
@@ -3076,6 +3056,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
+  </data>
+  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
+    <value>Retour à la connexion</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
@@ -3541,7 +3524,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Launch OpenClaw automatically when you sign in.</value>
   </data>
   <data name="SettingsRow_GlobalHotkey_Description.Text" xml:space="preserve">
-    <value>Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere.</value>
+    <value>Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings).</value>
   </data>
   <data name="SettingsRow_LegacyChat_Description.Text" xml:space="preserve">
     <value>When on, Chat hosts the gateway's web chat instead of the native Windows experience.</value>

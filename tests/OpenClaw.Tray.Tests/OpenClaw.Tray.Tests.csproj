@@ -65,6 +65,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalSetupProgressStageMap.cs" Link="Imported\LocalSetupProgressStageMap.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\LocalGatewayApprover.cs" Link="Imported\LocalGatewayApprover.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewaySetupDiagnostics.cs" Link="Imported\LocalGatewaySetupDiagnostics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewaySetup.cs" Link="Imported\LocalGatewaySetup.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\LocalGatewayUninstall.cs" Link="Imported\LocalGatewayUninstall.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalGatewaySetup\WslPlatformInstall.cs" Link="Imported\WslPlatformInstall.cs" />
@@ -74,7 +75,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardErrorFormatter.cs" Link="Imported\WizardErrorFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardStepSelection.cs" Link="Imported\WizardStepSelection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Onboarding\Services\WizardFlowController.cs" Link="Imported\WizardFlowController.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dialogs\QuickSendCoordinator.cs" Link="Imported\QuickSendCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageChannelMetrics.cs" Link="Imported\ConnectionPageChannelMetrics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageRowState.cs" Link="Imported\ConnectionPageRowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionManagerWindowsNodeConnector.cs" Link="Services\ConnectionManagerWindowsNodeConnector.cs" />

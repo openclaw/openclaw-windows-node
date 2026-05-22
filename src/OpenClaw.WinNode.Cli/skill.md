@@ -339,6 +339,62 @@ Search the command palette and return matching commands.
 ```
 Returns array of `{ Title, Subtitle, Icon }`.
 
+## Location (location.*)
+
+### location.get
+Get the device's current geographic location.
+```
+{
+  "accuracy": "default|high",  // optional, default "default"
+  "maxAge": 30000,             // ms; return a cached fix if younger than this
+  "locationTimeout": 10000     // ms; fail if no fix within this time
+}
+```
+Returns `{ latitude, longitude, accuracy (meters), timestamp (ms) }`.
+Requires the Location capability to be enabled and OS location permission granted to the app.
+Error `LOCATION_PERMISSION_REQUIRED` if the user has not granted location access.
+
+## Device (device.*)
+
+### device.info
+Get static device metadata. No params.
+Returns `{ deviceName, modelIdentifier, systemName, systemVersion, appVersion, appBuild, locale }`.
+
+### device.status
+Get live system health data.
+```
+{
+  "sections": ["os","cpu","memory","disk","battery"]  // optional; omit for all
+}
+```
+Returns a map with `collectedAt` (ISO-8601 string) and one key per section.
+Each section may contain `{ error: "collection failed" }` if data was unavailable.
+Legacy fields always present: `thermal`, `storage`, `network`, `uptimeSeconds`.
+
+Battery sub-object: `{ level, state ("charging"|"discharging"|"unknown"), lowPowerModeEnabled }`.
+
+**Privacy note**: `device.status` reveals battery level, network type, and disk usage.
+Agents should request only the sections they need.
+
+## Browser control proxy (browser.*)
+
+### browser.proxy
+Proxy an HTTP request to the local OpenClaw browser control host (Chrome DevTools Protocol server) running on gateway port + 2.
+```
+{
+  "path": "/json/list",        // required — local control path
+  "method": "GET",             // optional, default GET; allowed: GET|POST|DELETE
+  "body": {},                  // JSON object, for POST/DELETE
+  "query": {},                 // appended as query-string params
+  "profile": "Default",        // optional browser profile name
+  "timeoutMs": 20000           // optional, max 120000
+}
+```
+Returns `{ result, files? }` — `files` is an array of `{ path, base64, mimeType }` if the response referenced local file paths.
+
+Requires the gateway URL to have an explicit port (e.g. `ws://localhost:8080`).
+The browser control host must be running locally on `127.0.0.1:<gatewayPort + 2>`.
+
 ---
 
 ## A2UI v0.8 grammar (for canvas.a2ui.push)

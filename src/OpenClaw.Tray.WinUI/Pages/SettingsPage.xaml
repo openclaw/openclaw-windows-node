@@ -58,9 +58,9 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="SettingsRow_GlobalHotkey_Header" Text="Quick Send hotkey" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_GlobalHotkey_Header" Text="Global hotkeys" Style="{StaticResource BodyTextBlockStyle}"/>
                             <TextBlock x:Uid="SettingsRow_GlobalHotkey_Description"
-                                       Text="Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere."
+                                       Text="Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings)."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>

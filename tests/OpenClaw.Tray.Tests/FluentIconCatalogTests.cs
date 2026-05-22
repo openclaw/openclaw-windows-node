@@ -19,7 +19,7 @@ public sealed class FluentIconCatalogTests
         "StatusOk", "StatusWarn", "StatusErr",
         "Sessions", "Approvals", "Devices", "Hostname", "Permissions",
         "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
-        "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings", "QuickSend",
+        "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings",
         "Setup", "About", "Exit",
         "Add", "Back", "Sync", "Lock", "Plug", "MoreOverflow",
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
@@ -222,7 +222,7 @@ public sealed class TrayMenuPopupCompositionTests
 
     /// <summary>
     /// Regression guard: every static action emitted by the tray menu's
-    /// top-level entries (Gateway header, Permissions, Setup, QuickSend, etc.)
+    /// top-level entries (Gateway header, Permissions, Setup, etc.)
     /// must have an explicit case in <c>OnTrayMenuItemClicked</c>. The default
     /// fall-through to <c>ShowHub(action)</c> is convenient but easy to break
     /// silently — these specific actions are user-visible entry points and
@@ -239,7 +239,6 @@ public sealed class TrayMenuPopupCompositionTests
             "reconnect",    // brand-header button (when disconnected)
             "permissions",  // permissions row
             "setup",        // setup/reconfigure row
-            "quicksend",    // quicksend row
             "companion",    // footer
             "about",        // footer
             "exit",         // footer

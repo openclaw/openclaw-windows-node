@@ -212,7 +212,7 @@ The connect handshake uses Ed25519 signatures with v3→v2 fallback:
 
 ## Tests
 
-Connection tests live in `tests/OpenClaw.Connection.Tests/` (215 tests):
+Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 
 - `ConnectionStateMachineTests` — FSM transitions, derived overall state
 - `CredentialResolverTests` — credential precedence for operator and node

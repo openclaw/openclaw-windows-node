@@ -342,7 +342,7 @@ public sealed class OnboardingV2Bridge : IDisposable
             DispatchToUi(() =>
             {
                 MarkAllStagesIdle();
-                _state.LocalSetupErrorMessage = $"Could not start setup engine: {ex.Message}";
+                _state.LocalSetupErrorMessage = AppendSetupDiagnosticsHint($"Could not start setup engine: {ex.Message}");
                 _state.LocalSetupCanRetry = true;
             });
             return;
@@ -404,7 +404,7 @@ public sealed class OnboardingV2Bridge : IDisposable
             Logger.Error($"[V2Bridge] RunLocalOnlyAsync threw synchronously: {ex.Message}");
             DispatchToUi(() =>
             {
-                _state.LocalSetupErrorMessage = ex.Message;
+                _state.LocalSetupErrorMessage = AppendSetupDiagnosticsHint(ex.Message);
                 _state.LocalSetupCanRetry = true;
             });
         }
@@ -430,7 +430,7 @@ public sealed class OnboardingV2Bridge : IDisposable
                          || status == LocalGatewaySetupStatus.FailedTerminal
                          || status == LocalGatewaySetupStatus.Blocked
                          || status == LocalGatewaySetupStatus.RequiresRestart)
-            ? LocalizeFailureMessage(st.FailureCode, st.UserMessage)
+            ? AppendSetupDiagnosticsHint(LocalizeFailureMessage(st.FailureCode, st.UserMessage))
             : null;
 
         // Hanselman review: only FailedRetryable should expose Try-again.
@@ -878,9 +878,17 @@ public sealed class OnboardingV2Bridge : IDisposable
             var rows = AllRowsIdle();
             rows[V2Stage.RemovingExistingGateway] = V2RowState.Failed;
             _state.LocalSetupRows = rows;
-            _state.LocalSetupErrorMessage = message;
+            _state.LocalSetupErrorMessage = AppendSetupDiagnosticsHint(message);
             _state.LocalSetupCanRetry = true;
         });
+    }
+
+    private static string AppendSetupDiagnosticsHint(string? message)
+    {
+        var baseMessage = string.IsNullOrWhiteSpace(message)
+            ? "Local setup failed."
+            : message;
+        return baseMessage + Environment.NewLine + "Setup diagnostics: " + LocalGatewaySetupDiagnosticsService.LatestSummaryPathForCurrentUser();
     }
 
     private void ApplyFreshLocalReplacementRow(Dictionary<V2Stage, V2RowState> rows)

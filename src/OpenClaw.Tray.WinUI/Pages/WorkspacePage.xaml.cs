@@ -33,7 +33,14 @@ public sealed partial class WorkspacePage : Page
     {
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
-        // Only request fresh data when no matching cache exists.
+
+        // Check per-agent cache first, then fall back to single-slot cache
+        if (_appState.TryGetCachedAgentFilesList(AgentId, out var cachedData))
+        {
+            UpdateAgentFilesList(cachedData);
+            return;
+        }
+
         var hasMatchingCache = _appState?.AgentFilesList.HasValue == true &&
             string.Equals(_appState?.AgentFilesListAgentId, AgentId, StringComparison.OrdinalIgnoreCase);
         var status = CurrentApp.AppState?.Status ?? OpenClaw.Shared.ConnectionStatus.Disconnected;
@@ -44,6 +51,10 @@ public sealed partial class WorkspacePage : Page
             LoadingPanel.Visibility = Visibility.Visible;
             ClearTabs();
             _ = CurrentApp.GatewayClient.RequestAgentFilesListAsync(AgentId);
+        }
+        else if (hasMatchingCache)
+        {
+            UpdateAgentFilesList(_appState!.AgentFilesList!.Value);
         }
         else if (CurrentApp.GatewayClient == null || status != OpenClaw.Shared.ConnectionStatus.Connected)
         {

@@ -49,11 +49,6 @@ internal sealed partial class OpenClawPage : ListPage
                 Title = "💬 Web Chat",
                 Subtitle = "Open the OpenClaw chat window"
             },
-            new ListItem(new OpenUrlCommand("openclaw://send"))
-            {
-                Title = "📝 Quick Send", 
-                Subtitle = "Send a message to OpenClaw"
-            },
             new ListItem(new OpenUrlCommand("openclaw://setup"))
             {
                 Title = "🧭 Setup Wizard",

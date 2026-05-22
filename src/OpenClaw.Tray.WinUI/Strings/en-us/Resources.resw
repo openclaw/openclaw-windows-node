@@ -49,7 +49,7 @@
     <value>Start automatically with Windows</value>
   </data>
   <data name="SettingsGlobalHotkeyToggle.Header" xml:space="preserve">
-    <value>Global hotkey (Ctrl+Alt+Shift+C → Quick Send)</value>
+    <value>Global hotkeys (voice, settings)</value>
   </data>
   <data name="SettingsNotificationsToggle.Header" xml:space="preserve">
     <value>Show notifications</value>
@@ -312,9 +312,6 @@
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
     <value>Notification History — OpenClaw Tray</value>
   </data>
-  <data name="WindowTitle_QuickSend" xml:space="preserve">
-    <value>Quick Send — OpenClaw</value>
-  </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw Chat</value>
   </data>
@@ -333,31 +330,6 @@
   </data>
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ Connection failed</value>
-  </data>
-  <!-- QuickSend dialog -->
-  <data name="QuickSend_Header" xml:space="preserve">
-    <value>📤 Quick Send</value>
-  </data>
-  <data name="QuickSend_Placeholder" xml:space="preserve">
-    <value>Type your message...</value>
-  </data>
-  <data name="QuickSend_SendButton" xml:space="preserve">
-    <value>Send</value>
-  </data>
-  <data name="QuickSend_CancelButton" xml:space="preserve">
-    <value>Cancel</value>
-  </data>
-  <data name="QuickSend_Sending" xml:space="preserve">
-    <value>Sending...</value>
-  </data>
-  <data name="QuickSend_Failed" xml:space="preserve">
-    <value>❌ Failed</value>
-  </data>
-  <data name="QuickSend_ToastTitle" xml:space="preserve">
-    <value>Message Sent</value>
-  </data>
-  <data name="QuickSend_ToastBody" xml:space="preserve">
-    <value>Your message was sent to OpenClaw.</value>
   </data>
   <!-- WelcomeDialog -->
   <data name="Welcome_Title" xml:space="preserve">
@@ -403,15 +375,35 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>Download &amp; Install</value>
   </data>
+  <data name="Update_Title_UpToDate" xml:space="preserve">
+    <value>You're up to date</value>
+  </data>
+  <data name="Update_Message_UpToDate" xml:space="preserve">
+    <value>You're running the latest version (v{0}).</value>
+  </data>
+  <data name="Update_Title_Failed" xml:space="preserve">
+    <value>Couldn't check for updates</value>
+  </data>
+  <data name="Update_Message_Failed" xml:space="preserve">
+    <value>Something went wrong while checking for updates.
+
+{0}</value>
+  </data>
+  <data name="Update_Title_Skipped" xml:space="preserve">
+    <value>Update check skipped</value>
+  </data>
+  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
+    <value>Update checks are disabled in debug builds.</value>
+  </data>
+  <data name="Update_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
   <!-- Tray menu items -->
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Open Dashboard</value>
   </data>
   <data name="Menu_OpenWebChat" xml:space="preserve">
     <value>Open Web Chat</value>
-  </data>
-  <data name="Menu_QuickSend" xml:space="preserve">
-    <value>Quick Send...</value>
   </data>
   <data name="Menu_ActivityStream" xml:space="preserve">
     <value>Activity Stream...</value>
@@ -815,25 +807,6 @@ Use one of these options:
   </data>
   <data name="CameraRecordingToggle.Header" xml:space="preserve">
     <value>Allow camera recording</value>
-  </data>
-  <!-- ==================== Activity Stream: Recording ==================== -->
-  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
-    <value>Screen recording started</value>
-  </data>
-  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
-    <value>Screen recording complete</value>
-  </data>
-  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
-    <value>Camera recording started</value>
-  </data>
-  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
-    <value>Camera recording complete</value>
-  </data>
-  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
-    <value>{0} recording requested by agent</value>
-  </data>
-  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
-    <value>{0} recording sent to agent</value>
   </data>
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
@@ -1527,9 +1500,6 @@ On your gateway host (Mac/Linux), run:
   <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
     <value>OpenClaw Hub</value>
   </data>
-  <data name="VersionText.Text" xml:space="preserve">
-    <value>v0.1.0</value>
-  </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
     <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
   </data>
@@ -1664,6 +1634,12 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Connect to gateway to start chatting</value>
+  </data>
+  <data name="ChatPage_WaitingTitle.Text" xml:space="preserve">
+    <value>Waiting for chat to start…</value>
+  </data>
+  <data name="ChatPage_WaitingStatusText.Text" xml:space="preserve">
+    <value>The gateway is connected; the chat surface is still coming online.</value>
   </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
     <value>⚙️ Config</value>
@@ -2095,7 +2071,7 @@ On your gateway host (Mac/Linux), run:
     <value>Start automatically with Windows</value>
   </data>
   <data name="GlobalHotkeyToggle.Header" xml:space="preserve">
-    <value>Global hotkey (Ctrl+Alt+Shift+C → Quick Send)</value>
+    <value>Global hotkeys (voice, settings)</value>
   </data>
   <data name="SettingsPage_TextBlock_41.Text" xml:space="preserve">
     <value>Notifications</value>
@@ -2877,6 +2853,9 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Composer_Placeholder_NotConnected" xml:space="preserve">
     <value>Not connected</value>
   </data>
+  <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
+    <value>Gateway update required — incompatible version</value>
+  </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>Attach</value>
   </data>
@@ -3125,6 +3104,9 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
+  </data>
+  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
+    <value>Back to Connection</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
@@ -3416,7 +3398,7 @@ On your gateway host (Mac/Linux), run:
     <value>Start with Windows</value>
   </data>
   <data name="SettingsRow_GlobalHotkey_Header.Text" xml:space="preserve">
-    <value>Quick Send hotkey</value>
+    <value>Global hotkeys</value>
   </data>
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>Use gateway's web chat interface</value>
@@ -3590,7 +3572,7 @@ On your gateway host (Mac/Linux), run:
     <value>Launch OpenClaw automatically when you sign in.</value>
   </data>
   <data name="SettingsRow_GlobalHotkey_Description.Text" xml:space="preserve">
-    <value>Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere.</value>
+    <value>Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings).</value>
   </data>
   <data name="SettingsRow_LegacyChat_Description.Text" xml:space="preserve">
     <value>When on, Chat hosts the gateway's web chat instead of the native Windows experience.</value>

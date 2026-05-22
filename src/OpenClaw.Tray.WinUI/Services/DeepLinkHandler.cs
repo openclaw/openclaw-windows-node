@@ -225,11 +225,6 @@ public static class DeepLinkHandler
                 actions.OpenDashboard?.Invoke(dashboardPath);
                 break;
 
-            case "send":
-                var sendMessage = result.Parameters.GetValueOrDefault("message");
-                actions.OpenQuickSend?.Invoke(sendMessage);
-                break;
-
             case "agent":
                 var agentMessage = result.Parameters.GetValueOrDefault("message");
                 if (!string.IsNullOrEmpty(agentMessage) && actions.SendMessage != null)
@@ -304,7 +299,6 @@ public class DeepLinkActions
     public Action<string?>? OpenActivityStream { get; set; }
     public Action? OpenNotificationHistory { get; set; }
     public Action<string?>? OpenDashboard { get; set; }
-    public Action<string?>? OpenQuickSend { get; set; }
     public Action<string?>? OpenHub { get; set; }
     public Func<string, Task>? SendMessage { get; set; }
     public Action? OpenVoice { get; set; }

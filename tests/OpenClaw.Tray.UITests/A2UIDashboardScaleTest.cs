@@ -320,7 +320,7 @@ public sealed class A2UIDashboardScaleTest
 
         // ── Footer row ────────────────────────────────────────────────────
         components.Add(Component("ftr", "Row", new() { ["children"] = Children("ftrVer", "ftrDiv", "ftrConn") }));
-        components.Add(Component("ftrVer",  "Text", new() { ["text"] = Lit("v0.4.4"),   ["usageHint"] = "caption" }));
+        components.Add(Component("ftrVer",  "Text", new() { ["text"] = Lit("v0.4.7"),   ["usageHint"] = "caption" }));
         components.Add(Component("ftrDiv",  "Divider", new() { ["axis"] = "vertical" }));
         components.Add(Component("ftrConn", "Text", new() { ["text"] = Lit("Connected"), ["usageHint"] = "caption" }));
 

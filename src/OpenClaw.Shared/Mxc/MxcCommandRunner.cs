@@ -13,12 +13,9 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Honors <see cref="SettingsData.SystemRunSandboxEnabled"/>:
 /// <list type="bullet">
-/// <item><c>true</c> (default) — sandbox via MXC; deny invocation if MXC unavailable.</item>
+/// <item><c>true</c> (default) — sandbox via MXC when available; fall back uncontained when MXC is unavailable.</item>
 /// <item><c>false</c> — bypass MXC; route through the host runner.</item>
 /// </list>
-/// There is no host-fallback path when sandbox is enabled and MXC is missing —
-/// the call is denied with an explanatory error. Per user directive: "if sandbox
-/// enabled, only run on sandbox."
 /// </remarks>
 public sealed class MxcCommandRunner : ICommandRunner
 {
@@ -54,26 +51,18 @@ public sealed class MxcCommandRunner : ICommandRunner
     {
         var settings = _settingsProvider();
 
-        // Fail-closed when MXC is unavailable. We do NOT route to host even if the
-        // persisted toggle is OFF — the UI hides the toggle in that state so any
-        // OFF value is stale (e.g., flipped on a previous run / different machine).
-        // The UI's "Sandbox unavailable — commands blocked" claim must match
-        // actual behavior or it's a lie.
+        // When MXC sandboxing isn't available on this host (e.g. Windows 10,
+        // build < 26100, or missing wxc-exec.exe), fall back to the host runner
+        // so the agent can still execute commands instead of being completely
+        // blocked. The Sandbox page is read-only in that state and tells the
+        // user their commands are running uncontained.
         if (!_isSandboxAvailable())
         {
             _logger.Warn(
-                "[mxc] system.run DENIED: sandbox unavailable. " +
-                "Update Windows or install missing components to enable.");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr =
-                    "Sandboxing is unavailable on this machine, so agent-started Windows " +
-                    "commands are blocked. Open the Sandbox page for fix instructions.",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
+                "[mxc] system.run UNCONTAINED: sandbox unavailable on this host. " +
+                "Commands will run on the host without containment. " +
+                "Update Windows to enable sandboxing.");
+            return await _hostFallback.RunAsync(request, ct);
         }
 
         if (!settings.SystemRunSandboxEnabled)
@@ -119,25 +108,16 @@ public sealed class MxcCommandRunner : ICommandRunner
         catch (SandboxUnavailableException ex)
         {
             // Invalidate any cached availability — what we thought was available
-            // turned out not to be. Next command re-probes. This handles the
-            // case where MXC components were uninstalled (or wxc-exec moved)
-            // between this NodeService starting and now.
+            // turned out not to be at runtime. Next command re-probes and the
+            // top-level !_isSandboxAvailable() branch will handle the fallback.
+            // We also fall back to host execution for THIS call instead of
+            // denying it, matching the policy from issue #494.
             _invalidateAvailability?.Invoke();
 
             _logger.Warn(
-                $"[mxc] system.run DENIED (sandbox enabled but unavailable: {ex.Message}). " +
-                "Disable the sandbox toggle in Debug to fall back to host execution.");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr =
-                    "Sandboxing is enabled for system.run on this machine, but MXC is unavailable. " +
-                    $"Reason: {ex.Message}. " +
-                    "Update Windows or disable the system.run sandbox in the Debug page to run on host.",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
+                $"[mxc] system.run UNCONTAINED (sandbox enabled but unavailable at runtime: {ex.Message}). " +
+                "Falling back to host execution. Update Windows to enable sandboxing.");
+            return await _hostFallback.RunAsync(request, ct);
         }
         catch (OperationCanceledException)
         {
@@ -196,7 +176,7 @@ public sealed class MxcCommandRunner : ICommandRunner
             $"sandboxSettingsJson={settingsJson}; " +
             $"shell={commandRequest.Shell ?? "powershell"}; " +
             $"commandLength={commandRequest.Command?.Length ?? 0}; " +
-            $"cwd={commandRequest.Cwd ?? "<null>"}; " +
+            $"cwd={(string.IsNullOrEmpty(commandRequest.Cwd) ? "<null>" : "<set>")}; " +
             $"envKeys=[{string.Join(",", commandRequest.Env?.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase) ?? Enumerable.Empty<string>())}]; " +
             $"timeoutMs={sandboxRequest.TimeoutMs}; maxOutputBytes={sandboxRequest.MaxOutputBytes?.ToString() ?? "<default>"}; " +
             $"policyJson={policyJson}";
@@ -205,11 +185,9 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     private static object ToSandboxSettingsDiagnostic(SettingsData settings, string settingsDirectoryPath)
     {
-        var preset = DetectPreset(settings);
         return new
         {
             systemRunSandboxEnabled = settings.SystemRunSandboxEnabled,
-            securityLevel = preset,
             systemRunAllowOutbound = settings.SystemRunAllowOutbound,
             sandboxClipboard = settings.SandboxClipboard,
             sandboxDocumentsAccess = settings.SandboxDocumentsAccess,
@@ -224,38 +202,6 @@ public sealed class MxcCommandRunner : ICommandRunner
             sandboxMaxOutputBytes = settings.SandboxMaxOutputBytes,
             settingsDirectoryPath,
         };
-    }
-
-    private static string DetectPreset(SettingsData settings)
-    {
-        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: false, documents: null, downloads: null, desktop: null, clipboard: SandboxClipboardMode.None, timeoutMs: 30_000, maxOutputBytes: 4 * 1024 * 1024))
-            return "LockedDown";
-        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: true, documents: SandboxFolderAccess.ReadOnly, downloads: SandboxFolderAccess.ReadOnly, desktop: SandboxFolderAccess.ReadOnly, clipboard: SandboxClipboardMode.Read, timeoutMs: 60_000, maxOutputBytes: 16 * 1024 * 1024))
-            return "Balanced";
-        if (MatchesPreset(settings, sandboxEnabled: true, allowOutbound: true, documents: SandboxFolderAccess.ReadWrite, downloads: SandboxFolderAccess.ReadWrite, desktop: SandboxFolderAccess.ReadWrite, clipboard: SandboxClipboardMode.Both, timeoutMs: 300_000, maxOutputBytes: 64 * 1024 * 1024))
-            return "Permissive";
-        return "Custom";
-    }
-
-    private static bool MatchesPreset(
-        SettingsData settings,
-        bool sandboxEnabled,
-        bool allowOutbound,
-        SandboxFolderAccess? documents,
-        SandboxFolderAccess? downloads,
-        SandboxFolderAccess? desktop,
-        SandboxClipboardMode clipboard,
-        int timeoutMs,
-        long maxOutputBytes)
-    {
-        return settings.SystemRunSandboxEnabled == sandboxEnabled
-            && settings.SystemRunAllowOutbound == allowOutbound
-            && settings.SandboxDocumentsAccess == documents
-            && settings.SandboxDownloadsAccess == downloads
-            && settings.SandboxDesktopAccess == desktop
-            && settings.SandboxClipboard == clipboard
-            && settings.SandboxTimeoutMs == timeoutMs
-            && settings.SandboxMaxOutputBytes == maxOutputBytes;
     }
 
     private void LogSandboxResult(SandboxExecutionResult result)

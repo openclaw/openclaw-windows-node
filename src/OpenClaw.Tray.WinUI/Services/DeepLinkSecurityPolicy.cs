@@ -16,7 +16,6 @@ internal static class DeepLinkSecurityPolicy
 
     private static readonly HashSet<string> StateChangingPaths = new(StringComparer.OrdinalIgnoreCase)
     {
-        "send",
         "agent",
         "voice",
         "voice-start",
@@ -78,7 +77,6 @@ internal static class DeepLinkSecurityPolicy
         var path = result.Path.Trim().Trim('/').ToLowerInvariant();
         return path switch
         {
-            "send" => "open the quick-send window with a prefilled message",
             "agent" => "send a message to the agent",
             "voice" or "voice-start" => "start voice input",
             "voice-stop" => "stop voice input",

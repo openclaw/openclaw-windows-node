@@ -311,10 +311,6 @@ internal sealed class TrayMenuStateBuilder
         menu.AddMenuItem("Canvas", FluentIconCatalog.Build(FluentIconCatalog.CanvasAct), "canvas");
         // Voice overlay disabled — inline chat voice mode is used instead.
         // menu.AddMenuItem("Voice", FluentIconCatalog.Build(FluentIconCatalog.VoiceAct), "voice");
-        menu.AddMenuItem(
-            LocalizationHelper.GetString("Menu_QuickSend"),
-            FluentIconCatalog.Build(FluentIconCatalog.QuickSend),
-            "quicksend");
 
         // Setup Guide / Reconfigure entry — label flips based on whether prior
         // configuration exists; routes to the existing "setup" action handler.

@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
@@ -53,10 +52,7 @@ public class DeviceCapability : NodeCapabilityBase
     {
         Logger.Info("device.info");
 
-        var assembly = typeof(DeviceCapability).Assembly;
-        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? assembly.GetName().Version?.ToString()
-            ?? "unknown";
+        var version = AppVersionInfo.Version;
 
         return Success(new
         {
@@ -65,7 +61,7 @@ public class DeviceCapability : NodeCapabilityBase
             systemName = OperatingSystem.IsWindows() ? "Windows" : RuntimeInformation.OSDescription,
             systemVersion = RuntimeInformation.OSDescription,
             appVersion = version,
-            appBuild = assembly.GetName().Version?.ToString() ?? version,
+            appBuild = version,
             locale = CultureInfo.CurrentCulture.Name
         });
     }

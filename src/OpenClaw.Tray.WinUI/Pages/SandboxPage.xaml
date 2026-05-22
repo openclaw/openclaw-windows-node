@@ -280,6 +280,14 @@
                             </ComboBox>
                         </Grid>
 
+                        <!-- Implicit-grant disclosure: PATH directories are added as
+                             readonly so dev tools (git, node, python, ...) are
+                             reachable from inside the sandbox. -->
+                        <TextBlock TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Tool directories on your PATH are also granted read-only inside the sandbox, so command-line tools like git, node, python, and dotnet are usable. Drive roots are never granted." />
+
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"

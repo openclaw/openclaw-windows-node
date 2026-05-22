@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -17,6 +18,7 @@ public sealed partial class AboutPage : Page
     public AboutPage()
     {
         InitializeComponent();
+        VersionText.Text = AppVersionInfo.DisplayVersion;
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
@@ -107,7 +109,7 @@ public sealed partial class AboutPage : Page
             }
             else
             {
-                context = $"OpenClaw Hub v0.1.0\n"
+                context = $"OpenClaw Hub {AppVersionInfo.DisplayVersion}\n"
                     + $"OS: {Environment.OSVersion}\n"
                     + $"Runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}\n"
                     + $"Connection: {CurrentApp.AppState?.Status}\n"

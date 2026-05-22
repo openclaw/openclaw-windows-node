@@ -288,9 +288,6 @@
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
     <value>Meldingsgeschiedenis — OpenClaw Tray</value>
   </data>
-  <data name="WindowTitle_QuickSend" xml:space="preserve">
-    <value>Snel verzenden — OpenClaw</value>
-  </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw-chatgesprek</value>
   </data>
@@ -308,30 +305,6 @@
   </data>
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ Verbinding mislukt</value>
-  </data>
-  <data name="QuickSend_Header" xml:space="preserve">
-    <value>📤 Snel verzenden</value>
-  </data>
-  <data name="QuickSend_Placeholder" xml:space="preserve">
-    <value>Typ je bericht...</value>
-  </data>
-  <data name="QuickSend_SendButton" xml:space="preserve">
-    <value>Verzenden</value>
-  </data>
-  <data name="QuickSend_CancelButton" xml:space="preserve">
-    <value>Annuleren</value>
-  </data>
-  <data name="QuickSend_Sending" xml:space="preserve">
-    <value>Verzenden...</value>
-  </data>
-  <data name="QuickSend_Failed" xml:space="preserve">
-    <value>❌ Mislukt</value>
-  </data>
-  <data name="QuickSend_ToastTitle" xml:space="preserve">
-    <value>Bericht verzonden</value>
-  </data>
-  <data name="QuickSend_ToastBody" xml:space="preserve">
-    <value>Je bericht is verzonden naar OpenClaw.</value>
   </data>
   <data name="Welcome_Title" xml:space="preserve">
     <value>Welkom bij OpenClaw!</value>
@@ -375,14 +348,34 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>Downloaden en installeren</value>
   </data>
+  <data name="Update_Title_UpToDate" xml:space="preserve">
+    <value>Je bent up-to-date</value>
+  </data>
+  <data name="Update_Message_UpToDate" xml:space="preserve">
+    <value>Je gebruikt de nieuwste versie (v{0}).</value>
+  </data>
+  <data name="Update_Title_Failed" xml:space="preserve">
+    <value>Kan niet op updates controleren</value>
+  </data>
+  <data name="Update_Message_Failed" xml:space="preserve">
+    <value>Er is iets misgegaan tijdens het controleren op updates.
+
+{0}</value>
+  </data>
+  <data name="Update_Title_Skipped" xml:space="preserve">
+    <value>Updatecontrole overgeslagen</value>
+  </data>
+  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
+    <value>Updatecontroles zijn uitgeschakeld in debug-builds.</value>
+  </data>
+  <data name="Update_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Dashboard openen</value>
   </data>
   <data name="Menu_OpenWebChat" xml:space="preserve">
     <value>Webchat openen</value>
-  </data>
-  <data name="Menu_QuickSend" xml:space="preserve">
-    <value>Snel verzenden...</value>
   </data>
   <data name="Menu_ActivityStream" xml:space="preserve">
     <value>Activiteitenstroom...</value>
@@ -773,25 +766,6 @@ Gebruik een van deze opties:
   <data name="CameraRecordingToggle.Header" xml:space="preserve">
     <value>Camera-opname toestaan</value>
   </data>
-  <!-- ==================== Activity Stream: Recording ==================== -->
-  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
-    <value>Schermopname gestart</value>
-  </data>
-  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
-    <value>Schermopname voltooid</value>
-  </data>
-  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
-    <value>Camera-opname gestart</value>
-  </data>
-  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
-    <value>Camera-opname voltooid</value>
-  </data>
-  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
-    <value>{0}-opname aangevraagd door agent</value>
-  </data>
-  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
-    <value>{0}-opname verzonden naar agent</value>
-  </data>
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
     <value>⚡ Nieuw: Activiteitenstroom</value>
@@ -1085,7 +1059,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>OpenClaw heeft nog setup nodig voordat de Hub kan worden geopend. Gebruik Terug om naar de wizard of verbindingsstappen te gaan, los de ontbrekende setup op en probeer daarna Voltooien opnieuw.</value>
   </data>
   <data name="Onboarding_IncompleteSetup_Close" xml:space="preserve">
-    <value>Oké</value>
+    <value>OK</value>
   </data>
   <data name="Onboarding_Welcome_Title" xml:space="preserve">
     <value>Welkom bij OpenClaw</value>
@@ -1479,9 +1453,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
     <value>OpenClaw Hub</value>
   </data>
-  <data name="VersionText.Text" xml:space="preserve">
-    <value>v0.1.0</value>
-  </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
     <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
   </data>
@@ -1616,6 +1587,12 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Maak verbinding met de gateway om te chatten</value>
+  </data>
+  <data name="ChatPage_WaitingTitle.Text" xml:space="preserve">
+    <value>Wachten op start van de chat…</value>
+  </data>
+  <data name="ChatPage_WaitingStatusText.Text" xml:space="preserve">
+    <value>De gateway is verbonden; het chatoppervlak wordt nog geladen.</value>
   </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
     <value>⚙️ Configuratie</value>
@@ -2829,6 +2806,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Chat_Composer_Placeholder_NotConnected" xml:space="preserve">
     <value>Niet verbonden</value>
   </data>
+  <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
+    <value>Gateway update required — incompatible version</value>
+  </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>Bijvoegen</value>
   </data>
@@ -3077,6 +3057,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
+  </data>
+  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
+    <value>Terug naar verbinding</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
@@ -3542,7 +3525,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Launch OpenClaw automatically when you sign in.</value>
   </data>
   <data name="SettingsRow_GlobalHotkey_Description.Text" xml:space="preserve">
-    <value>Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere.</value>
+    <value>Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings).</value>
   </data>
   <data name="SettingsRow_LegacyChat_Description.Text" xml:space="preserve">
     <value>When on, Chat hosts the gateway's web chat instead of the native Windows experience.</value>

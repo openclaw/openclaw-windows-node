@@ -409,6 +409,8 @@ openclaw-windows-node/
 Settings are stored in:
 - Settings: `%APPDATA%\OpenClawTray\settings.json`
 - Logs: `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`
+- Easy-button setup summary: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`
+- Easy-button setup JSONL: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`
 
 Default gateway: `ws://localhost:18789`
 

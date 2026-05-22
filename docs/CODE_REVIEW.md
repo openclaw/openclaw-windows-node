@@ -1,4 +1,12 @@
-# Code Review - OpenClaw Windows Hub
+# Historical Code Review - OpenClaw Windows Hub
+
+> Current audit status (2026-05-21): this review is retained as a point-in-time
+> snapshot from early 2026. Several findings have since been addressed or moved
+> into dedicated architecture docs, including the connection state machine,
+> credential storage, and expanded test coverage. Use
+> [`TEST_COVERAGE.md`](./TEST_COVERAGE.md) and
+> [`CONNECTION_ARCHITECTURE.md`](./CONNECTION_ARCHITECTURE.md) for current
+> status before acting on the historical recommendations below.
 
 ## Overview
 This document provides a comprehensive code review of the OpenClaw Windows Hub repository, focusing on correctness, security, and best practices.
@@ -62,6 +70,10 @@ else if (sessions.ValueKind == JsonValueKind.Object) { /* ... */ }
 #### 2. Reconnection Loop Edge Cases (Medium Priority)
 
 **Location**: `OpenClawGatewayClient.ReconnectWithBackoffAsync()` (lines 164-185)
+
+**Current status**: Superseded by the dedicated connection architecture in
+`OpenClaw.Connection`, including `ConnectionStateMachine` and
+`GatewayConnectionManager`.
 
 **Issue**: Multiple paths can trigger reconnection simultaneously:
 - Manual reconnect in `CheckHealthAsync()` (line 92)
@@ -207,10 +219,14 @@ public async Task SendChatMessageAsync(string message)
 
 ### ⚠️ Security Recommendations
 
-1. **Token Storage** (Medium Priority)
-   - Currently stores auth token in `settings.json` as plain text
-   - **Recommendation**: Use Windows Data Protection API (DPAPI) to encrypt tokens
-   - Example: `ProtectedData.Protect()` from `System.Security.Cryptography`
+1. **Credential Storage** (Medium Priority)
+   - Historical finding: older settings stored gateway credentials directly in
+     `settings.json`.
+   - Current status: gateway credential ownership moved to the gateway registry
+     and device identity files; SettingsManager uses Windows DPAPI for stored
+     API keys where applicable.
+   - **Recommendation**: keep new credential paths documented and covered by
+     migration/security tests.
 
 2. **WebSocket Message Validation** (Low-Medium Priority)
    - No explicit size limits on incoming messages
@@ -224,10 +240,11 @@ public async Task SendChatMessageAsync(string message)
 
 ## Testing Coverage
 
-### ✅ Tests Added (571 tests)
+### Tests Added
 
-1. **OpenClaw.Shared.Tests** (478 tests) - Models, gateway client, exec approvals, capabilities, URL helpers, notification categorization, shell quoting
-2. **OpenClaw.Tray.Tests** (93 tests) - Menu display, menu positioning, settings round-trip, deep link parsing
+The original review was written when the suite was much smaller. The current
+test project inventory and latest required-suite runtime counts live in
+[`TEST_COVERAGE.md`](./TEST_COVERAGE.md).
 
 ### 📋 Recommended Additional Tests
 
@@ -322,14 +339,16 @@ if (Key.Contains('/') || Key.Contains('\\'))
 ## Recommendations Summary
 
 ### High Priority
-1. ✅ Add unit tests - **COMPLETED (88 tests)**
-2. Consider encrypting auth token in settings.json (use DPAPI)
-3. Add integration tests for WebSocket communication
+1. Add unit tests - **completed and expanded; see `TEST_COVERAGE.md`**
+2. Review remaining credential-at-rest gaps against the current gateway
+   registry/device identity model
+3. Add integration tests for WebSocket communication where live-gateway coverage
+   is still required
 
 ### Medium Priority
 4. Improve error handling consistency
 5. Add schema versioning to protocol
-6. Implement connection state machine
+6. Connection state machine - **completed in `OpenClaw.Connection`**
 7. Add message size limits
 
 ### Low Priority
@@ -342,17 +361,18 @@ if (Key.Contains('/') || Key.Contains('\\'))
 
 The OpenClaw Windows Hub codebase demonstrates good software engineering practices with proper async/await usage, event-driven architecture, and resource management. The main areas for improvement are:
 
-1. **Testing**: Now addressed with 88 unit tests covering core functionality
+1. **Testing**: Now addressed by the expanded xUnit suite documented in `TEST_COVERAGE.md`
 2. **Error Handling**: Could be more consistent
-3. **Security**: Token encryption would enhance security
+3. **Security**: Continue reviewing credential-at-rest coverage as storage paths evolve
 4. **Robustness**: JSON parsing could be more resilient
 
-All critical functionality has been validated through the new unit test suite. The code is production-ready with the caveat that the identified medium-priority issues should be addressed for long-term maintainability.
+Critical functionality has broad automated coverage, but this historical review
+should not be treated as the live source of truth for current issue status.
 
 ---
 
-**Review Date**: 2026-01-29 (updated 2026-03-18)
+**Review Date**: 2026-01-29 (historical review; documentation audit 2026-05-21)
 **Reviewer**: GitHub Copilot Coding Agent
-**Test Coverage**: 571 tests, all passing
+**Test Coverage**: See [`TEST_COVERAGE.md`](./TEST_COVERAGE.md) for current counts
 **Overall Grade**: B+ (Good, with room for improvement)
 

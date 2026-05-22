@@ -436,6 +436,12 @@ File-based logging with automatic rotation:
 - Rotation: When log exceeds 5MB, old log → `openclaw-tray.log.old`
 - Thread-safe: Uses lock for concurrent writes
 
+**Easy-button setup diagnostics:**
+- Human summary: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`
+- Machine-readable latest trace: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`
+- Per-run traces: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\setup-*.jsonl`
+- Contents are redacted and cover setup phases, WSL commands, pairing, gateway checks, repair, and remove lifecycle steps.
+
 **Log Levels:**
 - `INFO` - Normal operation (connections, events)
 - `WARN` - Recoverable issues (reconnects, timeouts)

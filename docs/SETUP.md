@@ -139,6 +139,7 @@ Download and install WebView2 from [Microsoft](https://developer.microsoft.com/m
 - Make sure the OpenClaw gateway process is running.
 - Check Windows Firewall — if your gateway runs on a different machine, allow inbound traffic on port 18789.
 - See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for connection errors.
+- For easy-button setup, repair, or remove failures, start with `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`; Copilot CLI/debugging tools can use `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`.
 
 ### "Not yet paired" message on reconnect
 
@@ -155,6 +156,7 @@ See [issue #81](https://github.com/openclaw/openclaw-windows-node/issues/81) for
 - Make sure you paste the **entire** setup code — it's a single base64url-encoded string.
 - Check for accidental leading/trailing whitespace.
 - The code must be from a compatible gateway version. Try entering the gateway URL and token manually instead.
+- If the easy-button setup flow generated the code, check `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt` for the failing phase and next action.
 
 ### Connection test fails
 
@@ -162,6 +164,7 @@ See [issue #81](https://github.com/openclaw/openclaw-windows-node/issues/81) for
 - Check that your token is valid and hasn't expired.
 - If the gateway is on another machine, ensure Windows Firewall allows traffic on the gateway port.
 - See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for detailed error messages.
+- Easy-button setup diagnostics keep per-run JSONL traces at `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\setup-*.jsonl` and update `easy-setup-latest.txt`/`.jsonl` after each run.
 
 ### Wizard shows "offline"
 
@@ -187,4 +190,4 @@ OpenClaw Tray checks for updates automatically and shows a notification when a n
 
 Go to **Settings → Apps → Installed apps**, find **OpenClaw Tray**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel.
 
-Your settings file at `%APPDATA%\OpenClawTray\settings.json` and device key at `%LOCALAPPDATA%\OpenClawTray\device-key-ed25519.json` are not removed automatically — delete them manually if you want a clean uninstall.
+Your settings file at `%APPDATA%\OpenClawTray\settings.json` and device identity files under `%APPDATA%\OpenClawTray\` (including per-gateway keys at `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`) are not removed automatically — delete them manually if you want a clean uninstall.

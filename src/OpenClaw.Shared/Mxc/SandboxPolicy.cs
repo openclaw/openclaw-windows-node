@@ -4,7 +4,7 @@ namespace OpenClaw.Shared.Mxc;
 /// Cross-platform sandbox policy expressing what a contained payload can access.
 /// Mirrors the <c>SandboxPolicy</c> shape from <c>@microsoft/mxc-sdk</c>'s
 /// TypeScript types (see <c>microsoft/mxc/sdk/src/types.ts</c>). C# representation
-/// so we can build policy without going through the Node bridge.
+/// so we can build policy for direct <c>wxc-exec.exe</c> invocation.
 /// </summary>
 public sealed record SandboxPolicy(
     string Version,
@@ -40,13 +40,14 @@ public enum ClipboardPolicy
 
 /// <summary>
 /// When <see cref="SettingsData.SystemRunSandboxEnabled"/> is <c>true</c>, system.run
-/// is contained via MXC AppContainer. When MXC is unavailable on the host, the call
-/// is denied (no fallback). When the toggle is <c>false</c>, system.run runs on the
-/// host as before.
+/// is contained via MXC AppContainer. When MXC is unavailable on the host, system.run
+/// falls back to the host runner with a warning so older Windows builds are not
+/// completely blocked. When the toggle is <c>false</c>, system.run runs on the host
+/// as before.
 /// </summary>
 public enum SandboxMode
 {
-    /// <summary>Sandbox required; fail-closed if unavailable.</summary>
+    /// <summary>Use MXC when available; otherwise fall back uncontained with a warning.</summary>
     Enabled,
 
     /// <summary>Bypass MXC entirely.</summary>

@@ -104,6 +104,8 @@ public class LocalizationValidationTests
         "PermissionsPage_TtsStatus_DefaultProviderFormat",
         "PermissionsPage_TtsStatus_ElevenLabsSaved",
         "PermissionsPage_McpStatus_TokenReadFailedFormat",
+        // Chat runtime warning seeded English-only until translations land.
+        "Chat_Composer_Placeholder_IncompatibleGateway",
         // InstancesPage / ConnectionPage new strings — seeded English across
         // all locales until translations land. Same precedent as the
         // PermissionsPage runtime keys above. The Manage expander body reuses
@@ -222,6 +224,34 @@ public class LocalizationValidationTests
         value.Contains("http://", StringComparison.Ordinal) ||
         value.Contains("https://", StringComparison.Ordinal) ||
         value.Contains("~/", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Keys whose value is a Latin-script loanword (e.g. "OK") that reads
+    /// natively in English/French/Dutch but should still be translated for
+    /// non-Latin scripts (zh-CN, zh-TW). For these keys the test permits
+    /// fr-fr and nl-nl to be identical to en-us while zh-cn and zh-tw differ —
+    /// the "all-or-nothing" rule does not apply.
+    /// </summary>
+    private static readonly HashSet<string> LatinScriptInvariantResourceKeys = new(StringComparer.Ordinal)
+    {
+        "Update_OK",
+        "Onboarding_IncompleteSetup_Close",
+    };
+
+    // Locales whose translations are allowed to remain identical to en-us
+    // for keys in LatinScriptInvariantResourceKeys (e.g. "OK"). The check in
+    // Resources_AreTranslatedAllOrNoneAcrossNonEnglishLocales requires the
+    // set of locales sharing the en-us value to *exactly* equal this set.
+    //
+    // Pitfall: adding a new Latin-script locale (say de-de) that also uses
+    // "OK" verbatim will break that test unless de-de is added here too. If
+    // you add such a locale, update this set; if you add a non-Latin-script
+    // locale, do nothing.
+    private static readonly HashSet<string> LatinScriptLocales = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fr-fr",
+        "nl-nl",
+    };
 
     private static bool IsInvariantOrDeferred(string key, string value) =>
         InvariantOrDeferredResourceKeys.Contains(key)
@@ -518,6 +548,15 @@ public class LocalizationValidationTests
 
             if (identicalLocales.Count != localeResw.Count)
             {
+                // Allow Latin-script loanwords (e.g. "OK") to be identical
+                // across en-us/fr-fr/nl-nl while still being translated for
+                // non-Latin-script locales (zh-CN, zh-TW).
+                if (LatinScriptInvariantResourceKeys.Contains(key)
+                    && identicalLocales.All(l => LatinScriptLocales.Contains(l))
+                    && LatinScriptLocales.All(l => identicalLocales.Contains(l, StringComparer.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
                 partial.Add($"{key} ({enValue}) identical in [{string.Join(", ", identicalLocales)}]");
                 continue;
             }

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -54,7 +55,7 @@ public sealed class UpdateDialog : WindowEx
         // Content
         var content = new StackPanel { Spacing = 12 };
 
-        var currentVersion = typeof(UpdateDialog).Assembly.GetName().Version?.ToString() ?? "Unknown";
+        var currentVersion = AppVersionInfo.Version;
         content.Children.Add(new TextBlock
         {
             Text = string.Format(LocalizationHelper.GetString("Update_CurrentVersion"), currentVersion),

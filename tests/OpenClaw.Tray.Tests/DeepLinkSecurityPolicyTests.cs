@@ -6,8 +6,6 @@ namespace OpenClaw.Tray.Tests;
 public class DeepLinkSecurityPolicyTests
 {
     [Theory]
-    [InlineData("send")]
-    [InlineData("send/anything")]
     [InlineData("agent")]
     [InlineData("voice")]
     [InlineData("voice-start")]

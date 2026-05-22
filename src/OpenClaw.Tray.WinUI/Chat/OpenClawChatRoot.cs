@@ -7,6 +7,8 @@ using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using static OpenClawTray.FunctionalUI.Factories;
 using static OpenClawTray.FunctionalUI.Core.Theme;
@@ -241,10 +243,15 @@ public sealed class OpenClawChatRoot : Component
             && snapshot.ComposeTarget.IsReady
             && snapshot.ComposeTarget.SessionKey is { } composeKey)
         {
+            // Use last-known state from the data provider so the composer shows
+            // the previous session title/model while reconnecting instead of
+            // generic "Main session"/"model" placeholders.
+            var lastState = (_provider as OpenClawChatDataProvider)?.CachedLastChatState;
             composeOnlyThread = new ChatThread
             {
                 Id = composeKey,
-                Title = "Main session",
+                Title = lastState?.ThreadTitle ?? "Main session",
+                Model = lastState?.Model,
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
             };
@@ -275,7 +282,9 @@ public sealed class OpenClawChatRoot : Component
         var connectedRaw = snapshot.ConnectionStatus;
         var hostConnected = connectedRaw is not null
             && connectedRaw.StartsWith("Connected", StringComparison.OrdinalIgnoreCase);
-        var connState = hostConnected ? "connected"
+        var connState = (connectedRaw is not null && connectedRaw.StartsWith("Incompatible", StringComparison.OrdinalIgnoreCase))
+            ? "incompatible-gateway"
+            : hostConnected ? "connected"
             : (connectedRaw is not null && connectedRaw.StartsWith("Connecting", StringComparison.OrdinalIgnoreCase))
                 ? "connecting"
                 : "disconnected";
@@ -362,20 +371,138 @@ public sealed class OpenClawChatRoot : Component
                     ToolName: "shell",
                     Detail: "Run `git status` in the current repo.");
                 break;
+
+            case ChatPreviewState.Reconnecting:
+                // Force the skeleton-timeline body that the real chat
+                // surface renders when effectiveThread is null or history
+                // hasn't loaded. Use the same body override path so the
+                // rest of the layout (composer suppressed) matches
+                // production.
+                bodyOverride = RenderSkeletonTimeline();
+                suppressComposer = true;
+                break;
         }
 
-        // Production zero-state: triggered both when no thread is selected
-        // *and* when a thread is selected but has no messages yet. These were
-        // previously two distinct screens (PlaceholderEmptyState vs an empty
-        // OpenClawChatTimeline) but render identically now — the user only
-        // cares "this conversation is empty, what do I do?", not whether a
-        // thread record exists in the backend.
+        // Production zero-state: triggered when a thread is selected
+        // but has no messages yet (true "empty conversation"). We only
+        // surface the welcome zero-state once we're confident the
+        // conversation is genuinely empty — i.e. either the thread is
+        // the synthetic compose-only thread (fresh install, no real
+        // session yet) or `chat.history` has actually completed
+        // (timeline.HistoryLoaded). For a real session whose history is
+        // still being fetched, fall back to the reconnecting view so
+        // the welcome screen doesn't flicker on top of an as-yet
+        // unloaded timeline. See OpenClawChatDataProvider.HistoryLoaded
+        // — set to true only inside LoadHistoryAsync's rebuild.
         var isEmptyConversation = entries.Count == 0
             && !showThinking
             && pendingPermissionOverride is null;
+        var isComposeOnlyThread = composeOnlyThread is not null
+            && ReferenceEquals(effectiveThread, composeOnlyThread);
+        var gatewayConnected = string.Equals(connState, "connected", StringComparison.Ordinal);
+        // Raw eligibility: would we *otherwise* render the welcome zero-state
+        // right now? We still need this signal to drive the settling effect
+        // below, but the actual decision to render welcome is gated on
+        // `welcomeSettledState` so a brief, race-driven eligibility window
+        // (e.g. an empty sessions.list briefly arriving before the populated
+        // one for a returning user) never flashes the suggestion buttons.
+        //
+        // Two distinct paths qualify for welcome:
+        //   1. Fresh install — the synthetic compose-only thread is selected
+        //      AND the snapshot truly has no real threads yet. If real
+        //      threads exist but the compose-only thread is *briefly*
+        //      selected during a session-switch race, we explicitly do NOT
+        //      qualify — that's the case that previously flashed welcome
+        //      on returning users.
+        //   2. Returning user with an empty real session — a real thread is
+        //      selected and its history has fully loaded (HistoryLoaded=true)
+        //      but contains zero messages.
+        var hasRealThreads = snapshot.Threads.Length > 0;
+        var welcomeEligibleRaw = isEmptyConversation
+            && gatewayConnected
+            && (
+                (isComposeOnlyThread && !hasRealThreads)
+                || (!isComposeOnlyThread && timeline.HistoryLoaded)
+            );
 
-        Element body = bodyOverride ?? (effectiveThread is null || isEmptyConversation
-            ? RenderZeroState(suggestion =>
+        // Settling debounce: only promote to "authoritative" once the
+        // welcome-eligible signal has been stable for ~800ms. This protects
+        // against transient mid-handshake windows where threads briefly
+        // appear empty, ComposeTarget becomes ready, and the synthetic
+        // compose-only thread otherwise tricks the renderer into showing the
+        // suggestion buttons before the real session list lands. Fresh-
+        // install users still see the welcome screen — just ~800ms after
+        // connect — which is still well within perceived "loading" time.
+        // 800ms (up from 300ms) absorbs gateway sequences where an empty
+        // sessions.list precedes the populated one by several hundred ms.
+        var welcomeSettledState = UseState<bool>(false);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (!welcomeEligibleRaw)
+            {
+                if (welcomeSettledState.Value) welcomeSettledState.Set(false);
+                return () => { };
+            }
+            // Schedule the promote-to-settled call once the eligibility
+            // window has been stable for the debounce interval. The hook
+            // dependency key includes every input that influences the
+            // welcome decision, so any change cancels the pending callback
+            // via the returned cleanup before re-arming on the next pass.
+            var dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            var cancelled = false;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(800);
+                    if (cancelled) return;
+                    dq?.TryEnqueue(() => { if (!cancelled) welcomeSettledState.Set(true); });
+                }
+                catch { }
+            });
+            return () => { cancelled = true; };
+        }),
+            welcomeEligibleRaw,
+            effectiveThread?.Id ?? string.Empty,
+            isComposeOnlyThread,
+            timeline.HistoryLoaded,
+            hasRealThreads);
+
+        var emptyConversationIsAuthoritative = welcomeEligibleRaw && welcomeSettledState.Value;
+
+        Element body;
+        var bodyIsSkeleton = false;
+        if (bodyOverride is not null)
+        {
+            body = bodyOverride;
+            // Exploration preview drives bodyOverride for ChatPreviewState.Reconnecting
+            // by passing RenderSkeletonTimeline() in; piggy-back on the suppressed
+            // composer flag so the preview also shows the skeleton composer.
+            if (previewState == ChatPreviewState.Reconnecting) bodyIsSkeleton = true;
+        }
+        else if (effectiveThread is null)
+        {
+            // Pre-connect window: no real session and no compose target
+            // ready yet. Skip the welcome zero-state so returning users
+            // don't get the prompt suggestion screen while the node is
+            // still connecting. Show skeleton placeholders instead of a
+            // spinner so the surface visually resembles the chat that
+            // will land in a moment.
+            body = RenderSkeletonTimeline();
+            bodyIsSkeleton = true;
+        }
+        else if (isEmptyConversation && !emptyConversationIsAuthoritative)
+        {
+            // Real session selected but its history hasn't finished
+            // loading yet. Render skeleton message bubbles so the user
+            // sees the chat's structural shape forming up; the real
+            // entries replace the skeleton once chat.history lands.
+            body = RenderSkeletonTimeline();
+            bodyIsSkeleton = true;
+        }
+        else if (isEmptyConversation)
+        {
+            body = RenderZeroState(suggestion =>
                 {
                     if (firstSendInFlight.Value) return; // debounce double-click
                     if (effectiveThread is { } t)
@@ -383,8 +510,11 @@ public sealed class OpenClawChatRoot : Component
                         firstSendInFlight.Set(true);
                         OnSend(t.Id, suggestion, null);
                     }
-                }, suggestionsDisabled: firstSendInFlight.Value)
-            : Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(new(
+                }, suggestionsDisabled: firstSendInFlight.Value);
+        }
+        else
+        {
+            body = Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(new(
                 SessionId: effectiveThread.Id,
                 Entries: entries,
                 HasMoreHistory: false,
@@ -398,17 +528,27 @@ public sealed class OpenClawChatRoot : Component
                     ? (text => _onReadAloud(text))
                     : null,
                 OnStopSpeaking: _onStopSpeaking,
-                ScrollToBottomToken: scrollToBottomToken.Value)));
+                ScrollToBottomToken: scrollToBottomToken.Value));
+        }
 
-        // Distinct list of channel labels (= thread titles) — feeds the
-        // composer's first ComboBox so the user can switch chats from the
-        // composer, not just the side rail.  Exclude cron sessions which
-        // are automated/background and shouldn't appear in the chat switcher.
-        var channelTitles = snapshot.Threads
+        // Session list for the composer dropdown — grouped by agent, keyed by
+        // ID so every session gets its own entry regardless of display name.
+        // Exclude cron sessions which are automated/background.
+        var channelGroups = snapshot.Threads
             .Where(t => !string.IsNullOrEmpty(t.Title)
                      && !t.Id.Contains(":cron:", StringComparison.Ordinal))
-            .Select(t => t.Title)
-            .Distinct(StringComparer.Ordinal)
+            .GroupBy(t =>
+            {
+                // Parse agent ID from key like "agent:{agentId}:{slot}"
+                var parts = (t.Id ?? "").Split(':');
+                return parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "other";
+            })
+            // "main" first (sort key 0), then alphabetical
+            .OrderBy(g => g.Key.Equals("main", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ChannelGroup(
+                AgentLabel: g.Key.Length > 0 ? char.ToUpper(g.Key[0]) + g.Key[1..] : "Unknown",
+                Sessions: g.Select(t => (Id: t.Id, Title: t.Title!)).ToArray()))
             .ToArray();
 
         Element composer = (effectiveThread is not null && !suppressComposer)
@@ -417,7 +557,8 @@ public sealed class OpenClawChatRoot : Component
                 TurnActive: turnActiveOverride,
                 PendingPermission: pendingPermissionOverride,
                 ChannelLabel: effectiveThread.Title ?? "Main session",
-                AvailableChannels: channelTitles,
+                ChannelId: effectiveThread.Id,
+                AvailableChannels: channelGroups,
                 AvailableModels: snapshot.AvailableModels,
                 CurrentModel: effectiveThread.Model,
                 CurrentThinkingLevel: effectiveThread.ThinkingLevel,
@@ -428,14 +569,10 @@ public sealed class OpenClawChatRoot : Component
                 },
                 OnStop: () => OnStop(effectiveThread.Id),
                 OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id, rid, allow),
-                OnChannelChanged: title =>
+                OnChannelChanged: id =>
                 {
-                    var match = Array.Find(snapshot.Threads, t => t.Title == title);
-                    if (match is not null)
-                    {
-                        selectedIdState.Set(match.Id);
-                        selectedIdRef.Current = match.Id;
-                    }
+                    selectedIdState.Set(id);
+                    selectedIdRef.Current = id;
                 },
                 OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(effectiveThread.Id, model, ct)),
                 OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(effectiveThread.Id, level, ct)),
@@ -455,8 +592,9 @@ public sealed class OpenClawChatRoot : Component
                 VoiceTranscript: voiceTranscript.Value,
                 VoiceAudioLevel: voiceAudioLevel.Value,
                 RegisterVoiceStarter: starter => TriggerVoiceRecording = starter,
+                OnAttachmentPasted: att => pendingAttachment.Set(att),
                 IsCompact: _isCompact))
-            : Empty();
+            : (bodyIsSkeleton ? RenderSkeletonComposer() : Empty());
 
         var divider = Empty();
 
@@ -479,6 +617,159 @@ public sealed class OpenClawChatRoot : Component
             Model = snapshot.AvailableModels is { Length: > 0 } m ? m[0] : null,
             CreatedAt = DateTimeOffset.Now.AddMinutes(-1),
             UpdatedAt = DateTimeOffset.Now,
+        };
+    }
+
+    /// <summary>
+    /// Skeleton timeline shown in place of the welcome zero-state and the
+    /// snapshot-null loading screen while the gateway/node handshake is in
+    /// flight or <c>chat.history</c> is still being fetched. Renders a
+    /// short stack of muted, message-shaped placeholder bubbles that
+    /// alternate left/right alignment so the surface visually resembles
+    /// the timeline that will replace it once entries arrive. A returning
+    /// user therefore sees a clearly intentional "messages are loading"
+    /// affordance instead of either the first-launch prompt suggestions or
+    /// a centered spinner that has no relationship to the chat structure.
+    /// Uses a fixed 8px bubble corner radius so the skeleton matches the
+    /// composer placeholder regardless of the user's <see cref="ChatVisualResolver"/>
+    /// preset (the real bubbles intentionally rebase from their exploration
+    /// preset; this is loading chrome, not the live timeline).
+    /// </summary>
+    private static Element RenderSkeletonTimeline()
+    {
+        // Two-tier palette: a softer "bubble" fill and a marginally stronger
+        // "text line" stripe so each bubble reads as a real message with
+        // text inside. Both lean subtle — the line alpha is ~20%, the bubble
+        // ~22%, so the placeholders read on light/dark/acrylic without
+        // competing with the real timeline's visual weight.
+        var bubbleBrush = (Microsoft.UI.Xaml.Media.Brush)new Microsoft.UI.Xaml.Media.SolidColorBrush(
+            global::Windows.UI.Color.FromArgb(0x38, 0x80, 0x80, 0x80));
+        var lineBrush = (Microsoft.UI.Xaml.Media.Brush)new Microsoft.UI.Xaml.Media.SolidColorBrush(
+            global::Windows.UI.Color.FromArgb(0x35, 0x80, 0x80, 0x80));
+
+        Element Line(double width) =>
+            Border()
+                .Background(lineBrush)
+                .Set(b =>
+                {
+                    b.CornerRadius = new CornerRadius(4);
+                    b.Width = width;
+                    b.Height = 8;
+                    b.HorizontalAlignment = HorizontalAlignment.Left;
+                });
+
+        // Bubble with N subtle text-line stripes inside. lineWidths drives
+        // both line count and width variation so each bubble reads like a
+        // different message length. phaseMs staggers the shimmer pulse so
+        // the bubbles breathe one after another instead of in unison.
+        Element Bubble(double[] lineWidths, HorizontalAlignment align, double phaseMs)
+        {
+            var lines = new Element?[lineWidths.Length];
+            for (int i = 0; i < lineWidths.Length; i++) lines[i] = Line(lineWidths[i]);
+            return Border(
+                VStack(8, lines)
+            ).Background(bubbleBrush)
+             .Set(b =>
+             {
+                 b.CornerRadius = new CornerRadius(8);
+                 b.Padding = new Thickness(16, 12, 16, 12);
+                 b.HorizontalAlignment = align;
+                 b.Margin = new Thickness(16, 8, 16, 8);
+             })
+             .OnMount(MakeShimmer(phaseMs));
+        }
+
+        return Border(
+            VStack(0,
+                Bubble(new[] { 240.0, 180.0 }, HorizontalAlignment.Left, 0),
+                Bubble(new[] { 140.0 }, HorizontalAlignment.Right, 140),
+                Bubble(new[] { 280.0, 240.0, 160.0 }, HorizontalAlignment.Left, 280),
+                Bubble(new[] { 120.0 }, HorizontalAlignment.Right, 420),
+                Bubble(new[] { 200.0 }, HorizontalAlignment.Left, 560)
+            )
+        ).Set(b => b.Padding = new Thickness(0, 16, 0, 16));
+    }
+
+    /// <summary>
+    /// Skeleton composer shown at the bottom of the chat surface while the
+    /// real composer is still gated. Renders a rounded input-field placeholder
+    /// and a circular send-button placeholder, both pulsing in sync with the
+    /// skeleton bubbles above. Keeps the overall chat surface visually intact
+    /// so the layout doesn't shift when the real composer lands.
+    /// </summary>
+    private static Element RenderSkeletonComposer()
+    {
+        var bubbleBrush = (Microsoft.UI.Xaml.Media.Brush)new Microsoft.UI.Xaml.Media.SolidColorBrush(
+            global::Windows.UI.Color.FromArgb(0x30, 0x80, 0x80, 0x80));
+
+        var inputField = Border()
+            .Background(bubbleBrush)
+            .Set(b =>
+            {
+                b.CornerRadius = new CornerRadius(8);
+                b.Height = 56;
+                b.Margin = new Thickness(0, 0, 8, 0);
+                b.HorizontalAlignment = HorizontalAlignment.Stretch;
+            })
+            .OnMount(MakeShimmer(0));
+
+        var sendButton = Border()
+            .Background(bubbleBrush)
+            .Set(b =>
+            {
+                b.CornerRadius = new CornerRadius(20);
+                b.Width = 40;
+                b.Height = 40;
+                b.VerticalAlignment = VerticalAlignment.Center;
+            })
+            .OnMount(MakeShimmer(160));
+
+        return Border(
+            Grid(new[] { GridSize.Star(), GridSize.Auto }, new[] { GridSize.Auto },
+                inputField.Grid(row: 0, column: 0),
+                sendButton.Grid(row: 0, column: 1)
+            )
+        ).Set(b => b.Padding = new Thickness(16, 8, 16, 16));
+    }
+
+    /// <summary>
+    /// Builds an OnMount action that attaches a Storyboard-driven opacity
+    /// pulse to the target element. <paramref name="beginOffsetMs"/> staggers
+    /// the pulse phase so multiple bubbles wave in sequence rather than
+    /// blinking in unison. The animation auto-reverses and repeats forever;
+    /// the storyboard is dropped from scope once started but kept alive by
+    /// the visual tree via its target ref.
+    /// </summary>
+    private static Action<FrameworkElement> MakeShimmer(double beginOffsetMs)
+    {
+        return fe =>
+        {
+            try
+            {
+                var anim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+                {
+                    From = 1.0,
+                    To = 0.45,
+                    Duration = new Duration(TimeSpan.FromMilliseconds(900)),
+                    AutoReverse = true,
+                    RepeatBehavior = Microsoft.UI.Xaml.Media.Animation.RepeatBehavior.Forever,
+                    EasingFunction = new Microsoft.UI.Xaml.Media.Animation.SineEase
+                    {
+                        EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseInOut,
+                    },
+                    BeginTime = TimeSpan.FromMilliseconds(beginOffsetMs),
+                };
+                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, fe);
+                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "Opacity");
+                var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+                sb.Children.Add(anim);
+                sb.Begin();
+            }
+            catch
+            {
+                // Animations are non-essential — never let a storyboard error
+                // disrupt the skeleton surface render.
+            }
         };
     }
 

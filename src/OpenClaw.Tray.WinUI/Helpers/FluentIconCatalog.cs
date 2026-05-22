@@ -47,7 +47,6 @@ public static class FluentIconCatalog
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone
     public const string Settings = "\uE713";       // Settings
-    public const string QuickSend = "\uE724";      // Send (Mail variant) — closest universal Send glyph
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
     public const string Exit = "\uE711";           // Cancel (X) — used for "Close" menu item

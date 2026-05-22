@@ -50,6 +50,9 @@ public sealed record LocalGatewayUninstallPostconditions
     /// <summary>VHD parent directory absent: %LOCALAPPDATA%\OpenClawTray\wsl\&lt;DistroName&gt;.</summary>
     public bool VhdDirAbsent { get; init; }
 
+    /// <summary>WSL parent directory absent: %LOCALAPPDATA%\OpenClawTray\wsl\</summary>
+    public bool WslParentDirAbsent { get; init; }
+
     /// <summary>No gateway records matching local predicate remain in gateways.json.</summary>
     public bool LocalGatewayRecordsAbsent { get; init; }
 
@@ -421,6 +424,35 @@ public sealed class LocalGatewayUninstall
         });
 
         // ------------------------------------------------------------------
+        // Step 5b — WSL parent-dir cleanup (idempotent)
+        // After the distro-specific VHD dir is removed, clean up the empty
+        // wsl\ parent directory so the installer leaves no orphaned folders.
+        // ------------------------------------------------------------------
+        await RunStepAsync("WSL parent dir cleanup", options, ct, () =>
+        {
+            var wslDir = Path.Combine(_localDataPath, "wsl");
+            if (!Directory.Exists(wslDir))
+            {
+                RecordStep("WSL parent dir cleanup", UninstallStepStatus.Skipped,
+                    "Directory absent.");
+                return Task.CompletedTask;
+            }
+
+            if (!Directory.EnumerateFileSystemEntries(wslDir).Any())
+            {
+                Directory.Delete(wslDir);
+                RecordStep("WSL parent dir cleanup", UninstallStepStatus.Executed,
+                    "Deleted empty wsl\\ parent directory.");
+            }
+            else
+            {
+                RecordStep("WSL parent dir cleanup", UninstallStepStatus.Skipped,
+                    "Directory not empty; preserved.");
+            }
+            return Task.CompletedTask;
+        });
+
+        // ------------------------------------------------------------------
         // Step 6 — Reset autostart
         // CRITICAL ORDERING (v3 §B): persist settings BEFORE deleting registry.
         // ------------------------------------------------------------------
@@ -783,6 +815,10 @@ public sealed class LocalGatewayUninstall
         bool vhdDirAbsent = !Directory.Exists(
             Path.Combine(_localDataPath, "wsl", options.DistroName));
 
+        // WSL parent dir absent?
+        bool wslParentDirAbsent = !Directory.Exists(
+            Path.Combine(_localDataPath, "wsl"));
+
         // Local gateway records absent? Reload from disk — fresh instance, not mutated in-memory.
         bool localRecordsAbsent;
         try
@@ -806,6 +842,7 @@ public sealed class LocalGatewayUninstall
             McpTokenPreserved = mcpTokenPreserved,
             KeepalivesAbsent = keepalivesAbsent,
             VhdDirAbsent = vhdDirAbsent,
+            WslParentDirAbsent = wslParentDirAbsent,
             LocalGatewayRecordsAbsent = localRecordsAbsent,
             LocalGatewayIdentityDirsAbsent = localIdentityDirsAbsent
         };

@@ -4,10 +4,10 @@ This folder is the entry point for everything A2UI in this repo. It captures
 the v0.8 specification, the standard catalog, and a side-by-side grading of
 two implementations:
 
-- **Lit reference** in `C:\Users\andersonch\Code\openclaw` (web components,
-  rendered in a browser via the OpenClaw canvas host).
-- **Native WinUI** in this repo (`src/OpenClaw.Tray.WinUI/A2UI/`,
-  branch `feat/a2ui-native-winui`).
+- **Lit reference** from the upstream OpenClaw A2UI renderer
+  (`vendor/a2ui/renderers/lit/src/0.8`, web components rendered in a
+  browser via the OpenClaw canvas host).
+- **Native WinUI** in this repo (`src/OpenClaw.Tray.WinUI/A2UI/`).
 
 The native WinUI design doc that predates this overview lives at
 [`../A2UI_NATIVE_WINUI.md`](../A2UI_NATIVE_WINUI.md); this folder

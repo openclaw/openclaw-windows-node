@@ -287,9 +287,6 @@
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
     <value>通知历史 — OpenClaw 托盘</value>
   </data>
-  <data name="WindowTitle_QuickSend" xml:space="preserve">
-    <value>快速发送 — OpenClaw</value>
-  </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw 聊天</value>
   </data>
@@ -307,30 +304,6 @@
   </data>
   <data name="Status_ConnectionFailed" xml:space="preserve">
     <value>❌ 连接失败</value>
-  </data>
-  <data name="QuickSend_Header" xml:space="preserve">
-    <value>📤 快速发送</value>
-  </data>
-  <data name="QuickSend_Placeholder" xml:space="preserve">
-    <value>输入您的消息...</value>
-  </data>
-  <data name="QuickSend_SendButton" xml:space="preserve">
-    <value>发送</value>
-  </data>
-  <data name="QuickSend_CancelButton" xml:space="preserve">
-    <value>取消</value>
-  </data>
-  <data name="QuickSend_Sending" xml:space="preserve">
-    <value>发送中...</value>
-  </data>
-  <data name="QuickSend_Failed" xml:space="preserve">
-    <value>❌ 发送失败</value>
-  </data>
-  <data name="QuickSend_ToastTitle" xml:space="preserve">
-    <value>消息已发送</value>
-  </data>
-  <data name="QuickSend_ToastBody" xml:space="preserve">
-    <value>您的消息已发送至 OpenClaw。</value>
   </data>
   <data name="Welcome_Title" xml:space="preserve">
     <value>欢迎使用 OpenClaw！</value>
@@ -374,14 +347,34 @@
   <data name="Update_DownloadButton" xml:space="preserve">
     <value>下载并安装</value>
   </data>
+  <data name="Update_Title_UpToDate" xml:space="preserve">
+    <value>已是最新版本</value>
+  </data>
+  <data name="Update_Message_UpToDate" xml:space="preserve">
+    <value>您正在使用最新版本 (v{0})。</value>
+  </data>
+  <data name="Update_Title_Failed" xml:space="preserve">
+    <value>无法检查更新</value>
+  </data>
+  <data name="Update_Message_Failed" xml:space="preserve">
+    <value>检查更新时出错。
+
+{0}</value>
+  </data>
+  <data name="Update_Title_Skipped" xml:space="preserve">
+    <value>已跳过更新检查</value>
+  </data>
+  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
+    <value>调试版本已禁用更新检查。</value>
+  </data>
+  <data name="Update_OK" xml:space="preserve">
+    <value>确定</value>
+  </data>
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>打开仪表板</value>
   </data>
   <data name="Menu_OpenWebChat" xml:space="preserve">
     <value>打开网页聊天</value>
-  </data>
-  <data name="Menu_QuickSend" xml:space="preserve">
-    <value>快速发送...</value>
   </data>
   <data name="Menu_ActivityStream" xml:space="preserve">
     <value>活动流...</value>
@@ -771,25 +764,6 @@
   </data>
   <data name="CameraRecordingToggle.Header" xml:space="preserve">
     <value>允许摄像头录制</value>
-  </data>
-  <!-- ==================== Activity Stream: Recording ==================== -->
-  <data name="Activity_ScreenRecordingStarted" xml:space="preserve">
-    <value>屏幕录制已开始</value>
-  </data>
-  <data name="Activity_ScreenRecordingComplete" xml:space="preserve">
-    <value>屏幕录制已完成</value>
-  </data>
-  <data name="Activity_CameraRecordingStarted" xml:space="preserve">
-    <value>摄像头录制已开始</value>
-  </data>
-  <data name="Activity_CameraRecordingComplete" xml:space="preserve">
-    <value>摄像头录制已完成</value>
-  </data>
-  <data name="Activity_RecordingRequestedByAgent" xml:space="preserve">
-    <value>{0}录制由代理请求</value>
-  </data>
-  <data name="Activity_RecordingSentToAgent" xml:space="preserve">
-    <value>{0}录制已发送给代理</value>
   </data>
   <!-- ==================== Toast: Activity Stream Tip ==================== -->
   <data name="Toast_ActivityStreamTip" xml:space="preserve">
@@ -1478,9 +1452,6 @@
   <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
     <value>OpenClaw Hub</value>
   </data>
-  <data name="VersionText.Text" xml:space="preserve">
-    <value>v0.1.0</value>
-  </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
     <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
   </data>
@@ -1615,6 +1586,12 @@
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>连接到网关以开始聊天</value>
+  </data>
+  <data name="ChatPage_WaitingTitle.Text" xml:space="preserve">
+    <value>等待聊天启动…</value>
+  </data>
+  <data name="ChatPage_WaitingStatusText.Text" xml:space="preserve">
+    <value>网关已连接；聊天界面仍在上线中。</value>
   </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
     <value>⚙️ 配置</value>
@@ -2828,6 +2805,9 @@
   <data name="Chat_Composer_Placeholder_NotConnected" xml:space="preserve">
     <value>未连接</value>
   </data>
+  <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
+    <value>Gateway update required — incompatible version</value>
+  </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>附加</value>
   </data>
@@ -3076,6 +3056,9 @@
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
+  </data>
+  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
+    <value>返回连接</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
@@ -3541,7 +3524,7 @@
     <value>Launch OpenClaw automatically when you sign in.</value>
   </data>
   <data name="SettingsRow_GlobalHotkey_Description.Text" xml:space="preserve">
-    <value>Ctrl + Alt + Shift + C opens the Quick Send dialog from anywhere.</value>
+    <value>Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings).</value>
   </data>
   <data name="SettingsRow_LegacyChat_Description.Text" xml:space="preserve">
     <value>When on, Chat hosts the gateway's web chat instead of the native Windows experience.</value>

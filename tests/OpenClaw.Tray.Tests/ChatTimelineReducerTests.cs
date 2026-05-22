@@ -69,6 +69,64 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void DuplicateFinalAssistant_IdenticalText_DedupesWithoutReconcileFlag()
+    {
+        // Reproduces the duplicate-bubble screenshot bug: gateway re-emits
+        // the exact same final message after a turn end without setting the
+        // ReconcilePrevious flag. The reducer must collapse identical-text
+        // duplicates as a safety net so the UI doesn't render the same
+        // assistant text twice in a row.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatMessageEvent("I don't see a pending approval."));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        Assert.False(state.TurnActive);
+
+        var updated = ChatTimelineReducer.Apply(
+            state,
+            new ChatMessageEvent("I don't see a pending approval."));
+
+        Assert.Single(updated.Entries);
+        Assert.Equal("I don't see a pending approval.", updated.Entries[0].Text);
+    }
+
+    [Fact]
+    public void DuplicateFinalAssistant_DoesNotReactivatePreviousAssistant()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatMessageEvent("previous"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("previous"));
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("next request"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("next response"));
+
+        Assert.Equal(3, updated.Entries.Count);
+        Assert.Equal("previous", updated.Entries[0].Text);
+        Assert.Equal(ChatTimelineItemKind.User, updated.Entries[1].Kind);
+        Assert.Equal("next response", updated.Entries[2].Text);
+    }
+
+    [Fact]
+    public void SubsequentAssistant_DifferentText_AfterTurnEnd_CreatesNewEntry()
+    {
+        // Guard against over-aggressive dedupe: a genuinely new assistant
+        // message in a later turn (different text, no reconcile flag, turn
+        // already ended) must NOT be merged into the previous entry.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatMessageEvent("first"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatMessageEvent("second"));
+
+        Assert.Equal(2, updated.Entries.Count);
+        Assert.Equal("first", updated.Entries[0].Text);
+        Assert.Equal("second", updated.Entries[1].Text);
+    }
+
+    [Fact]
     public void AddLocalUser_CapsTrackedNonces()
     {
         var state = ChatTimelineState.Initial();

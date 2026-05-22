@@ -233,6 +233,7 @@ $settingsPath    = Join-Path $appData      "OpenClawTray\settings.json"
 $logsDir         = Join-Path $localAppData "OpenClawTray\Logs"
 $execPolicyPath  = Join-Path $localAppData "OpenClawTray\exec-policy.json"
 $vhdDirPath      = Join-Path $localAppData "OpenClawTray\wsl\$DistroName"
+$wslParentDirPath = Join-Path $localAppData "OpenClawTray\wsl"
 
 $autoStartRegKey  = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 $autoStartAppName = "OpenClawTray"
@@ -374,6 +375,7 @@ function Get-StateSnapshot {
             settings_exists      = (Test-Path -LiteralPath $settingsPath)
             exec_policy_exists   = (Test-Path -LiteralPath $execPolicyPath)
             vhd_dir_exists       = (Test-Path -LiteralPath $vhdDirPath)
+            wsl_parent_dir_exists = (Test-Path -LiteralPath $wslParentDirPath)
         }
         processes_openclaw     = @()
     }
@@ -477,6 +479,7 @@ function Get-Postconditions {
         mcp_token_preserved       = $mcpTokenPreserved
         keepalives_absent         = $keepalivesAbsent
         vhd_dir_absent            = (-not (Test-Path -LiteralPath $vhdDirPath))
+        wsl_parent_dir_absent     = (-not (Test-Path -LiteralPath $wslParentDirPath))
     }
 }
 
@@ -488,7 +491,8 @@ function Get-Verdict {
 
     # Required postconditions (device_key_file_preserved and mcp_token_preserved are advisory).
     $required   = @('wsl_distro_absent', 'autostart_cleared', 'setup_state_absent',
-                    'device_token_cleared', 'keepalives_absent', 'vhd_dir_absent')
+                    'device_token_cleared', 'keepalives_absent', 'vhd_dir_absent',
+                    'wsl_parent_dir_absent')
     $failedKeys = @($required | Where-Object { $Postconditions[$_] -ne $true })
     $errCount   = if ($null -eq $Errors) { 0 } else { @($Errors).Count }
 

@@ -19,15 +19,16 @@ public sealed record ChatVariationPreset(
 
 public static class ChatVariationPresets
 {
-    /// <summary>Mica look-alike, large rounded bubbles, generous spacing.</summary>
+    /// <summary>Acrylic backdrop, large rounded bubbles, cozy spacing.
+    /// Matches the shipping default look (see ChatExplorationState code defaults).</summary>
     public static readonly ChatVariationPreset Calm = new(
         BubbleCornerRadius:   16,
         Gutter:               64,
         MessageGap:           12,
-        PaddingDensity:       ChatPaddingDensity.Comfortable,
+        PaddingDensity:       ChatPaddingDensity.Cozy,
         ComposerCornerRadius: 8,
-        ComposerIconSize:     14,
-        SendButtonSize:       32,
+        ComposerIconSize:     16,
+        SendButtonSize:       40,
         ShowAvatars:          true,
         ShowTimestamps:       true);
 

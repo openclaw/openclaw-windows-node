@@ -122,6 +122,16 @@ When the node connects, it advertises these capabilities:
   - **UAC declined / install failed** → wizard surfaces a retryable error (`wsl_install_elevation_declined` or `wsl_install_failed`) with the wsl.exe stderr tail. Click **Try again** or run `wsl --install` from an elevated terminal manually and retry.
 - Manual smoke (cannot fully automate): on a known-clean ARM64 Cadmus laptop without WSL, click **Set up locally** and verify the next page appears within ~5 s, the UAC prompt is the only user interaction required for the platform install, and one of the three terminal states above is reached cleanly.
 
+### Local sandbox validation
+- Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
+- Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
+
+  ```powershell
+  .\build.ps1
+  $env:OPENCLAW_RUN_INTEGRATION='1'
+  dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter "FullyQualifiedName~Mxc"
+  ```
+
 ## Remaining Work (Roadmap)
 
 1. ~~**system.run + exec approvals**~~ ✅ Implemented
