@@ -222,6 +222,70 @@ jobs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
 
+  e2e:
+    needs: repo-hygiene
+    if: ${{ !cancelled() }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+    - name: Fail if repo hygiene failed
+      if: ${{ needs.repo-hygiene.result != 'success' }}
+      shell: pwsh
+      run: |
+        Write-Error "repo-hygiene failed; see the repo-hygiene job output."
+        exit 1
+
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v5
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build Shared Library
+      run: dotnet build src/OpenClaw.Shared -c Debug --no-restore
+
+    - name: Build SetupEngine
+      run: dotnet build src/OpenClaw.SetupEngine -c Debug --no-restore
+
+    - name: Build Tray App (WinUI)
+      run: dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64
+
+    - name: Build E2E Tests
+      run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
+
+    - name: Run E2E Tests
+      run: >
+        dotnet test tests/OpenClaw.E2ETests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults/E2E
+        --logger "trx;LogFileName=OpenClaw.E2ETests.trx"
+        --logger "console;verbosity=detailed"
+
+    - name: Upload E2E Test Results & Logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: e2e-test-results
+        path: |
+          TestResults/E2E/
+        if-no-files-found: warn
+
   build:
     needs: test
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
