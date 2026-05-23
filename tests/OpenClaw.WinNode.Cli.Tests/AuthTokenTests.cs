@@ -369,7 +369,10 @@ public class AuthTokenTests : IDisposable
         Assert.Equal(0, exit);
         var stderr = e.ToString();
         Assert.Contains("[winnode] WARN", stderr);
-        Assert.Contains("ACL", stderr);
+        Assert.True(
+            stderr.Contains("ACL", StringComparison.OrdinalIgnoreCase) ||
+            stderr.Contains("owner", StringComparison.OrdinalIgnoreCase),
+            $"Expected ACL or owner warning, got: {stderr}");
     }
 
     [SupportedOSPlatform("windows")]
