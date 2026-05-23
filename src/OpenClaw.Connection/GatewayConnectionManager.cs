@@ -167,7 +167,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return false;
 
         // Parse the URL so we evaluate the actual Host component rather than
-        // a string prefix. Round-2 review found `StartsWith("ws://localhost")`
+        // a string prefix. The previous prefix matcher accepted hostile
+        // lookalikes — `StartsWith("ws://localhost")`
         // matched `ws://localhost.evil.example.com:1234/` and `ws://127.`
         // matched `ws://127.attacker.com` — defeating the loopback gate that
         // scopes node-auto-approve suppression to the local wizard's gateway.
@@ -749,7 +750,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         s.NodeError ?? "Node connection failed."));
                     break;
                 case RoleConnectionState.RateLimited:
-                    // Round-6: defensively surface RateLimited as a terminal
+                    // Defensively surface RateLimited as a terminal
                     // failure rather than waiting the 35s default for a
                     // Connected transition that won't arrive. NodeRateLimited
                     // is not currently emitted by any path in this manager,
@@ -771,7 +772,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     // scope inside IsNodeAutoApproveSuppressed ensures a stale
                     // token can never suppress remote-gateway pairings.
                     //
-                    // Round-6: the stale-snapshot race that previously
+                    // The stale-snapshot race that previously
                     // necessitated a requestId-equality guard here is now
                     // handled at the source — StartNodeConnectionAsync calls
                     // _stateMachine.StartNodeConnecting() which resets the
@@ -804,7 +805,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 // state synchronously (test connectors may; production
                 // NodeConnector is async).
                 //
-                // Manual test 2026-05-22 surfaced a race: on a RETRY connect
+                // Manual testing surfaced a race: on a RETRY connect
                 // (Phase 14 after V2 engine approved a role-upgrade via WSL
                 // CLI), the snapshot here still showed the STALE
                 // PairingRequired state from the previous failed attempt
@@ -892,7 +893,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
 
         // Mark node as enabled in the state machine so UI reflects node state.
-        // Round-6 fix: also reset the node sub-FSM to Connecting via
+        // Also reset the node sub-FSM to Connecting via
         // StartNodeConnecting() so the new attempt starts from a clean
         // snapshot — clears stale NodePairingRequestId / NodePairingStatus
         // from any prior PairingRequired attempt. Without this, observers

@@ -2853,7 +2853,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Info($"[App] Released node-pair auto-approve suppression ({reason}).");
         }
 
-        // Round-2 + Round-3: if event wiring OR Activate() throws AFTER we
+        // If event wiring OR Activate() throws AFTER we
         // acquired the suppression token, the Completed/Closed handlers may
         // never fire and the token would leak for the entire process
         // lifetime — permanently suppressing local-loopback node
@@ -2929,7 +2929,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             ReleaseNodeAutoApproveSuppression("onboarding window setup failed");
             _onboardingWindow = null;
-            // Round-4 fix: if we disconnected an existing gateway to make
+            // If we disconnected an existing gateway to make
             // room for onboarding (see disconnectedForOnboarding +
             // restoreGatewayId capture earlier in this method) and setup
             // never reached the point of wiring the Closed handler, the

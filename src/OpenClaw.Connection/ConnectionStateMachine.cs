@@ -137,8 +137,8 @@ internal sealed class ConnectionStateMachine
 
     /// <summary>Start the node sub-FSM in Connecting state.</summary>
     /// <remarks>
-    /// Round-6 fix: also reset from <see cref="RoleConnectionState.PairingRequired"/>
-    /// / <see cref="RoleConnectionState.PairingRejected"/> / <see cref="RoleConnectionState.Disconnected"/>
+    /// Also reset from <see cref="RoleConnectionState.PairingRequired"/>
+    /// / <see cref="RoleConnectionState.PairingRejected"/> / <see cref="RoleConnectionState.RateLimited"/>
     /// so a RETRY attempt starts from a clean slate. Without this the
     /// snapshot carries the previous attempt's PairingRequired requestId
     /// into the new connect, causing observers (notably

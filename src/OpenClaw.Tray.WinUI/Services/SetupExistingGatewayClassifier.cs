@@ -110,7 +110,7 @@ public static class SetupExistingGatewayClassifier
                 .ProbeAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            // Round-3 fix: distinguish NotInstalled (definitive) from
+            // Distinguish NotInstalled (definitive) from
             // Unknown (transient — probe timed out / policy-blocked / etc).
             // For NotInstalled, fall back to local-setup evidence (no
             // distro could possibly exist). For Unknown we should NOT

@@ -3649,11 +3649,12 @@ public sealed class LocalGatewaySetupEngine
     /// For unrelated configure errors (script syntax, missing packages,
     /// permissions inside the distro) we keep the generic message so the
     /// user doesn't get a misleading "reboot to fix" suggestion.
-    /// Strict match — round-2 review noted that defaulting to true on
-    /// null/empty Detail (or matching the bare substring "kernel") was
-    /// too permissive and re-introduced exactly the false-positive the
-    /// gate is supposed to eliminate, so we now require a positive
-    /// kernel/host-compute signature and return false for blank Detail.
+    /// Strict match — defaulting to true on
+    /// null/empty Detail (or matching the bare substring "kernel") would
+    /// be too permissive and re-introduce exactly the false-positive the
+    /// gate is supposed to eliminate, so we require a positive
+    /// kernel/host-compute signature and return false for blank Detail
+    /// when <paramref name="postFreshInstall"/> is false.
     /// </summary>
     internal static bool LooksLikePostInstallKernelIssue(string? detail)
         => LooksLikePostInstallKernelIssue(detail, postFreshInstall: false);
@@ -3666,9 +3667,9 @@ public sealed class LocalGatewaySetupEngine
     /// not-yet-warmed errors) write to the Windows event log rather than
     /// stderr, so the engine's collected Detail is often empty. Keeping
     /// the strict default for non-fresh-install callers preserves the
-    /// round-2 win (no misleading reboot suggestion for unrelated
-    /// failures) while restoring the round-1 protection for the case the
-    /// gate was originally designed to catch.
+    /// no-misleading-reboot-suggestion-for-unrelated-failures behavior
+    /// while restoring the original protection for the case the
+    /// gate was designed to catch.
     /// </summary>
     internal static bool LooksLikePostInstallKernelIssue(string? detail, bool postFreshInstall)
     {
@@ -3771,7 +3772,7 @@ public sealed class LocalGatewaySetupEngine
         state.DistroName = _options.DistroName;
         state.GatewayUrl = LocalGatewayEndpointResolver.BuildLoopbackGatewayUrl(_options);
 
-        // Round-2 fix: reset the per-run "we just installed WSL" flag at the
+        // Reset the per-run "we just installed WSL" flag at the
         // top of every RunLocalOnlyAsync. Engines created by the factory are
         // typically single-use, but nothing in the API contract prevents a
         // caller from invoking RunLocalOnlyAsync twice on the same instance.
@@ -4579,7 +4580,7 @@ public static class LocalGatewaySetupEngineFactory
         // SettingsWindowsTrayNodeProvisioner.DefaultPairRetryDelay (5s) which
         // is conservatively below the gateway's internal ~10s pending-
         // approval timer. Power users on slow ARM64 hardware can raise it;
-        // tests want zero. Round-2 review: clamp to a sane upper bound
+        // tests want zero. Clamp to a sane upper bound
         // (60s) so a misconfigured env var (extra zero) doesn't hang the
         // wizard for hours with no UI feedback; warn on unparseable values
         // instead of silently ignoring them.

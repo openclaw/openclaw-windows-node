@@ -472,7 +472,7 @@ public class WslPlatformInstallTests
     [Fact]
     public async Task Engine_EnsureWslEnabled_RequiresRestart_DoesNotPaintCheckSystemAsFailure()
     {
-        // Regression for Hanselman review H1: the previous implementation
+        // Regression: the previous implementation
         // set Phase=Failed for the RequiresRestart outcome, which makes
         // LocalSetupProgressStageMap render the "Check system" stage row as
         // a hard failure even though the user just needs to reboot. The
@@ -531,7 +531,7 @@ public class WslPlatformInstallTests
     [Fact]
     public async Task Engine_ResumesAfterReboot_WhenPersistedStateIsWslInstallRequiresRestart()
     {
-        // Regression for Hanselman review H1 / M4: after a previous run ended
+        // Regression: after a previous run ended
         // in RequiresRestart, the persisted setup-state.json must not freeze
         // the wizard. The engine should reset Status→Pending on entry so the
         // post-reboot re-launch actually re-runs preflight and continues.
@@ -586,7 +586,7 @@ public class WslPlatformInstallTests
     [Fact]
     public async Task Preflight_TreatsProbeTimeoutAsBlockingUnavailable_WithoutFallingBackToLongRunner()
     {
-        // Regression for Hanselman round 2: when WslPlatformProbe times out
+        // Regression: when WslPlatformProbe times out
         // (Unknown + null StatusResult), the preflight must NOT fall back to
         // _wsl.RunAsync(["--status"]) — that runner inherits the engine's
         // 30s default timeout, undoing the whole point of the probe's 5s
@@ -659,7 +659,7 @@ public class WslPlatformInstallTests
     [Fact]
     public async Task Installer_ClampsNonSensicalAttemptsAndDelay()
     {
-        // Round-3 M-3 / L-1: the test must force the retry loop to actually
+        // The test must force the retry loop to actually
         // execute the bad delay, otherwise it cannot distinguish clamped vs
         // unclamped behavior. Probe sequence forces two delays between three
         // probes; with the unclamped negative TimeSpan, Task.Delay throws
@@ -686,7 +686,6 @@ public class WslPlatformInstallTests
     [Fact]
     public async Task Installer_RemapsUnknownProbeToRequiresRestart_WhenExitCodeIsZero()
     {
-        // Round-3 Codex MEDIUM (revised in Round-2 of WSLInstall1 review):
         // exit=0 with the post-install probe still returning Unknown after
         // exhausting retries means the install succeeded but the lifted-WSL
         // service is racing warmup. RequiresRestart is closer to ground
@@ -823,7 +822,7 @@ public class WslPlatformInstallTests
         Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("WslRegisterDistribution failed with error: 0x80004002"));
         Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("Error: 0x800401f0  Class not registered"));
         Assert.True(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("WSL2 requires an update to its kernel component"));
-        // Round-2 fix: blank Detail must NOT default to true (was a permissive
+        // Blank Detail must NOT default to true (was a permissive
         // catch-all that re-introduced the false-positive the gate is meant
         // to eliminate).
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue(null));
@@ -836,7 +835,7 @@ public class WslPlatformInstallTests
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("bash: line 12: syntax error near unexpected token"));
         Assert.False(LocalGatewaySetupEngine.LooksLikePostInstallKernelIssue("Permission denied: /etc/openclaw/config"));
 
-        // Round-3 overload: when postFreshInstall=true (caller already
+        // postFreshInstall overload: when postFreshInstall=true (caller already
         // knows WSL was just installed in this session), blank Detail
         // should default to true. Many real WslRegisterDistribution
         // HRESULTs / host-compute warmup errors write to the Windows
@@ -890,7 +889,7 @@ public class WslPlatformInstallTests
         }
         public async Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default)
         {
-            // Also hang. The point of the round-3 H-1 fix is that preflight
+            // Also hang. The intent is that preflight
             // must NOT call ListDistrosAsync when the platform probe couldn't
             // confirm WSL is healthy. If the fix regresses, this fake will
             // never return and the preflight test will hit its 3s elapsed

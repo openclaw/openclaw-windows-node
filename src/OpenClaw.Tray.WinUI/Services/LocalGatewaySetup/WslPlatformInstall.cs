@@ -323,11 +323,11 @@ public sealed class ElevatedWslPlatformInstaller : IWslPlatformInstaller
         // install the Store/lifted-WSL service can take a few seconds to mark
         // the platform as queryable. If we don't retry, exit-0 + NotInstalled
         // looks like "reboot required" when it's actually just "wait 2 more
-        // seconds". Round-2 fix: also retry on Unknown — the probe returns
+        // seconds". Also retry on Unknown — the probe returns
         // Unknown on transient wsl.exe timeouts during lifted-WSL warmup,
         // and bailing early would misclassify a successful install on slow
         // hosts (ARM64, fresh installs) as Failed.
-        // Round-3 considered (but rejected): break early on a second
+        // Considered (but rejected): break early on a second
         // NotInstalled reading. Conflicts with the pinned 3-attempt
         // convergence test (Installer_RetriesPostProbe_RidingOutFinalizeRace)
         // where multiple consecutive NotInstalled readings precede

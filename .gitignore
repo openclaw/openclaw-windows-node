@@ -357,7 +357,3 @@ visual-test-output/
 msix-validation-evidence/
 packaging-test-output/
 uninstall-validation-output/
-
-# Reviewer-artifact patches (Hanselman dual-model reviews)
-review_diff_*.txt
-

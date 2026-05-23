@@ -325,7 +325,7 @@ public class GatewayConnectionManagerTests : IDisposable
     [Fact]
     public async Task EnsureNodeConnectedAsync_StaleSnapshotAfterPrevPairingRequired_DoesNotFastFailNewAttempt()
     {
-        // Regression for manual test 2026-05-22 (Round-5 ship-readiness check):
+        // Regression for the Phase-14 false-failure surfaced by manual ARM64 testing:
         // After the V2 onboarding engine's first PairAsync attempt got
         // PairingRequired and the engine approved via WSL CLI, the retry
         // attempt observed the STALE PairingRequired snapshot via the
@@ -387,7 +387,7 @@ public class GatewayConnectionManagerTests : IDisposable
     [Fact]
     public async Task EnsureNodeConnectedAsync_FreshPairingRequiredAfterReset_FastFailsWhenSuppressed()
     {
-        // Round-6 companion to StaleSnapshotAfterPrevPairingRequired:
+        // Companion to StaleSnapshotAfterPrevPairingRequired:
         // pin the OTHER half of the fix — when the retry attempt itself
         // produces a fresh PairingRequired event (different from any
         // stale snapshot), the Handler MUST fast-fail so the V2
