@@ -13,7 +13,7 @@ The implementation is structured so that **adding a new node capability automati
 ## Goals
 
 1. **Single source of truth for capabilities.** A new `INodeCapability` registered with `WindowsNodeClient.RegisterCapability(...)` is reachable via every transport the tray supports. Today: gateway WebSocket and local MCP HTTP. Future transports (named pipe, gRPC, whatever) plug in the same way.
-2. **Local-first development.** Capabilities can be exercised on Windows without standing up an OpenClaw gateway, without an account, without auth, without a tunnel.
+2. **Local-first development.** Capabilities can be exercised on Windows without standing up an OpenClaw gateway, without an account, without a gateway token, without pairing, and without a tunnel.
 3. **Make MCP clients first-class consumers** of the OpenClaw native node, not afterthoughts. The tooling investment in capabilities (camera consent flows, exec approval policy, canvas WebView2 plumbing) pays off in both directions: agent-via-gateway and agent-via-local-MCP.
 
 ## Non-goals (for this iteration)
@@ -119,7 +119,7 @@ The tray's most interesting code lives in capabilities — `system.run` (LocalCo
 
 Local MCP changes that. Concrete benefits:
 
-- **Manual smoke tests in seconds.** `curl -s -X POST http://127.0.0.1:8765/ -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` validates that the capability dispatch path works, the WinUI dispatcher marshaling is correct, the result shape matches expectations. No gateway, no token, no SSH tunnel.
+- **Manual smoke tests in seconds.** `curl -s -X POST http://127.0.0.1:8765/ -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` validates that the capability dispatch path works, the WinUI dispatcher marshaling is correct, the result shape matches expectations. No gateway, no gateway token, no pairing, no SSH tunnel.
 - **Reproducible bug reports.** A repro becomes a `tools/call` body the bug filer can paste verbatim. No "what was the gateway doing at the time."
 - **Integration tests against a real instance.** A future `tests/integration/` project can spin up the tray in MCP-only mode, fire JSON-RPC, assert results. The same test bodies a developer runs by hand are the same ones CI runs. (Harnessing WinUI itself in CI is harder, but the bridge logic — `McpToolBridge` — is already covered by `McpToolBridgeTests` with no UI involvement.)
 - **Coverage for the dispatch path itself.** `WindowsNodeClient`'s capability-routing logic (`CanHandle` → `ExecuteAsync`) was previously only exercised against a live gateway. The MCP server hits the same code paths, so any local MCP test is implicit coverage of the gateway dispatch.
@@ -168,7 +168,7 @@ With MCP in-process the workflow shortens to:
 2. Wire it into `NodeService.RegisterCapabilities()`.
 3. Restart the tray. The new tool is *immediately* visible to any local MCP client (`tools/list` re-reads the registry every call), and to manual `curl` tests.
 
-The dev loop for capabilities is now identical to the dev loop for any local HTTP server: edit, restart, hit the endpoint, observe. No gateway, no agent, no auth.
+The dev loop for capabilities is now identical to the dev loop for any local HTTP server: edit, restart, hit the endpoint with the local MCP bearer token, observe. No gateway, no agent, no gateway auth.
 
 This compounds when you stack it with Claude Code or Cursor on the same machine. A contributor can:
 
@@ -181,7 +181,7 @@ It also reduces the cost of "speculative" capabilities. Today, adding a capabili
 
 ## Security model
 
-The server is built on **three** defensive layers, not just one. Loopback alone is *not* sufficient — a browser tab the user opens is also on the loopback interface, so a malicious page could otherwise reach `http://127.0.0.1:8765/` directly.
+The server is built on several defensive layers, not just one. Loopback alone is *not* sufficient — a browser tab the user opens is also on the loopback interface, so a malicious page could otherwise reach `http://127.0.0.1:8765/` directly.
 
 1. **Loopback bind.** `HttpListener` is registered with the prefix `http://127.0.0.1:8765/`. The Windows kernel binds the listening socket to the loopback interface only — packets from other interfaces are not delivered to it. Firewall configuration is irrelevant. Defends against: another machine on the network.
 2. **Defensive `IsLoopback` check.** Each incoming request validates `ctx.Request.RemoteEndPoint.Address`. Belt-and-suspenders for #1.
@@ -192,10 +192,11 @@ The server is built on **three** defensive layers, not just one. Loopback alone 
    - the request body exceeds 4 MiB (DoS / OOM cap).
 
    Together these three checks force a malicious cross-origin browser fetch into a CORS preflight that we deliberately do not honor (no `Access-Control-Allow-*` is ever emitted), so the actual call is blocked before reaching capability code.
-4. **Concurrency cap.** A semaphore limits in-flight handlers to 8. A misbehaving local client cannot pin every threadpool thread on long-running screen/camera calls.
-5. **Capability-level controls remain in force.** `SystemCapability.SetApprovalPolicy(...)` (the exec approval policy) still gates `system.run`. Camera and screen capture still go through Windows consent flows. MCP doesn't bypass any of those.
+4. **Bearer token.** Every request must include the persistent local MCP bearer token (`Authorization: Bearer <token>`) once the server has created `%APPDATA%\OpenClawTray\mcp-token.txt`. This blocks drive-by local clients that know the port but cannot read the per-user token file.
+5. **Concurrency cap.** A semaphore limits in-flight handlers to 8. A misbehaving local client cannot pin every threadpool thread on long-running screen/camera calls.
+6. **Capability-level controls remain in force.** `SystemCapability.SetApprovalPolicy(...)` (the exec approval policy) still gates `system.run`. Camera and screen capture still go through Windows consent flows. MCP doesn't bypass any of those.
 
-**Still no authentication.** Any user-context local process with a TCP socket and the port number can drive any capability. This is the same trust boundary as anything that runs as the user — a malicious process on the box could already invoke arbitrary Win32 APIs without going through MCP. We don't try to stop user-context processes from talking to MCP. If that turns out to matter (multi-user shared boxes, low-trust local processes), the right answer is per-call bearer tokens issued by the tray (one-time copy-to-clipboard from the Settings UI), not URL ACLs or HTTPS — both add deployment pain without solving the actual problem.
+**Authentication is local bearer-token based.** The token is persistent, generated by the tray, stored in the current user's OpenClawTray data directory, and verified before MCP method dispatch. It is defense-in-depth rather than a hard sandbox boundary: a malicious process already running as the same user may still be able to read user-profile files or invoke native APIs directly. If we need stronger isolation for shared machines or low-trust local processes, the next step is scoped or per-call tokens issued by the tray, not URL ACLs or HTTPS — both add deployment pain without solving the same-user trust problem.
 
 ### Verifying the gate
 
@@ -212,7 +213,7 @@ curl -X POST http://127.0.0.1:8765/ -H "Host: evil.com" -H "Content-Type: applic
 This should be **rejected** with `415`:
 
 ```powershell
-curl -X POST http://127.0.0.1:8765/ -H "Content-Type: text/plain" --data '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+curl -X POST http://127.0.0.1:8765/ -H "Authorization: Bearer <token>" -H "Content-Type: text/plain" --data '{"jsonrpc":"2.0","id":1,"method":"ping"}'
 ```
 
 These should **succeed**:
@@ -252,18 +253,23 @@ With the tray running and `EnableMcpServer = true`:
 
 ```powershell
 # Server is up
-curl http://127.0.0.1:8765/
+curl http://127.0.0.1:8765/ -H "Authorization: Bearer <token>"
 
 # List tools
 curl -s -X POST http://127.0.0.1:8765/ `
+  -H "Authorization: Bearer <token>" `
   -H "Content-Type: application/json" `
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 # Take a screenshot of the primary monitor
 curl -s -X POST http://127.0.0.1:8765/ `
+  -H "Authorization: Bearer <token>" `
   -H "Content-Type: application/json" `
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"screen.snapshot"}}'
 ```
+
+For a simpler local CLI smoke test, run `winnode --list-tools`; it loads the
+same token file automatically.
 
 For Claude Code, drop this into `.mcp.json` at the repo root or `~/.claude.json`:
 
@@ -272,7 +278,10 @@ For Claude Code, drop this into `.mcp.json` at the repo root or `~/.claude.json`
   "mcpServers": {
     "openclaw-tray": {
       "type": "http",
-      "url": "http://127.0.0.1:8765/"
+      "url": "http://127.0.0.1:8765/",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
     }
   }
 }

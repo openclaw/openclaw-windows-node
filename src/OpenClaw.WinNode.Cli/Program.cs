@@ -12,6 +12,7 @@ internal sealed class WinNodeOptions
 {
     public string? Node { get; set; }
     public string? Command { get; set; }
+    public bool ListTools { get; set; }
     public string Params { get; set; } = "{}";
     public int InvokeTimeoutMs { get; set; } = 15000;
     public string? IdempotencyKey { get; set; }
@@ -68,7 +69,13 @@ internal static class CliRunner
             return 2;
         }
 
-        if (string.IsNullOrWhiteSpace(options.Command))
+        if (options.ListTools && !string.IsNullOrWhiteSpace(options.Command))
+        {
+            stderr.WriteLine("--list-tools cannot be combined with --command");
+            return 2;
+        }
+
+        if (!options.ListTools && string.IsNullOrWhiteSpace(options.Command))
         {
             stderr.WriteLine("--command is required");
             return 2;
@@ -90,44 +97,47 @@ internal static class CliRunner
             stderr.WriteLine("[winnode] WARN: --idempotency-key ignored (no idempotency over local MCP); subsequent retries may double-execute side effects.");
         }
 
-        // F-12: --params @<path> loads a JSON object from disk. Useful for big
-        // A2UI payloads / canvas.eval scripts that exceed comfortable command-
-        // line size.
-        var paramsJson = options.Params;
-        if (paramsJson.StartsWith('@'))
+        JsonElement arguments = default;
+        if (!options.ListTools)
         {
-            var path = paramsJson[1..];
-            if (string.IsNullOrWhiteSpace(path))
+            // F-12: --params @<path> loads a JSON object from disk. Useful for big
+            // A2UI payloads / canvas.eval scripts that exceed comfortable command-
+            // line size.
+            var paramsJson = options.Params;
+            if (paramsJson.StartsWith('@'))
             {
-                stderr.WriteLine("--params @<path>: path is empty");
-                return 2;
+                var path = paramsJson[1..];
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    stderr.WriteLine("--params @<path>: path is empty");
+                    return 2;
+                }
+                try
+                {
+                    paramsJson = File.ReadAllText(path);
+                }
+                catch (Exception ex)
+                {
+                    stderr.WriteLine($"--params: failed to read {path}: {ex.Message}");
+                    return 2;
+                }
             }
+
             try
             {
-                paramsJson = File.ReadAllText(path);
+                using var paramsDoc = JsonDocument.Parse(paramsJson);
+                if (paramsDoc.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    stderr.WriteLine("--params must be a JSON object");
+                    return 2;
+                }
+                arguments = paramsDoc.RootElement.Clone();
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                stderr.WriteLine($"--params: failed to read {path}: {ex.Message}");
+                stderr.WriteLine($"--params is not valid JSON: {ex.Message}");
                 return 2;
             }
-        }
-
-        JsonElement arguments;
-        try
-        {
-            using var paramsDoc = JsonDocument.Parse(paramsJson);
-            if (paramsDoc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                stderr.WriteLine("--params must be a JSON object");
-                return 2;
-            }
-            arguments = paramsDoc.RootElement.Clone();
-        }
-        catch (JsonException ex)
-        {
-            stderr.WriteLine($"--params is not valid JSON: {ex.Message}");
-            return 2;
         }
 
         // F-09: validate the resolved endpoint as an absolute http(s) URL up
@@ -180,7 +190,7 @@ internal static class CliRunner
         if (options.Verbose)
         {
             stderr.WriteLine($"[winnode] endpoint: {endpoint}");
-            stderr.WriteLine($"[winnode] command: {options.Command}");
+            stderr.WriteLine($"[winnode] command: {(options.ListTools ? "tools/list" : options.Command)}");
             // F-07: don't echo the token-file path (PII / username leak).
             // Source label is enough for debugging.
             var authLabel = token.Token is null
@@ -195,7 +205,9 @@ internal static class CliRunner
             }
         }
 
-        var (requestBytes, requestLength) = BuildToolsCallBody(options.Command!, arguments);
+        var (requestBytes, requestLength) = options.ListTools
+            ? BuildToolsListBody()
+            : BuildToolsCallBody(options.Command!, arguments);
 
         // F-18: compute the timeout in long arithmetic so very large
         // (but in-range) --invoke-timeout values can't overflow into a
@@ -463,6 +475,20 @@ internal static class CliRunner
         return (ms.GetBuffer(), (int)ms.Length);
     }
 
+    internal static (byte[] Buffer, int Length) BuildToolsListBody()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms))
+        {
+            w.WriteStartObject();
+            w.WriteString("jsonrpc", "2.0");
+            w.WriteNumber("id", 1);
+            w.WriteString("method", "tools/list");
+            w.WriteEndObject();
+        }
+        return (ms.GetBuffer(), (int)ms.Length);
+    }
+
     internal static string ResolveEndpoint(WinNodeOptions options, Func<string, string?> envLookup, TextWriter stderr)
     {
         if (!string.IsNullOrWhiteSpace(options.McpUrlOverride))
@@ -716,6 +742,9 @@ internal static class CliRunner
                 case "--command":
                     options.Command = RequireValue(args, ref i, arg);
                     break;
+                case "--list-tools":
+                    options.ListTools = true;
+                    break;
                 case "--params":
                     options.Params = RequireValue(args, ref i, arg);
                     break;
@@ -784,10 +813,12 @@ internal static class CliRunner
         stdout.WriteLine();
         stdout.WriteLine("Usage:");
         stdout.WriteLine("  winnode --command <command> [--params <json>] [options]");
+        stdout.WriteLine("  winnode --list-tools [options]");
         stdout.WriteLine();
         stdout.WriteLine("Options:");
         stdout.WriteLine("  --node <idOrNameOrIp>        Accepted for parity with `openclaw nodes invoke`; ignored");
         stdout.WriteLine("  --command <command>          Command to invoke (e.g. system.which, canvas.eval) [required]");
+        stdout.WriteLine("  --list-tools                 Query the live MCP server and print its advertised tools");
         stdout.WriteLine("  --params <json|@path>        JSON object string for params (default: {}). Prefix with");
         stdout.WriteLine("                               @ to load the JSON from a file (e.g. --params @big.json)");
         stdout.WriteLine("  --invoke-timeout <ms>        Invoke timeout in ms (default: 15000, max: 600000)");
@@ -802,6 +833,7 @@ internal static class CliRunner
         stdout.WriteLine();
         stdout.WriteLine("Examples:");
         stdout.WriteLine("  winnode --command system.which --params '{\"bins\":[\"git\",\"node\"]}'");
+        stdout.WriteLine("  winnode --list-tools");
         stdout.WriteLine("  winnode --command screen.snapshot");
         stdout.WriteLine("  winnode --command canvas.present --params '{\"url\":\"https://example.com\"}'");
         stdout.WriteLine();

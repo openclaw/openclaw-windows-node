@@ -13,6 +13,7 @@ public class PrintUsageTests
 
         Assert.Contains("--node", text);
         Assert.Contains("--command", text);
+        Assert.Contains("--list-tools", text);
         Assert.Contains("--params", text);
         Assert.Contains("--invoke-timeout", text);
         Assert.Contains("--idempotency-key", text);

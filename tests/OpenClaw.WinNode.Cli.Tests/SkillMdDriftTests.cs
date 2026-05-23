@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mcp;
 
 namespace OpenClaw.WinNode.Cli.Tests;
@@ -24,6 +26,17 @@ public class SkillMdDriftTests
 
         var documented = ParseCommandHeadings(content);
         var canonical = new HashSet<string>(McpToolBridge.KnownCommands, StringComparer.Ordinal);
+        var actual = GetCapabilityCommands();
+
+        var missingFromDescriptions = actual.Except(canonical).OrderBy(s => s).ToList();
+        var staleDescriptions = canonical.Except(actual).OrderBy(s => s).ToList();
+        if (missingFromDescriptions.Count > 0 || staleDescriptions.Count > 0)
+        {
+            var msg = "McpToolBridge.CommandDescriptions drifted from the actual capability command lists.\n" +
+                      $"  Missing descriptions: [{string.Join(", ", missingFromDescriptions)}]\n" +
+                      $"  Stale descriptions: [{string.Join(", ", staleDescriptions)}]";
+            Assert.Fail(msg);
+        }
 
         var missingFromDoc = canonical.Except(documented).OrderBy(s => s).ToList();
         var extrasInDoc = documented.Except(canonical).OrderBy(s => s).ToList();
@@ -59,6 +72,44 @@ public class SkillMdDriftTests
             set.Add(m.Groups[1].Value);
         }
         return set;
+    }
+
+    private static HashSet<string> GetCapabilityCommands()
+    {
+        var provider = new FakeDeviceStatusProvider();
+        var capabilities = new INodeCapability[]
+        {
+            new AppCapability(NullLogger.Instance),
+            new BrowserProxyCapability(NullLogger.Instance, "ws://127.0.0.1:8080", bearerToken: null),
+            new CameraCapability(NullLogger.Instance),
+            new CanvasCapability(NullLogger.Instance),
+            new DeviceCapability(NullLogger.Instance, provider),
+            new LocationCapability(NullLogger.Instance),
+            new ScreenCapability(NullLogger.Instance),
+            new SttCapability(NullLogger.Instance),
+            new SystemCapability(NullLogger.Instance),
+            new TtsCapability(NullLogger.Instance),
+        };
+
+        var commands = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var capability in capabilities)
+        {
+            foreach (var command in capability.Commands)
+            {
+                commands.Add(command);
+            }
+        }
+        return commands;
+    }
+
+    private sealed class FakeDeviceStatusProvider : IDeviceStatusProvider
+    {
+        public object GetOsInfo() => new { };
+        public Task<object> GetCpuInfoAsync() => Task.FromResult<object>(new { });
+        public object GetMemoryInfo() => new { };
+        public object GetDiskInfo() => new { };
+        public object GetBatteryInfo() => new { };
+        public void Dispose() { }
     }
 
     /// <summary>

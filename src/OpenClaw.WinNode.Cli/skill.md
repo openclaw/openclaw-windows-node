@@ -24,9 +24,13 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 
 ```
 winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>]
+winnode --list-tools [--mcp-url <url>|--mcp-port <port>]
 ```
 
 - `--command` (required) — node command (e.g. `system.which`, `canvas.a2ui.push`).
+- `--list-tools` — query the live MCP server's `tools/list` method and print the
+  advertised tools. Useful when settings-gated capabilities differ from this
+  static reference.
 - `--params` — single JSON **object** string, default `{}`. Must be a JSON object,
   not an array or scalar. **`--params @<path>`** loads the JSON object from a
   file on disk (useful for big A2UI payloads / `canvas.eval` scripts).
@@ -62,7 +66,7 @@ JSON (matches `openclaw nodes invoke`). stderr receives errors. Exit code:
 | 1    | Tool error, JSON-RPC error, transport failure, or HTTP non-2xx |
 | 2    | Argument error (missing/invalid flags, bad `--params` JSON, out-of-range port/timeout, non-http URL) |
 
-**Off-loapback safety:** when `--mcp-url` points at a non-loopback host, the
+**Off-loopback safety:** when `--mcp-url` points at a non-loopback host, the
 CLI **refuses to send the auto-loaded local MCP token** (and warns on stderr).
 An explicitly supplied `--mcp-token` is honored with a warning. This preserves
 the loopback-only threat model the tray's MCP server relies on.
