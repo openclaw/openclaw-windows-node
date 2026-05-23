@@ -63,14 +63,21 @@ public static class TrayArtifactCleanup
 
     private static void DeleteFileIfExists(string path, string label, SetupLogger logger)
     {
-        if (File.Exists(path))
+        try
         {
-            File.Delete(path);
-            logger.Info($"[Uninstall] Deleted {label}");
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                logger.Info($"[Uninstall] Deleted {label}");
+            }
+            else
+            {
+                logger.Info($"[Uninstall] {label} already absent");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            logger.Info($"[Uninstall] {label} already absent");
+            logger.Warn($"[Uninstall] Failed to delete {label}: {ex.Message}");
         }
     }
 

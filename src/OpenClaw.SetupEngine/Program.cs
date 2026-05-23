@@ -138,7 +138,7 @@ public static class Program
             result = await pipeline.UninstallAsync(ctx);
 
             // Post-rollback tray-artifact cleanup (autostart, run.marker, settings, logs)
-            if (result.Outcome == PipelineOutcome.Success || result.Outcome == PipelineOutcome.Failed)
+            if (result.Outcome == PipelineOutcome.Success || result.Outcome == PipelineOutcome.Failed || result.Outcome == PipelineOutcome.Cancelled)
             {
                 if (!config.DryRun)
                 {

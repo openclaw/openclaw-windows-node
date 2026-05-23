@@ -69,7 +69,26 @@ public sealed class CleanupStaleDistroStep : SetupStep
                 // Shut down WSL VM to release VHD locks
                 await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
                 await Task.Delay(2000, ct);
-                Directory.Delete(wslDir, recursive: true);
+
+                // Retry deletion — VHD may still be locked briefly after WSL shutdown
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    try
+                    {
+                        Directory.Delete(wslDir, recursive: true);
+                        break;
+                    }
+                    catch (IOException) when (attempt < 2)
+                    {
+                        ctx.Logger.Warn($"VHD directory still locked, retrying in {(attempt + 1) * 2}s...");
+                        await Task.Delay(TimeSpan.FromSeconds((attempt + 1) * 2), ct);
+                    }
+                    catch (UnauthorizedAccessException) when (attempt < 2)
+                    {
+                        ctx.Logger.Warn($"VHD directory access denied, retrying in {(attempt + 1) * 2}s...");
+                        await Task.Delay(TimeSpan.FromSeconds((attempt + 1) * 2), ct);
+                    }
+                }
             }
             ctx.Logger.Decision("No stale distro found", "skip cleanup");
             return StepResult.Ok("No stale distro to clean");
@@ -123,12 +142,22 @@ public sealed class CleanupStaleGatewayStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        // Remove stale setup-state.json
+        // Remove stale setup-state.json from AppData (legacy location)
         var stateFile = Path.Combine(ctx.DataDir, "setup-state.json");
         if (File.Exists(stateFile))
         {
             File.Delete(stateFile);
-            ctx.Logger.Info("Deleted stale setup-state.json");
+            ctx.Logger.Info("Deleted stale setup-state.json (AppData)");
+        }
+
+        // Also remove from LocalAppData (current write location)
+        var localStateFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray", "setup-state.json");
+        if (File.Exists(localStateFile))
+        {
+            File.Delete(localStateFile);
+            ctx.Logger.Info("Deleted stale setup-state.json (LocalAppData)");
         }
 
         // Remove stale gateway record for our local URL if it exists
@@ -553,12 +582,15 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw config set gateway.reload.mode {gw.ReloadMode}
             """;
 
-        // Apply any extra config key/value pairs from config
+        // Apply any extra config key/value pairs from config (shell-escape values)
         if (gw.ExtraConfig is { Count: > 0 })
         {
             foreach (var (key, value) in gw.ExtraConfig)
             {
-                configCommands += $"\n            openclaw config set {key} {value}";
+                // Shell-escape: wrap value in single quotes, escaping embedded single quotes
+                var escapedValue = "'" + value.Replace("'", "'\\''") + "'";
+                var escapedKey = key.Replace("'", "").Replace(";", "").Replace("|", "").Replace("&", "");
+                configCommands += $"\n            openclaw config set {escapedKey} {escapedValue}";
             }
         }
 
@@ -984,7 +1016,7 @@ public sealed class PairOperatorStep : SetupStep
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
         // Step 1: Get the latest pending request (--latest shows it, exits 1)
         var preview = await ctx.Commands.RunInWslAsync(
@@ -1058,7 +1090,8 @@ public sealed class PairOperatorStep : SetupStep
         }
 
         client.StatusChanged += OnStatusChanged;
-        client.DeviceTokenReceived += (_, _) => ctx.Logger.Info("Device token received from gateway");
+        EventHandler<DeviceTokenReceivedEventArgs> onDeviceToken = (_, _) => ctx.Logger.Info("Device token received from gateway");
+        client.DeviceTokenReceived += onDeviceToken;
 
         try
         {
@@ -1074,6 +1107,7 @@ public sealed class PairOperatorStep : SetupStep
         finally
         {
             client.StatusChanged -= OnStatusChanged;
+            client.DeviceTokenReceived -= onDeviceToken;
         }
     }
 
@@ -1397,7 +1431,7 @@ public sealed class PairNodeStep : SetupStep
     private static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
         // Step 1: Get latest pending request
         var preview = await ctx.Commands.RunInWslAsync(
@@ -1733,9 +1767,7 @@ public sealed class StartKeepaliveStep : SetupStep
             FileName = "wsl.exe",
             Arguments = $"-d {distro} -- sleep infinity",
             UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
+            CreateNoWindow = true
         };
 
         var proc = System.Diagnostics.Process.Start(psi);

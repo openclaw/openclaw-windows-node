@@ -69,8 +69,15 @@ public sealed class TransactionJournal : IDisposable
         lock (_lock)
         {
             _entries.Add(entry);
-            var json = JsonSerializer.Serialize(entry, _jsonOptions);
-            _writer?.WriteLine(json);
+            try
+            {
+                var json = JsonSerializer.Serialize(entry, _jsonOptions);
+                _writer?.WriteLine(json);
+            }
+            catch (IOException)
+            {
+                // Journal write failure is non-fatal — entries are still in memory
+            }
         }
     }
 

@@ -27,7 +27,19 @@ public static class RetryExecutor
         {
             ct.ThrowIfCancellationRequested();
 
-            lastResult = await action();
+            try
+            {
+                lastResult = await action();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // propagate cancellation
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"Step '{stepId}' threw exception (attempt {attempt}/{policy.MaxAttempts}): {ex.Message}");
+                lastResult = StepResult.Fail($"Unhandled exception: {ex.Message}", ex);
+            }
 
             if (lastResult.IsSuccess || lastResult.Outcome == StepOutcome.FailedTerminal)
                 return lastResult;

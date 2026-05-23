@@ -57,7 +57,18 @@ public sealed class CommandRunner
         process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
 
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            sw.Stop();
+            var errorResult = new CommandResult(-1, "", $"Failed to start process '{executable}': {ex.Message}", sw.Elapsed, false);
+            _logger.CommandCompleted(executable, errorResult, sw.Elapsed);
+            return errorResult;
+        }
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

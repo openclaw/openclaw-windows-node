@@ -238,7 +238,7 @@ public sealed class SetupWizardRunner
                 _ctx.DistroName!,
                 $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode hybrid",
                 TimeSpan.FromSeconds(15),
-                ct: _ctx.CancellationToken);
+                ct: CancellationToken.None);
 
             if (result.ExitCode == 0)
                 _ctx.Logger.Info("Reset gateway.reload.mode to hybrid after wizard");
