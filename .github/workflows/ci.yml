@@ -80,8 +80,12 @@ jobs:
       run: |
         dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.Tray.Tests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Connection.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClawTray.FunctionalUI.Tests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClawTray.OnboardingV2.Tests -c Debug -r win-x64 --no-restore
 
     - name: Run Shared Tests
       env:
@@ -109,6 +113,30 @@ jobs:
         --verbosity normal
         --results-directory TestResults\Tray
         --logger trx;LogFileName=OpenClaw.Tray.Tests.trx"
+
+    - name: Run Connection Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\Connection\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Connection.Tests
+        --no-build
+        -c Debug
+        --verbosity normal
+        --results-directory TestResults\Connection
+        --logger trx;LogFileName=OpenClaw.Connection.Tests.trx"
+
+    - name: Run WinNode CLI Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\WinNodeCli\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.WinNode.Cli.Tests
+        --no-build
+        -c Debug
+        --verbosity normal
+        --results-directory TestResults\WinNodeCli
+        --logger trx;LogFileName=OpenClaw.WinNode.Cli.Tests.trx"
 
     # Tray integration tests gate on OPENCLAW_RUN_INTEGRATION; set it so the
     # MCP-server / capability tests actually run. dotnet-coverage with no
@@ -142,6 +170,32 @@ jobs:
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
         if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Run Functional UI Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\FunctionalUI\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClawTray.FunctionalUI.Tests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults\FunctionalUI
+        --logger trx;LogFileName=OpenClawTray.FunctionalUI.Tests.trx"
+
+    - name: Run Onboarding V2 Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\OnboardingV2\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClawTray.OnboardingV2.Tests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults\OnboardingV2
+        --logger trx;LogFileName=OpenClawTray.OnboardingV2.Tests.trx"
 
     - name: Run Tray UI Tests
       run: >
