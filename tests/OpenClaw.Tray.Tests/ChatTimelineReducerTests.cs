@@ -362,4 +362,244 @@ public class ChatTimelineReducerTests
         Assert.Null(updated.ActiveToolCallId);
         Assert.False(updated.TurnActive);
     }
+
+    // ── Reasoning events ──
+
+    [Fact]
+    public void Reasoning_CreatesReasoningEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatReasoningEvent("thinking..."));
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.Reasoning, state.Entries[0].Kind);
+        Assert.Equal("thinking...", state.Entries[0].Text);
+        Assert.NotNull(state.ActiveReasoningId);
+    }
+
+    [Fact]
+    public void ReasoningDelta_AppendsToExistingReasoningEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatReasoningEvent("first"));
+        var updated = ChatTimelineReducer.Apply(state, new ChatReasoningDeltaEvent(" second"));
+
+        Assert.Single(updated.Entries);
+        Assert.Equal("first second", updated.Entries[0].Text);
+    }
+
+    [Fact]
+    public void Reasoning_ReplacesTextOnFullEvent()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatReasoningDeltaEvent("partial"));
+        var updated = ChatTimelineReducer.Apply(state, new ChatReasoningEvent("final"));
+
+        Assert.Single(updated.Entries);
+        Assert.Equal("final", updated.Entries[0].Text);
+    }
+
+    [Fact]
+    public void TurnEnd_ClearsActiveReasoningId()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatReasoningEvent("thinking"));
+
+        Assert.NotNull(state.ActiveReasoningId);
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Null(updated.ActiveReasoningId);
+    }
+
+    // ── Intent events ──
+
+    [Fact]
+    public void Intent_SetsCurrentIntent()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatIntentEvent("searching files"));
+
+        Assert.Equal("searching files", state.CurrentIntent);
+        Assert.Empty(state.Entries); // no timeline entry
+    }
+
+    [Fact]
+    public void Intent_OverwritesPreviousIntent()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatIntentEvent("first"));
+        var updated = ChatTimelineReducer.Apply(state, new ChatIntentEvent("second"));
+
+        Assert.Equal("second", updated.CurrentIntent);
+    }
+
+    // ── Permission request events ──
+
+    [Fact]
+    public void PermissionRequest_SetsPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        Assert.NotNull(state.PendingPermission);
+        Assert.Equal("req-1", state.PendingPermission!.RequestId);
+        Assert.Equal("shell.exec", state.PendingPermission.PermissionKind);
+        Assert.Equal("bash", state.PendingPermission.ToolName);
+        Assert.Equal("run script.sh", state.PendingPermission.Detail);
+        Assert.Empty(state.Entries); // no timeline entry
+    }
+
+    [Fact]
+    public void ClearPermission_RemovesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        Assert.NotNull(state.PendingPermission);
+
+        var updated = ChatTimelineReducer.ClearPermission(state);
+
+        Assert.Null(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void TurnEnd_ClearsPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Null(updated.PendingPermission);
+    }
+
+    // ── Status and system events ──
+
+    [Fact]
+    public void Status_AddsStatusEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatStatusEvent("Connected", ChatTone.Success));
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.Status, state.Entries[0].Kind);
+        Assert.Equal("Connected", state.Entries[0].Text);
+        Assert.Equal(ChatTone.Success, state.Entries[0].Tone);
+    }
+
+    [Fact]
+    public void AddSystem_AddsStatusEntry()
+    {
+        var state = ChatTimelineReducer.AddSystem(ChatTimelineState.Initial(), "system note");
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.Status, state.Entries[0].Kind);
+        Assert.Equal("system note", state.Entries[0].Text);
+        Assert.Equal(ChatTone.Info, state.Entries[0].Tone);
+    }
+
+    [Fact]
+    public void AddSystem_WithExplicitTone_UsesTone()
+    {
+        var state = ChatTimelineReducer.AddSystem(ChatTimelineState.Initial(), "warning!", ChatTone.Warning);
+
+        Assert.Equal(ChatTone.Warning, state.Entries[0].Tone);
+    }
+
+    [Fact]
+    public void Restored_AddsInfoStatusEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatRestoredEvent("History restored"));
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.Status, state.Entries[0].Kind);
+        Assert.Equal("History restored", state.Entries[0].Text);
+        Assert.Equal(ChatTone.Info, state.Entries[0].Tone);
+    }
+
+    [Fact]
+    public void ModelChanged_AddsSuccessStatusEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatModelChangedEvent("gpt-4o"));
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.Status, state.Entries[0].Kind);
+        Assert.Contains("gpt-4o", state.Entries[0].Text);
+        Assert.Equal(ChatTone.Success, state.Entries[0].Tone);
+    }
+
+    // ── Raw events ──
+
+    [Fact]
+    public void Raw_WithText_AddsRawEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatRawEvent("unknown.event", "raw payload"));
+
+        Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.Raw, state.Entries[0].Kind);
+        Assert.Equal("raw payload", state.Entries[0].Text);
+    }
+
+    [Fact]
+    public void Raw_WithNullText_IsNoOp()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatRawEvent("unknown.event", null));
+
+        Assert.Empty(state.Entries);
+    }
+
+    [Fact]
+    public void Raw_WithEmptyText_IsNoOp()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatRawEvent("unknown.event", ""));
+
+        Assert.Empty(state.Entries);
+    }
+
+    // ── ContextChanged ──
+
+    [Fact]
+    public void ContextChanged_IsNoOp()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatContextChangedEvent("/home/user/project", "main"));
+
+        Assert.Empty(state.Entries);
+        Assert.False(state.TurnActive);
+    }
+
+    // ── Unknown event type ──
+
+    [Fact]
+    public void UnknownEvent_IsNoOp()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new UnknownTestEvent());
+
+        Assert.Empty(state.Entries);
+        Assert.False(state.TurnActive);
+    }
+
+    private sealed record UnknownTestEvent : ChatEvent;
 }

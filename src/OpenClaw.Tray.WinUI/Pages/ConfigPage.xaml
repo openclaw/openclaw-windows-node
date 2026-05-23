@@ -3,95 +3,124 @@
     x:Class="OpenClawTray.Pages.ConfigPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:local="using:OpenClawTray.Controls">
 
-    <Grid Padding="24,16,24,16" RowSpacing="12" MaxWidth="900" HorizontalAlignment="Stretch">
+    <!-- Cap content width and stretch so panes don't shift size when toggling
+         Editor / Raw JSON or when the selected field changes. -->
+    <Grid Padding="24,16,24,16" RowSpacing="12"
+          MaxWidth="900" HorizontalAlignment="Stretch">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- ───────── Page header ───────── -->
         <StackPanel Grid.Row="0" Spacing="4">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <TextBlock x:Uid="ConfigPage_TextBlock_17" Text="⚙️ Config" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center"/>
-                <Button x:Name="RefreshButton" Click="OnRefresh" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock x:Uid="ConfigPage_TextBlock_21" Text="Refresh"/>
-                    </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           x:Uid="ConfigPage_TextBlock_17" Text="Config"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1"
+                        x:Name="RefreshButton" Click="OnRefresh"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Uid="ConfigPage_TextBlock_21" Text="Refresh"/>
                 </Button>
-            </StackPanel>
+            </Grid>
             <TextBlock x:Uid="ConfigSubtitle" x:Name="ConfigSubtitle"
                        Text="Editing gateway configuration (openclaw.json) fetched from the connected gateway"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
 
-        <!-- Tabs: Editor + Raw JSON -->
-        <TabView Grid.Row="1" x:Name="ConfigTabs" IsAddTabButtonVisible="False"
-                 TabWidthMode="SizeToContent" SelectionChanged="OnConfigTabChanged">
-            <TabViewItem x:Uid="ConfigPage_TabViewItem_34" Header="Editor" IsClosable="False">
-                <Grid x:Name="SchemaTreeGrid">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="280"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+        <!-- ───────── Segmented selector (Editor / Raw JSON) ───────── -->
+        <controls:SelectorBar Grid.Row="1" x:Name="ConfigSelector"
+                              SelectionChanged="OnConfigSelectorChanged"
+                              HorizontalAlignment="Left">
+            <controls:SelectorBarItem x:Name="EditorSelectorItem"
+                                      x:Uid="ConfigPage_TabViewItem_34"
+                                      Text="Editor" IsSelected="True" Tag="editor"/>
+            <controls:SelectorBarItem x:Name="RawJsonSelectorItem"
+                                      x:Uid="ConfigPage_TabViewItem_82"
+                                      Text="Raw JSON" Tag="raw"/>
+        </controls:SelectorBar>
 
-                    <Border Grid.Column="0"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8" Margin="0,0,12,0">
-                        <TreeView x:Name="ConfigTree"
-                                  SelectionMode="Single"
-                                  ItemInvoked="OnTreeItemInvoked"
-                                  Padding="4"/>
-                    </Border>
+        <!-- ───────── Editor pane ───────── -->
+        <Border Grid.Row="2" x:Name="EditorPane"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8">
+            <Grid x:Name="SchemaTreeGrid">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="280"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="1"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
+                <Border Grid.Column="0"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="0,0,1,0">
+                    <TreeView x:Name="ConfigTree"
+                              SelectionMode="Single"
+                              ItemInvoked="OnTreeItemInvoked"
+                              Padding="4"/>
+                </Border>
 
-                            <StackPanel Grid.Row="0" Padding="16,12" Spacing="4"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="0,0,0,1">
-                                <TextBlock x:Uid="DetailPath" x:Name="DetailPath" Text="Select a config section"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                                <TextBlock x:Name="DetailType" Text=""
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </StackPanel>
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                            <ScrollViewer Grid.Row="1" Padding="16,8">
-                                <StackPanel x:Name="DetailPanel" Spacing="8">
-                                    <TextBlock x:Uid="DetailPlaceholder" x:Name="DetailPlaceholder"
-                                               Text="Select a section from the tree to edit its settings."
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Grid>
-                    </Border>
+                    <StackPanel Grid.Row="0" Padding="16,12" Spacing="4"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="0,0,0,1">
+                        <TextBlock x:Uid="DetailPath" x:Name="DetailPath" Text="Select a config section"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Name="DetailType" Text=""
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" Padding="16,8"
+                                  HorizontalScrollMode="Disabled"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="DetailPanel" Spacing="8"
+                                    HorizontalAlignment="Stretch">
+                            <TextBlock x:Uid="DetailPlaceholder" x:Name="DetailPlaceholder"
+                                       Text="Select a section from the tree to edit its settings."
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
-            </TabViewItem>
-            <TabViewItem x:Uid="ConfigPage_TabViewItem_82" Header="Raw JSON" IsClosable="False">
-                <ScrollViewer Padding="16">
-                    <TextBlock x:Name="RawJsonText" FontFamily="Consolas" FontSize="12"
-                               IsTextSelectionEnabled="True" TextWrapping="Wrap"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </ScrollViewer>
-            </TabViewItem>
-        </TabView>
+            </Grid>
+        </Border>
 
-        <!-- No schema fallback -->
-        <StackPanel x:Name="NoSchemaPanel" Grid.Row="1" Visibility="Collapsed"
+        <!-- ───────── Raw JSON pane ───────── -->
+        <Border Grid.Row="2" x:Name="RawJsonPane" Visibility="Collapsed"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8">
+            <ScrollViewer Padding="16">
+                <TextBlock x:Name="RawJsonText"
+                           FontFamily="Consolas"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           IsTextSelectionEnabled="True" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- ───────── No-schema fallback ───────── -->
+        <StackPanel x:Name="NoSchemaPanel" Grid.Row="2" Visibility="Collapsed"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-            <TextBlock Text="⚙️" FontSize="48" HorizontalAlignment="Center"/>
+            <FontIcon Glyph="&#xE713;" FontSize="48" HorizontalAlignment="Center"
+                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             <TextBlock x:Uid="ConfigPage_TextBlock_95" Text="Schema not available"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
@@ -103,9 +132,14 @@
                     HorizontalAlignment="Center" Style="{ThemeResource AccentButtonStyle}"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Padding="0,8,0,0">
-            <TextBlock x:Name="SaveStatus" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <Button x:Uid="SaveButton" x:Name="SaveButton" Content="Save Changes" Style="{ThemeResource AccentButtonStyle}" Click="OnSave"/>
+        <!-- ───────── Save bar ───────── -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" Padding="0,8,0,0">
+            <TextBlock x:Name="SaveStatus" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            <Button x:Uid="SaveButton" x:Name="SaveButton"
+                    Content="Save Changes"
+                    Style="{ThemeResource AccentButtonStyle}" Click="OnSave"/>
         </StackPanel>
     </Grid>
 </Page>

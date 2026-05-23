@@ -45,6 +45,8 @@ public sealed partial class HubWindow : WindowEx
     public VoiceService? VoiceServiceInstance { get; set; }
     /// <summary>When true, ChatPage should auto-start voice recording on next navigation. Consumed (reset to false) by ChatPage.</summary>
     public bool PendingAutoStartVoice { get; set; }
+    /// <summary>Session key the chat surface should select on its next mount. Consumed (cleared) by ChatPage.</summary>
+    public string? PendingChatSessionKey { get; set; }
     public string? NodeFullDeviceId { get; set; }
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
@@ -178,9 +180,19 @@ public sealed partial class HubWindow : WindowEx
         NavView.OpenPaneLength = Math.Clamp(desired, minPane, maxPane);
     }
 
+    private void OnNavContentHostSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);
+    }
+
     private void OnTitleBarStatusTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
         NavigateTo("connection");
+    }
+
+    private void OnNavPaneToggleButtonClick(object sender, RoutedEventArgs e)
+    {
+        NavView.IsPaneOpen = !NavView.IsPaneOpen;
     }
 
     /// <summary>
@@ -428,6 +440,7 @@ public sealed partial class HubWindow : WindowEx
             NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
+            NavCron.Visibility = vis;
             NavAdvanced.Visibility = vis;
             NavGatewaySeparator.Visibility = vis;
 

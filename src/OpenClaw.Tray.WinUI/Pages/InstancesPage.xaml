@@ -92,17 +92,17 @@
                               Foreground="{ThemeResource SystemFillColorCautionBrush}"
                               VerticalAlignment="Center"/>
                     <StackPanel Spacing="2" VerticalAlignment="Center">
-                        <TextBlock x:Name="PendingPairBannerText"
+                        <TextBlock x:Uid="InstancesPage_PairingApprovalRequired" x:Name="PendingPairBannerText"
                                    Text="Pairing approval required"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <TextBlock x:Name="PendingPairBannerSubtext"
+                        <TextBlock x:Uid="InstancesPage_ANodeHasConnected" x:Name="PendingPairBannerSubtext"
                                    Text="A node has connected but its capabilities won't activate until you approve the pairing request."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"
                                    MaxWidth="520"/>
                     </StackPanel>
-                    <Button x:Name="PendingPairBannerAction"
+                    <Button x:Uid="InstancesPage_ReviewOnConnectionPage" x:Name="PendingPairBannerAction"
                             Content="Review on Connection page"
                             Click="OnPendingPairBannerClicked"
                             VerticalAlignment="Center"

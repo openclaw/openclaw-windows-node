@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ContentDialog
+<ContentDialog x:Uid="DiagnosticsBundleDialog_DiagnosticsBundle"
     x:Class="OpenClawTray.Windows.DiagnosticsBundleDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,7 +17,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <InfoBar
+        <InfoBar x:Uid="DiagnosticsBundleDialog_ReviewBeforeSharing"
             Grid.Row="0"
             IsOpen="True"
             IsClosable="False"

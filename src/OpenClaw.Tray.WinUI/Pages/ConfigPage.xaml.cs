@@ -28,6 +28,8 @@ public sealed partial class ConfigPage : Page
     private readonly Dictionary<TreeViewNode, (string Path, JsonElement Element)> _nodeMap = new();
     private readonly Dictionary<string, object?> _pendingChanges = new();
 
+    private bool _showSchemaFallback;
+
     public ConfigPage()
     {
         InitializeComponent();
@@ -131,8 +133,8 @@ public sealed partial class ConfigPage : Page
         if (_lastSchema.HasValue)
         {
             // Schema-driven tree
-            NoSchemaPanel.Visibility = Visibility.Collapsed;
-            SchemaTreeGrid.Visibility = Visibility.Visible;
+            _showSchemaFallback = false;
+            ApplyPaneVisibility();
 
             var schema = _lastSchema.Value;
             var schemaRoot = schema.TryGetProperty("schema", out var sr) ? sr : schema;
@@ -141,16 +143,11 @@ public sealed partial class ConfigPage : Page
             BuildSchemaTreeNodes(ConfigTree.RootNodes, schemaRoot, configRoot, "");
             ExpandAll(ConfigTree.RootNodes);
         }
-        else if (_lastConfig.HasValue)
-        {
-            // No schema — show fallback panel
-            SchemaTreeGrid.Visibility = Visibility.Collapsed;
-            NoSchemaPanel.Visibility = Visibility.Visible;
-        }
         else
         {
-            SchemaTreeGrid.Visibility = Visibility.Collapsed;
-            NoSchemaPanel.Visibility = Visibility.Visible;
+            // No schema — show fallback panel (whether or not config loaded)
+            _showSchemaFallback = true;
+            ApplyPaneVisibility();
         }
     }
 
@@ -186,10 +183,25 @@ public sealed partial class ConfigPage : Page
 
     private void ShowConfigRenderError()
     {
-        SchemaTreeGrid.Visibility = Visibility.Collapsed;
-        NoSchemaPanel.Visibility = Visibility.Visible;
+        _showSchemaFallback = true;
+        ApplyPaneVisibility();
         SaveButton.IsEnabled = false;
         SaveStatus.Text = "Config unavailable";
+    }
+
+    /// <summary>
+    /// Reconciles which Row 2 surface is visible: Editor, Raw JSON, or
+    /// the "no schema" fallback.
+    /// </summary>
+    private void ApplyPaneVisibility()
+    {
+        if (EditorPane is null || RawJsonPane is null || NoSchemaPanel is null) return;
+
+        var rawSelected = (ConfigSelector?.SelectedItem?.Tag as string) == "raw";
+
+        RawJsonPane.Visibility = rawSelected ? Visibility.Visible : Visibility.Collapsed;
+        EditorPane.Visibility  = (!rawSelected && !_showSchemaFallback) ? Visibility.Visible : Visibility.Collapsed;
+        NoSchemaPanel.Visibility = (!rawSelected && _showSchemaFallback) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void BuildSchemaTreeNodes(IList<TreeViewNode> parent, JsonElement schema, JsonElement? config, string basePath)
@@ -358,11 +370,6 @@ public sealed partial class ConfigPage : Page
 
     private void UpdateRawJson()
     {
-        // RawJsonText lives inside the second TabViewItem, whose content WinUI
-        // does not realize until the tab is first selected. Until then the
-        // x:Name field is null and touching .Text would NRE on the dispatcher
-        // queue — silently tearing down the app. OnConfigTabChanged calls us
-        // again once the tab is realized, so deferring here is safe.
         if (RawJsonText is null) return;
 
         if (_lastConfig.HasValue)
@@ -385,10 +392,11 @@ public sealed partial class ConfigPage : Page
         }
     }
 
-    private void OnConfigTabChanged(object sender, SelectionChangedEventArgs e)
+    private void OnConfigSelectorChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        // Refresh raw JSON when switching to it
-        if (ConfigTabs.SelectedIndex == 1)
+        ApplyPaneVisibility();
+
+        if ((sender.SelectedItem?.Tag as string) == "raw")
             UpdateRawJson();
     }
 

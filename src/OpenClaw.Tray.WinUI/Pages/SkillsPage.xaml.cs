@@ -1,4 +1,3 @@
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -7,7 +6,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
-using Windows.UI;
 
 namespace OpenClawTray.Pages;
 
@@ -25,19 +23,6 @@ public sealed partial class SkillsPage : Page
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        };
-        EnabledHeaderBtn.Click += (s, e) =>
-        {
-            _enabledExpanded = !_enabledExpanded;
-            EnabledChevron.Glyph = _enabledExpanded ? "\uE70E" : "\uE70D";
-            EnabledPanel.Visibility = _enabledExpanded ? Visibility.Visible : Visibility.Collapsed;
-            if (!_enabledExpanded) SkillsScroller.ChangeView(null, 0, null, disableAnimation: false);
-        };
-        DisabledHeaderBtn.Click += (s, e) =>
-        {
-            _disabledExpanded = !_disabledExpanded;
-            DisabledChevron.Glyph = _disabledExpanded ? "\uE70E" : "\uE70D";
-            DisabledPanel.Visibility = _disabledExpanded ? Visibility.Visible : Visibility.Collapsed;
         };
     }
 
@@ -198,9 +183,6 @@ public sealed partial class SkillsPage : Page
         RebuildCards();
     }
 
-    private bool _enabledExpanded = true;
-    private bool _disabledExpanded = true;
-
     private void RebuildCards()
     {
         LoadingState.Visibility = Visibility.Collapsed;
@@ -217,9 +199,7 @@ public sealed partial class SkillsPage : Page
 
         EnabledHeaderText.Text = $"Enabled ({enabled.Count})";
         DisabledHeaderText.Text = $"Disabled ({disabled.Count})";
-        DisabledHeaderBtn.Visibility = disabled.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        DisabledPanel.Visibility = _disabledExpanded ? Visibility.Visible : Visibility.Collapsed;
-        EnabledPanel.Visibility = _enabledExpanded ? Visibility.Visible : Visibility.Collapsed;
+        DisabledExpander.Visibility = disabled.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var total = _allSkills.Count;
         CountText.Text = total > 0 ? $"({enabled.Count}/{total} enabled)" : "";
@@ -257,18 +237,24 @@ public sealed partial class SkillsPage : Page
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Opacity = contentOpacity };
         nameRow.Children.Add(new TextBlock { Text = s.Name, FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
 
-        var badgeBg = s.IsEnabled
-            ? new SolidColorBrush(Color.FromArgb(40, 76, 175, 80))
-            : new SolidColorBrush(Color.FromArgb(40, 230, 168, 23));
-        var badgeFg = s.IsEnabled
-            ? new SolidColorBrush(Colors.LimeGreen)
-            : new SolidColorBrush(Color.FromArgb(255, 230, 168, 23));
+        var badgeBgKey = s.IsEnabled ? "SystemFillColorSuccessBackgroundBrush" : "ControlFillColorSecondaryBrush";
+        var badgeFgKey = s.IsEnabled ? "SystemFillColorSuccessBrush" : "TextFillColorSecondaryBrush";
         var badge = new Border
         {
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2),
-            Background = badgeBg, VerticalAlignment = VerticalAlignment.Center
+            CornerRadius = new CornerRadius(10),
+            MinHeight = 20,
+            Padding = new Thickness(8, 2, 8, 2),
+            Background = (Brush)Application.Current.Resources[badgeBgKey],
+            VerticalAlignment = VerticalAlignment.Center
         };
-        badge.Child = new TextBlock { Text = s.IsEnabled ? "enabled" : "disabled", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = badgeFg, VerticalAlignment = VerticalAlignment.Center };
+        badge.Child = new TextBlock
+        {
+            Text = s.IsEnabled ? "Enabled" : "Disabled",
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources[badgeFgKey],
+            VerticalAlignment = VerticalAlignment.Center
+        };
         nameRow.Children.Add(badge);
         Grid.SetRow(nameRow, 0);
         Grid.SetColumn(nameRow, 0);

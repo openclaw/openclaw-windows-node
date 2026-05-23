@@ -4,18 +4,18 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid HorizontalAlignment="Stretch">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="UsagePage_TextBlock_10" Text="📊 Usage &amp; Cost" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="UsagePage_TextBlock_10" Text="Usage &amp; Cost" Style="{StaticResource TitleTextBlockStyle}"/>
 
-            <InfoBar x:Name="ConnectionInfoBar"
+            <InfoBar x:Uid="UsagePage_GatewayDisconnected" x:Name="ConnectionInfoBar"
                      IsOpen="False" IsClosable="False" Severity="Warning"
                      Title="Gateway disconnected"
                      Message="Connect to a gateway to load usage data.">
                 <InfoBar.ActionButton>
-                    <Button Content="Open Connection" Click="OnOpenConnectionClick"/>
+                    <Button x:Uid="UsagePage_OpenConnection" Content="Open Connection" Click="OnOpenConnectionClick"/>
                 </InfoBar.ActionButton>
             </InfoBar>
 
@@ -27,43 +27,55 @@
                     <TextBlock x:Uid="UsagePage_TextBlock_21" Text="Total Cost" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="TotalCostText" Text="—" FontSize="28" FontWeight="SemiBold"
+                    <TextBlock x:Name="TotalCostText" Text="—"
+                               Style="{StaticResource TitleLargeTextBlockStyle}"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
-            <!-- Stats row: 3 cards side by side -->
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Stats row: 3 equal cards that grow with available width. -->
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_35" Text="Requests" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="RequestCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="RequestCountText" Text="—"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                <Border Grid.Column="1"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_45" Text="Tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Uid="TokenCountText" x:Name="TokenCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="TokenCountText" Text="—"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                <Border Grid.Column="2"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="16" MinWidth="150">
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_55" Text="Providers" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="ProviderCountText" Text="—" FontSize="28" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="ProviderCountText" Text="—"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
-            </StackPanel>
+            </Grid>
 
             <!-- Provider Breakdown card — real-time provider status (independent of the time range below). -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -135,11 +147,11 @@
                     <StackPanel x:Name="DailyLoadingPanel" Orientation="Horizontal" Spacing="12"
                                 HorizontalAlignment="Center" Padding="0,24,0,16">
                         <ProgressRing IsActive="True" Width="20" Height="20"/>
-                        <TextBlock Text="Loading daily costs..."
+                        <TextBlock x:Uid="UsagePage_LoadingDailyCosts" Text="Loading daily costs..."
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock x:Name="DailyEmptyText"
+                    <TextBlock x:Uid="UsagePage_NoDailyUsageFor" x:Name="DailyEmptyText"
                                Text="No daily usage for this period"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center" Padding="0,24,0,16"

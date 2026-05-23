@@ -10,21 +10,26 @@
     </Page.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,24,24,24">
-            <StackPanel Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <!--
+                Grid wrapper is required: ScrollViewer measures its direct
+                child with infinite available width, which makes
+                Stretch+MaxWidth collapse to the child's natural width and
+                left-shift the column. A Grid in between gives the
+                StackPanel a finite viewport-width slot so Stretch fills
+                up to MaxWidth and centers with growing side margins.
+                (Pattern matches ConnectionPage / SkillsPage.)
+            -->
+            <Grid HorizontalAlignment="Stretch">
+                <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
                 <!-- Page header -->
-                <TextBlock Text="Settings"
+                <TextBlock x:Uid="SettingsPage_Settings" Text="Settings"
                            Style="{StaticResource TitleTextBlockStyle}"
                            Margin="0,0,0,8"/>
 
                 <!-- ═════════ General ═════════ -->
-                <TextBlock Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"
+                <TextBlock x:Uid="SettingsPage_General" Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -94,7 +99,7 @@
                 </Border>
 
                 <!-- ═════════ Notifications ═════════ -->
-                <TextBlock Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"
+                <TextBlock x:Uid="SettingsPage_Notifications" Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -194,7 +199,7 @@
                 </Border>
 
                 <!-- ═════════ Privacy ═════════ -->
-                <TextBlock Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
+                <TextBlock x:Uid="SettingsPage_Privacy" Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
                 <TextBlock x:Uid="SettingsPrivacyDescription"
                            Text="Pre-approve capabilities so agents can use them without a prompt every time. You'll still see a countdown before recording starts."
@@ -247,7 +252,7 @@
                 </Border>
 
                 <!-- ═════════ Local Gateway (conditional) ═════════ -->
-                <TextBlock x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
+                <TextBlock x:Uid="SettingsPage_LocalGateway" x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
                            Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"
                            Visibility="Collapsed"/>
@@ -260,19 +265,19 @@
                         Visibility="Collapsed"
                         AutomationProperties.AutomationId="LocalGatewayExpander">
                     <StackPanel Spacing="12">
-                        <InfoBar x:Name="MsixWarningBar"
+                        <InfoBar x:Uid="SettingsPage_MSIXInstallationDetected" x:Name="MsixWarningBar"
                                  Severity="Warning"
                                  IsOpen="False"
                                  IsClosable="False"
                                  Title="MSIX installation detected"
                                  Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
 
-                        <TextBlock x:Name="GatewayBodyText"
+                        <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
                                    Text="Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"/>
 
-                        <Button x:Name="RemoveGatewayButton"
+                        <Button x:Uid="SettingsPage_RemoveLocalGateway" x:Name="RemoveGatewayButton"
                                 HorizontalAlignment="Right"
                                 Content="Remove Local Gateway"
                                 Click="OnRemoveGateway"
@@ -285,14 +290,16 @@
                 </Border>
 
             </StackPanel>
+            </Grid>
         </ScrollViewer>
 
         <!-- Saved indicator (transient, auto-hides) -->
-        <InfoBar x:Name="SavedInfoBar" Grid.Row="1"
+        <InfoBar x:Uid="SettingsPage_Saved" x:Name="SavedInfoBar"
                  IsOpen="False" IsClosable="False"
                  Severity="Success"
                  Title="Saved"
                  HorizontalAlignment="Right"
+                 VerticalAlignment="Bottom"
                  Margin="0,0,24,12"
                  MaxWidth="200"/>
     </Grid>

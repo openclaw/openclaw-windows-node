@@ -1546,49 +1546,58 @@ On your gateway host (Mac/Linux), run:
     <value>Dashboard → openclaw://dashboard</value>
   </data>
   <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>Agent Events</value>
+    <value>Event Stream</value>
   </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Agent</value>
   </data>
+  <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
+    <value>All Agents</value>
+  </data>
+  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
+    <value>Real-time stream of agent activity — tool calls, responses, errors, and lifecycle events.</value>
+  </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>All Agents</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_36.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
     <value>Tool</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_37.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
     <value>Assistant</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_38.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
     <value>Error</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_39.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
     <value>Lifecycle</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_40.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
     <value>Plan</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_41.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
     <value>Approval</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_42.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
     <value>Thinking</value>
   </data>
-  <data name="AgentEventsPage_ToggleButton_43.Content" xml:space="preserve">
+  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
     <value>Patch</value>
   </data>
   <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>No agent events yet</value>
+    <value>No events in this session</value>
   </data>
   <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>Real-time agent events (tool calls, responses, errors) will appear here as agents run.</value>
+    <value>Events stream here in real-time as agents run. History clears when the app restarts.</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Clear</value>
   </data>
+  <data name="ClearButton.Text" xml:space="preserve">
+    <value>Clear</value>
+  </data>
   <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>🔀 Bindings</value>
+    <value>Bindings</value>
   </data>
   <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
     <value>Message routing rules</value>
@@ -1642,18 +1651,18 @@ On your gateway host (Mac/Linux), run:
     <value>The gateway is connected; the chat surface is still coming online.</value>
   </data>
   <data name="ConfigPage_TextBlock_17.Text" xml:space="preserve">
-    <value>⚙️ Config</value>
+    <value>Config</value>
   </data>
   <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
     <value>Refresh</value>
   </data>
-  <data name="ConfigPage_TabViewItem_34.Header" xml:space="preserve">
+  <data name="ConfigPage_TabViewItem_34.Text" xml:space="preserve">
     <value>Editor</value>
   </data>
   <data name="DetailPath.Text" xml:space="preserve">
     <value>Select a config section</value>
   </data>
-  <data name="ConfigPage_TabViewItem_82.Header" xml:space="preserve">
+  <data name="ConfigPage_TabViewItem_82.Text" xml:space="preserve">
     <value>Raw JSON</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
@@ -2145,9 +2154,6 @@ On your gateway host (Mac/Linux), run:
   <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
     <value>Tokens</value>
   </data>
-  <data name="TokenCountText.Text" xml:space="preserve">
-    <value>284.5K</value>
-  </data>
   <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
     <value>Providers</value>
   </data>
@@ -2170,7 +2176,31 @@ On your gateway host (Mac/Linux), run:
     <value>Daily Cost</value>
   </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
-    <value>📂 Workspace</value>
+    <value>Workspace</value>
+  </data>
+  <data name="WorkspacePage_FilesHeader.Text" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="WorkspacePage_LoadingText.Text" xml:space="preserve">
+    <value>Loading workspace files…</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Rendered.Text" xml:space="preserve">
+    <value>Rendered</value>
+  </data>
+  <data name="WorkspacePage_ViewMode_Raw.Text" xml:space="preserve">
+    <value>Raw</value>
+  </data>
+  <data name="WorkspacePage_DisconnectedMessage" xml:space="preserve">
+    <value>Connect to gateway to view workspace files.</value>
+  </data>
+  <data name="WorkspacePage_NoFilesMessage" xml:space="preserve">
+    <value>No workspace files found for this agent.</value>
+  </data>
+  <data name="WorkspacePage_LoadingContent" xml:space="preserve">
+    <value>Loading content…</value>
+  </data>
+  <data name="WorkspacePage_MissingFile" xml:space="preserve">
+    <value>(file not found on disk)</value>
   </data>
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Refresh</value>
@@ -2183,6 +2213,12 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
+  </data>
+  <data name="NavPaneToggleButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle navigation pane</value>
+  </data>
+  <data name="NavPaneToggleButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Toggle navigation pane</value>
   </data>
   <data name="TitleStatusText.Text" xml:space="preserve">
     <value>Disconnected</value>
@@ -2206,7 +2242,7 @@ On your gateway host (Mac/Linux), run:
     <value>Conversations</value>
   </data>
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>Agent Events</value>
+    <value>Event Stream</value>
   </data>
   <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
     <value>Skills</value>
@@ -2407,7 +2443,7 @@ On your gateway host (Mac/Linux), run:
     <value>OpenClaw Menu</value>
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>📊 Usage &amp; Cost</value>
+    <value>Usage &amp; Cost</value>
   </data>
   <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Open in Companion app</value>
@@ -2452,7 +2488,7 @@ On your gateway host (Mac/Linux), run:
     <value>Windows built-in speech</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
-    <value>🎙️ Voice &amp; Audio</value>
+    <value>Voice &amp; Audio</value>
   </data>
   <data name="VoiceSettingsPage_PageDescription.Text" xml:space="preserve">
     <value>Configure speech-to-text and voice interaction settings. All speech processing runs locally on your device.</value>
@@ -2530,7 +2566,7 @@ On your gateway host (Mac/Linux), run:
     <value>Audio feedback sounds</value>
   </data>
   <data name="VoiceSettingsPage_VoiceHeader.Text" xml:space="preserve">
-    <value>🔊 Companion Voice</value>
+    <value>Companion Voice</value>
   </data>
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Choose the voice used when reading responses aloud.</value>
@@ -2557,7 +2593,10 @@ On your gateway host (Mac/Linux), run:
     <value>Delete</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
-    <value>▶ Preview</value>
+    <value>Preview</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreviewButtonContent" xml:space="preserve">
+    <value>Preview</value>
   </data>
   <data name="VoiceSettingsPage_PiperInfoText.Text" xml:space="preserve">
     <value>Voices download from the sherpa-onnx project's GitHub releases (~25 MB low quality, up to ~150 MB high quality). They run fully on this PC; no audio leaves your device.</value>
@@ -2566,7 +2605,7 @@ On your gateway host (Mac/Linux), run:
     <value>Voice</value>
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
-    <value>▶ Preview Voice</value>
+    <value>Preview Voice</value>
   </data>
   <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">
     <value>API Key</value>
@@ -2599,7 +2638,7 @@ On your gateway host (Mac/Linux), run:
     <value>Download canceled</value>
   </data>
   <data name="VoiceSettingsPage_StatusError" xml:space="preserve">
-    <value>❌ Operation failed (see Debug log)</value>
+    <value>Operation failed (see Debug log)</value>
   </data>
   <data name="VoiceSettingsPage_PiperButtonDownloaded" xml:space="preserve">
     <value>Downloaded</value>
@@ -2650,7 +2689,7 @@ On your gateway host (Mac/Linux), run:
     <value>Error loading voices (see Debug log).</value>
   </data>
   <data name="VoiceSettingsPage_PreviewButtonPlaying" xml:space="preserve">
-    <value>▶ Playing...</value>
+    <value>Playing...</value>
   </data>
   <data name="VoiceOverlayWindow_HeaderText.Text" xml:space="preserve">
     <value>Companion Voice</value>
@@ -2755,7 +2794,7 @@ On your gateway host (Mac/Linux), run:
     <value>Download Voice</value>
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButtonContent" xml:space="preserve">
-    <value>▶ Preview Voice</value>
+    <value>Preview Voice</value>
   </data>
   <data name="DebugPage_TextBlock_OverridesHeader.Text" xml:space="preserve">
     <value>Debug Overrides</value>
@@ -3370,7 +3409,7 @@ On your gateway host (Mac/Linux), run:
   <data name="V2_Welcome_Replace_Keep" xml:space="preserve">
     <value>Keep my setup</value>
   </data>
-  <data name="FilterAllButton.Content" xml:space="preserve">
+  <data name="FilterAllButton.Text" xml:space="preserve">
     <value>All</value>
   </data>
   <data name="ChannelsPage_Title.Text" xml:space="preserve">
@@ -3598,4 +3637,918 @@ On your gateway host (Mac/Linux), run:
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
   </data>
-</root>
+  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
+    <value>Connect to a gateway to load bindings.</value>
+  </data>
+  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
+    <value>Loading bindings...</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
+    <value>Approvals waiting on you</value>
+  </data>
+  <data name="ConnectionPage_NotConnected.Text" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="ConnectionPage_Connect.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionPage_Operator.Text" xml:space="preserve">
+    <value>Operator</value>
+  </data>
+  <data name="ConnectionPage_SendCommandsAndView.Text" xml:space="preserve">
+    <value>Send commands and view sessions on this gateway from this PC.</value>
+  </data>
+  <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
+    <value>Inactive</value>
+  </data>
+  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
+    <value>See sessions ›</value>
+  </data>
+  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
+    <value>See instances ›</value>
+  </data>
+  <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
+    <value>Node mode</value>
+  </data>
+  <data name="ConnectionPage_WhenOnThisPC.Text" xml:space="preserve">
+    <value>When on, this PC registers as a node and offers the capabilities below to agents over the gateway.</value>
+  </data>
+  <data name="ConnectionPage_NodeModeDisabled.Text" xml:space="preserve">
+    <value>Node mode disabled</value>
+  </data>
+  <data name="ConnectionPage_Copy.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
+    <value>Manage permissions ›</value>
+  </data>
+  <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
+    <value>Help us fix this connection:</value>
+  </data>
+  <data name="ConnectionPage_SSHTunnelIsDown.Text" xml:space="preserve">
+    <value>SSH tunnel is down.</value>
+  </data>
+  <data name="ConnectionPage_RestartTunnel.Content" xml:space="preserve">
+    <value>Restart tunnel</value>
+  </data>
+  <data name="ConnectionPage_EditTunnelSettings.Content" xml:space="preserve">
+    <value>Edit tunnel settings</value>
+  </data>
+  <data name="ConnectionPage_PasteANewSetup.Text" xml:space="preserve">
+    <value>Paste a new setup code from the gateway host.</value>
+  </data>
+  <data name="ConnectionPage_PasteSetupCodeHere.PlaceholderText" xml:space="preserve">
+    <value>Paste setup code here…</value>
+  </data>
+  <data name="ConnectionPage_Apply.Content" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="ConnectionPage_RunOnTheGateway.Text" xml:space="preserve">
+    <value>Run on the gateway host:</value>
+  </data>
+  <data name="ConnectionPage_Copy2.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_Connect3.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionPage_Disconnect.Content" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="ConnectionPage_SavedGateways.Text" xml:space="preserve">
+    <value>Saved gateways</value>
+  </data>
+  <data name="ConnectionPage_Gateways.Text" xml:space="preserve">
+    <value>Gateways</value>
+  </data>
+  <data name="ConnectionPage_Scan.Text" xml:space="preserve">
+    <value>Scan</value>
+  </data>
+  <data name="ConnectionPage_AddGateway.Text" xml:space="preserve">
+    <value>Add gateway</value>
+  </data>
+  <data name="ConnectionPage_NoSavedGatewaysYet.Text" xml:space="preserve">
+    <value>No saved gateways yet.</value>
+  </data>
+  <data name="ConnectionPage_DiscoveredOnYourNetwork.Text" xml:space="preserve">
+    <value>Discovered on your network</value>
+  </data>
+  <data name="ConnectionPage_AddAGateway.Text" xml:space="preserve">
+    <value>Add a gateway</value>
+  </data>
+  <data name="ConnectionPage_GetStartedInstallA.Title" xml:space="preserve">
+    <value>Get started — install a local gateway</value>
+  </data>
+  <data name="ConnectionPage_GetStartedInstallA.Message" xml:space="preserve">
+    <value>The fastest way to start: sets up a WSL-hosted gateway on this PC and makes it the active connection.</value>
+  </data>
+  <data name="ConnectionPage_Install.Content" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="ConnectionPage_OrConnectToAn.Text" xml:space="preserve">
+    <value>Or connect to an existing one:</value>
+  </data>
+  <data name="ConnectionPage_Direct.Text" xml:space="preserve">
+    <value>Direct</value>
+  </data>
+  <data name="ConnectionPage_URLToken.Text" xml:space="preserve">
+    <value>URL + token</value>
+  </data>
+  <data name="ConnectionPage_SetupCode.Text" xml:space="preserve">
+    <value>Setup code</value>
+  </data>
+  <data name="ConnectionPage_PasteQRPayload.Text" xml:space="preserve">
+    <value>Paste QR payload</value>
+  </data>
+  <data name="ConnectionPage_EachMethodSupportsAn.Text" xml:space="preserve">
+    <value>Each method supports an optional SSH tunnel.</value>
+  </data>
+  <data name="ConnectionPage_OrLookForOne.Text" xml:space="preserve">
+    <value>Or look for one on your network.</value>
+  </data>
+  <data name="ConnectionPage_Scan2.Text" xml:space="preserve">
+    <value>Scan</value>
+  </data>
+  <data name="ConnectionPage_DiscoveredOnYourNetwork2.Text" xml:space="preserve">
+    <value>Discovered on your network</value>
+  </data>
+  <data name="ConnectionPage_Back.Text" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="ConnectionPage_AddAGateway2.Text" xml:space="preserve">
+    <value>Add a gateway</value>
+  </data>
+  <data name="ConnectionPage_Direct2.Text" xml:space="preserve">
+    <value>Direct</value>
+  </data>
+  <data name="ConnectionPage_SetupCode2.Text" xml:space="preserve">
+    <value>Setup code</value>
+  </data>
+  <data name="ConnectionPage_LocalWSL.Text" xml:space="preserve">
+    <value>Local WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayURL.Header" xml:space="preserve">
+    <value>Gateway URL</value>
+  </data>
+  <data name="ConnectionPage_GatewayURL.PlaceholderText" xml:space="preserve">
+    <value>ws://host.local:18790</value>
+  </data>
+  <data name="ConnectionPage_SharedToken.Header" xml:space="preserve">
+    <value>Shared token</value>
+  </data>
+  <data name="ConnectionPage_SharedToken.PlaceholderText" xml:space="preserve">
+    <value>Paste shared gateway token</value>
+  </data>
+  <data name="ConnectionPage_NameOptional.Header" xml:space="preserve">
+    <value>Name (optional)</value>
+  </data>
+  <data name="ConnectionPage_NameOptional.PlaceholderText" xml:space="preserve">
+    <value>My gateway</value>
+  </data>
+  <data name="ConnectionPage_PasteASetupCode.Text" xml:space="preserve">
+    <value>Paste a setup code from the gateway's QR or `openclaw qr` output.</value>
+  </data>
+  <data name="ConnectionPage_PasteSetupCodeHere2.PlaceholderText" xml:space="preserve">
+    <value>Paste setup code here…</value>
+  </data>
+  <data name="ConnectionPage_Decode.Content" xml:space="preserve">
+    <value>Decode</value>
+  </data>
+  <data name="ConnectionPage_InstallANewWSL.Text" xml:space="preserve">
+    <value>Install a new WSL gateway on this PC and make it the active connection. The setup wizard will install WSL if needed, provision the gateway, and pair this device automatically.</value>
+  </data>
+  <data name="ConnectionPage_InstallLocalGateway.Content" xml:space="preserve">
+    <value>Install local gateway</value>
+  </data>
+  <data name="ConnectionPage_LocalWSLSetupIsn.Text" xml:space="preserve">
+    <value>Local-WSL setup isn't available on this machine — the install wizard couldn't be initialized.</value>
+  </data>
+  <data name="ConnectionPage_UseSSHTunnelOptional.Text" xml:space="preserve">
+    <value>Use SSH tunnel (optional)</value>
+  </data>
+  <data name="ConnectionPage_SSHUser.Header" xml:space="preserve">
+    <value>SSH user</value>
+  </data>
+  <data name="ConnectionPage_SSHUser.PlaceholderText" xml:space="preserve">
+    <value>user</value>
+  </data>
+  <data name="ConnectionPage_SSHHost.Header" xml:space="preserve">
+    <value>SSH host</value>
+  </data>
+  <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
+    <value>machine-name</value>
+  </data>
+  <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
+    <value>Remote port</value>
+  </data>
+  <data name="ConnectionPage_LocalPort.Header" xml:space="preserve">
+    <value>Local port</value>
+  </data>
+  <data name="ConnectionPage_SaveAmpConnect.Content" xml:space="preserve">
+    <value>Save &amp; connect</value>
+  </data>
+  <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="CronPage_CronJobs.Text" xml:space="preserve">
+    <value>⏱️ Cron Jobs</value>
+  </data>
+  <data name="CronPage_Refresh.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="CronPage_NewJob.Text" xml:space="preserve">
+    <value>New Job</value>
+  </data>
+  <data name="CronPage_GatewayDisconnected.Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="CronPage_GatewayDisconnected.Message" xml:space="preserve">
+    <value>Connect to a gateway to load cron jobs.</value>
+  </data>
+  <data name="CronPage_OpenConnection.Content" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="CronPage_NewCronJob.Text" xml:space="preserve">
+    <value>New Cron Job</value>
+  </data>
+  <data name="CronPage_NAME.Text" xml:space="preserve">
+    <value>NAME</value>
+  </data>
+  <data name="CronPage_MorningBrief.PlaceholderText" xml:space="preserve">
+    <value>Morning brief</value>
+  </data>
+  <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
+    <value>SCHEDULE</value>
+  </data>
+  <data name="CronPage_Every.Content" xml:space="preserve">
+    <value>Every</value>
+  </data>
+  <data name="CronPage_At.Content" xml:space="preserve">
+    <value>At</value>
+  </data>
+  <data name="CronPage_Cron.Content" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
+    <value>QUICK PRESETS</value>
+  </data>
+  <data name="CronPage_Hourly.Content" xml:space="preserve">
+    <value>⏰ Hourly</value>
+  </data>
+  <data name="CronPage_Daily9am.Content" xml:space="preserve">
+    <value>🌅 Daily 9am</value>
+  </data>
+  <data name="CronPage_Daily6pm.Content" xml:space="preserve">
+    <value>🌆 Daily 6pm</value>
+  </data>
+  <data name="CronPage_Weekdays.Content" xml:space="preserve">
+    <value>💼 Weekdays</value>
+  </data>
+  <data name="CronPage_Weekly.Content" xml:space="preserve">
+    <value>📅 Weekly</value>
+  </data>
+  <data name="CronPage_EXPRESSION.Text" xml:space="preserve">
+    <value>EXPRESSION</value>
+  </data>
+  <data name="CronPage_TIMEZONE.Text" xml:space="preserve">
+    <value>TIMEZONE</value>
+  </data>
+  <data name="CronPage_Optional.PlaceholderText" xml:space="preserve">
+    <value>Optional</value>
+  </data>
+  <data name="CronPage_AmericaNewYork.Content" xml:space="preserve">
+    <value>America/New_York</value>
+  </data>
+  <data name="CronPage_AmericaChicago.Content" xml:space="preserve">
+    <value>America/Chicago</value>
+  </data>
+  <data name="CronPage_AmericaDenver.Content" xml:space="preserve">
+    <value>America/Denver</value>
+  </data>
+  <data name="CronPage_AmericaLosAngeles.Content" xml:space="preserve">
+    <value>America/Los_Angeles</value>
+  </data>
+  <data name="CronPage_EuropeLondon.Content" xml:space="preserve">
+    <value>Europe/London</value>
+  </data>
+  <data name="CronPage_EuropeBerlin.Content" xml:space="preserve">
+    <value>Europe/Berlin</value>
+  </data>
+  <data name="CronPage_AsiaTokyo.Content" xml:space="preserve">
+    <value>Asia/Tokyo</value>
+  </data>
+  <data name="CronPage_UTC.Content" xml:space="preserve">
+    <value>UTC</value>
+  </data>
+  <data name="CronPage_EVERY.Text" xml:space="preserve">
+    <value>EVERY</value>
+  </data>
+  <data name="CronPage_UNIT.Text" xml:space="preserve">
+    <value>UNIT</value>
+  </data>
+  <data name="CronPage_Minutes.Content" xml:space="preserve">
+    <value>Minutes</value>
+  </data>
+  <data name="CronPage_Hours.Content" xml:space="preserve">
+    <value>Hours</value>
+  </data>
+  <data name="CronPage_Days.Content" xml:space="preserve">
+    <value>Days</value>
+  </data>
+  <data name="CronPage_RUNAT.Text" xml:space="preserve">
+    <value>RUN AT</value>
+  </data>
+  <data name="CronPage_Date.PlaceholderText" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="CronPage_330PM.PlaceholderText" xml:space="preserve">
+    <value>3:30 PM</value>
+  </data>
+  <data name="CronPage_DeleteJobAfterIt.Content" xml:space="preserve">
+    <value>Delete job after it runs</value>
+  </data>
+  <data name="CronPage_PROMPTPAYLOAD.Text" xml:space="preserve">
+    <value>PROMPT / PAYLOAD</value>
+  </data>
+  <data name="CronPage_WhatShouldTheAgent.PlaceholderText" xml:space="preserve">
+    <value>What should the agent do?</value>
+  </data>
+  <data name="CronPage_DELIVERY.Text" xml:space="preserve">
+    <value>DELIVERY</value>
+  </data>
+  <data name="CronPage_SilentNone.Content" xml:space="preserve">
+    <value>Silent (none)</value>
+  </data>
+  <data name="CronPage_NotifyMeAnnounce.Content" xml:space="preserve">
+    <value>Notify me (announce)</value>
+  </data>
+  <data name="CronPage_CHANNEL.Text" xml:space="preserve">
+    <value>CHANNEL</value>
+  </data>
+  <data name="CronPage_EGWebchat.PlaceholderText" xml:space="preserve">
+    <value>e.g. webchat</value>
+  </data>
+  <data name="CronPage_AdvancedOptions.Text" xml:space="preserve">
+    <value>Advanced options</value>
+  </data>
+  <data name="CronPage_SESSIONBEHAVIOR.Text" xml:space="preserve">
+    <value>SESSION BEHAVIOR</value>
+  </data>
+  <data name="CronPage_NewSessionEachRun.Content" xml:space="preserve">
+    <value>New session each run</value>
+  </data>
+  <data name="CronPage_ResumeMainSession.Content" xml:space="preserve">
+    <value>Resume main session</value>
+  </data>
+  <data name="CronPage_WAKEMODE.Text" xml:space="preserve">
+    <value>WAKE MODE</value>
+  </data>
+  <data name="CronPage_NowImmediate.Content" xml:space="preserve">
+    <value>Now (immediate)</value>
+  </data>
+  <data name="CronPage_QueueWaitForIdle.Content" xml:space="preserve">
+    <value>Queue (wait for idle)</value>
+  </data>
+  <data name="CronPage_Cancel.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="CronPage_CreateJob.Content" xml:space="preserve">
+    <value>Create Job</value>
+  </data>
+  <data name="CronPage_LoadingCronJobs.Text" xml:space="preserve">
+    <value>Loading cron jobs...</value>
+  </data>
+  <data name="CronPage_NoCronJobsConfigured.Text" xml:space="preserve">
+    <value>No cron jobs configured</value>
+  </data>
+  <data name="CronPage_CronJobsWillAppear.Text" xml:space="preserve">
+    <value>Cron jobs will appear here when configured via the gateway.</value>
+  </data>
+  <data name="DebugPage_Status.Title" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DebugPage_Copied.Title" xml:space="preserve">
+    <value>Copied</value>
+  </data>
+  <data name="DebugPage_NoOverride.Content" xml:space="preserve">
+    <value>No override</value>
+  </data>
+  <data name="DebugPage_ForceGatewayChatUI.Content" xml:space="preserve">
+    <value>Force Gateway Chat UI</value>
+  </data>
+  <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
+    <value>Force Companion Chat UI</value>
+  </data>
+  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
+    <value>No override</value>
+  </data>
+  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
+    <value>Force Gateway Chat UI</value>
+  </data>
+  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
+    <value>Force Companion Chat UI</value>
+  </data>
+  <data name="DebugPage_Refresh.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="DebugPage_Copy.Text" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="DebugPage_OpenFile.Text" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="InstancesPage_PairingApprovalRequired.Text" xml:space="preserve">
+    <value>Pairing approval required</value>
+  </data>
+  <data name="InstancesPage_ANodeHasConnected.Text" xml:space="preserve">
+    <value>A node has connected but its capabilities won't activate until you approve the pairing request.</value>
+  </data>
+  <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
+    <value>Review on Connection page</value>
+  </data>
+  <data name="PermissionsPage_BackToConnection.Text" xml:space="preserve">
+    <value>Back to Connection</value>
+  </data>
+  <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
+    <value>Permissions</value>
+  </data>
+  <data name="PermissionsPage_NodeMode.Text" xml:space="preserve">
+    <value>Node mode</value>
+  </data>
+  <data name="PermissionsPage_WhenOnThisPC.Text" xml:space="preserve">
+    <value>When on, this PC registers as a node and offers the capabilities below to agents over the gateway.</value>
+  </data>
+  <data name="PermissionsPage_Capabilities.Text" xml:space="preserve">
+    <value>Capabilities</value>
+  </data>
+  <data name="PermissionsPage_ToggleIndividualFeaturesThat.Text" xml:space="preserve">
+    <value>Toggle individual features that agents may request from this PC.</value>
+  </data>
+  <data name="PermissionsPage_Integrations.Text" xml:space="preserve">
+    <value>Integrations</value>
+  </data>
+  <data name="PermissionsPage_DefaultAction.Text" xml:space="preserve">
+    <value>Default action</value>
+  </data>
+  <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
+    <value>What happens when a command doesn't match any rule below.</value>
+  </data>
+  <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
+    <value>Patterns are matched left-to-right against the full command line. Use * as a wildcard. Changes save automatically.</value>
+  </data>
+  <data name="PermissionsPage_Saved.Text" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
+    <value>0 rules</value>
+  </data>
+  <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
+    <value>No rules yet. Add a pattern below to allow or deny specific commands.</value>
+  </data>
+  <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
+    <value>Windows privacy</value>
+  </data>
+  <data name="PermissionsPage_CameraMicrophoneAmpScreen.Text" xml:space="preserve">
+    <value>Camera, microphone &amp; screen access</value>
+  </data>
+  <data name="PermissionsPage_SystemLevelPrivacyPermissions.Text" xml:space="preserve">
+    <value>System-level privacy permissions are managed by Windows. Open Windows Privacy Settings to grant or revoke OpenClaw access.</value>
+  </data>
+  <data name="SandboxPage_NodeSandboxIsOn.Text" xml:space="preserve">
+    <value>Node sandbox is on</value>
+  </data>
+  <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
+    <value>Programs the agent runs on this PC are contained.</value>
+  </data>
+  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+    <value>What gets contained</value>
+  </data>
+  <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
+    <value>See which commands this page covers — and which need different controls.</value>
+  </data>
+  <data name="SandboxPage_CommandsTheAgentRuns.Text" xml:space="preserve">
+    <value>Commands the agent runs through the Windows node (</value>
+  </data>
+  <data name="SandboxPage_SystemRun.Text" xml:space="preserve">
+    <value>system.run</value>
+  </data>
+  <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
+    <value>) are contained by the settings below.</value>
+  </data>
+  <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
+    <value>Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network — use the gateway's exec approvals.</value>
+  </data>
+  <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
+    <value>Sandbox unavailable</value>
+  </data>
+  <data name="SandboxPage_LearnMoreAboutMXC.Content" xml:space="preserve">
+    <value>Learn more about MXC sandboxing</value>
+  </data>
+  <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
+    <value>Security level</value>
+  </data>
+  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
+    <value>One click to set every control below. Custom folders stay as you set them.</value>
+  </data>
+  <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
+    <value>🔒 Locked Down</value>
+  </data>
+  <data name="SandboxPage_NoInternetNoClipboard.Text" xml:space="preserve">
+    <value>No internet, no clipboard, no standard user folders.</value>
+  </data>
+  <data name="SandboxPage_Recommended.Text" xml:space="preserve">
+    <value>🛡 Recommended</value>
+  </data>
+  <data name="SandboxPage_InternetOnReadOnly.Text" xml:space="preserve">
+    <value>Internet on. Read-only on Documents, Downloads, Desktop. Clipboard read.</value>
+  </data>
+  <data name="SandboxPage_Unprotected.Text" xml:space="preserve">
+    <value>⚠ Unprotected</value>
+  </data>
+  <data name="SandboxPage_InternetOnReadWrite.Text" xml:space="preserve">
+    <value>Internet on. Read+write on Documents, Downloads, Desktop. Clipboard read+write.</value>
+  </data>
+  <data name="SandboxPage_CustomFolderGrantsStill.Title" xml:space="preserve">
+    <value>Custom folder grants still active</value>
+  </data>
+  <data name="SandboxPage_Files.Text" xml:space="preserve">
+    <value>📁 Files</value>
+  </data>
+  <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
+    <value>By default the agent only has a temporary workspace folder it can read and write. Grant access to user folders below. SSH keys, browser profiles, and OpenClaw's own settings are always blocked.</value>
+  </data>
+  <data name="SandboxPage_Documents.Text" xml:space="preserve">
+    <value>Documents</value>
+  </data>
+  <data name="SandboxPage_Blocked.Content" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="SandboxPage_ReadAmpWrite.Content" xml:space="preserve">
+    <value>Read &amp; write</value>
+  </data>
+  <data name="SandboxPage_Downloads.Text" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
+  <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="SandboxPage_ReadAmpWrite2.Content" xml:space="preserve">
+    <value>Read &amp; write</value>
+  </data>
+  <data name="SandboxPage_Desktop.Text" xml:space="preserve">
+    <value>Desktop</value>
+  </data>
+  <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="SandboxPage_ReadAmpWrite3.Content" xml:space="preserve">
+    <value>Read &amp; write</value>
+  </data>
+  <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
+    <value>Tool directories on your PATH are also granted read-only inside the sandbox, so command-line tools like git, node, python, and dotnet are usable. Drive roots are never granted.</value>
+  </data>
+  <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
+    <value>Custom folders</value>
+  </data>
+  <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
+    <value>Custom grants are added on top of the rules above. Adding a folder inside Documents/Downloads/Desktop with broader access will override the row-level setting for that path.</value>
+  </data>
+  <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="SandboxPage_ReadAmpWrite4.Content" xml:space="preserve">
+    <value>Read &amp; write</value>
+  </data>
+  <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
+    <value>No custom folders added.</value>
+  </data>
+  <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
+    <value>Add folder</value>
+  </data>
+  <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
+    <value>📋 Clipboard</value>
+  </data>
+  <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
+    <value>Clipboard often contains passwords, tokens, and private text. Read access may leak this to the agent (and over the internet, if enabled).</value>
+  </data>
+  <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
+    <value>None (default)</value>
+  </data>
+  <data name="SandboxPage_ReadAgentCanSee.Content" xml:space="preserve">
+    <value>Read — agent can see what you copied</value>
+  </data>
+  <data name="SandboxPage_WriteAgentCanReplace.Content" xml:space="preserve">
+    <value>Write — agent can replace your clipboard (cannot read it)</value>
+  </data>
+  <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
+    <value>Read &amp; write</value>
+  </data>
+  <data name="SandboxPage_Network.Text" xml:space="preserve">
+    <value>📡 Network</value>
+  </data>
+  <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
+    <value>Allow internet</value>
+  </data>
+  <data name="SandboxPage_IfFileOrClipboard.Text" xml:space="preserve">
+    <value>If file or clipboard read access is enabled, the agent may send that data over the internet.</value>
+  </data>
+  <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
+    <value>Local network devices and shares are not included yet.</value>
+  </data>
+  <data name="SandboxPage_Limits.Text" xml:space="preserve">
+    <value>⏱ Limits</value>
+  </data>
+  <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
+    <value>Command timeout: 30 sec</value>
+  </data>
+  <data name="SandboxPage_MaximumCapturedOutputTruncates.Text" xml:space="preserve">
+    <value>Maximum captured output (truncates beyond this; does not limit disk, memory, or CPU):</value>
+  </data>
+  <data name="SandboxPage_1MiB.Content" xml:space="preserve">
+    <value>1 MiB</value>
+  </data>
+  <data name="SandboxPage_4MiBDefault.Content" xml:space="preserve">
+    <value>4 MiB (default)</value>
+  </data>
+  <data name="SandboxPage_16MiB.Content" xml:space="preserve">
+    <value>16 MiB</value>
+  </data>
+  <data name="SandboxPage_64MiB.Content" xml:space="preserve">
+    <value>64 MiB</value>
+  </data>
+  <data name="SessionsPage_BackToConnection.Text" xml:space="preserve">
+    <value>Back to Connection</value>
+  </data>
+  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="SessionsPage_All.Text" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="SessionsPage_GatewayDisconnected.Message" xml:space="preserve">
+    <value>Connect to a gateway to load sessions.</value>
+  </data>
+  <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
+    <value>Loading sessions...</value>
+  </data>
+  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
+    <value>No active sessions</value>
+  </data>
+  <data name="SessionsPage_Reset.Text" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SessionsPage_Compact.Text" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SessionsPage_Delete.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SettingsPage_Settings.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="SettingsPage_General.Text" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="SettingsPage_Notifications.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="SettingsPage_Privacy.Text" xml:space="preserve">
+    <value>Privacy</value>
+  </data>
+  <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
+    <value>Local Gateway</value>
+  </data>
+  <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
+    <value>MSIX installation detected</value>
+  </data>
+  <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
+    <value>Removing OpenClaw from Windows Settings &amp;#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
+  </data>
+  <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
+    <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+    <value>Remove Local Gateway</value>
+  </data>
+  <data name="SettingsPage_Saved.Title" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="SkillsPage_Skills.Text" xml:space="preserve">
+    <value>🧩 Skills</value>
+  </data>
+  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
+    <value>All Agents</value>
+  </data>
+  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
+    <value>Loading skills...</value>
+  </data>
+  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
+    <value>No skills installed</value>
+  </data>
+  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
+    <value>Skills extend your agent's capabilities. Install skills via the CLI or ClawHub.</value>
+  </data>
+  <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="UsagePage_GatewayDisconnected.Message" xml:space="preserve">
+    <value>Connect to a gateway to load usage data.</value>
+  </data>
+  <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
+    <value>Loading daily costs...</value>
+  </data>
+  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
+    <value>No daily usage for this period</value>
+  </data>
+  <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
+    <value>Test Voice Input</value>
+  </data>
+  <data name="VoiceSettingsPage_Record.Text" xml:space="preserve">
+    <value>Record</value>
+  </data>
+  <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
+    <value>Loading workspace files…</value>
+  </data>
+  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
+    <value>Web Chat Unavailable</value>
+  </data>
+  <data name="ChatWindow_Retry.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
+    <value>Connection Status</value>
+  </data>
+  <data name="ConnectionStatusWindow_STATEMACHINE.Text" xml:space="preserve">
+    <value>STATE MACHINE</value>
+  </data>
+  <data name="ConnectionStatusWindow_OPERATOR.Text" xml:space="preserve">
+    <value>OPERATOR</value>
+  </data>
+  <data name="ConnectionStatusWindow_Off.Text" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="ConnectionStatusWindow_Connecting.Text" xml:space="preserve">
+    <value>Connecting</value>
+  </data>
+  <data name="ConnectionStatusWindow_Connected.Text" xml:space="preserve">
+    <value>Connected</value>
+  </data>
+  <data name="ConnectionStatusWindow_Pairing.Text" xml:space="preserve">
+    <value>Pairing</value>
+  </data>
+  <data name="ConnectionStatusWindow_Error.Text" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="ConnectionStatusWindow_NODE.Text" xml:space="preserve">
+    <value>NODE</value>
+  </data>
+  <data name="ConnectionStatusWindow_Off2.Text" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="ConnectionStatusWindow_Connecting2.Text" xml:space="preserve">
+    <value>Connecting</value>
+  </data>
+  <data name="ConnectionStatusWindow_Connected2.Text" xml:space="preserve">
+    <value>Connected</value>
+  </data>
+  <data name="ConnectionStatusWindow_Pairing2.Text" xml:space="preserve">
+    <value>Pairing</value>
+  </data>
+  <data name="ConnectionStatusWindow_Error2.Text" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="ConnectionStatusWindow_GATEWAYS.Text" xml:space="preserve">
+    <value>GATEWAYS</value>
+  </data>
+  <data name="ConnectionStatusWindow_CREDENTIALS.Text" xml:space="preserve">
+    <value>CREDENTIALS</value>
+  </data>
+  <data name="ConnectionStatusWindow_SETUPCODE.Text" xml:space="preserve">
+    <value>SETUP CODE</value>
+  </data>
+  <data name="ConnectionStatusWindow_PasteASetupCode.Text" xml:space="preserve">
+    <value>Paste a setup code to connect end-to-end.</value>
+  </data>
+  <data name="ConnectionStatusWindow_PasteSetupCode.PlaceholderText" xml:space="preserve">
+    <value>Paste setup code…</value>
+  </data>
+  <data name="ConnectionStatusWindow_Connect.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionStatusWindow_Disconnect.Content" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="ConnectionStatusWindow_DIRECTCONNECT.Text" xml:space="preserve">
+    <value>DIRECT CONNECT</value>
+  </data>
+  <data name="ConnectionStatusWindow_ConnectWithAGateway.Text" xml:space="preserve">
+    <value>Connect with a gateway URL and shared token (admin scope).</value>
+  </data>
+  <data name="ConnectionStatusWindow_WsLocalhost18790.PlaceholderText" xml:space="preserve">
+    <value>ws://localhost:18790</value>
+  </data>
+  <data name="ConnectionStatusWindow_WsLocalhost18790.Text" xml:space="preserve">
+    <value>ws://localhost:18790</value>
+  </data>
+  <data name="ConnectionStatusWindow_WsLocalhost18790.Header" xml:space="preserve">
+    <value>Gateway URL</value>
+  </data>
+  <data name="ConnectionStatusWindow_SharedGatewayToken.PlaceholderText" xml:space="preserve">
+    <value>Shared gateway token</value>
+  </data>
+  <data name="ConnectionStatusWindow_SharedGatewayToken.Header" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="ConnectionStatusWindow_Connect2.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionStatusWindow_SSHTunnel.Header" xml:space="preserve">
+    <value>SSH Tunnel</value>
+  </data>
+  <data name="ConnectionStatusWindow_SSHUser.Header" xml:space="preserve">
+    <value>SSH User</value>
+  </data>
+  <data name="ConnectionStatusWindow_SSHUser.PlaceholderText" xml:space="preserve">
+    <value>user</value>
+  </data>
+  <data name="ConnectionStatusWindow_SSHHost.Header" xml:space="preserve">
+    <value>SSH Host</value>
+  </data>
+  <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
+    <value>192.168.x.x</value>
+  </data>
+  <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
+    <value>Remote Port</value>
+  </data>
+  <data name="ConnectionStatusWindow_LocalPort.Header" xml:space="preserve">
+    <value>Local Port</value>
+  </data>
+  <data name="ConnectionStatusWindow_EVENTTIMELINE.Text" xml:space="preserve">
+    <value>EVENT TIMELINE</value>
+  </data>
+  <data name="ConnectionStatusWindow_Copy.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionStatusWindow_Clear.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_DiagnosticsBundle.Title" xml:space="preserve">
+    <value>Diagnostics bundle</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
+    <value>Review before sharing</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
+    <value>Sensitive tokens, command arguments, payloads, and recordings are excluded by the bundle builder.</value>
+  </data>
+  <data name="HubWindow_Disconnected.Text" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="HubWindow_Op.Text" xml:space="preserve">
+    <value>Op</value>
+  </data>
+  <data name="HubWindow_Node.Text" xml:space="preserve">
+    <value>Node</value>
+  </data>
+  <data name="HubWindow_Advanced.Content" xml:space="preserve">
+    <value>Advanced</value>
+  </data></root>

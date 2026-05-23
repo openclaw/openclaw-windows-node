@@ -27,6 +27,8 @@ public sealed class FluentIconCatalogTests
         "Brand",
         // Diagnostics surface (see src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml).
         "Bug", "Briefcase", "Folder", "Copy", "Document", "Refresh", "Reset", "Clear", "Develop",
+        // Workspace surface (see src/OpenClaw.Tray.WinUI/Pages/WorkspacePage.xaml).
+        "Workspace",
     };
 
     private static string ReadCatalogSource()

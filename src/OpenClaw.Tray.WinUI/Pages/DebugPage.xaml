@@ -34,34 +34,20 @@
 
     <Grid>
 
-        <!-- Body host. MainView and DetailView are siblings; we swap
-             Visibility to navigate without losing this Page's instance,
-             matching ConnectionPage.AddGatewayPanel.
-
-             The page title now lives INSIDE MainView's StackPanel
-             (same column as the SettingsCards) — that's the
-             WinUI Gallery / Permissions page pattern. Putting the
-             title and the cards in one StackPanel guarantees they
-             share the exact same MaxWidth=900 centered column and
-             left-edge alignment, regardless of how narrow the title
-             text is on its own. -->
+        <!-- MainView and DetailView are siblings; we swap Visibility to
+             navigate without losing this Page's instance (same pattern as
+             ConnectionPage.AddGatewayPanel). Layout mirrors
+             PermissionsPage.xaml: MaxWidth=900 + Padding=24 on the inner
+             content container, HorizontalAlignment=Stretch throughout. -->
 
             <!-- ─── MAIN VIEW ─────────────────────────────────────────── -->
-            <!-- Stretching outer Grid is REQUIRED: a StackPanel placed
-                 directly inside a ScrollViewer ignores MaxWidth on layouts
-                 wider than the cap (the ScrollViewer hands it the full
-                 width and Center alignment collapses to the content's
-                 natural width). Wrapping in a Grid with HorizontalAlignment
-                 =Stretch gives the StackPanel a known parent rect to
-                 center within. Mirrors PermissionsPage.xaml — historical
-                 pain across multiple sessions, do not "simplify". -->
             <ScrollViewer x:Name="MainView"
-                          Padding="24,24,24,24"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollMode="Disabled">
                 <Grid HorizontalAlignment="Stretch">
-                <StackPanel HorizontalAlignment="Center"
+                <StackPanel HorizontalAlignment="Stretch"
                             MaxWidth="900"
+                            Padding="24,24,24,24"
                             Spacing="{StaticResource DiagSettingsCardSpacing}">
 
                     <!-- Title block (in-stack, same column as cards). -->
@@ -81,7 +67,7 @@
                          System → Storage). Padding=0 strips button chrome
                          so they read as inline links flush with the
                          message text. -->
-                    <controls:InfoBar x:Name="StatusInfoBar"
+                    <controls:InfoBar x:Uid="DebugPage_Status" x:Name="StatusInfoBar"
                                       IsOpen="True"
                                       IsClosable="False"
                                       Severity="Informational"
@@ -190,7 +176,7 @@
                          InfoBar with IsOpen=False does not consume any
                          vertical layout space, so this is a no-op when
                          idle. -->
-                    <controls:InfoBar x:Name="CopyFeedbackInfoBar"
+                    <controls:InfoBar x:Uid="DebugPage_Copied" x:Name="CopyFeedbackInfoBar"
                                       IsOpen="False"
                                       IsClosable="False"
                                       Severity="Success"
@@ -298,9 +284,9 @@
                                           MinWidth="220"
                                           AutomationProperties.AutomationId="DebugPageHubChatOverride"
                                           SelectionChanged="OnHubChatOverrideChanged">
-                                    <ComboBoxItem Content="No override" Tag="NoOverride"/>
-                                    <ComboBoxItem Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
-                                    <ComboBoxItem Content="Force Companion Chat UI" Tag="ForceNative"/>
+                                    <ComboBoxItem x:Uid="DebugPage_NoOverride" Content="No override" Tag="NoOverride"/>
+                                    <ComboBoxItem x:Uid="DebugPage_ForceGatewayChatUI" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
+                                    <ComboBoxItem x:Uid="DebugPage_ForceCompanionChatUI" Content="Force Companion Chat UI" Tag="ForceNative"/>
                                 </ComboBox>
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_TrayChat"
@@ -309,9 +295,9 @@
                                           MinWidth="220"
                                           AutomationProperties.AutomationId="DebugPageTrayChatOverride"
                                           SelectionChanged="OnTrayChatOverrideChanged">
-                                    <ComboBoxItem Content="No override" Tag="NoOverride"/>
-                                    <ComboBoxItem Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
-                                    <ComboBoxItem Content="Force Companion Chat UI" Tag="ForceNative"/>
+                                    <ComboBoxItem x:Uid="DebugPage_NoOverride2" Content="No override" Tag="NoOverride"/>
+                                    <ComboBoxItem x:Uid="DebugPage_ForceGatewayChatUI2" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
+                                    <ComboBoxItem x:Uid="DebugPage_ForceCompanionChatUI2" Content="Force Companion Chat UI" Tag="ForceNative"/>
                                 </ComboBox>
                             </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
@@ -353,28 +339,15 @@
             <!-- ─── DETAIL VIEW ───────────────────────────────────────── -->
             <!-- Hidden by default. Hosts the recent-log reader; the
                  connection event timeline opens in its own
-                 ConnectionStatusWindow instead. The body uses Border +
-                 RichTextBlock (not a SettingsCard) because it's a
-                 content reader, not a settings row.
-
-                 Same wrapper pattern as MainView: outer Grid stretches to
-                 fill the available width (giving the inner Grid a known
-                 parent rect); inner Grid uses MaxWidth=900 + Center to
-                 center the 900-wide column within. WITHOUT the explicit
-                 Stretch on the outer Grid, the inner Grid's MaxWidth is
-                 ignored on wide windows (Center collapses to content
-                 width). Historical pain — do not "simplify". -->
-            <!-- Padding intentionally matches MainView's ScrollViewer
-                 padding (24 on all sides) so the column position and
-                 vertical inset don't shift when the user enters or
-                 leaves DetailView. Pinned by
-                 DebugPage_DetailViewMatchesMainViewPadding. -->
+                 ConnectionStatusWindow instead. Body uses Border +
+                 RichTextBlock (not a SettingsCard) because it's a content
+                 reader, not a settings row. Layout mirrors MainView. -->
             <Grid x:Name="DetailView"
                   Visibility="Collapsed"
-                  Padding="24,24,24,24"
                   HorizontalAlignment="Stretch">
                 <Grid MaxWidth="900"
-                      HorizontalAlignment="Center"
+                      HorizontalAlignment="Stretch"
+                      Padding="24,24,24,24"
                       RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -416,7 +389,7 @@
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Refresh, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="12"/>
-                            <TextBlock Text="Refresh"/>
+                            <TextBlock x:Uid="DebugPage_Refresh" Text="Refresh"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="DetailCopyButton"
@@ -426,7 +399,7 @@
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Copy, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="12"/>
-                            <TextBlock Text="Copy"/>
+                            <TextBlock x:Uid="DebugPage_Copy" Text="Copy"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="DetailOpenFileButton"
@@ -437,7 +410,7 @@
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="12"/>
-                            <TextBlock Text="Open file"/>
+                            <TextBlock x:Uid="DebugPage_OpenFile" Text="Open file"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
