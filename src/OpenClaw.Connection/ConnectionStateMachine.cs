@@ -136,9 +136,24 @@ internal sealed class ConnectionStateMachine
     }
 
     /// <summary>Start the node sub-FSM in Connecting state.</summary>
+    /// <remarks>
+    /// Round-6 fix: also reset from <see cref="RoleConnectionState.PairingRequired"/>
+    /// / <see cref="RoleConnectionState.PairingRejected"/> / <see cref="RoleConnectionState.Disconnected"/>
+    /// so a RETRY attempt starts from a clean slate. Without this the
+    /// snapshot carries the previous attempt's PairingRequired requestId
+    /// into the new connect, causing observers (notably
+    /// <c>EnsureNodeConnectedAsync</c>'s Handler) to trip on stale state
+    /// before the fresh attempt produces its own events. RebuildSnapshot
+    /// automatically clears the stale NodePairingRequestId and resets
+    /// NodePairingStatus to Unknown when we leave PairingRequired.
+    /// </remarks>
     public void StartNodeConnecting()
     {
-        if (_nodeState is RoleConnectionState.Idle or RoleConnectionState.Error)
+        if (_nodeState is RoleConnectionState.Idle
+            or RoleConnectionState.Error
+            or RoleConnectionState.PairingRequired
+            or RoleConnectionState.PairingRejected
+            or RoleConnectionState.RateLimited)
         {
             _nodeState = RoleConnectionState.Connecting;
             _nodeError = null;

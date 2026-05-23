@@ -730,20 +730,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return;
         }
 
-        // Capture the pre-existing PairingRequired requestId so the Handler
-        // can distinguish a STALE PairingRequired snapshot (left over from a
-        // previous failed attempt — the state machine doesn't reset on a new
-        // connect) from a FRESH PairingRequired event tied to this attempt.
-        // Manual test 2026-05-22 showed the retry connect tripping the
-        // fast-fail off the stale snapshot before its own hello-ok arrived,
-        // even though the actual pairing succeeded ~25ms later. Treat
-        // stalePairingRequestId==current as "ignore this PairingRequired
-        // event, wait for a fresh one (or terminal state)".
-        var stalePairingRequestId =
-            snapshot.NodeState == RoleConnectionState.PairingRequired
-                ? snapshot.NodePairingRequestId
-                : null;
-
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void Handler(object? _, GatewayConnectionSnapshot s)
@@ -762,10 +748,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node connection failed."));
                     break;
-                case RoleConnectionState.PairingRequired
-                    when IsNodeAutoApproveSuppressed(s.GatewayUrl)
-                        && (stalePairingRequestId == null
-                            || !string.Equals(s.NodePairingRequestId, stalePairingRequestId, StringComparison.Ordinal)):
+                case RoleConnectionState.RateLimited:
+                    // Round-6: defensively surface RateLimited as a terminal
+                    // failure rather than waiting the 35s default for a
+                    // Connected transition that won't arrive. NodeRateLimited
+                    // is not currently emitted by any path in this manager,
+                    // but the moment it gets wired up the wait would hang.
+                    tcs.TrySetException(new InvalidOperationException(
+                        s.NodeError ?? "Node connection was rate-limited by the gateway."));
+                    break;
+                case RoleConnectionState.PairingRequired when IsNodeAutoApproveSuppressed(s.GatewayUrl):
                     // When the caller has suppressed the manager's own auto-approve
                     // (V2 onboarding engine does this — see
                     // AcquireNodeAutoApproveSuppression), we MUST fail fast on
@@ -778,17 +770,21 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     // caller gets control to approve. The IsLocalLoopback
                     // scope inside IsNodeAutoApproveSuppressed ensures a stale
                     // token can never suppress remote-gateway pairings.
-                    // Guard: only fast-fail on a FRESH PairingRequired (different
-                    // requestId from the pre-existing one) so retry attempts
-                    // after the caller approved their first PairingRequired
-                    // aren't tripped by the lingering snapshot.
+                    //
+                    // Round-6: the stale-snapshot race that previously
+                    // necessitated a requestId-equality guard here is now
+                    // handled at the source — StartNodeConnectionAsync calls
+                    // _stateMachine.StartNodeConnecting() which resets the
+                    // node sub-FSM to Connecting before the new connect, so
+                    // any PairingRequired observed here is always tied to
+                    // THIS attempt's events.
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node pairing required — caller must approve before retrying."));
                     break;
-                // PairingRequired (without suppression OR with stale requestId)
-                // / Connecting / Idle — keep waiting; the manager's existing
-                // auto-approve flow (OnNodePairingStatusChanged) handles the
-                // node.pair.approve case when operator has admin/pairing scope.
+                // PairingRequired (without suppression) / Connecting / Idle — keep
+                // waiting; the manager's existing auto-approve flow
+                // (OnNodePairingStatusChanged) handles the node.pair.approve case
+                // when operator has admin/pairing scope.
             }
         }
 
@@ -828,7 +824,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     (current.NodeState == RoleConnectionState.Connected
                         && current.NodePairingStatus == PairingStatus.Paired)
                     || current.NodeState == RoleConnectionState.PairingRejected
-                    || current.NodeState == RoleConnectionState.Error;
+                    || current.NodeState == RoleConnectionState.Error
+                    || current.NodeState == RoleConnectionState.RateLimited;
                 if (isTerminal)
                 {
                     Handler(this, current);
@@ -894,12 +891,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return false;
         }
 
-        // Mark node as enabled in the state machine so UI reflects node state
-        // State machine is not thread-safe — acquire semaphore for mutation
+        // Mark node as enabled in the state machine so UI reflects node state.
+        // Round-6 fix: also reset the node sub-FSM to Connecting via
+        // StartNodeConnecting() so the new attempt starts from a clean
+        // snapshot — clears stale NodePairingRequestId / NodePairingStatus
+        // from any prior PairingRequired attempt. Without this, observers
+        // (notably EnsureNodeConnectedAsync's Handler) see stale state
+        // tagged onto fresh events and trip a false-fail before the new
+        // attempt produces its own hello-ok.
+        // State machine is not thread-safe — acquire semaphore for mutation.
         await _transitionSemaphore.WaitAsync();
         try
         {
             _stateMachine.SetNodeEnabled(true);
+            _stateMachine.StartNodeConnecting();
         }
         finally
         {

@@ -385,6 +385,46 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureNodeConnectedAsync_FreshPairingRequiredAfterReset_FastFailsWhenSuppressed()
+    {
+        // Round-6 companion to StaleSnapshotAfterPrevPairingRequired:
+        // pin the OTHER half of the fix — when the retry attempt itself
+        // produces a fresh PairingRequired event (different from any
+        // stale snapshot), the Handler MUST fast-fail so the V2
+        // onboarding engine can drive WSL-CLI approval before the
+        // gateway times out the pending request.
+        SetupGateway("gw-1", "ws://localhost:18789");
+        _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+
+        // Retry-attempt connector synchronously walks through Connecting →
+        // PairingRequired (a FRESH PairingRequired tied to this attempt,
+        // emitted AFTER StartNodeConnecting() reset the state machine).
+        var node = new ScriptedNodeConnector
+        {
+            ConnectAction = (s, _) =>
+            {
+                s.SimulateStatus(ConnectionStatus.Connecting);
+                s.SimulatePairing(PairingStatus.Pending, requestId: "fresh-attempt-id");
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node,
+            shouldStartNodeConnection: (_, _) => false);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        using var suppression = manager.AcquireNodeAutoApproveSuppression();
+
+        // No stale state — first attempt. The fresh PairingRequired event
+        // produced inside ConnectAction must trip the fast-fail.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.EnsureNodeConnectedAsync());
+    }
+
+    [Fact]
     public async Task EnsureNodeConnectedAsync_HappyPath_ReturnsWhenPaired()
     {
         SetupGateway("gw-1", "wss://test");
