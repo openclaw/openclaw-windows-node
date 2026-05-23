@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
 using OpenClaw.Connection;
@@ -150,6 +151,27 @@ public sealed class CleanupStaleGatewayStep : SetupStep
 
         await Task.CompletedTask;
         return StepResult.Ok("Gateway state cleaned");
+    }
+
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // Delete setup-state.json (written by VerifyEndToEndStep)
+        var localDataPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray");
+
+        var stateFile = Path.Combine(localDataPath, "setup-state.json");
+        if (File.Exists(stateFile))
+        {
+            File.Delete(stateFile);
+            ctx.Logger.Info("[Uninstall] Deleted setup-state.json");
+        }
+        else
+        {
+            ctx.Logger.Info("[Uninstall] setup-state.json already absent");
+        }
+
+        return Task.CompletedTask;
     }
 }
 
@@ -358,7 +380,28 @@ public sealed class CreateWslInstanceStep : SetupStep
     {
         var distro = ctx.DistroName!;
         await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+        await Task.Delay(2000, ct); // Let port/VHD locks release
         await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+
+        // VHD parent dir cleanup (mirrors old uninstall step 5a)
+        var localDataPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray");
+        var vhdDir = Path.Combine(localDataPath, "wsl", distro);
+        if (Directory.Exists(vhdDir))
+        {
+            Directory.Delete(vhdDir, recursive: true);
+            ctx.Logger.Info($"[Uninstall] Deleted VHD parent directory: {vhdDir}");
+        }
+
+        // WSL parent dir cleanup — remove empty wsl\ directory (mirrors old step 5b)
+        var wslDir = Path.Combine(localDataPath, "wsl");
+        if (Directory.Exists(wslDir) && !Directory.EnumerateFileSystemEntries(wslDir).Any())
+        {
+            Directory.Delete(wslDir);
+            ctx.Logger.Info("[Uninstall] Deleted empty wsl\\ parent directory");
+        }
     }
 }
 
@@ -626,6 +669,53 @@ public sealed class StartGatewayStep : SetupStep
         ctx.Logger.Error($"Gateway health timeout. Journal:\n{journal.Stdout}");
 
         return StepResult.Fail($"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s");
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        // Check if distro is running before trying systemctl stop
+        var list = await ctx.Commands.RunAsync("wsl.exe", ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var distros = list.Stdout
+            .Replace("\0", "").Replace("\uFEFF", "")
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => d.Trim()).Where(d => d.Length > 0).ToList();
+
+        if (!distros.Any(d => d.Equals(distro, StringComparison.OrdinalIgnoreCase)))
+        {
+            ctx.Logger.Info("[Uninstall] Distro not registered — skipping gateway stop");
+            return;
+        }
+
+        // Check distro state — only stop if Running
+        var verbose = await ctx.Commands.RunAsync("wsl.exe", ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
+        var isRunning = verbose.Stdout
+            .Replace("\0", "").Replace("\uFEFF", "")
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Any(line => line.Contains(distro, StringComparison.OrdinalIgnoreCase)
+                      && line.Contains("Running", StringComparison.OrdinalIgnoreCase));
+
+        if (!isRunning)
+        {
+            ctx.Logger.Info("[Uninstall] Distro not running — skipping systemctl stop");
+            return;
+        }
+
+        // Stop gateway service with 5-second timeout (mirrors old uninstall step 3)
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            await ctx.Commands.RunInWslAsync(
+                distro, "bash -c 'sudo systemctl stop openclaw-gateway 2>&1 || true'",
+                TimeSpan.FromSeconds(10), ct: cts.Token);
+            ctx.Logger.Info("[Uninstall] Stopped gateway service");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            ctx.Logger.Warn("[Uninstall] systemctl stop timed out (5s); distro may be wedged — wsl --unregister will force-terminate");
+        }
     }
 }
 
@@ -986,6 +1076,95 @@ public sealed class PairOperatorStep : SetupStep
             client.StatusChanged -= OnStatusChanged;
         }
     }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+
+        // Find all local gateway records to remove (mirrors old uninstall step 6a)
+        var localRecords = registry.GetAll()
+            .Where(r => r.IsLocal || (r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)))
+            .ToList();
+
+        if (localRecords.Count > 0)
+        {
+            foreach (var record in localRecords)
+            {
+                // Remove identity directory
+                var identityDir = registry.GetIdentityDirectory(record.Id);
+                if (Directory.Exists(identityDir))
+                {
+                    Directory.Delete(identityDir, recursive: true);
+                    ctx.Logger.Info($"[Uninstall] Deleted identity directory: {identityDir}");
+                }
+                registry.Remove(record.Id);
+            }
+            registry.Save();
+            ctx.Logger.Info($"[Uninstall] Removed {localRecords.Count} local gateway record(s)");
+        }
+        else
+        {
+            ctx.Logger.Info("[Uninstall] No local gateway records found");
+        }
+
+        // Null operator device token (mirrors old uninstall step 7)
+        // Check if external gateways remain — if so, preserve root device tokens
+        var hasExternalGateways = registry.GetAll().Any(r =>
+            !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
+
+        if (hasExternalGateways)
+        {
+            ctx.Logger.Info("[Uninstall] Preserving root device tokens — external gateway records remain");
+        }
+        else
+        {
+            var operatorCleared = DeviceIdentity.TryClearDeviceTokenForRole(ctx.DataDir, "operator");
+            ctx.Logger.Info(operatorCleared
+                ? "[Uninstall] Cleared operator device token"
+                : "[Uninstall] Operator device token already absent");
+        }
+
+        // Best-effort revoke operator token via gateway HTTP endpoint (mirrors old step 4)
+        await TryRevokeOperatorTokenAsync(ctx, ct);
+    }
+
+    private static async Task TryRevokeOperatorTokenAsync(SetupContext ctx, CancellationToken ct)
+    {
+        try
+        {
+            // Read settings.json for legacy token if available
+            var settingsPath = Path.Combine(ctx.DataDir, "settings.json");
+            if (!File.Exists(settingsPath)) return;
+
+            var settingsJson = await File.ReadAllTextAsync(settingsPath, ct);
+            using var doc = JsonDocument.Parse(settingsJson);
+
+            string? token = null;
+            if (doc.RootElement.TryGetProperty("Token", out var tokenProp))
+                token = tokenProp.GetString();
+
+            if (string.IsNullOrWhiteSpace(token)) return;
+
+            var gatewayUrl = ctx.GatewayUrl ?? "ws://localhost:18789";
+            var httpBase = gatewayUrl
+                .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
+                .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
+                .TrimEnd('/');
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            http.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var response = await http.PostAsync($"{httpBase}/api/v1/operator/disconnect", content: null, cts.Token);
+            ctx.Logger.Info($"[Uninstall] Revoke operator token: HTTP {(int)response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Info($"[Uninstall] Best-effort token revoke failed ({ex.GetType().Name}); gateway may be down");
+        }
+    }
 }
 
 public sealed class PairNodeStep : SetupStep
@@ -1270,6 +1449,30 @@ public sealed class PairNodeStep : SetupStep
             client.RegisterCapability(new StubNodeCapability(category, commands));
         }
         ctx.Logger.Info($"Registered {capabilities.Count} capability categories with {capabilities.Sum(c => c.Commands.Length)} total commands");
+    }
+
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // Null node device token (mirrors old uninstall step 7 for node role)
+        // Only clear if no external gateways remain (same logic as PairOperatorStep)
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+        var hasExternalGateways = registry.GetAll().Any(r =>
+            !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
+
+        if (hasExternalGateways)
+        {
+            ctx.Logger.Info("[Uninstall] Preserving node device token — external gateway records remain");
+        }
+        else
+        {
+            var nodeCleared = DeviceIdentity.TryClearDeviceTokenForRole(ctx.DataDir, "node");
+            ctx.Logger.Info(nodeCleared
+                ? "[Uninstall] Cleared node device token"
+                : "[Uninstall] Node device token already absent");
+        }
+
+        return Task.CompletedTask;
     }
 }
 
@@ -1568,6 +1771,89 @@ public sealed class StartKeepaliveStep : SetupStep
         var json = System.Text.Json.JsonSerializer.Serialize(marker, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(markerPath, json);
         ctx.Logger.Info($"Wrote keepalive marker: {markerPath}");
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName;
+        if (string.IsNullOrEmpty(distro))
+        {
+            ctx.Logger.Info("[Uninstall] No distro name — skipping keepalive cleanup");
+            return;
+        }
+
+        // Kill keepalive wsl.exe processes for this distro
+        // Pattern: wsl.exe -d <distro> -- sleep <N>
+        try
+        {
+            var procs = System.Diagnostics.Process.GetProcessesByName("wsl")
+                .Concat(System.Diagnostics.Process.GetProcessesByName("wsl.exe"));
+
+            foreach (var proc in procs)
+            {
+                try
+                {
+                    // Read command line via WMI/CIM
+                    var cmdLine = GetProcessCommandLine(proc.Id);
+                    if (cmdLine != null
+                        && cmdLine.Contains(distro, StringComparison.OrdinalIgnoreCase)
+                        && cmdLine.Contains("sleep", StringComparison.OrdinalIgnoreCase))
+                    {
+                        proc.Kill();
+                        ctx.Logger.Info($"[Uninstall] Killed keepalive process PID {proc.Id}");
+                    }
+                }
+                catch { /* process may have exited */ }
+                finally { proc.Dispose(); }
+            }
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Warn($"[Uninstall] Error enumerating keepalive processes: {ex.Message}");
+        }
+
+        // Delete keepalive marker file
+        var markerDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawTray", "wsl-keepalive");
+        var markerPath = Path.Combine(markerDir, $"{distro}.json");
+
+        if (File.Exists(markerPath))
+        {
+            File.Delete(markerPath);
+            ctx.Logger.Info($"[Uninstall] Deleted keepalive marker: {markerPath}");
+        }
+
+        // Clean up empty marker directory
+        if (Directory.Exists(markerDir) && !Directory.EnumerateFileSystemEntries(markerDir).Any())
+        {
+            Directory.Delete(markerDir);
+            ctx.Logger.Info("[Uninstall] Deleted empty wsl-keepalive directory");
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private static string? GetProcessCommandLine(int pid)
+    {
+        try
+        {
+            // Use WMI to get the command line
+            var result = new System.Diagnostics.Process();
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return null;
+            var output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            return output.Trim();
+        }
+        catch { return null; }
     }
 }
 

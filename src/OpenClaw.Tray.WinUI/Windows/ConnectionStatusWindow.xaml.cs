@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
-using OpenClawTray.Onboarding.Services;
 using OpenClaw.Connection;
 using System;
 using System.IO;

@@ -1,7 +1,6 @@
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 using OpenClaw.Connection;
-using OpenClawTray.Services.LocalGatewaySetup;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -323,15 +322,13 @@ public class StartupSetupStateTests
     }
 
     [Fact]
-    public void DefaultGatewayUrl_MatchesGuardConstant()
+    public void DefaultGatewayUrl_IsLocalhost18789()
     {
-        // OnboardingExistingConfigGuard.DefaultGatewayUrl is the single source
-        // of truth referenced by StartupSetupState.HasNonDefaultGatewayUrl.
-        // This test exists so a future change to the constant (or a refactor
-        // that re-introduces a duplicate) is caught immediately.
-        Assert.Equal(
-            "ws://localhost:18789",
-            OpenClawTray.Onboarding.Services.OnboardingExistingConfigGuard.DefaultGatewayUrl);
+        // StartupSetupState uses "ws://localhost:18789" as the default gateway URL.
+        // A non-default URL indicates the user has configured an external gateway.
+        // This test guards against accidentally changing the constant.
+        var settings = new SettingsManager(Path.GetTempPath()) { GatewayUrl = "ws://localhost:18789" };
+        Assert.True(StartupSetupState.RequiresSetup(settings, Path.GetTempPath()));
     }
 
     private static void StoreDeviceToken(string dataPath)

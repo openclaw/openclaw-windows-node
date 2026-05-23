@@ -35,15 +35,12 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
-    <ProjectReference Include="..\OpenClawTray.OnboardingV2\OpenClawTray.OnboardingV2.csproj" />
   </ItemGroup>
 
   <!-- Reuse the same Setup assets shipped in the Tray project so the preview
        and the real onboarding window render from byte-identical PNG files. -->
   <ItemGroup>
-    <Content Include="..\OpenClaw.Tray.WinUI\Assets\Setup\**\*"
-             Link="Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\OpenClaw.Tray.WinUI\Assets\Setup\**\*" Link="Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Copy WebView2Loader.dll for the unpackaged exe (mirrors the Tray rule;

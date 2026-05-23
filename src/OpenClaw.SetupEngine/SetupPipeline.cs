@@ -184,4 +184,85 @@ public sealed class SetupPipeline
             }
         }
     }
+
+    /// <summary>
+    /// Runs all step rollbacks in reverse order (full teardown / uninstall).
+    /// Unlike RollbackCompletedSteps, this runs ALL steps regardless of install state.
+    /// Continues past individual failures to ensure maximum cleanup.
+    /// </summary>
+    public async Task<PipelineResult> UninstallAsync(SetupContext ctx)
+    {
+        var ct = ctx.CancellationToken;
+
+        if (!ctx.Config.ConfirmDestructive)
+        {
+            ctx.Logger.Error("Uninstall requires --confirm-destructive flag");
+            return new PipelineResult(PipelineOutcome.Failed, Message: "Safety gate: --confirm-destructive required for live uninstall");
+        }
+
+        ctx.Journal.RecordPipelineEvent("uninstall_started", $"steps={_steps.Count}, dry_run={ctx.Config.DryRun}");
+        ctx.Logger.Info($"Uninstall starting — {_steps.Count} steps in reverse order (dry_run={ctx.Config.DryRun})");
+
+        var pipelineSw = Stopwatch.StartNew();
+        var failures = new List<(string StepId, string Message)>();
+
+        // Run rollbacks in reverse order
+        for (int i = _steps.Count - 1; i >= 0; i--)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                ctx.Journal.RecordPipelineEvent("uninstall_cancelled");
+                return new PipelineResult(PipelineOutcome.Cancelled);
+            }
+
+            var step = _steps[i];
+            ctx.Logger.Info($"Uninstalling: {step.DisplayName}");
+            StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", null, null));
+
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                if (ctx.Config.DryRun)
+                {
+                    ctx.Logger.Info($"[DRY RUN] Would rollback: {step.Id}");
+                    ctx.Journal.RecordRollback(step.Id, success: true);
+                }
+                else
+                {
+                    await step.RollbackAsync(ctx, ct);
+                    ctx.Journal.RecordRollback(step.Id, success: true);
+                }
+                sw.Stop();
+                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Success, sw.Elapsed));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                ctx.Journal.RecordPipelineEvent("uninstall_cancelled", $"during rollback of {step.Id}");
+                return new PipelineResult(PipelineOutcome.Cancelled);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                ctx.Logger.Error($"Rollback failed for {step.Id}: {ex.Message}");
+                ctx.Journal.RecordRollback(step.Id, success: false);
+                failures.Add((step.Id, ex.Message));
+                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Failed, sw.Elapsed));
+                // Continue past failures — best-effort cleanup
+            }
+        }
+
+        pipelineSw.Stop();
+
+        if (failures.Count > 0)
+        {
+            var failMsg = $"{failures.Count} rollback(s) failed: {string.Join(", ", failures.Select(f => f.StepId))}";
+            ctx.Journal.RecordPipelineEvent("uninstall_completed_with_errors", failMsg);
+            ctx.Logger.Warn($"Uninstall completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s — {failMsg}");
+            return new PipelineResult(PipelineOutcome.Failed, Message: failMsg);
+        }
+
+        ctx.Journal.RecordPipelineEvent("uninstall_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
+        ctx.Logger.Info($"Uninstall completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
+        return new PipelineResult(PipelineOutcome.Success);
+    }
 }

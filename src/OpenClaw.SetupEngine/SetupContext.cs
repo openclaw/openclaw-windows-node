@@ -7,8 +7,8 @@ namespace OpenClaw.SetupEngine;
 
 public sealed class SetupConfig
 {
-    public string DistroName { get; set; } = "";
-    public int GatewayPort { get; set; }
+    public string DistroName { get; set; } = "OpenClawGateway";
+    public int GatewayPort { get; set; } = 18789;
     public string BaseDistro { get; set; } = "";
     public bool SkipPermissions { get; set; }
     public bool SkipWizard { get; set; }
@@ -16,6 +16,8 @@ public sealed class SetupConfig
     public bool AutoApprovePairing { get; set; }
     public bool RollbackOnFailure { get; set; }
     public bool CleanBeforeRun { get; set; }
+    public bool DryRun { get; set; }
+    public bool ConfirmDestructive { get; set; }
     public string LogLevel { get; set; } = "trace";
     public string? LogPath { get; set; }
     public string? GatewayUrl { get; set; }

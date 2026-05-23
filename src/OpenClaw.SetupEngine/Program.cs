@@ -14,6 +14,10 @@ public static class Program
         var rollback = HasFlag(args, "--rollback-on-failure");
         var dryRun = HasFlag(args, "--dry-run");
         var wizardOnly = HasFlag(args, "--wizard-only");
+        var uninstall = HasFlag(args, "--uninstall");
+        var confirmDestructive = HasFlag(args, "--confirm-destructive");
+        var jsonOutput = GetArg(args, "--json-output");
+        var preserveLogs = HasFlag(args, "--preserve-logs");
 
         // Load config
         SetupConfig config;
@@ -44,22 +48,37 @@ public static class Program
         if (rollback) config.RollbackOnFailure = true;
         if (wizardOnly) config.SkipWizard = false;
         if (logPath != null) config.LogPath = logPath;
+        if (dryRun) config.DryRun = true;
+        if (confirmDestructive) config.ConfirmDestructive = true;
 
         // Default log path if not specified
+        var logLabel = uninstall ? "uninstall" : "setup";
         config.LogPath ??= Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "OpenClawTray", "Logs", "Setup", $"setup-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
+            "OpenClawTray", "Logs", "Setup", $"{logLabel}-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
 
         Console.WriteLine($"Log file: {config.LogPath}");
         Console.WriteLine($"Distro: {config.DistroName}");
         Console.WriteLine($"Gateway: {config.EffectiveGatewayUrl}");
-        Console.WriteLine($"Headless: {config.Headless}");
+        Console.WriteLine($"Mode: {(uninstall ? "UNINSTALL" : "SETUP")}");
+        if (uninstall)
+        {
+            Console.WriteLine($"Dry run: {config.DryRun}");
+            Console.WriteLine($"Confirm destructive: {config.ConfirmDestructive}");
+        }
         Console.WriteLine();
 
-        if (dryRun)
+        if (dryRun && !uninstall)
         {
             Console.WriteLine("DRY RUN — config validated, exiting.");
             return 0;
+        }
+
+        // Uninstall safety gate
+        if (uninstall && !confirmDestructive && !dryRun)
+        {
+            Console.Error.WriteLine("ERROR: --uninstall requires --confirm-destructive (or use --dry-run to preview).");
+            return 2;
         }
 
         // Create infrastructure
@@ -80,9 +99,20 @@ public static class Program
         var ctx = new SetupContext(config, logger, journal, commands, cts.Token);
 
         // Build step pipeline
-        var steps = wizardOnly
-            ? [new RunGatewayWizardStep()]
-            : BuildSteps(config);
+        List<SetupStep> steps;
+        if (uninstall)
+        {
+            steps = SetupStepFactory.BuildDefaultSteps();
+        }
+        else if (wizardOnly)
+        {
+            steps = [new RunGatewayWizardStep()];
+        }
+        else
+        {
+            steps = BuildSteps(config);
+        }
+
         var pipeline = new SetupPipeline(steps);
 
         pipeline.StepProgress += (_, e) =>
@@ -100,20 +130,59 @@ public static class Program
         };
 
         // Run!
-        logger.Info("Setup engine starting", new { version = "0.1", args = string.Join(' ', args) });
-        var result = await pipeline.RunAsync(ctx);
+        logger.Info($"{(uninstall ? "Uninstall" : "Setup")} engine starting", new { version = "0.1", args = string.Join(' ', args) });
+
+        PipelineResult result;
+        if (uninstall)
+        {
+            result = await pipeline.UninstallAsync(ctx);
+
+            // Post-rollback tray-artifact cleanup (autostart, run.marker, settings, logs)
+            if (result.Outcome == PipelineOutcome.Success || result.Outcome == PipelineOutcome.Failed)
+            {
+                if (!config.DryRun)
+                {
+                    logger.Info("Running tray-artifact cleanup...");
+                    TrayArtifactCleanup.Run(ctx, preserveLogs);
+                }
+            }
+        }
+        else
+        {
+            result = await pipeline.RunAsync(ctx);
+        }
 
         Console.WriteLine();
+        var label = uninstall ? "UNINSTALL" : "SETUP";
         Console.WriteLine(result.Outcome switch
         {
-            PipelineOutcome.Success => "═══ SETUP COMPLETE ═══",
-            PipelineOutcome.Failed => $"═══ SETUP FAILED ═══ (step: {result.FailedStepId})\n  {result.Message}",
-            PipelineOutcome.Cancelled => "═══ SETUP CANCELLED ═══",
+            PipelineOutcome.Success => $"═══ {label} COMPLETE ═══",
+            PipelineOutcome.Failed => $"═══ {label} FAILED ═══\n  {result.Message}",
+            PipelineOutcome.Cancelled => $"═══ {label} CANCELLED ═══",
             _ => "═══ UNKNOWN STATE ═══"
         });
 
         Console.WriteLine($"\nLog: {config.LogPath}");
         Console.WriteLine($"Journal: {journalPath}");
+
+        // Write JSON output if requested (for programmatic callers like CliUninstallHandler)
+        if (jsonOutput != null)
+        {
+            var outputDir = Path.GetDirectoryName(jsonOutput);
+            if (outputDir != null) Directory.CreateDirectory(outputDir);
+
+            var jsonResult = new
+            {
+                outcome = result.Outcome.ToString(),
+                exitCode = result.ExitCode,
+                failedStepId = result.FailedStepId,
+                message = result.Message,
+                logPath = config.LogPath,
+                journalPath
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(jsonOutput, json);
+        }
 
         return result.ExitCode;
     }

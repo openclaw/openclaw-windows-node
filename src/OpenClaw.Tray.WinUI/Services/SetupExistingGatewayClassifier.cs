@@ -1,6 +1,5 @@
 using OpenClaw.Shared;
 using OpenClaw.Connection;
-using OpenClawTray.Services.LocalGatewaySetup;
 using System.Text.Json;
 
 namespace OpenClawTray.Services;

@@ -1,9 +1,9 @@
 {
   // ─── Core Setup ───
   // WSL distro name to create (use distinct name to avoid conflicts)
-  "DistroName": "OpenClawDev",
+  "DistroName": "OpenClawGateway",
   // Gateway WebSocket port (tray connects here)
-  "GatewayPort": 18899,
+  "GatewayPort": 18789,
   // Base Ubuntu distro to export/import from
   "BaseDistro": "Ubuntu-24.04",
   // Run without UI prompts

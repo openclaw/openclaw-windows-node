@@ -1,31 +1,56 @@
 using OpenClaw.Shared;
-using OpenClawTray.Onboarding.Services;
 using OpenClaw.Connection;
 
 namespace OpenClawTray.Services;
 
 internal static class StartupSetupState
 {
+    private const string DefaultGatewayUrl = "ws://localhost:18789";
+
     public static bool HasStoredNodeDeviceToken(string dataPath) =>
-        OnboardingExistingConfigGuard.HasAnyDeviceTokenForRole(dataPath, "node");
+        HasAnyDeviceTokenForRole(dataPath, "node");
 
     /// <summary>
     /// True if the user has an operator device token (root or any per-gateway dir)
     /// AND a configured gateway target (non-default <c>GatewayUrl</c> or an SSH tunnel
-    /// host). Both signals together indicate a working operator config — guards
-    /// against orphan tokens and against tokens-without-target stale state.
-    /// Token detection delegates to
-    /// <see cref="OnboardingExistingConfigGuard.HasAnyOperatorDeviceToken"/> so the
-    /// startup decision and the in-wizard guard agree on what counts as paired.
+    /// host). Both signals together indicate a working operator config.
     /// </summary>
     public static bool HasUsableOperatorConfiguration(SettingsManager settings, string dataPath) =>
-        OnboardingExistingConfigGuard.HasAnyOperatorDeviceToken(dataPath)
+        HasAnyDeviceTokenForRole(dataPath, "operator")
         && HasAnyConfiguredGatewayTarget(settings);
 
     /// <summary>
+    /// Scans both the legacy root identity file and per-gateway identity directories
+    /// for a device token for the specified role.
+    /// </summary>
+    internal static bool HasAnyDeviceTokenForRole(string dataPath, string role)
+    {
+        if (DeviceIdentity.HasStoredDeviceTokenForRole(dataPath, role, NullLogger.Instance))
+            return true;
+
+        var gatewaysDir = Path.Combine(dataPath, "gateways");
+        if (!Directory.Exists(gatewaysDir))
+            return false;
+
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories(gatewaysDir))
+            {
+                if (DeviceIdentity.HasStoredDeviceTokenForRole(dir, role, NullLogger.Instance))
+                    return true;
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort scan
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// True when the user has configured an actual gateway target — either a
-    /// non-default <c>GatewayUrl</c> or an SSH tunnel host (which routes via
-    /// <c>ws://127.0.0.1:LocalPort</c> and would otherwise look "default").
+    /// non-default <c>GatewayUrl</c> or an SSH tunnel host.
     /// </summary>
     internal static bool HasAnyConfiguredGatewayTarget(SettingsManager settings)
     {
@@ -41,7 +66,7 @@ internal static class StartupSetupState
         !string.IsNullOrWhiteSpace(settings.GatewayUrl)
         && !string.Equals(
             settings.GatewayUrl,
-            OnboardingExistingConfigGuard.DefaultGatewayUrl,
+            DefaultGatewayUrl,
             StringComparison.OrdinalIgnoreCase);
 
     public static bool CanStartNodeGateway(SettingsManager settings, string dataPath)
@@ -59,34 +84,22 @@ internal static class StartupSetupState
 
     public static bool RequiresSetup(SettingsManager settings, string dataPath, GatewayRegistry? registry)
     {
-        // MCP-only mode doesn't require an authenticated gateway. Checked first
-        // so that an MCP-server user with EnableNodeMode accidentally left on
-        // (but no node token) still bypasses the wizard — preserves the
-        // original "MCP wins" precedence.
         if (settings.EnableMcpServer)
         {
             return false;
         }
 
-        // Node mode: needs a paired node device token to operate as a node.
         if (settings.EnableNodeMode)
         {
             return !HasStoredNodeDeviceToken(dataPath);
         }
 
-        // Any usable saved gateway record means this is not first-run setup.
-        // The setup dialog now only installs a new local WSL gateway; returning
-        // users manage existing/external gateways from the Connections page.
         if (registry is not null
             && SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(registry, settings, dataPath))
         {
             return false;
         }
 
-        // Operator mode: returning users with any operator device token AND a
-        // configured gateway target already have a working configuration —
-        // don't auto-launch the wizard (Scott Hanselman repro: remote-gateway
-        // operator saw the wizard pop on every launch).
         if (HasUsableOperatorConfiguration(settings, dataPath))
         {
             return false;

@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
-using OpenClawTray.Onboarding.Services;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;

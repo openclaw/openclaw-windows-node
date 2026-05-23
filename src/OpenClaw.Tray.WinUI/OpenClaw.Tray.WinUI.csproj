@@ -47,7 +47,6 @@
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
-    <ProjectReference Include="..\OpenClawTray.OnboardingV2\OpenClawTray.OnboardingV2.csproj" />
     <ProjectReference Include="..\OpenClaw.Chat\OpenClaw.Chat.csproj" />
   </ItemGroup>
 
@@ -168,14 +167,11 @@
     </Task>
   </UsingTask>
 
-  <Target Name="SyncAppxManifestVersionTarget"
-          BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest"
-          Condition="'$(WindowsPackageType)' == 'MSIX'">
+  <Target Name="SyncAppxManifestVersionTarget" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" Condition="'$(WindowsPackageType)' == 'MSIX'">
     <!-- Fail loudly if MSIX packaging was requested but no version was supplied; without
          this, the target would silently skip and the sentinel 0.0.0.0 in the source manifest
          would ship in the MSIX package. -->
-    <Error Text="MSIX packaging requested (WindowsPackageType=MSIX) but &lt;Version&gt; is empty. Pass /p:Version=X.Y[.Z] or set &lt;Version&gt; in the csproj."
-           Condition="'$(Version)' == ''" />
+    <Error Text="MSIX packaging requested (WindowsPackageType=MSIX) but &lt;Version&gt; is empty. Pass /p:Version=X.Y[.Z] or set &lt;Version&gt; in the csproj." Condition="'$(Version)' == ''" />
     <PropertyGroup>
       <_AppxManifestPath>$(MSBuildThisFileDirectory)Package.appxmanifest</_AppxManifestPath>
       <_StrippedVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</_StrippedVersion>
@@ -184,23 +180,18 @@
       <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '2'">$(_StrippedVersion).0</_AppxManifestVersion>
       <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '1'">$(_StrippedVersion).0.0</_AppxManifestVersion>
     </PropertyGroup>
-    <Error Text="Cannot derive 4-part MSIX version from &lt;Version&gt;$(Version)&lt;/Version&gt;. Use the form X.Y or X.Y.Z (optionally with -prerelease or +meta suffix)."
-           Condition="'$(_AppxManifestVersion)' == ''" />
+    <Error Text="Cannot derive 4-part MSIX version from &lt;Version&gt;$(Version)&lt;/Version&gt;. Use the form X.Y or X.Y.Z (optionally with -prerelease or +meta suffix)." Condition="'$(_AppxManifestVersion)' == ''" />
     <SyncAppxManifestVersion ManifestPath="$(_AppxManifestPath)" FourPartVersion="$(_AppxManifestVersion)" />
   </Target>
 
   <!-- Fail fast on RIDs we have no wxc-exec binary for, so x86/non-Windows
        builds don't silently fall back to x64 and ship a broken sandbox.
        Suppress with -p:VerifyWxcExecShipped=false for SDK-less unit-test builds. -->
-  <Target Name="ValidateMxcArchMapping"
-          BeforeTargets="Build;Publish"
-          Condition="'$(MxcArch)' == '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+  <Target Name="ValidateMxcArchMapping" BeforeTargets="Build;Publish" Condition="'$(MxcArch)' == '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
     <Error Text="Unsupported RuntimeIdentifier '$(RuntimeIdentifier)' for MXC sandbox. Only win-x64 and win-arm64 are supported. Override -p:MxcArch=x64 or -p:MxcArch=arm64 if you know what you are doing." />
   </Target>
 
-  <Target Name="RestoreMxcNodeBridge"
-          BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish"
-          Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
+  <Target Name="RestoreMxcNodeBridge" BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish" Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
     <Message Importance="high" Text="Restoring @microsoft/mxc-sdk to extract wxc-exec.exe ($(MxcArch))" />
     <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(OpenClawRepoRoot)" />
   </Target>
@@ -213,10 +204,7 @@
       <_WxcExecFiles Include="$(MxcSdkBinDir)wxc-exec.exe" />
       <_WxcExecFiles Include="$(MxcSdkBinDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(_WxcExecFiles)"
-          DestinationFiles="@(_WxcExecFiles->'$(TargetDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_WxcExecFiles)' != ''" />
+    <Copy SourceFiles="@(_WxcExecFiles)" DestinationFiles="@(_WxcExecFiles->'$(TargetDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_WxcExecFiles)' != ''" />
   </Target>
 
   <!-- Standalone publish copy. Deliberately not chained to Build so
@@ -226,30 +214,21 @@
       <_WxcExecPublishFiles Include="$(MxcSdkBinDir)wxc-exec.exe" />
       <_WxcExecPublishFiles Include="$(MxcSdkBinDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(_WxcExecPublishFiles)"
-          DestinationFiles="@(_WxcExecPublishFiles->'$(PublishDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_WxcExecPublishFiles)' != ''" />
+    <Copy SourceFiles="@(_WxcExecPublishFiles)" DestinationFiles="@(_WxcExecPublishFiles->'$(PublishDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_WxcExecPublishFiles)' != ''" />
   </Target>
 
   <!-- Fail the build if wxc-exec.exe didn't land in the expected output path.
        Catches RID/arch mismatches and silent npm ci skips. Gated on
        VerifyWxcExecShipped (default true) so unit-test-only builds without
        npm available can opt out. -->
-  <Target Name="ValidateWxcExecShipped"
-          AfterTargets="CopyWxcExecToOutput"
-          Condition="'$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
-    <Error Condition="!Exists('$(TargetDir)tools\mxc\$(MxcArch)\wxc-exec.exe')"
-           Text="wxc-exec.exe missing at $(TargetDir)tools\mxc\$(MxcArch)\. Check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir). Run `npm ci` at $(OpenClawRepoRoot)." />
+  <Target Name="ValidateWxcExecShipped" AfterTargets="CopyWxcExecToOutput" Condition="'$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Condition="!Exists('$(TargetDir)tools\mxc\$(MxcArch)\wxc-exec.exe')" Text="wxc-exec.exe missing at $(TargetDir)tools\mxc\$(MxcArch)\. Check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir). Run `npm ci` at $(OpenClawRepoRoot)." />
   </Target>
 
   <!-- Same validation, but after publish, catches publish-no-build runs that
        silently ship without wxc-exec. -->
-  <Target Name="ValidateWxcExecPublished"
-          AfterTargets="CopyWxcExecToPublish"
-          Condition="'$(PublishDir)' != '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
-    <Error Condition="!Exists('$(PublishDir)tools\mxc\$(MxcArch)\wxc-exec.exe')"
-           Text="wxc-exec.exe missing at $(PublishDir)tools\mxc\$(MxcArch)\. Publish-time copy did not run; check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir)." />
+  <Target Name="ValidateWxcExecPublished" AfterTargets="CopyWxcExecToPublish" Condition="'$(PublishDir)' != '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Condition="!Exists('$(PublishDir)tools\mxc\$(MxcArch)\wxc-exec.exe')" Text="wxc-exec.exe missing at $(PublishDir)tools\mxc\$(MxcArch)\. Publish-time copy did not run; check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir)." />
   </Target>
 
   <!-- Copy WebView2Loader.dll to output root for unpackaged app (not needed for MSIX) -->
