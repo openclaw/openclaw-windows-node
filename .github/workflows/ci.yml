@@ -85,7 +85,7 @@ jobs:
         dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClawTray.FunctionalUI.Tests -c Debug -r win-x64 --no-restore
-        dotnet build tests/OpenClaw.SetupEngine.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.SetupEngine.Tests -c Debug -r win-x64
 
     - name: Run Shared Tests
       env:
@@ -192,6 +192,7 @@ jobs:
         "dotnet test tests/OpenClaw.SetupEngine.Tests
         --no-build
         -c Debug
+        -r win-x64
         --verbosity normal
         --results-directory TestResults\SetupEngine
         --logger trx;LogFileName=OpenClaw.SetupEngine.Tests.trx"
@@ -221,7 +222,7 @@ jobs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
 
-  e2e:
+  e2etests:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
     runs-on: windows-latest
