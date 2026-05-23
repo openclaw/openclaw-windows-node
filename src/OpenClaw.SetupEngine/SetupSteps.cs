@@ -166,16 +166,26 @@ public sealed class CleanupStaleGatewayStep : SetupStep
         var existing = registry.FindByUrl(ctx.GatewayUrl!);
         if (existing != null)
         {
-            // Clean identity directory
-            var identityDir = registry.GetIdentityDirectory(existing.Id);
-            if (Directory.Exists(identityDir))
+            // Preserve non-local records and SSH-tunneled gateways — they may be
+            // remote gateways that happen to use localhost as a forwarded port.
+            if (!existing.IsLocal || existing.SshTunnel != null)
             {
-                Directory.Delete(identityDir, recursive: true);
-                ctx.Logger.Info($"Deleted stale identity directory: {identityDir}");
+                ctx.Logger.Warn($"Skipping cleanup of gateway record {existing.Id}: " +
+                    (existing.SshTunnel != null ? "has SSH tunnel config" : "not a local gateway"));
             }
-            registry.Remove(existing.Id);
-            registry.Save();
-            ctx.Logger.Info($"Removed stale gateway record for {ctx.GatewayUrl}");
+            else
+            {
+                // Clean identity directory
+                var identityDir = registry.GetIdentityDirectory(existing.Id);
+                if (Directory.Exists(identityDir))
+                {
+                    Directory.Delete(identityDir, recursive: true);
+                    ctx.Logger.Info($"Deleted stale identity directory: {identityDir}");
+                }
+                registry.Remove(existing.Id);
+                registry.Save();
+                ctx.Logger.Info($"Removed stale gateway record for {ctx.GatewayUrl}");
+            }
         }
 
         await Task.CompletedTask;
@@ -523,7 +533,17 @@ public sealed class InstallCliStep : SetupStep
 
         // Download and run install script (URL configurable)
         var installUrl = ctx.Config.Gateway.InstallUrl ?? "https://openclaw.ai/install-cli.sh";
-        var installScript = $"curl -fsSL {installUrl} | bash";
+
+        // Validate URL is HTTPS to prevent downgrade attacks
+        if (!Uri.TryCreate(installUrl, UriKind.Absolute, out var parsedUrl) ||
+            !string.Equals(parsedUrl.Scheme, "https", StringComparison.OrdinalIgnoreCase))
+        {
+            return StepResult.Fail($"Installer URL must be HTTPS: {installUrl}");
+        }
+
+        // Shell-quote the URL and enforce TLS
+        var escapedUrl = installUrl.Replace("'", "'\\''");
+        var installScript = $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
         var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
 
         if (result.ExitCode != 0)
