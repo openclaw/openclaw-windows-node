@@ -42,6 +42,7 @@ public static class Program
         config = SetupConfig.FromEnvironment(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
+        if (wizardOnly) config.SkipWizard = false;
         if (logPath != null) config.LogPath = logPath;
 
         // Default log path if not specified

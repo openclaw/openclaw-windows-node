@@ -90,7 +90,14 @@ public sealed partial class ProgressPage : Page
         if (success)
         {
             if (!config.SkipWizard)
+            {
+                if (_rows.TryGetValue("finish", out var finishRow))
+                    finishRow.SetStatus(StepStatus.Running);
+                SubtitleText.Text = "Opening gateway setup...";
+                await Task.Delay(900);
+                finishRow?.SetStatus(StepStatus.Done);
                 App.MainWindow?.NavigateToWizard();
+            }
             else if (config.SkipPermissions)
                 App.MainWindow?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
             else
@@ -176,12 +183,22 @@ public sealed partial class ProgressPage : Page
     {
         _logExpanded = !_logExpanded;
         LogPanel.Visibility = _logExpanded ? Visibility.Visible : Visibility.Collapsed;
-        LogToggleButton.Content = _logExpanded ? "Hide logs ▲" : "Show logs ▼";
+        OpenLogButton.Visibility = _logExpanded ? Visibility.Visible : Visibility.Collapsed;
+        LogToggleButton.Content = _logExpanded ? "Hide logs ▼" : "Show logs ▲";
 
         var isDark = ActualTheme == ElementTheme.Dark;
         LogPanel.Background = new SolidColorBrush(isDark
             ? Color.FromArgb(255, 0x1A, 0x1A, 0x1A)
             : Color.FromArgb(255, 0xF8, 0xF8, 0xF8));
+    }
+
+    private void OpenLog_Click(object sender, RoutedEventArgs e)
+    {
+        var logPath = _config?.LogPath;
+        if (!string.IsNullOrWhiteSpace(logPath) && File.Exists(logPath))
+        {
+            Process.Start(new ProcessStartInfo(logPath) { UseShellExecute = true });
+        }
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
@@ -209,7 +226,7 @@ internal sealed class StepRow
         _label = new TextBlock
         {
             Text = displayName,
-            FontSize = 18,
+            FontSize = 16,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
@@ -226,7 +243,7 @@ internal sealed class StepRow
         _errorBadge = CreateBadge("✕", Color.FromArgb(255, 0xF4, 0xA6, 0xB0), Color.FromArgb(255, 0, 0, 0));
         _errorBadge.Visibility = Visibility.Collapsed;
 
-        var badgeContainer = new Grid { Width = 24, Height = 24 };
+            var badgeContainer = new Grid { Width = 24, Height = 24 };
         badgeContainer.Children.Add(_spinner);
         badgeContainer.Children.Add(_checkBadge);
         badgeContainer.Children.Add(_errorBadge);
@@ -256,7 +273,7 @@ internal sealed class StepRow
     {
         return new Border
         {
-            Width = 24, Height = 24,
+            Width = 23, Height = 23,
             CornerRadius = new CornerRadius(12),
             Background = new SolidColorBrush(background),
             Child = new TextBlock

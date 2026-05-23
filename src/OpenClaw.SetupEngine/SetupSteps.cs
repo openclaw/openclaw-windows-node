@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -75,11 +76,19 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
         ctx.Logger.Decision($"Found existing distro '{distro}'", "terminating and unregistering");
 
-        // Terminate first (stops gateway service), then unregister
+        // Terminate first (stops gateway service), then shut WSL down to release VHD/port locks.
         await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port release
 
         var unregister = await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        if (unregister.ExitCode != 0)
+        {
+            ctx.Logger.Warn($"First unregister attempt failed (exit {unregister.ExitCode}); forcing WSL shutdown and retrying");
+            await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+            await Task.Delay(3000, ct);
+            unregister = await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        }
 
         if (unregister.ExitCode == 0)
         {
@@ -177,16 +186,83 @@ public sealed class PreflightWslStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var result = await ctx.Commands.RunAsync("wsl.exe", ["--status"], TimeSpan.FromSeconds(15), ct: ct);
+        var versionResult = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+        if (versionResult.ExitCode != 0 && LooksUnavailable(versionResult))
+        {
+            var installResult = await InstallWslPlatformAsync(ctx, ct);
+            if (!installResult.IsSuccess)
+                return installResult;
 
-        if (result.ExitCode != 0 && result.Stderr.Contains("not recognized", StringComparison.OrdinalIgnoreCase))
-            return StepResult.Terminal("WSL is not installed. Please install WSL first: wsl --install");
+            versionResult = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+        }
 
-        // Check version
-        var versionResult = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(15), ct: ct);
-        ctx.Logger.Info($"WSL version output: {versionResult.Stdout.Trim()}");
+        if (versionResult.ExitCode != 0)
+            return StepResult.Terminal($"WSL is not available. {FirstUsefulLine(versionResult)}");
 
+        ctx.Logger.Info($"WSL version output: {NormalizeWslOutput(versionResult.Stdout).Trim()}");
         return StepResult.Ok("WSL available");
+    }
+
+    private static async Task<StepResult> InstallWslPlatformAsync(SetupContext ctx, CancellationToken ct)
+    {
+        ctx.Logger.Warn("WSL platform appears to be missing; launching elevated WSL platform install");
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "wsl.exe",
+                UseShellExecute = true,
+                Verb = "runas",
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("--install");
+            psi.ArgumentList.Add("--no-distribution");
+
+            using var process = Process.Start(psi);
+            if (process == null)
+                return StepResult.Fail("Could not start elevated WSL platform installer.");
+
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode == 3010)
+                return StepResult.Terminal("WSL platform install requires a restart. Reboot Windows, then run setup again.");
+
+            if (process.ExitCode != 0)
+                return StepResult.Fail($"WSL platform install failed with exit code {process.ExitCode}.");
+
+            var probe = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+            if (probe.ExitCode != 0 || LooksUnavailable(probe))
+                return StepResult.Terminal("WSL platform install completed, but Windows still reports WSL unavailable. Reboot Windows, then run setup again.");
+
+            return StepResult.Ok("WSL platform installed");
+        }
+        catch (System.ComponentModel.Win32Exception ex) when ((uint)ex.NativeErrorCode == 1223)
+        {
+            return StepResult.Fail("WSL platform install was cancelled at the elevation prompt.");
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"WSL platform install failed: {ex.Message}", ex);
+        }
+    }
+
+    private static bool LooksUnavailable(CommandResult result)
+    {
+        var text = NormalizeWslOutput($"{result.Stdout}\n{result.Stderr}");
+        return text.Contains("aka.ms/wslinstall", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Windows Subsystem for Linux has no installed distributions", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("not recognized", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("not installed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeWslOutput(string value)
+        => value.Replace("\0", "").Replace("\uFEFF", "");
+
+    private static string FirstUsefulLine(CommandResult result)
+    {
+        var text = NormalizeWslOutput($"{result.Stderr}\n{result.Stdout}");
+        return text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
+            ?? "Run wsl --install from an elevated terminal and retry setup.";
     }
 }
 
@@ -228,21 +304,7 @@ public sealed class CreateWslInstanceStep : SetupStep
         var distro = ctx.DistroName!;
         var baseDistro = ctx.Config.BaseDistro;
 
-        ctx.Logger.Info($"Installing WSL distro '{distro}' from base '{baseDistro}'");
-
-        // Install base distro (Ubuntu) — this may take a while
-        var install = await ctx.Commands.RunAsync(
-            "wsl.exe", ["--install", baseDistro, "--no-launch"],
-            TimeSpan.FromMinutes(10), ct: ct);
-
-        if (install.ExitCode != 0 && !install.Stdout.Contains("already installed", StringComparison.OrdinalIgnoreCase))
-        {
-            // Try without --no-launch for older WSL versions
-            ctx.Logger.Warn($"Install with --no-launch failed (exit {install.ExitCode}), trying without");
-            install = await ctx.Commands.RunAsync(
-                "wsl.exe", ["--install", baseDistro],
-                TimeSpan.FromMinutes(10), ct: ct);
-        }
+        ctx.Logger.Info($"Creating WSL distro '{distro}' from base '{baseDistro}'");
 
         // Import as our named distro
         var tempDir = Path.Combine(Path.GetTempPath(), $"openclaw-setup-{ctx.Logger.RunId}");
@@ -255,6 +317,21 @@ public sealed class CreateWslInstanceStep : SetupStep
             var export = await ctx.Commands.RunAsync(
                 "wsl.exe", ["--export", baseDistro, exportPath],
                 TimeSpan.FromMinutes(5), ct: ct);
+
+            if (export.ExitCode != 0)
+            {
+                ctx.Logger.Warn($"Base distro export failed (exit {export.ExitCode}); attempting to install {baseDistro}");
+                var install = await ctx.Commands.RunAsync(
+                    "wsl.exe", ["--install", baseDistro, "--no-launch"],
+                    TimeSpan.FromMinutes(5), ct: ct);
+
+                if (install.ExitCode != 0 && !install.Stdout.Contains("already installed", StringComparison.OrdinalIgnoreCase))
+                    return StepResult.Fail($"Failed to install base distro '{baseDistro}' (exit {install.ExitCode}): {install.Stderr}");
+
+                export = await ctx.Commands.RunAsync(
+                    "wsl.exe", ["--export", baseDistro, exportPath],
+                    TimeSpan.FromMinutes(5), ct: ct);
+            }
 
             if (export.ExitCode != 0)
                 return StepResult.Fail($"Failed to export base distro: {export.Stderr}");

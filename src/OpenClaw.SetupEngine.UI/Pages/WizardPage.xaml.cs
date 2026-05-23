@@ -1,9 +1,11 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -15,6 +17,7 @@ public sealed partial class WizardPage : Page
     private string _stepId = "";
     private string _stepType = "";
     private bool _sensitive;
+    private bool _errorState;
     private readonly List<WizardOption> _options = [];
 
     public WizardPage()
@@ -37,6 +40,9 @@ public sealed partial class WizardPage : Page
     {
         try
         {
+            _errorState = false;
+            await DisconnectAsync();
+            _sessionId = "";
             SetBusy("Connecting to gateway...");
             _client = await ConnectClientAsync();
             SetBusy("Starting wizard...");
@@ -139,18 +145,20 @@ public sealed partial class WizardPage : Page
         var message = step.TryGetProperty("message", out var msgProp) ? msgProp.ToString() : "";
         var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
 
+        ResetInputs();
         TitleText.Text = string.IsNullOrWhiteSpace(title) ? DisplayTitleFor(_stepType) : title;
-        MessageText.Text = message;
+        RenderMessage(message);
+        StepCard.MinHeight = _stepType == "note" && string.IsNullOrWhiteSpace(message) ? 140 : 260;
         ErrorText.Visibility = Visibility.Collapsed;
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
         StatusText.Text = "Answer the gateway setup question";
         PrimaryButton.IsEnabled = true;
         SecondaryButton.IsEnabled = true;
+        SecondaryButton.Visibility = Visibility.Visible;
         PrimaryButton.Content = _stepType == "confirm" ? "Yes" : "Continue";
         SecondaryButton.Content = _stepType == "confirm" ? "No" : "Skip";
 
-        ResetInputs();
         BuildOptions(step, initial);
 
         if (_stepType == "text")
@@ -168,7 +176,10 @@ public sealed partial class WizardPage : Page
         }
 
         if (_stepType == "note")
+        {
             SecondaryButton.IsEnabled = false;
+            SecondaryButton.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void BuildOptions(JsonElement step, JsonElement initial)
@@ -225,11 +236,23 @@ public sealed partial class WizardPage : Page
 
     private async void Primary_Click(object sender, RoutedEventArgs e)
     {
+        if (_errorState)
+        {
+            await StartWizardAsync();
+            return;
+        }
+
         await SendCurrentAnswerAsync(skip: false);
     }
 
     private async void Secondary_Click(object sender, RoutedEventArgs e)
     {
+        if (_errorState)
+        {
+            await SkipWizardAsync();
+            return;
+        }
+
         await SendCurrentAnswerAsync(skip: true);
     }
 
@@ -281,7 +304,7 @@ public sealed partial class WizardPage : Page
 
     private int TimeoutForCurrentStep()
     {
-        var text = $"{TitleText.Text} {MessageText.Text}";
+        var text = $"{TitleText.Text} {string.Join(' ', MessagePanel.Children.OfType<TextBlock>().Select(t => t.Text))}";
         return text.Contains("device", StringComparison.OrdinalIgnoreCase)
             || text.Contains("authorize", StringComparison.OrdinalIgnoreCase)
             || text.Contains("login", StringComparison.OrdinalIgnoreCase)
@@ -299,6 +322,105 @@ public sealed partial class WizardPage : Page
         MultiOptions.Visibility = Visibility.Collapsed;
         TextInput.Visibility = Visibility.Collapsed;
         SecretInput.Visibility = Visibility.Collapsed;
+        MessagePanel.Children.Clear();
+    }
+
+    private void RenderMessage(string message)
+    {
+        MessagePanel.Children.Clear();
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        foreach (var line in message.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r');
+            var codeMatch = Regex.Match(trimmed, @"^((?:Code|code|user_code|USER_CODE)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
+            if (codeMatch.Success)
+            {
+                MessagePanel.Children.Add(BuildCodeRow(codeMatch.Groups[1].Value, codeMatch.Groups[2].Value));
+                continue;
+            }
+
+            var urlMatch = Regex.Match(trimmed, @"https?://[^\s\)\""]+", RegexOptions.IgnoreCase);
+            if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
+            {
+                MessagePanel.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
+                continue;
+            }
+
+            MessagePanel.Children.Add(new TextBlock
+            {
+                Text = trimmed,
+                FontSize = 14,
+                Opacity = 0.82,
+                TextWrapping = TextWrapping.Wrap,
+                IsTextSelectionEnabled = true
+            });
+        }
+    }
+
+    private static FrameworkElement BuildLinkLine(string line, string urlText, Uri uri)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var prefix = line[..line.IndexOf(urlText, StringComparison.Ordinal)];
+        if (!string.IsNullOrEmpty(prefix))
+            panel.Children.Add(new TextBlock { Text = prefix, FontSize = 14, Opacity = 0.82, VerticalAlignment = VerticalAlignment.Center });
+
+        var button = new HyperlinkButton
+        {
+            Content = urlText,
+            NavigateUri = uri,
+            Padding = new Thickness(0),
+            FontSize = 14,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        panel.Children.Add(button);
+
+        var suffix = line[(line.IndexOf(urlText, StringComparison.Ordinal) + urlText.Length)..];
+        if (!string.IsNullOrEmpty(suffix))
+            panel.Children.Add(new TextBlock { Text = suffix, FontSize = 14, Opacity = 0.82, VerticalAlignment = VerticalAlignment.Center });
+
+        return panel;
+    }
+
+    private static FrameworkElement BuildCodeRow(string prefix, string code)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Auto },
+            },
+            ColumnSpacing = 10
+        };
+
+        var label = new TextBlock { Text = prefix, FontSize = 14, Opacity = 0.82, VerticalAlignment = VerticalAlignment.Center };
+        var codeText = new TextBlock
+        {
+            Text = code,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+            FontSize = 18,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            IsTextSelectionEnabled = true,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var copy = new Button { Content = "Copy", Padding = new Thickness(8, 4, 8, 4) };
+        copy.Click += (_, _) =>
+        {
+            var package = new DataPackage();
+            package.SetText(code);
+            Clipboard.SetContent(package);
+        };
+
+        Grid.SetColumn(label, 0);
+        Grid.SetColumn(codeText, 1);
+        Grid.SetColumn(copy, 2);
+        grid.Children.Add(label);
+        grid.Children.Add(codeText);
+        grid.Children.Add(copy);
+        return grid;
     }
 
     private void SetBusy(string status)
@@ -312,6 +434,7 @@ public sealed partial class WizardPage : Page
 
     private void ShowError(string message)
     {
+        _errorState = true;
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
         StatusText.Text = "Wizard needs attention";
@@ -321,6 +444,22 @@ public sealed partial class WizardPage : Page
         PrimaryButton.IsEnabled = true;
         SecondaryButton.Content = "Skip wizard";
         SecondaryButton.IsEnabled = true;
+        SecondaryButton.Visibility = Visibility.Visible;
+    }
+
+    private async Task SkipWizardAsync()
+    {
+        if (_client != null && !string.IsNullOrWhiteSpace(_sessionId))
+        {
+            try { await _client.SendWizardRequestAsync("wizard.cancel", new { sessionId = _sessionId }, timeoutMs: 10_000); }
+            catch { }
+        }
+
+        await DisconnectAsync();
+        if (_config!.SkipPermissions)
+            App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+        else
+            App.MainWindow?.NavigateToPermissions();
     }
 
     private async Task DisconnectAsync()

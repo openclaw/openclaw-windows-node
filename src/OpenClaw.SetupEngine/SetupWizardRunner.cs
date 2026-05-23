@@ -30,11 +30,12 @@ public sealed class SetupWizardRunner
             return StepResult.Fail("Cannot run gateway wizard because no active gateway record was found.");
 
         var identityPath = registry.GetIdentityDirectory(record.Id);
-        var credential = _ctx.SharedGatewayToken
+        var storedDeviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath, new SetupOpenClawLogger(_ctx.Logger));
+        var credential = storedDeviceToken
+            ?? _ctx.SharedGatewayToken
             ?? record.SharedGatewayToken
             ?? _ctx.BootstrapToken
-            ?? record.BootstrapToken
-            ?? DeviceIdentity.TryReadStoredDeviceToken(identityPath, new SetupOpenClawLogger(_ctx.Logger));
+            ?? record.BootstrapToken;
 
         if (string.IsNullOrWhiteSpace(credential))
             return StepResult.Fail("Cannot run gateway wizard because no operator credential is available.");
@@ -42,7 +43,9 @@ public sealed class SetupWizardRunner
         _ctx.SharedGatewayToken ??= record.SharedGatewayToken;
         _ctx.BootstrapToken ??= record.BootstrapToken;
 
-        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken) && string.Equals(credential, record.SharedGatewayToken, StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(storedDeviceToken)
+            && !string.IsNullOrWhiteSpace(record.SharedGatewayToken)
+            && string.Equals(credential, record.SharedGatewayToken, StringComparison.Ordinal))
             identityPath = Path.Combine(identityPath, "setup-wizard");
 
         var wsLogger = new SetupOpenClawLogger(_ctx.Logger);
@@ -157,7 +160,7 @@ public sealed class SetupWizardRunner
                 {
                     payload = await client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutFor(parsed));
                 }
-                catch (Exception ex) when (IsRestartLikeWizardDisconnect(ex) && restartAttempts < 2)
+                catch (Exception ex) when (!ct.IsCancellationRequested && IsRestartLikeWizardDisconnect(ex) && restartAttempts < 2)
                 {
                     restartAttempts++;
                     _ctx.Logger.Warn($"Gateway restarted during wizard; reconnecting and replaying answers (attempt {restartAttempts}/2): {ex.Message}");
@@ -173,6 +176,7 @@ public sealed class SetupWizardRunner
 
                     sessionId = "";
                     visits.Clear();
+                    discoveredSteps.Clear();
                     payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
                 }
             }
@@ -427,8 +431,7 @@ public sealed class SetupWizardRunner
 
     private static bool IsRestartLikeWizardDisconnect(Exception ex)
     {
-        return ex is OperationCanceledException
-            || ex.Message.Contains("connection lost", StringComparison.OrdinalIgnoreCase)
+        return ex.Message.Contains("connection lost", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("gateway restarting", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("service restart", StringComparison.OrdinalIgnoreCase);
     }
