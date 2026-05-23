@@ -176,7 +176,6 @@ public class SetupConfigTests : IDisposable
     {
         var pairing = new PairingConfig();
         Assert.Equal(60, pairing.TimeoutSeconds);
-        Assert.Contains("operator.pairing", pairing.OperatorScopes);
     }
 
     [Fact]

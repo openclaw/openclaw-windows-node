@@ -126,7 +126,7 @@ public sealed partial class SetupLogger : IDisposable
     [GeneratedRegex(@"(token[=:\s]+)[^\s""']+", RegexOptions.IgnoreCase)]
     private static partial Regex TokenPattern();
 
-    [GeneratedRegex(@"\b[a-fA-F0-9]{64}\b")]
+    [GeneratedRegex(@"\b[a-fA-F0-9]{32,}\b")]
     private static partial Regex HexTokenPattern();
 
     private static readonly JsonSerializerOptions _jsonOptions = new()

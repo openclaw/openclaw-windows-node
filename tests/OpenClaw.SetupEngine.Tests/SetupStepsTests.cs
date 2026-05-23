@@ -201,4 +201,169 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("HTTPS", result.Message);
     }
+
+    [Fact]
+    public void BuildReplacementSummary_NoExistingConfig_StatesNothingAffected()
+    {
+        var config = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: false,
+            LocalGatewayId: null,
+            LocalGatewayUrl: null,
+            HasDistro: false,
+            DistroName: null,
+            HasIdentityFiles: false,
+            PreservedGatewayCount: 0,
+            PreservedGatewayNames: []);
+
+        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
+
+        Assert.Contains("No existing configuration will be affected", summary);
+    }
+
+    [Fact]
+    public void BuildReplacementSummary_LocalGatewayAndDistro_MentionsReplacement()
+    {
+        var config = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: true,
+            LocalGatewayId: "local-gw",
+            LocalGatewayUrl: "ws://localhost:18789",
+            HasDistro: true,
+            DistroName: "OpenClaw",
+            HasIdentityFiles: false,
+            PreservedGatewayCount: 0,
+            PreservedGatewayNames: []);
+
+        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
+
+        Assert.Contains("WSL distro 'OpenClaw' will be deleted and recreated", summary);
+        Assert.Contains("Local gateway record will be replaced", summary);
+    }
+
+    [Fact]
+    public void BuildReplacementSummary_PreservedGateways_MentionsPreservation()
+    {
+        var config = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: true,
+            LocalGatewayId: "local-gw",
+            LocalGatewayUrl: "ws://localhost:18789",
+            HasDistro: false,
+            DistroName: null,
+            HasIdentityFiles: false,
+            PreservedGatewayCount: 2,
+            PreservedGatewayNames: ["Remote Gateway", "SSH Tunnel"]);
+
+        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
+
+        Assert.Contains("will NOT be affected", summary);
+        Assert.Contains("Remote Gateway", summary);
+        Assert.Contains("SSH Tunnel", summary);
+    }
+
+    [Fact]
+    public void BuildReplacementSummary_IdentityFiles_MentionsRegeneration()
+    {
+        var config = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: true,
+            LocalGatewayId: "local-gw",
+            LocalGatewayUrl: "ws://localhost:18789",
+            HasDistro: false,
+            DistroName: null,
+            HasIdentityFiles: true,
+            PreservedGatewayCount: 0,
+            PreservedGatewayNames: []);
+
+        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
+
+        Assert.Contains("Device identity files for the local gateway will be regenerated", summary);
+    }
+
+    [Fact]
+    public void RedactTokens_RedactsThirtyTwoCharHexString()
+    {
+        const string token = "1234567890abcdef1234567890abcdef";
+
+        var result = StartGatewayStep.RedactTokens(token);
+
+        Assert.Equal("12345678…[REDACTED]", result);
+    }
+
+    [Fact]
+    public void RedactTokens_DoesNotRedactShortHexString()
+    {
+        const string token = "1234567890abcdef1234567890abcde";
+
+        var result = StartGatewayStep.RedactTokens(token);
+
+        Assert.Equal(token, result);
+    }
+
+    [Fact]
+    public void RedactTokens_LeavesNormalTextUnchanged()
+    {
+        const string text = "gateway started successfully";
+
+        var result = StartGatewayStep.RedactTokens(text);
+
+        Assert.Equal(text, result);
+    }
+
+    [Fact]
+    public void RedactTokens_RedactsEmbeddedTokenOnly()
+    {
+        const string text = "token=1234567890abcdef1234567890abcdef status=ok";
+
+        var result = StartGatewayStep.RedactTokens(text);
+
+        Assert.Equal("token=12345678…[REDACTED] status=ok", result);
+    }
+
+    // ─── Bind validation ───
+
+    [Fact]
+    public async Task ConfigureGateway_RejectsInvalidBind()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig { Bind = "0.0.0.0" }
+        });
+        ctx.DistroName = "test-distro";
+
+        var step = new ConfigureGatewayStep();
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Invalid Gateway.Bind", result.Message);
+    }
+
+    [Theory]
+    [InlineData("loopback")]
+    [InlineData("lan")]
+    public void ConfigureGateway_AcceptsValidBindValues(string bind)
+    {
+        var gw = new GatewayConfig { Bind = bind };
+        Assert.True(gw.Bind is "loopback" or "lan");
+    }
+
+    // ─── Secure defaults ───
+
+    [Fact]
+    public void DefaultConfig_HasSecureDefaults()
+    {
+        var config = new SetupConfig();
+
+        Assert.Equal("loopback", config.Gateway.Bind);
+        Assert.True(config.Wsl.Systemd);
+        Assert.False(config.Wsl.Interop);
+        Assert.False(config.Wsl.AppendWindowsPath);
+        Assert.False(config.Wsl.Automount);
+        Assert.False(config.Wsl.MountFsTab);
+    }
+
+    [Fact]
+    public void DefaultConfig_NoPairingScopeFields()
+    {
+        var props = typeof(PairingConfig).GetProperties();
+        var scopeProps = props.Where(p => p.Name.Contains("Scope", StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.Empty(scopeProps);
+    }
 }

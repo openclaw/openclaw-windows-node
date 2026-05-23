@@ -84,7 +84,7 @@ public sealed class WslConfig
 
 public sealed class GatewayConfig
 {
-    public string Bind { get; set; } = "lan";
+    public string Bind { get; set; } = "loopback";
     public string? InstallUrl { get; set; }
     public string? Version { get; set; }
     public int HealthTimeoutSeconds { get; set; } = 90;
@@ -197,9 +197,8 @@ public sealed class TraySettingsConfig
 
 public sealed class PairingConfig
 {
-    public string OperatorScopes { get; set; } = "operator.read,operator.write,operator.pairing";
-    public string NodeScopes { get; set; } = "node.read,node.write";
-    public string CliScopes { get; set; } = "operator.read,operator.write,operator.pairing";
+    // TODO: Wire OperatorScopes/NodeScopes/CliScopes into pairing requests
+    // when the gateway protocol supports scoped token issuance.
     public int TimeoutSeconds { get; set; } = 60;
 }
 

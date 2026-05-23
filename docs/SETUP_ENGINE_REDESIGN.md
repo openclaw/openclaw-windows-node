@@ -4,10 +4,10 @@
 
 The Setup Engine is a **standalone, config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two projects:
 
-1. **`OpenClaw.SetupEngine`** — Headless pipeline (console exe). Runs 16 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+1. **`OpenClaw.SetupEngine`** — Headless pipeline (console exe). Runs 17 steps sequentially with full JSONL logging, transaction journal, and rollback support.
 2. **`OpenClaw.SetupEngine.UI`** — WinUI3 app that wraps the same pipeline with a 5-page fluent wizard UI.
 
-Both require a JSON config file to run — there are **no hardcoded defaults** anywhere. A bundled `default-config.json` ships with each exe.
+Both accept a JSON config file to customize behavior. A bundled `default-config.json` ships with each exe and provides secure defaults (loopback bind, WSL isolation, systemd enabled). All defaults can be overridden via config file or environment variables.
 
 ---
 

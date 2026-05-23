@@ -49,6 +49,7 @@ public static class SetupStepFactory
             new PreflightPortStep(),
             new CreateWslInstanceStep(),
             new ConfigureWslInstanceStep(),
+            new ValidateWslLockdownStep(),
             new InstallCliStep(),
             new ConfigureGatewayStep(),
             new InstallGatewayServiceStep(),

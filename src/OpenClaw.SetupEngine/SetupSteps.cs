@@ -516,6 +516,153 @@ useWindowsTimezone={wsl.UseWindowsTimezone.ToString().ToLower()}
     }
 }
 
+public sealed class ValidateWslLockdownStep : SetupStep
+{
+    public override string Id => "validate-wsl-lockdown";
+    public override string DisplayName => "Validate WSL lockdown";
+    public override bool CanRetry => false;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var wsl = ctx.Config.Wsl;
+
+        var readConf = await ctx.Commands.RunInWslAsync(distro, "cat /etc/wsl.conf", TimeSpan.FromSeconds(15), ct: ct);
+        if (readConf.ExitCode != 0)
+            return StepResult.Terminal("Cannot read /etc/wsl.conf - WSL configuration may not have been applied");
+
+        var errors = ValidateWslConf(readConf.Stdout, wsl);
+        if (errors.Count > 0)
+        {
+            var msg = "WSL lockdown validation failed:\n" + string.Join("\n", errors.Select(e => $"  - {e}"));
+            return StepResult.Terminal(msg);
+        }
+
+        var requiredDirs = new[]
+        {
+            $"/home/{wsl.User}/.openclaw",
+            "/var/lib/openclaw",
+            "/var/log/openclaw",
+            "/opt/openclaw"
+        };
+
+        // Generate per-directory checks inline (no bash variables).
+        // wsl.exe -- bash -c mangles double-quotes and bash $var references,
+        // so we avoid both: paths have no spaces (safe unquoted) and all
+        // values are C#-interpolated rather than stored in bash variables.
+        var dirChecks = new System.Text.StringBuilder();
+        foreach (var d in requiredDirs)
+        {
+            dirChecks.AppendLine($"test -d {d} || {{ echo DIR_MISSING:{d}; exit 1; }}");
+            dirChecks.AppendLine($"test $(stat -c %U {d} 2>/dev/null) = {wsl.User} || {{ echo OWNER_MISMATCH:{d}:$(stat -c %U {d} 2>/dev/null); exit 1; }}");
+        }
+
+        var verifyScript = "set -e\n"
+            + $"id -u {wsl.User} &>/dev/null || {{ echo USER_MISSING; exit 1; }}\n"
+            + dirChecks
+            + "echo LOCKDOWN_VALID\n";
+
+        var verify = await ctx.Commands.RunInWslAsync(distro, verifyScript, TimeSpan.FromSeconds(30), ct: ct);
+
+        ctx.Logger.Debug($"Lockdown verify exit={verify.ExitCode} stdout={verify.Stdout.Trim()} stderr={verify.Stderr.Trim()}");
+
+        if (verify.Stdout.Contains("USER_MISSING", StringComparison.Ordinal))
+            return StepResult.Terminal($"User '{wsl.User}' does not exist in distro '{distro}'");
+
+        if (verify.Stdout.Contains("DIR_MISSING:", StringComparison.Ordinal))
+        {
+            var line = verify.Stdout.Split('\n').FirstOrDefault(l => l.Contains("DIR_MISSING:")) ?? "";
+            var dir = line.Trim().Split(':', 2).ElementAtOrDefault(1)?.Trim() ?? "unknown";
+            return StepResult.Terminal($"Required directory missing: {dir}");
+        }
+
+        if (verify.Stdout.Contains("OWNER_MISMATCH:", StringComparison.Ordinal))
+        {
+            var line = verify.Stdout.Split('\n').FirstOrDefault(l => l.Contains("OWNER_MISMATCH:")) ?? "";
+            var parts = line.Trim().Split(':');
+            return StepResult.Terminal($"Directory {parts.ElementAtOrDefault(1)} owned by '{parts.ElementAtOrDefault(2)}', expected '{wsl.User}'");
+        }
+
+        if (!verify.Stdout.Contains("LOCKDOWN_VALID", StringComparison.Ordinal))
+        {
+            var detail = string.IsNullOrWhiteSpace(verify.Stderr) ? verify.Stdout.Trim() : verify.Stderr.Trim();
+            return StepResult.Terminal($"WSL lockdown validation failed: {detail}");
+        }
+
+        if (!string.IsNullOrEmpty(wsl.Memory))
+            ctx.Logger.Warn($"Wsl.Memory='{wsl.Memory}' is set but requires host-level .wslconfig, not per-distro wsl.conf");
+        if (!string.IsNullOrEmpty(wsl.Swap))
+            ctx.Logger.Warn($"Wsl.Swap='{wsl.Swap}' is set but requires host-level .wslconfig, not per-distro wsl.conf");
+
+        ctx.Logger.Info("WSL lockdown validated: all invariants verified");
+        return StepResult.Ok("WSL lockdown validated");
+    }
+
+    internal static List<string> ValidateWslConf(string conf, WslConfig wsl)
+    {
+        var values = ParseWslConf(conf);
+        var errors = new List<string>();
+
+        ValidateConfValue(values, "boot", "systemd", wsl.Systemd, errors);
+        ValidateConfValue(values, "interop", "enabled", wsl.Interop, errors);
+        ValidateConfValue(values, "interop", "appendWindowsPath", wsl.AppendWindowsPath, errors);
+        ValidateConfValue(values, "automount", "enabled", wsl.Automount, errors);
+        ValidateConfValue(values, "automount", "mountFsTab", wsl.MountFsTab, errors);
+        ValidateConfValue(values, "user", "default", wsl.User, errors);
+
+        return errors;
+    }
+
+    private static Dictionary<string, Dictionary<string, string>> ParseWslConf(string conf)
+    {
+        var values = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        string? currentSection = null;
+
+        using var reader = new StringReader(conf);
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#') || trimmed.StartsWith(';'))
+                continue;
+
+            if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
+            {
+                currentSection = trimmed[1..^1].Trim();
+                if (!values.ContainsKey(currentSection))
+                    values[currentSection] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (currentSection is null)
+                continue;
+
+            var separator = trimmed.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = trimmed[..separator].Trim();
+            var value = trimmed[(separator + 1)..].Trim();
+            values[currentSection][key] = value;
+        }
+
+        return values;
+    }
+
+    private static void ValidateConfValue(Dictionary<string, Dictionary<string, string>> conf, string section, string key, bool expected, List<string> errors) =>
+        ValidateConfValue(conf, section, key, expected.ToString().ToLowerInvariant(), errors);
+
+    private static void ValidateConfValue(Dictionary<string, Dictionary<string, string>> conf, string section, string key, string expected, List<string> errors)
+    {
+        if (!conf.TryGetValue(section, out var sectionValues) ||
+            !sectionValues.TryGetValue(key, out var actual) ||
+            !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add($"Expected [{section}] {key}={expected} in wsl.conf");
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // GATEWAY INSTALL STEPS
 // ═══════════════════════════════════════════════════════════════════
@@ -589,16 +736,21 @@ public sealed class ConfigureGatewayStep : SetupStep
         var port = ctx.Config.GatewayPort;
         var gw = ctx.Config.Gateway;
 
+        // Validate bind value — only "loopback" and "lan" are accepted
+        if (gw.Bind is not ("loopback" or "lan"))
+            return StepResult.Terminal($"Invalid Gateway.Bind value '{gw.Bind}'. Must be 'loopback' or 'lan'.");
+
         // Generate a shared gateway token
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         ctx.SharedGatewayToken = token;
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
 
         var configCommands = $"""
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
             openclaw config set gateway.bind {gw.Bind}
             openclaw config set gateway.auth.mode {gw.AuthMode}
-            openclaw config set gateway.auth.token {token}
+            openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
             openclaw config set gateway.reload.mode {gw.ReloadMode}
             """;
 
@@ -624,7 +776,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             echo "GATEWAY_CONFIGURED"
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(30), ct: ct);
+        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(30), env, ct);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("GATEWAY_CONFIGURED"))
             return StepResult.Fail($"Gateway configuration failed (exit {result.ExitCode}): {result.Stderr}");
@@ -669,6 +821,23 @@ public sealed class StartGatewayStep : SetupStep
         var distro = ctx.DistroName!;
         var pathCmd = ctx.WslPathPrefix;
 
+        // Check for port conflicts before starting
+        var portCheck = await ctx.Commands.RunInWslAsync(
+            distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
+            TimeSpan.FromSeconds(10), ct: ct);
+
+        if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+        {
+            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
+                return StepResult.Fail(
+                    $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
+            }
+
+            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+        }
+
         // Start the service
         var start = await ctx.Commands.RunInWslAsync(
             distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
@@ -679,7 +848,11 @@ public sealed class StartGatewayStep : SetupStep
             if (start.Stderr.Contains("start-limit", StringComparison.OrdinalIgnoreCase))
             {
                 ctx.Logger.Warn("Start-limit hit, resetting and retrying");
-                await ctx.Commands.RunInWslAsync(distro, "systemctl reset-failed openclaw-gateway", TimeSpan.FromSeconds(10), ct: ct);
+                await ctx.Commands.RunInWslAsync(
+                    distro,
+                    "systemctl --user reset-failed openclaw-gateway.service",
+                    TimeSpan.FromSeconds(10),
+                    ct: ct);
                 await Task.Delay(2000, ct);
                 start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
                 if (start.ExitCode != 0)
@@ -711,16 +884,39 @@ public sealed class StartGatewayStep : SetupStep
 
             ctx.Logger.Debug($"Gateway not yet accepting connections (curl exit={status.ExitCode}, response={status.Stdout.Trim()})");
 
-
             await Task.Delay(2000, ct);
         }
 
-        // Capture journal for diagnostics
+        // Capture service status and journal for diagnostics
+        var statusResult = await ctx.Commands.RunInWslAsync(
+            distro,
+            "systemctl --user status openclaw-gateway.service 2>&1 || true",
+            TimeSpan.FromSeconds(10),
+            ct: ct);
+
         var journal = await ctx.Commands.RunInWslAsync(
-            distro, "journalctl -u openclaw-gateway --no-pager -n 50", TimeSpan.FromSeconds(10), ct: ct);
-        ctx.Logger.Error($"Gateway health timeout. Journal:\n{journal.Stdout}");
+            distro,
+            "journalctl --user-unit openclaw-gateway.service --no-pager -n 30 2>&1 || true",
+            TimeSpan.FromSeconds(10),
+            ct: ct);
+
+        var redactedStatus = RedactTokens(statusResult.Stdout);
+        var redactedJournal = RedactTokens(journal.Stdout);
+
+        ctx.Logger.Error($"Gateway health timeout.\nService status:\n{redactedStatus}\nJournal:\n{redactedJournal}");
 
         return StepResult.Fail($"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s");
+    }
+
+    internal static string RedactTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        return System.Text.RegularExpressions.Regex.Replace(
+            text,
+            @"[0-9a-fA-F]{32,}",
+            m => m.Value[..8] + "…[REDACTED]");
     }
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
@@ -1038,11 +1234,13 @@ public sealed class PairOperatorStep : SetupStep
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+
         // Step 1: Get the latest pending request (--latest shows it, exits 1)
         var preview = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
-            TimeSpan.FromSeconds(30), ct: ct);
+            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
+            TimeSpan.FromSeconds(30), env, ct);
 
         ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
         ctx.Logger.Debug($"Approve stdout: {preview.Stdout.Trim()}");
@@ -1074,8 +1272,8 @@ public sealed class PairOperatorStep : SetupStep
         // Step 2: Actually approve the request by passing the requestId directly
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
-            TimeSpan.FromSeconds(30), ct: ct);
+            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json""",
+            TimeSpan.FromSeconds(30), env, ct);
 
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}, stdout={approve.Stdout.Trim()}");
 
@@ -1453,11 +1651,13 @@ public sealed class PairNodeStep : SetupStep
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+
         // Step 1: Get latest pending request
         var preview = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
-            TimeSpan.FromSeconds(30), ct: ct);
+            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
+            TimeSpan.FromSeconds(30), env, ct);
 
         ctx.Logger.Info($"Node approve preview: exit={preview.ExitCode}");
         ctx.Logger.Debug($"Node approve stdout: {preview.Stdout.Trim()}");
@@ -1485,8 +1685,8 @@ public sealed class PairNodeStep : SetupStep
         // Step 2: Approve
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
-            TimeSpan.FromSeconds(30), ct: ct);
+            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json""",
+            TimeSpan.FromSeconds(30), env, ct);
 
         ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
 
@@ -1589,14 +1789,15 @@ public sealed class VerifyEndToEndStep : SetupStep
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken!;
         var pathPrefix = ctx.WslPathPrefix;
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
 
         // Approve pending device requests (up to 5 iterations to drain all)
         for (int i = 0; i < 5; i++)
         {
             var preview = await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{pathPrefix} && openclaw devices approve --latest --json --token "{token}" """,
-                TimeSpan.FromSeconds(15), ct: ct);
+                $"""{pathPrefix} && openclaw devices approve --latest --json""",
+                TimeSpan.FromSeconds(15), env, ct);
 
             if (preview.ExitCode != 0 || preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase))
                 break;
@@ -1617,8 +1818,8 @@ public sealed class VerifyEndToEndStep : SetupStep
             ctx.Logger.Info($"Draining pending device approval: {requestId}");
             await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{pathPrefix} && openclaw devices approve "{requestId}" --json --token "{token}" """,
-                TimeSpan.FromSeconds(15), ct: ct);
+                $"""{pathPrefix} && openclaw devices approve "{requestId}" --json""",
+                TimeSpan.FromSeconds(15), env, ct);
         }
 
         // Approve pending node requests
@@ -1626,8 +1827,8 @@ public sealed class VerifyEndToEndStep : SetupStep
         {
             var nodeList = await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{pathPrefix} && openclaw nodes list --json --token "{token}" """,
-                TimeSpan.FromSeconds(15), ct: ct);
+                $"""{pathPrefix} && openclaw nodes list --json""",
+                TimeSpan.FromSeconds(15), env, ct);
 
             if (nodeList.ExitCode != 0) break;
 
@@ -1643,8 +1844,8 @@ public sealed class VerifyEndToEndStep : SetupStep
                 ctx.Logger.Info($"Draining pending node approval: {requestId}");
                 await ctx.Commands.RunInWslAsync(
                     distro,
-                    $"""{pathPrefix} && openclaw nodes approve "{requestId}" --json --token "{token}" """,
-                    TimeSpan.FromSeconds(15), ct: ct);
+                    $"""{pathPrefix} && openclaw nodes approve "{requestId}" --json""",
+                    TimeSpan.FromSeconds(15), env, ct);
             }
             catch { break; }
         }

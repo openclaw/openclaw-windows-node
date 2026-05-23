@@ -24,12 +24,12 @@ public sealed partial class ProgressPage : Page
         ("cleanup", "Removing existing gateway", ["cleanup-distro", "cleanup-gateway"]),
         ("preflight", "Check system", ["preflight-os", "preflight-wsl", "preflight-port"]),
         ("wsl-create", "Installing Ubuntu", ["wsl-create"]),
-        ("wsl-configure", "Configuring instance", ["wsl-configure"]),
+        ("wsl-configure", "Configuring instance", ["wsl-configure", "validate-wsl-lockdown"]),
         ("install-cli", "Installing OpenClaw", ["install-cli"]),
         ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
         ("start", "Starting gateway", ["start-gateway", "mint-token"]),
         ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),
-        ("finish", "Finishing setup", ["start-keepalive"]),
+        ("finish", "Finishing setup", ["run-wizard", "start-keepalive"]),
     ];
 
     public ProgressPage()
