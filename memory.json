@@ -1,9 +1,9 @@
 {
-  "last_run": "2026-05-23T12:52:00Z",
-  "last_run_id": "26332886314",
+  "last_run": "2026-05-24T01:21:00Z",
+  "last_run_id": "26348397226",
   "backlog_cursor": {
-    "issue_number": 462,
-    "comment_cursor": 462
+    "issue_number": 372,
+    "comment_cursor": 372
   },
   "comments_made": {
     "467": "2026-05-20",
@@ -21,7 +21,8 @@
     "453": "2026-05-22",
     "458": "2026-05-22",
     "462": "2026-05-23",
-    "338": "2026-05-23"
+    "338": "2026-05-23",
+    "372": "2026-05-24"
   },
   "labels_applied": {
     "460": ["enhancement"],
@@ -46,10 +47,11 @@
     "deep-link-parser-tests": {"pr": 456, "branch": "repo-assist/improve-deeplink-tests-2026-05-19", "status": "merged", "date": "2026-05-19"},
     "node-capability-gating-tests": {"pr": 495, "branch": "repo-assist/improve-nodecapabilitygating-tests-2026-05-21", "status": "merged", "date": "2026-05-21"},
     "menuhelpers-tests": {"pr": 522, "branch": "repo-assist/improve-menuhelpers-tests-2026-05-23", "status": "merged", "date": "2026-05-23"},
-    "channel-result-tests": {"pr": null, "branch": "repo-assist/improve-channel-result-tests-2026-05-23", "status": "open", "date": "2026-05-23", "note": "22 tests for LooksLikeMissingPlugin and LooksLikeStaleBaseHash"}
+    "channel-result-tests": {"pr": 528, "branch": "repo-assist/improve-channel-result-tests-2026-05-23", "status": "open", "date": "2026-05-23", "note": "22 tests for LooksLikeMissingPlugin and LooksLikeStaleBaseHash"},
+    "operatorscopehelper-tests": {"pr": null, "branch": "repo-assist/improve-operatorscopehelper-tests-2026-05-24", "status": "open", "date": "2026-05-24", "note": "17 tests for OperatorScopeHelper and ChatNavigationReadiness"}
   },
   "engineering_attempts": {
-    "treat-warnings-as-errors": {"pr": null, "branch": "repo-assist/eng-treat-warnings-as-errors-2026-05-23", "status": "open", "date": "2026-05-23", "note": "TreatWarningsAsErrors in src/Directory.Build.props + NoWarn CS8524 in Shared.csproj"}
+    "treat-warnings-as-errors": {"pr": 527, "branch": "repo-assist/eng-treat-warnings-as-errors-2026-05-23", "status": "open", "date": "2026-05-23", "note": "TreatWarningsAsErrors in src/Directory.Build.props + NoWarn CS8524 in Shared.csproj"}
   },
   "monthly_activity_issue": 435,
   "engineering_checks": {
@@ -60,5 +62,5 @@
   },
   "open_repo_assist_issues": [435, 449, 465, 476],
   "closed_repo_assist_prs": [448, 456, 464, 472, 482, 495, 522],
-  "notes": "PR #522 merged (menuhelpers tests). PR #524 merged (CI expanded). Issue #462: trackpad scroll - suggested EnableMouseInPointer(true) in OnLaunched. Issue #338: node capabilities onboarding - commented with implementation path. Issue #453: attachment persistence - root cause is ImagePreviewCache being in-process only; sidecar JSON approach recommended. Issue #458: keyless chat events - one-shot notification approach recommended. PR #446 (Dependabot) still open. PR #526 by AlexAlves87 adds ExecApprovals write path (24 new tests). PR #523 setup robustness. PR #521 back-links. PR #468 MSIX hardening draft. TreatWarningsAsErrors now enforced in src/ (except CS8524 in Shared which is intentional)."
+  "notes": "PR #527 open (TreatWarningsAsErrors). PR #528 open (channel result tests). PR #529 open (SetupEngine out-of-process, human). PR #526 open (ExecApprovals write path, human). PR #523 open (setup robustness, human). PR #521 open (back-links, human). PR #468 open (MSIX hardening draft). New PR: operatorscopehelper-tests (17 tests). Deep-review #372: C11 fixed (PR #448), A10 fixed (PR #426), 8 security items still pending. Commented on #372 with progress update. Issue #462 trackpad: shanselman tested EnableMouseInPointer(true) locally, waiting for Mike to retest on affected devbox."
 }
