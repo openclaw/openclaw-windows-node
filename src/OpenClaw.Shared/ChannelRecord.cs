@@ -176,7 +176,8 @@ public static class ChannelsAggregator
             //                for an already-configured channel that didn't come
             //                up on its own.
             var caps = ChannelCapabilities.CanRefresh;
-            if (QrLinkChannels.Contains(id))
+            var isQrChannel = QrLinkChannels.Contains(id);
+            if (isQrChannel)
             {
                 caps |= ChannelCapabilities.CanShowQr;
                 if (configured) caps |= ChannelCapabilities.CanRelink;
@@ -189,7 +190,7 @@ public static class ChannelsAggregator
             // For QR channels (WhatsApp/Signal) we don't set CanStop —
             // "Logout" is the analogous lightweight action there (unlink
             // the device; can scan a fresh QR to reconnect).
-            if (configured && running && !QrLinkChannels.Contains(id))
+            if (configured && running && !isQrChannel)
                 caps |= ChannelCapabilities.CanStop;
 
             // Label / DetailLabel fall back to BuiltInChannelLabels when
@@ -226,10 +227,15 @@ public static class ChannelsAggregator
             });
         }
 
-        return records
-            .OrderByDescending(r => r.IsConfigured)
-            .ThenBy(r => r.SortOrder)
-            .ToList();
+        // Sort in-place: configured channels first, then by gateway sort order.
+        // List<T>.Sort avoids the LINQ OrderByDescending/ThenBy intermediate
+        // allocations (IOrderedEnumerable wrapper + new list) on every refresh.
+        records.Sort(static (a, b) =>
+        {
+            var configuredCompare = b.IsConfigured.CompareTo(a.IsConfigured);
+            return configuredCompare != 0 ? configuredCompare : a.SortOrder.CompareTo(b.SortOrder);
+        });
+        return records;
     }
 
     /// <summary>
