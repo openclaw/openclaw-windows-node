@@ -2,6 +2,7 @@ using OpenClaw.Connection;
 
 namespace OpenClaw.SetupEngine.Tests;
 
+[Collection(EnvironmentVariableCollection.Name)]
 public class SetupStepsTests : IDisposable
 {
     private readonly string _tempDir;

@@ -121,7 +121,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         // ── Phase 4: Wait for gateway connection to reach Ready ──
         Log("Phase 4: Waiting for tray gateway connection...");
         await WaitForConnectionReady();
-        Log("Phase 4 complete: tray fully connected.");
+        await WaitForNodeListReady();
+        Log("Phase 4 complete: tray fully connected and node list populated.");
     }
 
     public async Task DisposeAsync()
@@ -350,6 +351,53 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         throw new TimeoutException(
             $"Tray never reached connected state within 90s. Last: status={lastStatus}, " +
             $"nodeConnected={lastNodeConnected}, nodePaired={lastNodePaired}. Logs: {ArtifactDir}");
+    }
+
+    private async Task WaitForNodeListReady()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        string lastResponse = "unknown";
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_trayProcess!.HasExited)
+            {
+                CopyDataDirLogs();
+                throw new InvalidOperationException(
+                    $"Tray process exited while waiting for node list (exit code {_trayProcess.ExitCode}). " +
+                    $"Last app.nodes response: {lastResponse}. Logs: {ArtifactDir}");
+            }
+
+            try
+            {
+                using var doc = await Client!.CallToolExpectSuccessAsync("app.nodes");
+                var root = doc.RootElement;
+                lastResponse = root.GetRawText();
+                if (root.ValueKind == JsonValueKind.Array
+                    && root.GetArrayLength() >= 1
+                    && root[0].TryGetProperty("IsOnline", out var online)
+                    && online.GetBoolean()
+                    && root[0].TryGetProperty("CapabilityCount", out var capabilities)
+                    && capabilities.GetInt32() > 0)
+                {
+                    Log($"Node list ready: {lastResponse}");
+                    return;
+                }
+
+                Log($"Node list not ready: {lastResponse}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Node list poll error: {ex.Message}");
+            }
+
+            await Task.Delay(1000);
+        }
+
+        CopyDataDirLogs();
+        throw new TimeoutException(
+            $"app.nodes never returned an online node with capabilities within 60s. " +
+            $"Last response: {lastResponse}. Logs: {ArtifactDir}");
     }
 
     private Process SpawnTray(string exePath)

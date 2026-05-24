@@ -1,5 +1,6 @@
 namespace OpenClaw.SetupEngine.Tests;
 
+[Collection(EnvironmentVariableCollection.Name)]
 public class SetupContextTests
 {
     [Fact]
