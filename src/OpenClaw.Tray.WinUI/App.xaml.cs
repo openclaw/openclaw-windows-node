@@ -189,14 +189,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "OpenClawTray");
     private static readonly string DeepLinkPipeName =
         DeepLinkSecurityPolicy.BuildCurrentUserScopedPipeName(DataPath);
-    // Operator/node identity store (DeviceIdentity). Lives at %APPDATA%\OpenClawTray
-    // by convention so it follows the user across machines via roaming profile.
-    // OPENCLAW_TRAY_APPDATA_DIR isolates a test/E2E identity store the same way
-    // OPENCLAW_TRAY_DATA_DIR isolates the per-machine data directory.
-    private static readonly string IdentityDataPath = Path.Combine(
-        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
-            ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "OpenClawTray");
+    // Operator/node identity store. In normal installs this is %APPDATA%\OpenClawTray.
+    // Isolated test/dev runs set OPENCLAW_TRAY_DATA_DIR to the direct OpenClaw data
+    // folder, and SetupEngine/GatewayRegistry write per-gateway identities there.
+    private static readonly string IdentityDataPath = DataDirOverride
+        ?? Path.Combine(
+            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "OpenClawTray");
     private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
