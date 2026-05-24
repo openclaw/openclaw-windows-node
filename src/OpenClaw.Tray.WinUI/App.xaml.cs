@@ -1,5 +1,6 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -38,6 +39,36 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         FetchOnlyLatestRelease = true,
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
     };
+
+    // EnableMouseInPointer opts the process into the WM_POINTER input path so
+    // precision-touchpad scroll events are routed correctly in cloud/RDP devbox
+    // environments where the default DirectManipulation path is absent.
+    // Called once at startup before WinUI InitializeComponent().
+    // Fix for: https://github.com/openclaw/openclaw-windows-node/issues/462
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EnableMouseInPointer([MarshalAs(UnmanagedType.Bool)] bool fEnable);
+
+    private static void TryEnableMouseInPointer()
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_DISABLE_MOUSE_IN_POINTER") == "1")
+        {
+            Logger.Info("[App] OPENCLAW_DISABLE_MOUSE_IN_POINTER=1: skipping EnableMouseInPointer");
+            return;
+        }
+
+        try
+        {
+            var success = EnableMouseInPointer(true);
+            if (success)
+                Logger.Info("[App] EnableMouseInPointer(true) succeeded");
+            else
+                Logger.Warn($"[App] EnableMouseInPointer(true) failed (LastError={Marshal.GetLastWin32Error()})");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[App] EnableMouseInPointer threw: {ex.Message}");
+        }
+    }
 
     private TrayIcon? _trayIcon;
     private GatewayConnectionManager? _connectionManager;
@@ -281,6 +312,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public App()
     {
+        // Enable WM_POINTER input path for precision-touchpad scroll on cloud/RDP devboxes.
+        // Must run before WinUI InitializeComponent() so input routing is established early.
+        TryEnableMouseInPointer();
+
         // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
         var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
         if (!string.IsNullOrEmpty(langOverride))
