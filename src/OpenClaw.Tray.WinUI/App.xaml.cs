@@ -20,6 +20,7 @@ using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -2713,6 +2714,35 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return File.Exists(flat) ? flat : null;
     }
 
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SwRestore = 9;
+    private const int SwShownormal = 1;
+
+    private static bool TryBringSetupEngineToFront(System.Diagnostics.Process process)
+    {
+        try
+        {
+            process.Refresh();
+            var hwnd = process.MainWindowHandle;
+            if (hwnd == IntPtr.Zero)
+                return false;
+
+            ShowWindow(hwnd, SwRestore);
+            ShowWindow(hwnd, SwShownormal);
+            return SetForegroundWindow(hwnd);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to focus SetupEngine.UI: {ex.Message}");
+            return false;
+        }
+    }
+
     private async Task ShowOnboardingAsync()
     {
         if (_settings == null) return;
@@ -2728,7 +2758,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var setupProcesses = System.Diagnostics.Process.GetProcessesByName("OpenClaw.SetupEngine.UI");
         if (setupProcesses.Length > 0)
         {
-            Logger.Info("SetupEngine.UI already running — not launching another instance");
+            Logger.Info("SetupEngine.UI already running — focusing existing instance");
+            foreach (var p in setupProcesses)
+            {
+                TryBringSetupEngineToFront(p);
+            }
             foreach (var p in setupProcesses) p.Dispose();
             return;
         }
@@ -2739,7 +2773,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 UseShellExecute = true
             };
-            System.Diagnostics.Process.Start(psi);
+            var process = System.Diagnostics.Process.Start(psi);
+            if (process != null)
+            {
+                await Task.Delay(500);
+                TryBringSetupEngineToFront(process);
+                process.Dispose();
+            }
             Logger.Info("Launched SetupEngine.UI for setup");
         }
         catch (Exception ex)

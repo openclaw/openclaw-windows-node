@@ -1,4 +1,6 @@
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.SetupEngine.UI.Pages;
@@ -74,6 +76,31 @@ public sealed partial class SetupWindow : Window
     public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
+
+    public void BringToFrontForSetupLaunch()
+    {
+        Activate();
+
+        if (AppWindow.Presenter is not OverlappedPresenter presenter)
+            return;
+
+        if (presenter.State == OverlappedPresenterState.Minimized)
+            presenter.Restore();
+
+        var wasAlwaysOnTop = presenter.IsAlwaysOnTop;
+        presenter.IsAlwaysOnTop = true;
+        Activate();
+
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(750);
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!wasAlwaysOnTop && AppWindow.Presenter is OverlappedPresenter p)
+                p.IsAlwaysOnTop = false;
+        };
+        timer.Start();
+    }
 
     private static string? GetArg(string[] args, string name)
     {
