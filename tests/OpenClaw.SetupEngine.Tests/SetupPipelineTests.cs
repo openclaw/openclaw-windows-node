@@ -56,6 +56,17 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public void BuildDefaultSteps_IncludesCurrentSetupFlow()
+    {
+        var steps = SetupStepFactory.BuildDefaultSteps();
+
+        Assert.Equal(18, steps.Count);
+        Assert.Contains(steps, s => s is ValidateWslLockdownStep);
+        Assert.Contains(steps, s => s is RunGatewayWizardStep);
+        Assert.IsType<StartKeepaliveStep>(steps[^1]);
+    }
+
+    [Fact]
     public async Task RunAsync_StepFails_ReturnsFailed()
     {
         var ctx = CreateContext();
@@ -92,6 +103,59 @@ public class SetupPipelineTests
         var result = await pipeline.RunAsync(ctx);
         Assert.Equal(PipelineOutcome.Failed, result.Outcome);
         Assert.Equal(["s2", "s1"], rollbackOrder);
+    }
+
+    [Fact]
+    public async Task RunAsync_StepFails_WithRollback_CleansUpFailedStepFirst()
+    {
+        var rollbackOrder = new List<string>();
+        var config = new SetupConfig { RollbackOnFailure = true };
+        var ctx = CreateContext(config);
+
+        var pipeline = new SetupPipeline([
+            new MockStep("s1",
+                (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { rollbackOrder.Add("s1"); return Task.CompletedTask; }),
+            new MockStep("s2",
+                (_, _) => Task.FromResult(StepResult.Fail("fail")),
+                (_, _) => { rollbackOrder.Add("s2"); return Task.CompletedTask; }),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal(["s2", "s1"], rollbackOrder);
+        Assert.Contains(ctx.Journal.Entries, e => e.StepId == "s2" && e.Event == "rollback_ok");
+    }
+
+    [Fact]
+    public async Task RunAsync_StepFails_WithRollback_ContinuesWhenOneRollbackFails()
+    {
+        var rollbackOrder = new List<string>();
+        var config = new SetupConfig { RollbackOnFailure = true };
+        var ctx = CreateContext(config);
+
+        var pipeline = new SetupPipeline([
+            new MockStep("s1",
+                (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { rollbackOrder.Add("s1"); return Task.CompletedTask; }),
+            new MockStep("s2",
+                (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) =>
+                {
+                    rollbackOrder.Add("s2");
+                    throw new InvalidOperationException("rollback failed");
+                }),
+            new MockStep("s3",
+                (_, _) => Task.FromResult(StepResult.Fail("fail"))),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal(["s2", "s1"], rollbackOrder);
+        Assert.Contains(ctx.Journal.Entries, e => e.StepId == "s2" && e.Event == "rollback_failed");
+        Assert.Contains(ctx.Journal.Entries, e => e.StepId == "s1" && e.Event == "rollback_ok");
     }
 
     [Fact]

@@ -26,6 +26,36 @@ public class SetupConfigTests : IDisposable
         Assert.False(config.Headless);
         Assert.False(config.DryRun);
         Assert.Equal("trace", config.LogLevel);
+        Assert.False(config.RollbackOnFailure);
+        Assert.Equal("loopback", config.Gateway.Bind);
+        Assert.False(config.SkipPermissions);
+        Assert.False(config.SkipWizard);
+    }
+
+    [Fact]
+    public void ApplyUiDefaults_EnablesRollbackAndClearsHeadless()
+    {
+        var config = new SetupConfig
+        {
+            Headless = true,
+            RollbackOnFailure = false
+        };
+
+        config.ApplyUiDefaults();
+
+        Assert.False(config.Headless);
+        Assert.True(config.RollbackOnFailure);
+    }
+
+    [Fact]
+    public void ApplyUiDefaults_AllowsRollbackOptOut()
+    {
+        var config = new SetupConfig { RollbackOnFailure = true };
+
+        config.ApplyUiDefaults(rollbackOnFailure: false);
+
+        Assert.False(config.Headless);
+        Assert.False(config.RollbackOnFailure);
     }
 
     [Fact]

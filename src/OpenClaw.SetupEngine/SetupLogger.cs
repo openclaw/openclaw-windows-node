@@ -49,7 +49,7 @@ public sealed partial class SetupLogger : IDisposable
         => Write(LogLevel.Info, $"step.completed: {stepId} → {result.Outcome}", new { step_id = stepId, outcome = result.Outcome.ToString(), message = result.Message, elapsed_ms = elapsed.TotalMilliseconds });
 
     public void CommandStarted(string exe, string[] args, TimeSpan timeout)
-        => Write(LogLevel.Debug, $"cmd.start: {exe} {Redact(string.Join(' ', args))}", new { exe, args = args.Select(Redact).ToArray(), timeout_ms = timeout.TotalMilliseconds });
+        => Write(LogLevel.Debug, $"cmd.start: {exe} {Sanitize(string.Join(' ', args))}", new { exe, args = args.Select(Sanitize).ToArray(), timeout_ms = timeout.TotalMilliseconds });
 
     public void CommandCompleted(string exe, CommandResult result, TimeSpan elapsed)
     {
@@ -58,8 +58,8 @@ public sealed partial class SetupLogger : IDisposable
         {
             exe,
             exit_code = result.ExitCode,
-            stdout = Truncate(Redact(result.Stdout)),
-            stderr = Truncate(Redact(result.Stderr)),
+            stdout = Truncate(Sanitize(result.Stdout)),
+            stderr = Truncate(Sanitize(result.Stderr)),
             elapsed_ms = elapsed.TotalMilliseconds,
             timed_out = result.TimedOut
         });
@@ -75,7 +75,8 @@ public sealed partial class SetupLogger : IDisposable
     {
         if (level < _minLevel) return;
 
-        var entry = new LogEntry(DateTimeOffset.UtcNow, _runId, level, message, data);
+        var sanitizedMessage = Sanitize(message);
+        var entry = new LogEntry(DateTimeOffset.UtcNow, _runId, level, sanitizedMessage, SanitizeData(data));
         _recentEntries.Enqueue(entry);
         while (_recentEntries.Count > MaxRecentEntries)
             _recentEntries.TryDequeue(out _);
@@ -106,28 +107,65 @@ public sealed partial class SetupLogger : IDisposable
         };
         var prev = Console.ForegroundColor;
         Console.ForegroundColor = color;
-        Console.WriteLine($"[{entry.Timestamp:HH:mm:ss.fff}] [{level}] {message}");
+        Console.WriteLine($"[{entry.Timestamp:HH:mm:ss.fff}] [{level}] {entry.Message}");
         Console.ForegroundColor = prev;
     }
 
     // ─── Secret Redaction ───
 
-    private static string Redact(string input)
+    internal static string Sanitize(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
-        input = TokenPattern().Replace(input, "$1[REDACTED]");
+        input = PrivateKeyPattern().Replace(input, "[REDACTED-PRIVATE-KEY]");
+        input = BearerPattern().Replace(input, "$1[REDACTED]");
+        input = JwtPattern().Replace(input, "[REDACTED-JWT]");
+        input = SensitiveKeyPattern().Replace(input, "$1[REDACTED]");
         input = HexTokenPattern().Replace(input, "[REDACTED-HEX]");
+        input = Base64TokenPattern().Replace(input, "[REDACTED-SECRET]");
         return input;
+    }
+
+    private static object? SanitizeData(object? data)
+    {
+        if (data == null)
+            return null;
+
+        if (data is string value)
+            return Sanitize(value);
+
+        try
+        {
+            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            var sanitized = Sanitize(json);
+            using var doc = JsonDocument.Parse(sanitized);
+            return doc.RootElement.Clone();
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
+        {
+            return Sanitize(data.ToString() ?? string.Empty);
+        }
     }
 
     private static string Truncate(string input, int max = 4096)
         => input.Length <= max ? input : input[..max] + $"... [truncated {input.Length - max} chars]";
 
-    [GeneratedRegex(@"((?:""[^""]*token[^""]*""|[A-Za-z0-9_.-]*token[A-Za-z0-9_.-]*)\s*[:=]?\s*""?)[^""\s,}]+", RegexOptions.IgnoreCase)]
-    private static partial Regex TokenPattern();
+    [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----", RegexOptions.Compiled)]
+    private static partial Regex PrivateKeyPattern();
 
-    [GeneratedRegex(@"\b[a-fA-F0-9]{32,}\b")]
+    [GeneratedRegex(@"(\bBearer\s+)[A-Za-z0-9._~+/=-]+", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex BearerPattern();
+
+    [GeneratedRegex(@"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", RegexOptions.Compiled)]
+    private static partial Regex JwtPattern();
+
+    [GeneratedRegex(@"((?:""[^""]*(?:token|password|secret|api[_-]?key|setup[_-]?code|authorization)[^""]*""|[A-Za-z0-9_.-]*(?:token|password|secret|api[_-]?key|setup[_-]?code|authorization)[A-Za-z0-9_.-]*)\s*[:=]?\s*""?)[^""\s,}]+", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex SensitiveKeyPattern();
+
+    [GeneratedRegex(@"\b[a-fA-F0-9]{32,}\b", RegexOptions.Compiled)]
     private static partial Regex HexTokenPattern();
+
+    [GeneratedRegex(@"\b[A-Za-z0-9+/_-]{48,}={0,2}\b", RegexOptions.Compiled)]
+    private static partial Regex Base64TokenPattern();
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

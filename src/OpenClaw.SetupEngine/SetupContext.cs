@@ -56,6 +56,13 @@ public sealed class SetupConfig
         return config;
     }
 
+    public SetupConfig ApplyUiDefaults(bool rollbackOnFailure = true)
+    {
+        Headless = false;
+        RollbackOnFailure = rollbackOnFailure;
+        return this;
+    }
+
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,

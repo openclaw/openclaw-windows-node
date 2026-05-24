@@ -51,7 +51,7 @@ public sealed partial class SetupWindow : Window
 
         _config = SetupConfig.LoadFromFile(configPath);
         _config = SetupConfig.FromEnvironment(_config);
-        _config.Headless = false;
+        _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
 
         Closed += (_, _) =>
         {
@@ -82,6 +82,9 @@ public sealed partial class SetupWindow : Window
                 return args[i + 1];
         return null;
     }
+
+    private static bool HasFlag(string[] args, string name)
+        => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed record CompletePageArgs(bool Success, TimeSpan Elapsed, string? LogPath, string? ErrorMessage = null);

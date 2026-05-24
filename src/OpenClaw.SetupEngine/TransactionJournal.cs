@@ -33,7 +33,7 @@ public sealed class TransactionJournal : IDisposable
 
     public void RecordStepCompleted(string stepId, StepOutcome outcome, TimeSpan elapsed, string? message = null)
     {
-        var entry = new JournalEntry(DateTimeOffset.UtcNow, stepId, "completed", outcome.ToString(), elapsed, message);
+        var entry = new JournalEntry(DateTimeOffset.UtcNow, stepId, "completed", outcome.ToString(), elapsed, message is null ? null : SetupLogger.Sanitize(message));
         Append(entry);
     }
 
@@ -45,7 +45,7 @@ public sealed class TransactionJournal : IDisposable
 
     public void RecordPipelineEvent(string eventName, string? detail = null)
     {
-        var entry = new JournalEntry(DateTimeOffset.UtcNow, "_pipeline", eventName, Detail: detail);
+        var entry = new JournalEntry(DateTimeOffset.UtcNow, "_pipeline", eventName, Detail: detail is null ? null : SetupLogger.Sanitize(detail));
         Append(entry);
     }
 

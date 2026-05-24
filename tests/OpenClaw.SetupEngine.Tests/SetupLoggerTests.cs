@@ -44,6 +44,44 @@ public class SetupLoggerTests : IDisposable
         Assert.Contains("[REDACTED]", serialized);
     }
 
+    [Fact]
+    public void Redaction_RedactsGenericMessagesAndStructuredData()
+    {
+        var entries = new List<LogEntry>();
+        using var logger = new SetupLogger(filePath: null);
+        logger.LogEmitted += (_, e) => entries.Add(e);
+
+        logger.Info("setupCode=ABC123SECRET authorization: Bearer eyJaaaaaaaaaa.bbbbbbbbbb.cccccccccc", new
+        {
+            token = "plain-secret-token-value",
+            requestId = "safe-request-id",
+            payload = "0123456789abcdef0123456789abcdef"
+        });
+
+        Assert.Single(entries);
+        Assert.DoesNotContain("ABC123SECRET", entries[0].Message);
+        Assert.DoesNotContain("eyJaaaaaaaaaa", entries[0].Message);
+
+        var serialized = System.Text.Json.JsonSerializer.Serialize(entries[0].Data);
+        Assert.DoesNotContain("plain-secret-token-value", serialized);
+        Assert.DoesNotContain("0123456789abcdef0123456789abcdef", serialized);
+        Assert.Contains("safe-request-id", serialized);
+    }
+
+    [Fact]
+    public void StepCompleted_RedactsResultMessage()
+    {
+        var entries = new List<LogEntry>();
+        using var logger = new SetupLogger(filePath: null);
+        logger.LogEmitted += (_, e) => entries.Add(e);
+
+        logger.StepCompleted("pair", StepResult.Fail("token=plain-secret-token-value"), TimeSpan.FromSeconds(1));
+
+        var serialized = System.Text.Json.JsonSerializer.Serialize(entries[0]);
+        Assert.DoesNotContain("plain-secret-token-value", serialized);
+        Assert.Contains("[REDACTED]", serialized);
+    }
+
     [Theory]
     [InlineData(32)]
     [InlineData(64)]

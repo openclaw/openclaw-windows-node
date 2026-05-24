@@ -328,18 +328,47 @@ public sealed class PreflightPortStep : SetupStep
     public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var port = ctx.Config.GatewayPort;
+        var addresses = ctx.Config.Gateway.Bind.Equals("lan", StringComparison.OrdinalIgnoreCase)
+            ? new[] { IPAddress.Any, IPAddress.IPv6Any }
+            : [IPAddress.Loopback];
+
+        foreach (var address in addresses)
+        {
+            if (!CanBind(address, port, out var error))
+                return Task.FromResult(StepResult.Fail($"Port {port} is already in use for {DescribeBind(address)} ({error.SocketErrorCode})"));
+        }
+
+        return Task.FromResult(StepResult.Ok($"Port {port} is available"));
+    }
+
+    private static bool CanBind(IPAddress address, int port, out SocketException error)
+    {
+        var listener = new TcpListener(address, port)
+        {
+            ExclusiveAddressUse = true
+        };
+
         try
         {
-            using var listener = new TcpListener(IPAddress.Loopback, port);
             listener.Start();
-            listener.Stop();
-            return Task.FromResult(StepResult.Ok($"Port {port} is available"));
+            error = null!;
+            return true;
         }
-        catch (SocketException)
+        catch (SocketException ex)
         {
-            return Task.FromResult(StepResult.Fail($"Port {port} is already in use"));
+            error = ex;
+            return false;
+        }
+        finally
+        {
+            listener.Stop();
         }
     }
+
+    private static string DescribeBind(IPAddress address)
+        => address.Equals(IPAddress.Any) ? "LAN IPv4 bind" :
+           address.Equals(IPAddress.IPv6Any) ? "LAN IPv6 bind" :
+           "loopback bind";
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1090,12 +1119,13 @@ public sealed class PairOperatorStep : SetupStep
                     return StepResult.Fail("Pairing required but auto-approve is disabled");
 
                 ctx.Logger.Info("Pairing required — auto-approving via CLI");
+                var requestId = client.PairingRequiredRequestId;
                 await client.DisconnectAsync();
                 client.Dispose();
                 client = null;
 
                 // Auto-approve the pending pairing request
-                var approveResult = await AutoApprovePairing(ctx, ct);
+                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
@@ -1185,12 +1215,13 @@ public sealed class PairOperatorStep : SetupStep
             if (result == ConnectionOutcome.PairingRequired)
             {
                 ctx.Logger.Info("Metadata-upgrade detected during finalization — auto-approving");
+                var requestId = finalClient.PairingRequiredRequestId;
                 await finalClient.DisconnectAsync();
                 finalClient.Dispose();
                 finalClient = null;
 
                 // Approve the metadata-upgrade
-                var approveResult = await AutoApprovePairing(ctx, ct);
+                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Finalization approval failed: {approveResult.Message}");
 
@@ -1223,52 +1254,49 @@ public sealed class PairOperatorStep : SetupStep
     }
 
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
+        => await AutoApprovePairing(ctx, requestId: null, ct);
+
+    internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
 
-        // Step 1: Get the latest pending request (--latest shows it, exits 1)
-        var preview = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
-            TimeSpan.FromSeconds(30), env, ct);
-
-        ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
-        ctx.Logger.Debug($"Approve stdout: {preview.Stdout.Trim()}");
-
-        // Parse requestId from the JSON output
-        string? requestId = null;
-        try
+        if (string.IsNullOrWhiteSpace(requestId))
         {
-            using var doc = JsonDocument.Parse(preview.Stdout.Trim());
-            if (doc.RootElement.TryGetProperty("selected", out var selected) &&
-                selected.TryGetProperty("requestId", out var rid))
+            var preview = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
+                TimeSpan.FromSeconds(30), env, ct);
+
+            ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
+
+            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
+            if (!parsed.Success)
             {
-                requestId = rid.GetString();
+                ctx.Logger.Warn($"Could not select pairing request: {parsed.Error}");
+                return StepResult.Fail("Could not find a safe pending pairing request to approve");
             }
-        }
-        catch (JsonException ex)
-        {
-            ctx.Logger.Warn($"Failed to parse approve preview JSON: {ex.Message}");
+
+            requestId = parsed.RequestId;
         }
 
-        if (string.IsNullOrEmpty(requestId))
+        if (!ApprovalRequestHelper.IsSafeRequestId(requestId))
         {
-            ctx.Logger.Warn($"No requestId found in approve output");
-            return StepResult.Fail("Could not find pending pairing request to approve");
+            ctx.Logger.Warn("Refusing to approve pairing request with unsafe request ID");
+            return StepResult.Fail("Pairing request ID contained unsafe characters");
         }
 
         ctx.Logger.Info($"Approving pairing request: {requestId}");
+        var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId!);
 
-        // Step 2: Actually approve the request by passing the requestId directly
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json""",
-            TimeSpan.FromSeconds(30), env, ct);
+            $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
+            TimeSpan.FromSeconds(30), approvalEnv, ct);
 
-        ctx.Logger.Info($"Approve result: exit={approve.ExitCode}, stdout={approve.Stdout.Trim()}");
+        ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
         if (approve.ExitCode != 0)
             return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
@@ -1460,14 +1488,14 @@ public sealed class PairNodeStep : SetupStep
 
             var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(15), ct);
 
-            if (outcome == NodeConnectionOutcome.Connected)
+            if (outcome.Outcome == NodeConnectionOutcome.Connected)
             {
                 ctx.NodeDeviceId = client.ShortDeviceId;
                 ctx.Logger.Info($"Node connected directly: {ctx.NodeDeviceId}");
                 return StepResult.Ok("Node connected and paired");
             }
 
-            if (outcome == NodeConnectionOutcome.PairingRequired)
+            if (outcome.Outcome == NodeConnectionOutcome.PairingRequired)
             {
                 if (!ctx.Config.AutoApprovePairing)
                     return StepResult.Fail("Node pairing required but auto-approve is disabled");
@@ -1477,7 +1505,7 @@ public sealed class PairNodeStep : SetupStep
                 client.Dispose();
                 client = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, outcome.RequestId, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
@@ -1489,7 +1517,7 @@ public sealed class PairNodeStep : SetupStep
                 RegisterCapabilitiesFromConfig(client, ctx);
 
                 outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(20), ct);
-                if (outcome == NodeConnectionOutcome.Connected)
+                if (outcome.Outcome == NodeConnectionOutcome.Connected)
                 {
                     ctx.NodeDeviceId = client.ShortDeviceId;
                     ctx.Logger.Info($"Node paired after approval: {ctx.NodeDeviceId}");
@@ -1504,10 +1532,10 @@ public sealed class PairNodeStep : SetupStep
                     return StepResult.Ok("Node paired successfully");
                 }
 
-                return StepResult.Fail($"Node reconnection after approval failed: {outcome}");
+                return StepResult.Fail($"Node reconnection after approval failed: {outcome.Outcome}");
             }
 
-            return StepResult.Fail($"Node connection failed: {outcome}");
+            return StepResult.Fail($"Node connection failed: {outcome.Outcome}");
         }
         catch (Exception ex)
         {
@@ -1553,20 +1581,20 @@ public sealed class PairNodeStep : SetupStep
         {
             var result = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
 
-            if (result == NodeConnectionOutcome.Connected)
+            if (result.Outcome == NodeConnectionOutcome.Connected)
             {
                 ctx.Logger.Info("Node finalization connected — tray will connect seamlessly");
                 return StepResult.Ok("Node paired and finalized for tray");
             }
 
-            if (result == NodeConnectionOutcome.PairingRequired)
+            if (result.Outcome == NodeConnectionOutcome.PairingRequired)
             {
                 ctx.Logger.Info("Node metadata-upgrade detected — auto-approving");
                 await finalClient.DisconnectAsync();
                 finalClient.Dispose();
                 finalClient = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Node finalization approval failed: {approveResult.Message}");
 
@@ -1576,16 +1604,16 @@ public sealed class PairNodeStep : SetupStep
                 finalClient.UseV2Signature = true;
                 var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
 
-                if (finalResult == NodeConnectionOutcome.Connected)
+                if (finalResult.Outcome == NodeConnectionOutcome.Connected)
                 {
                     ctx.Logger.Info("Node finalization approved — tray will connect seamlessly");
                     return StepResult.Ok("Node paired and finalized for tray");
                 }
 
-                return StepResult.Fail($"Node finalization failed after approval: {finalResult}");
+                return StepResult.Fail($"Node finalization failed after approval: {finalResult.Outcome}");
             }
 
-            return StepResult.Fail($"Node finalization failed: {result}");
+            return StepResult.Fail($"Node finalization failed: {result.Outcome}");
         }
         finally
         {
@@ -1599,28 +1627,38 @@ public sealed class PairNodeStep : SetupStep
 
     private enum NodeConnectionOutcome { Connected, PairingRequired, Error, Timeout }
 
-    private static async Task<NodeConnectionOutcome> WaitForNodeConnection(
+    private sealed record NodeConnectionResult(NodeConnectionOutcome Outcome, string? RequestId = null);
+
+    private static async Task<NodeConnectionResult> WaitForNodeConnection(
         WindowsNodeClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
     {
-        var tcs = new TaskCompletionSource<NodeConnectionOutcome>();
+        var tcs = new TaskCompletionSource<NodeConnectionResult>();
+        string? pairingRequestId = null;
 
         void OnStatusChanged(object? sender, ConnectionStatus status)
         {
             ctx.Logger.Debug($"Node connection status: {status}");
             if (status == ConnectionStatus.Connected)
-                tcs.TrySetResult(NodeConnectionOutcome.Connected);
+                tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.Connected));
             else if (status == ConnectionStatus.Error)
-                tcs.TrySetResult(NodeConnectionOutcome.Error);
+                tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.Error));
             else if (status == ConnectionStatus.Disconnected)
             {
                 if (client.IsPendingApproval)
-                    tcs.TrySetResult(NodeConnectionOutcome.PairingRequired);
+                    tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.PairingRequired, pairingRequestId));
                 else
-                    tcs.TrySetResult(NodeConnectionOutcome.Error);
+                    tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.Error));
             }
         }
 
+        void OnPairingStatusChanged(object? sender, PairingStatusEventArgs args)
+        {
+            if (args.Status == PairingStatus.Pending && ApprovalRequestHelper.IsSafeRequestId(args.RequestId))
+                pairingRequestId = args.RequestId;
+        }
+
         client.StatusChanged += OnStatusChanged;
+        client.PairingStatusChanged += OnPairingStatusChanged;
 
         try
         {
@@ -1631,55 +1669,56 @@ public sealed class PairNodeStep : SetupStep
         }
         catch (OperationCanceledException)
         {
-            return NodeConnectionOutcome.Timeout;
+            return new NodeConnectionResult(NodeConnectionOutcome.Timeout);
         }
         finally
         {
             client.StatusChanged -= OnStatusChanged;
+            client.PairingStatusChanged -= OnPairingStatusChanged;
         }
     }
 
-    private static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, CancellationToken ct)
+    internal static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, string? requestId, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        var approvalKind = ApprovalRequestKind.Device;
 
-        // Step 1: Get latest pending request
-        var preview = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
-            TimeSpan.FromSeconds(30), env, ct);
-
-        ctx.Logger.Info($"Node approve preview: exit={preview.ExitCode}");
-        ctx.Logger.Debug($"Node approve stdout: {preview.Stdout.Trim()}");
-
-        string? requestId = null;
-        try
+        if (string.IsNullOrWhiteSpace(requestId))
         {
-            using var doc = JsonDocument.Parse(preview.Stdout.Trim());
-            if (doc.RootElement.TryGetProperty("selected", out var selected) &&
-                selected.TryGetProperty("requestId", out var rid))
+            approvalKind = ApprovalRequestKind.Node;
+            var pending = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{ctx.WslPathPrefix} && openclaw nodes list --json""",
+                TimeSpan.FromSeconds(30), env, ct);
+
+            ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
+
+            if (pending.ExitCode != 0)
+                return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pending.Stdout.Trim()}");
+
+            var parsed = ApprovalRequestHelper.TryReadSinglePendingRequestId(pending.Stdout.Trim());
+            if (!parsed.Success)
             {
-                requestId = rid.GetString();
+                ctx.Logger.Warn($"Could not select node pairing request: {parsed.Error}");
+                return StepResult.Fail(parsed.Error ?? "Could not find a safe pending node pairing request");
             }
-        }
-        catch (JsonException ex)
-        {
-            ctx.Logger.Warn($"Failed to parse node approve preview: {ex.Message}");
+
+            requestId = parsed.RequestId;
         }
 
-        if (string.IsNullOrEmpty(requestId))
-            return StepResult.Fail("Could not find pending node pairing request");
+        if (!ApprovalRequestHelper.IsSafeRequestId(requestId))
+            return StepResult.Fail("Node pairing request ID contained unsafe characters");
 
         ctx.Logger.Info($"Approving node pairing request: {requestId}");
+        var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId!);
 
-        // Step 2: Approve
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
-            $"""{ctx.WslPathPrefix} && openclaw devices approve "{requestId}" --json""",
-            TimeSpan.FromSeconds(30), env, ct);
+            $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(approvalKind)}""",
+            TimeSpan.FromSeconds(30), approvalEnv, ct);
 
         ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
 
@@ -1795,24 +1834,19 @@ public sealed class VerifyEndToEndStep : SetupStep
             if (preview.ExitCode != 0 || preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase))
                 break;
 
-            // Parse and approve
-            string? requestId = null;
-            try
+            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
+            if (!parsed.Success)
             {
-                using var doc = JsonDocument.Parse(preview.Stdout.Trim());
-                if (doc.RootElement.TryGetProperty("selected", out var selected) &&
-                    selected.TryGetProperty("requestId", out var rid))
-                    requestId = rid.GetString();
+                ctx.Logger.Warn($"Stopping device approval drain: {parsed.Error}");
+                break;
             }
-            catch { break; }
 
-            if (string.IsNullOrEmpty(requestId)) break;
-
-            ctx.Logger.Info($"Draining pending device approval: {requestId}");
+            ctx.Logger.Info($"Draining pending device approval: {parsed.RequestId}");
+            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
             await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{pathPrefix} && openclaw devices approve "{requestId}" --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
+                TimeSpan.FromSeconds(15), approvalEnv, ct);
         }
 
         // Approve pending node requests
@@ -1825,22 +1859,23 @@ public sealed class VerifyEndToEndStep : SetupStep
 
             if (nodeList.ExitCode != 0) break;
 
-            try
+            var parsed = ApprovalRequestHelper.TryReadPendingRequestIds(nodeList.Stdout.Trim());
+            if (!parsed.Success)
             {
-                using var doc = JsonDocument.Parse(nodeList.Stdout.Trim());
-                if (!doc.RootElement.TryGetProperty("pending", out var pending) || pending.GetArrayLength() == 0)
-                    break;
-
-                var requestId = pending[0].GetProperty("requestId").GetString();
-                if (string.IsNullOrEmpty(requestId)) break;
-
-                ctx.Logger.Info($"Draining pending node approval: {requestId}");
-                await ctx.Commands.RunInWslAsync(
-                    distro,
-                    $"""{pathPrefix} && openclaw nodes approve "{requestId}" --json""",
-                    TimeSpan.FromSeconds(15), env, ct);
+                ctx.Logger.Warn($"Stopping node approval drain: {parsed.Error}");
+                break;
             }
-            catch { break; }
+
+            if (parsed.RequestIds.Count == 0)
+                break;
+
+            var requestId = parsed.RequestIds[0];
+            ctx.Logger.Info($"Draining pending node approval: {requestId}");
+            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId);
+            await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
+                TimeSpan.FromSeconds(15), approvalEnv, ct);
         }
     }
 

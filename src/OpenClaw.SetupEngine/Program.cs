@@ -12,6 +12,7 @@ public static class Program
         var logPath = GetArg(args, "--log-path");
         var headless = HasFlag(args, "--headless");
         var rollback = HasFlag(args, "--rollback-on-failure");
+        var noRollback = HasFlag(args, "--no-rollback-on-failure");
         var dryRun = HasFlag(args, "--dry-run");
         var wizardOnly = HasFlag(args, "--wizard-only");
         var uninstall = HasFlag(args, "--uninstall");
@@ -46,6 +47,7 @@ public static class Program
         config = SetupConfig.FromEnvironment(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
+        if (noRollback) config.RollbackOnFailure = false;
         if (wizardOnly) config.SkipWizard = false;
         if (logPath != null) config.LogPath = logPath;
         if (dryRun) config.DryRun = true;

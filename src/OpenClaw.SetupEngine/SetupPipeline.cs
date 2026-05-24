@@ -153,6 +153,7 @@ public sealed class SetupPipeline
 
             if (ctx.Config.RollbackOnFailure)
             {
+                await RollbackFailedStep(step, ctx);
                 await RollbackCompletedSteps(ctx);
             }
 
@@ -187,6 +188,26 @@ public sealed class SetupPipeline
                 ctx.Logger.Error($"Rollback failed for {step.Id}: {ex.Message}");
                 ctx.Journal.RecordRollback(step.Id, success: false);
             }
+        }
+    }
+
+    private static async Task RollbackFailedStep(SetupStep step, SetupContext ctx)
+    {
+        ctx.Logger.Warn($"Attempting cleanup for failed step: {step.DisplayName}");
+
+        try
+        {
+            await RunRollbackWithTimeout(step, ctx, ctx.CancellationToken);
+            ctx.Journal.RecordRollback(step.Id, success: true);
+        }
+        catch (OperationCanceledException) when (ctx.CancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Error($"Cleanup failed for failed step {step.Id}: {ex.Message}");
+            ctx.Journal.RecordRollback(step.Id, success: false);
         }
     }
 

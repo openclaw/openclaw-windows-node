@@ -1,4 +1,6 @@
 using OpenClaw.Connection;
+using System.Net;
+using System.Net.Sockets;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -159,6 +161,46 @@ public class SetupStepsTests : IDisposable
     // ─── InstallCliStep: URL validation and quoting ───
 
     [Fact]
+    public async Task PreflightPort_Loopback_SucceedsForAvailablePort()
+    {
+        var port = GetFreeTcpPort();
+        var ctx = CreateContext(new SetupConfig { GatewayPort = port });
+
+        var result = await new PreflightPortStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task PreflightPort_Lan_FailsWhenAnyBindPortInUse()
+    {
+        var listener = new TcpListener(IPAddress.Any, 0)
+        {
+            ExclusiveAddressUse = true
+        };
+        listener.Start();
+
+        try
+        {
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            var ctx = CreateContext(new SetupConfig
+            {
+                GatewayPort = port,
+                Gateway = new GatewayConfig { Bind = "lan" }
+            });
+
+            var result = await new PreflightPortStep().ExecuteAsync(ctx, CancellationToken.None);
+
+            Assert.Equal(StepOutcome.Failed, result.Outcome);
+            Assert.Contains("already in use", result.Message);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [Fact]
     public async Task InstallCli_RejectsHttpUrl()
     {
         var ctx = CreateContext(new SetupConfig
@@ -171,6 +213,20 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("HTTPS", result.Message);
+    }
+
+    private static int GetFreeTcpPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
     }
 
     [Theory]
