@@ -60,9 +60,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
         if (!distros.Any(d => d.Equals(distro, StringComparison.OrdinalIgnoreCase)))
         {
             // Distro not registered, but disk directory may still exist from prior crash
-            var wslDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "wsl", distro);
+            var wslDir = Path.Combine(ctx.LocalDataDir, "wsl", distro);
             if (Directory.Exists(wslDir))
             {
                 ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
@@ -113,9 +111,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
         if (unregister.ExitCode == 0)
         {
             // Also remove the on-disk WSL vhdx directory (--import fails if it exists)
-            var wslDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "wsl", distro);
+            var wslDir = Path.Combine(ctx.LocalDataDir, "wsl", distro);
             if (Directory.Exists(wslDir))
             {
                 ctx.Logger.Info($"Removing leftover WSL directory: {wslDir}");
@@ -151,9 +147,7 @@ public sealed class CleanupStaleGatewayStep : SetupStep
         }
 
         // Also remove from LocalAppData (current write location)
-        var localStateFile = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray", "setup-state.json");
+        var localStateFile = Path.Combine(ctx.LocalDataDir, "setup-state.json");
         if (File.Exists(localStateFile))
         {
             File.Delete(localStateFile);
@@ -195,9 +189,7 @@ public sealed class CleanupStaleGatewayStep : SetupStep
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         // Delete setup-state.json (written by VerifyEndToEndStep)
-        var localDataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
+        var localDataPath = ctx.LocalDataDir;
 
         var stateFile = Path.Combine(localDataPath, "setup-state.json");
         if (File.Exists(stateFile))
@@ -397,7 +389,7 @@ public sealed class CreateWslInstanceStep : SetupStep
             if (export.ExitCode != 0)
                 return StepResult.Fail($"Failed to export base distro: {export.Stderr}");
 
-            var installPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray", "wsl", distro);
+            var installPath = Path.Combine(ctx.LocalDataDir, "wsl", distro);
             Directory.CreateDirectory(installPath);
 
             var import = await ctx.Commands.RunAsync(
@@ -424,9 +416,7 @@ public sealed class CreateWslInstanceStep : SetupStep
         await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
 
         // VHD parent dir cleanup (mirrors old uninstall step 5a)
-        var localDataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
+        var localDataPath = ctx.LocalDataDir;
         var vhdDir = Path.Combine(localDataPath, "wsl", distro);
         if (Directory.Exists(vhdDir))
         {
@@ -453,6 +443,9 @@ public sealed class ConfigureWslInstanceStep : SetupStep
     {
         var distro = ctx.DistroName!;
         var wsl = ctx.Config.Wsl;
+
+        if (!WslConfig.IsValidLinuxUserName(wsl.User))
+            return StepResult.Terminal($"Invalid WSL user '{wsl.User}'. Use a Linux username matching [a-z_][a-z0-9_-]{{0,31}}.");
 
         // Build wsl.conf from config
         var wslConf = $"""
@@ -1937,9 +1930,7 @@ public sealed class VerifyEndToEndStep : SetupStep
 
     private static async Task WriteSetupStateAsync(SetupContext ctx, CancellationToken ct)
     {
-        var stateDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
+        var stateDir = ctx.LocalDataDir;
         Directory.CreateDirectory(stateDir);
 
         var statePath = Path.Combine(stateDir, "setup-state.json");
@@ -1964,7 +1955,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         };
 
         var json = System.Text.Json.JsonSerializer.Serialize(state, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(statePath, json, ct);
+        await AtomicFile.WriteAllTextAsync(statePath, json, ct);
         ctx.Logger.Info($"Wrote setup-state.json: DistroName={ctx.DistroName}");
     }
 }
@@ -1981,15 +1972,31 @@ public sealed class StartKeepaliveStep : SetupStep
         var distro = ctx.DistroName!;
         ctx.Logger.Info($"Launching persistent keepalive for distro: {distro}");
 
+        var markerPath = GetKeepaliveMarkerPath(ctx);
+        if (TryGetExistingKeepalive(markerPath, distro, out var existingPid))
+        {
+            ctx.Logger.Info($"Keepalive already running for distro '{distro}' (PID {existingPid})");
+            return Task.FromResult(StepResult.Ok("Keepalive already running"));
+        }
+
+        if (File.Exists(markerPath))
+        {
+            try { File.Delete(markerPath); } catch { }
+        }
+
         // Launch detached keepalive process — keeps the distro alive so port forwarding
         // remains stable until the tray starts its own keepalive.
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = "wsl.exe",
-            Arguments = $"-d {distro} -- sleep infinity",
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("-d");
+        psi.ArgumentList.Add(distro);
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add("sleep");
+        psi.ArgumentList.Add("infinity");
 
         var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null)
@@ -2001,19 +2008,13 @@ public sealed class StartKeepaliveStep : SetupStep
         ctx.Logger.Info($"Keepalive process started (PID {proc.Id}), distro will stay alive for tray launch");
 
         // Write keepalive marker so tray doesn't spawn a duplicate
-        WriteKeepaliveMarker(ctx, proc.Id);
+        WriteKeepaliveMarker(ctx, markerPath, proc.Id);
 
         return Task.FromResult(StepResult.Ok());
     }
 
-    private static void WriteKeepaliveMarker(SetupContext ctx, int pid)
+    private static void WriteKeepaliveMarker(SetupContext ctx, string markerPath, int pid)
     {
-        var markerDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray", "wsl-keepalive");
-        Directory.CreateDirectory(markerDir);
-
-        var markerPath = Path.Combine(markerDir, $"{ctx.DistroName}.json");
         var marker = new
         {
             DistroName = ctx.DistroName,
@@ -2022,8 +2023,43 @@ public sealed class StartKeepaliveStep : SetupStep
             ProcessName = "wsl"
         };
         var json = System.Text.Json.JsonSerializer.Serialize(marker, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(markerPath, json);
+        AtomicFile.WriteAllText(markerPath, json);
         ctx.Logger.Info($"Wrote keepalive marker: {markerPath}");
+    }
+
+    internal static string GetKeepaliveMarkerPath(SetupContext ctx)
+        => Path.Combine(
+            ctx.LocalDataDir, "wsl-keepalive", $"{ctx.DistroName}.json");
+
+    internal static bool TryGetExistingKeepalive(string markerPath, string distro, out int pid)
+    {
+        pid = 0;
+        if (!File.Exists(markerPath))
+            return false;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(markerPath));
+            if (!doc.RootElement.TryGetProperty("Pid", out var pidElement) || !pidElement.TryGetInt32(out pid))
+                return false;
+
+            var process = System.Diagnostics.Process.GetProcessById(pid);
+            using (process)
+            {
+                if (process.HasExited)
+                    return false;
+
+                var commandLine = GetProcessCommandLine(pid);
+                return commandLine != null
+                    && commandLine.Contains(distro, StringComparison.OrdinalIgnoreCase)
+                    && commandLine.Contains("sleep", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            pid = 0;
+            return false;
+        }
     }
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
@@ -2066,10 +2102,8 @@ public sealed class StartKeepaliveStep : SetupStep
         }
 
         // Delete keepalive marker file
-        var markerDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray", "wsl-keepalive");
-        var markerPath = Path.Combine(markerDir, $"{distro}.json");
+        var markerPath = GetKeepaliveMarkerPath(ctx);
+        var markerDir = Path.GetDirectoryName(markerPath)!;
 
         if (File.Exists(markerPath))
         {

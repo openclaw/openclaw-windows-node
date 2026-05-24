@@ -136,4 +136,38 @@ public class TransactionJournalTests : IDisposable
 
         Assert.True(File.Exists(path));
     }
+
+    [Fact]
+    public void Constructor_LoadsExistingEntriesAndAppends()
+    {
+        var path = Path.Combine(_tempDir, "journal.jsonl");
+
+        using (var journal = new TransactionJournal(path))
+        {
+            journal.RecordStepCompleted("step-1", StepOutcome.Success, TimeSpan.Zero);
+        }
+
+        using (var journal = new TransactionJournal(path))
+        {
+            Assert.Equal("step-1", journal.LastCompletedStepId());
+            journal.RecordStepCompleted("step-2", StepOutcome.Success, TimeSpan.Zero);
+        }
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(2, lines.Length);
+        Assert.Contains("step-1", lines[0]);
+        Assert.Contains("step-2", lines[1]);
+    }
+
+    [Fact]
+    public void Constructor_IgnoresCorruptExistingLines()
+    {
+        var path = Path.Combine(_tempDir, "journal.jsonl");
+        File.WriteAllLines(path, ["not json"]);
+
+        using var journal = new TransactionJournal(path);
+
+        journal.RecordStepStarted("step-1");
+        Assert.Single(journal.Entries);
+    }
 }

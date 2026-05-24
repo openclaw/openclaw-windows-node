@@ -17,9 +17,7 @@ public static class TrayArtifactCleanup
     {
         var logger = ctx.Logger;
         var appDataDir = ctx.DataDir; // %APPDATA%\OpenClawTray
-        var localDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
+        var localDataDir = ctx.LocalDataDir;
 
         // 1. Remove autostart registry key
         try
@@ -143,7 +141,7 @@ public static class TrayArtifactCleanup
             {
                 var updatedJson = System.Text.Json.JsonSerializer.Serialize(dict,
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(settingsPath, updatedJson);
+                AtomicFile.WriteAllText(settingsPath, updatedJson);
                 logger.Info("[Uninstall] Reset onboarding settings (GatewayUrl, EnableNodeMode, AutoStart)");
             }
             else

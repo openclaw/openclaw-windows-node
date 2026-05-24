@@ -175,8 +175,12 @@ public sealed class SetupPipeline
             try
             {
                 ctx.Logger.Info($"Rolling back: {step.DisplayName}");
-                await step.RollbackAsync(ctx, CancellationToken.None);
+                await RunRollbackWithTimeout(step, ctx, ctx.CancellationToken);
                 ctx.Journal.RecordRollback(step.Id, success: true);
+            }
+            catch (OperationCanceledException) when (ctx.CancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -195,7 +199,7 @@ public sealed class SetupPipeline
     {
         var ct = ctx.CancellationToken;
 
-        if (!ctx.Config.ConfirmDestructive)
+        if (!ctx.Config.ConfirmDestructive && !ctx.Config.DryRun)
         {
             ctx.Logger.Error("Uninstall requires --confirm-destructive flag");
             return new PipelineResult(PipelineOutcome.Failed, Message: "Safety gate: --confirm-destructive required for live uninstall");
@@ -230,7 +234,7 @@ public sealed class SetupPipeline
                 }
                 else
                 {
-                    await step.RollbackAsync(ctx, ct);
+                    await RunRollbackWithTimeout(step, ctx, ct);
                     ctx.Journal.RecordRollback(step.Id, success: true);
                 }
                 sw.Stop();
@@ -265,5 +269,20 @@ public sealed class SetupPipeline
         ctx.Journal.RecordPipelineEvent("uninstall_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
         ctx.Logger.Info($"Uninstall completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
         return new PipelineResult(PipelineOutcome.Success);
+    }
+
+    private static async Task RunRollbackWithTimeout(SetupStep step, SetupContext ctx, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, ctx.Config.RollbackTimeoutSeconds)));
+
+        try
+        {
+            await step.RollbackAsync(ctx, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Rollback for step '{step.Id}' exceeded {ctx.Config.RollbackTimeoutSeconds}s.");
+        }
     }
 }

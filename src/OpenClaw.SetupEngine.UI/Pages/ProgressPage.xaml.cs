@@ -13,9 +13,11 @@ public sealed partial class ProgressPage : Page
     private SetupConfig? _config;
     private SetupPipeline? _pipeline;
     private SetupLogger? _logger;
+    private CancellationTokenSource? _runCts;
     private readonly Dictionary<string, StepRow> _rows = new();
     private bool _logExpanded;
     private int _logLineCount;
+    private bool _pipelineFinished;
     private const int MaxLogLines = 200;
 
     // Map pipeline step IDs to display groups (N:1)
@@ -35,6 +37,7 @@ public sealed partial class ProgressPage : Page
     public ProgressPage()
     {
         InitializeComponent();
+        Unloaded += (_, _) => CancelPipeline();
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -59,57 +62,95 @@ public sealed partial class ProgressPage : Page
     private async void StartPipeline()
     {
         var config = _config!;
+        if (_runCts != null)
+            return;
+
         config.LogPath ??= Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray", "Logs", "Setup", $"setup-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
 
-        _logger = new SetupLogger(config.LogPath,
-            Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace);
-
-        _logger.LogEmitted += OnLogEmitted;
-
-        var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
-        using var journal = new TransactionJournal(journalPath);
-        var commands = new CommandRunner(_logger);
-        using var cts = new CancellationTokenSource();
-        var ctx = new SetupContext(config, _logger, journal, commands, cts.Token);
-
-        var steps = BuildSteps(config);
-        _pipeline = new SetupPipeline(steps);
-        _pipeline.StepProgress += OnStepProgress;
-
         var sw = Stopwatch.StartNew();
-        var result = await Task.Run(() => _pipeline.RunAsync(ctx));
-        sw.Stop();
+        using var cts = new CancellationTokenSource();
+        _runCts = cts;
 
-        _logger.LogEmitted -= OnLogEmitted;
-        _pipeline.StepProgress -= OnStepProgress;
-        _logger.Dispose();
-
-        var success = result.Outcome == PipelineOutcome.Success;
-        if (success)
+        try
         {
-            if (!config.SkipWizard)
+            _logger = new SetupLogger(config.LogPath,
+                Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace);
+
+            _logger.LogEmitted += OnLogEmitted;
+
+            var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
+            using var journal = new TransactionJournal(journalPath);
+            var commands = new CommandRunner(_logger);
+            var ctx = new SetupContext(config, _logger, journal, commands, cts.Token);
+
+            var steps = BuildSteps(config);
+            _pipeline = new SetupPipeline(steps);
+            _pipeline.StepProgress += OnStepProgress;
+
+            var result = await Task.Run(() => _pipeline.RunAsync(ctx), cts.Token);
+            sw.Stop();
+            _pipelineFinished = true;
+
+            var success = result.Outcome == PipelineOutcome.Success;
+            if (success)
             {
-                if (_rows.TryGetValue("finish", out var finishRow))
-                    finishRow.SetStatus(StepStatus.Running);
-                SubtitleText.Text = "Opening gateway setup...";
-                await Task.Delay(900);
-                finishRow?.SetStatus(StepStatus.Done);
-                App.MainWindow?.NavigateToWizard();
+                if (!config.SkipWizard)
+                {
+                    if (_rows.TryGetValue("finish", out var finishRow))
+                        finishRow.SetStatus(StepStatus.Running);
+                    SubtitleText.Text = "Opening gateway setup...";
+                    await Task.Delay(900);
+                    finishRow?.SetStatus(StepStatus.Done);
+                    App.MainWindow?.NavigateToWizard();
+                }
+                else if (config.SkipPermissions)
+                    App.MainWindow?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
+                else
+                    App.MainWindow?.NavigateToPermissions();
             }
-            else if (config.SkipPermissions)
-                App.MainWindow?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
             else
-                App.MainWindow?.NavigateToPermissions();
+            {
+                var errorMsg = result.Outcome == PipelineOutcome.Cancelled
+                    ? "Setup was cancelled."
+                    : result.FailedStepId != null
+                        ? $"Step '{result.FailedStepId}' failed: {result.Message}"
+                        : result.Message;
+                App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, errorMsg);
+            }
         }
-        else
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
-            var errorMsg = result.FailedStepId != null
-                ? $"Step '{result.FailedStepId}' failed: {result.Message}"
-                : result.Message;
-            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, errorMsg);
+            sw.Stop();
+            _pipelineFinished = true;
+            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, "Setup was cancelled.");
         }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _pipelineFinished = true;
+            _logger?.Error($"Setup UI pipeline failed: {ex.Message}");
+            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, $"Setup crashed: {ex.Message}");
+        }
+        finally
+        {
+            if (_logger != null)
+                _logger.LogEmitted -= OnLogEmitted;
+            if (_pipeline != null)
+                _pipeline.StepProgress -= OnStepProgress;
+            _logger?.Dispose();
+            _logger = null;
+            _pipeline = null;
+            if (ReferenceEquals(_runCts, cts))
+                _runCts = null;
+        }
+    }
+
+    private void CancelPipeline()
+    {
+        if (!_pipelineFinished)
+            _runCts?.Cancel();
     }
 
     private void OnStepProgress(object? sender, StepProgressEvent e)

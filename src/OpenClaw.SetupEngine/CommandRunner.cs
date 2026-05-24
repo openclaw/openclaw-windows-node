@@ -11,6 +11,7 @@ public sealed class CommandRunner
 {
     private readonly SetupLogger _logger;
     private const int DrainTimeoutMs = 5000; // bounded drain for orphan WSL processes
+    private const int MaxCapturedStreamChars = 1_048_576;
 
     public CommandRunner(SetupLogger logger) => _logger = logger;
 
@@ -50,8 +51,8 @@ public sealed class CommandRunner
         }
 
         using var process = new Process { StartInfo = psi };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
+        var stdout = new BoundedOutputBuffer(MaxCapturedStreamChars);
+        var stderr = new BoundedOutputBuffer(MaxCapturedStreamChars);
         var timedOut = false;
 
         process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
@@ -98,14 +99,10 @@ public sealed class CommandRunner
             throw;
         }
 
-        // Bounded drain: wait briefly for async output handlers to flush
-        // WSL child processes can hold pipes open after parent exits
+        // Flush async output handlers. WaitForExitAsync observes process exit, but the
+        // OutputDataReceived/ErrorDataReceived callbacks can still be draining.
         if (!timedOut)
-        {
-            var drainDeadline = Environment.TickCount64 + DrainTimeoutMs;
-            while (!process.HasExited && Environment.TickCount64 < drainDeadline)
-                await Task.Delay(100, CancellationToken.None);
-        }
+            process.WaitForExit(DrainTimeoutMs);
 
         sw.Stop();
         var result = new CommandResult(
@@ -152,5 +149,44 @@ public sealed class CommandRunner
     private static void TryKill(Process process)
     {
         try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+    }
+
+    private sealed class BoundedOutputBuffer(int maxChars)
+    {
+        private readonly StringBuilder _builder = new();
+        private readonly object _lock = new();
+        private int _droppedChars;
+
+        public void AppendLine(string line)
+        {
+            lock (_lock)
+            {
+                if (_builder.Length < maxChars)
+                {
+                    var remaining = maxChars - _builder.Length;
+                    if (line.Length + Environment.NewLine.Length <= remaining)
+                    {
+                        _builder.AppendLine(line);
+                        return;
+                    }
+
+                    if (remaining > 0)
+                        _builder.Append(line[..Math.Min(line.Length, remaining)]);
+                }
+
+                _droppedChars += line.Length + Environment.NewLine.Length;
+            }
+        }
+
+        public override string ToString()
+        {
+            lock (_lock)
+            {
+                if (_droppedChars == 0)
+                    return _builder.ToString();
+
+                return _builder.ToString() + Environment.NewLine + $"... [truncated {_droppedChars} chars]";
+            }
+        }
     }
 }

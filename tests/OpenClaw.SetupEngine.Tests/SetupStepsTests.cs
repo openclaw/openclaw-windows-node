@@ -172,6 +172,32 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("HTTPS", result.Message);
     }
 
+    [Theory]
+    [InlineData("bad;user")]
+    [InlineData("BadUser")]
+    [InlineData("bad user")]
+    [InlineData("bad$user")]
+    public async Task ConfigureWsl_RejectsInvalidLinuxUserName(string user)
+    {
+        var ctx = CreateContext();
+        ctx.Config.Wsl.User = user;
+        ctx.DistroName = "test-distro";
+
+        var step = new ConfigureWslInstanceStep();
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Invalid WSL user", result.Message);
+    }
+
+    [Fact]
+    public void WslConfig_AcceptsValidLinuxUserName()
+    {
+        Assert.True(WslConfig.IsValidLinuxUserName("openclaw"));
+        Assert.True(WslConfig.IsValidLinuxUserName("_openclaw"));
+        Assert.True(WslConfig.IsValidLinuxUserName("openclaw-user_1"));
+    }
+
     [Fact]
     public async Task InstallCli_RejectsInvalidUrl()
     {
@@ -315,6 +341,18 @@ public class SetupStepsTests : IDisposable
         var result = StartGatewayStep.RedactTokens(text);
 
         Assert.Equal("token=12345678…[REDACTED] status=ok", result);
+    }
+
+    [Fact]
+    public void TryGetExistingKeepalive_ReturnsFalseForCorruptMarker()
+    {
+        var markerPath = Path.Combine(_tempDir, "keepalive.json");
+        File.WriteAllText(markerPath, "not json");
+
+        var result = StartKeepaliveStep.TryGetExistingKeepalive(markerPath, "OpenClawGateway", out var pid);
+
+        Assert.False(result);
+        Assert.Equal(0, pid);
     }
 
     // ─── Bind validation ───

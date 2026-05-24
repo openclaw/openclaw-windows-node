@@ -280,7 +280,7 @@ public sealed class SetupWizardRunner
         };
 
         var json = JsonSerializer.Serialize(template, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(basePath, json);
+        AtomicFile.WriteAllText(basePath, json);
         _ctx.Logger.Info($"Wizard answer template written: {basePath}");
         return basePath;
     }

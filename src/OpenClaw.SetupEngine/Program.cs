@@ -88,6 +88,15 @@ public static class Program
         var commands = new CommandRunner(logger);
         using var cts = new CancellationTokenSource();
 
+        if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out var setupLock, out var lockMessage))
+        {
+            logger.Error(lockMessage ?? "Another setup run is active.");
+            Console.Error.WriteLine($"ERROR: {lockMessage}");
+            return 2;
+        }
+
+        using var acquiredSetupLock = setupLock;
+
         // Handle Ctrl+C gracefully
         Console.CancelKeyPress += (_, e) =>
         {
@@ -181,7 +190,7 @@ public static class Program
                 journalPath
             };
             var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(jsonOutput, json);
+            await AtomicFile.WriteAllTextAsync(jsonOutput, json);
         }
 
         return result.ExitCode;

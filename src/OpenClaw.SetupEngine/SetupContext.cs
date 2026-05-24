@@ -15,6 +15,7 @@ public sealed class SetupConfig
     public bool Headless { get; set; }
     public bool AutoApprovePairing { get; set; }
     public bool RollbackOnFailure { get; set; }
+    public int RollbackTimeoutSeconds { get; set; } = 60;
     public bool CleanBeforeRun { get; set; }
     public bool DryRun { get; set; }
     public bool ConfirmDestructive { get; set; }
@@ -69,6 +70,9 @@ public sealed class SetupConfig
 
 public sealed class WslConfig
 {
+    private static readonly System.Text.RegularExpressions.Regex s_linuxUserNamePattern =
+        new("^[a-z_][a-z0-9_-]{0,31}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public string User { get; set; } = "openclaw";
     public bool Systemd { get; set; } = true;
     public bool Interop { get; set; } = false;
@@ -78,6 +82,9 @@ public sealed class WslConfig
     public bool UseWindowsTimezone { get; set; } = true;
     public string? Memory { get; set; }
     public string? Swap { get; set; }
+
+    public static bool IsValidLinuxUserName(string value)
+        => s_linuxUserNamePattern.IsMatch(value);
 }
 
 // ─── Gateway Configuration ───
@@ -189,7 +196,7 @@ public sealed class TraySettingsConfig
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(settingsPath, json);
+        AtomicFile.WriteAllText(settingsPath, json);
     }
 }
 
@@ -237,6 +244,7 @@ public sealed class SetupContext
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }
+    public string LocalDataDir { get; }
 
     // WSL PATH prefix using configured user
     public string WslPathPrefix => WslConstants.GetPathPrefix(Config.Wsl.User);
@@ -249,10 +257,18 @@ public sealed class SetupContext
         Commands = commands;
         CancellationToken = ct;
 
-        DataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
+        DataDir = ResolveDataDir();
+        LocalDataDir = ResolveLocalDataDir();
 
         DistroName = config.DistroName;
         GatewayUrl = config.EffectiveGatewayUrl;
     }
+
+    public static string ResolveDataDir()
+        => Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
+
+    public static string ResolveLocalDataDir()
+        => Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
 }

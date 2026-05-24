@@ -95,6 +95,31 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task RunAsync_StepFails_WithRollback_TimesOutHungRollback()
+    {
+        var rollbackCalled = false;
+        var config = new SetupConfig { RollbackOnFailure = true, RollbackTimeoutSeconds = 1 };
+        var ctx = CreateContext(config);
+
+        var pipeline = new SetupPipeline([
+            new MockStep("s1",
+                (_, _) => Task.FromResult(StepResult.Ok()),
+                async (_, ct) =>
+                {
+                    rollbackCalled = true;
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                }),
+            new MockStep("s2", (_, _) => Task.FromResult(StepResult.Fail("fail"))),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.True(rollbackCalled);
+        Assert.Contains(ctx.Journal.Entries, e => e.StepId == "s1" && e.Event == "rollback_failed");
+    }
+
+    [Fact]
     public async Task RunAsync_StepFails_WithoutRollbackConfig_NoRollback()
     {
         var rollbackCalled = false;
@@ -206,6 +231,20 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task UninstallAsync_DryRun_DoesNotRequireConfirmDestructive()
+    {
+        var config = new SetupConfig { ConfirmDestructive = false, DryRun = true };
+        var ctx = CreateContext(config);
+        var pipeline = new SetupPipeline([
+            new MockStep("s1", (_, _) => Task.FromResult(StepResult.Ok())),
+        ]);
+
+        var result = await pipeline.UninstallAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+    }
+
+    [Fact]
     public async Task UninstallAsync_RunsRollbacksInReverse()
     {
         var order = new List<string>();
@@ -245,6 +284,32 @@ public class SetupPipelineTests
         var result = await pipeline.UninstallAsync(ctx);
         Assert.Equal(PipelineOutcome.Failed, result.Outcome);
         // All three rollbacks should have been attempted despite s2 failure
+        Assert.Equal(["s3", "s2", "s1"], order);
+    }
+
+    [Fact]
+    public async Task UninstallAsync_RollbackTimeout_ContinuesPastFailure()
+    {
+        var order = new List<string>();
+        var config = new SetupConfig { ConfirmDestructive = true, RollbackTimeoutSeconds = 1 };
+        var ctx = CreateContext(config);
+
+        var pipeline = new SetupPipeline([
+            new MockStep("s1", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { order.Add("s1"); return Task.CompletedTask; }),
+            new MockStep("s2", (_, _) => Task.FromResult(StepResult.Ok()),
+                async (_, ct) =>
+                {
+                    order.Add("s2");
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                }),
+            new MockStep("s3", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { order.Add("s3"); return Task.CompletedTask; }),
+        ]);
+
+        var result = await pipeline.UninstallAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
         Assert.Equal(["s3", "s2", "s1"], order);
     }
 

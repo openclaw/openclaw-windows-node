@@ -9,6 +9,7 @@ namespace OpenClaw.SetupEngine.UI;
 public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
+    private SetupRunLock? _setupLock;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -51,6 +52,18 @@ public sealed partial class SetupWindow : Window
         _config = SetupConfig.LoadFromFile(configPath);
         _config = SetupConfig.FromEnvironment(_config);
         _config.Headless = false;
+
+        Closed += (_, _) =>
+        {
+            _setupLock?.Dispose();
+            _setupLock = null;
+        };
+
+        if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
+        {
+            RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
+            return;
+        }
 
         RootFrame.Navigate(typeof(WelcomePage), _config);
     }

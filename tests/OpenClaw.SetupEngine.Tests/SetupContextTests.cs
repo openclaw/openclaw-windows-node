@@ -35,6 +35,22 @@ public class SetupContextTests
     }
 
     [Fact]
+    public void Constructor_SetsLocalDataDirFromEnvironment()
+    {
+        var prev = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", @"C:\custom\local");
+            var ctx = CreateContext();
+            Assert.Equal(@"C:\custom\local", ctx.LocalDataDir);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", prev);
+        }
+    }
+
+    [Fact]
     public void WslPathPrefix_UsesConfiguredUser()
     {
         var config = new SetupConfig();

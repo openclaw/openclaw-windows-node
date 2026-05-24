@@ -11,6 +11,8 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class WizardPage : Page
 {
+    private const int MaxWizardSteps = 50;
+    private const int MaxSameStepVisits = 3;
     private SetupConfig? _config;
     private OpenClawGatewayClient? _client;
     private string _sessionId = "";
@@ -18,6 +20,8 @@ public sealed partial class WizardPage : Page
     private string _stepType = "";
     private bool _sensitive;
     private bool _errorState;
+    private int _wizardStepCount;
+    private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOption> _options = [];
 
     public WizardPage()
@@ -43,6 +47,8 @@ public sealed partial class WizardPage : Page
             _errorState = false;
             await DisconnectAsync();
             _sessionId = "";
+            _wizardStepCount = 0;
+            _stepVisits.Clear();
             SetBusy("Connecting to gateway...");
             _client = await ConnectClientAsync();
             SetBusy("Starting wizard...");
@@ -140,10 +146,33 @@ public sealed partial class WizardPage : Page
 
         _stepId = step.TryGetProperty("id", out var id) ? id.ToString() : "";
         _stepType = step.TryGetProperty("type", out var type) ? type.ToString() : "note";
+        var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
         _sensitive = step.TryGetProperty("sensitive", out var sensitive) && sensitive.ValueKind == JsonValueKind.True;
         var title = step.TryGetProperty("title", out var titleProp) ? titleProp.ToString() : "";
         var message = step.TryGetProperty("message", out var msgProp) ? msgProp.ToString() : "";
         var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
+
+        if (string.IsNullOrWhiteSpace(_stepId))
+        {
+            ShowError("Gateway wizard step is missing an id.");
+            return;
+        }
+
+        _wizardStepCount++;
+        if (_wizardStepCount > MaxWizardSteps)
+        {
+            ShowError($"Gateway wizard exceeded {MaxWizardSteps} steps.");
+            return;
+        }
+
+        var visitKey = $"{_stepId}:{stepIndex}";
+        _stepVisits.TryGetValue(visitKey, out var visits);
+        _stepVisits[visitKey] = visits + 1;
+        if (_stepVisits[visitKey] > MaxSameStepVisits)
+        {
+            ShowError($"Gateway wizard repeated step '{_stepId}' too many times.");
+            return;
+        }
 
         ResetInputs();
         TitleText.Text = string.IsNullOrWhiteSpace(title) ? DisplayTitleFor(_stepType) : title;

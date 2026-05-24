@@ -123,7 +123,7 @@ public sealed partial class SetupLogger : IDisposable
     private static string Truncate(string input, int max = 4096)
         => input.Length <= max ? input : input[..max] + $"... [truncated {input.Length - max} chars]";
 
-    [GeneratedRegex(@"(token[=:\s]+)[^\s""']+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"((?:""[^""]*token[^""]*""|[A-Za-z0-9_.-]*token[A-Za-z0-9_.-]*)\s*[:=]?\s*""?)[^""\s,}]+", RegexOptions.IgnoreCase)]
     private static partial Regex TokenPattern();
 
     [GeneratedRegex(@"\b[a-fA-F0-9]{32,}\b")]

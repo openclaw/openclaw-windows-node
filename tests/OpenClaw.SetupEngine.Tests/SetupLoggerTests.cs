@@ -30,6 +30,20 @@ public class SetupLoggerTests : IDisposable
         Assert.Contains("[REDACTED]", entries[0].Message);
     }
 
+    [Fact]
+    public void Redaction_RedactsJsonTokenValues()
+    {
+        var entries = new List<LogEntry>();
+        using var logger = new SetupLogger(filePath: null);
+        logger.LogEmitted += (_, e) => entries.Add(e);
+
+        logger.CommandCompleted("cmd", new CommandResult(0, """{"token":"plain-secret-token-value"}""", "", TimeSpan.FromSeconds(1), false), TimeSpan.FromSeconds(1));
+
+        var serialized = System.Text.Json.JsonSerializer.Serialize(entries[0].Data);
+        Assert.DoesNotContain("plain-secret-token-value", serialized);
+        Assert.Contains("[REDACTED]", serialized);
+    }
+
     [Theory]
     [InlineData(32)]
     [InlineData(64)]

@@ -20,7 +20,8 @@ public sealed class TransactionJournal : IDisposable
         {
             var dir = Path.GetDirectoryName(filePath);
             if (dir != null) Directory.CreateDirectory(dir);
-            _writer = new StreamWriter(filePath, append: false) { AutoFlush = true };
+            LoadExistingEntries(filePath);
+            _writer = new StreamWriter(filePath, append: true) { AutoFlush = true };
         }
     }
 
@@ -77,6 +78,29 @@ public sealed class TransactionJournal : IDisposable
             catch (IOException)
             {
                 // Journal write failure is non-fatal — entries are still in memory
+            }
+        }
+    }
+
+    private void LoadExistingEntries(string filePath)
+    {
+        if (!File.Exists(filePath))
+            return;
+
+        foreach (var line in File.ReadLines(filePath))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            try
+            {
+                var entry = JsonSerializer.Deserialize<JournalEntry>(line, _jsonOptions);
+                if (entry != null)
+                    _entries.Add(entry);
+            }
+            catch (JsonException)
+            {
+                // Preserve the journal file as crash evidence even if one line is corrupt.
             }
         }
     }
