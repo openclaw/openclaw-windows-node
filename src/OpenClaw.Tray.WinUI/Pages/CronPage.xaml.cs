@@ -794,6 +794,7 @@ public sealed partial class CronPage : Page
             }
 
             _jobs = jobs;
+            _cronLoading.Complete(jobs.Count);
 
             // Restore expanded state from persisted set
             foreach (var vm in _jobs)
@@ -805,9 +806,7 @@ public sealed partial class CronPage : Page
             if (jobs.Count > 0)
             {
                 // Don't rebuild cards if we're currently editing inline (would lose the form)
-            _cronLoading.Complete(jobs.Count);
-
-            if (_editingJobId == null)
+                if (_editingJobId == null)
                     RebuildJobCards();
             }
             else
