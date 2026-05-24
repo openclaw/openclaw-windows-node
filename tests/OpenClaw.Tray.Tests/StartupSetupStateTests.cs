@@ -305,6 +305,52 @@ public class StartupSetupStateTests
     }
 
     [Fact]
+    public async Task ClassifyAsync_AcceptsNumericSetupStatePhase()
+    {
+        using var temp = TempSettings.Create();
+        var localDataPath = Path.Combine(temp.Path, "local-data");
+        Directory.CreateDirectory(localDataPath);
+        File.WriteAllText(
+            Path.Combine(localDataPath, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","Phase":13,"Status":7}""");
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        var wsl = new ThrowingWslCommandRunner();
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: localDataPath);
+
+        Assert.Equal(SetupExistingGatewayKind.AppOwnedLocalWsl, kind);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_RejectsNumericNotStartedSetupStatePhase()
+    {
+        using var temp = TempSettings.Create();
+        var localDataPath = Path.Combine(temp.Path, "local-data");
+        Directory.CreateDirectory(localDataPath);
+        File.WriteAllText(
+            Path.Combine(localDataPath, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","Phase":0,"Status":0}""");
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        var wsl = new ThrowingWslCommandRunner();
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: localDataPath);
+
+        Assert.Equal(SetupExistingGatewayKind.None, kind);
+    }
+
+    [Fact]
     public void RequiresSetup_ReturnsFalse_WhenMcpEnabledEvenWithNodeModeAndNoNodeToken()
     {
         // Regression guard: the original code returned !EnableMcpServer as the

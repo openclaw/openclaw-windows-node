@@ -124,13 +124,21 @@ public sealed class CommandRunner
         string command,
         TimeSpan timeout,
         IReadOnlyDictionary<string, string>? environment = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? user = null)
     {
         // Strip Windows \r to avoid bash "$'\r': command not found" errors
         command = command.Replace("\r", "");
 
-        // Build wsl.exe arguments: -d <distro> -- <shell command>
-        var args = new[] { "-d", distroName, "--", "bash", "-c", command };
+        // Build wsl.exe arguments: -d <distro> [-u <user>] -- <shell command>
+        var args = new List<string> { "-d", distroName };
+        if (!string.IsNullOrWhiteSpace(user))
+        {
+            args.Add("-u");
+            args.Add(user);
+        }
+
+        args.AddRange(["--", "bash", "-c", command]);
 
         // Pass WSL environment variables via WSLENV
         Dictionary<string, string>? env = null;
@@ -143,7 +151,7 @@ public sealed class CommandRunner
                 : wslEnvKeys;
         }
 
-        return RunAsync("wsl.exe", args, timeout, env, ct: ct);
+        return RunAsync("wsl.exe", args.ToArray(), timeout, env, ct: ct);
     }
 
     private static void TryKill(Process process)

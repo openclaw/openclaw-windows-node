@@ -269,6 +269,15 @@ public sealed class SetupContext
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
 
     public static string ResolveLocalDataDir()
-        => Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR") is { Length: > 0 } localAppDataRoot)
+            return Path.Combine(localAppDataRoot, "OpenClawTray");
+
+        // Compatibility alias used by early SetupEngine tests/builds. Unlike
+        // LOCALAPPDATA_DIR, this points directly at the OpenClawTray data folder.
+        if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR") is { Length: > 0 } localDataDir)
+            return localDataDir;
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
+    }
 }

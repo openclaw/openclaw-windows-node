@@ -31,6 +31,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     /// Set as OPENCLAW_TRAY_DATA_DIR env var.
     /// </summary>
     public string DataDir { get; }
+    public string LocalAppDataRoot { get; }
 
     public int McpPort { get; private set; }
     public string McpEndpoint => $"http://127.0.0.1:{McpPort}/mcp";
@@ -50,7 +51,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         // Data dir in temp — this is what the tray and setup engine use
         DataDir = Path.Combine(Path.GetTempPath(), $"openclaw-e2e-{runId}");
+        LocalAppDataRoot = Path.Combine(Path.GetTempPath(), $"openclaw-e2e-localappdata-{runId}");
         Directory.CreateDirectory(DataDir);
+        Directory.CreateDirectory(LocalAppDataRoot);
 
         // Artifact dir under repo TestResults — persists after cleanup for CI upload
         var repoRoot = FindRepoRoot();
@@ -61,7 +64,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         _configPath = Path.Combine(DataDir, "e2e-config.json");
         WriteConfig();
 
-        Log($"E2E fixture initialized: distro={_distroName}, dataDir={DataDir}, artifacts={ArtifactDir}");
+        Log($"E2E fixture initialized: distro={_distroName}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
     }
 
     public async Task InitializeAsync()
@@ -71,6 +74,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
 
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
         var exitCode = await Program.Main([
             "--config", _configPath,
@@ -148,6 +153,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var uninstallLogPath = Path.Combine(ArtifactDir, "uninstall-engine.jsonl");
 
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
         try
         {
@@ -167,9 +174,11 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         // 4. Copy logs from data dir to artifact dir before deleting
         CopyDataDirLogs();
 
-        // 5. Delete temp data dir (best-effort)
+        // 5. Delete temp data dirs (best-effort)
         try { Directory.Delete(DataDir, recursive: true); }
         catch (Exception ex) { Log($"Warning: temp dir cleanup failed: {ex.Message}"); }
+        try { Directory.Delete(LocalAppDataRoot, recursive: true); }
+        catch (Exception ex) { Log($"Warning: temp local appdata cleanup failed: {ex.Message}"); }
 
         Log("Teardown complete.");
     }
@@ -355,6 +364,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             RedirectStandardError = true,
         };
         psi.Environment["OPENCLAW_TRAY_DATA_DIR"] = DataDir;
+        psi.Environment["OPENCLAW_TRAY_APPDATA_DIR"] = DataDir;
+        psi.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = LocalAppDataRoot;
         psi.Environment["OPENCLAW_MCP_PORT"] = McpPort.ToString();
         psi.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
 
@@ -392,20 +403,29 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     {
         try
         {
-            foreach (var ext in new[] { "*.log", "*.jsonl", "*.json" })
-            {
-                foreach (var file in Directory.EnumerateFiles(DataDir, ext, SearchOption.AllDirectories))
-                {
-                    var relativePath = Path.GetRelativePath(DataDir, file);
-                    var dest = Path.Combine(ArtifactDir, "data-dir", relativePath);
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                    File.Copy(file, dest, overwrite: true);
-                }
-            }
+            CopyLogsFrom(DataDir, "data-dir");
+            CopyLogsFrom(LocalAppDataRoot, "localappdata-dir");
         }
         catch (Exception ex)
         {
             Log($"Warning: copying data dir logs failed: {ex.Message}");
+        }
+    }
+
+    private void CopyLogsFrom(string root, string artifactSubdir)
+    {
+        if (!Directory.Exists(root))
+            return;
+
+        foreach (var ext in new[] { "*.log", "*.jsonl", "*.json" })
+        {
+            foreach (var file in Directory.EnumerateFiles(root, ext, SearchOption.AllDirectories))
+            {
+                var relativePath = Path.GetRelativePath(root, file);
+                var dest = Path.Combine(ArtifactDir, artifactSubdir, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(file, dest, overwrite: true);
+            }
         }
     }
 

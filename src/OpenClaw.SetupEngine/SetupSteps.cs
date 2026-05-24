@@ -495,7 +495,7 @@ useWindowsTimezone={wsl.UseWindowsTimezone.ToString().ToLower()}
             echo "CONFIGURED_OK"
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct);
+        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct, user: "root");
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("CONFIGURED_OK"))
             return StepResult.Fail($"Configuration failed: {result.Stderr}");

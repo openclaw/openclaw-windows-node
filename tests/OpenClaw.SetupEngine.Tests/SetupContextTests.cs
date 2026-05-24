@@ -38,8 +38,10 @@ public class SetupContextTests
     public void Constructor_SetsLocalDataDirFromEnvironment()
     {
         var prev = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        var prevRoot = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
         try
         {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", null);
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", @"C:\custom\local");
             var ctx = CreateContext();
             Assert.Equal(@"C:\custom\local", ctx.LocalDataDir);
@@ -47,6 +49,23 @@ public class SetupContextTests
         finally
         {
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", prev);
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", prevRoot);
+        }
+    }
+
+    [Fact]
+    public void Constructor_SetsLocalDataDirFromLocalAppDataRootEnvironment()
+    {
+        var prev = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", @"C:\custom\localappdata");
+            var ctx = CreateContext();
+            Assert.Equal(@"C:\custom\localappdata\OpenClawTray", ctx.LocalDataDir);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", prev);
         }
     }
 

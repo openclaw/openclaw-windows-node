@@ -200,11 +200,7 @@ public sealed partial class SettingsPage : Page
 
     private void LoadGatewaySection(SettingsManager settings)
     {
-        var localDataRoot = Path.Combine(
-            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
-                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
-        var setupStatePath = Path.Combine(localDataRoot, "setup-state.json");
+        var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
 
         _localGatewayInstalled = File.Exists(setupStatePath)
             || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);

@@ -1798,8 +1798,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             var stateFile = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "setup-state.json");
+                SetupExistingGatewayClassifier.ResolveLocalDataPath(),
+                "setup-state.json");
 
             if (File.Exists(stateFile))
             {
