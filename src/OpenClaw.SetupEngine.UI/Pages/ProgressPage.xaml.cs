@@ -259,6 +259,7 @@ internal sealed class StepRow
 
     private readonly TextBlock _label;
     private readonly ProgressRing _spinner;
+    private readonly Border _idleBadge;
     private readonly Border _checkBadge;
     private readonly Border _errorBadge;
 
@@ -273,18 +274,28 @@ internal sealed class StepRow
 
         _spinner = new ProgressRing
         {
-            Width = 24, Height = 24,
+            Width = 28, Height = 28,
+            MinWidth = 28, MinHeight = 28,
             IsActive = false,
             Visibility = Visibility.Collapsed,
         };
 
-        _checkBadge = CreateBadge("✓", Color.FromArgb(255, 0x2B, 0xC3, 0x6F), Color.FromArgb(255, 255, 255, 255));
+        _idleBadge = CreateEmptyBadge();
+
+        _checkBadge = CreateIconBadge("\uE73E", Color.FromArgb(255, 0x2B, 0xC3, 0x6F), Color.FromArgb(255, 255, 255, 255));
         _checkBadge.Visibility = Visibility.Collapsed;
 
-        _errorBadge = CreateBadge("✕", Color.FromArgb(255, 0xF4, 0xA6, 0xB0), Color.FromArgb(255, 0, 0, 0));
+        _errorBadge = CreateIconBadge("\uE711", Color.FromArgb(255, 0xE8, 0x11, 0x23), Color.FromArgb(255, 255, 255, 255));
         _errorBadge.Visibility = Visibility.Collapsed;
 
-            var badgeContainer = new Grid { Width = 24, Height = 24 };
+        var badgeContainer = new Grid
+        {
+            Width = 32,
+            Height = 32,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        badgeContainer.Children.Add(_idleBadge);
         badgeContainer.Children.Add(_spinner);
         badgeContainer.Children.Add(_checkBadge);
         badgeContainer.Children.Add(_errorBadge);
@@ -306,22 +317,40 @@ internal sealed class StepRow
         Status = status;
         _spinner.IsActive = status == StepStatus.Running;
         _spinner.Visibility = status == StepStatus.Running ? Visibility.Visible : Visibility.Collapsed;
+        _idleBadge.Visibility = status == StepStatus.Idle ? Visibility.Visible : Visibility.Collapsed;
         _checkBadge.Visibility = status == StepStatus.Done ? Visibility.Visible : Visibility.Collapsed;
         _errorBadge.Visibility = status == StepStatus.Failed ? Visibility.Visible : Visibility.Collapsed;
+        _label.Opacity = status == StepStatus.Idle ? 0.72 : 1.0;
+        _label.FontWeight = status == StepStatus.Running
+            ? Microsoft.UI.Text.FontWeights.SemiBold
+            : Microsoft.UI.Text.FontWeights.Normal;
     }
 
-    private static Border CreateBadge(string symbol, Color background, Color foreground)
+    private static Border CreateEmptyBadge()
     {
         return new Border
         {
-            Width = 23, Height = 23,
-            CornerRadius = new CornerRadius(12),
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(11),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
+        };
+    }
+
+    private static Border CreateIconBadge(string glyph, Color background, Color foreground)
+    {
+        return new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(11),
             Background = new SolidColorBrush(background),
-            Child = new TextBlock
+            Child = new FontIcon
             {
-                Text = symbol,
-                FontSize = 14,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Glyph = glyph,
+                FontSize = 12,
+                FontFamily = new FontFamily("Segoe Fluent Icons"),
                 Foreground = new SolidColorBrush(foreground),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
