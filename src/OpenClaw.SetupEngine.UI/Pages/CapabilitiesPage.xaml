@@ -9,7 +9,7 @@
 
         <!-- Header with lobster icon -->
         <StackPanel Grid.Row="0" Spacing="6" HorizontalAlignment="Center">
-            <Image Source="Assets/Setup/Lobster.png" Width="64" Height="64"
+            <Image Source="ms-appx:///Assets/Setup/Lobster.png" Width="64" Height="64"
                    HorizontalAlignment="Center" Margin="0,0,0,8" />
             <TextBlock Text="Configure capabilities"
                        FontSize="24" FontWeight="SemiBold"

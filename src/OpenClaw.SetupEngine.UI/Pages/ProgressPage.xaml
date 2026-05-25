@@ -9,7 +9,7 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Padding="56,24,56,0" Spacing="4">
-            <Image Source="Assets/Setup/Lobster.png" Width="44" Height="44"
+            <Image Source="ms-appx:///Assets/Setup/Lobster.png" Width="44" Height="44"
                    HorizontalAlignment="Center" Margin="0,0,0,2" />
             <TextBlock Text="Setting up locally"
                        FontSize="26" FontWeight="SemiBold"

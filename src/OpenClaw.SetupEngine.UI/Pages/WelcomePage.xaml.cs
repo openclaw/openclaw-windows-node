@@ -1,9 +1,12 @@
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using System.Diagnostics;
+using System.Numerics;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -32,6 +35,26 @@ public sealed partial class WelcomePage : Page
 
         InfoText.Text = "This local setup installs a small WSL Linux instance dedicated to OpenClaw. "
                       + "If you'd rather connect to an existing or remote gateway, choose Advanced setup.";
+
+        StartLobsterBreatheAnimation();
+    }
+
+    private void StartLobsterBreatheAnimation()
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(LobsterHero);
+        var compositor = visual.Compositor;
+        var centerX = LobsterHero.ActualWidth > 0 ? LobsterHero.ActualWidth / 2 : LobsterHero.Width / 2;
+        var centerY = LobsterHero.ActualHeight > 0 ? LobsterHero.ActualHeight / 2 : LobsterHero.Height / 2;
+        visual.CenterPoint = new Vector3((float)centerX, (float)centerY, 0f);
+
+        var pulse = compositor.CreateVector3KeyFrameAnimation();
+        pulse.InsertKeyFrame(0f, new Vector3(1f, 1f, 1f));
+        pulse.InsertKeyFrame(0.5f, new Vector3(1.025f, 1.025f, 1f));
+        pulse.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f));
+        pulse.Duration = TimeSpan.FromMilliseconds(4200);
+        pulse.IterationBehavior = AnimationIterationBehavior.Forever;
+
+        visual.StartAnimation("Scale", pulse);
     }
 
     private async void StartButton_Click(object sender, RoutedEventArgs e)
