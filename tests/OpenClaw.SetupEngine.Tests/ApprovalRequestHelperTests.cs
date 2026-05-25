@@ -62,4 +62,36 @@ public class ApprovalRequestHelperTests
         Assert.False(result.Success);
         Assert.Contains("unsafe", result.Error);
     }
+
+    [Fact]
+    public void TryReadSelectedRequestId_ReadsRequestWhenCliRequiresExplicitAuthFlags()
+    {
+        var result = ApprovalRequestHelper.TryReadSelectedRequestId("""
+        {
+          "selected": {
+            "requestId": "device-req-1",
+            "role": "operator"
+          },
+          "approveCommand": "openclaw devices approve device-req-1 --json",
+          "requiresAuthFlags": {
+            "token": true,
+            "password": false
+          }
+        }
+        """);
+
+        Assert.True(result.Success);
+        Assert.Equal("device-req-1", result.RequestId);
+    }
+
+    [Fact]
+    public void TryReadApprovedRequestId_ReadsApproveSuccessShape()
+    {
+        var result = ApprovalRequestHelper.TryReadApprovedRequestId("""
+        {"requestId":"device-req-2","device":{"role":"operator"}}
+        """);
+
+        Assert.True(result.Success);
+        Assert.Equal("device-req-2", result.RequestId);
+    }
 }

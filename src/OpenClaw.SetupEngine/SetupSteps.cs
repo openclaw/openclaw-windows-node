@@ -1890,6 +1890,11 @@ public sealed class PairNodeStep : SetupStep
         {
             client.RegisterCapability(new StubNodeCapability(category, commands));
         }
+        if (ctx.Config.Settings.NodeCameraEnabled && ctx.Config.Capabilities.Camera)
+            client.SetPermission("camera.capture", true);
+        if (ctx.Config.Settings.NodeScreenEnabled && ctx.Config.Capabilities.Screen)
+            client.SetPermission("screen.record", true);
+
         ctx.Logger.Info($"Registered {capabilities.Count} capability categories with {capabilities.Sum(c => c.Commands.Length)} total commands");
     }
 
@@ -1967,74 +1972,111 @@ public sealed class VerifyEndToEndStep : SetupStep
         WriteSettingsJson(ctx);
 
         // Drain any remaining pending approvals (device or node) so tray starts clean
-        await DrainPendingApprovalsAsync(ctx, ct);
+        var drainResult = await DrainPendingApprovalsAsync(ctx, ct);
+        if (!drainResult.IsSuccess)
+            return drainResult;
 
         ClearPersistedBootstrapCredentials(ctx);
 
         return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
     }
 
-    private static async Task DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
+    private static async Task<StepResult> DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return StepResult.Fail("No gateway token available to drain pending approvals");
+
         var pathPrefix = ctx.WslPathPrefix;
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        const int maxDrainIterations = 10;
 
-        // Approve pending device requests (up to 5 iterations to drain all)
-        for (int i = 0; i < 5; i++)
+        for (var i = 0; i < maxDrainIterations; i++)
         {
             var preview = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{pathPrefix} && openclaw devices approve --latest --json""",
                 TimeSpan.FromSeconds(15), env, ct);
 
-            if (preview.ExitCode != 0 || preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase))
-                break;
-
-            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
-            if (!parsed.Success)
+            if (preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
+                preview.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
             {
-                ctx.Logger.Warn($"Stopping device approval drain: {parsed.Error}");
                 break;
             }
 
-            ctx.Logger.Info($"Draining pending device approval: {parsed.RequestId}");
-            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
-            await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-                TimeSpan.FromSeconds(15), approvalEnv, ct);
+            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
+            if (parsed.Success)
+            {
+                ctx.Logger.Info($"Draining pending device approval: {parsed.RequestId}");
+                var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
+                var approve = await ctx.Commands.RunInWslAsync(
+                    distro,
+                    $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
+                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+
+                if (approve.ExitCode != 0)
+                    return StepResult.Fail($"Device approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
+
+                if (i == maxDrainIterations - 1)
+                    return StepResult.Fail("Device approval drain reached its iteration limit; pending approvals may remain");
+
+                continue;
+            }
+
+            if (preview.ExitCode == 0)
+            {
+                var approved = ApprovalRequestHelper.TryReadApprovedRequestId(preview.Stdout.Trim());
+                if (approved.Success)
+                {
+                    ctx.Logger.Info($"Drained pending device approval via latest command: {approved.RequestId}");
+                    if (i == maxDrainIterations - 1)
+                        return StepResult.Fail("Device approval drain reached its iteration limit; pending approvals may remain");
+
+                    continue;
+                }
+            }
+
+            return StepResult.Fail($"Could not select pending device approval for drain (exit {preview.ExitCode}): {parsed.Error ?? preview.Stderr.Trim()}");
         }
 
-        // Approve pending node requests
-        for (int i = 0; i < 5; i++)
+        for (var i = 0; i < maxDrainIterations; i++)
         {
             var nodeList = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{pathPrefix} && openclaw nodes list --json""",
                 TimeSpan.FromSeconds(15), env, ct);
 
-            if (nodeList.ExitCode != 0) break;
-
             var parsed = ApprovalRequestHelper.TryReadPendingRequestIds(nodeList.Stdout.Trim());
             if (!parsed.Success)
             {
-                ctx.Logger.Warn($"Stopping node approval drain: {parsed.Error}");
-                break;
+                if (nodeList.ExitCode != 0)
+                    return StepResult.Fail($"Could not list pending node approvals (exit {nodeList.ExitCode}): {nodeList.Stdout.Trim()} {nodeList.Stderr.Trim()}".Trim());
+
+                return StepResult.Fail($"Could not parse pending node approvals: {parsed.Error}");
             }
 
             if (parsed.RequestIds.Count == 0)
                 break;
 
-            var requestId = parsed.RequestIds[0];
-            ctx.Logger.Info($"Draining pending node approval: {requestId}");
-            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId);
-            await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
-                TimeSpan.FromSeconds(15), approvalEnv, ct);
+            foreach (var requestId in parsed.RequestIds)
+            {
+                ctx.Logger.Info($"Draining pending node approval: {requestId}");
+                var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId);
+                var approve = await ctx.Commands.RunInWslAsync(
+                    distro,
+                    $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
+                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+
+                if (approve.ExitCode != 0)
+                    return StepResult.Fail($"Node approval drain failed for {requestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
+            }
+
+            if (i == maxDrainIterations - 1)
+                return StepResult.Fail("Node approval drain reached its iteration limit; pending approvals may remain");
         }
+
+        return StepResult.Ok("Pending approvals drained");
     }
 
     private static void WriteSettingsJson(SetupContext ctx)

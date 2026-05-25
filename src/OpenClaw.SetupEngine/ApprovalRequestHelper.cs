@@ -56,6 +56,22 @@ internal static partial class ApprovalRequestHelper
         }
     }
 
+    internal static RequestIdParseResult TryReadApprovedRequestId(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return RequestIdParseResult.NotFound("Approval output was empty.");
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return TryReadRequestId(doc.RootElement);
+        }
+        catch (JsonException ex)
+        {
+            return RequestIdParseResult.NotFound($"Approval output was not valid JSON: {ex.Message}");
+        }
+    }
+
     internal static RequestIdParseResult TryReadSinglePendingRequestId(string json)
     {
         var all = TryReadPendingRequestIds(json);

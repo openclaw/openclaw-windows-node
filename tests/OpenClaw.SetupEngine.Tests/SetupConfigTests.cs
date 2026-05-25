@@ -155,6 +155,16 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void CapabilitiesConfig_DefaultOrderMatchesTrayRegistrationOrder()
+    {
+        var caps = new CapabilitiesConfig();
+
+        Assert.Equal(
+            ["system", "canvas", "screen", "camera", "location", "tts", "stt", "device", "browser"],
+            caps.GetEnabledCapabilities().Select(c => c.Category).ToArray());
+    }
+
+    [Fact]
     public void CapabilitiesConfig_GetEnabledCommandIds_FlattensEnabledCapabilities()
     {
         var caps = new CapabilitiesConfig

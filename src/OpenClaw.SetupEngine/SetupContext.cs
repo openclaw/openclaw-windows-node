@@ -134,10 +134,10 @@ public sealed class CapabilitiesConfig
         if (Screen) result.Add(("screen", ["screen.snapshot", "screen.record"]));
         if (Camera) result.Add(("camera", ["camera.list", "camera.snap", "camera.clip"]));
         if (Location) result.Add(("location", ["location.get"]));
-        if (Device) result.Add(("device", ["device.info", "device.status"]));
-        if (Browser) result.Add(("browser", ["browser.proxy"]));
         if (Tts) result.Add(("tts", ["tts.speak"]));
         if (Stt) result.Add(("stt", ["stt.transcribe", "stt.listen", "stt.status"]));
+        if (Device) result.Add(("device", ["device.info", "device.status"]));
+        if (Browser) result.Add(("browser", ["browser.proxy"]));
 
         return result;
     }
