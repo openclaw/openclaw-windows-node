@@ -31,22 +31,24 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public sealed class UIThreadFixture : IDisposable
 {
-    // Match OpenClaw.Tray.WinUI.csproj's Microsoft.WindowsAppSDK package version
-    // (1.8). The bootstrapper resolves a system-installed
-    // Microsoft.WindowsAppRuntime.1.8 framework MSIX (stable channel = empty version
+    // Match the Microsoft.WindowsAppSDK package's runtime major/minor. The
+    // bootstrapper resolves a system-installed Microsoft.WindowsAppRuntime.2.0
+    // framework MSIX (stable channel = empty version
     // tag). On dev machines and on CI the runtime is installed out-of-band — see
     // .github/workflows/ci.yml ("Install WindowsAppRuntime") and the README setup
     // notes. Self-contained deployment was tried but doesn't survive the xunit
     // testhost: the testhost.exe lives in the .NET SDK directory, so the SDK's
     // P/Invoke-based auto-initializer can't probe the test bin folder.
-    private const uint WinAppSdkMajorMinor = 0x00010008;
+    private const uint WinAppSdkMajorMinor = 0x00020000;
     private const string WinAppSdkVersionTag = "";
+    private const int DefaultStartupTimeoutSeconds = 90;
 
     private static int s_bootstrapInitialized; // 0 = no, 1 = yes
 
     private readonly Thread _uiThread;
     private readonly ManualResetEventSlim _ready = new(false);
     private Exception? _startupError;
+    private volatile string _startupPhase = "not started";
 
     /// <summary>
     /// True when env var SLOW_UI_TESTS=1. Window stays visible, tests insert
@@ -84,9 +86,20 @@ public sealed class UIThreadFixture : IDisposable
         _uiThread.SetApartmentState(ApartmentState.STA);
         _uiThread.Start();
 
-        // Wait up to 30s for Application.Start + Window setup to signal ready.
-        if (!_ready.Wait(TimeSpan.FromSeconds(30)))
-            throw new InvalidOperationException("UIThreadFixture failed to initialize within 30s");
+        // Wait for Application.Start + Window setup to signal ready. CI can be
+        // slow on first WinAppSDK activation, so keep the default generous but
+        // overrideable when debugging.
+        var timeoutSeconds = int.TryParse(
+            Environment.GetEnvironmentVariable("OPENCLAW_UI_FIXTURE_TIMEOUT_SECONDS"),
+            out var configuredTimeoutSeconds) && configuredTimeoutSeconds > 0
+            ? configuredTimeoutSeconds
+            : DefaultStartupTimeoutSeconds;
+        if (!_ready.Wait(TimeSpan.FromSeconds(timeoutSeconds)))
+        {
+            var threadState = _uiThread.IsAlive ? _uiThread.ThreadState.ToString() : "stopped";
+            throw new InvalidOperationException(
+                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', threadState='{threadState}'");
+        }
         if (_startupError != null)
             throw new InvalidOperationException("UIThreadFixture initialization failed", _startupError);
     }
@@ -137,6 +150,8 @@ public sealed class UIThreadFixture : IDisposable
     {
         try
         {
+            _startupPhase = "initializing Windows App SDK bootstrap";
+
             // Initialize WinAppSDK runtime (unpackaged process).
             if (Interlocked.Exchange(ref s_bootstrapInitialized, 1) == 0)
             {
@@ -145,17 +160,22 @@ public sealed class UIThreadFixture : IDisposable
 
             // Application.Start blocks the calling thread until Application.Current.Exit().
             // The lambda runs once, on this same thread, with a live dispatcher.
+            _startupPhase = "starting WinUI Application";
             Application.Start(p =>
             {
                 try
                 {
+                    _startupPhase = "creating TestApp";
                     var app = new TestApp(); // ctor stashes itself as Application.Current
                     // Application.Resources can only be touched once the COM object
                     // is fully wired; safe by the time we reach here (post-ctor).
+                    _startupPhase = "merging app resources";
                     app.MergeStandardResources();
 
+                    _startupPhase = "getting dispatcher";
                     Dispatcher = DispatcherQueue.GetForCurrentThread();
 
+                    _startupPhase = "creating hidden test window";
                     Container = new Grid { Padding = new Microsoft.UI.Xaml.Thickness(24) };
                     TestWindow = new Window
                     {
@@ -173,14 +193,17 @@ public sealed class UIThreadFixture : IDisposable
                         catch { /* best-effort sizing */ }
                     }
 
+                    _startupPhase = "activating test window";
                     TestWindow.Activate();
 
                     if (!IsSlow)
                     {
                         // Default: hide the window so CI runs are silent.
+                        _startupPhase = "hiding test window";
                         TryHide(TestWindow);
                     }
 
+                    _startupPhase = "ready";
                     _ready.Set();
                 }
                 catch (Exception ex)

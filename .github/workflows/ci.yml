@@ -158,14 +158,14 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(1.8, stable),
+    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.0, stable),
     # which looks up the framework package by identity. The hosted windows-2025
     # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 1.8.260101001 in the csprojs.
-    - name: Install WindowsAppRuntime 1.8
+    # Version pinned to match Microsoft.WindowsAppSDK 2.0.1 in the csprojs.
+    - name: Install WindowsAppRuntime 2.0.1
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/1.8/1.8.260101001/windowsappruntimeinstall-x64.exe"
+        $url = "https://aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
