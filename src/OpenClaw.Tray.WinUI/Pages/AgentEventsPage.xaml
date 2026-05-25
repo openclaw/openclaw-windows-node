@@ -52,7 +52,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Clear, Mode=OneTime}"
                               FontSize="14" IsTextScaleFactorEnabled="False"/>
-                    <TextBlock x:Uid="ClearButton" Text="Clear"/>
+                    <TextBlock Text="Clear"/>
                 </StackPanel>
             </Button>
         </Grid>

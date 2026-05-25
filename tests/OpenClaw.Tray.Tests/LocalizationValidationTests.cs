@@ -23,6 +23,12 @@ public class LocalizationValidationTests
         "Title",
     };
 
+    private static readonly IReadOnlyDictionary<string, HashSet<string>> SupportedLocalizablePropertiesByElement =
+        new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            ["TextBlock"] = new(StringComparer.Ordinal) { "Text" },
+        };
+
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
         "AboutPage_TextBlock_19.Text",
@@ -364,6 +370,57 @@ public class LocalizationValidationTests
         Assert.True(missing.Count == 0,
             "Every localizable XAML attribute on an x:Uid element must have an en-us Resources.resw key. Missing: " +
             string.Join("; ", missing.Take(50)));
+    }
+
+    [Fact]
+    public void XamlControlsWithXUid_DoNotUseUnsupportedLocalizationProperties()
+    {
+        var winUiRoot = Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var resourceKeys = LoadResw(Path.Combine(GetStringsDirectory(), "en-us", "Resources.resw"))
+            .Keys
+            .ToList();
+        var invalid = new List<string>();
+
+        foreach (var xamlPath in Directory.EnumerateFiles(winUiRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(IsSourceXaml)
+                     .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            var relativePath = Path.GetRelativePath(GetRepositoryRoot(), xamlPath);
+            var doc = XDocument.Load(xamlPath, LoadOptions.SetLineInfo);
+
+            foreach (var element in doc.Descendants())
+            {
+                var elementName = element.Name.LocalName;
+                var uid = element.Attribute(XamlNamespace + "Uid")?.Value;
+                if (string.IsNullOrWhiteSpace(uid) ||
+                    !SupportedLocalizablePropertiesByElement.TryGetValue(elementName, out var supportedProperties))
+                {
+                    continue;
+                }
+
+                var resourcePrefix = $"{uid}.";
+                foreach (var key in resourceKeys.Where(k => k.StartsWith(resourcePrefix, StringComparison.Ordinal)))
+                {
+                    var propertyName = key[resourcePrefix.Length..];
+                    if (!LocalizableXamlAttributes.Contains(propertyName) ||
+                        supportedProperties.Contains(propertyName))
+                    {
+                        continue;
+                    }
+
+                    var line = element is IXmlLineInfo lineInfo && lineInfo.HasLineInfo()
+                        ? lineInfo.LineNumber
+                        : 0;
+                    invalid.Add(
+                        $"{relativePath}:{line} {elementName} x:Uid=\"{uid}\" cannot use resource '{key}'. " +
+                        $"Supported localizable properties: {string.Join(", ", supportedProperties.OrderBy(p => p, StringComparer.Ordinal))}");
+                }
+            }
+        }
+
+        Assert.True(invalid.Count == 0,
+            "XAML localization resources must target properties that exist on the x:Uid element. Invalid: " +
+            string.Join("; ", invalid.Take(50)));
     }
 
     private static bool IsSourceXaml(string path)
