@@ -435,18 +435,24 @@ public sealed partial class HubWindow : WindowEx
         try
         {
             var vis = connected ? Visibility.Visible : Visibility.Collapsed;
+            var currentTag = _currentNavTag ?? (NavView?.SelectedItem as NavigationViewItem)?.Tag as string;
+            var keepCurrentGatewayPageVisible = !connected &&
+                GatewayNavVisibilityDebouncePolicy.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
+
             NavChat.Visibility = vis;
             NavSessions.Visibility = vis;
             NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
-            NavAdvanced.Visibility = vis;
+            NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
             NavGatewaySeparator.Visibility = vis;
 
             if (!connected)
             {
-                var currentTag = (NavView?.SelectedItem as NavigationViewItem)?.Tag as string;
+                if (keepCurrentGatewayPageVisible)
+                    return;
+
                 var gatewayTags = new HashSet<string> { "chat", "sessions", "skills", "channels", "instances", "agentevents", "bindings", "config", "usage", "cron", "workspace" };
                 if (currentTag != null && (gatewayTags.Contains(currentTag) || currentTag.StartsWith("agent:")))
                 {

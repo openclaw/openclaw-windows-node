@@ -157,6 +157,14 @@ public class LocalizationValidationTests
         "ConnectionStatusWindow_SSHUser.PlaceholderText",
         "ConnectionStatusWindow_WsLocalhost18790.PlaceholderText",
         "ConnectionStatusWindow_WsLocalhost18790.Text",
+        // ConfigPage runtime reconnect dialog strings — seeded English-only
+        // across all locales until translations land. Fetched at runtime via
+        // LocalizationHelper and follows the deferred-translation pattern used
+        // by other recently added runtime strings above.
+        "ConfigPage_ReconnectDialogAccepted",
+        "ConfigPage_ReconnectDialogBody",
+        "ConfigPage_ReconnectDialogTitle",
+        "ConfigPage_ReconnectDialogWaiting",
         "CronPage_AmericaChicago.Content",
         "CronPage_AmericaDenver.Content",
         "CronPage_AmericaLosAngeles.Content",

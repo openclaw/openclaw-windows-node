@@ -713,8 +713,14 @@ public sealed class NodeService : IDisposable
         if (_nodeClient == null)
             return null;
 
-        var capabilities = _nodeClient.Capabilities.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var commands = _nodeClient.Capabilities.SelectMany(c => c.Commands).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        INodeCapability[] capabilitySnapshot;
+        lock (_capabilitiesLock)
+        {
+            capabilitySnapshot = _capabilities.ToArray();
+        }
+
+        var capabilities = capabilitySnapshot.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var commands = capabilitySnapshot.SelectMany(c => c.Commands).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         return new GatewayNodeInfo
         {

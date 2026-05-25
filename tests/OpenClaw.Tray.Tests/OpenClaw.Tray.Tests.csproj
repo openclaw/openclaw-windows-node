@@ -38,6 +38,8 @@
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConfigEditorModel.cs" Link="Services\ConfigEditorModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />

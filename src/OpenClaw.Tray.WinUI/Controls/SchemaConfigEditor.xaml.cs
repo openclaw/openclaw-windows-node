@@ -3,6 +3,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,11 +12,23 @@ using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Controls;
 
+public sealed class SchemaConfigChangedEventArgs(
+    Dictionary<string, object?> changes,
+    Dictionary<string, string> validationErrors)
+    : EventArgs
+{
+    public Dictionary<string, object?> Changes { get; } = changes;
+    public Dictionary<string, string> ValidationErrors { get; } = validationErrors;
+}
+
 public sealed partial class SchemaConfigEditor : UserControl
 {
     private JsonElement _schema;
     private JsonElement _config;
-    private readonly Dictionary<string, object?> _changes = new();
+    private bool _loading;
+    private readonly Dictionary<string, object?> _changes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
+    private static readonly TimeSpan PatternValidationTimeout = TimeSpan.FromMilliseconds(200);
 
     private static readonly Regex CamelCaseSplitPattern = new(
         "([a-z])([A-Z])",
@@ -24,7 +37,8 @@ public sealed partial class SchemaConfigEditor : UserControl
     private static readonly SolidColorBrush SecondaryBrush =
         new(ColorHelper.FromArgb(255, 140, 150, 170));
 
-    public event EventHandler<Dictionary<string, object?>>? ConfigChanged;
+    public event EventHandler<SchemaConfigChangedEventArgs>? ConfigChanged;
+    public static object RemovePendingValue { get; } = new();
 
     public SchemaConfigEditor()
     {
@@ -33,25 +47,32 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     public void LoadSchema(JsonElement schema, JsonElement config)
     {
+        _loading = true;
         _schema = schema;
         _config = config;
         _changes.Clear();
+        _validationErrors.Clear();
         FieldsPanel.Children.Clear();
 
         try
         {
             RenderSchemaNode("", schema, config, FieldsPanel, 0);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Error($"[SchemaConfigEditor] Failed to render schema editor: {ex}");
+        }
 
         // If schema rendering produced nothing, fall back to rendering config as editable fields
         if (FieldsPanel.Children.Count == 0 && config.ValueKind == JsonValueKind.Object)
         {
             RenderConfigDirectly("", config, FieldsPanel, 0);
         }
+        _loading = false;
     }
 
     public Dictionary<string, object?> GetChanges() => new(_changes);
+    public Dictionary<string, string> GetValidationErrors() => new(_validationErrors);
 
     /// <summary>
     /// JSON Schema's "type" keyword may be either a string ("object") or an
@@ -103,7 +124,8 @@ public sealed partial class SchemaConfigEditor : UserControl
                 }
                 else
                 {
-                    RenderField(childPath, prop.Name, childSchema, childConfig, parent);
+                    var required = IsRequired(schema, prop.Name);
+                    RenderField(childPath, prop.Name, childSchema, childConfig, parent, required);
                 }
             }
         }
@@ -149,12 +171,17 @@ public sealed partial class SchemaConfigEditor : UserControl
     }
 
     private void RenderField(string path, string name, JsonElement schema,
-        JsonElement config, StackPanel parent)
+        JsonElement config, StackPanel parent, bool required)
     {
         var label = GetLabel(path, name);
         var description = SafeGetString(schema, "description");
+        var title = SafeGetString(schema, "title");
+        if (!string.IsNullOrWhiteSpace(title))
+            label = title!;
         var type = ExtractSchemaType(schema) ?? "string";
         var isSensitive = IsSensitive(path);
+        var readOnly = schema.TryGetProperty("readOnly", out var readOnlyEl)
+            && readOnlyEl.ValueKind == JsonValueKind.True;
 
         // Resolve default value if config is missing
         var effectiveConfig = config;
@@ -164,41 +191,86 @@ public sealed partial class SchemaConfigEditor : UserControl
             effectiveConfig = defaultVal;
         }
 
+        var fieldPanel = new StackPanel
+        {
+            Spacing = 4,
+            Margin = new Thickness(0, 4, 0, 10)
+        };
+
+        var headerText = required ? $"{label} *" : label;
+        var errorBlock = CreateErrorBlock();
+
         UIElement control;
 
-        if (schema.TryGetProperty("enum", out var enumEl)
+        if (readOnly)
+        {
+            control = RenderReadOnlyField(headerText, effectiveConfig);
+        }
+        else if (schema.TryGetProperty("enum", out var enumEl)
             && enumEl.ValueKind == JsonValueKind.Array)
         {
-            control = RenderEnumField(path, label, description, enumEl, effectiveConfig);
+            control = RenderEnumField(path, headerText, enumEl, effectiveConfig,
+                value => StageValue(path, value, schema, required, errorBlock));
         }
         else if (type == "boolean")
         {
-            control = RenderBoolField(path, label, description, effectiveConfig);
+            control = RenderBoolField(path, headerText, effectiveConfig,
+                value => StageValue(path, value, schema, required, errorBlock));
         }
         else if (type == "integer" || type == "number")
         {
-            control = RenderNumberField(path, label, description, type!, schema, effectiveConfig);
+            control = RenderNumberField(path, headerText, type!, schema, effectiveConfig,
+                value => StageValue(path, value, schema, required, errorBlock));
         }
         else if (type == "array" && schema.TryGetProperty("items", out var itemsSchema))
         {
-            control = RenderArrayField(path, label, description, itemsSchema, effectiveConfig);
+            control = RenderArrayField(path, headerText, description, itemsSchema, effectiveConfig, errorBlock,
+                value => StageValue(path, value, schema, required, errorBlock));
         }
         else // string (default)
         {
             control = isSensitive
-                ? RenderSensitiveField(path, label, description, effectiveConfig)
-                : RenderStringField(path, label, description, effectiveConfig);
+                ? RenderSensitiveField(path, headerText, effectiveConfig,
+                    value => StageValue(path, value, schema, required, errorBlock))
+                : RenderStringField(path, headerText, effectiveConfig,
+                    value => StageValue(path, value, schema, required, errorBlock));
         }
 
-        parent.Children.Add(control);
+        if (readOnly && control is Control readOnlyControl)
+            readOnlyControl.IsEnabled = false;
+
+        fieldPanel.Children.Add(control);
+        if (!string.IsNullOrEmpty(description))
+        {
+            fieldPanel.Children.Add(new TextBlock
+            {
+                Text = description,
+                FontSize = 12,
+                Foreground = SecondaryBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        if (schema.TryGetProperty("default", out var defaultEl) &&
+            defaultEl.ValueKind is not JsonValueKind.Object and not JsonValueKind.Array)
+        {
+            fieldPanel.Children.Add(new TextBlock
+            {
+                Text = $"Default: {FormatScalar(defaultEl)}",
+                FontSize = 11,
+                Foreground = SecondaryBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        fieldPanel.Children.Add(errorBlock);
+        parent.Children.Add(fieldPanel);
     }
 
-    private UIElement RenderEnumField(string path, string label, string? description,
-        JsonElement enumEl, JsonElement config)
+    private UIElement RenderEnumField(string path, string label,
+        JsonElement enumEl, JsonElement config, Action<object?> onChanged)
     {
         var combo = new ComboBox { Header = label, MinWidth = 200 };
-        if (!string.IsNullOrEmpty(description))
-            ToolTipService.SetToolTip(combo, description);
 
         var currentVal = config.ValueKind == JsonValueKind.String ? config.GetString() : null;
         foreach (var item in enumEl.EnumerateArray())
@@ -210,29 +282,27 @@ public sealed partial class SchemaConfigEditor : UserControl
 
         combo.SelectionChanged += (s, e) =>
         {
-            _changes[path] = combo.SelectedItem as string;
-            ConfigChanged?.Invoke(this, _changes);
+            if (_loading) return;
+            onChanged(combo.SelectedItem as string);
         };
         return combo;
     }
 
-    private UIElement RenderBoolField(string path, string label, string? description,
-        JsonElement config)
+    private UIElement RenderBoolField(string path, string label,
+        JsonElement config, Action<object?> onChanged)
     {
         var toggle = new ToggleSwitch { Header = label };
-        if (!string.IsNullOrEmpty(description))
-            ToolTipService.SetToolTip(toggle, description);
         toggle.IsOn = config.ValueKind == JsonValueKind.True;
         toggle.Toggled += (s, e) =>
         {
-            _changes[path] = toggle.IsOn;
-            ConfigChanged?.Invoke(this, _changes);
+            if (_loading) return;
+            onChanged(toggle.IsOn);
         };
         return toggle;
     }
 
-    private UIElement RenderNumberField(string path, string label, string? description,
-        string type, JsonElement schema, JsonElement config)
+    private UIElement RenderNumberField(string path, string label,
+        string type, JsonElement schema, JsonElement config, Action<object?> onChanged)
     {
         var numBox = new NumberBox
         {
@@ -240,8 +310,6 @@ public sealed partial class SchemaConfigEditor : UserControl
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
             MinWidth = 200
         };
-        if (!string.IsNullOrEmpty(description))
-            ToolTipService.SetToolTip(numBox, description);
         if (config.ValueKind == JsonValueKind.Number)
             numBox.Value = config.GetDouble();
         if (schema.TryGetProperty("minimum", out var min))
@@ -251,18 +319,16 @@ public sealed partial class SchemaConfigEditor : UserControl
 
         numBox.ValueChanged += (s, e) =>
         {
-            _changes[path] = type == "integer" ? (object)(int)numBox.Value : numBox.Value;
-            ConfigChanged?.Invoke(this, _changes);
+            if (_loading) return;
+            onChanged(double.IsNaN(numBox.Value) ? null : ConfigEditorModel.CoerceNumber(numBox.Value, type));
         };
         return numBox;
     }
 
-    private UIElement RenderStringField(string path, string label, string? description,
-        JsonElement config)
+    private UIElement RenderStringField(string path, string label,
+        JsonElement config, Action<object?> onChanged)
     {
         var textBox = new TextBox { Header = label, MinWidth = 300 };
-        if (!string.IsNullOrEmpty(description))
-            ToolTipService.SetToolTip(textBox, description);
         if (config.ValueKind == JsonValueKind.String)
             textBox.Text = config.GetString() ?? "";
         else if (config.ValueKind != JsonValueKind.Undefined
@@ -271,33 +337,45 @@ public sealed partial class SchemaConfigEditor : UserControl
 
         textBox.TextChanged += (s, e) =>
         {
-            _changes[path] = textBox.Text;
-            ConfigChanged?.Invoke(this, _changes);
+            if (_loading) return;
+            onChanged(textBox.Text);
         };
         return textBox;
     }
 
-    private UIElement RenderSensitiveField(string path, string label, string? description,
-        JsonElement config)
+    private UIElement RenderSensitiveField(string path, string label,
+        JsonElement config, Action<object?> onChanged)
     {
-        var pwBox = new PasswordBox { Header = label, Width = 350 };
-        if (!string.IsNullOrEmpty(description))
-            ToolTipService.SetToolTip(pwBox, description);
-        if (config.ValueKind == JsonValueKind.String)
-            pwBox.Password = config.GetString() ?? "";
+        var pwBox = new PasswordBox
+        {
+            Header = label,
+            Width = 350,
+            PlaceholderText = config.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(config.GetString())
+                ? "Leave blank to keep existing value"
+                : ""
+        };
+        var hasExistingValue = config.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(config.GetString());
 
         pwBox.PasswordChanged += (s, e) =>
         {
-            _changes[path] = pwBox.Password;
-            ConfigChanged?.Invoke(this, _changes);
+            if (_loading) return;
+            onChanged(hasExistingValue && string.IsNullOrEmpty(pwBox.Password)
+                ? RemovePendingValue
+                : pwBox.Password);
         };
         return pwBox;
     }
 
     private UIElement RenderArrayField(string path, string label, string? description,
-        JsonElement itemsSchema, JsonElement config)
+        JsonElement itemsSchema, JsonElement config, TextBlock errorBlock, Action<object?> onChanged)
     {
-        var panel = new StackPanel { Spacing = 4 };
+        var itemType = ExtractSchemaType(itemsSchema) ?? "string";
+        if (itemType is not ("string" or "integer" or "number" or "boolean"))
+        {
+            return RenderJsonArrayField(path, label, description, config, errorBlock, onChanged);
+        }
+
+        var panel = new StackPanel { Spacing = 6 };
         panel.Children.Add(new TextBlock
         {
             Text = label,
@@ -314,13 +392,13 @@ public sealed partial class SchemaConfigEditor : UserControl
             });
         }
 
-        var itemsPanel = new StackPanel { Spacing = 2 };
+        var itemsPanel = new StackPanel { Spacing = 6 };
 
         if (config.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in config.EnumerateArray())
             {
-                AddArrayItem(itemsPanel, path, item.GetString() ?? "");
+                AddArrayItem(itemsPanel, path, itemType, FormatScalar(item), onChanged);
             }
         }
 
@@ -328,56 +406,162 @@ public sealed partial class SchemaConfigEditor : UserControl
 
         var addBtn = new Button
         {
-            Content = "+ Add",
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new FontIcon { Glyph = "\uE710", FontSize = 12 },
+                    new TextBlock { Text = "Add item" }
+                }
+            },
             Margin = new Thickness(0, 4, 0, 0)
         };
         addBtn.Click += (s, e) =>
         {
-            AddArrayItem(itemsPanel, path, "");
-            UpdateArrayChanges(itemsPanel, path);
+            AddArrayItem(itemsPanel, path, itemType, "", onChanged);
+            UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
         };
         panel.Children.Add(addBtn);
 
         return panel;
     }
 
-    private void AddArrayItem(StackPanel itemsPanel, string path, string value)
+    private UIElement RenderJsonArrayField(string path, string label, string? description,
+        JsonElement config, TextBlock errorBlock, Action<object?> onChanged)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        var textBox = new TextBox { Text = value, MinWidth = 250 };
-        textBox.TextChanged += (s, e) => UpdateArrayChanges(itemsPanel, path);
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Informational,
+            Title = label,
+            Message = "This array uses complex items. Edit its JSON below; local validation will run before Save is enabled."
+        });
+
+        if (!string.IsNullOrEmpty(description))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = description,
+                FontSize = 11,
+                Foreground = SecondaryBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var textBox = new TextBox
+        {
+            Text = config.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true })
+                : "[]",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily("Consolas"),
+            MinHeight = 120,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        textBox.TextChanged += (s, e) =>
+        {
+            if (_loading) return;
+            try
+            {
+                using var document = JsonDocument.Parse(textBox.Text);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    _changes[path] = RemovePendingValue;
+                    SetValidationError(path, "Must be a JSON array.", errorBlock);
+                }
+                else
+                {
+                    onChanged(document.RootElement.Clone());
+                    return;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _changes[path] = RemovePendingValue;
+                SetValidationError(path, $"Invalid JSON: {ex.Message}", errorBlock);
+            }
+            ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+        };
+        panel.Children.Add(textBox);
+        return panel;
+    }
+
+    private void AddArrayItem(StackPanel itemsPanel, string path, string itemType, string value, Action<object?> onChanged)
+    {
+        var row = new Grid
+        {
+            ColumnSpacing = 10,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var textBox = new TextBox
+        {
+            Text = value,
+            MinWidth = 250,
+            Height = 34,
+            PlaceholderText = itemType switch
+            {
+                "boolean" => "true or false",
+                "integer" => "Integer value",
+                "number" => "Number value",
+                _ => "Value"
+            }
+        };
+        textBox.TextChanged += (s, e) =>
+        {
+            if (_loading) return;
+            UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
+        };
 
         var removeBtn = new Button
         {
-            Content = "\u2715",
-            Width = 28,
-            Height = 28,
+            Content = new FontIcon { Glyph = "\uE74D", FontSize = 13 },
+            Height = 34,
+            Width = 34,
             Padding = new Thickness(0)
         };
+        ToolTipService.SetToolTip(removeBtn, "Remove item");
         removeBtn.Click += (s, e) =>
         {
-            itemsPanel.Children.Remove(row);
-            UpdateArrayChanges(itemsPanel, path);
+            if (row.Parent is Border border)
+                itemsPanel.Children.Remove(border);
+            UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
         };
 
+        Grid.SetColumn(textBox, 0);
+        Grid.SetColumn(removeBtn, 1);
         row.Children.Add(textBox);
         row.Children.Add(removeBtn);
-        itemsPanel.Children.Add(row);
+        itemsPanel.Children.Add(new Border
+        {
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(8, 7, 8, 7),
+            Child = row
+        });
     }
 
-    private void UpdateArrayChanges(StackPanel itemsPanel, string path)
+    private void UpdateArrayChanges(StackPanel itemsPanel, string path, string itemType, Action<object?> onChanged)
     {
-        var values = new List<string>();
+        var values = new List<object?>();
         foreach (var child in itemsPanel.Children)
         {
-            if (child is StackPanel row && row.Children.Count > 0
+            if (child is Border { Child: Grid row } && row.Children.Count > 0
                 && row.Children[0] is TextBox tb)
             {
-                values.Add(tb.Text);
+                values.Add(CoerceArrayItem(tb.Text, itemType));
             }
         }
-        _changes[path] = values.ToArray();
-        ConfigChanged?.Invoke(this, _changes);
+        onChanged(values.ToArray());
     }
 
     private static string GetLabel(string path, string name)
@@ -392,10 +576,215 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     private static bool IsSensitive(string path)
     {
-        var lower = path.ToLowerInvariant();
-        return lower.Contains("token") || lower.Contains("secret")
-            || lower.Contains("password") || lower.Contains("apikey")
-            || lower.Contains("api_key");
+        var leaf = path.Split('.').Last().ToLowerInvariant();
+        return leaf.Contains("token") || leaf.Contains("secret")
+            || leaf.Contains("password") || leaf.Contains("apikey")
+            || leaf.Contains("api_key");
+    }
+
+    private static bool IsRequired(JsonElement parentSchema, string propName)
+    {
+        if (!parentSchema.TryGetProperty("required", out var required) ||
+            required.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var item in required.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String &&
+                string.Equals(item.GetString(), propName, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void StageValue(string path, object? value, JsonElement schema, bool required, TextBlock errorBlock)
+    {
+        _changes[path] = value;
+        var error = ValidateValue(value, schema, required);
+        SetValidationError(path, error, errorBlock);
+        ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+    }
+
+    private static TextBlock CreateErrorBlock() => new()
+    {
+        Foreground = new SolidColorBrush(Colors.Firebrick),
+        FontSize = 12,
+        TextWrapping = TextWrapping.Wrap,
+        Visibility = Visibility.Collapsed
+    };
+
+    private void SetValidationError(string path, string? error, TextBlock errorBlock)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            _validationErrors.Remove(path);
+            errorBlock.Text = "";
+            errorBlock.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _validationErrors[path] = error;
+        errorBlock.Text = error;
+        errorBlock.Visibility = Visibility.Visible;
+    }
+
+    private static string? ValidateValue(object? value, JsonElement schema, bool required)
+    {
+        if (ReferenceEquals(value, RemovePendingValue))
+            return null;
+
+        if (required && IsBlank(value))
+            return "This field is required.";
+
+        var expectedType = ExtractSchemaType(schema);
+        if (!IsBlank(value))
+        {
+            if (expectedType == "integer" && value is not int and not long)
+                return "Must be an integer.";
+            if (expectedType == "number" && value is not int and not long and not double)
+                return "Must be a number.";
+            if (expectedType == "boolean" && value is not bool)
+                return "Must be true or false.";
+            if (expectedType == "array" &&
+                value is not Array &&
+                value is not JsonElement { ValueKind: JsonValueKind.Array })
+                return "Must be a list.";
+        }
+
+        if (value is string text)
+        {
+            if (schema.TryGetProperty("minLength", out var minLength) &&
+                minLength.TryGetInt32(out var min) &&
+                text.Length < min)
+                return $"Must be at least {min} characters.";
+
+            if (schema.TryGetProperty("maxLength", out var maxLength) &&
+                maxLength.TryGetInt32(out var max) &&
+                text.Length > max)
+                return $"Must be {max} characters or fewer.";
+
+            if (schema.TryGetProperty("pattern", out var pattern) &&
+                pattern.ValueKind == JsonValueKind.String &&
+                pattern.GetString() is { Length: > 0 } regex)
+            {
+                try
+                {
+                    if (!Regex.IsMatch(text, regex, RegexOptions.None, PatternValidationTimeout))
+                        return "Does not match the expected format.";
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    return "Pattern validation timed out.";
+                }
+                catch (ArgumentException)
+                {
+                    return "Pattern validation is unavailable because the schema pattern is invalid.";
+                }
+            }
+        }
+
+        if (value is JsonElement jsonArray && jsonArray.ValueKind == JsonValueKind.Array)
+        {
+            if (schema.TryGetProperty("minItems", out var minItems) &&
+                minItems.TryGetInt32(out var min) &&
+                jsonArray.GetArrayLength() < min)
+                return $"Must include at least {min} item{(min == 1 ? "" : "s")}.";
+
+            if (schema.TryGetProperty("maxItems", out var maxItems) &&
+                maxItems.TryGetInt32(out var max) &&
+                jsonArray.GetArrayLength() > max)
+                return $"Must include {max} item{(max == 1 ? "" : "s")} or fewer.";
+
+            if (schema.TryGetProperty("items", out var itemSchema))
+            {
+                var index = 0;
+                foreach (var item in jsonArray.EnumerateArray())
+                {
+                    var itemError = ValidateValue(item, itemSchema, false);
+                    if (!string.IsNullOrWhiteSpace(itemError))
+                        return $"Item {index + 1}: {itemError}";
+                    index++;
+                }
+            }
+        }
+        else if (value is Array array)
+        {
+            if (schema.TryGetProperty("minItems", out var minItems) &&
+                minItems.TryGetInt32(out var min) &&
+                array.Length < min)
+                return $"Must include at least {min} item{(min == 1 ? "" : "s")}.";
+
+            if (schema.TryGetProperty("maxItems", out var maxItems) &&
+                maxItems.TryGetInt32(out var max) &&
+                array.Length > max)
+                return $"Must include {max} item{(max == 1 ? "" : "s")} or fewer.";
+
+            if (schema.TryGetProperty("items", out var itemSchema))
+            {
+                for (var i = 0; i < array.Length; i++)
+                {
+                    var itemError = ValidateValue(array.GetValue(i), itemSchema, false);
+                    if (!string.IsNullOrWhiteSpace(itemError))
+                        return $"Item {i + 1}: {itemError}";
+                }
+            }
+        }
+
+        if (value is long or int or double)
+        {
+            var number = Convert.ToDouble(value);
+            if (schema.TryGetProperty("minimum", out var minimum) &&
+                minimum.TryGetDouble(out var min) &&
+                number < min)
+                return $"Must be at least {min}.";
+
+            if (schema.TryGetProperty("maximum", out var maximum) &&
+                maximum.TryGetDouble(out var max) &&
+                number > max)
+                return $"Must be {max} or less.";
+        }
+
+        return null;
+    }
+
+    private static bool IsBlank(object? value) => value switch
+    {
+        null => true,
+        var removePending when ReferenceEquals(removePending, RemovePendingValue) => true,
+        string text => string.IsNullOrWhiteSpace(text),
+        Array array => array.Length == 0,
+        _ => false
+    };
+
+    private static object? CoerceArrayItem(string value, string itemType) => itemType switch
+    {
+        "integer" when long.TryParse(value, out var integer) => integer,
+        "number" when double.TryParse(value, out var number) => number,
+        "boolean" when bool.TryParse(value, out var boolean) => boolean,
+        _ => value
+    };
+
+    private static string FormatScalar(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString() ?? "",
+        JsonValueKind.Number => value.GetRawText(),
+        JsonValueKind.True => "true",
+        JsonValueKind.False => "false",
+        JsonValueKind.Null => "null",
+        _ => value.ToString()
+    };
+
+    private static UIElement RenderReadOnlyField(string label, JsonElement config)
+    {
+        return new TextBox
+        {
+            Header = label,
+            Text = FormatScalar(config),
+            IsReadOnly = true,
+            MinWidth = 300,
+            Foreground = SecondaryBrush
+        };
     }
 
     /// <summary>Fallback: render config values directly as editable fields when no schema available.</summary>
@@ -428,7 +817,12 @@ public sealed partial class SchemaConfigEditor : UserControl
                 case JsonValueKind.True:
                 case JsonValueKind.False:
                     var toggle = new ToggleSwitch { Header = GetLabel(childPath, prop.Name), IsOn = value.ValueKind == JsonValueKind.True };
-                    toggle.Toggled += (s, e) => { _changes[childPath] = toggle.IsOn; ConfigChanged?.Invoke(this, _changes); };
+                    toggle.Toggled += (s, e) =>
+                    {
+                        if (_loading) return;
+                        _changes[childPath] = toggle.IsOn;
+                        ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+                    };
                     parent.Children.Add(toggle);
                     break;
 
@@ -440,22 +834,44 @@ public sealed partial class SchemaConfigEditor : UserControl
                         SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
                         MinWidth = 200
                     };
-                    numBox.ValueChanged += (s, e) => { _changes[childPath] = numBox.Value; ConfigChanged?.Invoke(this, _changes); };
+                    numBox.ValueChanged += (s, e) =>
+                    {
+                        if (_loading) return;
+                        _changes[childPath] = numBox.Value;
+                        ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+                    };
                     parent.Children.Add(numBox);
                     break;
 
                 case JsonValueKind.String:
                     if (IsSensitive(childPath))
                     {
-                        var pwBox = new PasswordBox { Header = GetLabel(childPath, prop.Name), Width = 350 };
-                        pwBox.Password = value.GetString() ?? "";
-                        pwBox.PasswordChanged += (s, e) => { _changes[childPath] = pwBox.Password; ConfigChanged?.Invoke(this, _changes); };
+                        var hasExistingValue = !string.IsNullOrEmpty(value.GetString());
+                        var pwBox = new PasswordBox
+                        {
+                            Header = GetLabel(childPath, prop.Name),
+                            Width = 350,
+                            PlaceholderText = hasExistingValue ? "Leave blank to keep existing value" : ""
+                        };
+                        pwBox.PasswordChanged += (s, e) =>
+                        {
+                            if (_loading) return;
+                            _changes[childPath] = hasExistingValue && string.IsNullOrEmpty(pwBox.Password)
+                                ? RemovePendingValue
+                                : pwBox.Password;
+                            ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+                        };
                         parent.Children.Add(pwBox);
                     }
                     else
                     {
                         var textBox = new TextBox { Header = GetLabel(childPath, prop.Name), Text = value.GetString() ?? "", MinWidth = 300 };
-                        textBox.TextChanged += (s, e) => { _changes[childPath] = textBox.Text; ConfigChanged?.Invoke(this, _changes); };
+                        textBox.TextChanged += (s, e) =>
+                        {
+                            if (_loading) return;
+                            _changes[childPath] = textBox.Text;
+                            ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+                        };
                         parent.Children.Add(textBox);
                     }
                     break;
