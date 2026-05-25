@@ -505,7 +505,14 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("RefreshUpdateInfo", cs);
         Assert.Contains("AppVersionHelper.CurrentVersionText", app);
         Assert.Contains("Package.Current.Id.Version", helper);
+        Assert.DoesNotContain("x:Uid=\"VersionText\"", xaml);
         Assert.DoesNotContain("OpenClaw Hub v0.1.0", cs);
+
+        var stringsDir = Path.Combine(RepoRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
+        foreach (var resw in Directory.EnumerateFiles(stringsDir, "Resources.resw", SearchOption.AllDirectories))
+        {
+            Assert.DoesNotContain("VersionText.Text", File.ReadAllText(resw));
+        }
     }
 
     [Fact]

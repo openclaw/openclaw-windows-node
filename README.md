@@ -349,7 +349,7 @@ PowerToys Command Palette extension for quick OpenClaw access.
 - **🧭 Setup Wizard** - Open pairing/setup
 - **🧭 Command Center** - Open diagnostics and support actions
 - **🔄 Run Health Check** - Refresh connection health
-- **⬇️ Check for Updates** - Run a manual GitHub Releases update check
+- **⬇️ Check for Updates** - Check the MSIX AppInstaller update feed
 - **⚡ Activity Stream** - Open recent activity
 - **📋 Notification History** - Open notification history in the Activity page
 - **⚙️ Settings** - Open the OpenClaw Tray Settings page

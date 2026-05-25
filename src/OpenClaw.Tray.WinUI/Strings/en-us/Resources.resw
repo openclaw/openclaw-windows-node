@@ -1527,9 +1527,6 @@ On your gateway host (Mac/Linux), run:
   <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
     <value>OpenClaw Hub</value>
   </data>
-  <data name="VersionText.Text" xml:space="preserve">
-    <value>v0.1.0</value>
-  </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
     <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
   </data>

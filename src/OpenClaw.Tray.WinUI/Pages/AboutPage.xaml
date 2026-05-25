@@ -17,7 +17,7 @@
                     <TextBlock Text="🦞" FontSize="48" VerticalAlignment="Center"/>
                     <StackPanel Spacing="4" VerticalAlignment="Center">
                         <TextBlock x:Uid="AboutPage_TextBlock_19" Text="OpenClaw Hub" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                        <TextBlock x:Uid="VersionText" x:Name="VersionText" Text="v—"
+                        <TextBlock x:Name="VersionText" Text="v—"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Uid="AboutPage_TextBlock_23" Text=".NET 10 / WinUI 3 / WinAppSDK 1.8"

@@ -206,7 +206,10 @@ public sealed class TrayMenuPopupCompositionTests
     [Fact]
     public void BuildTrayMenuPopup_RendersCheckForUpdatesAction()
     {
-        Assert.Contains("\"Check for updates\", FluentIconCatalog.Build(FluentIconCatalog.Refresh), \"checkupdates\"", ReadStateBuilder());
+        var src = ReadStateBuilder();
+        Assert.Contains("LocalizationHelper.GetString(\"Menu_CheckForUpdates\")", src);
+        Assert.Contains("FluentIconCatalog.Build(FluentIconCatalog.Refresh)", src);
+        Assert.Contains("\"checkupdates\"", src);
         Assert.Contains("case \"checkupdates\":", ReadAppXaml());
     }
 

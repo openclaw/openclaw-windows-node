@@ -72,7 +72,7 @@ internal sealed partial class OpenClawPage : ListPage
             new ListItem(new OpenUrlCommand("openclaw://check-updates"))
             {
                 Title = "⬇️ Check for Updates",
-                Subtitle = "Run a manual GitHub Releases update check"
+                Subtitle = "Check the MSIX AppInstaller update feed"
             },
             new ListItem(new OpenUrlCommand("openclaw://activity"))
             {
