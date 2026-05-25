@@ -270,6 +270,8 @@ public class McpToolBridge
             "Get tray menu state (status, session count, node count). Returns array of menu items.",
         ["app.search"] =
             "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
+        ["app.dashboard.url"] =
+            "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
 
         // location.*
         ["location.get"] =

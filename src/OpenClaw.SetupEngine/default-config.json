@@ -97,10 +97,10 @@
     "Browser": true,
     // Device (info/status) is always-on
     "Device": true,
-    // Opt-in: text-to-speech
-    "Tts": false,
-    // Opt-in: speech-to-text
-    "Stt": false
+    // Text-to-speech commands
+    "Tts": true,
+    // Speech-to-text commands
+    "Stt": true
   },
 
   // ─── Tray Settings ───
@@ -118,8 +118,8 @@
     "NodeCameraEnabled": true,
     "NodeLocationEnabled": true,
     "NodeBrowserProxyEnabled": true,
-    "NodeTtsEnabled": false,
-    "NodeSttEnabled": false
+    "NodeTtsEnabled": true,
+    "NodeSttEnabled": true
   },
 
   // ─── Pairing Configuration ───

@@ -128,7 +128,7 @@ src/OpenClaw.SetupEngine.UI/
   "Capabilities": {
     "System": true, "Canvas": true, "Screen": true,
     "Camera": true, "Location": true, "Browser": true,
-    "Device": true, "Tts": false, "Stt": false
+    "Device": true, "Tts": true, "Stt": true
   },
 
   "Settings": {
@@ -140,8 +140,8 @@ src/OpenClaw.SetupEngine.UI/
     "NodeCameraEnabled": true,
     "NodeLocationEnabled": true,
     "NodeBrowserProxyEnabled": true,
-    "NodeTtsEnabled": false,
-    "NodeSttEnabled": false
+    "NodeTtsEnabled": true,
+    "NodeSttEnabled": true
   },
 
   "Pairing": {

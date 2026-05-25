@@ -718,20 +718,26 @@ public sealed class InstallCliStep : SetupStep
         if (result.ExitCode != 0)
             return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
 
-        // Verify CLI is accessible — try common install locations
-        var verifyPaths = new[]
+        var verifyCommands = new (string Command, string? ExecutablePath)[]
         {
-            "openclaw --version",
-            $"/home/{user}/.openclaw/bin/openclaw --version",
-            "/opt/openclaw/bin/openclaw --version",
-            "/usr/local/bin/openclaw --version"
+            ("openclaw --version", null),
+            ($"/home/{user}/.openclaw/bin/openclaw --version", $"/home/{user}/.openclaw/bin/openclaw"),
+            ("/opt/openclaw/bin/openclaw --version", "/opt/openclaw/bin/openclaw"),
+            ("/usr/local/bin/openclaw --version", "/usr/local/bin/openclaw")
         };
 
-        foreach (var cmd in verifyPaths)
+        foreach (var (cmd, executablePath) in verifyCommands)
         {
             var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
             if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
             {
+                if (executablePath != null)
+                {
+                    var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
+                    if (!pathResult.IsSuccess)
+                        return pathResult;
+                }
+
                 ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
                 return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
             }
@@ -740,10 +746,57 @@ public sealed class InstallCliStep : SetupStep
         return StepResult.Fail("CLI installed but not found in any known location");
     }
 
+    private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
+        SetupContext ctx,
+        string distro,
+        string executablePath,
+        CancellationToken ct)
+    {
+        var user = ctx.Config.Wsl.User;
+
+        if (!executablePath.StartsWith("/", StringComparison.Ordinal) ||
+            executablePath.Contains('\'') ||
+            executablePath.Contains('\n'))
+        {
+            return StepResult.Fail($"Refusing to create openclaw PATH symlink for unexpected install path: {executablePath}");
+        }
+
+        if (!string.Equals(executablePath, "/usr/local/bin/openclaw", StringComparison.Ordinal))
+        {
+            var linkCommand = $"""
+                set -e
+                ln -sfn {executablePath} /usr/local/bin/openclaw
+                echo OPENCLAW_PATH_READY
+                """;
+
+            var link = await ctx.Commands.RunInWslAsync(
+                distro,
+                linkCommand,
+                TimeSpan.FromSeconds(15),
+                ct: ct,
+                user: "root");
+
+            if (link.ExitCode != 0 || !link.Stdout.Contains("OPENCLAW_PATH_READY", StringComparison.Ordinal))
+                return StepResult.Fail($"Failed to make openclaw available on default PATH: {link.Stderr}");
+        }
+
+        var bareVerify = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"env -i HOME=/home/{user} USER={user} PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin openclaw --version",
+            TimeSpan.FromSeconds(15),
+            ct: ct);
+
+        if (bareVerify.ExitCode != 0 || string.IsNullOrWhiteSpace(bareVerify.Stdout))
+            return StepResult.Fail($"openclaw PATH symlink verification failed: {bareVerify.Stderr}");
+
+        ctx.Logger.Info($"OpenClaw CLI available on default PATH: {bareVerify.Stdout.Trim()}");
+        return StepResult.Ok();
+    }
+
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var user = ctx.Config.Wsl.User;
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"rm -rf /opt/openclaw /home/{user}/.openclaw", TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"rm -rf /opt/openclaw /home/{user}/.openclaw /usr/local/bin/openclaw", TimeSpan.FromSeconds(30), ct: ct, user: "root");
     }
 }
 
@@ -767,6 +820,10 @@ public sealed class ConfigureGatewayStep : SetupStep
         ctx.SharedGatewayToken = token;
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
 
+        var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
+        var escapedAllowedCommands = ShellEscape(allowedCommandsJson);
+        var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
+
         var configCommands = $"""
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
@@ -774,7 +831,12 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
             openclaw config set gateway.reload.mode {gw.ReloadMode}
+            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
             """;
+
+        ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
+        if (extraConfigOverridesAllowCommands)
+            ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
 
         // Apply any extra config key/value pairs from config (shell-escape values)
         if (gw.ExtraConfig is { Count: > 0 })
@@ -782,7 +844,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             foreach (var (key, value) in gw.ExtraConfig)
             {
                 // Shell-escape: wrap value in single quotes, escaping embedded single quotes
-                var escapedValue = "'" + value.Replace("'", "'\\''") + "'";
+                var escapedValue = ShellEscape(value);
                 var escapedKey = key.Replace("'", "").Replace(";", "").Replace("|", "").Replace("&", "");
                 configCommands += $"\n            openclaw config set {escapedKey} {escapedValue}";
             }
@@ -806,6 +868,8 @@ public sealed class ConfigureGatewayStep : SetupStep
         ctx.Logger.StateChange("shared_gateway_token", null, "[SET]");
         return StepResult.Ok("Gateway configured");
     }
+
+    private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
 }
 
 public sealed class InstallGatewayServiceStep : SetupStep

@@ -1638,7 +1638,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         app.NodesHandler = () =>
         {
-            return _appState!.Nodes?.Select(n => new { n.DisplayName, n.NodeId, n.IsOnline, n.Platform, n.CapabilityCount }).ToArray()
+            return _appState!.Nodes?.Select(n => new
+            {
+                n.DisplayName,
+                n.NodeId,
+                n.IsOnline,
+                n.Platform,
+                n.CapabilityCount,
+                n.CommandCount,
+                n.Capabilities,
+                n.Commands,
+                n.DisabledCommands,
+                n.Permissions
+            }).ToArray()
                 ?? Array.Empty<object>();
         };
 
@@ -1720,6 +1732,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 .Select(c => new { c.Title, c.Subtitle, c.Icon })
                 .ToArray();
             return matches;
+        };
+
+        app.DashboardUrlHandler = (path) =>
+        {
+            if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
+                return new { error = "Gateway URL or credential is not configured" };
+
+            var url = GatewayDashboardUrlBuilder.Build(
+                gatewayUrl,
+                path,
+                token,
+                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
+
+            return new
+            {
+                url,
+                credentialSource,
+                usesSharedGatewayToken = !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
+                hasTokenQuery = url.Contains("?token=", StringComparison.Ordinal) || url.Contains("&token=", StringComparison.Ordinal)
+            };
         };
     }
 
@@ -2861,22 +2893,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return;
         }
 
-        var baseUrl = gatewayUrl
-            .Replace("ws://", "http://")
-            .Replace("wss://", "https://")
-            .TrimEnd('/');
-
-        var url = string.IsNullOrEmpty(path)
-            ? baseUrl
-            : $"{baseUrl}/{path.TrimStart('/')}";
-
-        if (!isBootstrapToken &&
-            credentialSource == CredentialResolver.SourceSharedGatewayToken &&
-            !string.IsNullOrEmpty(token))
-        {
-            var separator = url.Contains('?') ? "&" : "?";
-            url = $"{url}{separator}token={Uri.EscapeDataString(token)}";
-        }
+        var url = GatewayDashboardUrlBuilder.Build(
+            gatewayUrl,
+            path,
+            token,
+            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
 
         try
         {
@@ -3991,4 +4012,3 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 }
-

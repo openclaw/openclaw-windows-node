@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
@@ -34,8 +36,11 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     public string LocalAppDataRoot { get; }
 
     public int McpPort { get; private set; }
+    public int GatewayPort { get; private set; }
     public string McpEndpoint => $"http://127.0.0.1:{McpPort}/mcp";
     public McpClient? Client { get; private set; }
+    public string DistroName => _distroName;
+    public string ConfigPath => _configPath;
 
     /// <summary>Non-null after a successful setup pipeline run.</summary>
     public string? SetupError { get; private set; }
@@ -59,6 +64,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var repoRoot = FindRepoRoot();
         ArtifactDir = Path.Combine(repoRoot, "TestResults", "E2E", runId);
         Directory.CreateDirectory(ArtifactDir);
+
+        GatewayPort = FindFreePort();
 
         // Write isolated config JSON
         _configPath = Path.Combine(DataDir, "e2e-config.json");
@@ -191,7 +198,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var config = new
         {
             DistroName = _distroName,
-            GatewayPort = FindFreePort(),
+            GatewayPort = GatewayPort,
             BaseDistro = "Ubuntu-24.04",
             Headless = true,
             AutoApprovePairing = true,
@@ -219,6 +226,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             {
                 EnableNodeMode = true,
                 AutoStart = false,
+                NodeTtsEnabled = true,
+                NodeSttEnabled = true,
             },
         };
 
@@ -427,6 +436,141 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         _ = CaptureStreamAsync(p.StandardError, stderrPath);
 
         return p;
+    }
+
+    public async Task<OpenClaw.SetupEngine.CommandResult> RunInWslAsync(
+        string command,
+        TimeSpan? timeout = null,
+        IReadOnlyDictionary<string, string>? environment = null)
+    {
+        command = command.Replace("\r", "");
+        Log($"WSL command: {SanitizeForLog(command)}");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+
+        psi.ArgumentList.Add("-d");
+        psi.ArgumentList.Add(_distroName);
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add("bash");
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(command);
+
+        if (environment is { Count: > 0 })
+        {
+            foreach (var (key, value) in environment)
+                psi.Environment[key] = value;
+
+            var wslEnvKeys = string.Join(":", environment.Keys);
+            var existing = psi.Environment.ContainsKey("WSLENV") ? psi.Environment["WSLENV"] : null;
+            psi.Environment["WSLENV"] = !string.IsNullOrEmpty(existing)
+                ? $"{existing}:{wslEnvKeys}"
+                : wslEnvKeys;
+        }
+
+        var sw = Stopwatch.StartNew();
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start wsl.exe");
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        var timedOut = false;
+        using var timeoutCts = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(30));
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            timedOut = true;
+            try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        sw.Stop();
+
+        var result = new OpenClaw.SetupEngine.CommandResult(timedOut ? -1 : process.ExitCode, stdout, stderr, sw.Elapsed, timedOut);
+        Log($"WSL result: exit={result.ExitCode}, timedOut={result.TimedOut}, stdout={SanitizeForLog(stdout.Trim())}, stderr={SanitizeForLog(stderr.Trim())}");
+        return result;
+    }
+
+    public (string GatewayUrl, string SharedGatewayToken, string ActiveId) ReadActiveGatewayRecord()
+    {
+        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        var root = doc.RootElement;
+        var activeId = TryGetPropertyIgnoreCase(root, "ActiveId", out var activeIdElement)
+            ? activeIdElement.GetString()
+            : null;
+
+        if (!TryGetPropertyIgnoreCase(root, "Gateways", out var gatewaysElement) ||
+            gatewaysElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException("gateways.json is missing gateways array");
+        }
+
+        var gateways = gatewaysElement.EnumerateArray().ToArray();
+        var active = gateways.FirstOrDefault(g =>
+            string.IsNullOrWhiteSpace(activeId) ||
+            (TryGetPropertyIgnoreCase(g, "Id", out var idElement) &&
+             string.Equals(idElement.GetString(), activeId, StringComparison.Ordinal)));
+
+        if (active.ValueKind == JsonValueKind.Undefined)
+            throw new InvalidDataException("No active gateway record found in gateways.json");
+
+        var url = TryGetPropertyIgnoreCase(active, "Url", out var urlElement)
+            ? urlElement.GetString()
+            : null;
+        var sharedToken = TryGetPropertyIgnoreCase(active, "SharedGatewayToken", out var tokenElement)
+            ? tokenElement.GetString()
+            : null;
+        var id = TryGetPropertyIgnoreCase(active, "Id", out var activeIdValueElement)
+            ? activeIdValueElement.GetString()
+            : null;
+
+        Log($"Active gateway record: id={id}, url={url}, sharedTokenPresent={!string.IsNullOrWhiteSpace(sharedToken)}, sharedTokenLength={sharedToken?.Length ?? 0}");
+
+        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(sharedToken) || string.IsNullOrWhiteSpace(id))
+            throw new InvalidDataException("Active gateway record is missing Url, Id, or SharedGatewayToken");
+
+        return (url, sharedToken, id);
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.TryGetProperty(propertyName, out value))
+            return true;
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string SanitizeForLog(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var sanitized = Regex.Replace(value, @"(?i)(token|authorization|secret|password)([""'\s:=]+)([^""'\s,}]+)", "$1$2[REDACTED]");
+        sanitized = Regex.Replace(sanitized, @"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]");
+        sanitized = Regex.Replace(sanitized, @"[A-Za-z0-9_-]{48,}", "[REDACTED]");
+        return sanitized;
     }
 
     private static async Task CaptureStreamAsync(System.IO.StreamReader reader, string filePath)

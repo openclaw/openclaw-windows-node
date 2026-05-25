@@ -25,6 +25,7 @@ public class AppCapability : NodeCapabilityBase
         "app.settings.set",
         "app.menu",
         "app.search",
+        "app.dashboard.url",
     };
 
     public override IReadOnlyList<string> Commands => _commands;
@@ -40,6 +41,7 @@ public class AppCapability : NodeCapabilityBase
     public Func<string, string, object?>? SettingsSetHandler;
     public Func<object?>? MenuHandler;
     public Func<string, object?>? SearchHandler;
+    public Func<string?, object?>? DashboardUrlHandler;
 
     public AppCapability(IOpenClawLogger logger) : base(logger) { }
 
@@ -57,6 +59,7 @@ public class AppCapability : NodeCapabilityBase
             "app.settings.set" => HandleSettingsSet(request),
             "app.menu" => HandleMenu(),
             "app.search" => HandleSearch(request),
+            "app.dashboard.url" => HandleDashboardUrl(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
@@ -150,5 +153,12 @@ public class AppCapability : NodeCapabilityBase
         if (SearchHandler == null)
             return Error("Search handler not registered");
         return Success(SearchHandler(query));
+    }
+
+    private NodeInvokeResponse HandleDashboardUrl(NodeInvokeRequest request)
+    {
+        if (DashboardUrlHandler == null)
+            return Error("Dashboard URL handler not registered");
+        return Success(DashboardUrlHandler(GetStringArg(request.Args, "path")));
     }
 }

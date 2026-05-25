@@ -150,8 +150,27 @@ public class SetupConfigTests : IDisposable
         Assert.Contains("canvas", categories);
         Assert.Contains("screen", categories);
         Assert.Contains("device", categories);
-        Assert.DoesNotContain("tts", categories); // disabled by default
-        Assert.DoesNotContain("stt", categories); // disabled by default
+        Assert.Contains("tts", categories);
+        Assert.Contains("stt", categories);
+    }
+
+    [Fact]
+    public void CapabilitiesConfig_GetEnabledCommandIds_FlattensEnabledCapabilities()
+    {
+        var caps = new CapabilitiesConfig
+        {
+            Camera = false,
+            Stt = false
+        };
+
+        var commands = caps.GetEnabledCommandIds();
+
+        Assert.Contains("system.notify", commands);
+        Assert.Contains("tts.speak", commands);
+        Assert.DoesNotContain("camera.snap", commands);
+        Assert.DoesNotContain("stt.listen", commands);
+        Assert.Equal(commands.Count, commands.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(commands.Order(StringComparer.OrdinalIgnoreCase), commands);
     }
 
     [Fact]
@@ -190,6 +209,8 @@ public class SetupConfigTests : IDisposable
         Assert.True(File.Exists(settingsPath));
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeTtsEnabled").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeSttEnabled").GetBoolean());
     }
 
     [Fact]

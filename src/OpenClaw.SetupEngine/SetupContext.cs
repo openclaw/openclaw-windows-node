@@ -118,8 +118,8 @@ public sealed class CapabilitiesConfig
     public bool Location { get; set; } = true;
     public bool Browser { get; set; } = true;
     public bool Device { get; set; } = true;
-    public bool Tts { get; set; } = false;
-    public bool Stt { get; set; } = false;
+    public bool Tts { get; set; } = true;
+    public bool Stt { get; set; } = true;
 
     /// <summary>
     /// Returns the list of enabled capability categories and their commands
@@ -141,6 +141,13 @@ public sealed class CapabilitiesConfig
 
         return result;
     }
+
+    public IReadOnlyList<string> GetEnabledCommandIds()
+        => GetEnabledCapabilities()
+            .SelectMany(capability => capability.Commands)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 }
 
 // ─── Tray Settings (written to settings.json) ───
@@ -155,8 +162,8 @@ public sealed class TraySettingsConfig
     public bool NodeCameraEnabled { get; set; } = true;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
-    public bool NodeTtsEnabled { get; set; } = false;
-    public bool NodeSttEnabled { get; set; } = false;
+    public bool NodeTtsEnabled { get; set; } = true;
+    public bool NodeSttEnabled { get; set; } = true;
 
     /// <summary>
     /// Merges these settings into an existing settings.json (or creates a new one).

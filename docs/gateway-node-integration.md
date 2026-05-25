@@ -187,9 +187,10 @@ defaults as a stricter, canonical-platform path:
 4. If metadata is missing or noncanonical, fall back to `"unknown"` and a
    conservative allowlist.
 
-Our node should therefore send canonical Windows metadata instead of relying on
-gateway-wide `gateway.nodes.allowCommands` for the normal first-party Windows
-companion flow.
+Our node should therefore send canonical Windows metadata. SetupEngine also
+writes `gateway.nodes.allowCommands` from its enabled capability configuration
+for local WSL gateway installs so the first-party Windows companion flow has an
+explicit gateway policy matching the node's advertised commands.
 
 ---
 
