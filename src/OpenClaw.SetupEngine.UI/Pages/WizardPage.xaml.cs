@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -230,7 +231,7 @@ public sealed partial class WizardPage : Page
                 var hint = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("hint", out var hintProp)
                     ? hintProp.ToString()
                     : "";
-                _options.Add(new(value, string.IsNullOrWhiteSpace(hint) ? label : $"{label} — {hint}"));
+                _options.Add(new(value, label, hint));
             }
         }
 
@@ -238,12 +239,23 @@ public sealed partial class WizardPage : Page
         {
             SelectOptions.Visibility = Visibility.Visible;
             foreach (var option in _options)
-                SelectOptions.Items.Add(option.Label);
+            {
+                SelectOptions.Children.Add(new RadioButton
+                {
+                    Content = BuildOptionContent(option),
+                    Tag = option.Value,
+                    GroupName = $"wizard-step-{_stepId}",
+                    Padding = new Thickness(8, 6, 8, 6),
+                    Margin = new Thickness(0, 0, 0, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch
+                });
+            }
 
             var initialValue = initial.ValueKind == JsonValueKind.String ? initial.GetString() : null;
             var index = Math.Max(0, _options.FindIndex(o => o.Value == initialValue));
-            if (SelectOptions.Items.Count > 0)
-                SelectOptions.SelectedIndex = index;
+            if (index >= 0 && index < SelectOptions.Children.Count && SelectOptions.Children[index] is RadioButton radio)
+                radio.IsChecked = true;
         }
         else
         {
@@ -255,12 +267,55 @@ public sealed partial class WizardPage : Page
             {
                 MultiOptions.Children.Add(new CheckBox
                 {
-                    Content = option.Label,
+                    Content = BuildOptionContent(option),
                     Tag = option.Value,
-                    IsChecked = initialValues.Contains(option.Value)
+                    IsChecked = initialValues.Contains(option.Value),
+                    Padding = new Thickness(8, 6, 8, 6),
+                    Margin = new Thickness(0, 0, 0, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch
                 });
             }
         }
+    }
+
+    private static FrameworkElement BuildOptionContent(WizardOption option)
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 3,
+            Margin = new Thickness(2, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = option.Label,
+            FontSize = 14,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        if (!string.IsNullOrWhiteSpace(option.Hint))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = option.Hint,
+                FontSize = 12,
+                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.None
+            });
+        }
+
+        return panel;
+    }
+
+    private static Brush ResourceBrush(string key)
+    {
+        return Application.Current.Resources.TryGetValue(key, out var brush)
+            && brush is Brush typedBrush
+            ? typedBrush
+            : new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
 
     private async void Primary_Click(object sender, RoutedEventArgs e)
@@ -318,9 +373,9 @@ public sealed partial class WizardPage : Page
         return _stepType switch
         {
             "confirm" => true,
-            "select" => SelectOptions.SelectedIndex >= 0 && SelectOptions.SelectedIndex < _options.Count
-                ? _options[SelectOptions.SelectedIndex].Value
-                : "",
+            "select" => SelectOptions.Children.OfType<RadioButton>()
+                .FirstOrDefault(r => r.IsChecked == true)
+                ?.Tag?.ToString() ?? "",
             "multiselect" => MultiOptions.Children.OfType<CheckBox>()
                 .Where(c => c.IsChecked == true)
                 .Select(c => c.Tag?.ToString() ?? "")
@@ -345,7 +400,7 @@ public sealed partial class WizardPage : Page
 
     private void ResetInputs()
     {
-        SelectOptions.Items.Clear();
+        SelectOptions.Children.Clear();
         SelectOptions.Visibility = Visibility.Collapsed;
         MultiOptions.Children.Clear();
         MultiOptions.Visibility = Visibility.Collapsed;
@@ -508,7 +563,7 @@ public sealed partial class WizardPage : Page
         _ => "Setup"
     };
 
-    private sealed record WizardOption(string Value, string Label);
+    private sealed record WizardOption(string Value, string Label, string Hint);
 
     private sealed class UiGatewayLogger : IOpenClawLogger
     {
