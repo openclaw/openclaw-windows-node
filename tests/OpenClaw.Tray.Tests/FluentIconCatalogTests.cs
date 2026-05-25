@@ -204,6 +204,13 @@ public sealed class TrayMenuPopupCompositionTests
     }
 
     [Fact]
+    public void BuildTrayMenuPopup_RendersCheckForUpdatesAction()
+    {
+        Assert.Contains("\"Check for updates\", FluentIconCatalog.Build(FluentIconCatalog.Refresh), \"checkupdates\"", ReadStateBuilder());
+        Assert.Contains("case \"checkupdates\":", ReadAppXaml());
+    }
+
+    [Fact]
     public void BuildTrayMenuPopup_BatchesUpdates()
     {
         var src = ReadAppXaml();
@@ -240,6 +247,7 @@ public sealed class TrayMenuPopupCompositionTests
             "permissions",  // permissions row
             "setup",        // setup/reconfigure row
             "quicksend",    // quicksend row
+            "checkupdates", // updates row
             "companion",    // footer
             "about",        // footer
             "exit",         // footer

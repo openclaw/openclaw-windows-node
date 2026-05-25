@@ -3383,7 +3383,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private static UpdateCommandCenterInfo BuildInitialUpdateInfo() => new()
     {
         Status = "Not checked",
-        CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown"
+        CurrentVersion = AppVersionHelper.CurrentVersionText
     };
 
     private async Task<bool> CheckForUpdatesAsync()
@@ -3397,7 +3397,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Managed",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
                 CheckedAt = DateTime.UtcNow,
                 Detail = "managed by Windows AppInstaller"
             };
@@ -3414,7 +3414,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Skipped",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
                 CheckedAt = DateTime.UtcNow,
                 Detail = "unpackaged build; install the MSIX for auto-update"
             };
@@ -3426,7 +3426,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Failed",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
                 CheckedAt = DateTime.UtcNow,
                 Detail = ex.Message
             };
@@ -3445,7 +3445,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Checking",
-                CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
                 CheckedAt = DateTime.UtcNow,
                 Detail = $"querying {AppInstallerUpdateService.LatestAppInstallerUri}"
             };
@@ -3457,35 +3457,35 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 AppInstallerUpdateService.UpdateOutcome.UpdateAvailable => new UpdateCommandCenterInfo
                 {
                     Status = "Available",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
                     CheckedAt = DateTime.UtcNow,
                     Detail = outcome.DetailMessage ?? "update available"
                 },
                 AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
                 {
                     Status = "Ready",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
                     CheckedAt = DateTime.UtcNow,
                     Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
                 },
                 AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
                 {
                     Status = "Ready",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
                     CheckedAt = DateTime.UtcNow,
                     Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
                 },
                 AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
                 {
                     Status = "Current",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
                     CheckedAt = DateTime.UtcNow,
                     Detail = outcome.DetailMessage ?? "no updates available"
                 },
                 _ => new UpdateCommandCenterInfo
                 {
                     Status = "Failed",
-                    CurrentVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
                     CheckedAt = DateTime.UtcNow,
                     Detail = outcome.DetailMessage ?? "update failed"
                 }

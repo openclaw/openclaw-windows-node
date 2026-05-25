@@ -27,6 +27,8 @@ public sealed partial class AboutPage : Page
     {
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
+        VersionText.Text = AppVersionHelper.DisplayVersion;
+        RefreshUpdateInfo();
         TryLoadGatewayInfo();
     }
 
@@ -37,10 +39,28 @@ public sealed partial class AboutPage : Page
             case nameof(AppState.GatewaySelf):
                 RefreshGatewayInfo();
                 break;
+            case nameof(AppState.UpdateInfo):
+                RefreshUpdateInfo();
+                break;
         }
     }
 
     public void RefreshGatewayInfo() => TryLoadGatewayInfo();
+
+    private void RefreshUpdateInfo()
+    {
+        var update = _appState?.UpdateInfo;
+        if (update == null)
+        {
+            UpdateStatusText.Text = "Update status: Not checked";
+            return;
+        }
+
+        var detail = string.IsNullOrWhiteSpace(update.Detail)
+            ? string.Empty
+            : $" — {update.Detail}";
+        UpdateStatusText.Text = $"Update status: {update.Status}{detail}";
+    }
 
     private void TryLoadGatewayInfo()
     {
@@ -107,7 +127,7 @@ public sealed partial class AboutPage : Page
             }
             else
             {
-                context = $"OpenClaw Hub v0.1.0\n"
+                context = $"OpenClaw Hub {AppVersionHelper.DisplayVersion}\n"
                     + $"OS: {Environment.OSVersion}\n"
                     + $"Runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}\n"
                     + $"Connection: {CurrentApp.AppState?.Status}\n"

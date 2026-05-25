@@ -319,6 +319,7 @@ internal sealed class TrayMenuStateBuilder
         // Setup Guide / Reconfigure entry — label flips based on whether prior
         // configuration exists; routes to the existing "setup" action handler.
         menu.AddMenuItem(_snapshot.SetupMenuLabel, FluentIconCatalog.Build(FluentIconCatalog.Setup), "setup");
+        menu.AddMenuItem("Check for updates", FluentIconCatalog.Build(FluentIconCatalog.Refresh), "checkupdates");
 
         // ── Footer ──
         menu.AddSeparator();
