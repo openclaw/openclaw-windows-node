@@ -28,6 +28,8 @@ public sealed partial class WizardPage : Page
     public WizardPage()
     {
         InitializeComponent();
+        TextInput.TextChanged += (_, _) => UpdateContinueState();
+        SecretInput.PasswordChanged += (_, _) => UpdateContinueState();
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -183,13 +185,14 @@ public sealed partial class WizardPage : Page
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
         StatusText.Text = "Answer the gateway setup question";
-        PrimaryButton.IsEnabled = true;
+        PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
         SecondaryButton.IsEnabled = true;
-        SecondaryButton.Visibility = Visibility.Visible;
         PrimaryButton.Content = _stepType == "confirm" ? "Yes" : "Continue";
-        SecondaryButton.Content = _stepType == "confirm" ? "No" : "Skip";
+        SecondaryButton.Content = "No";
+        SecondaryButton.Visibility = _stepType == "confirm" ? Visibility.Visible : Visibility.Collapsed;
 
-        BuildOptions(step, initial);
+        if (!BuildOptions(step, initial))
+            return;
 
         if (_stepType == "text")
         {
@@ -203,6 +206,8 @@ public sealed partial class WizardPage : Page
                 TextInput.Visibility = Visibility.Visible;
                 TextInput.Text = initial.ValueKind == JsonValueKind.String ? initial.GetString() ?? "" : "";
             }
+
+            UpdateContinueState();
         }
 
         if (_stepType == "note")
@@ -212,10 +217,10 @@ public sealed partial class WizardPage : Page
         }
     }
 
-    private void BuildOptions(JsonElement step, JsonElement initial)
+    private bool BuildOptions(JsonElement step, JsonElement initial)
     {
         if (_stepType is not ("select" or "multiselect"))
-            return;
+            return true;
 
         _options.Clear();
         if (step.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array)
@@ -233,6 +238,12 @@ public sealed partial class WizardPage : Page
                     : "";
                 _options.Add(new(value, label, hint));
             }
+        }
+
+        if (!WizardSelection.HasSelectableOptions(_stepType, _options.Select(o => o.Value).ToArray()))
+        {
+            ShowError("Gateway wizard returned a choice step without any selectable options.");
+            return false;
         }
 
         if (_stepType == "select")
@@ -253,9 +264,14 @@ public sealed partial class WizardPage : Page
             }
 
             var initialValue = initial.ValueKind == JsonValueKind.String ? initial.GetString() : null;
-            var index = Math.Max(0, _options.FindIndex(o => o.Value == initialValue));
+            var index = WizardSelection.SelectedIndex(initialValue, _options.Select(o => o.Value).ToArray());
             if (index >= 0 && index < SelectOptions.Children.Count && SelectOptions.Children[index] is RadioButton radio)
                 radio.IsChecked = true;
+
+            foreach (var optionRadio in SelectOptions.Children.OfType<RadioButton>())
+                optionRadio.Checked += (_, _) => UpdateContinueState();
+
+            UpdateContinueState();
         }
         else
         {
@@ -265,7 +281,7 @@ public sealed partial class WizardPage : Page
                 : [];
             foreach (var option in _options)
             {
-                MultiOptions.Children.Add(new CheckBox
+                var checkBox = new CheckBox
                 {
                     Content = BuildOptionContent(option),
                     Tag = option.Value,
@@ -274,9 +290,16 @@ public sealed partial class WizardPage : Page
                     Margin = new Thickness(0, 0, 0, 2),
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     HorizontalContentAlignment = HorizontalAlignment.Stretch
-                });
+                };
+                checkBox.Checked += (_, _) => UpdateContinueState();
+                checkBox.Unchecked += (_, _) => UpdateContinueState();
+                MultiOptions.Children.Add(checkBox);
             }
+
+            UpdateContinueState();
         }
+
+        return true;
     }
 
     private static FrameworkElement BuildOptionContent(WizardOption option)
@@ -346,6 +369,19 @@ public sealed partial class WizardPage : Page
 
         try
         {
+            object? answerValue = null;
+            if (!skip && !TryBuildAnswerValue(out answerValue))
+            {
+                ErrorText.Text = _stepType == "multiselect"
+                    ? "Choose at least one valid option."
+                    : _stepType == "text"
+                    ? "Enter a value to continue."
+                    : "Choose a valid option.";
+                ErrorText.Visibility = Visibility.Visible;
+                UpdateContinueState();
+                return;
+            }
+
             SetBusy(skip ? "Skipping..." : "Submitting...");
             object parameters;
             if (skip)
@@ -356,7 +392,7 @@ public sealed partial class WizardPage : Page
             }
             else
             {
-                parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value = BuildAnswerValue() } };
+                parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value = answerValue } };
             }
 
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
@@ -368,9 +404,9 @@ public sealed partial class WizardPage : Page
         }
     }
 
-    private object BuildAnswerValue()
+    private bool TryBuildAnswerValue(out object value)
     {
-        return _stepType switch
+        value = _stepType switch
         {
             "confirm" => true,
             "select" => SelectOptions.Children.OfType<RadioButton>()
@@ -384,6 +420,48 @@ public sealed partial class WizardPage : Page
             "text" => _sensitive ? SecretInput.Password : TextInput.Text,
             _ => "true"
         };
+
+        if (!WizardSelection.RequiresAnswer(_stepType))
+            return true;
+
+        if (_stepType == "text")
+            return !WizardSelection.ShouldDisableContinue(_stepType, value?.ToString());
+
+        return !WizardSelection.ShouldDisableContinue(_stepType, GetSelectedOptionValues(), _options.Select(o => o.Value).ToArray());
+    }
+
+    private string[] GetSelectedOptionValues()
+    {
+        return _stepType switch
+        {
+            "select" => SelectOptions.Children.OfType<RadioButton>()
+                .Where(r => r.IsChecked == true)
+                .Select(r => r.Tag?.ToString() ?? "")
+                .Where(v => v.Length > 0)
+                .ToArray(),
+            "multiselect" => MultiOptions.Children.OfType<CheckBox>()
+                .Where(c => c.IsChecked == true)
+                .Select(c => c.Tag?.ToString() ?? "")
+                .Where(v => v.Length > 0)
+                .ToArray(),
+            _ => []
+        };
+    }
+
+    private void UpdateContinueState()
+    {
+        if (_errorState || !WizardSelection.RequiresAnswer(_stepType))
+            return;
+
+        PrimaryButton.IsEnabled = _stepType == "text"
+            ? !WizardSelection.ShouldDisableContinue(_stepType, _sensitive ? SecretInput.Password : TextInput.Text)
+            : !WizardSelection.ShouldDisableContinue(
+                _stepType,
+                GetSelectedOptionValues(),
+                _options.Select(o => o.Value).ToArray());
+
+        if (PrimaryButton.IsEnabled)
+            ErrorText.Visibility = Visibility.Collapsed;
     }
 
     private int TimeoutForCurrentStep()

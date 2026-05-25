@@ -22,7 +22,7 @@
         <StackPanel x:Name="PermRows" Grid.Row="1" Spacing="8" Margin="0,24,0,0"
                     VerticalAlignment="Top" />
 
-        <!-- Bottom: Refresh + Next -->
+        <!-- Bottom: Refresh + Wizard + Next -->
         <StackPanel Grid.Row="2" Spacing="12">
             <Button x:Name="RefreshButton" HorizontalAlignment="Right"
                     Padding="12,8,12,8" Click="Refresh_Click">
@@ -32,6 +32,11 @@
                     <TextBlock Text="Refresh status" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
+
+            <Button Content="Back to gateway wizard"
+                    HorizontalAlignment="Stretch"
+                    Height="40"
+                    Click="BackToWizard_Click" />
 
             <Button Content="Next"
                     HorizontalAlignment="Stretch"

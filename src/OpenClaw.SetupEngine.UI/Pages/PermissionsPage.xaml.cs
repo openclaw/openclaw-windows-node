@@ -142,6 +142,9 @@ public sealed partial class PermissionsPage : Page
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => _ = RefreshPermissions();
 
+    private void BackToWizard_Click(object sender, RoutedEventArgs e)
+        => App.MainWindow?.NavigateToWizard();
+
     private void Next_Click(object sender, RoutedEventArgs e)
         => App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, null);
 
