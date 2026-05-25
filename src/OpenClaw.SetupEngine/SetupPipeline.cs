@@ -80,6 +80,7 @@ public sealed class SetupPipeline
 
     public async Task<PipelineResult> RunAsync(SetupContext ctx)
     {
+        _completedSteps.Clear();
         var ct = ctx.CancellationToken;
         ctx.Journal.RecordPipelineEvent("pipeline_started", $"steps={_steps.Count}");
         ctx.Logger.Info($"Pipeline starting with {_steps.Count} steps", new { run_id = ctx.Logger.RunId });
@@ -113,12 +114,20 @@ public sealed class SetupPipeline
 
             if (step.CanRetry && step.Retry.MaxAttempts > 1)
             {
-                result = await RetryExecutor.ExecuteWithRetry(
-                    () => step.ExecuteAsync(ctx, ct),
-                    step.Retry,
-                    ctx.Logger,
-                    step.Id,
-                    ct);
+                try
+                {
+                    result = await RetryExecutor.ExecuteWithRetry(
+                        () => step.ExecuteAsync(ctx, ct),
+                        step.Retry,
+                        ctx.Logger,
+                        step.Id,
+                        ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    ctx.Journal.RecordPipelineEvent("pipeline_cancelled", $"during step {step.Id}");
+                    return new PipelineResult(PipelineOutcome.Cancelled);
+                }
             }
             else
             {
@@ -218,6 +227,7 @@ public sealed class SetupPipeline
     /// </summary>
     public async Task<PipelineResult> UninstallAsync(SetupContext ctx)
     {
+        _completedSteps.Clear();
         var ct = ctx.CancellationToken;
 
         if (!ctx.Config.ConfirmDestructive && !ctx.Config.DryRun)

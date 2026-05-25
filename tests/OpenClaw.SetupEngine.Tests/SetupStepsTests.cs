@@ -49,6 +49,7 @@ public class SetupStepsTests : IDisposable
             Id = "local-gw",
             Url = gatewayUrl,
             IsLocal = true,
+            SetupManagedDistroName = ctx.DistroName,
             SshTunnel = null,
         });
         registry.Save();
@@ -135,6 +136,7 @@ public class SetupStepsTests : IDisposable
             Id = "local-gw-with-identity",
             Url = gatewayUrl,
             IsLocal = true,
+            SetupManagedDistroName = ctx.DistroName,
         });
         registry.Save();
 
@@ -256,6 +258,31 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task CleanupStaleGateway_PreservesUnmarkedLocalhostRecord()
+    {
+        var ctx = CreateContext();
+        var gatewayUrl = ctx.GatewayUrl!;
+
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "external-localhost",
+            Url = gatewayUrl,
+            IsLocal = true,
+            SshTunnel = null,
+        });
+        registry.Save();
+
+        var result = await new CleanupStaleGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.NotNull(reloaded.GetById("external-localhost"));
+    }
+
+    [Fact]
     public async Task InstallCli_RejectsInvalidUrl()
     {
         var ctx = CreateContext(new SetupConfig
@@ -268,6 +295,81 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("HTTPS", result.Message);
+    }
+
+    [Theory]
+    [InlineData("gateway.auth.token")]
+    [InlineData("gateway_nodes-allowCommands")]
+    [InlineData("a.b_c-1")]
+    public void ConfigureGateway_AcceptsSafeExtraConfigKeys(string key)
+    {
+        Assert.True(ConfigureGatewayStep.IsSafeExtraConfigKey(key));
+    }
+
+    [Theory]
+    [InlineData("bad key")]
+    [InlineData("bad$key")]
+    [InlineData("bad;key")]
+    [InlineData("bad\nkey")]
+    public void ConfigureGateway_RejectsUnsafeExtraConfigKeys(string key)
+    {
+        Assert.False(ConfigureGatewayStep.IsSafeExtraConfigKey(key));
+    }
+
+    [Fact]
+    public void ConfigureGateway_AddsDevicePairPublicUrlForLoopbackGateway()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "loopback" },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.config.publicUrl 'http://127.0.0.1:18789'",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_DoesNotOverrideExplicitDevicePairPublicUrl()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairPublicUrlKey] = "https://gateway.example.test",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.DoesNotContain("'http://127.0.0.1:18789'", commands);
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.config.publicUrl 'https://gateway.example.test'",
+            commands);
+    }
+
+    [Theory]
+    [InlineData("""{"bootstrapToken":"boot-token"}""", "boot-token", "bootstrapToken")]
+    [InlineData("""{"setupCode":"setup-code"}""", "setup-code", "setupCode")]
+    public void MintBootstrapToken_ReadsSupportedQrJsonShapes(string json, string expectedToken, string expectedSource)
+    {
+        var parsed = MintBootstrapTokenStep.TryReadBootstrapToken(json, out var token, out var source);
+
+        Assert.True(parsed);
+        Assert.Equal(expectedToken, token);
+        Assert.Equal(expectedSource, source);
+    }
+
+    [Fact]
+    public void MintBootstrapToken_RejectsQrJsonWithoutUsableBootstrapCredential()
+    {
+        var parsed = MintBootstrapTokenStep.TryReadBootstrapToken("""{"gatewayUrl":"ws://127.0.0.1:18789"}""", out var token, out var source);
+
+        Assert.False(parsed);
+        Assert.Null(token);
+        Assert.Null(source);
     }
 
     [Fact]

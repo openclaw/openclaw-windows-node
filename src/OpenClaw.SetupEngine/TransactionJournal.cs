@@ -10,7 +10,14 @@ public sealed class TransactionJournal : IDisposable
     private readonly List<JournalEntry> _entries = new();
     private readonly object _lock = new();
 
-    public IReadOnlyList<JournalEntry> Entries => _entries;
+    public IReadOnlyList<JournalEntry> Entries
+    {
+        get
+        {
+            lock (_lock)
+                return _entries.ToArray();
+        }
+    }
     public string? FilePath { get; }
 
     public TransactionJournal(string? filePath)

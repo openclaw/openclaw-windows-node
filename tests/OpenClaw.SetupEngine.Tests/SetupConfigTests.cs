@@ -195,8 +195,21 @@ public class SetupConfigTests : IDisposable
         traySettings.MergeIntoSettingsFile(settingsPath);
 
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
-        Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
         Assert.Equal("custom_value", result.RootElement.GetProperty("CustomKey").GetString());
+    }
+
+    [Fact]
+    public void TraySettingsConfig_CorruptExistingFile_BacksUpAndThrows()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, "{not json");
+
+        var ex = Assert.Throws<InvalidDataException>(() => new TraySettingsConfig().MergeIntoSettingsFile(settingsPath));
+
+        Assert.Contains("settings.json is corrupt", ex.Message);
+        Assert.Equal("{not json", File.ReadAllText(settingsPath));
+        Assert.Single(Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak"));
     }
 
     [Fact]

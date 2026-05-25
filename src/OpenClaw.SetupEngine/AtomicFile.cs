@@ -12,15 +12,14 @@ internal static class AtomicFile
             directory ?? Directory.GetCurrentDirectory(),
             $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
 
-        File.WriteAllText(tempPath, contents);
-
-        if (File.Exists(path))
+        try
         {
-            File.Replace(tempPath, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            File.WriteAllText(tempPath, contents);
+            File.Move(tempPath, path, overwrite: true);
         }
-        else
+        finally
         {
-            File.Move(tempPath, path);
+            TryDeleteTemp(tempPath);
         }
     }
 
@@ -34,15 +33,26 @@ internal static class AtomicFile
             directory ?? Directory.GetCurrentDirectory(),
             $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
 
-        await File.WriteAllTextAsync(tempPath, contents, ct);
-
-        if (File.Exists(path))
+        try
         {
-            File.Replace(tempPath, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            await File.WriteAllTextAsync(tempPath, contents, ct);
+            File.Move(tempPath, path, overwrite: true);
         }
-        else
+        finally
         {
-            File.Move(tempPath, path);
+            TryDeleteTemp(tempPath);
+        }
+    }
+
+    private static void TryDeleteTemp(string tempPath)
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+        catch
+        {
         }
     }
 }

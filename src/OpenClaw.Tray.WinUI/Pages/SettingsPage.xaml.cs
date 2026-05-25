@@ -289,12 +289,14 @@ public sealed partial class SettingsPage : Page
         UninstallResultBar.IsOpen = false;
 
         _uninstallCts = new CancellationTokenSource();
+        System.Diagnostics.Process? proc = null;
+        string? jsonOutput = null;
         try
         {
             var setupExe = App.ResolveSetupEngineUiPath()
                 ?? throw new FileNotFoundException("SetupEngine.UI not found (searched app dir and sibling project output)");
 
-            var jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-uninstall-{Guid.NewGuid():N}.json");
+            jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-uninstall-{Guid.NewGuid():N}.json");
 
             var psi = new System.Diagnostics.ProcessStartInfo(setupExe)
             {
@@ -307,7 +309,7 @@ public sealed partial class SettingsPage : Page
             psi.ArgumentList.Add("--json-output");
             psi.ArgumentList.Add(jsonOutput);
 
-            using var proc = System.Diagnostics.Process.Start(psi)!;
+            proc = System.Diagnostics.Process.Start(psi)!;
             await proc.WaitForExitAsync(_uninstallCts.Token);
 
             if (proc.ExitCode == 0)
@@ -342,6 +344,16 @@ public sealed partial class SettingsPage : Page
         }
         catch (OperationCanceledException)
         {
+            try
+            {
+                if (proc is { HasExited: false })
+                {
+                    proc.Kill(entireProcessTree: true);
+                    await proc.WaitForExitAsync(CancellationToken.None);
+                }
+            }
+            catch { /* best effort cancellation cleanup */ }
+
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
             UninstallResultBar.Title = "Removal cancelled";
@@ -356,6 +368,8 @@ public sealed partial class SettingsPage : Page
         }
         finally
         {
+            proc?.Dispose();
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
         }

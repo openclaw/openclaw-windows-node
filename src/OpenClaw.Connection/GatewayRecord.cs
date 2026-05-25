@@ -27,6 +27,9 @@ public sealed record GatewayRecord
     /// <summary>True for gateways provisioned locally (localhost/WSL).</summary>
     public bool IsLocal { get; init; }
 
+    /// <summary>WSL distro name for gateway records provisioned by SetupEngine.</summary>
+    public string? SetupManagedDistroName { get; init; }
+
     /// <summary>Per-gateway SSH tunnel configuration. Null if no tunnel needed.</summary>
     public SshTunnelConfig? SshTunnel { get; init; }
 

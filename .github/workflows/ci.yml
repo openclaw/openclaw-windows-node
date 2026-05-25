@@ -287,7 +287,7 @@ jobs:
         if-no-files-found: warn
 
   build:
-    needs: test
+    needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     strategy:
       matrix:
@@ -360,7 +360,7 @@ jobs:
         path: publish/
 
   build-msix:
-    needs: test
+    needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     continue-on-error: true
     strategy:
@@ -452,7 +452,7 @@ jobs:
         path: ${{ steps.find-msix.outputs.msix_path }}
 
   build-extension:
-    needs: test
+    needs: [test, e2etests]
     runs-on: windows-latest
     strategy:
       matrix:
@@ -486,8 +486,8 @@ jobs:
         path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
 
   release:
-    needs: [repo-hygiene, test, build, build-msix, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
+    needs: [repo-hygiene, test, e2etests, build, build-msix, build-extension]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
       contents: write

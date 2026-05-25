@@ -21,7 +21,7 @@ public static class GatewayDashboardUrlBuilder
 
         if (appendSharedGatewayToken && !string.IsNullOrEmpty(sharedGatewayToken))
         {
-            var separator = url.Contains('?') ? "&" : "?";
+            var separator = url.Contains('#') ? "&" : "#";
             url = $"{url}{separator}token={Uri.EscapeDataString(sharedGatewayToken)}";
         }
 

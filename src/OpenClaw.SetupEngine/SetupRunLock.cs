@@ -32,7 +32,7 @@ public sealed class SetupRunLock : IDisposable
         catch (IOException)
         {
             runLock = null;
-            message = $"Another OpenClaw setup run appears to be active. If setup is not running, delete the stale lock file and retry: {path}";
+            message = $"Another OpenClaw setup run appears to be active. Wait for it to finish, then retry. Lock file: {path}";
             return false;
         }
         catch (UnauthorizedAccessException ex)

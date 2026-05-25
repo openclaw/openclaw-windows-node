@@ -151,7 +151,7 @@ public class SetupAndConnectTests
         var settingsPath = Path.Combine(_fixture.DataDir, "settings.json");
         var gatewaysPath = Path.Combine(_fixture.DataDir, "gateways.json");
         Console.WriteLine($"[E2E] settings.json path: {settingsPath}");
-        Console.WriteLine($"[E2E] gateways.json path: {gatewaysPath}; activeId={gateway.ActiveId}; sharedTokenLength={gateway.SharedGatewayToken.Length}");
+        Console.WriteLine($"[E2E] gateways.json path: {gatewaysPath}; activeId={gateway.ActiveId}; sharedTokenLength={gateway.SharedGatewayToken?.Length ?? 0}");
         Assert.True(File.Exists(settingsPath));
         Assert.True(File.Exists(gatewaysPath));
 
@@ -161,7 +161,7 @@ public class SetupAndConnectTests
     }
 
     [Fact]
-    public async Task FullSetup_DashboardLink_UsesTraySharedGatewayTokenUrl()
+    public async Task FullSetup_DashboardLink_UsesSharedGatewayTokenFragmentAfterPairing()
     {
         using var dashboardDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.dashboard.url");
         var dashboard = dashboardDoc.RootElement;
@@ -171,11 +171,11 @@ public class SetupAndConnectTests
         var hasTokenQuery = dashboard.GetProperty("hasTokenQuery").GetBoolean();
 
         Assert.Equal("record.SharedGatewayToken", credentialSource);
-        Assert.True(usesSharedGatewayToken, $"Expected tray dashboard link to use shared gateway token; source={credentialSource}");
-        Assert.True(hasTokenQuery, $"Expected tray dashboard link to include token query; source={credentialSource}");
+        Assert.True(usesSharedGatewayToken, $"Expected tray dashboard link to use the shared HTTP gateway token; source={credentialSource}");
+        Assert.False(hasTokenQuery, $"Expected tray dashboard link to avoid token query strings; source={credentialSource}");
         Assert.NotNull(dashboardUrl);
         Assert.StartsWith($"http://localhost:{_fixture.GatewayPort}", dashboardUrl);
-        Assert.Contains("token=", dashboardUrl);
+        Assert.Contains("#token=", dashboardUrl);
         Console.WriteLine($"[E2E] tray dashboard URL source={credentialSource}; tokenQuery={hasTokenQuery}; length={dashboardUrl!.Length}");
 
         var result = await _fixture.RunInWslAsync(

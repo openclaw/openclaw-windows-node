@@ -14,6 +14,22 @@ internal static class WslConstants
     public static string GetPathPrefix(string user) =>
         $"""export PATH="/home/{user}/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH" """;
 
+    public static string WslExePath
+    {
+        get
+        {
+            var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            if (string.IsNullOrWhiteSpace(windowsDir))
+                windowsDir = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+            return Path.Combine(windowsDir, "System32", "wsl.exe");
+        }
+    }
+
+    public static string SafeWindowsWorkingDirectory
+        => Environment.GetFolderPath(Environment.SpecialFolder.System) is { Length: > 0 } systemDir
+            ? systemDir
+            : Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
+
     // Default (for backward compat with steps that don't have user context yet)
     public const string PathPrefix = """export PATH="/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH" """;
 }
@@ -42,7 +58,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var list = await ctx.Commands.RunAsync("wsl.exe", ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
         if (list.ExitCode != 0)
             return StepResult.Ok("WSL not available or no distros — nothing to clean");
 
@@ -65,7 +81,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
             {
                 ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
                 // Shut down WSL VM to release VHD locks
-                await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+                await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
                 await Task.Delay(2000, ct);
 
                 // Retry deletion — VHD may still be locked briefly after WSL shutdown
@@ -95,17 +111,17 @@ public sealed class CleanupStaleDistroStep : SetupStep
         ctx.Logger.Decision($"Found existing distro '{distro}'", "terminating and unregistering");
 
         // Terminate first (stops gateway service), then shut WSL down to release VHD/port locks.
-        await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port release
 
-        var unregister = await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        var unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         if (unregister.ExitCode != 0)
         {
             ctx.Logger.Warn($"First unregister attempt failed (exit {unregister.ExitCode}); forcing WSL shutdown and retrying");
-            await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+            await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
             await Task.Delay(3000, ct);
-            unregister = await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+            unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         }
 
         if (unregister.ExitCode == 0)
@@ -162,10 +178,10 @@ public sealed class CleanupStaleGatewayStep : SetupStep
         {
             // Preserve non-local records and SSH-tunneled gateways — they may be
             // remote gateways that happen to use localhost as a forwarded port.
-            if (!existing.IsLocal || existing.SshTunnel != null)
+            if (!PairOperatorStep.IsSetupManagedLocalRecord(existing, ctx))
             {
                 ctx.Logger.Warn($"Skipping cleanup of gateway record {existing.Id}: " +
-                    (existing.SshTunnel != null ? "has SSH tunnel config" : "not a local gateway"));
+                    "not a SetupEngine-managed local gateway");
             }
             else
             {
@@ -239,14 +255,14 @@ public sealed class PreflightWslStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var versionResult = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+        var versionResult = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], TimeSpan.FromSeconds(5), ct: ct);
         if (versionResult.ExitCode != 0 && LooksUnavailable(versionResult))
         {
             var installResult = await InstallWslPlatformAsync(ctx, ct);
             if (!installResult.IsSuccess)
                 return installResult;
 
-            versionResult = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+            versionResult = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], TimeSpan.FromSeconds(5), ct: ct);
         }
 
         if (versionResult.ExitCode != 0)
@@ -263,10 +279,11 @@ public sealed class PreflightWslStep : SetupStep
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "wsl.exe",
+                FileName = WslConstants.WslExePath,
                 UseShellExecute = true,
                 Verb = "runas",
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                WorkingDirectory = WslConstants.SafeWindowsWorkingDirectory
             };
             psi.ArgumentList.Add("--install");
             psi.ArgumentList.Add("--no-distribution");
@@ -283,7 +300,7 @@ public sealed class PreflightWslStep : SetupStep
             if (process.ExitCode != 0)
                 return StepResult.Fail($"WSL platform install failed with exit code {process.ExitCode}.");
 
-            var probe = await ctx.Commands.RunAsync("wsl.exe", ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+            var probe = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], TimeSpan.FromSeconds(5), ct: ct);
             if (probe.ExitCode != 0 || LooksUnavailable(probe))
                 return StepResult.Terminal("WSL platform install completed, but Windows still reports WSL unavailable. Reboot Windows, then run setup again.");
 
@@ -397,21 +414,21 @@ public sealed class CreateWslInstanceStep : SetupStep
             // Export base → import as our distro name
             var exportPath = Path.Combine(tempDir, "base.tar");
             var export = await ctx.Commands.RunAsync(
-                "wsl.exe", ["--export", baseDistro, exportPath],
+                WslConstants.WslExePath, ["--export", baseDistro, exportPath],
                 TimeSpan.FromMinutes(5), ct: ct);
 
             if (export.ExitCode != 0)
             {
                 ctx.Logger.Warn($"Base distro export failed (exit {export.ExitCode}); attempting to install {baseDistro}");
                 var install = await ctx.Commands.RunAsync(
-                    "wsl.exe", ["--install", baseDistro, "--no-launch"],
+                    WslConstants.WslExePath, ["--install", baseDistro, "--no-launch"],
                     TimeSpan.FromMinutes(5), ct: ct);
 
                 if (install.ExitCode != 0 && !install.Stdout.Contains("already installed", StringComparison.OrdinalIgnoreCase))
                     return StepResult.Fail($"Failed to install base distro '{baseDistro}' (exit {install.ExitCode}): {install.Stderr}");
 
                 export = await ctx.Commands.RunAsync(
-                    "wsl.exe", ["--export", baseDistro, exportPath],
+                    WslConstants.WslExePath, ["--export", baseDistro, exportPath],
                     TimeSpan.FromMinutes(5), ct: ct);
             }
 
@@ -422,7 +439,7 @@ public sealed class CreateWslInstanceStep : SetupStep
             Directory.CreateDirectory(installPath);
 
             var import = await ctx.Commands.RunAsync(
-                "wsl.exe", ["--import", distro, installPath, exportPath, "--version", "2"],
+                WslConstants.WslExePath, ["--import", distro, installPath, exportPath, "--version", "2"],
                 TimeSpan.FromMinutes(5), ct: ct);
 
             if (import.ExitCode != 0)
@@ -439,10 +456,10 @@ public sealed class CreateWslInstanceStep : SetupStep
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await ctx.Commands.RunAsync("wsl.exe", ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port/VHD locks release
-        await ctx.Commands.RunAsync("wsl.exe", ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
 
         // VHD parent dir cleanup (mirrors old uninstall step 5a)
         var localDataPath = ctx.LocalDataDir;
@@ -531,7 +548,7 @@ useWindowsTimezone={wsl.UseWindowsTimezone.ToString().ToLower()}
 
         // Restart WSL to apply wsl.conf (systemd)
         ctx.Logger.Info("Restarting WSL to apply configuration (systemd)");
-        await ctx.Commands.RunAsync("wsl.exe", ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let WSL settle
 
         return StepResult.Ok("WSL instance configured");
@@ -802,6 +819,8 @@ public sealed class InstallCliStep : SetupStep
 
 public sealed class ConfigureGatewayStep : SetupStep
 {
+    internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
+
     public override string Id => "configure-gateway";
     public override string DisplayName => "Configure gateway";
 
@@ -823,31 +842,24 @@ public sealed class ConfigureGatewayStep : SetupStep
         var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
         var escapedAllowedCommands = ShellEscape(allowedCommandsJson);
         var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
+        if (gw.ExtraConfig is { Count: > 0 })
+        {
+            foreach (var key in gw.ExtraConfig.Keys)
+            {
+                if (!IsSafeExtraConfigKey(key))
+                    return StepResult.Fail($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.");
+            }
+        }
 
-        var configCommands = $"""
-            openclaw config set gateway.mode local
-            openclaw config set gateway.port {port}
-            openclaw config set gateway.bind {gw.Bind}
-            openclaw config set gateway.auth.mode {gw.AuthMode}
-            openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
-            openclaw config set gateway.reload.mode {gw.ReloadMode}
-            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
-            """;
+        var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands);
 
         ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
         if (extraConfigOverridesAllowCommands)
             ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
-
-        // Apply any extra config key/value pairs from config (shell-escape values)
-        if (gw.ExtraConfig is { Count: > 0 })
+        if (GetDefaultDevicePairPublicUrl(gw, port) is { } defaultPublicUrl &&
+            gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
-            foreach (var (key, value) in gw.ExtraConfig)
-            {
-                // Shell-escape: wrap value in single quotes, escaping embedded single quotes
-                var escapedValue = ShellEscape(value);
-                var escapedKey = key.Replace("'", "").Replace(";", "").Replace("|", "").Replace("&", "");
-                configCommands += $"\n            openclaw config set {escapedKey} {escapedValue}";
-            }
+            ctx.Logger.Info($"Configured device-pair public URL for loopback gateway: {defaultPublicUrl}");
         }
 
         var pathPrefix = ctx.WslPathPrefix;
@@ -869,7 +881,47 @@ public sealed class ConfigureGatewayStep : SetupStep
         return StepResult.Ok("Gateway configured");
     }
 
+    internal static string BuildConfigCommands(GatewayConfig gw, int port, string escapedAllowedCommands)
+    {
+        var configCommands = $"""
+            openclaw config set gateway.mode local
+            openclaw config set gateway.port {port}
+            openclaw config set gateway.bind {gw.Bind}
+            openclaw config set gateway.auth.mode {gw.AuthMode}
+            openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
+            openclaw config set gateway.reload.mode {gw.ReloadMode}
+            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
+            """;
+
+        if (GetDefaultDevicePairPublicUrl(gw, port) is { } defaultPublicUrl &&
+            gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
+        {
+            configCommands += $"\n            openclaw config set {DevicePairPublicUrlKey} {ShellEscape(defaultPublicUrl)}";
+        }
+
+        // Apply any extra config key/value pairs from config (shell-escape values)
+        if (gw.ExtraConfig is { Count: > 0 })
+        {
+            foreach (var (key, value) in gw.ExtraConfig)
+            {
+                if (!IsSafeExtraConfigKey(key))
+                    throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
+
+                var escapedValue = ShellEscape(value);
+                configCommands += $"\n            openclaw config set {key} {escapedValue}";
+            }
+        }
+
+        return configCommands;
+    }
+
+    internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port) =>
+        gw.Bind == "loopback" ? $"http://127.0.0.1:{port}" : null;
+
     private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
+
+    internal static bool IsSafeExtraConfigKey(string value)
+        => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
 }
 
 public sealed class InstallGatewayServiceStep : SetupStep
@@ -1010,7 +1062,7 @@ public sealed class StartGatewayStep : SetupStep
         var distro = ctx.DistroName!;
 
         // Check if distro is running before trying systemctl stop
-        var list = await ctx.Commands.RunAsync("wsl.exe", ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
         var distros = list.Stdout
             .Replace("\0", "").Replace("\uFEFF", "")
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -1023,7 +1075,7 @@ public sealed class StartGatewayStep : SetupStep
         }
 
         // Check distro state — only stop if Running
-        var verbose = await ctx.Commands.RunAsync("wsl.exe", ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
+        var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
         var isRunning = verbose.Stdout
             .Replace("\0", "").Replace("\uFEFF", "")
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -1042,7 +1094,7 @@ public sealed class StartGatewayStep : SetupStep
         try
         {
             await ctx.Commands.RunInWslAsync(
-                distro, "bash -c 'sudo systemctl stop openclaw-gateway 2>&1 || true'",
+                distro, "bash -c 'systemctl --user stop openclaw-gateway 2>&1 || true'",
                 TimeSpan.FromSeconds(10), ct: cts.Token);
             ctx.Logger.Info("[Uninstall] Stopped gateway service");
         }
@@ -1084,12 +1136,11 @@ public sealed class MintBootstrapTokenStep : SetupStep
             // Parse bootstrap token from JSON output
             try
             {
-                using var doc = JsonDocument.Parse(mint.Stdout.Trim());
-                if (doc.RootElement.TryGetProperty("bootstrapToken", out var bt))
+                if (TryReadBootstrapToken(mint.Stdout.Trim(), out var bootstrapToken, out var source))
                 {
-                    ctx.BootstrapToken = bt.GetString();
+                    ctx.BootstrapToken = bootstrapToken;
                     ctx.Logger.StateChange("bootstrap_token", null, "[SET]");
-                    return StepResult.Ok("Bootstrap token minted");
+                    return StepResult.Ok($"Bootstrap token minted from {source}");
                 }
             }
             catch (JsonException ex)
@@ -1098,10 +1149,28 @@ public sealed class MintBootstrapTokenStep : SetupStep
             }
         }
 
-        // Fallback: use the shared gateway token directly as bootstrap
-        ctx.BootstrapToken = ctx.SharedGatewayToken;
-        ctx.Logger.Decision("QR mint failed or unavailable", "using shared gateway token as bootstrap");
-        return StepResult.Ok("Using shared gateway token as bootstrap");
+        ctx.Logger.Warn("QR/bootstrap token mint failed or did not return a bootstrapToken/setupCode");
+        return StepResult.Fail("Could not mint bootstrap token; refusing to use the shared gateway token as bootstrap.");
+    }
+
+    internal static bool TryReadBootstrapToken(string json, out string? token, out string? source)
+    {
+        using var doc = JsonDocument.Parse(json);
+        foreach (var propertyName in new[] { "bootstrapToken", "setupCode" })
+        {
+            if (doc.RootElement.TryGetProperty(propertyName, out var property) &&
+                property.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(property.GetString()))
+            {
+                token = property.GetString();
+                source = propertyName;
+                return true;
+            }
+        }
+
+        token = null;
+        source = null;
+        return false;
     }
 }
 
@@ -1142,6 +1211,7 @@ public sealed class PairOperatorStep : SetupStep
                 SharedGatewayToken = ctx.SharedGatewayToken,
                 BootstrapToken = ctx.BootstrapToken,
                 IsLocal = true,
+                SetupManagedDistroName = ctx.DistroName,
                 LastConnected = DateTime.UtcNow
             };
 
@@ -1403,9 +1473,18 @@ public sealed class PairOperatorStep : SetupStep
             cts.CancelAfter(timeout);
             return await tcs.Task.WaitAsync(cts.Token);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (OperationCanceledException)
         {
             return ConnectionOutcome.Timeout;
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Warn($"Operator connection failed: {ex.Message}");
+            return ConnectionOutcome.Error;
         }
         finally
         {
@@ -1421,7 +1500,7 @@ public sealed class PairOperatorStep : SetupStep
 
         // Find all local gateway records to remove (mirrors old uninstall step 6a)
         var localRecords = registry.GetAll()
-            .Where(r => r.IsLocal || (r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)))
+            .Where(r => IsSetupManagedLocalRecord(r, ctx))
             .ToList();
 
         if (localRecords.Count > 0)
@@ -1464,6 +1543,19 @@ public sealed class PairOperatorStep : SetupStep
 
         // Best-effort revoke operator token via gateway HTTP endpoint (mirrors old step 4)
         await TryRevokeOperatorTokenAsync(ctx, ct);
+    }
+
+    internal static bool IsSetupManagedLocalRecord(GatewayRecord record, SetupContext ctx)
+    {
+        if (!record.IsLocal || record.SshTunnel != null)
+            return false;
+
+        if (string.Equals(record.SetupManagedDistroName, ctx.DistroName, StringComparison.Ordinal))
+            return true;
+
+        return string.IsNullOrWhiteSpace(record.SetupManagedDistroName)
+            && string.Equals(record.Url, ctx.GatewayUrl, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(record.FriendlyName, $"Local ({ctx.DistroName})", StringComparison.Ordinal);
     }
 
     private static async Task TryRevokeOperatorTokenAsync(SetupContext ctx, CancellationToken ct)
@@ -1877,6 +1969,8 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Drain any remaining pending approvals (device or node) so tray starts clean
         await DrainPendingApprovalsAsync(ctx, ct);
 
+        ClearPersistedBootstrapCredentials(ctx);
+
         return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
     }
 
@@ -1948,6 +2042,30 @@ public sealed class VerifyEndToEndStep : SetupStep
         var settingsPath = Path.Combine(ctx.DataDir, "settings.json");
         ctx.Config.Settings.MergeIntoSettingsFile(settingsPath);
         ctx.Logger.Info($"Wrote settings.json: EnableNodeMode={ctx.Config.Settings.EnableNodeMode}");
+    }
+
+    private static void ClearPersistedBootstrapCredentials(SetupContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.GatewayRecordId))
+            return;
+
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+        var record = registry.GetById(ctx.GatewayRecordId);
+        if (record is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(record.BootstrapToken))
+        {
+            return;
+        }
+
+        registry.AddOrUpdate(record with
+        {
+            BootstrapToken = null
+        });
+        registry.Save();
+        ctx.Logger.Info("Cleared persisted bootstrap gateway credential after device pairing");
     }
 
     /// <summary>
@@ -2039,7 +2157,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         {
             SchemaVersion = 1,
             RunId = Guid.NewGuid().ToString("N"),
-            InstallId = Guid.NewGuid().ToString("N"),
+            InstallId = GetStableInstallId(ctx),
             Phase = 13,
             Status = 7,
             DistroName = ctx.DistroName,
@@ -2057,6 +2175,11 @@ public sealed class VerifyEndToEndStep : SetupStep
         await AtomicFile.WriteAllTextAsync(statePath, json, ct);
         ctx.Logger.Info($"Wrote setup-state.json: DistroName={ctx.DistroName}");
     }
+
+    private static string GetStableInstallId(SetupContext ctx)
+        => !string.IsNullOrWhiteSpace(ctx.GatewayRecordId)
+            ? $"gateway:{ctx.GatewayRecordId}"
+            : $"distro:{ctx.DistroName}";
 }
 
 // ─── Step 16: Start WSL Keepalive ───
@@ -2087,7 +2210,7 @@ public sealed class StartKeepaliveStep : SetupStep
         // remains stable until the tray starts its own keepalive.
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "wsl.exe",
+            FileName = WslConstants.WslExePath,
             UseShellExecute = false,
             CreateNoWindow = true
         };

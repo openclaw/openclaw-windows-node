@@ -343,6 +343,13 @@ Search the command palette and return matching commands.
 ```
 Returns array of `{ Title, Subtitle, Icon }`.
 
+### app.dashboard.url
+Build the same gateway dashboard URL the tray opens.
+```
+{"path": "string"}           // optional
+```
+Returns `{ url, credentialSource, usesSharedGatewayToken, hasTokenQuery }`.
+
 ## Location (location.*)
 
 ### location.get

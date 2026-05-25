@@ -180,11 +180,15 @@ public sealed class TraySettingsConfig
                 var content = File.ReadAllText(settingsPath);
                 existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(content, SetupConfig.JsonOptions);
             }
-            catch { /* corrupt file — overwrite */ }
+            catch (JsonException ex)
+            {
+                var backupPath = settingsPath + $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.bak";
+                File.Copy(settingsPath, backupPath, overwrite: false);
+                throw new InvalidDataException($"settings.json is corrupt; backed up to {backupPath}", ex);
+            }
         }
 
-        // Build our settings as a dictionary
-        var settings = new Dictionary<string, object>
+        var defaults = new Dictionary<string, object>
         {
             ["EnableNodeMode"] = EnableNodeMode,
             ["AutoStart"] = AutoStart,
@@ -198,15 +202,15 @@ public sealed class TraySettingsConfig
             ["NodeSttEnabled"] = NodeSttEnabled
         };
 
-        // Merge: our values win, but preserve unknown keys
+        var settings = new Dictionary<string, object>();
         if (existing != null)
         {
             foreach (var kvp in existing)
-            {
-                if (!settings.ContainsKey(kvp.Key))
-                    settings[kvp.Key] = kvp.Value;
-            }
+                settings[kvp.Key] = kvp.Value;
         }
+
+        foreach (var kvp in defaults)
+            settings.TryAdd(kvp.Key, kvp.Value);
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });

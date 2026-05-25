@@ -9,7 +9,7 @@ public sealed class GatewayDashboardUrlBuilderTests
     {
         var url = GatewayDashboardUrlBuilder.Build("ws://localhost:4317", null, "shared token", appendSharedGatewayToken: true);
 
-        Assert.Equal("http://localhost:4317?token=shared%20token", url);
+        Assert.Equal("http://localhost:4317#token=shared%20token", url);
     }
 
     [Fact]
@@ -17,7 +17,7 @@ public sealed class GatewayDashboardUrlBuilderTests
     {
         var url = GatewayDashboardUrlBuilder.Build("wss://gateway.example/", "/sessions/abc", "shared", appendSharedGatewayToken: true);
 
-        Assert.Equal("https://gateway.example/sessions/abc?token=shared", url);
+        Assert.Equal("https://gateway.example/sessions/abc#token=shared", url);
     }
 
     [Fact]

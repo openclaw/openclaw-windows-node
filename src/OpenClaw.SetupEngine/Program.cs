@@ -83,21 +83,21 @@ public static class Program
             return 2;
         }
 
-        // Create infrastructure
-        using var logger = new SetupLogger(config.LogPath, Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace);
-        var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
-        using var journal = new TransactionJournal(journalPath);
-        var commands = new CommandRunner(logger);
-        using var cts = new CancellationTokenSource();
-
         if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out var setupLock, out var lockMessage))
         {
-            logger.Error(lockMessage ?? "Another setup run is active.");
             Console.Error.WriteLine($"ERROR: {lockMessage}");
             return 2;
         }
 
         using var acquiredSetupLock = setupLock;
+
+        // Create infrastructure after acquiring the run lock so a concurrent loser
+        // cannot truncate the active run's log or journal files.
+        using var logger = new SetupLogger(config.LogPath, Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace);
+        var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
+        using var journal = new TransactionJournal(journalPath);
+        var commands = new CommandRunner(logger);
+        using var cts = new CancellationTokenSource();
 
         // Handle Ctrl+C gracefully
         Console.CancelKeyPress += (_, e) =>

@@ -502,7 +502,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         return result;
     }
 
-    public (string GatewayUrl, string SharedGatewayToken, string ActiveId) ReadActiveGatewayRecord()
+    public (string GatewayUrl, string? SharedGatewayToken, string ActiveId) ReadActiveGatewayRecord()
     {
         var gatewaysPath = Path.Combine(DataDir, "gateways.json");
         using var doc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
@@ -538,8 +538,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         Log($"Active gateway record: id={id}, url={url}, sharedTokenPresent={!string.IsNullOrWhiteSpace(sharedToken)}, sharedTokenLength={sharedToken?.Length ?? 0}");
 
-        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(sharedToken) || string.IsNullOrWhiteSpace(id))
-            throw new InvalidDataException("Active gateway record is missing Url, Id, or SharedGatewayToken");
+        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(id))
+            throw new InvalidDataException("Active gateway record is missing Url or Id");
 
         return (url, sharedToken, id);
     }
@@ -613,12 +613,32 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         {
             foreach (var file in Directory.EnumerateFiles(root, ext, SearchOption.AllDirectories))
             {
+                if (!ShouldCopyArtifactFile(file))
+                {
+                    Log($"Skipping secret-bearing artifact: {Path.GetRelativePath(root, file)}");
+                    continue;
+                }
+
                 var relativePath = Path.GetRelativePath(root, file);
                 var dest = Path.Combine(ArtifactDir, artifactSubdir, relativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 File.Copy(file, dest, overwrite: true);
             }
         }
+    }
+
+    private static bool ShouldCopyArtifactFile(string file)
+    {
+        var fileName = Path.GetFileName(file);
+        if (fileName.Equals("gateways.json", StringComparison.OrdinalIgnoreCase) ||
+            fileName.Equals("settings.json", StringComparison.OrdinalIgnoreCase) ||
+            fileName.Contains("device-key", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(segment => segment.Equals("gateways", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string LocateTrayExe()
