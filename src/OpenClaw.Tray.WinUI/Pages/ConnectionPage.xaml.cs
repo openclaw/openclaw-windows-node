@@ -1425,16 +1425,7 @@ public sealed partial class ConnectionPage : Page
 
     private void OnOpenDashboard(object sender, RoutedEventArgs e)
     {
-        var active = _gatewayRegistry?.GetActive();
-        if (active == null) return;
-        try
-        {
-            var http = active.Url
-                .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-                .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase);
-            _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(http));
-        }
-        catch { }
+        ((IAppCommands)CurrentApp).OpenDashboard();
     }
 
     /// <summary>
@@ -1575,12 +1566,17 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         try
         {
-            var http = rec.Url
-                .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-                .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase);
-            _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(http));
+            var url = GatewayDashboardUrlBuilder.Build(
+                rec.Url,
+                path: null,
+                rec.SharedGatewayToken,
+                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
+            _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Failed to open saved gateway dashboard: {ex.Message}");
+        }
     }
 
     private void OnSavedRowEdit(object sender, RoutedEventArgs e)
