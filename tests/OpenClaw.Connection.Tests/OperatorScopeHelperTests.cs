@@ -141,11 +141,8 @@ public class ChatNavigationReadinessTests
 
     private sealed class StubConnectionManager : IGatewayConnectionManager
     {
-        private RoleConnectionState _operatorState;
-
         public StubConnectionManager(RoleConnectionState operatorState)
         {
-            _operatorState = operatorState;
             CurrentSnapshot = BuildSnapshot(operatorState);
         }
 
@@ -162,7 +159,6 @@ public class ChatNavigationReadinessTests
 
         public void SimulateConnected()
         {
-            _operatorState = RoleConnectionState.Connected;
             CurrentSnapshot = BuildSnapshot(RoleConnectionState.Connected);
             StateChanged?.Invoke(this, CurrentSnapshot);
         }
