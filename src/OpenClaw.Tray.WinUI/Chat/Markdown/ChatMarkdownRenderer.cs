@@ -328,6 +328,16 @@ public static class ChatMarkdownRenderer
     //  Tables
     // ────────────────────────────────────────────────────────────────────
 
+    private const string TableGridColor = "#40808080";
+
+    // Shared brush — avoids allocating one DependencyObject per cell on the UI thread.
+    // SolidColorBrush is freezable/lightweight, but we still construct it lazily on first
+    // table render so type initialization doesn't run in headless test contexts that
+    // never touch a renderer.
+    private static SolidColorBrush? s_tableGridBrush;
+    private static SolidColorBrush TableGridBrush =>
+        s_tableGridBrush ??= new SolidColorBrush(ParseHex(TableGridColor));
+
     private static Element RenderTable(MdTable table)
     {
         int colCount = Math.Max(
@@ -351,7 +361,7 @@ public static class ChatMarkdownRenderer
         {
             for (int c = 0; c < colCount; c++)
             {
-                cells.Add(RenderTableCell(hr, c, table, isHeader: true)
+                cells.Add(RenderTableCell(hr, c, rowIndex, table, isHeader: true)
                     .Grid(row: rowIndex, column: c));
             }
             rowIndex++;
@@ -360,30 +370,82 @@ public static class ChatMarkdownRenderer
         {
             for (int c = 0; c < colCount; c++)
             {
-                cells.Add(RenderTableCell(br, c, table, isHeader: false)
+                cells.Add(RenderTableCell(br, c, rowIndex, table, isHeader: false)
                     .Grid(row: rowIndex, column: c));
             }
             rowIndex++;
         }
-        return Grid(cols, rows, cells.ToArray());
+        // Outer border closes the right/bottom edges of the last column/row,
+        // matching the per-cell top/left strokes for a uniform 1px grid.
+        return Border(Grid(cols, rows, cells.ToArray()))
+            .WithBorder(TableGridBrush, thickness: 1);
     }
 
-    private static Element RenderTableCell(MdTableRow row, int colIndex, MdTable table, bool isHeader)
+    private static Element RenderTableCell(
+        MdTableRow row,
+        int colIndex,
+        int rowIndex,
+        MdTable table,
+        bool isHeader)
     {
         var inlines = colIndex < row.Cells.Count
             ? row.Cells[colIndex].Inlines
             : Array.Empty<MdInline>();
-        var tb = InlinesTextBlock(inlines).FontSize(BodyFontSize).Padding(6, 4, 6, 4);
+        var tb = InlinesTextBlock(inlines).FontSize(BodyFontSize).Padding(8, 4, 8, 4);
         if (isHeader) tb = tb.FontWeight(MUIText.FontWeights.SemiBold);
         var align = colIndex < table.ColumnAlignments.Count
             ? table.ColumnAlignments[colIndex]
             : MdColumnAlignment.Default;
-        return align switch
+        tb = align switch
         {
             MdColumnAlignment.Right  => tb.HAlign(HorizontalAlignment.Right),
             MdColumnAlignment.Center => tb.HAlign(HorizontalAlignment.Center),
             _                        => tb,
         };
+        // Per-cell top/left strokes only — the table-level Border closes
+        // the bottom/right edges. This produces a uniform 1px grid with
+        // no double-thickness interior lines.
+        double leftThickness = colIndex == 0 ? 0 : 1;
+        double topThickness  = rowIndex == 0 ? 0 : 1;
+        var cell = Border(tb).Set(b =>
+        {
+            b.BorderBrush = TableGridBrush;
+            b.BorderThickness = new Thickness(leftThickness, topThickness, 0, 0);
+        });
+        if (isHeader)
+            cell = cell.Background(Theme.CardBackground);
+        return cell;
+    }
+
+    /// <summary>
+    /// Parses a hex color in the form <c>#AARRGGBB</c> or <c>#RRGGBB</c>.
+    /// Local copy to avoid depending on the internal helper in
+    /// <c>OpenClawTray.FunctionalUI</c>.
+    /// </summary>
+    private static global::Windows.UI.Color ParseHex(string hex)
+    {
+        if (string.IsNullOrEmpty(hex) || hex[0] != '#')
+            return Microsoft.UI.Colors.Transparent;
+        string s = hex.Substring(1);
+        byte a = 0xFF, r, g, b;
+        if (s.Length == 8)
+        {
+            a = byte.Parse(s.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+            r = byte.Parse(s.Substring(2, 2), System.Globalization.NumberStyles.HexNumber);
+            g = byte.Parse(s.Substring(4, 2), System.Globalization.NumberStyles.HexNumber);
+            b = byte.Parse(s.Substring(6, 2), System.Globalization.NumberStyles.HexNumber);
+        }
+        else if (s.Length == 6)
+        {
+            r = byte.Parse(s.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+            g = byte.Parse(s.Substring(2, 2), System.Globalization.NumberStyles.HexNumber);
+            b = byte.Parse(s.Substring(4, 2), System.Globalization.NumberStyles.HexNumber);
+        }
+        else
+        {
+            return Microsoft.UI.Colors.Transparent;
+        }
+        return global::Windows.UI.Color.FromArgb(a, r, g, b);
     }
 
     private static int MaxCells(IReadOnlyList<MdTableRow> a, IReadOnlyList<MdTableRow> b)
