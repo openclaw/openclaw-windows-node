@@ -188,10 +188,14 @@ public sealed class TraySettingsConfig
             }
         }
 
-        var defaults = new Dictionary<string, object>
+        var setupOwnedSettings = new Dictionary<string, object>
         {
             ["EnableNodeMode"] = EnableNodeMode,
             ["AutoStart"] = AutoStart,
+        };
+
+        var initialDefaults = new Dictionary<string, object>
+        {
             ["NodeSystemRunEnabled"] = NodeSystemRunEnabled,
             ["NodeCanvasEnabled"] = NodeCanvasEnabled,
             ["NodeScreenEnabled"] = NodeScreenEnabled,
@@ -209,7 +213,10 @@ public sealed class TraySettingsConfig
                 settings[kvp.Key] = kvp.Value;
         }
 
-        foreach (var kvp in defaults)
+        foreach (var kvp in setupOwnedSettings)
+            settings[kvp.Key] = kvp.Value;
+
+        foreach (var kvp in initialDefaults)
             settings.TryAdd(kvp.Key, kvp.Value);
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);

@@ -514,6 +514,20 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(0, pid);
     }
 
+    [Fact]
+    public void IsKeepaliveCommandLine_RequiresDistroAndSleepInfinity()
+    {
+        Assert.True(StartKeepaliveStep.IsKeepaliveCommandLine(
+            @"C:\Windows\System32\wsl.exe -d OpenClawGateway -- sleep infinity",
+            "OpenClawGateway"));
+        Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
+            @"C:\Windows\System32\wsl.exe -d OpenClawGateway -- sleep 60",
+            "OpenClawGateway"));
+        Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
+            @"C:\Windows\System32\wsl.exe -d OtherGateway -- sleep infinity",
+            "OpenClawGateway"));
+    }
+
     // ─── Bind validation ───
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.Versioning;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -196,16 +197,18 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
-    public void TraySettingsConfig_MergesIntoFile_PreservesUnknownKeys()
+    public void TraySettingsConfig_MergesIntoFile_OverwritesSetupKeysAndPreservesUnknownKeys()
     {
         var settingsPath = Path.Combine(_tempDir, "settings.json");
-        File.WriteAllText(settingsPath, """{"CustomKey": "custom_value", "EnableNodeMode": false}""");
+        File.WriteAllText(settingsPath, """{"CustomKey": "custom_value", "EnableNodeMode": false, "AutoStart": true, "NodeCameraEnabled": false}""");
 
-        var traySettings = new TraySettingsConfig { EnableNodeMode = true };
+        var traySettings = new TraySettingsConfig { EnableNodeMode = true, AutoStart = false };
         traySettings.MergeIntoSettingsFile(settingsPath);
 
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
-        Assert.False(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
         Assert.Equal("custom_value", result.RootElement.GetProperty("CustomKey").GetString());
     }
 
@@ -234,6 +237,36 @@ public class SetupConfigTests : IDisposable
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
         Assert.True(result.RootElement.GetProperty("NodeTtsEnabled").GetBoolean());
         Assert.True(result.RootElement.GetProperty("NodeSttEnabled").GetBoolean());
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TrayArtifactCleanup_ResetOnboardingSettings_PreservesNodeSettings_WhenGatewaysRemain()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, """{"GatewayUrl": "ws://localhost:18789", "EnableNodeMode": true, "AutoStart": true}""");
+
+        TrayArtifactCleanup.ResetOnboardingSettings(_tempDir, new SetupLogger(filePath: null), preserveNodeSettings: true);
+
+        var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(result.RootElement.TryGetProperty("GatewayUrl", out _));
+        Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("AutoStart").GetBoolean());
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TrayArtifactCleanup_ResetOnboardingSettings_DisablesNodeSettings_WhenNoGatewaysRemain()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, """{"GatewayUrl": "ws://localhost:18789", "EnableNodeMode": true, "AutoStart": true}""");
+
+        TrayArtifactCleanup.ResetOnboardingSettings(_tempDir, new SetupLogger(filePath: null), preserveNodeSettings: false);
+
+        var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(result.RootElement.TryGetProperty("GatewayUrl", out _));
+        Assert.False(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
     }
 
     [Fact]

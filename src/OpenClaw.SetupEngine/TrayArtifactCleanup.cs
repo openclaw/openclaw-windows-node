@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Microsoft.Win32;
+using OpenClaw.Connection;
 
 namespace OpenClaw.SetupEngine;
 
@@ -45,7 +46,7 @@ public static class TrayArtifactCleanup
         DeleteFileIfExists(Path.Combine(appDataDir, "exec-policy.json"), "exec-policy.json", logger);
 
         // 4. Reset onboarding settings in settings.json
-        ResetOnboardingSettings(appDataDir, logger);
+        ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: HasRemainingGatewayRecords(appDataDir, logger));
 
         // 5. Optionally delete gateway logs
         if (!preserveLogs)
@@ -95,7 +96,22 @@ public static class TrayArtifactCleanup
         }
     }
 
-    private static void ResetOnboardingSettings(string appDataDir, SetupLogger logger)
+    private static bool HasRemainingGatewayRecords(string appDataDir, SetupLogger logger)
+    {
+        try
+        {
+            var registry = new GatewayRegistry(appDataDir);
+            registry.Load();
+            return registry.GetAll().Count > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"[Uninstall] Failed to inspect gateway registry: {ex.Message}");
+            return false;
+        }
+    }
+
+    internal static void ResetOnboardingSettings(string appDataDir, SetupLogger logger, bool preserveNodeSettings)
     {
         var settingsPath = Path.Combine(appDataDir, "settings.json");
         if (!File.Exists(settingsPath))
@@ -123,15 +139,13 @@ public static class TrayArtifactCleanup
                 changed = true;
             }
 
-            // Set EnableNodeMode to false
-            if (dict.ContainsKey("EnableNodeMode"))
+            if (!preserveNodeSettings && dict.ContainsKey("EnableNodeMode"))
             {
                 dict["EnableNodeMode"] = System.Text.Json.JsonSerializer.SerializeToElement(false);
                 changed = true;
             }
 
-            // Set AutoStart to false
-            if (dict.ContainsKey("AutoStart"))
+            if (!preserveNodeSettings && dict.ContainsKey("AutoStart"))
             {
                 dict["AutoStart"] = System.Text.Json.JsonSerializer.SerializeToElement(false);
                 changed = true;
@@ -142,7 +156,9 @@ public static class TrayArtifactCleanup
                 var updatedJson = System.Text.Json.JsonSerializer.Serialize(dict,
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 AtomicFile.WriteAllText(settingsPath, updatedJson);
-                logger.Info("[Uninstall] Reset onboarding settings (GatewayUrl, EnableNodeMode, AutoStart)");
+                logger.Info(preserveNodeSettings
+                    ? "[Uninstall] Reset onboarding settings (GatewayUrl)"
+                    : "[Uninstall] Reset onboarding settings (GatewayUrl, EnableNodeMode, AutoStart)");
             }
             else
             {

@@ -2313,10 +2313,7 @@ public sealed class StartKeepaliveStep : SetupStep
                 if (process.HasExited)
                     return false;
 
-                var commandLine = GetProcessCommandLine(pid);
-                return commandLine != null
-                    && commandLine.Contains(distro, StringComparison.OrdinalIgnoreCase)
-                    && commandLine.Contains("sleep", StringComparison.OrdinalIgnoreCase);
+                return IsKeepaliveCommandLine(GetProcessCommandLine(pid), distro);
             }
         }
         catch
@@ -2335,8 +2332,8 @@ public sealed class StartKeepaliveStep : SetupStep
             return;
         }
 
-        // Kill keepalive wsl.exe processes for this distro
-        // Pattern: wsl.exe -d <distro> -- sleep <N>
+        // Kill keepalive wsl.exe processes for this distro.
+        // Pattern: wsl.exe -d <distro> -- sleep infinity
         try
         {
             var procs = System.Diagnostics.Process.GetProcessesByName("wsl")
@@ -2348,12 +2345,11 @@ public sealed class StartKeepaliveStep : SetupStep
                 {
                     // Read command line via WMI/CIM
                     var cmdLine = GetProcessCommandLine(proc.Id);
-                    if (cmdLine != null
-                        && cmdLine.Contains(distro, StringComparison.OrdinalIgnoreCase)
-                        && cmdLine.Contains("sleep", StringComparison.OrdinalIgnoreCase))
+                    if (IsKeepaliveCommandLine(cmdLine, distro))
                     {
-                        proc.Kill();
-                        ctx.Logger.Info($"[Uninstall] Killed keepalive process PID {proc.Id}");
+                        proc.Kill(entireProcessTree: true);
+                        proc.WaitForExit(5000);
+                        ctx.Logger.Info($"[Uninstall] Killed keepalive process tree PID {proc.Id}");
                     }
                 }
                 catch { /* process may have exited */ }
@@ -2383,6 +2379,16 @@ public sealed class StartKeepaliveStep : SetupStep
         }
 
         await Task.CompletedTask;
+    }
+
+    internal static bool IsKeepaliveCommandLine(string? commandLine, string distro)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine) || string.IsNullOrWhiteSpace(distro))
+            return false;
+
+        return commandLine.Contains(distro, StringComparison.OrdinalIgnoreCase)
+            && commandLine.Contains("sleep", StringComparison.OrdinalIgnoreCase)
+            && commandLine.Contains("infinity", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? GetProcessCommandLine(int pid)

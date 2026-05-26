@@ -1778,7 +1778,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             var activeRecord = _gatewayRegistry?.GetActive();
             if (!WslKeepAlivePolicy.ShouldStart(activeRecord, _settings.GetEffectiveGatewayUrl()))
+            {
+                await StopStaleLocalGatewayKeepAliveAsync();
                 return;
+            }
 
             var distroName = await ResolveLocalGatewayDistroNameAsync(activeRecord);
             if (string.IsNullOrWhiteSpace(distroName)) return;
@@ -1795,7 +1798,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             // Spawn a detached wsl sleep process to keep the VM alive
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "wsl.exe",
+                FileName = ResolveWslExePath(),
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
@@ -1815,6 +1818,138 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Warn($"[WslKeepAlive] Startup keepalive failed (non-fatal): {ex.Message}");
         }
+    }
+
+    private async Task StopStaleLocalGatewayKeepAliveAsync()
+    {
+        try
+        {
+            var localDataDir = SetupExistingGatewayClassifier.ResolveLocalDataPath();
+            var markerDir = Path.Combine(localDataDir, "wsl-keepalive");
+            var markerDistroNames = ReadKeepAliveMarkerDistroNames(markerDir);
+            var setupStateDistroName = await ReadSetupStateDistroNameAsync(localDataDir);
+            var records = _gatewayRegistry?.GetAll() ?? [];
+
+            foreach (var distroName in WslKeepAlivePolicy.FindStaleSetupManagedDistroNames(
+                records,
+                markerDistroNames,
+                setupStateDistroName))
+            {
+                StopKeepAliveProcessesForDistro(distroName);
+                DeleteKeepAliveMarker(markerDir, distroName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Stale keepalive cleanup failed (non-fatal): {ex.Message}");
+        }
+    }
+
+    private static IReadOnlyList<string> ReadKeepAliveMarkerDistroNames(string markerDir)
+    {
+        if (!Directory.Exists(markerDir))
+            return [];
+
+        var distroNames = new List<string>();
+        foreach (var markerPath in Directory.EnumerateFiles(markerDir, "*.json"))
+        {
+            if (WslKeepAlivePolicy.TryGetMarkerDistroName(File.ReadAllText(markerPath), out var distroName))
+                distroNames.Add(distroName);
+        }
+
+        return distroNames;
+    }
+
+    private static async Task<string?> ReadSetupStateDistroNameAsync(string localDataDir)
+    {
+        var stateFile = Path.Combine(localDataDir, "setup-state.json");
+        if (!File.Exists(stateFile))
+            return null;
+
+        var json = await File.ReadAllTextAsync(stateFile);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("DistroName", out var distroElement)
+            ? distroElement.GetString()
+            : null;
+    }
+
+    private static void StopKeepAliveProcessesForDistro(string distroName)
+    {
+        var procs = System.Diagnostics.Process.GetProcessesByName("wsl")
+            .Concat(System.Diagnostics.Process.GetProcessesByName("wsl.exe"));
+
+        foreach (var proc in procs)
+        {
+            try
+            {
+                if (WslKeepAlivePolicy.IsKeepaliveCommandLine(GetProcessCommandLine(proc.Id), distroName))
+                {
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(5000);
+                    Logger.Info($"[WslKeepAlive] Stopped stale keepalive for {distroName} (PID {proc.Id}).");
+                }
+            }
+            catch
+            {
+                // Process may have exited while being inspected.
+            }
+            finally
+            {
+                proc.Dispose();
+            }
+        }
+    }
+
+    private static void DeleteKeepAliveMarker(string markerDir, string distroName)
+    {
+        if (!Directory.Exists(markerDir))
+            return;
+
+        foreach (var markerPath in Directory.EnumerateFiles(markerDir, "*.json"))
+        {
+            try
+            {
+                if (WslKeepAlivePolicy.TryGetMarkerDistroName(File.ReadAllText(markerPath), out var markerDistro)
+                    && string.Equals(markerDistro, distroName, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(markerPath);
+                    Logger.Info($"[WslKeepAlive] Deleted stale keepalive marker for {distroName}.");
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup; stale/corrupt markers are not fatal.
+            }
+        }
+    }
+
+    private static string? GetProcessCommandLine(int pid)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return null;
+            var output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            return output.Trim();
+        }
+        catch { return null; }
+    }
+
+    private static string ResolveWslExePath()
+    {
+        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        if (string.IsNullOrWhiteSpace(windowsDir))
+            windowsDir = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+
+        return Path.Combine(windowsDir, "System32", "wsl.exe");
     }
 
     /// <summary>
