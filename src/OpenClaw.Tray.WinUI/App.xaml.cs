@@ -25,19 +25,12 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Updatum;
 using WinUIEx;
 
 namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
-    {
-        FetchOnlyLatestRelease = true,
-        InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
-    };
-
     private TrayIcon? _trayIcon;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
@@ -469,6 +462,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        NotificationSettingsRegistrationService.EnsureRegistered();
 
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
@@ -2759,8 +2753,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _globalHotkey?.Unregister();
         }
 
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
-
         // Notify ad-hoc listeners (e.g. ChatWindow may be alive but not
         // owned by the hub) that settings have changed. Marshal onto the
         // UI thread because IAppCommands.NotifySettingsSaved is a public
@@ -3153,12 +3145,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void ToggleAutoStart()
+    private async void ToggleAutoStart()
     {
         if (_settings == null) return;
         _settings.AutoStart = !_settings.AutoStart;
         _settings.Save();
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
+        var requestedAutoStart = _settings.AutoStart;
+        var autoStartApplied = await AutoStartManager.SetAutoStartAsync(requestedAutoStart);
+        if (!autoStartApplied)
+        {
+            _settings.AutoStart = !requestedAutoStart;
+            _settings.Save();
+        }
     }
 
     private void OpenLogFile()

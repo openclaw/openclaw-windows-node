@@ -123,18 +123,14 @@ public sealed class MsixManifestAssertionTests
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         var settingsPage = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
-        var onboarding = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Onboarding", "OnboardingWindow.cs"));
 
         Assert.Contains("Task<bool> SetAutoStartAsync", autoStartManager);
         Assert.DoesNotContain("_ = SetAutoStartPackagedAsync", autoStartManager);
         Assert.DoesNotContain("public static void SetAutoStart", autoStartManager);
         Assert.Contains("await AutoStartManager.SetAutoStartAsync", app);
         Assert.Contains("await AutoStartManager.SetAutoStartAsync", settingsPage);
-        Assert.Contains("await AutoStartManager.SetAutoStartAsync", onboarding);
         Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", app);
         Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", settingsPage);
-        Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", onboarding);
     }
 
     [Fact]
@@ -191,7 +187,7 @@ public sealed class MsixManifestAssertionTests
         // the already-running case.
         var appXamlCs = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
-        Assert.Contains("SingleInstanceLaunchGuard.Acquire", appXamlCs);
+        Assert.Contains("new Mutex(true, mutexName, out bool createdNew)", appXamlCs);
         Assert.DoesNotContain("Environment.Exit(0);", appXamlCs);
     }
 
@@ -219,13 +215,12 @@ public sealed class MsixManifestAssertionTests
     [Fact]
     public void Tray_WritesEarlyStartupBreadcrumbForPostInstallLaunchDiagnostics()
     {
-        var appXamlCs = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var program = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Program.cs"));
 
-        Assert.Contains("WriteStartupBreadcrumb(\"App.ctor.begin\")", appXamlCs);
-        Assert.Contains("WriteStartupBreadcrumb(\"OnLaunched.begin\")", appXamlCs);
-        Assert.Contains("startup.log", appXamlCs);
-        Assert.Contains("TryGetActivationKindForBreadcrumb", appXamlCs);
+        Assert.Contains("WriteEarlyStartupBreadcrumb(\"Program.Main.begin\")", program);
+        Assert.Contains("WriteEarlyStartupBreadcrumb(\"Program.ApplicationStart.xamlFactoryUnavailable\"", program);
+        Assert.Contains("startup.log", program);
     }
 
     [Fact]

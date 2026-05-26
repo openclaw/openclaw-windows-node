@@ -235,7 +235,7 @@ public sealed class AppInstallerTemplateAssertionTests
             GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
 
-        Assert.Contains("SingleInstanceLaunchGuard.Acquire", app);
+        Assert.Contains("new Mutex(true, mutexName, out bool createdNew)", app);
         Assert.DoesNotContain("Environment.Exit(0);", app);
     }
 
