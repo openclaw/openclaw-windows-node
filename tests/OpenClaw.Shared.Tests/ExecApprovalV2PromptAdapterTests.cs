@@ -155,18 +155,11 @@ public class ExecApprovalV2PromptAdapterTests
     [Fact]
     public void ProductionWiring_NullPromptHandler_NotReferencedInSrc()
     {
-        var repoRoot = FindRepoRoot();
-        Assert.NotNull(repoRoot);
-
-        var srcDir = Path.Combine(repoRoot!, "src");
-        var violations = Directory
-            .GetFiles(srcDir, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-                     && !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-            .Where(f => !f.EndsWith("ExecApprovalV2NullPromptHandler.cs",
+        var violations = ProductionSourceFiles.All
+            .Where(f => !f.Path.EndsWith("ExecApprovalV2NullPromptHandler.cs",
                                      StringComparison.OrdinalIgnoreCase))
-            .Where(f => File.ReadAllText(f)
-                .Contains("ExecApprovalV2NullPromptHandler", StringComparison.Ordinal))
+            .Where(f => f.Text.Contains("ExecApprovalV2NullPromptHandler", StringComparison.Ordinal))
+            .Select(f => f.Path)
             .ToList();
 
         Assert.Empty(violations);
@@ -191,15 +184,4 @@ public class ExecApprovalV2PromptAdapterTests
             => Task.FromResult(_outcome);
     }
 
-    private static string? FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "openclaw-windows-node.slnx")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-        return null;
-    }
 }

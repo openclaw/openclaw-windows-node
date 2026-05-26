@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using OpenClaw.E2ETests;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 
@@ -51,6 +52,16 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     public E2ESetupFixture()
     {
+        if (!E2ETestGate.IsEnabled)
+        {
+            _distroName = "OpenClawE2E-disabled";
+            DataDir = string.Empty;
+            LocalAppDataRoot = string.Empty;
+            ArtifactDir = string.Empty;
+            _configPath = string.Empty;
+            return;
+        }
+
         var runId = Guid.NewGuid().ToString("N")[..8];
         _distroName = $"OpenClawE2E-{runId}";
 
@@ -76,6 +87,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        if (!E2ETestGate.IsEnabled)
+            return;
+
         // ── Phase 1: Run SetupEngine CLI ──
         Log("Phase 1: Running SetupEngine CLI pipeline...");
         var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
@@ -134,6 +148,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        if (!E2ETestGate.IsEnabled)
+            return;
+
         Log("Teardown starting...");
 
         // 1. Dispose MCP client

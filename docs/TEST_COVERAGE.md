@@ -68,8 +68,13 @@ $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
 dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --no-restore
 dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --no-restore
 
-# All tests in the solution
+# All local-dev tests in the solution. E2E is intentionally excluded from the
+# solution and runs in CI before merge; run it locally only when explicitly needed.
 dotnet test
+
+# Explicit local E2E run
+$env:OPENCLAW_RUN_E2E = "1"
+dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj -r win-x64
 
 # Single project
 dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj

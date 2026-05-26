@@ -246,13 +246,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     [Fact]
     public void ProductionWiring_CoordinatorNotReferencedInSrc()
     {
-        var repoRoot = FindRepoRoot();
-        Assert.NotNull(repoRoot);
-        var srcDir = Path.Combine(repoRoot, "src");
-        var violations = Directory
-            .GetFiles(srcDir, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.EndsWith("ExecApprovalsCoordinator.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(f => File.ReadAllText(f).Contains("ExecApprovalsCoordinator", StringComparison.Ordinal))
+        var violations = ProductionSourceFiles.All
+            .Where(f => !f.Path.EndsWith("ExecApprovalsCoordinator.cs", StringComparison.OrdinalIgnoreCase))
+            .Where(f => f.Text.Contains("ExecApprovalsCoordinator", StringComparison.Ordinal))
+            .Select(f => f.Path)
             .ToList();
         Assert.Empty(violations);
     }
@@ -488,15 +485,4 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         public void Error(string m, Exception? _ = null) => Errors.Add(m);
     }
 
-    private static string? FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "openclaw-windows-node.slnx")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-        return null;
-    }
 }

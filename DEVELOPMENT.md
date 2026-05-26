@@ -468,7 +468,8 @@ Sensitive data (authentication tokens) are never logged.
 Two test projects cover the shared library and tray helpers:
 
 ```bash
-# Run all tests
+# Run local-dev tests. E2E is intentionally excluded from the solution and
+# runs in CI before merge; run it locally only when explicitly needed.
 dotnet test
 
 # Run with detailed output

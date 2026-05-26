@@ -651,8 +651,8 @@ public class LocalCommandRunnerIntegrationTests
         var result = await runner.RunAsync(new CommandRequest
         {
             Command = "this-command-does-not-exist-12345",
-            Shell = "powershell",
-            TimeoutMs = 10000
+            Shell = "cmd",
+            TimeoutMs = 5000
         });
 
         Assert.NotEqual(0, result.ExitCode);
