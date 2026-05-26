@@ -576,10 +576,10 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     private static bool IsSensitive(string path)
     {
-        var leaf = path.Split('.').Last().ToLowerInvariant();
-        return leaf.Contains("token") || leaf.Contains("secret")
-            || leaf.Contains("password") || leaf.Contains("apikey")
-            || leaf.Contains("api_key");
+        var normalizedPath = path.ToLowerInvariant();
+        return normalizedPath.Contains("token") || normalizedPath.Contains("secret")
+            || normalizedPath.Contains("password") || normalizedPath.Contains("apikey")
+            || normalizedPath.Contains("api_key");
     }
 
     private static bool IsRequired(JsonElement parentSchema, string propName)

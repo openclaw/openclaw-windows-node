@@ -521,6 +521,7 @@ public sealed partial class ConfigPage : Page
             {
                 if (result.LooksLikeStaleBaseHash)
                 {
+                    _editSnapshot = ConfigEditorSnapshot.Empty;
                     _ = client.RequestConfigAsync();
                     ShowStatus(
                         "Gateway config changed elsewhere",
