@@ -60,6 +60,10 @@ public sealed class MsixManifestAssertionTests
     private static XDocument LoadTrayManifest() =>
         LoadManifest("src", "OpenClaw.Tray.WinUI", "Package.appxmanifest");
 
+    private static XElement GetApplication(XDocument doc, string id) =>
+        doc.Descendants(XName.Get("Application", AppxFoundationNs))
+            .Single(e => (string?)e.Attribute("Id") == id);
+
     [Fact]
     public void Tray_CapabilitySet_IsExactlyTheAuditedList()
     {
@@ -164,11 +168,20 @@ public sealed class MsixManifestAssertionTests
             ".github", "workflows", "ci.yml"));
         var app = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var doc = LoadTrayManifest();
+        var setupApp = GetApplication(doc, "SetupEngine");
+        var setupVisualElements = setupApp.Element(XName.Get("VisualElements", AppxUapNs));
 
         Assert.Contains("Content Include=\"SetupEngine\\**\\*\"", project);
         Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngine", ci);
         Assert.Contains("dotnet publish src/OpenClaw.SetupEngine.UI", ci);
         Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"SetupEngine\", exeName)", app);
+        Assert.Equal("SetupEngine\\OpenClaw.SetupEngine.UI.exe", (string?)setupApp.Attribute("Executable"));
+        Assert.Equal("Windows.FullTrustApplication", (string?)setupApp.Attribute("EntryPoint"));
+        Assert.NotNull(setupVisualElements);
+        Assert.Equal("none", (string?)setupVisualElements!.Attribute("AppListEntry"));
+        Assert.Contains("shell:AppsFolder", app);
+        Assert.Contains("!{SetupEngineApplicationId}", app);
     }
 
     [Fact]
@@ -245,9 +258,10 @@ public sealed class MsixManifestAssertionTests
     public void Tray_AppListEntry_IsExplicitForInstallerLaunch()
     {
         var doc = LoadTrayManifest();
-        var visualElements = doc.Descendants(XName.Get("VisualElements", AppxUapNs)).Single();
+        var visualElements = GetApplication(doc, "App").Element(XName.Get("VisualElements", AppxUapNs));
 
-        Assert.Equal("default", (string?)visualElements.Attribute("AppListEntry"));
+        Assert.NotNull(visualElements);
+        Assert.Equal("default", (string?)visualElements!.Attribute("AppListEntry"));
 
         Assert.Single(doc.Descendants(XName.Get("DefaultTile", AppxUapNs)));
     }
@@ -256,9 +270,10 @@ public sealed class MsixManifestAssertionTests
     public void Tray_TileBackground_UsesTransparentAdaptiveColor()
     {
         var doc = LoadTrayManifest();
-        var visualElements = doc.Descendants(XName.Get("VisualElements", AppxUapNs)).Single();
+        var visualElements = GetApplication(doc, "App").Element(XName.Get("VisualElements", AppxUapNs));
 
-        Assert.Equal("transparent", (string?)visualElements.Attribute("BackgroundColor"));
+        Assert.NotNull(visualElements);
+        Assert.Equal("transparent", (string?)visualElements!.Attribute("BackgroundColor"));
     }
 
     [Fact]

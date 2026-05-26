@@ -31,6 +31,8 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
+    internal const string SetupEngineApplicationId = "SetupEngine";
+
     private TrayIcon? _trayIcon;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
@@ -2932,6 +2934,40 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return File.Exists(flat) ? flat : null;
     }
 
+    internal static string? ResolveSetupEnginePackagedAppUserModelId()
+    {
+        if (!PackageHelper.IsPackaged)
+            return null;
+
+        try
+        {
+            var familyName = global::Windows.ApplicationModel.Package.Current.Id.FamilyName;
+            return $"{familyName}!{SetupEngineApplicationId}";
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to resolve packaged SetupEngine app user model ID: {ex.Message}");
+            return null;
+        }
+    }
+
+    internal static System.Diagnostics.ProcessStartInfo CreateSetupEngineUiStartInfo(string setupExePath)
+    {
+        var appUserModelId = ResolveSetupEnginePackagedAppUserModelId();
+        if (!string.IsNullOrWhiteSpace(appUserModelId))
+        {
+            return new System.Diagnostics.ProcessStartInfo($@"shell:AppsFolder\{appUserModelId}")
+            {
+                UseShellExecute = true
+            };
+        }
+
+        return new System.Diagnostics.ProcessStartInfo(setupExePath)
+        {
+            UseShellExecute = true
+        };
+    }
+
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -2987,10 +3023,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
-            {
-                UseShellExecute = true
-            };
+            var psi = CreateSetupEngineUiStartInfo(setupExePath);
             var process = System.Diagnostics.Process.Start(psi);
             if (process != null)
             {
@@ -2998,7 +3031,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 TryBringSetupEngineToFront(process);
                 process.Dispose();
             }
-            Logger.Info("Launched SetupEngine.UI for setup");
+            Logger.Info($"Launched SetupEngine.UI for setup via {psi.FileName}");
         }
         catch (Exception ex)
         {
