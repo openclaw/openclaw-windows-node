@@ -102,6 +102,9 @@ fixed by shipping a higher roll-forward version.
 - The embedded stable feed URLs currently point at raw GitHub files in this repo:
   `installer\appinstaller\openclaw-x64.appinstaller` and
   `installer\appinstaller\openclaw-arm64.appinstaller`.
+- Those files are checked in as `0.0.0.0` bootstrap placeholders so the raw
+  URLs do not 404 before the first feed-update PR is merged. They intentionally
+  do not advertise a newer package.
 - Raw GitHub mirrors the Mac companion app's Sparkle appcast pattern, but it
   serves repo files with GitHub-controlled headers. Windows App Installer must
   still be proven with red/blue E2E validation before this endpoint is treated as

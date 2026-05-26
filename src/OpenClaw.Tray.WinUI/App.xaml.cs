@@ -129,6 +129,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private GatewayService? _gatewayService;
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
+    private int _applyUpdateInFlight;
     
     /// <summary>
     /// Cached connection status — sole writer is OnManagerStateChanged.
@@ -3370,57 +3371,70 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task ApplyUpdateNowUserInitiatedAsync()
     {
-        Logger.Info("Apply update now requested");
-
-        if (!OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        if (System.Threading.Interlocked.CompareExchange(ref _applyUpdateInFlight, 1, 0) != 0)
         {
-            await CheckForUpdatesAsync();
-            UpdateStatusDetailWindow();
+            Logger.Info("Apply update ignored: another apply request is already in progress");
             return;
         }
 
-        _appState!.UpdateInfo = new UpdateCommandCenterInfo
-        {
-            Status = "Applying",
-            CurrentVersion = AppVersionHelper.CurrentVersionText,
-            CheckedAt = DateTime.UtcNow,
-            Detail = "asking Windows AppInstaller to apply the available update"
-        };
-        UpdateStatusDetailWindow();
+        Logger.Info("Apply update now requested");
 
-        var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync(forceRestart: true);
-        _appState!.UpdateInfo = outcome.Outcome switch
+        try
         {
-            AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
+            if (!OpenClawTray.Helpers.PackageHelper.IsPackaged)
             {
-                Status = "Ready",
-                CurrentVersion = AppVersionHelper.CurrentVersionText,
-                CheckedAt = DateTime.UtcNow,
-                Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
-            },
-            AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
-            {
-                Status = "Ready",
-                CurrentVersion = AppVersionHelper.CurrentVersionText,
-                CheckedAt = DateTime.UtcNow,
-                Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
-            },
-            AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
-            {
-                Status = "Current",
-                CurrentVersion = AppVersionHelper.CurrentVersionText,
-                CheckedAt = DateTime.UtcNow,
-                Detail = outcome.DetailMessage ?? "no updates available"
-            },
-            _ => new UpdateCommandCenterInfo
-            {
-                Status = "Failed",
-                CurrentVersion = AppVersionHelper.CurrentVersionText,
-                CheckedAt = DateTime.UtcNow,
-                Detail = outcome.DetailMessage ?? "update failed"
+                await CheckForUpdatesAsync();
+                UpdateStatusDetailWindow();
+                return;
             }
-        };
-        UpdateStatusDetailWindow();
+
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Applying",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "asking Windows AppInstaller to apply the available update"
+            };
+            UpdateStatusDetailWindow();
+
+            var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync(forceRestart: true);
+            _appState!.UpdateInfo = outcome.Outcome switch
+            {
+                AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
+                {
+                    Status = "Ready",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
+                },
+                AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
+                {
+                    Status = "Ready",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
+                },
+                AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
+                {
+                    Status = "Current",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "no updates available"
+                },
+                _ => new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update failed"
+                }
+            };
+            UpdateStatusDetailWindow();
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _applyUpdateInFlight, 0);
+        }
     }
 
     #endregion

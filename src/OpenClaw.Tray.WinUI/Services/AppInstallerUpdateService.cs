@@ -23,7 +23,10 @@ namespace OpenClawTray.Services;
 /// </summary>
 internal static class AppInstallerUpdateService
 {
-    private static readonly HttpClient SharedHttpClient = new();
+    private static readonly HttpClient SharedHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(15)
+    };
 
     /// <summary>
     /// Stable x64 URL of the AppInstaller XML in the Windows repo.
@@ -38,7 +41,7 @@ internal static class AppInstallerUpdateService
         "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller";
 
     public static string LatestAppInstallerUri =>
-        ResolveAppInstallerUri();
+        ResolveAppInstallerUri() ?? ArchitectureFallbackAppInstallerUri;
 
     internal static string ArchitectureFallbackAppInstallerUri =>
         RuntimeInformation.ProcessArchitecture == Architecture.Arm64
@@ -85,12 +88,23 @@ internal static class AppInstallerUpdateService
                 "branch on PackageHelper.IsPackaged before invoking this service.");
         }
 
-        var uri = new Uri(ResolveAppInstallerUri(appInstallerUri), UriKind.Absolute);
+        var resolvedUri = ResolveAppInstallerUri(appInstallerUri);
+        if (resolvedUri is null)
+        {
+            return new UpdateResult(UpdateOutcome.Failed,
+                $"No AppInstaller update feed is configured for package identity '{TryGetCurrentPackageName() ?? "unknown"}'.");
+        }
+
+        var uri = new Uri(resolvedUri, UriKind.Absolute);
 
         try
         {
             var client = httpClient ?? SharedHttpClient;
             var xml = await client.GetStringAsync(uri);
+            var identityResult = ClassifyPublishedIdentity(ParseAppInstallerPackageName(xml));
+            if (identityResult is not null)
+                return identityResult;
+
             var publishedVersion = ParseAppInstallerVersion(xml);
             var currentVersion = GetCurrentPackageVersion();
             return ClassifyPublishedVersion(currentVersion, publishedVersion);
@@ -117,10 +131,23 @@ internal static class AppInstallerUpdateService
                 "branch on PackageHelper.IsPackaged before invoking this service.");
         }
 
-        var uri = new Uri(ResolveAppInstallerUri(appInstallerUri), UriKind.Absolute);
+        var resolvedUri = ResolveAppInstallerUri(appInstallerUri);
+        if (resolvedUri is null)
+        {
+            return new UpdateResult(UpdateOutcome.Failed,
+                $"No AppInstaller update feed is configured for package identity '{TryGetCurrentPackageName() ?? "unknown"}'.");
+        }
+
+        var uri = new Uri(resolvedUri, UriKind.Absolute);
 
         try
         {
+            var client = SharedHttpClient;
+            var xml = await client.GetStringAsync(uri);
+            var identityResult = ClassifyPublishedIdentity(ParseAppInstallerPackageName(xml));
+            if (identityResult is not null)
+                return identityResult;
+
             // Late-bind PackageManager so the file compiles on unpackaged test
             // builds that don't actually link against Windows.Management.Deployment.
             // Same global:: prefix dance as AutoStartManager — `Windows` resolves
@@ -174,12 +201,12 @@ internal static class AppInstallerUpdateService
         };
     }
 
-    internal static string ResolveAppInstallerUri(string? appInstallerUri = null)
+    internal static string? ResolveAppInstallerUri(string? appInstallerUri = null)
     {
         if (!string.IsNullOrWhiteSpace(appInstallerUri))
             return appInstallerUri;
 
-        return TryGetRegisteredAppInstallerUri() ?? ArchitectureFallbackAppInstallerUri;
+        return TryGetRegisteredAppInstallerUri() ?? TryGetChannelFallbackAppInstallerUri();
     }
 
     private static string? TryGetRegisteredAppInstallerUri()
@@ -189,16 +216,75 @@ internal static class AppInstallerUpdateService
 
         try
         {
-            return global::Windows.ApplicationModel.Package.Current
+            var uri = global::Windows.ApplicationModel.Package.Current
                 .GetAppInstallerInfo()
                 ?.Uri
-                ?.AbsoluteUri;
+                ?.AbsoluteUri is { Length: > 0 } uriText
+                    ? new Uri(uriText, UriKind.Absolute)
+                    : null;
+            if (uri is null)
+                return null;
+
+            if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                return uri.AbsoluteUri;
+
+            Logger.Warn($"Ignoring non-HTTP AppInstaller source '{uri}'. Falling back to configured architecture feed.");
+            return null;
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
             Logger.Warn($"Failed to read package AppInstaller source; falling back to architecture feed: {ex.Message}");
             return null;
         }
+    }
+
+    private static string? TryGetChannelFallbackAppInstallerUri()
+    {
+        var packageName = TryGetCurrentPackageName();
+        if (string.IsNullOrWhiteSpace(packageName) ||
+            string.Equals(packageName, "OpenClaw.Companion", StringComparison.OrdinalIgnoreCase))
+        {
+            return ArchitectureFallbackAppInstallerUri;
+        }
+
+        if (packageName.StartsWith("OpenClaw.Companion.", StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.Warn($"No fallback AppInstaller feed is configured for package identity '{packageName}'.");
+            return null;
+        }
+
+        return ArchitectureFallbackAppInstallerUri;
+    }
+
+    private static string? TryGetCurrentPackageName()
+    {
+        if (!PackageHelper.IsPackaged)
+            return null;
+
+        try
+        {
+            return global::Windows.ApplicationModel.Package.Current.Id.Name;
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            Logger.Warn($"Failed to read package identity name: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static UpdateResult? ClassifyPublishedIdentity(string? publishedPackageName)
+    {
+        var currentPackageName = TryGetCurrentPackageName();
+        if (string.IsNullOrWhiteSpace(currentPackageName) ||
+            string.IsNullOrWhiteSpace(publishedPackageName) ||
+            string.Equals(currentPackageName, publishedPackageName, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new UpdateResult(UpdateOutcome.Failed,
+            $"AppInstaller feed package identity '{publishedPackageName}' does not match installed package identity '{currentPackageName}'.");
     }
 
     internal static UpdateResult ClassifyPublishedVersion(Version currentVersion, Version publishedVersion)
@@ -224,6 +310,15 @@ internal static class AppInstallerUpdateService
             throw new FormatException("AppInstaller MainPackage Version must be a four-part version.");
 
         return version;
+    }
+
+    internal static string? ParseAppInstallerPackageName(string appInstallerXml)
+    {
+        var doc = XDocument.Parse(appInstallerXml);
+        var mainPackage = doc.Root is null
+            ? null
+            : doc.Root.Elements().SingleOrDefault(element => element.Name.LocalName == "MainPackage");
+        return (string?)mainPackage?.Attribute("Name");
     }
 
     private static Version GetCurrentPackageVersion()

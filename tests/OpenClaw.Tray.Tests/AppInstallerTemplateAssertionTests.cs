@@ -176,9 +176,17 @@ public sealed class AppInstallerTemplateAssertionTests
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
 
         Assert.Contains("CheckForUpdateAsync", service);
+        Assert.Contains("Timeout = TimeSpan.FromSeconds(15)", service);
         Assert.Contains("ResolveAppInstallerUri", service);
         Assert.Contains("GetAppInstallerInfo()", service);
         Assert.Contains("ArchitectureFallbackAppInstallerUri", service);
+        Assert.Contains("uri.Scheme.Equals(Uri.UriSchemeHttp", service);
+        Assert.Contains("uri.Scheme.Equals(Uri.UriSchemeHttps", service);
+        Assert.Contains("TryGetChannelFallbackAppInstallerUri", service);
+        Assert.Contains("OpenClaw.Companion.", service);
+        Assert.Contains("No fallback AppInstaller feed is configured", service);
+        Assert.Contains("ParseAppInstallerPackageName", service);
+        Assert.Contains("ClassifyPublishedIdentity", service);
         Assert.Contains("ParseAppInstallerVersion", service);
         Assert.Contains("element.Name.LocalName == \"MainPackage\"", service);
         Assert.Contains("AppInstaller MainPackage Version must be a four-part version", service);
@@ -213,6 +221,34 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("ApplyUpdateNowUserInitiatedAsync", app);
         Assert.Contains("TryApplyUpdateAsync(forceRestart: true)", app);
         Assert.Contains("Status = \"Applying\"", app);
+        Assert.Contains("_applyUpdateInFlight", app);
+        Assert.Contains("CompareExchange(ref _applyUpdateInFlight", app);
+        Assert.Contains("Interlocked.Exchange(ref _applyUpdateInFlight, 0)", app);
+    }
+
+    [Fact]
+    public void StableFeedFiles_ExistAsBootstrapPlaceholders()
+    {
+        foreach (var (fileName, arch) in new[]
+        {
+            ("openclaw-x64.appinstaller", "x64"),
+            ("openclaw-arm64.appinstaller", "arm64")
+        })
+        {
+            var path = Path.Combine(GetRepositoryRoot(), "installer", "appinstaller", fileName);
+            Assert.True(File.Exists(path), $"Missing stable feed bootstrap file: {fileName}");
+
+            var doc = XDocument.Load(path);
+            XNamespace ns = "http://schemas.microsoft.com/appx/appinstaller/2018";
+            Assert.Equal("0.0.0.0", (string?)doc.Root!.Attribute("Version"));
+            Assert.Equal($"https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/{fileName}",
+                (string?)doc.Root.Attribute("Uri"));
+
+            var mainPackage = doc.Descendants(ns + "MainPackage").Single();
+            Assert.Equal("OpenClaw.Companion", (string?)mainPackage.Attribute("Name"));
+            Assert.Equal("0.0.0.0", (string?)mainPackage.Attribute("Version"));
+            Assert.Equal(arch, (string?)mainPackage.Attribute("ProcessorArchitecture"));
+        }
     }
 
     [Fact]
