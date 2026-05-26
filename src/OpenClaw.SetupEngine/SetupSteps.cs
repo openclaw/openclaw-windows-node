@@ -58,7 +58,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], ctx.WslCommandTimeout, ct: ct);
         if (list.ExitCode != 0)
             return StepResult.Ok("WSL not available or no distros — nothing to clean");
 
@@ -81,7 +81,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
             {
                 ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
                 // Shut down WSL VM to release VHD locks
-                await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+                await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], ctx.WslCommandTimeout, ct: ct);
                 await Task.Delay(2000, ct);
 
                 // Retry deletion — VHD may still be locked briefly after WSL shutdown
@@ -111,17 +111,17 @@ public sealed class CleanupStaleDistroStep : SetupStep
         ctx.Logger.Decision($"Found existing distro '{distro}'", "terminating and unregistering");
 
         // Terminate first (stops gateway service), then shut WSL down to release VHD/port locks.
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], ctx.WslCommandTimeout, ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], ctx.WslCommandTimeout, ct: ct);
         await Task.Delay(2000, ct); // Let port release
 
-        var unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        var unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], ctx.WslCommandTimeout, ct: ct);
         if (unregister.ExitCode != 0)
         {
             ctx.Logger.Warn($"First unregister attempt failed (exit {unregister.ExitCode}); forcing WSL shutdown and retrying");
-            await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+            await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], ctx.WslCommandTimeout, ct: ct);
             await Task.Delay(3000, ct);
-            unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+            unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], ctx.WslCommandTimeout, ct: ct);
         }
 
         if (unregister.ExitCode == 0)
@@ -255,14 +255,14 @@ public sealed class PreflightWslStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var versionResult = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+        var versionResult = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], ctx.WslCommandTimeout, ct: ct);
         if (versionResult.ExitCode != 0 && LooksUnavailable(versionResult))
         {
             var installResult = await InstallWslPlatformAsync(ctx, ct);
             if (!installResult.IsSuccess)
                 return installResult;
 
-            versionResult = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+            versionResult = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], ctx.WslCommandTimeout, ct: ct);
         }
 
         if (versionResult.ExitCode != 0)
@@ -300,7 +300,7 @@ public sealed class PreflightWslStep : SetupStep
             if (process.ExitCode != 0)
                 return StepResult.Fail($"WSL platform install failed with exit code {process.ExitCode}.");
 
-            var probe = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], TimeSpan.FromSeconds(5), ct: ct);
+            var probe = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--version"], ctx.WslCommandTimeout, ct: ct);
             if (probe.ExitCode != 0 || LooksUnavailable(probe))
                 return StepResult.Terminal("WSL platform install completed, but Windows still reports WSL unavailable. Reboot Windows, then run setup again.");
 
@@ -415,21 +415,21 @@ public sealed class CreateWslInstanceStep : SetupStep
             var exportPath = Path.Combine(tempDir, "base.tar");
             var export = await ctx.Commands.RunAsync(
                 WslConstants.WslExePath, ["--export", baseDistro, exportPath],
-                TimeSpan.FromMinutes(5), ct: ct);
+                ctx.WslInstallTimeout, ct: ct);
 
             if (export.ExitCode != 0)
             {
                 ctx.Logger.Warn($"Base distro export failed (exit {export.ExitCode}); attempting to install {baseDistro}");
                 var install = await ctx.Commands.RunAsync(
                     WslConstants.WslExePath, ["--install", baseDistro, "--no-launch"],
-                    TimeSpan.FromMinutes(5), ct: ct);
+                    ctx.WslInstallTimeout, ct: ct);
 
                 if (install.ExitCode != 0 && !install.Stdout.Contains("already installed", StringComparison.OrdinalIgnoreCase))
                     return StepResult.Fail($"Failed to install base distro '{baseDistro}' (exit {install.ExitCode}): {install.Stderr}");
 
                 export = await ctx.Commands.RunAsync(
                     WslConstants.WslExePath, ["--export", baseDistro, exportPath],
-                    TimeSpan.FromMinutes(5), ct: ct);
+                    ctx.WslInstallTimeout, ct: ct);
             }
 
             if (export.ExitCode != 0)
@@ -440,7 +440,7 @@ public sealed class CreateWslInstanceStep : SetupStep
 
             var import = await ctx.Commands.RunAsync(
                 WslConstants.WslExePath, ["--import", distro, installPath, exportPath, "--version", "2"],
-                TimeSpan.FromMinutes(5), ct: ct);
+                ctx.WslInstallTimeout, ct: ct);
 
             if (import.ExitCode != 0)
                 return StepResult.Fail($"Failed to import distro: {import.Stderr}");
@@ -456,10 +456,10 @@ public sealed class CreateWslInstanceStep : SetupStep
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], ctx.WslCommandTimeout, ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], ctx.WslCommandTimeout, ct: ct);
         await Task.Delay(2000, ct); // Let port/VHD locks release
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], ctx.WslCommandTimeout, ct: ct);
 
         // VHD parent dir cleanup (mirrors old uninstall step 5a)
         var localDataPath = ctx.LocalDataDir;
@@ -541,14 +541,14 @@ useWindowsTimezone={wsl.UseWindowsTimezone.ToString().ToLower()}
             echo "CONFIGURED_OK"
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct, user: "root");
+        var result = await ctx.Commands.RunInWslAsync(distro, script, ctx.WslCommandTimeout, ct: ct, user: "root");
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("CONFIGURED_OK"))
             return StepResult.Fail($"Configuration failed: {result.Stderr}");
 
         // Restart WSL to apply wsl.conf (systemd)
         ctx.Logger.Info("Restarting WSL to apply configuration (systemd)");
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], ctx.WslCommandTimeout, ct: ct);
         await Task.Delay(2000, ct); // Let WSL settle
 
         return StepResult.Ok("WSL instance configured");
@@ -566,7 +566,7 @@ public sealed class ValidateWslLockdownStep : SetupStep
         var distro = ctx.DistroName!;
         var wsl = ctx.Config.Wsl;
 
-        var readConf = await ctx.Commands.RunInWslAsync(distro, "cat /etc/wsl.conf", TimeSpan.FromSeconds(15), ct: ct);
+        var readConf = await ctx.Commands.RunInWslAsync(distro, "cat /etc/wsl.conf", ctx.WslCommandTimeout, ct: ct);
         if (readConf.ExitCode != 0)
             return StepResult.Terminal("Cannot read /etc/wsl.conf - WSL configuration may not have been applied");
 
@@ -601,7 +601,7 @@ public sealed class ValidateWslLockdownStep : SetupStep
             + dirChecks
             + "echo LOCKDOWN_VALID\n";
 
-        var verify = await ctx.Commands.RunInWslAsync(distro, verifyScript, TimeSpan.FromSeconds(30), ct: ct);
+        var verify = await ctx.Commands.RunInWslAsync(distro, verifyScript, ctx.WslCommandTimeout, ct: ct);
 
         ctx.Logger.Debug($"Lockdown verify exit={verify.ExitCode} stdout={verify.Stdout.Trim()} stderr={verify.Stderr.Trim()}");
 
@@ -730,7 +730,7 @@ public sealed class InstallCliStep : SetupStep
         // Shell-quote the URL and enforce TLS
         var escapedUrl = installUrl.Replace("'", "'\\''");
         var installScript = $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
-        var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
+        var result = await ctx.Commands.RunInWslAsync(distro, installScript, ctx.WslInstallTimeout, ct: ct);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -745,7 +745,7 @@ public sealed class InstallCliStep : SetupStep
 
         foreach (var (cmd, executablePath) in verifyCommands)
         {
-            var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
+            var verify = await ctx.Commands.RunInWslAsync(distro, cmd, ctx.WslCommandTimeout, ct: ct);
             if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
             {
                 if (executablePath != null)
@@ -789,7 +789,7 @@ public sealed class InstallCliStep : SetupStep
             var link = await ctx.Commands.RunInWslAsync(
                 distro,
                 linkCommand,
-                TimeSpan.FromSeconds(15),
+                ctx.WslCommandTimeout,
                 ct: ct,
                 user: "root");
 
@@ -800,7 +800,7 @@ public sealed class InstallCliStep : SetupStep
         var bareVerify = await ctx.Commands.RunInWslAsync(
             distro,
             $"env -i HOME=/home/{user} USER={user} PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin openclaw --version",
-            TimeSpan.FromSeconds(15),
+            ctx.WslCommandTimeout,
             ct: ct);
 
         if (bareVerify.ExitCode != 0 || string.IsNullOrWhiteSpace(bareVerify.Stdout))
@@ -813,7 +813,7 @@ public sealed class InstallCliStep : SetupStep
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var user = ctx.Config.Wsl.User;
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"rm -rf /opt/openclaw /home/{user}/.openclaw /usr/local/bin/openclaw", TimeSpan.FromSeconds(30), ct: ct, user: "root");
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"rm -rf /opt/openclaw /home/{user}/.openclaw /usr/local/bin/openclaw", ctx.WslCommandTimeout, ct: ct, user: "root");
     }
 }
 
@@ -872,7 +872,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             echo "GATEWAY_CONFIGURED"
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(30), env, ct);
+        var result = await ctx.Commands.RunInWslAsync(distro, script, ctx.WslCommandTimeout, env, ct);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("GATEWAY_CONFIGURED"))
             return StepResult.Fail($"Gateway configuration failed (exit {result.ExitCode}): {result.Stderr}");
@@ -934,7 +934,7 @@ public sealed class InstallGatewayServiceStep : SetupStep
         var distro = ctx.DistroName!;
 
         var result = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw gateway install --force", ctx.WslCommandTimeout, ct: ct);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"Service install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -944,7 +944,7 @@ public sealed class InstallGatewayServiceStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{ctx.WslPathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{ctx.WslPathPrefix} && openclaw gateway uninstall", ctx.WslCommandTimeout, ct: ct);
     }
 }
 
@@ -962,11 +962,12 @@ public sealed class StartGatewayStep : SetupStep
         // Check for port conflicts before starting
         var portCheck = await ctx.Commands.RunInWslAsync(
             distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
-            TimeSpan.FromSeconds(10), ct: ct);
+            ctx.WslCommandTimeout, ct: ct);
 
         if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
         {
-            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase)
+                && !portCheck.Stdout.Contains("node", StringComparison.OrdinalIgnoreCase))
             {
                 ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
                 return StepResult.Fail(
@@ -978,7 +979,7 @@ public sealed class StartGatewayStep : SetupStep
 
         // Start the service
         var start = await ctx.Commands.RunInWslAsync(
-            distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+            distro, $"{pathCmd} && openclaw gateway start", ctx.WslCommandTimeout, ct: ct);
 
         if (start.ExitCode != 0)
         {
@@ -989,10 +990,10 @@ public sealed class StartGatewayStep : SetupStep
                 await ctx.Commands.RunInWslAsync(
                     distro,
                     "systemctl --user reset-failed openclaw-gateway.service",
-                    TimeSpan.FromSeconds(10),
+                    ctx.WslCommandTimeout,
                     ct: ct);
                 await Task.Delay(2000, ct);
-                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", ctx.WslCommandTimeout, ct: ct);
                 if (start.ExitCode != 0)
                     return StepResult.Fail($"Gateway start failed after reset: {start.Stderr}");
             }
@@ -1012,12 +1013,19 @@ public sealed class StartGatewayStep : SetupStep
 
             var status = await ctx.Commands.RunInWslAsync(
                 distro, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" + ctx.Config.GatewayPort + "/ --max-time 3",
-                TimeSpan.FromSeconds(10), ct: ct);
+                ctx.WslCommandTimeout, ct: ct);
 
             if (status.ExitCode == 0 && status.Stdout.Trim() is "200" or "401" or "403")
             {
-                ctx.Logger.Info($"Gateway is accepting connections (HTTP {status.Stdout.Trim()})");
-                return StepResult.Ok("Gateway running");
+                ctx.Logger.Info($"Gateway is accepting connections inside WSL (HTTP {status.Stdout.Trim()})");
+
+                // WSL2 mirrored networking: port may be healthy inside WSL but not yet
+                // forwarded to the Windows host. Verify Windows-side reachability.
+                var windowsReachable = await WaitForWindowsPortReachable(ctx, ct);
+                if (windowsReachable)
+                    return StepResult.Ok("Gateway running");
+
+                return StepResult.Fail($"Gateway is healthy inside WSL but not reachable from Windows on port {ctx.Config.GatewayPort}. WSL2 port forwarding may not be working.");
             }
 
             ctx.Logger.Debug($"Gateway not yet accepting connections (curl exit={status.ExitCode}, response={status.Stdout.Trim()})");
@@ -1029,13 +1037,13 @@ public sealed class StartGatewayStep : SetupStep
         var statusResult = await ctx.Commands.RunInWslAsync(
             distro,
             "systemctl --user status openclaw-gateway.service 2>&1 || true",
-            TimeSpan.FromSeconds(10),
+            ctx.WslCommandTimeout,
             ct: ct);
 
         var journal = await ctx.Commands.RunInWslAsync(
             distro,
             "journalctl --user-unit openclaw-gateway.service --no-pager -n 30 2>&1 || true",
-            TimeSpan.FromSeconds(10),
+            ctx.WslCommandTimeout,
             ct: ct);
 
         var redactedStatus = RedactTokens(statusResult.Stdout);
@@ -1044,6 +1052,45 @@ public sealed class StartGatewayStep : SetupStep
         ctx.Logger.Error($"Gateway health timeout.\nService status:\n{redactedStatus}\nJournal:\n{redactedJournal}");
 
         return StepResult.Fail($"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s");
+    }
+
+    /// <summary>
+    /// Polls http://127.0.0.1:{port} from the Windows side to verify WSL2 port forwarding is active.
+    /// WSL2 mirrored networking can have a delay between the gateway being healthy inside WSL
+    /// and the port being reachable from the Windows host.
+    /// </summary>
+    private static async Task<bool> WaitForWindowsPortReachable(SetupContext ctx, CancellationToken ct)
+    {
+        var timeoutSeconds = ctx.Config.Gateway.WindowsPortTimeoutSeconds;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
+        ctx.Logger.Info("Verifying gateway is reachable from Windows...");
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var resp = await http.GetAsync($"http://127.0.0.1:{ctx.Config.GatewayPort}/", ct);
+                var code = (int)resp.StatusCode;
+                if (code is 200 or 401 or 403)
+                {
+                    ctx.Logger.Info($"Gateway reachable from Windows (HTTP {code})");
+                    return true;
+                }
+                ctx.Logger.Debug($"Windows port check: unexpected HTTP {code}");
+            }
+            catch (Exception ex)
+            {
+                ctx.Logger.Debug($"Windows port check: {ex.GetType().Name} — {ex.Message}");
+            }
+
+            await Task.Delay(1000, ct);
+        }
+
+        ctx.Logger.Error($"Gateway not reachable from Windows within {timeoutSeconds}s");
+        return false;
     }
 
     internal static string RedactTokens(string text)
@@ -1062,7 +1109,7 @@ public sealed class StartGatewayStep : SetupStep
         var distro = ctx.DistroName!;
 
         // Check if distro is running before trying systemctl stop
-        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], ctx.WslCommandTimeout, ct: ct);
         var distros = list.Stdout
             .Replace("\0", "").Replace("\uFEFF", "")
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -1075,7 +1122,7 @@ public sealed class StartGatewayStep : SetupStep
         }
 
         // Check distro state — only stop if Running
-        var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
+        var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], ctx.WslCommandTimeout, ct: ct);
         var isRunning = verbose.Stdout
             .Replace("\0", "").Replace("\uFEFF", "")
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -1095,7 +1142,7 @@ public sealed class StartGatewayStep : SetupStep
         {
             await ctx.Commands.RunInWslAsync(
                 distro, "bash -c 'systemctl --user stop openclaw-gateway 2>&1 || true'",
-                TimeSpan.FromSeconds(10), ct: cts.Token);
+                ctx.WslCommandTimeout, ct: cts.Token);
             ctx.Logger.Info("[Uninstall] Stopped gateway service");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -1129,7 +1176,7 @@ public sealed class MintBootstrapTokenStep : SetupStep
         };
 
         var mint = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw qr --json", ctx.WslCommandTimeout, env, ct);
 
         if (mint.ExitCode == 0 && !string.IsNullOrWhiteSpace(mint.Stdout))
         {
@@ -1239,7 +1286,7 @@ public sealed class PairOperatorStep : SetupStep
             // Phase 1: Initial connect (may get PAIRING_REQUIRED)
             client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
             client.UseV2Signature = true; // Local gateway uses v2 signature format
-            var phase1Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+            var phase1Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
             if (phase1Result == ConnectionOutcome.Connected)
             {
@@ -1269,7 +1316,7 @@ public sealed class PairOperatorStep : SetupStep
                 // Phase 2: Reconnect — the device should now be approved
                 client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
                 client.UseV2Signature = true;
-                var phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(20), ct);
+                var phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
                 if (phase2Result == ConnectionOutcome.Connected)
                 {
@@ -1330,7 +1377,7 @@ public sealed class PairOperatorStep : SetupStep
         // Without this delay, the gateway accepts the deviceToken connect within grace
         // but would later reject the tray's identical connect as "metadata-upgrade".
         ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(TimeSpan.FromSeconds(ctx.Config.Pairing.StabilizationDelaySeconds), ct);
 
         // Connect exactly as the tray would: pass deviceToken as the credential
         var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
@@ -1338,7 +1385,7 @@ public sealed class PairOperatorStep : SetupStep
 
         try
         {
-            var result = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+            var result = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
             if (result == ConnectionOutcome.Connected)
             {
@@ -1364,7 +1411,7 @@ public sealed class PairOperatorStep : SetupStep
                 // One more connect to confirm
                 finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
                 finalClient.UseV2Signature = true;
-                var finalResult = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+                var finalResult = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
                 if (finalResult == ConnectionOutcome.Connected)
                 {
@@ -1402,7 +1449,7 @@ public sealed class PairOperatorStep : SetupStep
             var preview = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+                ctx.WslCommandTimeout, env, ct);
 
             ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
 
@@ -1428,7 +1475,7 @@ public sealed class PairOperatorStep : SetupStep
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
             $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+            ctx.WslCommandTimeout, approvalEnv, ct);
 
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
@@ -1450,16 +1497,14 @@ public sealed class PairOperatorStep : SetupStep
             ctx.Logger.Debug($"Operator connection status: {status}");
             if (status == ConnectionStatus.Connected)
                 tcs.TrySetResult(ConnectionOutcome.Connected);
-            else if (status == ConnectionStatus.Error)
-                tcs.TrySetResult(ConnectionOutcome.Error);
             else if (status == ConnectionStatus.Disconnected)
             {
                 // Check if pairing was required — client sets IsPairingRequired before disconnect
                 if (client.IsPairingRequired)
                     tcs.TrySetResult(ConnectionOutcome.PairingRequired);
-                else
-                    tcs.TrySetResult(ConnectionOutcome.Error);
+                // Otherwise let the WebSocket auto-reconnect retry; timeout catches dead gateways
             }
+            // Error: let auto-reconnect handle transient failures; timeout catches dead gateways
         }
 
         client.StatusChanged += OnStatusChanged;
@@ -1575,7 +1620,7 @@ public sealed class PairOperatorStep : SetupStep
 
             if (string.IsNullOrWhiteSpace(token)) return;
 
-            var gatewayUrl = ctx.GatewayUrl ?? "ws://localhost:18789";
+            var gatewayUrl = ctx.GatewayUrl ?? ctx.Config.EffectiveGatewayUrl;
             var httpBase = gatewayUrl
                 .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
                 .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
@@ -1622,7 +1667,7 @@ public sealed class PairNodeStep : SetupStep
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
+            var resp = await http.GetAsync($"http://127.0.0.1:{ctx.Config.GatewayPort}/", ct);
             ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
         }
         catch (Exception ex)
@@ -1642,7 +1687,7 @@ public sealed class PairNodeStep : SetupStep
             // Register capabilities BEFORE connect — gateway stores them from hello message
             RegisterCapabilitiesFromConfig(client, ctx);
 
-            var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(15), ct);
+            var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
             if (outcome.Outcome == NodeConnectionOutcome.Connected)
             {
@@ -1672,7 +1717,7 @@ public sealed class PairNodeStep : SetupStep
                 client.UseV2Signature = true;
                 RegisterCapabilitiesFromConfig(client, ctx);
 
-                outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(20), ct);
+                outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
                 if (outcome.Outcome == NodeConnectionOutcome.Connected)
                 {
                     ctx.NodeDeviceId = client.ShortDeviceId;
@@ -1728,14 +1773,14 @@ public sealed class PairNodeStep : SetupStep
 
         // Wait for grace period (same as operator finalization)
         ctx.Logger.Info("Waiting for gateway grace period before node finalization...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(TimeSpan.FromSeconds(ctx.Config.Pairing.StabilizationDelaySeconds), ct);
 
         var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
         finalClient.UseV2Signature = true;
 
         try
         {
-            var result = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+            var result = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
             if (result.Outcome == NodeConnectionOutcome.Connected)
             {
@@ -1758,7 +1803,7 @@ public sealed class PairNodeStep : SetupStep
 
                 finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
                 finalClient.UseV2Signature = true;
-                var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
+                var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
                 if (finalResult.Outcome == NodeConnectionOutcome.Connected)
                 {
@@ -1796,15 +1841,13 @@ public sealed class PairNodeStep : SetupStep
             ctx.Logger.Debug($"Node connection status: {status}");
             if (status == ConnectionStatus.Connected)
                 tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.Connected));
-            else if (status == ConnectionStatus.Error)
-                tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.Error));
             else if (status == ConnectionStatus.Disconnected)
             {
                 if (client.IsPendingApproval)
                     tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.PairingRequired, pairingRequestId));
-                else
-                    tcs.TrySetResult(new NodeConnectionResult(NodeConnectionOutcome.Error));
+                // Otherwise let the WebSocket auto-reconnect retry; timeout catches dead gateways
             }
+            // Error: let auto-reconnect handle transient failures; timeout catches dead gateways
         }
 
         void OnPairingStatusChanged(object? sender, PairingStatusEventArgs args)
@@ -1848,7 +1891,7 @@ public sealed class PairNodeStep : SetupStep
             var pending = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{ctx.WslPathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+                ctx.WslCommandTimeout, env, ct);
 
             ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
 
@@ -1874,7 +1917,7 @@ public sealed class PairNodeStep : SetupStep
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
             $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(approvalKind)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+            ctx.WslCommandTimeout, approvalEnv, ct);
 
         ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
 
@@ -1934,7 +1977,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Verify gateway is still healthy
         var distro = ctx.DistroName!;
         var status = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", ctx.WslCommandTimeout, ct: ct);
 
         if (status.ExitCode != 0 || !status.Stdout.Contains("running", StringComparison.OrdinalIgnoreCase))
             return StepResult.Fail("Gateway is not running");
@@ -1997,7 +2040,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             var preview = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{pathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+                ctx.WslCommandTimeout, env, ct);
 
             if (preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
                 preview.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
@@ -2013,7 +2056,7 @@ public sealed class VerifyEndToEndStep : SetupStep
                 var approve = await ctx.Commands.RunInWslAsync(
                     distro,
                     $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+                    ctx.WslCommandTimeout, approvalEnv, ct);
 
                 if (approve.ExitCode != 0)
                     return StepResult.Fail($"Device approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
@@ -2045,7 +2088,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             var nodeList = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{pathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+                ctx.WslCommandTimeout, env, ct);
 
             var parsed = ApprovalRequestHelper.TryReadPendingRequestIds(nodeList.Stdout.Trim());
             if (!parsed.Success)
@@ -2066,7 +2109,7 @@ public sealed class VerifyEndToEndStep : SetupStep
                 var approve = await ctx.Commands.RunInWslAsync(
                     distro,
                     $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
-                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+                    ctx.WslCommandTimeout, approvalEnv, ct);
 
                 if (approve.ExitCode != 0)
                     return StepResult.Fail($"Node approval drain failed for {requestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
@@ -2126,14 +2169,14 @@ public sealed class VerifyEndToEndStep : SetupStep
 
         // Wait for grace period to expire so this connect is treated as a real metadata change
         ctx.Logger.Info("Waiting for grace period before final operator handshake...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(TimeSpan.FromSeconds(ctx.Config.Pairing.StabilizationDelaySeconds), ct);
 
         var client = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
         client.UseV2Signature = true;
 
         try
         {
-            var result = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+            var result = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
             if (result == PairOperatorStep.ConnectionOutcome.Connected)
             {
@@ -2164,7 +2207,7 @@ public sealed class VerifyEndToEndStep : SetupStep
                 ctx.Logger.Info("Reconnecting with shared token to get fresh device token after approval");
                 client = new OpenClawGatewayClient(gatewayUrl, ctx.SharedGatewayToken!, logger: wsLogger, identityPath: identityPath);
                 client.UseV2Signature = true;
-                var confirmResult = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+                var confirmResult = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(ctx.Config.Pairing.TimeoutSeconds), ct);
 
                 if (confirmResult == PairOperatorStep.ConnectionOutcome.Connected)
                 {

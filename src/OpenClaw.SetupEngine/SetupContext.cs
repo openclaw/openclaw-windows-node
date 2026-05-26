@@ -31,8 +31,9 @@ public sealed class SetupConfig
     public CapabilitiesConfig Capabilities { get; set; } = new();
     public TraySettingsConfig Settings { get; set; } = new();
     public PairingConfig Pairing { get; set; } = new();
+    public WizardConfig Wizard { get; set; } = new();
 
-    public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://localhost:{GatewayPort}";
+    public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://127.0.0.1:{GatewayPort}";
 
     public static SetupConfig LoadFromFile(string path)
     {
@@ -89,6 +90,8 @@ public sealed class WslConfig
     public bool UseWindowsTimezone { get; set; } = true;
     public string? Memory { get; set; }
     public string? Swap { get; set; }
+    public int CommandTimeoutSeconds { get; set; } = 60;
+    public int InstallTimeoutSeconds { get; set; } = 600;
 
     public static bool IsValidLinuxUserName(string value)
         => s_linuxUserNamePattern.IsMatch(value);
@@ -102,6 +105,7 @@ public sealed class GatewayConfig
     public string? InstallUrl { get; set; }
     public string? Version { get; set; }
     public int HealthTimeoutSeconds { get; set; } = 90;
+    public int WindowsPortTimeoutSeconds { get; set; } = 30;
     public string ReloadMode { get; set; } = "hot";
     public string AuthMode { get; set; } = "token";
     public Dictionary<string, string>? ExtraConfig { get; set; }
@@ -232,6 +236,15 @@ public sealed class PairingConfig
     // TODO: Wire OperatorScopes/NodeScopes/CliScopes into pairing requests
     // when the gateway protocol supports scoped token issuance.
     public int TimeoutSeconds { get; set; } = 60;
+    public int StabilizationDelaySeconds { get; set; } = 5;
+}
+
+// ─── Wizard Configuration ───
+
+public sealed class WizardConfig
+{
+    public int RequestTimeoutSeconds { get; set; } = 30;
+    public int AuthStepTimeoutSeconds { get; set; } = 300;
 }
 
 // ─── Step Result ───
@@ -273,6 +286,12 @@ public sealed class SetupContext
 
     // WSL PATH prefix using configured user
     public string WslPathPrefix => WslConstants.GetPathPrefix(Config.Wsl.User);
+
+    /// <summary>Standard timeout for WSL commands (probes, state changes, pairing CLIs).</summary>
+    public TimeSpan WslCommandTimeout => TimeSpan.FromSeconds(Config.Wsl.CommandTimeoutSeconds);
+
+    /// <summary>Extended timeout for network downloads and bulk I/O (distro import, CLI install).</summary>
+    public TimeSpan WslInstallTimeout => TimeSpan.FromSeconds(Config.Wsl.InstallTimeoutSeconds);
 
     public SetupContext(SetupConfig config, SetupLogger logger, TransactionJournal journal, CommandRunner commands, CancellationToken ct)
     {

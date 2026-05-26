@@ -59,7 +59,7 @@ public sealed class SetupWizardRunner
         try
         {
             client = CreateWizardClient(credential, identityPath, wsLogger);
-            var connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
+            var connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(_ctx.Config.Pairing.TimeoutSeconds), ct);
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
             {
                 _ctx.Logger.Info("Wizard operator pairing required — auto-approving");
@@ -72,14 +72,14 @@ public sealed class SetupWizardRunner
 
                 await Task.Delay(2000, ct);
                 client = CreateWizardClient(credential, identityPath, wsLogger);
-                connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
+                connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(_ctx.Config.Pairing.TimeoutSeconds), ct);
             }
 
             if (connection != PairOperatorStep.ConnectionOutcome.Connected)
                 return StepResult.Fail($"Cannot run gateway wizard because operator connection failed: {connection}");
 
             _ctx.Logger.Info("Starting gateway wizard");
-            var payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+            var payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: _ctx.Config.Wizard.RequestTimeoutSeconds * 1000);
             wizardStarted = true;
 
             var visits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -170,14 +170,14 @@ public sealed class SetupWizardRunner
 
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
                     client = CreateWizardClient(credential, identityPath, wsLogger);
-                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(30), ct);
+                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(_ctx.Config.Pairing.TimeoutSeconds), ct);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                         return StepResult.Fail($"Gateway wizard reconnect failed after restart: {reconnect}");
 
                     sessionId = "";
                     visits.Clear();
                     discoveredSteps.Clear();
-                    payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+                    payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: _ctx.Config.Wizard.RequestTimeoutSeconds * 1000);
                 }
             }
 
@@ -222,7 +222,7 @@ public sealed class SetupWizardRunner
         try
         {
             _ctx.Logger.Warn("Cancelling gateway wizard session");
-            await client.SendWizardRequestAsync("wizard.cancel", new { sessionId }, timeoutMs: 10_000);
+            await client.SendWizardRequestAsync("wizard.cancel", new { sessionId }, timeoutMs: _ctx.Config.Wizard.RequestTimeoutSeconds * 1000);
         }
         catch (Exception ex)
         {
@@ -237,7 +237,7 @@ public sealed class SetupWizardRunner
             var result = await _ctx.Commands.RunInWslAsync(
                 _ctx.DistroName!,
                 $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode hybrid",
-                TimeSpan.FromSeconds(15),
+                _ctx.WslCommandTimeout,
                 ct: CancellationToken.None);
 
             if (result.ExitCode == 0)
@@ -417,16 +417,17 @@ public sealed class SetupWizardRunner
         return false;
     }
 
-    private static int TimeoutFor(WizardPayload step)
+    private int TimeoutFor(WizardPayload step)
     {
         var text = $"{step.Title} {step.Message}";
-        return text.Contains("device", StringComparison.OrdinalIgnoreCase)
+        var isAuthStep = text.Contains("device", StringComparison.OrdinalIgnoreCase)
             || text.Contains("authorize", StringComparison.OrdinalIgnoreCase)
             || text.Contains("login", StringComparison.OrdinalIgnoreCase)
             || text.Contains("sign in", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("oauth", StringComparison.OrdinalIgnoreCase)
-            ? 300_000
-            : 30_000;
+            || text.Contains("oauth", StringComparison.OrdinalIgnoreCase);
+        return (isAuthStep
+            ? _ctx.Config.Wizard.AuthStepTimeoutSeconds
+            : _ctx.Config.Wizard.RequestTimeoutSeconds) * 1000;
     }
 
     private static bool IsRestartLikeWizardDisconnect(Exception ex)

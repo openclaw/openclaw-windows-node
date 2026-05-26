@@ -36,12 +36,15 @@
   "LogLevel": "trace",
   // Override log file path (null = %APPDATA%\OpenClawTray\Logs\Setup\)
   "LogPath": null,
-  // Override gateway WebSocket URL (null = ws://localhost:{GatewayPort})
+  // Override gateway WebSocket URL (null = ws://127.0.0.1:{GatewayPort})
   "GatewayUrl": null,
   // Pre-shared bootstrap token (null = auto-mint during setup)
   "BootstrapToken": null,
   // Rollback completed steps on failure (transactional undo)
   "RollbackOnFailure": false,
+  // Max seconds for a single rollback step (e.g. distro unregister) before it is forcefully cancelled.
+  // Increase on slow machines where WSL teardown takes longer than usual.
+  "RollbackTimeoutSeconds": 60,
 
   // ─── WSL Instance Configuration ───
   // Controls wsl.conf and distro user setup
@@ -63,7 +66,15 @@
     // WSL memory limit (null = WSL default, e.g. "4GB")
     "Memory": null,
     // WSL swap limit (null = WSL default, e.g. "2GB")
-    "Swap": null
+    "Swap": null,
+    // Max seconds for standard WSL commands before they are killed as hung.
+    // Covers: distro probes, systemd checks, wsl.conf writes, service starts, pairing CLIs.
+    // Fast machines finish instantly; this is a safety net, not a delay. Raise for slow I/O.
+    "CommandTimeoutSeconds": 60,
+    // Max seconds for long-running WSL operations before they are killed as hung.
+    // Covers: distro export/import, CLI download & install, apt operations.
+    // These involve network I/O and large file copies — keep generous for slow connections.
+    "InstallTimeoutSeconds": 600
   },
 
   // ─── Gateway Configuration ───
@@ -75,8 +86,13 @@
     "InstallUrl": null,
     // Pin gateway version (null = latest)
     "Version": null,
-    // Seconds to wait for gateway health endpoint before failing
+    // Max seconds to poll the gateway health endpoint (inside WSL) before declaring startup failed.
+    // The gateway is polled repeatedly; fast starts resolve in seconds. Raise for cold-start on ARM64.
     "HealthTimeoutSeconds": 90,
+    // Max seconds to wait for the gateway port to become reachable from the Windows host.
+    // WSL2 mirrored networking has a delay between gateway healthy inside WSL and port forwarded to Windows.
+    // Only relevant on WSL2; WSL1 forwards instantly.
+    "WindowsPortTimeoutSeconds": 30,
     // Config reload strategy: "hot" (no restart), "restart"
     "ReloadMode": "hot",
     // Auth mode: "token" (shared secret)
@@ -125,7 +141,22 @@
   // ─── Pairing Configuration ───
   // Controls timeouts for device pairing
   "Pairing": {
-    // Max seconds to wait for pairing handshake
-    "TimeoutSeconds": 60
+    // Max seconds to wait for the WebSocket pairing handshake (operator or node) to complete.
+    // Covers connect → PairingRequired → paired-with-device-token flow. Raise for slow gateways.
+    "TimeoutSeconds": 60,
+    // Fixed delay after pairing succeeds before running verification.
+    // Gives the gateway time to persist pairing state and propagate events.
+    "StabilizationDelaySeconds": 5
+  },
+
+  // ─── Wizard Configuration ───
+  // Controls timeouts for gateway setup wizard requests
+  "Wizard": {
+    // Max seconds to wait for a single wizard step HTTP response (select/submit/navigate).
+    // Most steps respond in <1s; this catches gateway hangs during config.
+    "RequestTimeoutSeconds": 30,
+    // Max seconds to wait for wizard steps that involve external auth (OAuth device flow, API key validation).
+    // These block on user interaction in a browser — keep generous.
+    "AuthStepTimeoutSeconds": 300
   }
 }

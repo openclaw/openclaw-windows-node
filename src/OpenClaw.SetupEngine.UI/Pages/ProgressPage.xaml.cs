@@ -88,6 +88,8 @@ public sealed partial class ProgressPage : Page
             var steps = BuildSteps(config);
             _pipeline = new SetupPipeline(steps);
             _pipeline.StepProgress += OnStepProgress;
+            _pipeline.RollbackConfirmationRequired = (stepId, message) =>
+                PromptRollbackConfirmation(stepId, message);
 
             var result = await Task.Run(() => _pipeline.RunAsync(ctx), cts.Token);
             sw.Stop();
@@ -246,6 +248,48 @@ public sealed partial class ProgressPage : Page
         => SetupStepFactory.BuildDefaultSteps()
             .Where(step => step is not RunGatewayWizardStep)
             .ToList();
+
+    /// <summary>
+    /// Prompts the user to confirm rollback after a step failure.
+    /// Called from the pipeline background thread; marshals to UI thread for the dialog.
+    /// </summary>
+    private Task<bool> PromptRollbackConfirmation(string stepId, string? message)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var enqueued = DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "Setup Failed",
+                    Content = $"Step '{stepId}' failed:\n{message ?? "Unknown error"}\n\nWould you like to rollback (undo all changes) or keep the current state for debugging?",
+                    PrimaryButtonText = "Rollback",
+                    SecondaryButtonText = "Keep for debugging",
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = this.XamlRoot,
+                };
+
+                var result = await dialog.ShowAsync();
+                // Dismiss (ESC/close) defaults to rollback — the safer choice after failure
+                tcs.TrySetResult(result != ContentDialogResult.Secondary);
+            }
+            catch (Exception ex)
+            {
+                // If dialog fails, default to rollback
+                tcs.TrySetResult(true);
+            }
+        });
+
+        if (!enqueued)
+        {
+            // Dispatcher shut down (window closed) — default to rollback to avoid hanging
+            tcs.TrySetResult(true);
+        }
+
+        return tcs.Task;
+    }
 }
 
 // ─── Step Row UI Element ───

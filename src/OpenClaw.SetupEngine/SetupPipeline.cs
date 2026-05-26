@@ -73,6 +73,14 @@ public sealed class SetupPipeline
 
     public event EventHandler<StepProgressEvent>? StepProgress;
 
+    /// <summary>
+    /// When set, the pipeline calls this delegate before rolling back on failure.
+    /// The delegate receives the failed step ID and error message, and returns true to rollback
+    /// or false to keep the current state for debugging. If null, rollback proceeds automatically
+    /// when <see cref="SetupConfig.RollbackOnFailure"/> is true (headless/CLI behavior).
+    /// </summary>
+    public Func<string, string?, Task<bool>>? RollbackConfirmationRequired { get; set; }
+
     public SetupPipeline(IEnumerable<SetupStep> steps)
     {
         _steps = steps.ToList();
@@ -162,8 +170,29 @@ public sealed class SetupPipeline
 
             if (ctx.Config.RollbackOnFailure)
             {
-                await RollbackFailedStep(step, ctx);
-                await RollbackCompletedSteps(ctx);
+                var shouldRollback = true;
+
+                if (RollbackConfirmationRequired != null)
+                {
+                    try
+                    {
+                        shouldRollback = await RollbackConfirmationRequired(step.Id, result.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        ctx.Logger.Warn($"Rollback confirmation callback failed: {ex.Message} — proceeding with rollback");
+                    }
+                }
+
+                if (shouldRollback)
+                {
+                    await RollbackFailedStep(step, ctx);
+                    await RollbackCompletedSteps(ctx);
+                }
+                else
+                {
+                    ctx.Logger.Info("Rollback skipped by user — keeping current state for debugging");
+                }
             }
 
             ctx.Journal.RecordPipelineEvent("pipeline_failed", $"step={step.Id}, message={result.Message}");
