@@ -172,7 +172,7 @@ public sealed class RecordingConsentDialog : WindowEx
         Logger.Info($"[RecordingConsent] {type} recording consent dialog shown");
     }
 
-    public new Task<bool> ShowAsync()
+    public Task<bool> ShowAsync()
     {
         Activate();
 

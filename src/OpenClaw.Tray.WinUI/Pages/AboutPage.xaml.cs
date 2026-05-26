@@ -12,7 +12,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class AboutPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
 
     public AboutPage()
@@ -27,7 +27,7 @@ public sealed partial class AboutPage : Page
 
     public void Initialize()
     {
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         TryLoadGatewayInfo();
     }

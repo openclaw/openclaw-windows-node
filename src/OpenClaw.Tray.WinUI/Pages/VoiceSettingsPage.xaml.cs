@@ -14,7 +14,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class VoiceSettingsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private VoiceService? _voiceService;
     private bool _suppressEvents = true; // suppress until Initialize/LoadSettings runs
     // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper

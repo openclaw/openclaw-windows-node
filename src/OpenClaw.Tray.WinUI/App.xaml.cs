@@ -612,7 +612,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         StartDeepLinkServer();
 
         // Register global hotkey if enabled
-        if (_settings.GlobalHotkeyEnabled)
+        if (_settings?.GlobalHotkeyEnabled == true)
         {
             _globalHotkey = new GlobalHotkeyService();
             _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
@@ -3262,7 +3262,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     //    UpdateDialog + download + install. Prevents two parallel installs
     //    without holding a lock across user interaction.
     private readonly System.Threading.SemaphoreSlim _updateCheckGate = new(1, 1);
+#if !DEBUG
     private int _updateInstallInProgress;
+#endif
 
     private async Task<bool> CheckForUpdatesAsync(bool userInitiated = false)
     {

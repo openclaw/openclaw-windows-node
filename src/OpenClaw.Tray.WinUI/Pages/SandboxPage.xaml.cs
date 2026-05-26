@@ -12,7 +12,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SandboxPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private bool _suppress;
     private bool _dialogOpen;
     private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;

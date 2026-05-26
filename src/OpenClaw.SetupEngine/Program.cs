@@ -1,5 +1,8 @@
+using System.Runtime.Versioning;
+
 namespace OpenClaw.SetupEngine;
 
+[SupportedOSPlatform("windows")]
 public static class Program
 {
     public static async Task<int> Main(string[] args)

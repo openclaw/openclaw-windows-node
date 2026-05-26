@@ -12,7 +12,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SettingsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private bool _initialized;
     private bool _saving;
     private bool _loading;

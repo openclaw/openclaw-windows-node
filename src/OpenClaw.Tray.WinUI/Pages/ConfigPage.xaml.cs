@@ -26,7 +26,7 @@ public sealed partial class ConfigPage : Page
     private const double JsonPreviewAutoExpandWidth = 1120;
     private const double JsonPreviewMinWidth = 340;
 
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private JsonElement? _lastConfig;
     private JsonElement? _lastSchema;
@@ -104,7 +104,7 @@ public sealed partial class ConfigPage : Page
         if (_appState != null)
             _appState.PropertyChanged -= OnAppStateChanged;
 
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         SubscribePermissionClient(CurrentApp.GatewayClient);
         Logger.Info("[ConfigPage] Initialize");

@@ -17,7 +17,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class PermissionsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private bool _suppressMcpToggle;
     private bool _suppressTtsProviderChange;
     private readonly List<ToggleSwitch> _featureToggles = new();
