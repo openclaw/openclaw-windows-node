@@ -169,8 +169,11 @@ public sealed class SetupWizardRunner
                     client.Dispose();
 
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
+                    await WaitForGatewayReachableAfterRestart(ct);
                     client = CreateWizardClient(credential, identityPath, wsLogger);
-                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(_ctx.Config.Pairing.TimeoutSeconds), ct);
+                    var reconnectTimeout = TimeSpan.FromSeconds(
+                        Math.Max(_ctx.Config.Pairing.TimeoutSeconds, _ctx.Config.Gateway.HealthTimeoutSeconds));
+                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, reconnectTimeout, ct);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                         return StepResult.Fail($"Gateway wizard reconnect failed after restart: {reconnect}");
 
@@ -249,6 +252,37 @@ public sealed class SetupWizardRunner
         {
             _ctx.Logger.Warn($"Failed to reset gateway.reload.mode after wizard: {ex.Message}");
         }
+    }
+
+    private async Task WaitForGatewayReachableAfterRestart(CancellationToken ct)
+    {
+        var gatewayPort = _ctx.Config.GatewayPort;
+        var timeoutSeconds = Math.Max(15, _ctx.Config.Gateway.HealthTimeoutSeconds);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var resp = await http.GetAsync($"http://127.0.0.1:{gatewayPort}/", ct);
+                var code = (int)resp.StatusCode;
+                if (code is 200 or 401 or 403)
+                {
+                    _ctx.Logger.Info($"Gateway reachable after restart (HTTP {code})");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _ctx.Logger.Debug($"Gateway restart wait: {ex.GetType().Name} — {ex.Message}");
+            }
+
+            await Task.Delay(1000, ct);
+        }
+
+        _ctx.Logger.Warn($"Gateway did not become HTTP-reachable within {timeoutSeconds}s after restart; attempting reconnect anyway");
     }
 
     private string WriteAnswerTemplate(IReadOnlyList<WizardTemplateStep> discoveredSteps, WizardPayload? missingStep)
