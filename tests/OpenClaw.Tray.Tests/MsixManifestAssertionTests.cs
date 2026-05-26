@@ -168,6 +168,8 @@ public sealed class MsixManifestAssertionTests
             ".github", "workflows", "ci.yml"));
         var app = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var setupProgram = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Program.cs"));
         var doc = LoadTrayManifest();
         var setupApp = GetApplication(doc, "SetupEngine");
         var setupVisualElements = setupApp.Element(XName.Get("VisualElements", AppxUapNs));
@@ -182,6 +184,10 @@ public sealed class MsixManifestAssertionTests
         Assert.Equal("none", (string?)setupVisualElements!.Attribute("AppListEntry"));
         Assert.Contains("shell:AppsFolder", app);
         Assert.Contains("!{SetupEngineApplicationId}", app);
+        Assert.Contains("RunWithXamlFactoryRetry", setupProgram);
+        Assert.Contains("setup-engine-startup.log", setupProgram);
+        Assert.Contains("0x80040111", setupProgram);
+        Assert.Contains("0x80004005", setupProgram);
     }
 
     [Fact]
