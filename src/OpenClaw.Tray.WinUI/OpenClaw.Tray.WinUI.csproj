@@ -78,6 +78,9 @@
     <Content Include="openclaw.appinstaller"
              Condition="'$(PackageMsix)' == 'true' And Exists('openclaw.appinstaller')"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="SetupEngine\**\*"
+             Condition="'$(PackageMsix)' == 'true' And Exists('SetupEngine')"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

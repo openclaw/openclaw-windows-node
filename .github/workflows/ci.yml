@@ -463,6 +463,15 @@ jobs:
           -AppInstallerUri $appInstallerUri `
           -OutputPath "src/OpenClaw.Tray.WinUI/openclaw.appinstaller"
 
+    - name: Publish SetupEngine UI for MSIX payload
+      run: >
+        dotnet publish src/OpenClaw.SetupEngine.UI
+        -c Release
+        -r ${{ matrix.rid }}
+        --self-contained
+        -p:Version=${{ needs.test.outputs.semVer }}
+        -o src/OpenClaw.Tray.WinUI/SetupEngine
+
     - name: Build MSIX Package
       run: >
         msbuild src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj

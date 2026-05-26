@@ -156,6 +156,22 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
+    public void Tray_PackagesSetupEngineUiForFirstRunSetup()
+    {
+        var project = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            ".github", "workflows", "ci.yml"));
+        var app = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+
+        Assert.Contains("Content Include=\"SetupEngine\\**\\*\"", project);
+        Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngine", ci);
+        Assert.Contains("dotnet publish src/OpenClaw.SetupEngine.UI", ci);
+        Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"SetupEngine\", exeName)", app);
+    }
+
+    [Fact]
     public void Tray_DeclaresToastNotificationActivationExtension()
     {
         // Without windows.toastNotificationActivation, MSIX packaged apps do NOT
