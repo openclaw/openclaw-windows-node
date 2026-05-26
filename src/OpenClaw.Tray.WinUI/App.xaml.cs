@@ -2437,10 +2437,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _suspendConnectionToggleEvent = true;
         try
         {
-            if (toggle.IsOn != shouldBeOn)
-                toggle.IsOn = shouldBeOn;
-
-            toggle.IsEnabled = canToggle;
+            TrayMenuWindow.SetMenuToggleSwitchState(toggle, shouldBeOn, canToggle);
             ToolTipService.SetToolTip(toggle,
                 shouldBeOn ? "Connected - toggle off to disconnect"
                     : status == ConnectionStatus.Connecting ? "Connecting..."
