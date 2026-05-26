@@ -184,6 +184,12 @@ public sealed class ChatMarkdownAstBuilder
 
     private int EnterBlock(MarkdownBlockType type, object? detail)
     {
+        // If we are about to open a new block while the current parent
+        // is a tight-list item that has accumulated raw inline text,
+        // synthesize an implicit paragraph for that pending text so it
+        // does not bleed into the new block (e.g. nested Ul inside Li).
+        FlushPendingTightInlines();
+
         switch (type)
         {
             case MarkdownBlockType.Doc:
@@ -305,6 +311,14 @@ public sealed class ChatMarkdownAstBuilder
             case MarkdownBlockType.Li:
             {
                 var frame = _stack.Pop();
+                // Tight-list case: md4c emits text events directly inside
+                // Li without an enclosing P (only loose lists get explicit
+                // P children). Drain any pending inlines into an implicit
+                // paragraph so the bullet has visible content.
+                if (_inlines.Count > 0)
+                {
+                    frame.Children.Add(new MdParagraph(DrainInlines()));
+                }
                 MdTaskState? task = null;
                 if (frame.Detail is MarkdownBlockLiDetail liDetail && liDetail.IsTask)
                 {
@@ -629,6 +643,24 @@ public sealed class ChatMarkdownAstBuilder
         var arr = _inlines.ToArray();
         _inlines.Clear();
         return arr;
+    }
+
+    /// <summary>
+    /// md4c does NOT emit explicit <c>P</c> open/close events for the
+    /// raw inline text inside tight list items (and may not for the
+    /// "lazy" text inside a block quote either). If another block
+    /// (e.g. a nested list) opens while such inline text is still
+    /// pending in <see cref="_inlines"/>, that text would otherwise
+    /// leak into the next block that drains. Flush it now as an
+    /// implicit paragraph attached to the current parent.
+    /// </summary>
+    private void FlushPendingTightInlines()
+    {
+        if (_inlines.Count == 0 || _stack.Count == 0) return;
+        var parent = _stack.Peek().Type;
+        if (parent != MarkdownBlockType.Li && parent != MarkdownBlockType.Quote)
+            return;
+        AddToParent(new MdParagraph(DrainInlines()));
     }
 
     private static MdColumnAlignment MapAlign(MarkdownAlign align) => align switch

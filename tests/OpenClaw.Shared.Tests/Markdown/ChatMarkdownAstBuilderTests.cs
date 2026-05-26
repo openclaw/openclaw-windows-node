@@ -74,6 +74,55 @@ public class ChatMarkdownAstBuilderTests
     }
 
     [Fact]
+    public void TightList_LiContentSurfacesAsImplicitParagraph()
+    {
+        // Regression: md4c does NOT wrap tight-list item text in P; the
+        // builder must drain pending inlines into an implicit paragraph
+        // at LeaveBlock(Li), otherwise bullets render empty and the
+        // accumulated text leaks into the next real paragraph.
+        var doc = Build("- **URLs** to identify resources\n- HTTP methods\n\nAfter the list.");
+        Assert.Equal(2, doc.Blocks.Count);
+        var list = Assert.IsType<MdList>(doc.Blocks[0]);
+        Assert.Equal(2, list.Items.Count);
+        foreach (var item in list.Items)
+        {
+            var para = Assert.IsType<MdParagraph>(Assert.Single(item.Children));
+            Assert.NotEmpty(para.Inlines);
+        }
+        // First item should contain the bolded "URLs" plus trailing text.
+        var firstPara = (MdParagraph)list.Items[0].Children[0];
+        Assert.Contains(firstPara.Inlines, i => i is MdInlineText { IsStrong: true, Text: "URLs" });
+        Assert.Contains(firstPara.Inlines, i => i is MdInlineText t && t.Text.Contains("identify resources"));
+        // The trailing paragraph must contain ONLY its own text, not the
+        // accumulated tight-list inlines.
+        var trailing = Assert.IsType<MdParagraph>(doc.Blocks[1]);
+        var trailingText = string.Concat(trailing.Inlines.OfType<MdInlineText>().Select(t => t.Text));
+        Assert.Equal("After the list.", trailingText);
+        Assert.DoesNotContain("URLs", trailingText);
+        Assert.DoesNotContain("HTTP methods", trailingText);
+    }
+
+    [Fact]
+    public void TightList_NestedItemsAlsoSurfaceContent()
+    {
+        var doc = Build("- outer one\n- outer two\n  - inner a\n  - inner b\n");
+        var list = Assert.IsType<MdList>(Assert.Single(doc.Blocks));
+        Assert.Equal(2, list.Items.Count);
+        // Second outer item: paragraph + nested list.
+        var outerTwo = list.Items[1];
+        Assert.Equal(2, outerTwo.Children.Count);
+        var outerTwoPara = Assert.IsType<MdParagraph>(outerTwo.Children[0]);
+        Assert.Contains(outerTwoPara.Inlines, i => i is MdInlineText t && t.Text.Contains("outer two"));
+        var nested = Assert.IsType<MdList>(outerTwo.Children[1]);
+        Assert.Equal(2, nested.Items.Count);
+        foreach (var item in nested.Items)
+        {
+            var para = Assert.IsType<MdParagraph>(Assert.Single(item.Children));
+            Assert.NotEmpty(para.Inlines);
+        }
+    }
+
+    [Fact]
     public void OrderedList_StartNumberCaptured()
     {
         var doc = Build("3. three\n4. four");
