@@ -38,6 +38,9 @@ internal static class AppInstallerUpdateService
         "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller";
 
     public static string LatestAppInstallerUri =>
+        ResolveAppInstallerUri();
+
+    internal static string ArchitectureFallbackAppInstallerUri =>
         RuntimeInformation.ProcessArchitecture == Architecture.Arm64
             ? LatestArm64AppInstallerUri
             : LatestX64AppInstallerUri;
@@ -82,7 +85,7 @@ internal static class AppInstallerUpdateService
                 "branch on PackageHelper.IsPackaged before invoking this service.");
         }
 
-        var uri = new Uri(appInstallerUri ?? LatestAppInstallerUri, UriKind.Absolute);
+        var uri = new Uri(ResolveAppInstallerUri(appInstallerUri), UriKind.Absolute);
 
         try
         {
@@ -114,7 +117,7 @@ internal static class AppInstallerUpdateService
                 "branch on PackageHelper.IsPackaged before invoking this service.");
         }
 
-        var uri = new Uri(appInstallerUri ?? LatestAppInstallerUri, UriKind.Absolute);
+        var uri = new Uri(ResolveAppInstallerUri(appInstallerUri), UriKind.Absolute);
 
         try
         {
@@ -169,6 +172,33 @@ internal static class AppInstallerUpdateService
             _ => new UpdateResult(UpdateOutcome.Failed,
                 $"PackageManager reported HRESULT 0x{unchecked((uint)hResult):X8}: {errorText}")
         };
+    }
+
+    internal static string ResolveAppInstallerUri(string? appInstallerUri = null)
+    {
+        if (!string.IsNullOrWhiteSpace(appInstallerUri))
+            return appInstallerUri;
+
+        return TryGetRegisteredAppInstallerUri() ?? ArchitectureFallbackAppInstallerUri;
+    }
+
+    private static string? TryGetRegisteredAppInstallerUri()
+    {
+        if (!PackageHelper.IsPackaged)
+            return null;
+
+        try
+        {
+            return global::Windows.ApplicationModel.Package.Current
+                .GetAppInstallerInfo()
+                ?.Uri
+                ?.AbsoluteUri;
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            Logger.Warn($"Failed to read package AppInstaller source; falling back to architecture feed: {ex.Message}");
+            return null;
+        }
     }
 
     internal static UpdateResult ClassifyPublishedVersion(Version currentVersion, Version publishedVersion)

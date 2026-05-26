@@ -172,6 +172,9 @@ public sealed class AppInstallerTemplateAssertionTests
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
 
         Assert.Contains("CheckForUpdateAsync", service);
+        Assert.Contains("ResolveAppInstallerUri", service);
+        Assert.Contains("GetAppInstallerInfo()", service);
+        Assert.Contains("ArchitectureFallbackAppInstallerUri", service);
         Assert.Contains("ParseAppInstallerVersion", service);
         Assert.Contains("element.Name.LocalName == \"MainPackage\"", service);
         Assert.Contains("AppInstaller MainPackage Version must be a four-part version", service);
