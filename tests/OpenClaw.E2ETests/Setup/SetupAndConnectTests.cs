@@ -161,6 +161,21 @@ public class SetupAndConnectTests
     }
 
     [Fact]
+    public async Task FullSetup_TrayStartsWslKeepAlive()
+    {
+        var logLine = await _fixture.WaitForTrayKeepAliveStartedAsync();
+        Assert.Contains(_fixture.DistroName, logLine);
+
+        var keepAlive = await _fixture.RunInWslAsync(
+            "ps -ef | grep '[s]leep infinity'",
+            TimeSpan.FromSeconds(15));
+
+        AssertCommandSucceeded(keepAlive, "verify WSL keepalive process");
+        Console.WriteLine($"[E2E] WSL keepalive process:\n{keepAlive.Stdout}");
+        Assert.Contains("sleep infinity", keepAlive.Stdout);
+    }
+
+    [Fact]
     public async Task FullSetup_DashboardLink_UsesSharedGatewayTokenFragmentAfterPairing()
     {
         using var dashboardDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.dashboard.url");

@@ -544,6 +544,44 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         return (url, sharedToken, id);
     }
 
+    public async Task<string> WaitForTrayKeepAliveStartedAsync(TimeSpan? timeout = null)
+    {
+        var logPath = Path.Combine(DataDir, "openclaw-tray.log");
+        var expected = $"[WslKeepAlive] Started keepalive for {_distroName}";
+        var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(30));
+        string lastLogTail = "";
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_trayProcess is { HasExited: true })
+            {
+                CopyDataDirLogs();
+                throw new InvalidOperationException(
+                    $"Tray process exited while waiting for WSL keepalive log (exit code {_trayProcess.ExitCode}). " +
+                    $"Log path: {logPath}. Logs: {ArtifactDir}");
+            }
+
+            if (File.Exists(logPath))
+            {
+                var lines = await File.ReadAllLinesAsync(logPath);
+                lastLogTail = string.Join(Environment.NewLine, lines.TakeLast(20));
+                var match = lines.LastOrDefault(line => line.Contains(expected, StringComparison.Ordinal));
+                if (match is not null)
+                {
+                    Log($"Tray keepalive verified from log: {match}");
+                    return match;
+                }
+            }
+
+            await Task.Delay(500);
+        }
+
+        CopyDataDirLogs();
+        throw new TimeoutException(
+            $"Tray did not log WSL keepalive startup within {timeout?.TotalSeconds ?? 30}s. " +
+            $"Expected: {expected}. Log tail: {lastLogTail}. Logs: {ArtifactDir}");
+    }
+
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
     {
         if (element.TryGetProperty(propertyName, out value))

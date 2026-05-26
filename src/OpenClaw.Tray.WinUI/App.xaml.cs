@@ -1776,12 +1776,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             if (_settings is null) return;
 
-            var gatewayUrl = _settings.GetEffectiveGatewayUrl();
-            var distroName = await ResolveLocalGatewayDistroNameAsync();
-
-            if (string.IsNullOrWhiteSpace(gatewayUrl) || !LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl))
+            var activeRecord = _gatewayRegistry?.GetActive();
+            if (!WslKeepAlivePolicy.ShouldStart(activeRecord, _settings.GetEffectiveGatewayUrl()))
                 return;
 
+            var distroName = await ResolveLocalGatewayDistroNameAsync(activeRecord);
             if (string.IsNullOrWhiteSpace(distroName)) return;
 
             // Verify distro exists before spawning keepalive
@@ -1826,8 +1825,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// Resolves the local gateway distro name by reading setup-state.json.
     /// Falls back to "OpenClawGateway" if not found.
     /// </summary>
-    private async Task<string?> ResolveLocalGatewayDistroNameAsync()
+    private async Task<string?> ResolveLocalGatewayDistroNameAsync(GatewayRecord? activeRecord)
     {
+        string? setupStateDistroName = null;
         try
         {
             var stateFile = Path.Combine(
@@ -1841,7 +1841,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 if (doc.RootElement.TryGetProperty("DistroName", out var dn) &&
                     dn.GetString() is { Length: > 0 } distroName)
                 {
-                    return distroName;
+                    setupStateDistroName = distroName;
                 }
             }
         }
@@ -1850,13 +1850,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Warn($"[WslKeepAlive] Failed to read setup-state.json: {ex.Message}");
         }
 
-#if DEBUG || OPENCLAW_TRAY_TESTS
-        var envOverride = Environment.GetEnvironmentVariable("OPENCLAW_WSL_DISTRO_NAME");
-        if (!string.IsNullOrWhiteSpace(envOverride))
-            return envOverride;
-#endif
-
-        return "OpenClawGateway";
+        return WslKeepAlivePolicy.ResolveDistroName(
+            activeRecord,
+            setupStateDistroName,
+            Environment.GetEnvironmentVariable("OPENCLAW_WSL_DISTRO_NAME"));
     }
 
     // The pre-unification ShouldInitializeNodeService(GatewayRecord, string) overload
