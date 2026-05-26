@@ -79,15 +79,17 @@
                                 Click="OnCopySupportClick"/>
                         <Button x:Uid="CheckUpdatesButton" x:Name="CheckUpdatesButton" Content="Check for Updates"
                                  Click="OnCheckUpdatesClick"/>
-                        <Button x:Name="ApplyUpdateButton" Content="Apply Update Now"
-                                Click="OnApplyUpdateClick"
-                                Visibility="Collapsed"/>
                     </StackPanel>
                     <TextBlock x:Name="UpdateStatusText"
                                Text="Update status: Not checked"
                                TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <Button x:Name="ApplyUpdateButton"
+                            Content="Apply Update Now"
+                            Click="OnApplyUpdateClick"
+                            HorizontalAlignment="Left"
+                            Visibility="Collapsed"/>
                     <HyperlinkButton x:Uid="AboutPage_MoreDiagnosticsLink"
                                      Content="More diagnostics →"
                                      Click="OnMoreDiagnosticsClick"
