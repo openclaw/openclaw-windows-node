@@ -20,5 +20,8 @@ internal static class E2ETestGate
 {
     public const string EnvVar = "OPENCLAW_RUN_E2E";
 
-    public static bool IsEnabled => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(EnvVar));
+    public static bool IsEnabled =>
+        Environment.GetEnvironmentVariable(EnvVar) is { } value &&
+        (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
 }
