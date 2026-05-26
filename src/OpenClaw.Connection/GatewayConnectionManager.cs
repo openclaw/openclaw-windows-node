@@ -21,6 +21,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<bool>? _isNodeEnabled;
     private readonly IClock _clock;
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
+    private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
 
     private long _generation;
@@ -48,7 +49,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         Func<bool>? isNodeEnabled = null,
         ConnectionDiagnostics? diagnostics = null,
         ISshTunnelManager? tunnelManager = null,
-        Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null)
+        Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null,
+        Func<TimeSpan, Task>? reconnectDelay = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -60,6 +62,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _isNodeEnabled = isNodeEnabled;
         _clock = clock ?? SystemClock.Instance;
         _shouldStartNodeConnection = shouldStartNodeConnection;
+        _reconnectDelay = reconnectDelay ?? Task.Delay;
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -900,7 +903,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (approved)
             {
                 _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
-                await Task.Delay(1000); // brief delay for gateway to process
+                await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
                 if (Interlocked.Read(ref _generation) == approvalGeneration)
                     await StartNodeConnectionAsync();
             }

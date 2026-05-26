@@ -72,9 +72,9 @@ public class NodePairAutoApproveTests : IDisposable
             _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
 
         // Pending WITHOUT a requestId — auto-approval should not trigger.
-        // Brief delay is acceptable here: we're asserting nothing happened.
+        // The handler returns synchronously in this path (no await before early return),
+        // so no delay is needed: the assertion is safe immediately after the fire.
         _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: null);
-        await Task.Delay(200);
 
         Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
     }
@@ -92,8 +92,8 @@ public class NodePairAutoApproveTests : IDisposable
             _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
 
         // Insufficient scope — auto-approval should not trigger.
+        // The scope check runs synchronously before any await, so no delay is needed.
         _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-123");
-        await Task.Delay(200);
 
         Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
     }
@@ -118,13 +118,14 @@ public class NodePairAutoApproveTests : IDisposable
         _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-same");
         await firstEntered; // First call has entered NodePairApproveAsync but is blocked
 
-        // Fire second event while first is still in-flight — CAS guard should reject
+        // Fire second event while first is still in-flight — CAS guard rejects it synchronously
+        // (the guard path has no await), so no delay is needed after this fire.
         _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-same");
-        await Task.Delay(200); // brief wait for the second handler to run and be rejected
 
-        // Release the blocked first approval
+        // Release the blocked first approval and wait for it to complete deterministically.
+        var firstComplete = lifecycle.TrackingClient.WaitForApprovalCompleteAsync();
         lifecycle.TrackingClient.ReleaseApproveGate();
-        await Task.Delay(200); // let it complete
+        await firstComplete;
 
         // Only one approval call should have been made
         Assert.Equal(1, lifecycle.TrackingClient.ApprovalMethodsCalled
@@ -145,7 +146,8 @@ public class NodePairAutoApproveTests : IDisposable
         var manager = new GatewayConnectionManager(
             _resolver, _factory, _registry, NullLogger.Instance,
             nodeConnector: _nodeConnector,
-            isNodeEnabled: () => true);
+            isNodeEnabled: () => true,
+            reconnectDelay: _ => Task.CompletedTask);
 
         manager.ConnectAsync("gw1").GetAwaiter().GetResult();
         return manager;
@@ -214,6 +216,7 @@ public class NodePairAutoApproveTests : IDisposable
         private readonly List<string> _approvalMethodsCalled = [];
         private bool _simulatedConnected;
         private TaskCompletionSource? _approvalSignal;
+        private TaskCompletionSource? _approvalCompleteSignal;
         private TaskCompletionSource? _approveGate; // blocks NodePairApproveAsync until released
 
         public IReadOnlyList<string> ApprovalMethodsCalled => _approvalMethodsCalled;
@@ -260,6 +263,17 @@ public class NodePairAutoApproveTests : IDisposable
             _approveGate?.TrySetResult();
         }
 
+        /// <summary>
+        /// Returns a task that completes when the next NodePairApproveAsync call has returned.
+        /// Call this before <see cref="ReleaseApproveGate"/> to set up the signal, then
+        /// release the gate, then await the returned task for deterministic synchronization.
+        /// </summary>
+        public Task WaitForApprovalCompleteAsync(int timeoutMs = 5000)
+        {
+            _approvalCompleteSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _approvalCompleteSignal.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs));
+        }
+
         public override bool IsConnectedToGateway => _simulatedConnected;
 
         public override async Task<bool> NodePairApproveAsync(string requestId)
@@ -268,6 +282,7 @@ public class NodePairAutoApproveTests : IDisposable
             _approvalSignal?.TrySetResult();
             if (_approveGate != null)
                 await _approveGate.Task;
+            _approvalCompleteSignal?.TrySetResult();
             return true;
         }
 
