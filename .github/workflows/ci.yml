@@ -362,7 +362,6 @@ jobs:
   build-msix:
     needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -414,7 +413,9 @@ jobs:
         $xml.Package.Identity.Name = $identityName
         $xml.Package.Identity.Version = $version
         $xml.Package.Properties.DisplayName = $displayName
-        $xml.Package.Applications.Application.VisualElements.DisplayName = $displayName
+        $trayApp = $xml.Package.Applications.Application | Where-Object { $_.Id -eq "App" } | Select-Object -First 1
+        if (-not $trayApp) { throw "Tray application Id='App' not found in $manifest" }
+        $trayApp.VisualElements.DisplayName = $displayName
         $xml.Save((Resolve-Path $manifest))
         Write-Host "Patched MSIX manifest to identity $identityName, display name '$displayName', version $version"
 
@@ -541,7 +542,7 @@ jobs:
 
   release:
     needs: [repo-hygiene, test, e2etests, build, build-msix, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-msix.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
       contents: write
@@ -576,7 +577,6 @@ jobs:
 
     - name: Download win-x64 MSIX artifact
       uses: actions/download-artifact@v8
-      continue-on-error: true
       id: msix-x64
       with:
         name: openclaw-msix-win-x64
@@ -584,21 +584,21 @@ jobs:
 
     - name: Download win-arm64 MSIX artifact
       uses: actions/download-artifact@v8
-      continue-on-error: true
       id: msix-arm64
       with:
         name: openclaw-msix-win-arm64
         path: artifacts/msix-arm64
 
     - name: Rename MSIX packages
-      if: steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success'
       shell: pwsh
       run: |
         $assetVersion = "${{ needs.test.outputs.semVer }}"
-        $x64 = Get-ChildItem -Path artifacts/msix-x64 -Filter "*.msix" | Select-Object -First 1
-        $arm64 = Get-ChildItem -Path artifacts/msix-arm64 -Filter "*.msix" | Select-Object -First 1
-        if ($x64) { Copy-Item $x64.FullName "OpenClawCompanion-$assetVersion-win-x64.msix" }
-        if ($arm64) { Copy-Item $arm64.FullName "OpenClawCompanion-$assetVersion-win-arm64.msix" }
+        $x64 = @(Get-ChildItem -Path artifacts/msix-x64 -Recurse -Filter "*.msix")
+        $arm64 = @(Get-ChildItem -Path artifacts/msix-arm64 -Recurse -Filter "*.msix")
+        if ($x64.Count -ne 1) { throw "Expected exactly one x64 MSIX artifact, found $($x64.Count)." }
+        if ($arm64.Count -ne 1) { throw "Expected exactly one ARM64 MSIX artifact, found $($arm64.Count)." }
+        Copy-Item $x64[0].FullName "OpenClawCompanion-$assetVersion-win-x64.msix"
+        Copy-Item $arm64[0].FullName "OpenClawCompanion-$assetVersion-win-arm64.msix"
 
     - name: Disable NuGet source mapping for signing
       shell: pwsh
@@ -629,7 +629,6 @@ jobs:
         timestamp-digest: SHA256
 
     - name: Sign Release MSIX Packages
-      if: steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success'
       uses: azure/trusted-signing-action@v2
       with:
         azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -649,7 +648,6 @@ jobs:
     # after install. Each architecture has its own stable URL because the release
     # currently publishes separate .msix packages, not a multi-arch .msixbundle.
     - name: Render AppInstaller
-      if: steps.msix-x64.outcome == 'success'
       shell: pwsh
       run: |
         $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
@@ -722,7 +720,7 @@ jobs:
           3. Right-click tray icon → Settings to configure.
 
     - name: Request AppInstaller feed PR
-      if: success() && (steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success')
+      if: success()
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}

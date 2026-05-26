@@ -117,6 +117,29 @@ public sealed class AppInstallerTemplateAssertionTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_RequiresBothArchitectureMsixAndAppInstallerArtifacts()
+    {
+        var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+        var releaseStart = ci.IndexOf("  release:", StringComparison.Ordinal);
+        Assert.True(releaseStart >= 0, "release job not found in ci.yml");
+        var releaseJob = ci[releaseStart..];
+
+        Assert.Contains("Where-Object { $_.Id -eq \"App\" }", ci);
+        Assert.Contains("Tray application Id='App' not found", ci);
+        Assert.Contains("needs.build-msix.result == 'success'", releaseJob);
+        Assert.DoesNotContain("steps.msix-x64.outcome", releaseJob);
+        Assert.DoesNotContain("steps.msix-arm64.outcome", releaseJob);
+        Assert.Contains("Expected exactly one x64 MSIX artifact", releaseJob);
+        Assert.Contains("Expected exactly one ARM64 MSIX artifact", releaseJob);
+        Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix", releaseJob);
+        Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix", releaseJob);
+        Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller", releaseJob);
+        Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller", releaseJob);
+        Assert.Contains("openclaw-x64.appinstaller", releaseJob);
+        Assert.Contains("openclaw-arm64.appinstaller", releaseJob);
+    }
+
+    [Fact]
     public void InAppService_DoesNotForceShutdownByDefault()
     {
         var service = File.ReadAllText(Path.Combine(
