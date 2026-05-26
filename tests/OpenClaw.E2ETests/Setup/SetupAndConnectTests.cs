@@ -147,7 +147,7 @@ public class SetupAndConnectTests
         Assert.Equal(expectedCommands, effectiveCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
 
         var gateway = _fixture.ReadActiveGatewayRecord();
-        Assert.Equal($"ws://localhost:{_fixture.GatewayPort}", gateway.GatewayUrl);
+        Assert.Equal($"ws://127.0.0.1:{_fixture.GatewayPort}", gateway.GatewayUrl);
 
         var settingsPath = Path.Combine(_fixture.DataDir, "settings.json");
         var gatewaysPath = Path.Combine(_fixture.DataDir, "gateways.json");
@@ -190,7 +190,7 @@ public class SetupAndConnectTests
         Assert.True(usesSharedGatewayToken, $"Expected tray dashboard link to use the shared HTTP gateway token; source={credentialSource}");
         Assert.False(hasTokenQuery, $"Expected tray dashboard link to avoid token query strings; source={credentialSource}");
         Assert.NotNull(dashboardUrl);
-        Assert.StartsWith($"http://localhost:{_fixture.GatewayPort}", dashboardUrl);
+        Assert.StartsWith($"http://127.0.0.1:{_fixture.GatewayPort}", dashboardUrl);
         Assert.Contains("#token=", dashboardUrl);
         Console.WriteLine($"[E2E] tray dashboard URL source={credentialSource}; tokenQuery={hasTokenQuery}; length={dashboardUrl!.Length}");
 

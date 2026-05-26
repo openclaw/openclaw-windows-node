@@ -113,7 +113,7 @@ public class SetupContextTests
     {
         var config = new SetupConfig { GatewayPort = 5555 };
         var ctx = CreateContext(config);
-        Assert.Equal("ws://localhost:5555", ctx.GatewayUrl);
+        Assert.Equal("ws://127.0.0.1:5555", ctx.GatewayUrl);
     }
 
     private static SetupContext CreateContext(SetupConfig? config = null)

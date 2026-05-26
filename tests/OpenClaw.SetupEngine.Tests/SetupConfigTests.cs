@@ -63,7 +63,7 @@ public class SetupConfigTests : IDisposable
     public void EffectiveGatewayUrl_UsesPort()
     {
         var config = new SetupConfig { GatewayPort = 9999 };
-        Assert.Equal("ws://localhost:9999", config.EffectiveGatewayUrl);
+        Assert.Equal("ws://127.0.0.1:9999", config.EffectiveGatewayUrl);
     }
 
     [Fact]
