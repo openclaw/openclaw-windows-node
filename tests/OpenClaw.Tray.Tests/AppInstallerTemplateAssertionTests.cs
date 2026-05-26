@@ -125,12 +125,16 @@ public sealed class AppInstallerTemplateAssertionTests
         var app = File.ReadAllText(Path.Combine(
             GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var applyIndex = app.IndexOf("ApplyUpdateNowUserInitiatedAsync", StringComparison.Ordinal);
+        var applyMethod = applyIndex >= 0 ? app[applyIndex..] : string.Empty;
 
         Assert.Contains("bool forceRestart = false", service);
-        Assert.Contains("AddPackageByAppInstallerOptions.None", service);
         Assert.Contains("CheckForUpdateAsync()", app);
-        Assert.DoesNotContain("TryApplyUpdateAsync()", app);
-        Assert.DoesNotContain("TryApplyUpdateAsync(forceRestart: true", app);
+        Assert.DoesNotContain("TryApplyUpdateAsync(forceRestart: true", app[..applyIndex]);
+        Assert.Contains("TryApplyUpdateAsync(forceRestart: true", applyMethod);
+        Assert.Contains("bool forceRestart = false", service);
+        Assert.Contains("? global::Windows.Management.Deployment.AddPackageByAppInstallerOptions.ForceTargetAppShutdown", service);
+        Assert.Contains(": global::Windows.Management.Deployment.AddPackageByAppInstallerOptions.None", service);
     }
 
     [Fact]
@@ -182,6 +186,33 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("UpdateAvailable", service);
         Assert.Contains("AppInstallerUpdateService.CheckForUpdateAsync()", app);
         Assert.DoesNotContain("var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync()", app);
+    }
+
+    [Fact]
+    public void AboutPage_ExposesExplicitApplyUpdateAction()
+    {
+        var aboutXaml = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml"));
+        var aboutCs = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs"));
+        var app = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var commands = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "IAppCommands.cs"));
+
+        Assert.Contains("ApplyUpdateButton", aboutXaml);
+        Assert.Contains("Apply Update Now", aboutXaml);
+        Assert.Contains("OnApplyUpdateClick", aboutXaml);
+        Assert.Contains("ApplyUpdateNow", aboutCs);
+        Assert.Contains("Status, \"Available\"", aboutCs);
+        Assert.Contains("void ApplyUpdateNow()", commands);
+        Assert.Contains("ApplyUpdateNowUserInitiatedAsync", app);
+        Assert.Contains("TryApplyUpdateAsync(forceRestart: true)", app);
+        Assert.Contains("Status = \"Applying\"", app);
     }
 
     [Fact]

@@ -53,6 +53,7 @@ public sealed partial class AboutPage : Page
         if (update == null)
         {
             UpdateStatusText.Text = "Update status: Not checked";
+            ApplyUpdateButton.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -60,6 +61,9 @@ public sealed partial class AboutPage : Page
             ? string.Empty
             : $" — {update.Detail}";
         UpdateStatusText.Text = $"Update status: {update.Status}{detail}";
+        ApplyUpdateButton.Visibility = string.Equals(update.Status, "Available", StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void TryLoadGatewayInfo()
@@ -146,6 +150,11 @@ public sealed partial class AboutPage : Page
     private void OnCheckUpdatesClick(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).CheckForUpdates();
+    }
+
+    private void OnApplyUpdateClick(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ApplyUpdateNow();
     }
 
     private void OnMoreDiagnosticsClick(object sender, RoutedEventArgs e)

@@ -501,6 +501,7 @@ public sealed class DiagnosticsPageContractTests
 
         Assert.Contains("VersionText.Text = AppVersionHelper.DisplayVersion", cs);
         Assert.Contains("UpdateStatusText", xaml);
+        Assert.Contains("ApplyUpdateButton", xaml);
         Assert.Contains("nameof(AppState.UpdateInfo)", cs);
         Assert.Contains("RefreshUpdateInfo", cs);
         Assert.Contains("AppVersionHelper.CurrentVersionText", app);

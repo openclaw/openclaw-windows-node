@@ -79,6 +79,9 @@
                                 Click="OnCopySupportClick"/>
                         <Button x:Uid="CheckUpdatesButton" x:Name="CheckUpdatesButton" Content="Check for Updates"
                                  Click="OnCheckUpdatesClick"/>
+                        <Button x:Name="ApplyUpdateButton" Content="Apply Update Now"
+                                Click="OnApplyUpdateClick"
+                                Visibility="Collapsed"/>
                     </StackPanel>
                     <TextBlock x:Name="UpdateStatusText"
                                Text="Update status: Not checked"

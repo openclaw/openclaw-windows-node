@@ -16,6 +16,7 @@ internal interface IAppCommands
     void ShowChat();
     void ShowQuickSend();
     void CheckForUpdates();
+    void ApplyUpdateNow();
     void ShowOnboarding();
     void ShowConnectionStatus();
     void NotifySettingsSaved();
