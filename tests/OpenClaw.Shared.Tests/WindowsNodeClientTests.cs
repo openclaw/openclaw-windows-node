@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
@@ -871,6 +872,30 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public void BuildNodeConnectMessage_IncludesCanonicalWindowsDeviceFamily()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "gateway-token", dataPath);
+
+            var json = InvokeBuildNodeConnectMessage(client);
+            using var doc = JsonDocument.Parse(json);
+            var clientPayload = doc.RootElement.GetProperty("params").GetProperty("client");
+
+            Assert.Equal("windows", clientPayload.GetProperty("platform").GetString());
+            Assert.Equal("Windows", clientPayload.GetProperty("deviceFamily").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public void RegisterCapability_AddsToCapabilitiesListAndRegistration()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
@@ -1200,8 +1225,11 @@ public class WindowsNodeClientTests
     {
         private readonly string _category;
         private readonly string[] _commands;
+        private readonly TaskCompletionSource<bool> _executedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int ExecuteCount { get; private set; }
         public string? LastCommand { get; private set; }
+        /// <summary>Completes when ExecuteAsync is first called. Use in tests to await fire-and-forget dispatch.</summary>
+        public Task ExecutedTask => _executedTcs.Task;
 
         public MockCapability(string category, params string[] commands)
         {
@@ -1217,8 +1245,102 @@ public class WindowsNodeClientTests
         {
             ExecuteCount++;
             LastCommand = request.Command;
+            _executedTcs.TrySetResult(true);
             return Task.FromResult(new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { dispatched = true } });
         }
+    }
+
+    private sealed class BlockingCapability : INodeCapability
+    {
+        private readonly string _category;
+        private readonly string[] _commands;
+        private readonly int _expectedExecutions;
+        private readonly TaskCompletionSource<bool> _expectedEnteredTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _releaseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _allCompletedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _executeCount;
+        private int _completedCount;
+
+        public BlockingCapability(string category, string command, int expectedExecutions = 1)
+        {
+            _category = category;
+            _commands = [command];
+            _expectedExecutions = expectedExecutions;
+        }
+
+        public string Category => _category;
+        public IReadOnlyList<string> Commands => _commands;
+        public int ExecuteCount => Volatile.Read(ref _executeCount);
+        public Task ExpectedEnteredTask => _expectedEnteredTcs.Task;
+        public Task AllCompletedTask => _allCompletedTcs.Task;
+        public bool CanHandle(string command) => Array.IndexOf(_commands, command) >= 0;
+
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+            => ExecuteAsync(request, CancellationToken.None);
+
+        public async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
+        {
+            var entered = Interlocked.Increment(ref _executeCount);
+            if (entered >= _expectedExecutions)
+            {
+                _expectedEnteredTcs.TrySetResult(true);
+            }
+
+            try
+            {
+                await _releaseTcs.Task.WaitAsync(cancellationToken);
+                return new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { dispatched = true } };
+            }
+            finally
+            {
+                var completed = Interlocked.Increment(ref _completedCount);
+                if (completed >= _expectedExecutions)
+                {
+                    _allCompletedTcs.TrySetResult(true);
+                }
+            }
+        }
+
+        public void Release() => _releaseTcs.TrySetResult(true);
+    }
+
+    private sealed class ArgsReadingCapability : INodeCapability
+    {
+        private readonly TaskCompletionSource<bool> _enteredTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _readArgsTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<int> _observedValueTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string Category => "mock";
+        public IReadOnlyList<string> Commands => ["mock.args"];
+        public Task EnteredTask => _enteredTcs.Task;
+        public Task<int> ObservedValueTask => _observedValueTcs.Task;
+        public bool CanHandle(string command) => command == "mock.args";
+
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+            => ExecuteAsync(request, CancellationToken.None);
+
+        public async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
+        {
+            _enteredTcs.TrySetResult(true);
+            await _readArgsTcs.Task.WaitAsync(cancellationToken);
+
+            try
+            {
+                var value = request.Args
+                    .GetProperty("nested")
+                    .GetProperty("value")
+                    .GetInt32();
+                _observedValueTcs.TrySetResult(value);
+                return new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { value } };
+            }
+            catch (Exception ex)
+            {
+                _observedValueTcs.TrySetException(ex);
+                throw;
+            }
+        }
+
+        public void ReadArgs() => _readArgsTcs.TrySetResult(true);
     }
 
     [Fact]
@@ -1248,6 +1370,8 @@ public class WindowsNodeClientTests
                 """;
 
             await InvokeProcessMessageAsync(client, json);
+            // Capability is dispatched fire-and-forget; wait for it to complete
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(1, cap.ExecuteCount);
             Assert.Equal("mock.ping", cap.LastCommand);
@@ -1325,6 +1449,8 @@ public class WindowsNodeClientTests
                 """;
 
             await InvokeProcessMessageAsync(client, json);
+            // Capability is dispatched fire-and-forget; wait for the first one to complete
+            await first.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(1, first.ExecuteCount);
             Assert.Equal(0, second.ExecuteCount);
@@ -1363,9 +1489,138 @@ public class WindowsNodeClientTests
                 """;
 
             await InvokeProcessMessageAsync(client, json);
+            // Capability is dispatched fire-and-forget; wait for it to complete
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(1, cap.ExecuteCount);
             Assert.Equal("mock.ping", cap.LastCommand);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_SlowCapability_DoesNotBlockNextInvoke()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        var slow = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var fast = new MockCapability("mock-fast", "mock.fast");
+            client.RegisterCapability(slow);
+            client.RegisterCapability(fast);
+
+            await InvokeProcessMessageAsync(client, BuildNodeInvokeRequest("inv-slow", "mock.slow"));
+            await slow.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, BuildNodeInvokeRequest("inv-fast", "mock.fast"));
+            await fast.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, slow.ExecuteCount);
+            Assert.Equal(1, fast.ExecuteCount);
+        }
+        finally
+        {
+            slow.Release();
+            if (slow.ExecuteCount > 0)
+            {
+                await slow.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_WhenInvokeSlotsFull_RejectsAdditionalInvoke()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        var blocking = new BlockingCapability("mock", "mock.slow", expectedExecutions: 8);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            client.RegisterCapability(blocking);
+
+            var busyTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "inv-busy")
+                {
+                    busyTcs.TrySetResult(args);
+                }
+            };
+
+            for (var i = 0; i < 8; i++)
+            {
+                await InvokeProcessMessageAsync(client, BuildNodeInvokeRequest($"inv-{i}", "mock.slow"));
+            }
+
+            await InvokeProcessMessageAsync(client, BuildNodeInvokeRequest("inv-busy", "mock.slow"));
+
+            var busy = await busyTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(busy.Ok);
+            Assert.Equal("node busy, retry", busy.Error);
+
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(8, blocking.ExecuteCount);
+        }
+        finally
+        {
+            blocking.Release();
+            if (blocking.ExecuteCount >= 8)
+            {
+                await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_ArgsSurviveAfterProcessMessageReturns()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new ArgsReadingCapability();
+            client.RegisterCapability(cap);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-args",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-args",
+                    "command": "mock.args",
+                    "args": {
+                      "nested": {
+                        "value": 42
+                      }
+                    }
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+            await cap.EnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            cap.ReadArgs();
+
+            Assert.Equal(42, await cap.ObservedValueTask.WaitAsync(TimeSpan.FromSeconds(5)));
         }
         finally
         {
@@ -1383,4 +1638,18 @@ public class WindowsNodeClientTests
         var task = (Task)processMethod!.Invoke(client, [json])!;
         await task;
     }
+
+    private static string BuildNodeInvokeRequest(string requestId, string command)
+        => $$"""
+            {
+              "type": "req",
+              "id": "{{requestId}}",
+              "method": "node.invoke",
+              "params": {
+                "requestId": "{{requestId}}",
+                "command": "{{command}}",
+                "args": {}
+              }
+            }
+            """;
 }

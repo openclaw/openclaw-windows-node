@@ -65,6 +65,32 @@ By removing the hardcoded `FileVersion` and `AssemblyVersion` properties, they n
 2. **Let GitVersion and CI control the version** - the csproj's `<Version>` is just a fallback for local development builds
 3. **Test version detection** - after building, check the EXE properties to ensure FileVersion matches expectations
 4. **Use semantic versioning** - tags should follow `v{major}.{minor}.{patch}` format (e.g., `v0.4.0`)
+5. **Use `OpenClaw.Shared.AppVersionInfo` for any user-visible or wire-exposed version string** - never re-roll
+   `typeof(...).Assembly.GetName().Version` or hardcode literals like `"v0.1.0"`. `AppVersionInfo` is the single
+   source of truth driven by `<Version>`, used by the About page, Update dialog, support-context dump,
+   `device.info` capability, MCP `serverVersion` handshake, and the update-check diagnostics.
+
+## Runtime Version Resolution (AppVersionInfo)
+
+`src/OpenClaw.Shared/AppVersionInfo.cs` exposes:
+
+- `AppVersionInfo.Version` → bare string, e.g. `"0.4.7"`
+- `AppVersionInfo.DisplayVersion` → `"v"` prefix, e.g. `"v0.4.7"`
+
+It resolves the version by:
+
+1. Looking for the `OpenClaw.Tray.WinUI` assembly in the current `AppDomain` (so `dotnet test` and CLI siblings
+   still report the tray's version rather than the testhost / dotnet host).
+2. Falling back to `Assembly.GetEntryAssembly()`, then to the Shared assembly.
+3. Reading `AssemblyInformationalVersionAttribute` (preferred) or `AssemblyVersion`.
+4. Stripping SourceLink build metadata (`+abc123`) **and** the SemVer pre-release suffix (`-beta.1`) so the
+   displayed value matches what Updatum compares (Updatum reads the numeric `AssemblyVersion` only).
+
+For tests that need a deterministic value regardless of host process, set the `internal` test hook:
+
+```csharp
+AppVersionInfo.TestOverride = "9.9.9";
+```
 
 ## References
 

@@ -81,7 +81,7 @@
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Approvals, Mode=OneTime}" FontSize="14"
                                       Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <TextBlock x:Name="PendingApprovalsHeaderText"
+                            <TextBlock x:Uid="ConnectionPage_ApprovalsWaitingOnYou" x:Name="PendingApprovalsHeaderText"
                                        Text="Approvals waiting on you"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        VerticalAlignment="Center"
@@ -138,7 +138,7 @@
 
                         <!-- Headline + sub + glance chips -->
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Name="StripHeadline" Text="Not connected"
+                            <TextBlock x:Uid="ConnectionPage_NotConnected" x:Name="StripHeadline" Text="Not connected"
                                        Style="{StaticResource SubtitleTextBlockStyle}"
                                        AutomationProperties.HeadingLevel="Level1"
                                        AutomationProperties.LiveSetting="Polite"
@@ -160,7 +160,7 @@
                         <!-- Right-side action cluster -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                     VerticalAlignment="Center">
-                            <Button x:Name="StripPrimaryButton"
+                            <Button x:Uid="ConnectionPage_Connect" x:Name="StripPrimaryButton"
                                     Content="Connect"
                                     Visibility="Collapsed"
                                     Click="OnStripPrimaryClicked"
@@ -206,10 +206,10 @@
                                       VerticalAlignment="Center" HorizontalAlignment="Center"
                                       AutomationProperties.AccessibilityView="Raw"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Operator"
+                                <TextBlock x:Uid="ConnectionPage_Operator" Text="Operator"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            AutomationProperties.HeadingLevel="Level2"/>
-                                <TextBlock Text="Send commands and view sessions on this gateway from this PC."
+                                <TextBlock x:Uid="ConnectionPage_SendCommandsAndView" Text="Send commands and view sessions on this gateway from this PC."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap"/>
@@ -228,19 +228,19 @@
                                       Foreground="{ThemeResource SystemFillColorNeutralBrush}"
                                       VerticalAlignment="Center" HorizontalAlignment="Center"
                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <TextBlock Grid.Column="1" x:Name="OperatorStatusText"
+                            <TextBlock x:Uid="ConnectionPage_Inactive" Grid.Column="1" x:Name="OperatorStatusText"
                                        Text="Inactive"
                                        Style="{StaticResource BodyTextBlockStyle}"
                                        VerticalAlignment="Center"/>
                         </Grid>
 
                         <StackPanel Orientation="Horizontal" Spacing="12">
-                            <HyperlinkButton x:Name="OperatorSessionsLink"
+                            <HyperlinkButton x:Uid="ConnectionPage_SeeSessions" x:Name="OperatorSessionsLink"
                                              Content="See sessions ›"
                                              Padding="0" FontSize="13"
                                              Click="OnOpenSessions"
                                              AutomationProperties.Name="See sessions"/>
-                            <HyperlinkButton x:Name="OperatorInstancesLink"
+                            <HyperlinkButton x:Uid="ConnectionPage_SeeInstances" x:Name="OperatorInstancesLink"
                                              Content="See instances ›"
                                              Padding="0" FontSize="13"
                                              Click="OnOpenInstances"
@@ -282,10 +282,10 @@
                                       VerticalAlignment="Center" HorizontalAlignment="Center"
                                       AutomationProperties.AccessibilityView="Raw"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Node mode"
+                                <TextBlock x:Uid="ConnectionPage_NodeMode" Text="Node mode"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            AutomationProperties.HeadingLevel="Level2"/>
-                                <TextBlock Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
+                                <TextBlock x:Uid="ConnectionPage_WhenOnThisPC" Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap"/>
@@ -316,7 +316,7 @@
                                       VerticalAlignment="Center" HorizontalAlignment="Center"
                                       AutomationProperties.AccessibilityView="Raw"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock x:Name="NodeStatusText"
+                                <TextBlock x:Uid="ConnectionPage_NodeModeDisabled" x:Name="NodeStatusText"
                                            Text="Node mode disabled"
                                            Style="{StaticResource BodyTextBlockStyle}"/>
                                 <!-- Canonical capability list per design naming.md:
@@ -350,7 +350,7 @@
                                            IsTextSelectionEnabled="True"
                                            TextWrapping="Wrap"
                                            VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" Content="Copy"
+                                <Button x:Uid="ConnectionPage_Copy" Grid.Column="1" Content="Copy"
                                         Click="OnCopyNodeApproveCommand"
                                         ToolTipService.ToolTip="Copy command"
                                         AutomationProperties.Name="Copy approval command"
@@ -359,7 +359,7 @@
                         </Border>
 
                         <!-- Connect button when awaiting node pairing approval -->
-                        <Button x:Name="NodeReconnectButton" Visibility="Collapsed"
+                        <Button x:Uid="ConnectionPage_Connect2" x:Name="NodeReconnectButton" Visibility="Collapsed"
                                 Content="Connect" Click="OnReconnectFromRecovery"
                                 Style="{StaticResource AccentButtonStyle}"
                                 Margin="0,4,0,0"
@@ -376,7 +376,7 @@
 
                         <!-- Deep link to per-capability config -->
                         <StackPanel x:Name="NodeDeepLinks" Orientation="Horizontal" Spacing="12">
-                            <HyperlinkButton x:Name="NodePermissionsLink"
+                            <HyperlinkButton x:Uid="ConnectionPage_ManagePermissions" x:Name="NodePermissionsLink"
                                              Content="Manage permissions ›"
                                              Padding="0" FontSize="13"
                                              Click="OnOpenPermissions"
@@ -397,7 +397,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="16"
                         AutomationProperties.AutomationId="RecoveryCard">
                     <StackPanel Spacing="10">
-                        <TextBlock x:Name="RecoveryHelpHeaderText"
+                        <TextBlock x:Uid="ConnectionPage_HelpUsFixThis" x:Name="RecoveryHelpHeaderText"
                                    Text="Help us fix this connection:"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
 
@@ -409,14 +409,14 @@
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                 CornerRadius="4" Padding="10">
                             <StackPanel Spacing="6">
-                                <TextBlock x:Name="RecoveryTunnelDetailText"
+                                <TextBlock x:Uid="ConnectionPage_SSHTunnelIsDown" x:Name="RecoveryTunnelDetailText"
                                            Text="SSH tunnel is down."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Restart tunnel" Click="OnRestartTunnel"
+                                    <Button x:Uid="ConnectionPage_RestartTunnel" Content="Restart tunnel" Click="OnRestartTunnel"
                                             AutomationProperties.AutomationId="RecoveryRestartTunnel"/>
-                                    <Button Content="Edit tunnel settings" Click="OnEditTunnelSettings"
+                                    <Button x:Uid="ConnectionPage_EditTunnelSettings" Content="Edit tunnel settings" Click="OnEditTunnelSettings"
                                             AutomationProperties.AutomationId="RecoveryEditTunnel"/>
                                 </StackPanel>
                             </StackPanel>
@@ -427,7 +427,7 @@
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                 CornerRadius="4" Padding="10">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="Paste a new setup code from the gateway host."
+                                <TextBlock x:Uid="ConnectionPage_PasteANewSetup" Text="Paste a new setup code from the gateway host."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            TextWrapping="Wrap"/>
                                 <Grid ColumnSpacing="8">
@@ -435,10 +435,10 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0"
+                                    <TextBox x:Uid="ConnectionPage_PasteSetupCodeHere" Grid.Column="0"
                                              x:Name="RecoveryRepairCodeBox"
                                              PlaceholderText="Paste setup code here…"/>
-                                    <Button Grid.Column="1" Content="Apply"
+                                    <Button x:Uid="ConnectionPage_Apply" Grid.Column="1" Content="Apply"
                                             Click="OnApplyRepairCode"
                                             AutomationProperties.AutomationId="RecoveryApplyRepair"/>
                                 </Grid>
@@ -450,7 +450,7 @@
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                 CornerRadius="4" Padding="10">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="Run on the gateway host:"
+                                <TextBlock x:Uid="ConnectionPage_RunOnTheGateway" Text="Run on the gateway host:"
                                            Style="{StaticResource CaptionTextBlockStyle}"/>
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
@@ -463,7 +463,7 @@
                                                IsTextSelectionEnabled="True"
                                                TextWrapping="Wrap"
                                                VerticalAlignment="Center"/>
-                                    <Button Grid.Column="1" Content="Copy"
+                                    <Button x:Uid="ConnectionPage_Copy2" Grid.Column="1" Content="Copy"
                                             Click="OnCopyApproveCommand"
                                             ToolTipService.ToolTip="Copy command"
                                             AutomationProperties.Name="Copy approval command"
@@ -475,10 +475,10 @@
                         <!-- Escape hatch: just disconnect; the always-visible
                              gateways list below offers switching by one click. -->
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                            <Button Content="Connect" Click="OnReconnectFromRecovery"
+                            <Button x:Uid="ConnectionPage_Connect3" Content="Connect" Click="OnReconnectFromRecovery"
                                     Style="{StaticResource AccentButtonStyle}"
                                     AutomationProperties.AutomationId="RecoveryConnect"/>
-                            <Button Content="Disconnect" Click="OnDisconnect"
+                            <Button x:Uid="ConnectionPage_Disconnect" Content="Disconnect" Click="OnDisconnect"
                                     AutomationProperties.AutomationId="RecoveryDisconnect"/>
                         </StackPanel>
                     </StackPanel>
@@ -490,7 +490,7 @@
                           HorizontalContentAlignment="Stretch"
                           IsExpanded="False">
                     <Expander.Header>
-                        <TextBlock x:Name="RecoverySavedHeaderText"
+                        <TextBlock x:Uid="ConnectionPage_SavedGateways" x:Name="RecoverySavedHeaderText"
                                    Text="Saved gateways"
                                    FontSize="13" FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
@@ -526,7 +526,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Gateways"
+                        <TextBlock x:Uid="ConnectionPage_Gateways" Grid.Column="0" Text="Gateways"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"
                                    AutomationProperties.HeadingLevel="Level2"
                                    VerticalAlignment="Center"/>
@@ -539,7 +539,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}" FontSize="12"
                                           AutomationProperties.AccessibilityView="Raw"/>
-                                <TextBlock x:Name="GatewaysScanButtonText" Text="Scan" FontSize="13"/>
+                                <TextBlock x:Uid="ConnectionPage_Scan" x:Name="GatewaysScanButtonText" Text="Scan" FontSize="13"/>
                             </StackPanel>
                         </Button>
                         <Button Grid.Column="2"
@@ -550,12 +550,12 @@
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Add, Mode=OneTime}" FontSize="12"
                                           AutomationProperties.AccessibilityView="Raw"/>
-                                <TextBlock Text="Add gateway" FontSize="13"/>
+                                <TextBlock x:Uid="ConnectionPage_AddGateway" Text="Add gateway" FontSize="13"/>
                             </StackPanel>
                         </Button>
                     </Grid>
 
-                    <TextBlock x:Name="SavedGatewaysEmptyText"
+                    <TextBlock x:Uid="ConnectionPage_NoSavedGatewaysYet" x:Name="SavedGatewaysEmptyText"
                                Text="No saved gateways yet."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -575,7 +575,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
+                            <TextBlock x:Uid="ConnectionPage_DiscoveredOnYourNetwork" Grid.Column="0"
                                        x:Name="GatewaysDiscoveredHeader"
                                        Text="Discovered on your network"
                                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -606,7 +606,7 @@
                     Visibility="Collapsed"
                     AutomationProperties.AutomationId="WelcomeAddTilesCard">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Add a gateway"
+                    <TextBlock x:Uid="ConnectionPage_AddAGateway" Text="Add a gateway"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                AutomationProperties.HeadingLevel="Level2"/>
 
@@ -618,7 +618,7 @@
                          the WinUI-canonical "featured callout" surface —
                          soft blue tint + info icon are theme-aware and
                          match tokens.md guidance (no custom brushes). -->
-                    <InfoBar x:Name="WelcomeLocalWslSetupCard"
+                    <InfoBar x:Uid="ConnectionPage_GetStartedInstallA" x:Name="WelcomeLocalWslSetupCard"
                              Severity="Informational"
                              IsOpen="True"
                              IsClosable="False"
@@ -626,13 +626,13 @@
                              Title="Get started — install a local gateway"
                              Message="The fastest way to start: sets up a WSL-hosted gateway on this PC and makes it the active connection.">
                         <InfoBar.ActionButton>
-                            <Button Content="Install"
+                            <Button x:Uid="ConnectionPage_Install" Content="Install"
                                     Click="OnInstallLocalWslGateway"
                                     AutomationProperties.AutomationId="WelcomeInstallLocalGateway"/>
                         </InfoBar.ActionButton>
                     </InfoBar>
 
-                    <TextBlock x:Name="WelcomeOrDivider"
+                    <TextBlock x:Uid="ConnectionPage_OrConnectToAn" x:Name="WelcomeOrDivider"
                                Text="Or connect to an existing one:"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -656,10 +656,10 @@
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Plug, Mode=OneTime}" FontSize="24"
                                           HorizontalAlignment="Center"
                                           AutomationProperties.AccessibilityView="Raw"/>
-                                <TextBlock Text="Direct"
+                                <TextBlock x:Uid="ConnectionPage_Direct" Text="Direct"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            HorizontalAlignment="Center"/>
-                                <TextBlock Text="URL + token"
+                                <TextBlock x:Uid="ConnectionPage_URLToken" Text="URL + token"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            HorizontalAlignment="Center"/>
@@ -679,10 +679,10 @@
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Lock, Mode=OneTime}" FontSize="24"
                                           HorizontalAlignment="Center"
                                           AutomationProperties.AccessibilityView="Raw"/>
-                                <TextBlock Text="Setup code"
+                                <TextBlock x:Uid="ConnectionPage_SetupCode" Text="Setup code"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            HorizontalAlignment="Center"/>
-                                <TextBlock Text="Paste QR payload"
+                                <TextBlock x:Uid="ConnectionPage_PasteQRPayload" Text="Paste QR payload"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            HorizontalAlignment="Center"/>
@@ -690,7 +690,7 @@
                         </Button>
                     </Grid>
 
-                    <TextBlock Text="Each method supports an optional SSH tunnel."
+                    <TextBlock x:Uid="ConnectionPage_EachMethodSupportsAn" Text="Each method supports an optional SSH tunnel."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
@@ -702,7 +702,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
+                        <TextBlock x:Uid="ConnectionPage_OrLookForOne" Grid.Column="0"
                                    Text="Or look for one on your network."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -715,12 +715,12 @@
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.System, Mode=OneTime}" FontSize="12"
                                           AutomationProperties.AccessibilityView="Raw"/>
-                                <TextBlock x:Name="WelcomeScanButtonText" Text="Scan" FontSize="13"/>
+                                <TextBlock x:Uid="ConnectionPage_Scan2" x:Name="WelcomeScanButtonText" Text="Scan" FontSize="13"/>
                             </StackPanel>
                         </Button>
                     </Grid>
                     <StackPanel x:Name="WelcomeDiscoveredSection" Spacing="6" Visibility="Collapsed">
-                        <TextBlock Text="Discovered on your network"
+                        <TextBlock x:Uid="ConnectionPage_DiscoveredOnYourNetwork2" Text="Discovered on your network"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <StackPanel x:Name="WelcomeDiscoveredList" Spacing="6"/>
@@ -750,25 +750,25 @@
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}" FontSize="10" VerticalAlignment="Center"
                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <TextBlock Text="Back" VerticalAlignment="Center"/>
+                            <TextBlock x:Uid="ConnectionPage_Back" Text="Back" VerticalAlignment="Center"/>
                         </StackPanel>
                     </HyperlinkButton>
 
-                    <TextBlock Text="Add a gateway"
+                    <TextBlock x:Uid="ConnectionPage_AddAGateway2" Text="Add a gateway"
                                Style="{StaticResource SubtitleTextBlockStyle}"
                                AutomationProperties.HeadingLevel="Level1"/>
 
                     <controls:SelectorBar x:Name="AddMethodSelectorBar"
                                           SelectionChanged="OnAddMethodChanged"
                                           AutomationProperties.AutomationId="AddMethodSelector">
-                        <controls:SelectorBarItem x:Name="AddDirectItem"
+                        <controls:SelectorBarItem x:Uid="ConnectionPage_Direct2" x:Name="AddDirectItem"
                                                   Text="Direct"
                                                   IsSelected="True"
                                                   Tag="direct"/>
-                        <controls:SelectorBarItem x:Name="AddSetupCodeItem"
+                        <controls:SelectorBarItem x:Uid="ConnectionPage_SetupCode2" x:Name="AddSetupCodeItem"
                                                   Text="Setup code"
                                                   Tag="setup"/>
-                        <controls:SelectorBarItem x:Name="AddLocalWslItem"
+                        <controls:SelectorBarItem x:Uid="ConnectionPage_LocalWSL" x:Name="AddLocalWslItem"
                                                   Text="Local WSL"
                                                   Tag="local"
                                                   Visibility="Collapsed"/>
@@ -776,16 +776,17 @@
 
                     <!-- Direct pane (default selected) -->
                     <StackPanel x:Name="AddDirectPane" Spacing="8">
-                        <TextBox x:Name="DirectUrlBox"
+                        <TextBox x:Uid="ConnectionPage_GatewayURL" x:Name="DirectUrlBox"
                                  Header="Gateway URL"
                                  PlaceholderText="ws://host.local:18790"
                                  TextChanged="OnDirectInputChanged"
+                                 LostFocus="OnDirectUrlLostFocus"
                                  AutomationProperties.AutomationId="AddDirectUrl"/>
-                        <PasswordBox x:Name="DirectTokenBox"
-                                     Header="Shared token"
-                                     PlaceholderText="Paste shared gateway token"
-                                     AutomationProperties.AutomationId="AddDirectToken"/>
-                        <TextBox x:Name="DirectNameBox"
+                        <TextBox x:Uid="ConnectionPage_SharedToken" x:Name="DirectTokenBox"
+                                 Header="Shared token"
+                                 PlaceholderText="Paste shared gateway token"
+                                 AutomationProperties.AutomationId="AddDirectToken"/>
+                        <TextBox x:Uid="ConnectionPage_NameOptional" x:Name="DirectNameBox"
                                  Header="Name (optional)"
                                  PlaceholderText="My gateway"
                                  AutomationProperties.AutomationId="AddDirectName"/>
@@ -793,7 +794,7 @@
 
                     <!-- Setup code pane -->
                     <StackPanel x:Name="AddSetupCodePane" Spacing="8" Visibility="Collapsed">
-                        <TextBlock Text="Paste a setup code from the gateway's QR or `openclaw qr` output."
+                        <TextBlock x:Uid="ConnectionPage_PasteASetupCode" Text="Paste a setup code from the gateway's QR or `openclaw qr` output."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>
@@ -802,12 +803,12 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0"
+                            <TextBox x:Uid="ConnectionPage_PasteSetupCodeHere2" Grid.Column="0"
                                      x:Name="AddSetupCodeBox"
                                      PlaceholderText="Paste setup code here…"
                                      TextChanged="OnSetupCodeTextChanged"
                                      AutomationProperties.AutomationId="AddSetupCodeInput"/>
-                            <Button Grid.Column="1" Content="Decode"
+                            <Button x:Uid="ConnectionPage_Decode" Grid.Column="1" Content="Decode"
                                     Click="OnAddSetupCodeDecode"
                                     AutomationProperties.AutomationId="AddSetupCodeDecode"/>
                         </Grid>
@@ -836,15 +837,15 @@
                          needed: the install wizard creates the gateway,
                          pairs this PC into it, and saves the record. -->
                     <StackPanel x:Name="AddLocalWslPane" Spacing="12" Visibility="Collapsed">
-                        <TextBlock Text="Install a new WSL gateway on this PC and make it the active connection. The setup wizard will install WSL if needed, provision the gateway, and pair this device automatically."
+                        <TextBlock x:Uid="ConnectionPage_InstallANewWSL" Text="Install a new WSL gateway on this PC and make it the active connection. The setup wizard will install WSL if needed, provision the gateway, and pair this device automatically."
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"/>
-                        <Button x:Name="AddLocalWslInstallButton"
+                        <Button x:Uid="ConnectionPage_InstallLocalGateway" x:Name="AddLocalWslInstallButton"
                                 Content="Install local gateway"
                                 HorizontalAlignment="Left"
                                 Click="OnInstallLocalWslGateway"
                                 AutomationProperties.AutomationId="AddInstallLocalGateway"/>
-                        <TextBlock x:Name="AddLocalWslUnavailableText"
+                        <TextBlock x:Uid="ConnectionPage_LocalWSLSetupIsn" x:Name="AddLocalWslUnavailableText"
                                    Text="Local-WSL setup isn't available on this machine — the install wizard couldn't be initialized."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
@@ -858,7 +859,7 @@
                               HorizontalContentAlignment="Stretch"
                               IsExpanded="False">
                         <Expander.Header>
-                            <TextBlock Text="Use SSH tunnel (optional)"
+                            <TextBlock x:Uid="ConnectionPage_UseSSHTunnelOptional" Text="Use SSH tunnel (optional)"
                                        FontSize="13" FontWeight="SemiBold"
                                        VerticalAlignment="Center"/>
                         </Expander.Header>
@@ -868,11 +869,11 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
+                                <TextBox x:Uid="ConnectionPage_SSHUser" Grid.Column="0"
                                          x:Name="AddSshUserBox"
                                          Header="SSH user"
                                          PlaceholderText="user"/>
-                                <TextBox Grid.Column="1"
+                                <TextBox x:Uid="ConnectionPage_SSHHost" Grid.Column="1"
                                          x:Name="AddSshHostBox"
                                          Header="SSH host"
                                          PlaceholderText="machine-name"/>
@@ -882,11 +883,11 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
+                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="0"
                                          x:Name="AddSshRemotePortBox"
                                          Header="Remote port"
                                          PlaceholderText="18789"/>
-                                <TextBox Grid.Column="1"
+                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="1"
                                          x:Name="AddSshLocalPortBox"
                                          Header="Local port"
                                          PlaceholderText="18789"/>
@@ -907,12 +908,12 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="1"
+                        <Button x:Uid="ConnectionPage_SaveAmpConnect" Grid.Column="1"
                                 x:Name="AddSaveButton"
                                 Content="Save &amp; connect"
                                 Click="OnAddSave"
                                 AutomationProperties.AutomationId="AddSave"/>
-                        <Button Grid.Column="2"
+                        <Button x:Uid="ConnectionPage_Cancel" Grid.Column="2"
                                 Content="Cancel"
                                 Click="OnAddBack"/>
                     </Grid>

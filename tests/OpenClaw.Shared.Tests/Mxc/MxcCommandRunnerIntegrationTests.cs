@@ -7,9 +7,9 @@ namespace OpenClaw.Shared.Tests.Mxc;
 
 /// <summary>
 /// End-to-end smoke test for the MxcCommandRunner pipeline. Actually spawns
-/// node.exe + run-command.cjs + wxc-exec.exe to run a real shell payload
-/// inside an AppContainer. Gated by OPENCLAW_RUN_INTEGRATION=1 so it doesn't
-/// run by default on CI; matches the existing LocalCommandRunnerIntegrationTests pattern.
+/// wxc-exec.exe to run a real shell payload inside an AppContainer. Gated by
+/// OPENCLAW_RUN_INTEGRATION=1 so it doesn't run by default on CI; matches the
+/// existing LocalCommandRunnerIntegrationTests pattern.
 ///
 /// Additionally skips (passes without running) when MXC is not available on the
 /// host (e.g. older Windows UBR or wxc-exec.exe missing). Hosts with MXC enabled
@@ -17,8 +17,15 @@ namespace OpenClaw.Shared.Tests.Mxc;
 /// </summary>
 public class MxcCommandRunnerIntegrationTests
 {
-    private static MxcCommandRunner? TryBuildRunner(bool sandboxEnabled = true)
+    private static MxcCommandRunner? TryBuildRunner(bool sandboxEnabled = true, Action<SettingsData>? configure = null)
     {
+        if (IsGitHubActions())
+        {
+            Console.WriteLine(
+                "[mxc-integration] SKIPPING: GitHub Actions does not provide the required local sandbox environment.");
+            return null;
+        }
+
         var availability = MxcAvailability.Probe(NullLogger.Instance);
         if (!availability.HasAnyBackend)
         {
@@ -28,22 +35,29 @@ public class MxcCommandRunnerIntegrationTests
             return null;
         }
 
-        if (availability.RunCommandScriptPath is null)
+        if (!HasSupportedSandboxPath(AppContext.BaseDirectory))
         {
-            Console.WriteLine("[mxc-integration] SKIPPING: tools/mxc/run-command.cjs not resolvable.");
+            Console.WriteLine(
+                "[mxc-integration] SKIPPING: test output path is not in a supported local sandbox location.");
             return null;
         }
 
-        var executor = new OneShotAppContainerExecutor(
-            availability,
-            availability.RunCommandScriptPath,
-            new ConsoleLogger());
+        if (!string.IsNullOrWhiteSpace(availability.WxcExecPath)
+            && !HasSupportedSandboxPath(availability.WxcExecPath))
+        {
+            Console.WriteLine(
+                "[mxc-integration] SKIPPING: sandbox helper path is not in a supported local sandbox location.");
+            return null;
+        }
+
+        var executor = new DirectAppContainerExecutor(availability, new ConsoleLogger());
 
         var settings = new SettingsData
         {
             SystemRunSandboxEnabled = sandboxEnabled,
             SystemRunAllowOutbound = false,
         };
+        configure?.Invoke(settings);
 
         var hostFallback = new LocalCommandRunner(NullLogger.Instance);
 
@@ -125,5 +139,70 @@ public class MxcCommandRunnerIntegrationTests
         Assert.True(result.DurationMs > 0, $"Result should have measurable duration: {result.DurationMs}ms");
         Assert.False(result.TimedOut, "Should not have timed out");
     }
+
+    [IntegrationFact]
+    public async Task SystemRun_CmdDir_ReadsGrantedCustomFolder()
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "openclaw-mxc-grant-smoke-" + Guid.NewGuid().ToString("N"))).FullName;
+        await File.WriteAllTextAsync(Path.Combine(dir, "sentinel.txt"), "hello");
+
+        try
+        {
+            if (!HasSupportedSandboxPath(dir))
+            {
+                Console.WriteLine(
+                    "[mxc-integration] SKIPPING: custom grant path is not in a supported local sandbox location.");
+                return;
+            }
+
+            var runner = TryBuildRunner(configure: settings =>
+            {
+                settings.SandboxCustomFolders = new List<SandboxCustomFolder>
+                {
+                    new() { Path = dir, Access = SandboxFolderAccess.ReadWrite },
+                };
+            });
+            if (runner is null) return; // skip — MXC unavailable on this host
+
+            var result = await runner.RunAsync(new CommandRequest
+            {
+                Command = "dir",
+                Shell = "cmd",
+                Cwd = dir,
+                TimeoutMs = 30_000,
+            });
+
+            Assert.True(
+                result.ExitCode == 0 && result.Stdout.Contains("sentinel.txt", StringComparison.OrdinalIgnoreCase),
+                $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}\nDir={dir}");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    private static bool HasSupportedSandboxPath(string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(path)) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(root))
+                return false;
+
+            var drive = new DriveInfo(root);
+            if (!drive.IsReady)
+                return false;
+
+            return string.Equals(drive.DriveFormat, "NTFS", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsGitHubActions()
+        => string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
 }
 

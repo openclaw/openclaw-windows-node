@@ -30,6 +30,19 @@ public class BuildToolsCallBodyTests
     }
 
     [Fact]
+    public void Produces_jsonrpc_envelope_with_tools_list_method()
+    {
+        var (buf, len) = CliRunner.BuildToolsListBody();
+        using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(buf, 0, len));
+        var root = doc.RootElement;
+
+        Assert.Equal("2.0", root.GetProperty("jsonrpc").GetString());
+        Assert.Equal(1, root.GetProperty("id").GetInt32());
+        Assert.Equal("tools/list", root.GetProperty("method").GetString());
+        Assert.False(root.TryGetProperty("params", out _));
+    }
+
+    [Fact]
     public void Empty_object_args_round_trip()
     {
         var body = ToString(CliRunner.BuildToolsCallBody("screen.snapshot", Args("{}")));

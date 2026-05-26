@@ -1,3 +1,4 @@
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -43,6 +44,7 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.True(NodeCapabilityGating.ShouldRegisterCamera(null));
         Assert.True(NodeCapabilityGating.ShouldRegisterLocation(null));
         Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(null));
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(null));
     }
 
     [Fact]
@@ -72,6 +74,18 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.True(NodeCapabilityGating.ShouldRegisterCamera(s));
         Assert.True(NodeCapabilityGating.ShouldRegisterLocation(s));
         Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(s));
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+    }
+
+    [Fact]
+    public void SystemRun_OnlyDisabledWhenExplicitlySetToFalse()
+    {
+        var s = NewSettings();
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+        s.NodeSystemRunEnabled = false;
+        Assert.False(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+        s.NodeSystemRunEnabled = true;
+        Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
     }
 
     [Fact]
@@ -122,11 +136,89 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         s.NodeCameraEnabled = false;
         s.NodeLocationEnabled = false;
         s.NodeBrowserProxyEnabled = false;
+        s.NodeSystemRunEnabled = false;
 
         Assert.False(NodeCapabilityGating.ShouldRegisterCanvas(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterScreen(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterCamera(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterLocation(s));
         Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s));
+        Assert.False(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+    }
+
+    // ── GetLocalNodeCapabilities ──────────────────────────────────────────────
+
+    [Fact]
+    public void GetLocalNodeCapabilities_NullNodes_ReturnsNull()
+    {
+        Assert.Null(NodeCapabilityGating.GetLocalNodeCapabilities(null, "device-1"));
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_EmptyNodes_ReturnsNull()
+    {
+        Assert.Null(NodeCapabilityGating.GetLocalNodeCapabilities([], "device-1"));
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_NullDeviceId_ReturnsNull()
+    {
+        var nodes = new[] { new GatewayNodeInfo { NodeId = "device-1" } };
+        Assert.Null(NodeCapabilityGating.GetLocalNodeCapabilities(nodes, null));
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_EmptyDeviceId_ReturnsNull()
+    {
+        var nodes = new[] { new GatewayNodeInfo { NodeId = "device-1" } };
+        Assert.Null(NodeCapabilityGating.GetLocalNodeCapabilities(nodes, ""));
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_NoMatchingNode_ReturnsNull()
+    {
+        var nodes = new[]
+        {
+            new GatewayNodeInfo { NodeId = "device-1", Capabilities = ["canvas"] },
+            new GatewayNodeInfo { NodeId = "device-2", Capabilities = ["screen"] },
+        };
+        Assert.Null(NodeCapabilityGating.GetLocalNodeCapabilities(nodes, "device-99"));
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_MatchingNode_ReturnsCapabilities()
+    {
+        var nodes = new[]
+        {
+            new GatewayNodeInfo { NodeId = "device-1", Capabilities = ["canvas", "screen"] },
+            new GatewayNodeInfo { NodeId = "device-2", Capabilities = ["location"] },
+        };
+        var result = NodeCapabilityGating.GetLocalNodeCapabilities(nodes, "device-1");
+        Assert.NotNull(result);
+        Assert.Equal(new[] { "canvas", "screen" }, result);
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_MatchingNodeCaseInsensitive_ReturnsCapabilities()
+    {
+        var nodes = new[]
+        {
+            new GatewayNodeInfo { NodeId = "Device-ABC", Capabilities = ["canvas"] },
+        };
+        var result = NodeCapabilityGating.GetLocalNodeCapabilities(nodes, "device-abc");
+        Assert.NotNull(result);
+        Assert.Equal(new[] { "canvas" }, result);
+    }
+
+    [Fact]
+    public void GetLocalNodeCapabilities_NodeWithNoCapabilities_ReturnsEmptyList()
+    {
+        var nodes = new[]
+        {
+            new GatewayNodeInfo { NodeId = "device-1", Capabilities = [] },
+        };
+        var result = NodeCapabilityGating.GetLocalNodeCapabilities(nodes, "device-1");
+        Assert.NotNull(result);
+        Assert.Empty(result);
     }
 }

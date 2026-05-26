@@ -113,6 +113,16 @@ When the node connects, it advertises these capabilities:
 - If you see "Camera access blocked", enable camera access for desktop apps in Windows Privacy settings
 - Packaged MSIX builds will show the system consent prompt automatically
 
+### Local sandbox validation
+- Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
+- Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
+
+  ```powershell
+  .\build.ps1
+  $env:OPENCLAW_RUN_INTEGRATION='1'
+  dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter "FullyQualifiedName~Mxc"
+  ```
+
 ## Remaining Work (Roadmap)
 
 1. ~~**system.run + exec approvals**~~ ✅ Implemented

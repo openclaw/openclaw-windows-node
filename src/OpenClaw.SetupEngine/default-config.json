@@ -1,0 +1,131 @@
+{
+  // ─── Core Setup ───
+  // WSL distro name to create (use distinct name to avoid conflicts)
+  "DistroName": "OpenClawGateway",
+  // Gateway WebSocket port (tray connects here)
+  "GatewayPort": 18789,
+  // Base Ubuntu distro to export/import from
+  "BaseDistro": "Ubuntu-24.04",
+  // Run without UI prompts
+  "Headless": true,
+  // Auto-approve all pairing requests during setup
+  "AutoApprovePairing": true,
+  // Unregister existing distro + clean gateway state before starting
+  "CleanBeforeRun": true,
+  // Skip Windows permission elevation checks
+  "SkipPermissions": false,
+  // Run the gateway wizard. Missing required answers produce a template next to the setup log.
+  "SkipWizard": false,
+  // Answers for the gateway wizard when SkipWizard is false. Keys use stable
+  // normalized step titles/messages; select values must match gateway option values.
+  "WizardAnswers": {
+    "openclaw-setup": "true",
+    "security-disclaimer": "true",
+    "i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue": "true",
+    "setup-mode": "quickstart",
+    "existing-config-detected": "true",
+    "config-handling": "keep",
+    "quickstart": "true",
+    "model-auth-provider": "skip",
+    "default-model": "__keep__",
+    "select-channel-quickstart": "__skip__",
+    "search-provider": "__skip__",
+    "configure-skills-now-recommended": "false"
+  },
+  // Log verbosity: "trace", "debug", "info", "warn", "error"
+  "LogLevel": "trace",
+  // Override log file path (null = %APPDATA%\OpenClawTray\Logs\Setup\)
+  "LogPath": null,
+  // Override gateway WebSocket URL (null = ws://localhost:{GatewayPort})
+  "GatewayUrl": null,
+  // Pre-shared bootstrap token (null = auto-mint during setup)
+  "BootstrapToken": null,
+  // Rollback completed steps on failure (transactional undo)
+  "RollbackOnFailure": false,
+
+  // ─── WSL Instance Configuration ───
+  // Controls wsl.conf and distro user setup
+  "Wsl": {
+    // Linux user created in distro (owns all openclaw dirs)
+    "User": "openclaw",
+    // Enable systemd (required for gateway service)
+    "Systemd": true,
+    // Allow WSL-Windows interop (false = isolated sandbox)
+    "Interop": false,
+    // Append Windows PATH into WSL (false = clean Linux PATH)
+    "AppendWindowsPath": false,
+    // Auto-mount Windows drives into /mnt/
+    "Automount": false,
+    // Mount entries from /etc/fstab
+    "MountFsTab": false,
+    // Sync timezone from Windows host
+    "UseWindowsTimezone": true,
+    // WSL memory limit (null = WSL default, e.g. "4GB")
+    "Memory": null,
+    // WSL swap limit (null = WSL default, e.g. "2GB")
+    "Swap": null
+  },
+
+  // ─── Gateway Configuration ───
+  // Controls how the openclaw gateway is configured inside WSL
+  "Gateway": {
+    // Network bind: "loopback" (127.0.0.1, secure default), "lan" (0.0.0.0, opt-in for LAN access)
+    "Bind": "loopback",
+    // Override CLI install script URL (null = https://openclaw.ai/install-cli.sh)
+    "InstallUrl": null,
+    // Pin gateway version (null = latest)
+    "Version": null,
+    // Seconds to wait for gateway health endpoint before failing
+    "HealthTimeoutSeconds": 90,
+    // Config reload strategy: "hot" (no restart), "restart"
+    "ReloadMode": "hot",
+    // Auth mode: "token" (shared secret)
+    "AuthMode": "token",
+    // Additional gateway config key/value pairs (applied via `openclaw config set`)
+    "ExtraConfig": null
+  },
+
+  // ─── Node Capabilities ───
+  // Which capabilities to advertise to the gateway during node pairing.
+  // The tray handles actual command execution; setup just registers the declarations.
+  "Capabilities": {
+    "System": true,
+    "Canvas": true,
+    "Screen": true,
+    "Camera": true,
+    "Location": true,
+    "Browser": true,
+    // Device (info/status) is always-on
+    "Device": true,
+    // Text-to-speech commands
+    "Tts": true,
+    // Speech-to-text commands
+    "Stt": true
+  },
+
+  // ─── Tray Settings ───
+  // Written to %APPDATA%\OpenClawTray\settings.json after setup.
+  // Merged with existing settings (preserves user prefs, overwrites these keys).
+  "Settings": {
+    // Master switch: tray starts node mode on launch
+    "EnableNodeMode": true,
+    // Start tray on Windows login
+    "AutoStart": false,
+    // Per-capability toggles (must match Capabilities above for consistency)
+    "NodeSystemRunEnabled": true,
+    "NodeCanvasEnabled": true,
+    "NodeScreenEnabled": true,
+    "NodeCameraEnabled": true,
+    "NodeLocationEnabled": true,
+    "NodeBrowserProxyEnabled": true,
+    "NodeTtsEnabled": true,
+    "NodeSttEnabled": true
+  },
+
+  // ─── Pairing Configuration ───
+  // Controls timeouts for device pairing
+  "Pairing": {
+    // Max seconds to wait for pairing handshake
+    "TimeoutSeconds": 60
+  }
+}

@@ -62,6 +62,10 @@ MigrateFromSettings(...)                // one-time legacy migration
 
 The operator client is received through the `OperatorClientChanged` event. The app subscribes to data events (sessions, nodes, usage, config, pairing, models, agents, etc.) and calls request methods for chat, node invocations, and configuration.
 
+### Chat timeline event routing
+
+Inbound chat and agent timeline events must include the gateway's canonical `sessionKey`. The tray client must not synthesize a literal `main` key for keyless inbound events, because that can merge unrelated events into the wrong timeline. When a keyless chat or agent event arrives, the tray drops it and raises a one-shot diagnostic so the protocol issue is visible without exposing the dropped message contents.
+
 ## Startup wiring (App.xaml.cs)
 
 ```
@@ -212,7 +216,7 @@ The connect handshake uses Ed25519 signatures with v3→v2 fallback:
 
 ## Tests
 
-Connection tests live in `tests/OpenClaw.Connection.Tests/` (215 tests):
+Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 
 - `ConnectionStateMachineTests` — FSM transitions, derived overall state
 - `CredentialResolverTests` — credential precedence for operator and node

@@ -25,9 +25,14 @@ public class ChatExplorationsPanel : Component
     public override Element Render()
     {
         var rev = UseState(0, threadSafe: true);
+        var revRef = UseRef(0);
         UseEffect((Func<Action>)(() =>
         {
-            EventHandler h = (_, _) => rev.Set(rev.Value + 1);
+            EventHandler h = (_, _) =>
+            {
+                revRef.Current++;
+                rev.Set(revRef.Current);
+            };
             ChatExplorationState.Changed += h;
             return () => ChatExplorationState.Changed -= h;
         }));
@@ -117,7 +122,10 @@ public class ChatExplorationsPanel : Component
                 v => ChatExplorationState.BubbleSideMargin = v),
             EnumCombo("Padding density", ChatExplorationState.PaddingDensity,
                 v => ChatExplorationState.PaddingDensity = v,
-                ChatPaddingDensity.Cozy, ChatPaddingDensity.Comfortable, ChatPaddingDensity.Compact)
+                ChatPaddingDensity.Cozy, ChatPaddingDensity.Comfortable, ChatPaddingDensity.Compact),
+            EnumCombo("User bubble tone", ChatExplorationState.UserBubbleTone,
+                v => ChatExplorationState.UserBubbleTone = v,
+                ChatUserBubbleTone.Secondary, ChatUserBubbleTone.Accent)
         );
 
         // ── C.1. Bubble visibility & footer ──────────────────────────
@@ -207,11 +215,13 @@ public class ChatExplorationsPanel : Component
                 ChatPreviewState.Loading,
                 ChatPreviewState.Empty,
                 ChatPreviewState.Thinking,
-                ChatPreviewState.PendingPermission)
+                ChatPreviewState.PendingPermission,
+                ChatPreviewState.Reconnecting)
         );
 
         // ── H. Tool burst (multi-step task framing) ──────────────────
         // Variants explored here mirror competitor patterns:
+        //   Auto           — smart default: Plain while running, CompactSummary when done
         //   Plain          — current Cursor-lite (no task framing)
         //   TaskHeader     — Cursor's "Tool calls (N steps)" + per-row list
         //   CompactSummary — single collapsed "Task · 3 steps" row, expands
@@ -219,6 +229,7 @@ public class ChatExplorationsPanel : Component
         var toolBurstSection = Section("H. Tool burst style",
             EnumCombo("Burst style", ChatExplorationState.ToolBurstStyle,
                 v => ChatExplorationState.ToolBurstStyle = v,
+                ToolBurstStyle.Auto,
                 ToolBurstStyle.Plain,
                 ToolBurstStyle.TaskHeader,
                 ToolBurstStyle.CompactSummary,

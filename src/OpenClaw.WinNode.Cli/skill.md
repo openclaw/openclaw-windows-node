@@ -24,9 +24,13 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 
 ```
 winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>]
+winnode --list-tools [--mcp-url <url>|--mcp-port <port>]
 ```
 
 - `--command` (required) — node command (e.g. `system.which`, `canvas.a2ui.push`).
+- `--list-tools` — query the live MCP server's `tools/list` method and print the
+  advertised tools. Useful when settings-gated capabilities differ from this
+  static reference.
 - `--params` — single JSON **object** string, default `{}`. Must be a JSON object,
   not an array or scalar. **`--params @<path>`** loads the JSON object from a
   file on disk (useful for big A2UI payloads / `canvas.eval` scripts).
@@ -62,7 +66,7 @@ JSON (matches `openclaw nodes invoke`). stderr receives errors. Exit code:
 | 1    | Tool error, JSON-RPC error, transport failure, or HTTP non-2xx |
 | 2    | Argument error (missing/invalid flags, bad `--params` JSON, out-of-range port/timeout, non-http URL) |
 
-**Off-loapback safety:** when `--mcp-url` points at a non-loopback host, the
+**Off-loopback safety:** when `--mcp-url` points at a non-loopback host, the
 CLI **refuses to send the auto-loaded local MCP token** (and warns on stderr).
 An explicitly supplied `--mcp-token` is honored with a warning. This preserves
 the loopback-only threat model the tray's MCP server relies on.
@@ -338,6 +342,69 @@ Search the command palette and return matching commands.
 {"query": "string"}          // required
 ```
 Returns array of `{ Title, Subtitle, Icon }`.
+
+### app.dashboard.url
+Build the same gateway dashboard URL the tray opens.
+```
+{"path": "string"}           // optional
+```
+Returns `{ url, credentialSource, usesSharedGatewayToken, hasTokenQuery }`.
+
+## Location (location.*)
+
+### location.get
+Get the device's current geographic location.
+```
+{
+  "accuracy": "default|high",  // optional, default "default"
+  "maxAge": 30000,             // ms; return a cached fix if younger than this
+  "locationTimeout": 10000     // ms; fail if no fix within this time
+}
+```
+Returns `{ latitude, longitude, accuracy (meters), timestamp (ms) }`.
+Requires the Location capability to be enabled and OS location permission granted to the app.
+Error `LOCATION_PERMISSION_REQUIRED` if the user has not granted location access.
+
+## Device (device.*)
+
+### device.info
+Get static device metadata. No params.
+Returns `{ deviceName, modelIdentifier, systemName, systemVersion, appVersion, appBuild, locale }`.
+
+### device.status
+Get live system health data.
+```
+{
+  "sections": ["os","cpu","memory","disk","battery"]  // optional; omit for all
+}
+```
+Returns a map with `collectedAt` (ISO-8601 string) and one key per section.
+Each section may contain `{ error: "collection failed" }` if data was unavailable.
+Legacy fields always present: `thermal`, `storage`, `network`, `uptimeSeconds`.
+
+Battery sub-object: `{ level, state ("charging"|"discharging"|"unknown"), lowPowerModeEnabled }`.
+
+**Privacy note**: `device.status` reveals battery level, network type, and disk usage.
+Agents should request only the sections they need.
+
+## Browser control proxy (browser.*)
+
+### browser.proxy
+Proxy an HTTP request to the local OpenClaw browser control host (Chrome DevTools Protocol server) running on gateway port + 2.
+```
+{
+  "path": "/json/list",        // required — local control path
+  "method": "GET",             // optional, default GET; allowed: GET|POST|DELETE
+  "body": {},                  // JSON object, for POST/DELETE
+  "query": {},                 // appended as query-string params
+  "profile": "Default",        // optional browser profile name
+  "timeoutMs": 20000           // optional, max 120000
+}
+```
+Returns `{ result, files? }` — `files` is an array of `{ path, base64, mimeType }` if the response referenced local file paths.
+
+Requires the gateway URL to have an explicit port (e.g. `ws://localhost:8080`).
+The browser control host must be running locally on `127.0.0.1:<gatewayPort + 2>`.
 
 ---
 

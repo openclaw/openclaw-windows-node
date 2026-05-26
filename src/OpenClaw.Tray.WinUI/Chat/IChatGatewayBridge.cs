@@ -11,6 +11,10 @@ public interface IChatGatewayBridge : IDisposable
 {
     bool IsConnected { get; }
     ConnectionStatus CurrentStatus { get; }
+    /// <summary>Canonical main session key resolved by the gateway handshake; <c>null</c> until ready.</summary>
+    string? MainSessionKey { get; }
+    /// <summary>True once the gateway handshake has resolved session defaults.</summary>
+    bool HasHandshakeSnapshot { get; }
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
 
@@ -75,6 +79,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public bool IsConnected => _client.IsConnectedToGateway;
     public ConnectionStatus CurrentStatus => _currentStatus;
+    public string? MainSessionKey => _client.MainSessionKey;
+    public bool HasHandshakeSnapshot => _client.HasHandshakeSnapshot;
     public SessionInfo[] GetSessionList() => _client.GetSessionList();
     public ModelsListInfo? GetCurrentModelsList() => _currentModels;
 

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.CompletePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+
+    <Grid RowDefinitions="*,Auto" Padding="56,40,56,32">
+
+        <!-- Main content -->
+        <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="12"
+                    HorizontalAlignment="Stretch">
+
+            <!-- Success/failure icon -->
+            <Image x:Name="SuccessIcon" Source="ms-appx:///Assets/Setup/PartyPopper.png"
+                   Width="120" Height="120"
+                   HorizontalAlignment="Center" Margin="0,0,0,8" />
+            <Border x:Name="FailureIcon" Width="96" Height="96"
+                    CornerRadius="48" HorizontalAlignment="Center"
+                    Margin="0,0,0,20" Visibility="Collapsed"
+                    Background="#3CFF4444">
+                <TextBlock Text="&#xE783;" FontFamily="Segoe Fluent Icons"
+                           FontSize="42" Foreground="#FF6B6B"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+            </Border>
+
+            <!-- Title -->
+            <TextBlock x:Name="TitleText" Text="All set!"
+                       FontSize="32" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+
+            <!-- Subtitle -->
+            <TextBlock x:Name="SubtitleText" Text="OpenClaw is ready to go"
+                       FontSize="14" Opacity="0.6"
+                       HorizontalAlignment="Center" />
+
+            <!-- Error details (hidden on success) -->
+            <Border x:Name="ErrorCard" CornerRadius="8" Padding="16,12,16,12"
+                    Margin="0,16,0,0" Visibility="Collapsed"
+                    Background="#3CFF4444">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
+                               FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
+                               Foreground="#FF6B6B" />
+                    <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
+                                     Click="ViewLog_Click" Padding="0"
+                                     FontSize="13" />
+                </StackPanel>
+            </Border>
+
+            <!-- Node Mode Active banner (amber/orange) -->
+            <Border x:Name="NodeModeBanner" CornerRadius="8" Padding="20,16,20,16"
+                    Margin="0,20,0,0">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                   VerticalAlignment="Center" Foreground="#FFC107" />
+                        <TextBlock Text="Node Mode Active" FontSize="15" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                               Text="This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine." />
+                </StackPanel>
+            </Border>
+
+            <!-- Launch at startup toggle -->
+            <Grid x:Name="StartupRow" ColumnDefinitions="*,Auto" Margin="0,24,0,0">
+                <TextBlock Text="Launch OpenClaw at startup?" FontSize="14"
+                           VerticalAlignment="Center" Grid.Column="0" />
+                <ToggleSwitch x:Name="StartupToggle" Grid.Column="1"
+                              OnContent="On" OffContent="Off" />
+            </Grid>
+
+        </StackPanel>
+
+        <!-- Bottom: Finish button -->
+        <Button Grid.Row="1" x:Name="LaunchButton"
+                Content="Finish"
+                HorizontalAlignment="Stretch"
+                Height="44" FontSize="15" FontWeight="SemiBold"
+                Click="LaunchButton_Click">
+            <Button.Resources>
+                <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
+                <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
+                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
+                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
+            </Button.Resources>
+        </Button>
+
+    </Grid>
+</Page>

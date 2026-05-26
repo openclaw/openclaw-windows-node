@@ -3,12 +3,12 @@
 This grades two implementations against the v0.8 spec
 (<https://a2ui.org/specification/v0.8-a2ui/>):
 
-- **Lit reference** at `C:\Users\andersonch\Code\openclaw\vendor\a2ui\renderers\lit\src\0.8`
+- **Lit reference** at `vendor\a2ui\renderers\lit\src\0.8` in the
+  upstream OpenClaw checkout
 - **Native WinUI** in this repo at `src/OpenClaw.Tray.WinUI/A2UI/`
 
 The Lit code looks like the canonical browser renderer the OpenClaw
-canvas host ships; the WinUI code is this repo's branch
-`feat/a2ui-native-winui`.
+canvas host ships; the WinUI code is the native renderer in this repo.
 
 Citations use repo-local paths. Lit paths are anchored at the OpenClaw
 checkout: `openclaw\vendor\a2ui\renderers\lit\src\0.8\`. WinUI paths are

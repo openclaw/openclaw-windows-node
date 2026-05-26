@@ -20,12 +20,12 @@
                              AutomationProperties.AutomationId="BackToConnectionLink">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE72B;" FontSize="12"/>
-                    <TextBlock Text="Back to Connection"/>
+                    <TextBlock x:Uid="PermissionsPage_BackToConnection" Text="Back to Connection"/>
                 </StackPanel>
             </HyperlinkButton>
 
             <!-- ───────── Page header ───────── -->
-            <TextBlock Text="Permissions"
+            <TextBlock x:Uid="PermissionsPage_Permissions" Text="Permissions"
                        Style="{StaticResource TitleTextBlockStyle}"
                        Margin="0,0,0,2"/>
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,2">
@@ -59,9 +59,9 @@
                         <FontIcon Grid.Column="0" Glyph="&#xE839;" FontSize="22"
                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock Text="Node mode"
+                            <TextBlock x:Uid="PermissionsPage_NodeMode" Text="Node mode"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
+                            <TextBlock x:Uid="PermissionsPage_WhenOnThisPC" Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
@@ -97,9 +97,9 @@
             </Border>
 
             <!-- ═════════ Capability features ═════════ -->
-            <TextBlock x:Name="FeaturesSectionHeader" Text="Capabilities" Style="{StaticResource BodyStrongTextBlockStyle}"
+            <TextBlock x:Uid="PermissionsPage_Capabilities" x:Name="FeaturesSectionHeader" Text="Capabilities" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
-            <TextBlock x:Name="FeaturesSectionDescription"
+            <TextBlock x:Uid="PermissionsPage_ToggleIndividualFeaturesThat" x:Name="FeaturesSectionDescription"
                        Text="Toggle individual features that agents may request from this PC."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -171,7 +171,7 @@
             </Border>
 
             <!-- ═════════ Integrations ═════════ -->
-            <TextBlock Text="Integrations" Style="{StaticResource BodyStrongTextBlockStyle}"
+            <TextBlock x:Uid="PermissionsPage_Integrations" Text="Integrations" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
 
             <Border x:Name="McpCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -241,8 +241,8 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Text="Default action" Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock Text="What happens when a command doesn't match any rule below."
+                        <TextBlock x:Uid="PermissionsPage_DefaultAction" Text="Default action" Style="{StaticResource BodyTextBlockStyle}"/>
+                        <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match any rule below."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>
@@ -271,12 +271,12 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Spacing="2">
                             <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock Text="Patterns are matched left-to-right against the full command line. Use * as a wildcard. Changes save automatically."
+                            <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Patterns are matched left-to-right against the full command line. Use * as a wildcard. Changes save automatically."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
-                        <TextBlock Grid.Column="1" x:Name="ExecPolicySavedHint"
+                        <TextBlock x:Uid="PermissionsPage_Saved" Grid.Column="1" x:Name="ExecPolicySavedHint"
                                    Text="Saved"
                                    VerticalAlignment="Center"
                                    Style="{StaticResource CaptionTextBlockStyle}"
@@ -287,7 +287,7 @@
                                 Background="{ThemeResource ControlAltFillColorSecondaryBrush}"
                                 CornerRadius="10" Padding="10,2"
                                 VerticalAlignment="Center">
-                            <TextBlock x:Name="RulesCountBadge" Text="0 rules"
+                            <TextBlock x:Uid="PermissionsPage_0Rules" x:Name="RulesCountBadge" Text="0 rules"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </Border>
@@ -296,7 +296,7 @@
                     <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
 
                     <!-- Empty state — visible when there are no rules -->
-                    <TextBlock x:Name="RulesEmptyState"
+                    <TextBlock x:Uid="PermissionsPage_NoRulesYetAdd" x:Name="RulesEmptyState"
                                Text="No rules yet. Add a pattern below to allow or deny specific commands."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
@@ -398,7 +398,7 @@
             </Border>
 
             <!-- ═════════ Windows-level privacy ═════════ -->
-            <TextBlock Text="Windows privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
+            <TextBlock x:Uid="PermissionsPage_WindowsPrivacy" Text="Windows privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
 
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -410,8 +410,8 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Text="Camera, microphone &amp; screen access" Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock Text="System-level privacy permissions are managed by Windows. Open Windows Privacy Settings to grant or revoke OpenClaw access."
+                        <TextBlock x:Uid="PermissionsPage_CameraMicrophoneAmpScreen" Text="Camera, microphone &amp; screen access" Style="{StaticResource BodyTextBlockStyle}"/>
+                        <TextBlock x:Uid="PermissionsPage_SystemLevelPrivacyPermissions" Text="System-level privacy permissions are managed by Windows. Open Windows Privacy Settings to grant or revoke OpenClaw access."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>

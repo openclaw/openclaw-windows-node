@@ -37,6 +37,7 @@ public static class FluentIconCatalog
     public const string Voice = "\uE767";          // Volume (speaker, for TTS)
     public const string Speech = "\uF12E";         // Dictate (speech-to-text)
     public const string System = "\uE839";         // PC1 — "this PC as a node" (per CDR-0001 — was TVMonitor \uE7F4)
+    public const string Terminal = "\uE756";       // CommandPrompt — system.run shell-command capability
     public const string Operator = "\uE77B";       // ContactInfo — operator role (a human controlling agents)
 
     // ── Actions ────────────────────────────────────────────────────
@@ -46,7 +47,6 @@ public static class FluentIconCatalog
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone
     public const string Settings = "\uE713";       // Settings
-    public const string QuickSend = "\uE724";      // Send (Mail variant) — closest universal Send glyph
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
     public const string Exit = "\uE711";           // Cancel (X) — used for "Close" menu item
@@ -92,6 +92,15 @@ public static class FluentIconCatalog
     public const string Reset = "\uE72C";          // Refresh (alias) — Reconfigure / start over
     public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
     public const string Develop = "\uE943";        // Code — engineering / explorations action
+    public const string AgentEvents = "\uE81C";    // History — agent events feed
+
+    // ── Agents / Workspace surface ─────────────────────────────────
+    // Workspace concept (per-agent file viewer). Reuses the Folder
+    // metaphor because the workspace literally IS a folder; aliasing
+    // keeps call sites semantically distinct.
+    // See reference/concepts/states/workspace.md.
+    public const string Workspace = "\uE8DA";      // OpenLocal (alias of Folder)
+    public const string Cron = "\uE787";           // Calendar — Cron / scheduled jobs (matches HubWindow search mapping)
 
     /// <summary>
     /// Builds a <see cref="FontIcon"/> for the given PUA glyph using the

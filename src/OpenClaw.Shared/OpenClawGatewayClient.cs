@@ -44,7 +44,31 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private readonly object _sessionsLock = new();
     private readonly DeviceIdentity _deviceIdentity;
     private readonly string _currentGatewayUrl;
-    private string _mainSessionKey = "main";
+    private string? _mainSessionKey;
+    private bool _hasHandshakeSnapshot;
+
+    /// <summary>
+    /// The gateway's canonical main session key as published in the hello-ok
+    /// snapshot (preferring the canonical <c>sessionDefaults.mainSessionKey</c>
+    /// over the legacy alias <c>mainKey</c>). <c>null</c> until handshake
+    /// completes or after a disconnect. Callers should pass this exact value
+    /// (or <c>null</c>) to <see cref="SendChatMessageForRunAsync"/>; never
+    /// substitute a literal like <c>"main"</c>, which can drift from the
+    /// canonical key the gateway echoes back in chat events.
+    /// </summary>
+    /// <remarks>
+    /// Read via <see cref="Volatile.Read{T}(ref T)"/> because the field is
+    /// written from the gateway WebSocket thread and read from the UI thread
+    /// (through <see cref="OpenClawChatDataProvider"/>).
+    /// </remarks>
+    public string? MainSessionKey => Volatile.Read(ref _mainSessionKey);
+
+    /// <summary>
+    /// True once the hello-ok handshake has been processed (i.e. session
+    /// defaults are known). Reset to false on disconnect. Surfaces to the UI
+    /// as <see cref="OpenClaw.Chat.ChatComposeTarget.IsReady"/>.
+    /// </summary>
+    public bool HasHandshakeSnapshot => Volatile.Read(ref _hasHandshakeSnapshot);
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
@@ -141,6 +165,13 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     protected override void OnDisconnected()
     {
         ClearPendingRequests();
+        // Invalidate the handshake snapshot — the next hello-ok must
+        // re-establish the canonical session key, scopes, etc. Without this,
+        // a reconnect-after-server-restart could leave the tray sending to a
+        // stale canonical key that the new server doesn't recognize, and
+        // HasHandshakeSnapshot would lie about the offline state to callers.
+        Volatile.Write(ref _mainSessionKey, null);
+        Volatile.Write(ref _hasHandshakeSnapshot, false);
     }
 
     protected override void OnDisposing()
@@ -176,6 +207,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     public event EventHandler<JsonElement>? AgentsListUpdated;
     public event EventHandler<JsonElement>? AgentFilesListUpdated;
     public event EventHandler<JsonElement>? AgentFileContentUpdated;
+
     /// <summary>
     /// Raised when the gateway broadcasts a "chat" event (assistant or user
     /// message echo). Use this to drive a chat-UI timeline; the existing
@@ -273,9 +305,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
             throw new ArgumentException("Message or attachment is required", nameof(message));
 
-        var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey)
-            ? _mainSessionKey
-            : sessionKey.Trim();
+        var effectiveSessionKey = ResolveEffectiveSessionKey(
+            sessionKey, Volatile.Read(ref _mainSessionKey), "chat.send");
 
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<ChatSendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -333,9 +364,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     /// </summary>
     public async Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000)
     {
-        var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey)
-            ? _mainSessionKey
-            : sessionKey.Trim();
+        var effectiveSessionKey = ResolveEffectiveSessionKey(
+            sessionKey, Volatile.Read(ref _mainSessionKey), "chat.history");
 
         var payload = await SendWizardRequestAsync(
             "chat.history",
@@ -354,9 +384,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     {
         if (string.IsNullOrWhiteSpace(runId))
             throw new ArgumentException("runId is required", nameof(runId));
-        var effectiveSessionKey = string.IsNullOrWhiteSpace(sessionKey)
-            ? _mainSessionKey
-            : sessionKey.Trim();
+        var effectiveSessionKey = ResolveEffectiveSessionKey(
+            sessionKey, Volatile.Read(ref _mainSessionKey), "chat.abort");
         await SendWizardRequestAsync("chat.abort", new { runId, sessionKey = effectiveSessionKey }, timeoutMs);
     }
 
@@ -1409,7 +1438,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                     HandleResponse(root);
                     break;
                 case "event":
-                    HandleEvent(root);
+                    HandleEvent(root, json.Length);
                     break;
             }
         }
@@ -1498,8 +1527,13 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             ResetReconnectAttempts();
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
-            _mainSessionKey = TryGetHandshakeMainSessionKey(payload) ?? "main";
-            _logger.Info($"[HANDSHAKE] deviceId={_operatorDeviceId}, scopes=[{string.Join(", ", _grantedOperatorScopes)}], mainSession={_mainSessionKey}");
+            // Write the key first, then publish the readiness flag. Pair with
+            // Volatile.Read on the public getters so a reader observing
+            // HasHandshakeSnapshot==true is guaranteed to see the populated
+            // MainSessionKey (release/acquire ordering).
+            Volatile.Write(ref _mainSessionKey, TryGetHandshakeMainSessionKey(payload));
+            Volatile.Write(ref _hasHandshakeSnapshot, true);
+            _logger.Info($"[HANDSHAKE] deviceId={_operatorDeviceId}, scopes=[{string.Join(", ", _grantedOperatorScopes)}], mainSession={_mainSessionKey ?? "(unset)"}");
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             if (_bootstrapPairAsNode)
             {
@@ -1537,7 +1571,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             {
                 _logger.Info($"Granted operator scopes: {string.Join(", ", _grantedOperatorScopes)}");
             }
-            _logger.Info($"Main session key: {_mainSessionKey}");
+            _logger.Info($"Main session key: {_mainSessionKey ?? "(unset)"}");
 
             // Extract presence from snapshot
             TryParsePresence(payload);
@@ -2055,6 +2089,31 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return buffer[..count];
     }
 
+    /// <summary>
+    /// Resolves the effective <c>sessionKey</c> for a chat-related RPC,
+    /// preferring a non-empty caller-supplied value over the handshake
+    /// <paramref name="resolvedMainSessionKey"/>. Throws
+    /// <see cref="InvalidOperationException"/> if neither is usable —
+    /// callers MUST NOT fall back to a literal like <c>"main"</c>, which
+    /// can drift from the canonical key the gateway echoes back.
+    /// </summary>
+    /// <remarks>
+    /// Extracted as an internal static so unit tests can exercise the
+    /// pre-handshake throw without needing a live WebSocket — see
+    /// <c>OpenClawGatewayClientSessionKeyTests</c>.
+    /// </remarks>
+    internal static string ResolveEffectiveSessionKey(
+        string? callerSessionKey, string? resolvedMainSessionKey, string operationName)
+    {
+        var effective = string.IsNullOrWhiteSpace(callerSessionKey)
+            ? resolvedMainSessionKey
+            : callerSessionKey.Trim();
+        if (string.IsNullOrWhiteSpace(effective))
+            throw new InvalidOperationException(
+                $"{operationName} requires a sessionKey, but the gateway handshake has not resolved one yet.");
+        return effective;
+    }
+
     private static string? TryGetHandshakeMainSessionKey(JsonElement payload)
     {
         if (!payload.TryGetProperty("snapshot", out var snapshot) || snapshot.ValueKind != JsonValueKind.Object)
@@ -2067,13 +2126,29 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             return null;
         }
 
-        if (!sessionDefaults.TryGetProperty("mainKey", out var mainKey) || mainKey.ValueKind != JsonValueKind.String)
+        // Prefer the canonical "mainSessionKey" (e.g. "agent:main:main") over
+        // the legacy alias "mainKey" (e.g. "main"). The gateway accepts both
+        // for chat.send routing, but the chat/session events it emits back
+        // are keyed by the canonical form. Using the alias here would cause
+        // the tray's local timeline (keyed by the alias) to diverge from the
+        // gateway's echo (keyed by canonical), stranding optimistic state.
+        if (sessionDefaults.TryGetProperty("mainSessionKey", out var canonical) &&
+            canonical.ValueKind == JsonValueKind.String)
         {
-            return null;
+            var canonicalValue = canonical.GetString();
+            if (!string.IsNullOrWhiteSpace(canonicalValue))
+                return canonicalValue;
         }
 
-        var value = mainKey.GetString();
-        return string.IsNullOrWhiteSpace(value) ? null : value;
+        if (sessionDefaults.TryGetProperty("mainKey", out var mainKey) &&
+            mainKey.ValueKind == JsonValueKind.String)
+        {
+            var value = mainKey.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
     }
 
     private static string? TryGetHandshakeDeviceToken(JsonElement payload)
@@ -2177,85 +2252,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return null;
     }
 
-    public string BuildMissingScopeFixCommands(string missingScope)
-    {
-        var scope = string.IsNullOrWhiteSpace(missingScope) ? "operator.write" : missingScope.Trim();
-        var grantedScopes = _grantedOperatorScopes.Length == 0
-            ? "(none reported by gateway)"
-            : string.Join(", ", _grantedOperatorScopes);
-        var deviceId = string.IsNullOrWhiteSpace(_operatorDeviceId)
-            ? "(not reported for this operator connection)"
-            : _operatorDeviceId;
-        var likelyNodeToken = _grantedOperatorScopes.Any(s => s.StartsWith("node.", StringComparison.OrdinalIgnoreCase));
-
-        var sb = new StringBuilder();
-        sb.AppendLine("Quick Send is connected, but your token is missing required permission.");
-        sb.AppendLine($"Missing scope: {scope}");
-        sb.AppendLine("Note: requested connect scopes are declarative; the gateway may grant fewer scopes based on token/policy/device state.");
-        sb.AppendLine();
-        sb.AppendLine("Do this in Windows Tray right now:");
-        sb.AppendLine("1. Right-click the tray icon and open Settings.");
-        sb.AppendLine("2. Replace Gateway Token with an OPERATOR token that includes operator.write.");
-        sb.AppendLine("3. Click Save.");
-        sb.AppendLine("4. Reconnect from the tray menu (or restart the tray app).");
-        sb.AppendLine("5. Retry Quick Send.");
-        sb.AppendLine();
-        sb.AppendLine("Token requirements for Quick Send:");
-        sb.AppendLine("- Role: operator");
-        sb.AppendLine("- Required scope: operator.write");
-        sb.AppendLine("- Recommended scopes: operator.admin, operator.read, operator.approvals, operator.pairing, operator.write");
-
-        if (likelyNodeToken)
-        {
-            sb.AppendLine();
-            sb.AppendLine("Detected node.* scopes. This usually means a node token was pasted into Gateway Token.");
-            sb.AppendLine("Quick Send requires an operator token, not a node token.");
-        }
-
-        sb.AppendLine();
-        sb.AppendLine("Connection details from this app (for debugging/support):");
-        sb.AppendLine($"- role: operator");
-        sb.AppendLine($"- client.id: {OperatorClientId}");
-        sb.AppendLine($"- client.displayName: {OperatorClientDisplayName}");
-        sb.AppendLine($"- operator device id: {deviceId}");
-        sb.AppendLine($"- granted scopes: {grantedScopes}");
-        sb.AppendLine();
-        sb.AppendLine("If this still fails after updating the token, copy this block and share it with your gateway admin.");
-        return sb.ToString().TrimEnd();
-    }
-
-    public string BuildPairingApprovalFixCommands()
-    {
-        var deviceId = !string.IsNullOrWhiteSpace(_operatorDeviceId)
-            ? _operatorDeviceId
-            : _deviceIdentity.DeviceId;
-        var grantedScopes = _grantedOperatorScopes.Length == 0
-            ? "(none reported by gateway yet)"
-            : string.Join(", ", _grantedOperatorScopes);
-
-        var sb = new StringBuilder();
-        sb.AppendLine("Quick Send requires this device to be approved (paired) in the gateway.");
-        sb.AppendLine("Gateway reported: pairing required");
-        sb.AppendLine();
-        sb.AppendLine("Do this now:");
-        sb.AppendLine("1. Open the gateway admin UI.");
-        sb.AppendLine("2. Go to pending pairing/device approvals.");
-        sb.AppendLine("3. Approve this Windows tray device ID.");
-        sb.AppendLine("4. Return to tray and reconnect (or restart tray app).");
-        sb.AppendLine("5. Retry Quick Send.");
-        sb.AppendLine();
-        sb.AppendLine("Connection details from this app (for debugging/support):");
-        sb.AppendLine("- role: operator");
-        sb.AppendLine($"- client.id: {OperatorClientId}");
-        sb.AppendLine($"- client.displayName: {OperatorClientDisplayName}");
-        sb.AppendLine($"- operator device id: {deviceId}");
-        sb.AppendLine($"- granted scopes: {grantedScopes}");
-        sb.AppendLine();
-        sb.AppendLine("If approval keeps failing, share this block with your gateway admin.");
-        return sb.ToString().TrimEnd();
-    }
-
-    private void HandleEvent(JsonElement root)
+    private void HandleEvent(JsonElement root, int rawMessageLength)
     {
         if (!root.TryGetProperty("event", out var eventProp)) return;
         var eventType = eventProp.GetString();
@@ -2267,7 +2264,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 HandleConnectChallenge(root);
                 break;
             case "agent":
-                HandleAgentEvent(root);
+                HandleAgentEvent(root, rawMessageLength);
                 break;
             case "health":
                 if (root.TryGetProperty("payload", out var hp) &&
@@ -2278,7 +2275,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 }
                 break;
             case "chat":
-                HandleChatEvent(root);
+                HandleChatEvent(root, rawMessageLength);
                 break;
             case "session":
                 HandleSessionEvent(root);
@@ -2351,7 +2348,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    private void HandleAgentEvent(JsonElement root)
+    private void HandleAgentEvent(JsonElement root, int rawMessageLength)
     {
         if (!root.TryGetProperty("payload", out var payload)) return;
 
@@ -2359,17 +2356,22 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         // tool args/outputs, and URLs. Log shape only (type + length).
         try
         {
-            var rawLen = root.GetRawText().Length;
             var streamHint = payload.TryGetProperty("stream", out var sh) ? sh.GetString() ?? "" : "";
-            _logger.Debug($"Agent event received: stream={streamHint} len={rawLen}");
+            _logger.Debug($"Agent event received: stream={streamHint} len={rawMessageLength}");
         }
         catch { }
 
-        // sessionKey is inside payload, not root
-        var sessionKey = "unknown";
+        // sessionKey is inside payload, not root. We deliberately do NOT
+        // substitute a fallback like "unknown" or "main" — empty must
+        // propagate so the provider can drop the event and surface the
+        // protocol gap, rather than silently routing into a synthetic bucket.
+        var sessionKey = "";
         if (payload.TryGetProperty("sessionKey", out var sk))
-            sessionKey = sk.GetString() ?? "unknown";
-        var isMain = sessionKey == "main" || sessionKey.Contains(":main:");
+            sessionKey = sk.GetString() ?? "";
+        if (string.IsNullOrEmpty(sessionKey))
+            _logger.Warn("[GatewayClient] Agent event missing sessionKey; will be dropped downstream.");
+        var isMain = !string.IsNullOrEmpty(sessionKey)
+            && (sessionKey == "main" || sessionKey.Contains(":main:"));
 
         // Emit raw agent event (cloned for thread safety)
         try
@@ -2504,21 +2506,25 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    private void HandleChatEvent(JsonElement root)
+    private void HandleChatEvent(JsonElement root, int rawMessageLength)
     {
         // HIGH 4: never log chat content. Log shape only — the raw payload
         // can include user prompts, assistant text, tool output, and even
         // bearer tokens routed through the gateway in some flows.
-        var rawText = root.GetRawText();
-        _logger.Debug($"Chat event received: len={rawText.Length}");
+        _logger.Debug($"Chat event received: len={rawMessageLength}");
         
         if (!root.TryGetProperty("payload", out var payload)) return;
         EmitRawChatEvent(payload);
 
-        // Extract sessionKey for the timeline-driving event.
-        var sessionKey = "main";
+        // Extract sessionKey for the timeline-driving event. As with agent
+        // events, do NOT substitute a fallback like "main" — empty must
+        // propagate so the provider's empty-key drop policy can surface the
+        // protocol gap instead of silently routing into a synthetic bucket.
+        var sessionKey = "";
         if (payload.TryGetProperty("sessionKey", out var skProp))
-            sessionKey = skProp.GetString() ?? "main";
+            sessionKey = skProp.GetString() ?? "";
+        if (string.IsNullOrEmpty(sessionKey))
+            _logger.Warn("[GatewayClient] Chat event missing sessionKey; will be dropped downstream.");
 
         // Best-effort usage extraction — gateway emits this only on terminal
         // (state="final") events in practice; we still read it defensively

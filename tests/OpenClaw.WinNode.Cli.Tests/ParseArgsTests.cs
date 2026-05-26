@@ -16,6 +16,7 @@ public class ParseArgsTests
             "--idempotency-key", "abc-123",
             "--mcp-url", "http://127.0.0.1:9000/",
             "--mcp-port", "9001",
+            "--mcp-token", "token-123",
             "--verbose",
         });
 
@@ -26,6 +27,7 @@ public class ParseArgsTests
         Assert.Equal("abc-123", opts.IdempotencyKey);
         Assert.Equal("http://127.0.0.1:9000/", opts.McpUrlOverride);
         Assert.Equal(9001, opts.McpPortOverride);
+        Assert.Equal("token-123", opts.McpTokenOverride);
         Assert.True(opts.Verbose);
     }
 
@@ -40,7 +42,17 @@ public class ParseArgsTests
         Assert.Null(opts.IdempotencyKey);
         Assert.Null(opts.McpUrlOverride);
         Assert.Null(opts.McpPortOverride);
+        Assert.Null(opts.McpTokenOverride);
         Assert.False(opts.Verbose);
+    }
+
+    [Fact]
+    public void Parses_list_tools_flag()
+    {
+        var opts = CliRunner.ParseArgs(new[] { "--list-tools", "--mcp-port", "9001" });
+        Assert.True(opts.ListTools);
+        Assert.Null(opts.Command);
+        Assert.Equal(9001, opts.McpPortOverride);
     }
 
     [Theory]
@@ -51,6 +63,7 @@ public class ParseArgsTests
     [InlineData("--idempotency-key")]
     [InlineData("--mcp-url")]
     [InlineData("--mcp-port")]
+    [InlineData("--mcp-token")]
     public void Missing_value_for_flag_throws(string flag)
     {
         var ex = Assert.Throws<ArgumentException>(() => CliRunner.ParseArgs(new[] { flag }));

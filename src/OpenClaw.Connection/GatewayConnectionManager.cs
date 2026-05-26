@@ -21,6 +21,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<bool>? _isNodeEnabled;
     private readonly IClock _clock;
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
+    private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
 
     private long _generation;
@@ -48,7 +49,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         Func<bool>? isNodeEnabled = null,
         ConnectionDiagnostics? diagnostics = null,
         ISshTunnelManager? tunnelManager = null,
-        Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null)
+        Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null,
+        Func<TimeSpan, Task>? reconnectDelay = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -60,6 +62,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _isNodeEnabled = isNodeEnabled;
         _clock = clock ?? SystemClock.Instance;
         _shouldStartNodeConnection = shouldStartNodeConnection;
+        _reconnectDelay = reconnectDelay ?? Task.Delay;
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -238,6 +241,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 _gatewayNeedsV2Signature = true;
             };
+
+            // Local gateways only support v2 signatures — skip the v3 attempt entirely
+            // to avoid a spurious "metadata-upgrade" re-pairing triggered by the v3→v2 fallback.
+            if (record.IsLocal)
+                _gatewayNeedsV2Signature = true;
 
             // If we already know this gateway needs v2, tell the client upfront
             if (_gatewayNeedsV2Signature)
@@ -841,17 +849,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
 
-        // Auto-approve node pairing if operator has admin/pairing scope
+        // Auto-approve node pairing if operator has admin/pairing scope.
+        // _autoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
+        // we release it before the reconnect delay so unrelated approvals
+        // (different requestIds) aren't starved while we wait for the gateway
+        // and node-reconnect handshake to settle (which can take 5–30s on
+        // first connect via WSL cold-start).
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
             && e.RequestId != _lastAutoApprovedRequestId)
         {
-            // Atomic guard: only one approval in-flight at a time.
-            // If another approval is already running, skip this one entirely.
             if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
             {
                 return;
             }
 
+            var approvalGeneration = Interlocked.Read(ref _generation);
+            bool attemptedApprove = false;
+            bool approved = false;
             try
             {
                 var operatorClient = _activeLifecycle?.DataClient;
@@ -865,18 +879,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
                         try
                         {
-                            var approved = await operatorClient.NodePairApproveAsync(e.RequestId);
-                            if (approved)
-                            {
-                                _lastAutoApprovedRequestId = e.RequestId;
-                                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
-                                await Task.Delay(1000); // brief delay for gateway to process
-                                await StartNodeConnectionAsync();
-                            }
-                            else
-                            {
+                            attemptedApprove = true;
+                            approved = await operatorClient.NodePairApproveAsync(e.RequestId);
+                            if (!approved)
                                 _diagnostics.Record("node", "Node auto-approval failed");
-                            }
                         }
                         catch (Exception ex)
                         {
@@ -888,7 +894,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             finally
             {
+                // Only dedupe after an actual approve attempt. If the operator
+                // client was disconnected or lacked scope, do not burn the
+                // requestId; a later Pending event can still retry once the
+                // operator client is ready or has approval scope.
+                if (attemptedApprove && Interlocked.Read(ref _generation) == approvalGeneration)
+                    _lastAutoApprovedRequestId = e.RequestId;
                 Interlocked.Exchange(ref _autoApproveInFlight, null);
+            }
+
+            // Post-approve reconnect happens OUTSIDE the CAS guard so it
+            // doesn't block unrelated approvals.
+            if (approved)
+            {
+                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
+                await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
+                if (Interlocked.Read(ref _generation) == approvalGeneration)
+                    await StartNodeConnectionAsync();
             }
         }
     }

@@ -24,7 +24,7 @@ public sealed partial class ChatWindow : WindowEx
 {
     private string _gatewayUrl;
     private string _token;
-    private string _chatUrl;
+    private string? _chatUrl;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
     private bool _webViewInitialized;
@@ -69,7 +69,7 @@ public sealed partial class ChatWindow : WindowEx
     {
         _gatewayUrl = gatewayUrl;
         _token = token;
-        _chatUrl = BuildChatUrl(gatewayUrl, token);
+        _chatUrl = ChatSurfaceResolver.BuildChatUrl(gatewayUrl, token);
         InitializeComponent();
 
         this.SetWindowSize(DefaultChatWidth, DefaultChatHeight);
@@ -201,10 +201,15 @@ public sealed partial class ChatWindow : WindowEx
     private void ApplyChatSurface()
     {
         var setting = (App.Current as App)?.Settings?.UseLegacyWebChat ?? false;
-        var useLegacy = OpenClawTray.Chat.DebugChatSurfaceOverrides.ResolveUseLegacy(
-            OpenClawTray.Chat.DebugChatSurfaceOverrides.TrayChat,
-            setting);
-        if (useLegacy)
+        var decision = ChatSurfaceResolver.Resolve(
+            ChatSurfaceTarget.TrayChat,
+            setting,
+            _chatUrl,
+            ChatSurfaceResolver.BuildChatUrl(_gatewayUrl, _token));
+
+        _chatUrl = decision.ChatUrl;
+
+        if (decision.UseLegacyWebChat)
             ShowWebViewSurface();
         else
             ShowFunctionalSurface();
@@ -295,7 +300,7 @@ public sealed partial class ChatWindow : WindowEx
 
         _gatewayUrl = gatewayUrl;
         _token = token;
-        _chatUrl = BuildChatUrl(_gatewayUrl, _token);
+        _chatUrl = ChatSurfaceResolver.BuildChatUrl(_gatewayUrl, _token);
 
         // HIGH 4: never log the full chat URL — its query string contains the
         // auth token. Strip the query before logging.
@@ -453,11 +458,13 @@ public sealed partial class ChatWindow : WindowEx
             ChatHost,
             provider,
             onReadAloud: readAloud,
+            onStopSpeaking: () => appInstance?.StopChatSpeaking(),
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => appInstance?.ShowHub("voice"),
             onSpeakerMuteChanged: muted => appInstance?.SetChatSpeakerMuted(muted),
-            initialMuted: appInstance?.Settings?.VoiceTtsEnabled == false);
+            initialMuted: appInstance?.Settings?.VoiceTtsEnabled == false,
+            isCompact: true);
         _mountedProvider = provider;
     }
 
@@ -469,22 +476,91 @@ public sealed partial class ChatWindow : WindowEx
         try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
     }
 
+    private void EagerlyLoadChatHistory()
+    {
+        var provider = (App.Current as App)?.ChatProvider;
+        if (provider is null) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // LoadAsync seeds from cached sessions; the important thing is
+                // it triggers the Changed event with the current snapshot.
+                var snap = await provider.LoadAsync();
+                // If there's a default thread, load its history so the
+                // timeline has entries to render on the very first show.
+                if (snap.DefaultThreadId is { } threadId)
+                    await provider.LoadHistoryAsync(threadId);
+            }
+            catch { /* best effort — the normal mount path will retry */ }
+        });
+    }
+
     private void OnAttachClicked()
     {
         _ = PickAndAttachFileAsync();
     }
 
-    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken)
+    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
         var voiceService = (App.Current as App)?.VoiceServiceInstance;
         var host = _functionalHost;
         if (voiceService is null) return null;
+
+        // If the STT model isn't downloaded yet, prompt the user and open voice settings.
+        if (!voiceService.IsModelDownloaded)
+        {
+            // Must dispatch to UI thread — this method runs on a background thread.
+            var tcs = new TaskCompletionSource();
+            DispatcherQueue?.TryEnqueue(async () =>
+            {
+                try
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Voice Model Required",
+                        Content = "The speech-to-text model needs to be installed before you can use voice input. Would you like to open Voice settings to install it?",
+                        PrimaryButtonText = "Open Voice Settings",
+                        CloseButtonText = "Cancel",
+                        XamlRoot = Content?.XamlRoot
+                    };
+                    // Light-dismiss: close when the user taps the smoke overlay.
+                    dialog.Opened += (s, _) =>
+                    {
+                        if (s is ContentDialog d)
+                        {
+                            // The smoke-screen overlay is the first open popup whose
+                            // child is NOT the dialog itself.
+                            foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
+                            {
+                                if (popup.Child is UIElement overlay && overlay != d)
+                                {
+                                    overlay.Tapped += (_, _) => d.Hide();
+                                    break;
+                                }
+                            }
+                        }
+                    };
+                    var result = await dialog.ShowAsync();
+                    if (result == ContentDialogResult.Primary)
+                    {
+                        (App.Current as App)?.ShowHub("voice");
+                    }
+                }
+                catch { /* dialog already open or window closing */ }
+                finally { tcs.TrySetResult(); }
+            });
+            await tcs.Task;
+            return null;
+        }
 
         void OnTranscription(string text) => host?.SetVoiceTranscript(text);
         void OnAudioLevel(float level) => host?.SetVoiceAudioLevel(level);
 
         voiceService.TranscriptionReceived += OnTranscription;
         voiceService.AudioLevelChanged += OnAudioLevel;
+        onRecordingStarted?.Invoke();
         try
         {
             var args = new SttListenArgs
@@ -552,13 +628,6 @@ public sealed partial class ChatWindow : WindowEx
             await dialog.ShowAsync();
         }
         catch { /* dialog display failed, already logged */ }
-    }
-
-    private static string BuildChatUrl(string gatewayUrl, string token)
-    {
-        return GatewayChatUrlBuilder.TryBuildChatUrl(gatewayUrl, token, out var url, out _)
-            ? url
-            : string.Empty;
     }
 
     private bool _backdropAppliedOnce;
@@ -642,6 +711,10 @@ public sealed partial class ChatWindow : WindowEx
         // Provider may have arrived after construction — re-apply surface so
         // a native-mode window swaps placeholder → live tree on first show.
         ApplyChatSurface();
+
+        // Eagerly load chat history so the tray popup renders messages
+        // immediately instead of showing the zero-state while history loads.
+        EagerlyLoadChatHistory();
 
         this.Show();
         SetForegroundWindow(hwnd);

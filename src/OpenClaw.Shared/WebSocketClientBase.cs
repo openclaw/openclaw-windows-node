@@ -21,6 +21,7 @@ public abstract class WebSocketClientBase : IDisposable
     private bool _disposed;
     private int _reconnectAttempts;
     private int _reconnectLoopActive;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
 
     protected readonly string _token;
@@ -295,33 +296,58 @@ public abstract class WebSocketClientBase : IDisposable
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
     protected async Task SendRawAsync(string message)
     {
-        // Capture local reference to avoid TOCTOU race with reconnect/dispose
-        var ws = _webSocket;
-        if (ws?.State != WebSocketState.Open) return;
-
         try
         {
-            // Rent a pooled buffer to avoid per-send heap allocations on the hot send path.
-            var byteCount = Encoding.UTF8.GetByteCount(message);
-            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
-            try
-            {
-                var written = Encoding.UTF8.GetBytes(message, buffer);
-                await ws.SendAsync(buffer.AsMemory(0, written),
-                    WebSocketMessageType.Text, true, _cts.Token);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
+            await _sendLock.WaitAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (ObjectDisposedException)
         {
-            // WebSocket was disposed between state check and send
+            return;
         }
-        catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+
+        try
         {
-            _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
+            // Serialize sends; reconnect/dispose can still close the captured socket,
+            // so the send below keeps the existing state-change guards.
+            var ws = _webSocket;
+            if (ws?.State != WebSocketState.Open) return;
+
+            try
+            {
+                // Rent a pooled buffer to avoid per-send heap allocations on the hot send path.
+                var byteCount = Encoding.UTF8.GetByteCount(message);
+                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                try
+                {
+                    var written = Encoding.UTF8.GetBytes(message, buffer);
+                    await ws.SendAsync(buffer.AsMemory(0, written),
+                        WebSocketMessageType.Text, true, _cts.Token);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+            catch (OperationCanceledException) when (_cts.Token.IsCancellationRequested)
+            {
+                // Shutdown/reconnect canceled an in-flight send.
+            }
+            catch (ObjectDisposedException)
+            {
+                // WebSocket was disposed between state check and send.
+            }
+            catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+            {
+                _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
+            }
+        }
+        finally
+        {
+            _sendLock.Release();
         }
     }
 

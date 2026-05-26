@@ -21,5 +21,6 @@ public static class SettingsDataExtensions
         settings.NodeBrowserProxyEnabled,
         settings.NodeSttEnabled,
         settings.NodeTtsEnabled,
+        settings.NodeSystemRunEnabled,
         settings.ToJson());
 }

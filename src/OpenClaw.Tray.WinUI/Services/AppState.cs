@@ -131,6 +131,22 @@ internal sealed class AppState : INotifyPropertyChanged
     private string? _agentFilesListAgentId;
     public string? AgentFilesListAgentId { get => _agentFilesListAgentId; set => SetField(ref _agentFilesListAgentId, value); }
 
+    // Per-agent workspace file cache so switching agents doesn't re-fetch.
+    private readonly Dictionary<string, JsonElement> _agentFilesCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _agentFilesCacheLock = new();
+
+    /// <summary>Cache workspace file list for a specific agent.</summary>
+    public void CacheAgentFilesList(string agentId, JsonElement data)
+    {
+        lock (_agentFilesCacheLock) _agentFilesCache[agentId] = data;
+    }
+
+    /// <summary>Try to get cached workspace file list for an agent.</summary>
+    public bool TryGetCachedAgentFilesList(string agentId, out JsonElement data)
+    {
+        lock (_agentFilesCacheLock) return _agentFilesCache.TryGetValue(agentId, out data);
+    }
+
     private JsonElement? _cronList;
     public JsonElement? CronList { get => _cronList; set => SetField(ref _cronList, value); }
 
@@ -260,6 +276,7 @@ internal sealed class AppState : INotifyPropertyChanged
         SkillsAgentId = null;
         AgentFilesList = null;
         AgentFilesListAgentId = null;
+        lock (_agentFilesCacheLock) _agentFilesCache.Clear();
         AgentFileContent = null;
         CronList = null;
         CronStatus = null;

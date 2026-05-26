@@ -26,7 +26,7 @@ public sealed record ChatExplorationPreset
     public bool IsDefault { get; init; }
 
     // Surface
-    public string BackdropMode { get; init; } = "Mica";
+    public string BackdropMode { get; init; } = "Acrylic";
     public bool   UsesHostBackdrop { get; init; }
     public string PreviewTheme { get; init; } = "System";
     public string Variation { get; init; } = "Calm";
@@ -35,7 +35,8 @@ public sealed record ChatExplorationPreset
     public double BubbleCornerRadius { get; init; } = 16;
     public double Gutter { get; init; } = 64;
     public double MessageGap { get; init; } = 12;
-    public string PaddingDensity { get; init; } = "Comfortable";
+    public string PaddingDensity { get; init; } = "Cozy";
+    public string UserBubbleTone { get; init; } = "Secondary";
     public bool   ShowTimestamps { get; init; } = true;
     public bool   ShowAssistantBubbles { get; init; } = true;
     public bool   ShowToolCalls { get; init; } = true;
@@ -43,20 +44,20 @@ public sealed record ChatExplorationPreset
     public double BubbleSideMargin { get; init; } = 8;
 
     // Footer
-    public bool ShowSenderName { get; init; } = true;
-    public bool ShowModelName { get; init; } = true;
-    public bool ShowTokens { get; init; }
-    public bool ShowContextPercent { get; init; }
+    public bool ShowSenderName { get; init; } = false;
+    public bool ShowModelName { get; init; } = false;
+    public bool ShowTokens { get; init; } = true;
+    public bool ShowContextPercent { get; init; } = true;
 
     // Avatar
     public bool   ShowAvatars { get; init; } = true;
-    public string AvatarMode { get; init; } = "Both";
+    public string AvatarMode { get; init; } = "AgentOnly";
 
     // Composer
     public string ComposerLayout { get; init; } = "ThreeRow";
     public double ComposerCornerRadius { get; init; } = 8;
-    public double ComposerIconSize { get; init; } = 14;
-    public double SendButtonSize { get; init; } = 32;
+    public double ComposerIconSize { get; init; } = 16;
+    public double SendButtonSize { get; init; } = 40;
 
     // Icons
     public string SendIconGlyph   { get; init; } = "\uE724";
@@ -164,6 +165,7 @@ public static class ChatExplorationPresetStore
         Gutter = ChatExplorationState.Gutter,
         MessageGap = ChatExplorationState.MessageGap,
         PaddingDensity = ChatExplorationState.PaddingDensity.ToString(),
+        UserBubbleTone = ChatExplorationState.UserBubbleTone.ToString(),
         ShowTimestamps = ChatExplorationState.ShowTimestamps,
         ShowAssistantBubbles = ChatExplorationState.ShowAssistantBubbles,
         ShowToolCalls = ChatExplorationState.ShowToolCalls,
@@ -211,6 +213,7 @@ public static class ChatExplorationPresetStore
         ChatExplorationState.Gutter = p.Gutter;
         ChatExplorationState.MessageGap = p.MessageGap;
         if (Enum.TryParse<ChatPaddingDensity>(p.PaddingDensity, out var pd)) ChatExplorationState.PaddingDensity = pd;
+        if (Enum.TryParse<ChatUserBubbleTone>(p.UserBubbleTone, out var ut)) ChatExplorationState.UserBubbleTone = ut;
         ChatExplorationState.ShowTimestamps = p.ShowTimestamps;
         ChatExplorationState.ShowAssistantBubbles = p.ShowAssistantBubbles;
         ChatExplorationState.ShowToolCalls = p.ShowToolCalls;

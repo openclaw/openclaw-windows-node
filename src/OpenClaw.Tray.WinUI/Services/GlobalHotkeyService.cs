@@ -7,18 +7,16 @@ namespace OpenClawTray.Services;
 
 /// <summary>
 /// Registers and handles global hotkeys using P/Invoke.
-/// Default: Ctrl+Alt+Shift+C for Quick Send.
+/// Default: Ctrl+Alt+Shift+V for Voice, Ctrl+Alt+; for Settings.
 /// </summary>
 public class GlobalHotkeyService : IDisposable
 {
-    private const int HOTKEY_ID = 9001;
     private const int HOTKEY_ID_VOICE = 9002;
     private const int HOTKEY_ID_SETTINGS = 9003;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_SHIFT = 0x0004;
     private const uint MOD_WIN = 0x0008;
-    private const uint VK_C = 0x43;
     private const uint VK_V = 0x56;
     private const uint VK_OEM_1 = 0xBA; // ';:' on US keyboards
     private const int WM_HOTKEY = 0x0312;
@@ -118,7 +116,6 @@ public class GlobalHotkeyService : IDisposable
     private readonly ManualResetEventSlim _windowReady = new(false);
     private readonly ManualResetEventSlim _opCompleted = new(false);
 
-    public event EventHandler? HotkeyPressed;
     public event EventHandler? VoiceHotkeyPressed;
     public event EventHandler? SettingsHotkeyPressed;
 
@@ -232,25 +229,12 @@ public class GlobalHotkeyService : IDisposable
         if (msg == WM_APP_REGISTER)
         {
             // Register from the message-loop thread that owns hWnd.
-            _registered = RegisterHotKey(hWnd, HOTKEY_ID,
+            // Voice hotkey: Ctrl+Alt+Shift+V
+            _registered = RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
                 MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
-                VK_C);
+                VK_V);
 
             if (_registered)
-            {
-                Logger.Info("Global hotkey registered: Ctrl+Alt+Shift+C");
-            }
-            else
-            {
-                var err = Marshal.GetLastWin32Error();
-                var errMsg = new Win32Exception(err).Message;
-                Logger.Warn($"Failed to register global hotkey (Win32Error={err}: {errMsg})");
-            }
-
-            // Also register voice hotkey: Ctrl+Alt+Shift+V
-            if (RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
-                MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
-                VK_V))
             {
                 Logger.Info("Voice hotkey registered: Ctrl+Alt+Shift+V");
             }
@@ -282,7 +266,6 @@ public class GlobalHotkeyService : IDisposable
             {
                 if (_registered)
                 {
-                    UnregisterHotKey(hWnd, HOTKEY_ID);
                     UnregisterHotKey(hWnd, HOTKEY_ID_VOICE);
                     UnregisterHotKey(hWnd, HOTKEY_ID_SETTINGS);
                     _registered = false;
@@ -300,12 +283,7 @@ public class GlobalHotkeyService : IDisposable
             return IntPtr.Zero;
         }
 
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
-        {
-            Logger.Info("Hotkey pressed: Ctrl+Alt+Shift+C");
-            OnHotkeyPressed();
-        }
-        else if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID_VOICE)
+        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID_VOICE)
         {
             Logger.Info("Voice hotkey pressed: Ctrl+Alt+Shift+V");
             VoiceHotkeyPressed?.Invoke(this, EventArgs.Empty);
@@ -344,11 +322,6 @@ public class GlobalHotkeyService : IDisposable
         {
             Logger.Warn($"Hotkey unregistration error: {ex.Message}");
         }
-    }
-
-    internal void OnHotkeyPressed()
-    {
-        HotkeyPressed?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()

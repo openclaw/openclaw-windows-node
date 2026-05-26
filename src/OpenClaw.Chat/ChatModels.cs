@@ -30,7 +30,8 @@ public enum ChatToolCallStatus
 {
     InProgress,
     Success,
-    Error
+    Error,
+    Interrupted
 }
 
 public enum ChatTone
@@ -74,7 +75,8 @@ public record ChatTimelineItem(
     string? ToolOutput = null,
     string? IntentSummary = null,
     JsonObject? ToolArgs = null,
-    ChatTone? Tone = null);
+    ChatTone? Tone = null,
+    string? ToolCallId = null);
 
 public record ChatPermissionRequest(string RequestId, string PermissionKind, string ToolName, string Detail);
 
@@ -87,13 +89,15 @@ public record ChatTimelineState(
     string? ActiveToolCallId,
     string? CurrentIntent,
     System.Collections.Immutable.ImmutableHashSet<string> LocalNonces,
+    System.Collections.Immutable.ImmutableDictionary<string, string> ActiveToolCalls,
     bool HistoryLoaded = false,
     ChatPermissionRequest? PendingPermission = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
         false, 1, null, null, null, null,
-        System.Collections.Immutable.ImmutableHashSet<string>.Empty);
+        System.Collections.Immutable.ImmutableHashSet<string>.Empty,
+        System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 }
 
 public record ChatHistoryPage(ChatEvent[] Events, int NextSince, int PrevBefore, bool HasMore);
@@ -107,9 +111,9 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent() : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
-public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null) : ChatEvent;
-public record ChatToolOutputEvent(string Text) : ChatEvent;
-public record ChatToolErrorEvent(string Text) : ChatEvent;
+public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null, string? ToolCallId = null) : ChatEvent;
+public record ChatToolOutputEvent(string Text, string? ToolCallId = null) : ChatEvent;
+public record ChatToolErrorEvent(string Text, string? ToolCallId = null) : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
 public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;
@@ -123,7 +127,30 @@ public record ChatDataSnapshot(
     IReadOnlyDictionary<string, ChatTimelineState> Timelines,
     string? DefaultThreadId,
     string? ConnectionStatus,
-    string[] AvailableModels);
+    string[] AvailableModels,
+    ChatComposeTarget ComposeTarget);
+
+/// <summary>
+/// Describes where the UI may send the next chat message. Distinct from
+/// <see cref="ChatDataSnapshot.Threads"/> because, in protocols like the
+/// OpenClaw gateway, there is always a canonical "main" target whose session
+/// row may not have been materialized yet (zero sessions on fresh install).
+/// The UI uses this to decide whether the composer should be enabled even
+/// when <see cref="ChatDataSnapshot.Threads"/> is empty.
+/// </summary>
+/// <param name="SessionKey">
+/// The provider-resolved canonical session key for the default send target,
+/// or <c>null</c> when not yet known (e.g. handshake incomplete).
+/// </param>
+/// <param name="IsReady">
+/// True when the provider is connected, has resolved a canonical send target,
+/// and accepts <see cref="IChatDataProvider.SendMessageAsync"/> calls keyed by
+/// <see cref="SessionKey"/>.
+/// </param>
+public sealed record ChatComposeTarget(string? SessionKey, bool IsReady)
+{
+    public static ChatComposeTarget NotReady { get; } = new(null, false);
+}
 
 public sealed class ChatDataChangedEventArgs(ChatDataSnapshot snapshot) : EventArgs
 {
@@ -157,7 +184,10 @@ public interface IChatDataProvider : IAsyncDisposable
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
 
     Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default);
-    Task<ChatThread> CreateThreadAsync(string? initialMessage = null, CancellationToken cancellationToken = default);
+    // Note: there is intentionally no CreateThreadAsync. The gateway protocol
+    // has no "create new session" RPC; the canonical send target is exposed via
+    // ChatDataSnapshot.ComposeTarget and the first SendMessageAsync against it
+    // implicitly materializes the session on the server.
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default);
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken, IReadOnlyList<OpenClaw.Shared.ChatAttachment>? attachments) =>
         SendMessageAsync(threadId, message, cancellationToken);

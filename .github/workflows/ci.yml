@@ -80,8 +80,12 @@ jobs:
       run: |
         dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.Tray.Tests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Connection.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClawTray.FunctionalUI.Tests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.SetupEngine.Tests -c Debug -r win-x64
 
     - name: Run Shared Tests
       env:
@@ -110,6 +114,30 @@ jobs:
         --results-directory TestResults\Tray
         --logger trx;LogFileName=OpenClaw.Tray.Tests.trx"
 
+    - name: Run Connection Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\Connection\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.Connection.Tests
+        --no-build
+        -c Debug
+        --verbosity normal
+        --results-directory TestResults\Connection
+        --logger trx;LogFileName=OpenClaw.Connection.Tests.trx"
+
+    - name: Run WinNode CLI Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\WinNodeCli\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.WinNode.Cli.Tests
+        --no-build
+        -c Debug
+        --verbosity normal
+        --results-directory TestResults\WinNodeCli
+        --logger trx;LogFileName=OpenClaw.WinNode.Cli.Tests.trx"
+
     # Tray integration tests gate on OPENCLAW_RUN_INTEGRATION; set it so the
     # MCP-server / capability tests actually run. dotnet-coverage with no
     # filter captures coverage for both the test host AND the spawned tray
@@ -130,18 +158,44 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(1.8, stable),
+    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.0, stable),
     # which looks up the framework package by identity. The hosted windows-2025
     # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 1.8.260101001 in the csprojs.
-    - name: Install WindowsAppRuntime 1.8
+    # Version pinned to match Microsoft.WindowsAppSDK 2.0.1 in the csprojs.
+    - name: Install WindowsAppRuntime 2.0.1
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/1.8/1.8.260101001/windowsappruntimeinstall-x64.exe"
+        $url = "https://aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
         if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Run Functional UI Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\FunctionalUI\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClawTray.FunctionalUI.Tests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults\FunctionalUI
+        --logger trx;LogFileName=OpenClawTray.FunctionalUI.Tests.trx"
+
+    - name: Run SetupEngine Tests
+      run: >
+        dotnet-coverage collect
+        --output TestResults\SetupEngine\coverage.cobertura.xml
+        --output-format cobertura
+        "dotnet test tests/OpenClaw.SetupEngine.Tests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults\SetupEngine
+        --logger trx;LogFileName=OpenClaw.SetupEngine.Tests.trx"
 
     - name: Run Tray UI Tests
       run: >
@@ -168,8 +222,72 @@ jobs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
 
+  e2etests:
+    needs: repo-hygiene
+    if: ${{ !cancelled() }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+    - name: Fail if repo hygiene failed
+      if: ${{ needs.repo-hygiene.result != 'success' }}
+      shell: pwsh
+      run: |
+        Write-Error "repo-hygiene failed; see the repo-hygiene job output."
+        exit 1
+
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v5
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build Shared Library
+      run: dotnet build src/OpenClaw.Shared -c Debug --no-restore
+
+    - name: Build SetupEngine
+      run: dotnet build src/OpenClaw.SetupEngine -c Debug --no-restore
+
+    - name: Build Tray App (WinUI)
+      run: dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64
+
+    - name: Build E2E Tests
+      run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
+
+    - name: Run E2E Tests
+      run: >
+        dotnet test tests/OpenClaw.E2ETests
+        --no-build
+        -c Debug
+        -r win-x64
+        --verbosity normal
+        --results-directory TestResults/E2E
+        --logger "trx;LogFileName=OpenClaw.E2ETests.trx"
+        --logger "console;verbosity=detailed"
+
+    - name: Upload E2E Test Results & Logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: e2e-test-results
+        path: |
+          TestResults/E2E/
+        if-no-files-found: warn
+
   build:
-    needs: test
+    needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     strategy:
       matrix:
@@ -198,6 +316,12 @@ jobs:
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -p:Version=${{ needs.test.outputs.semVer }} -o publish
+
+    - name: Publish SetupEngine.UI
+      run: |
+        dotnet publish src/OpenClaw.SetupEngine.UI -c Release -r ${{ matrix.rid }} --self-contained -p:Version=${{ needs.test.outputs.semVer }} -o publish-setup
+        mkdir publish\SetupEngine
+        copy publish-setup\* publish\SetupEngine\ -Recurse
 
     - name: Disable NuGet source mapping for signing
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
@@ -236,7 +360,7 @@ jobs:
         path: publish/
 
   build-msix:
-    needs: test
+    needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     continue-on-error: true
     strategy:
@@ -373,7 +497,7 @@ jobs:
         path: ${{ steps.find-msix.outputs.msix_path }}
 
   build-extension:
-    needs: test
+    needs: [test, e2etests]
     runs-on: windows-latest
     strategy:
       matrix:
@@ -407,8 +531,8 @@ jobs:
         path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
 
   release:
-    needs: [repo-hygiene, test, build, build-msix, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
+    needs: [repo-hygiene, test, e2etests, build, build-msix, build-extension]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
       contents: write

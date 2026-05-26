@@ -20,6 +20,7 @@ public class SettingsChangeImpactTests
         bool nodeBrowserProxyEnabled = false,
         bool nodeSttEnabled = false,
         bool nodeTtsEnabled = false,
+        bool nodeSystemRunEnabled = true,
         string? fullSettingsJson = null) => new(
         gatewayUrl,
         useSshTunnel,
@@ -36,6 +37,7 @@ public class SettingsChangeImpactTests
         nodeBrowserProxyEnabled,
         nodeSttEnabled,
         nodeTtsEnabled,
+        nodeSystemRunEnabled,
         fullSettingsJson);
 
     [Fact]
@@ -97,11 +99,50 @@ public class SettingsChangeImpactTests
     }
 
     [Fact]
+    public void SystemRunCapabilityChanged_ReturnsCapabilityReload()
+    {
+        // Flipping the "Run system tools" toggle must trigger a capability
+        // reload — without it the App.OnSettingsSaved branch falls through to
+        // UiOnly and the connect-handshake commands list stays stale.
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", nodeSystemRunEnabled: true);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", nodeSystemRunEnabled: false);
+        Assert.Equal(SettingsChangeImpact.CapabilityReload,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
     public void UiOnlyChange_ReturnsUiOnly()
     {
         var prev = MakeSnapshot(gatewayUrl: "wss://test", fullSettingsJson: "{\"ShowNotifications\":true}");
         var next = MakeSnapshot(gatewayUrl: "wss://test", fullSettingsJson: "{\"ShowNotifications\":false}");
         Assert.Equal(SettingsChangeImpact.UiOnly,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void McpServerToggled_ReturnsUiOnly()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: false);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: true);
+        Assert.Equal(SettingsChangeImpact.UiOnly,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void McpServerToggledOff_ReturnsUiOnly()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: true);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", enableMcpServer: false);
+        Assert.Equal(SettingsChangeImpact.UiOnly,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void McpAndNodeModeToggled_ReturnsNodeReconnect()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", enableNodeMode: false, enableMcpServer: false);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", enableNodeMode: true, enableMcpServer: true);
+        Assert.Equal(SettingsChangeImpact.NodeReconnectRequired,
             SettingsChangeClassifier.Classify(prev, next));
     }
 }

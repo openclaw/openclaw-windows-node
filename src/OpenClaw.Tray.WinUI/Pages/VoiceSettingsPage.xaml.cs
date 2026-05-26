@@ -56,6 +56,12 @@ public sealed partial class VoiceSettingsPage : Page
             app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
             app.SpeakerMuteChanged += OnAppSpeakerMuteChanged;
         }
+        // Seed the Preview button labels from resw — x:Uid was removed from
+        // the buttons so their inner StackPanel (FontIcon + TextBlock)
+        // survives state changes in the click handlers (we update only the
+        // TextBlock's Text, never the Button's Content).
+        PiperPreviewLabel.Text = L("VoiceSettingsPage_PiperPreviewButtonContent");
+        PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewVoiceButtonContent");
         LoadSettings();
     }
 
@@ -704,8 +710,8 @@ public sealed partial class VoiceSettingsPage : Page
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
 
         PiperPreviewButton.IsEnabled = false;
-        var oldContent = PiperPreviewButton.Content;
-        PiperPreviewButton.Content = L("VoiceSettingsPage_PreviewButtonPlaying");
+        var oldLabel = PiperPreviewLabel.Text;
+        PiperPreviewLabel.Text = L("VoiceSettingsPage_PreviewButtonPlaying");
 
         try
         {
@@ -721,12 +727,15 @@ public sealed partial class VoiceSettingsPage : Page
         catch (Exception ex)
         {
             Logger.Error($"Piper voice preview failed: {ex}");
+            PiperPreviewIcon.Glyph = "\uEA39";
             PiperStatusText.Text = L("VoiceSettingsPage_PiperPreviewFailed");
+            await System.Threading.Tasks.Task.Delay(3000);
         }
         finally
         {
             PiperPreviewButton.IsEnabled = true;
-            PiperPreviewButton.Content = oldContent;
+            PiperPreviewIcon.Glyph = "\uE768";
+            PiperPreviewLabel.Text = oldLabel;
         }
     }
 
@@ -804,7 +813,7 @@ public sealed partial class VoiceSettingsPage : Page
         if (CurrentApp.Settings == null) return;
 
         PreviewVoiceButton.IsEnabled = false;
-        PreviewVoiceButton.Content = L("VoiceSettingsPage_PreviewButtonPlaying");
+        PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewButtonPlaying");
 
         try
         {
@@ -826,15 +835,18 @@ public sealed partial class VoiceSettingsPage : Page
         }
         catch (Exception ex)
         {
-            // Show error inline (sanitized â€” full detail in the log).
+            // Show error inline (sanitized — full detail in the log). Swap the
+            // Play glyph for ErrorBadge while the error label is visible.
             Logger.Error($"Windows TTS preview failed: {ex}");
-            PreviewVoiceButton.Content = L("VoiceSettingsPage_StatusError");
+            PreviewVoiceIcon.Glyph = "\uEA39";
+            PreviewVoiceLabel.Text = L("VoiceSettingsPage_StatusError");
             await System.Threading.Tasks.Task.Delay(3000);
         }
         finally
         {
             PreviewVoiceButton.IsEnabled = true;
-            PreviewVoiceButton.Content = L("VoiceSettingsPage_PreviewVoiceButtonContent");
+            PreviewVoiceIcon.Glyph = "\uE768";
+            PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewVoiceButtonContent");
         }
     }
 

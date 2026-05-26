@@ -26,6 +26,7 @@ public sealed partial class ChatPage : Page
     private HubWindow? _hub;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
+    private string? _mountedThreadId;
     private string? _chatUrl;
     private bool _webViewInitialized;
     private bool _webViewMode;
@@ -47,8 +48,11 @@ public sealed partial class ChatPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // Tear down native chat (if mounted) and detach WebView2 nav handlers.
-        DisposeFunctionalHost();
+        // Don't tear down the native chat host — preserve it across page
+        // navigations so that scroll position, selected session, and loaded
+        // history survive. ShowFunctionalSurface's _mountedProvider check
+        // will reuse the existing host when the page reloads.
+        // DisposeFunctionalHost() is intentionally NOT called here.
 
         _navigationCts?.Cancel();
         if (WebView.CoreWebView2 != null)
@@ -162,19 +166,16 @@ public sealed partial class ChatPage : Page
     {
         if (CurrentApp.Settings is null) return;
 
-        // HIGH 3: re-resolve the chat URL from the current settings on every
-        // surface application — _chatUrl was previously computed once in
-        // Initialize() and never refreshed, so SettingsSaved (e.g. token /
-        // gateway URL change) would leave the WebView pointing at a stale URL.
-        var freshUrl = TryComputeChatUrl(CurrentApp.Settings);
-        var urlChanged = !string.Equals(freshUrl, _chatUrl, StringComparison.Ordinal);
-        _chatUrl = freshUrl;
+        var decision = ChatSurfaceResolver.Resolve(
+            ChatSurfaceTarget.HubChat,
+            CurrentApp.Settings.UseLegacyWebChat,
+            _chatUrl,
+            TryComputeChatUrl(CurrentApp.Settings));
 
-        var useLegacy = OpenClawTray.Chat.DebugChatSurfaceOverrides.ResolveUseLegacy(
-            OpenClawTray.Chat.DebugChatSurfaceOverrides.HubChat,
-            CurrentApp.Settings.UseLegacyWebChat);
-        if (useLegacy)
-            ShowWebViewSurface(forceNavigate: urlChanged);
+        _chatUrl = decision.ChatUrl;
+
+        if (decision.UseLegacyWebChat)
+            ShowWebViewSurface(forceNavigate: decision.ChatUrlChanged);
         else
             ShowFunctionalSurface();
     }
@@ -189,9 +190,8 @@ public sealed partial class ChatPage : Page
             settings.LegacyToken,
             settings.LegacyBootstrapToken,
             out var credential) &&
-            credential is { IsBootstrapToken: false } &&
-            GatewayChatUrlBuilder.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var url, out _)
-            ? url
+            credential is { IsBootstrapToken: false }
+            ? ChatSurfaceResolver.BuildChatUrl(credential.GatewayUrl, credential.Token)
             : null;
     }
 
@@ -213,7 +213,22 @@ public sealed partial class ChatPage : Page
         var provider = app?.ChatProvider;
         Func<string, Task>? readAloud = app is null ? null : app.SpeakChatTextAsync;
 
-        if (_functionalHost is not null && ReferenceEquals(_mountedProvider, provider))
+        // Consume a pending session-key hand-off from SessionsPage so the
+        // chat root mounts with that thread selected. Any pending key forces
+        // a remount — _mountedThreadId only records what we asked for, not
+        // what the user later picked inside the composer's dropdown, so we
+        // cannot use it to detect "already on the right thread".
+        var pendingSessionKey = _hub?.PendingChatSessionKey;
+        if (pendingSessionKey is not null && _hub is not null)
+        {
+            _hub.PendingChatSessionKey = null;
+        }
+        var threadIdToMount = pendingSessionKey ?? _mountedThreadId;
+        var forceRemount = pendingSessionKey is not null;
+
+        if (_functionalHost is not null
+            && ReferenceEquals(_mountedProvider, provider)
+            && !forceRemount)
         {
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
@@ -230,6 +245,12 @@ public sealed partial class ChatPage : Page
 
         if (provider is null)
         {
+            // If we already have a mounted chat, keep it visible rather than
+            // flashing the disconnected placeholder. The ChatProviderChanged
+            // event will remount when the provider becomes available again.
+            if (_functionalHost is not null)
+                return;
+
             PlaceholderPanel.Visibility = Visibility.Visible;
             ChatHost.Visibility = Visibility.Collapsed;
             return;
@@ -240,13 +261,17 @@ public sealed partial class ChatPage : Page
         _functionalHost = CurrentApp.ActiveHubWindow!.MountFunctionalChat(
             ChatHost,
             provider,
+            initialThreadId: threadIdToMount,
             onReadAloud: readAloud,
+            onStopSpeaking: () => app?.StopChatSpeaking(),
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
             onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted),
-            initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false);
+            initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false,
+            suppressAutoDispose: true);
         _mountedProvider = provider;
+        _mountedThreadId = threadIdToMount;
 
         // If the V hotkey (or another caller) requested auto-start voice,
         // trigger it after the UI thread processes the mount (composer needs
@@ -335,6 +360,7 @@ public sealed partial class ChatPage : Page
         var host = _functionalHost;
         _functionalHost = null;
         _mountedProvider = null;
+        _mountedThreadId = null;
         try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
     }
 
@@ -634,11 +660,55 @@ public sealed partial class ChatPage : Page
         _ = NavigateWhenChatReadyAsync(_connectionManager, CurrentApp.Registry?.GetById(CurrentApp.Registry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
     }
 
-    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken)
+    private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
         var voiceService = _hub?.VoiceServiceInstance;
         var host = _functionalHost;
         if (voiceService is null) return null;
+
+        // If the STT model isn't downloaded yet, prompt the user and open voice settings.
+        if (!voiceService.IsModelDownloaded)
+        {
+            var tcs = new TaskCompletionSource();
+            DispatcherQueue?.TryEnqueue(async () =>
+            {
+                try
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Voice Model Required",
+                        Content = "The speech-to-text model needs to be installed before you can use voice input. Would you like to open Voice settings to install it?",
+                        PrimaryButtonText = "Open Voice Settings",
+                        CloseButtonText = "Cancel",
+                        XamlRoot = Content?.XamlRoot
+                    };
+                    // Light-dismiss: close when the user taps the smoke overlay.
+                    dialog.Opened += (s, _) =>
+                    {
+                        if (s is ContentDialog d)
+                        {
+                            foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
+                            {
+                                if (popup.Child is UIElement overlay && overlay != d)
+                                {
+                                    overlay.Tapped += (_, _) => d.Hide();
+                                    break;
+                                }
+                            }
+                        }
+                    };
+                    var result = await dialog.ShowAsync();
+                    if (result == ContentDialogResult.Primary)
+                    {
+                        _hub?.NavigateTo("voice");
+                    }
+                }
+                catch { /* dialog already open or window closing */ }
+                finally { tcs.TrySetResult(); }
+            });
+            await tcs.Task;
+            return null;
+        }
 
         // Subscribe to streaming events during recording
         void OnTranscription(string text) => host?.SetVoiceTranscript(text);
@@ -646,6 +716,7 @@ public sealed partial class ChatPage : Page
 
         voiceService.TranscriptionReceived += OnTranscription;
         voiceService.AudioLevelChanged += OnAudioLevel;
+        onRecordingStarted?.Invoke();
         try
         {
             var args = new SttListenArgs

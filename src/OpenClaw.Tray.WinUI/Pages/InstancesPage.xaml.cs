@@ -54,10 +54,20 @@ public sealed partial class InstancesPage : Page
         _appState.PropertyChanged += OnAppStateChanged;
 
         Rerender();
+        UpdatePendingPairBanner();
 
         if (CurrentApp.GatewayClient != null)
         {
             _ = RequestNodesWithSpinnerAsync();
+            // Also poll the pair lists so the banner is correct on first
+            // navigation (without waiting for the gateway's next broadcast).
+            _ = Task.Run(async () =>
+            {
+                try { await CurrentApp.GatewayClient.RequestNodePairListAsync(); }
+                catch (Exception ex) { Services.Logger.Warn($"[InstancesPage] Eager node-pair refresh failed: {ex.Message}"); }
+                try { await CurrentApp.GatewayClient.RequestDevicePairListAsync(); }
+                catch (Exception ex) { Services.Logger.Warn($"[InstancesPage] Eager device-pair refresh failed: {ex.Message}"); }
+            });
         }
     }
 
@@ -74,8 +84,49 @@ public sealed partial class InstancesPage : Page
             case nameof(AppState.Presence):
                 UpdatePresence(_appState!.Presence ?? Array.Empty<PresenceEntry>());
                 break;
+            case nameof(AppState.NodePairList):
+            case nameof(AppState.DevicePairList):
+                UpdatePendingPairBanner();
+                break;
         }
     }
+
+    /// <summary>
+    /// Show a banner at the top of the Instances list when there's at least
+    /// one pending node-pair or device-pair request. The actual approve/reject
+    /// UI lives on the Connection page (where the legacy "Pending approvals"
+    /// banner already handles per-row decisions) — this banner just makes it
+    /// impossible to miss while looking at a node that appears connected but
+    /// has empty capabilities.
+    /// </summary>
+    private void UpdatePendingPairBanner()
+    {
+        if (PendingPairBanner is null) return;
+        var nodePending = _appState?.NodePairList?.Pending?.Count ?? 0;
+        var devicePending = _appState?.DevicePairList?.Pending?.Count ?? 0;
+        var total = nodePending + devicePending;
+        if (total == 0)
+        {
+            PendingPairBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        PendingPairBanner.Visibility = Visibility.Visible;
+        PendingPairBannerText.Text = total == 1
+            ? "1 pairing approval waiting"
+            : $"{total} pairing approvals waiting";
+
+        var nodeOwnId = CurrentApp.NodeFullDeviceId;
+        var ownIsPending = !string.IsNullOrWhiteSpace(nodeOwnId)
+            && (_appState?.NodePairList?.Pending?.Any(p =>
+                string.Equals(p.NodeId, nodeOwnId, StringComparison.OrdinalIgnoreCase)) ?? false);
+        PendingPairBannerSubtext.Text = ownIsPending
+            ? "This node is connected but its capabilities and commands won't activate until the pairing is approved."
+            : "A node or device is waiting for approval before it can join.";
+    }
+
+    private void OnPendingPairBannerClicked(object sender, RoutedEventArgs e)
+        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     public void UpdateNodes(GatewayNodeInfo[] nodes)
     {

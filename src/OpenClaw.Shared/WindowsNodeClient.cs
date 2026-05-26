@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
@@ -21,6 +22,8 @@ public class WindowsNodeClient : WebSocketClientBase
     private readonly List<INodeCapability> _capabilities = new();
     private FrozenDictionary<string, INodeCapability> _commandMap = FrozenDictionary<string, INodeCapability>.Empty;
     private readonly NodeRegistration _registration;
+    private const string WindowsPlatform = "windows";
+    private const string WindowsDeviceFamily = "Windows";
     
     // Connection state
     private bool _isConnected;
@@ -50,6 +53,12 @@ public class WindowsNodeClient : WebSocketClientBase
     };
 
     private static readonly Regex s_commandValidator = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
+
+    // Bounded concurrency for capability invocations: prevents a slow capability (e.g. a
+    // 5-minute screen.record) from blocking health pings on the same WS receive loop.
+    // Invocations are fire-and-forget off the receive loop; this semaphore caps concurrency
+    // at 8. When full, the gateway receives an immediate "node busy, retry" error response.
+    private readonly SemaphoreSlim _invokeSemaphore = new(8, 8);
 
     // Events
     public event EventHandler<NodeInvokeRequest>? InvokeReceived;
@@ -114,7 +123,8 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             Id = _deviceIdentity.DeviceId,
             Version = "1.0.0",
-            Platform = "windows",
+            Platform = WindowsPlatform,
+            DeviceFamily = WindowsDeviceFamily,
             DisplayName = $"Windows Node ({Environment.MachineName})"
         };
     }
@@ -435,7 +445,8 @@ public class WindowsNodeClient : WebSocketClientBase
         JsonElement args = default;
         if (payload.TryGetProperty("args", out var argsEl))
         {
-            args = argsEl;
+            // Clone to ensure the JsonElement survives document disposal after fire-and-forget
+            args = argsEl.Clone();
         }
         else if (payload.TryGetProperty("paramsJSON", out var paramsJsonProp))
         {
@@ -476,27 +487,49 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
         
-        var stopwatch = Stopwatch.StartNew();
-        try
+        // Reject immediately if all invoke slots are in use; otherwise fire-and-forget off
+        // the receive loop so that health/pair events aren't blocked by slow capabilities.
+        if (!_invokeSemaphore.Wait(0))
         {
-            // Raise event for UI notification
-            InvokeReceived?.Invoke(this, request);
-            
-            // Execute the command
-            var response = await capability.ExecuteAsync(request);
-            response.Id = requestId;
-             
-            await SendNodeInvokeResultAsync(requestId, response.Ok, response.Payload, response.Error);
-            stopwatch.Stop();
-            RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
+            _logger.Warn($"[NODE] Invoke slots full, rejecting {command} ({requestId})");
+            await SendNodeInvokeResultAsync(requestId, false, null, "node busy, retry");
+            RaiseInvokeCompleted(requestId, command, false, "node busy, retry", TimeSpan.Zero);
+            return;
         }
-        catch (Exception ex)
+
+        var ct = CancellationToken;
+        _ = Task.Run(async () =>
         {
-            _logger.Error($"[NODE] Command execution failed: {command}", ex);
-            await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed");
-            stopwatch.Stop();
-            RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
-        }
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                // Raise event for UI notification
+                InvokeReceived?.Invoke(this, request);
+
+                // Execute the command
+                var response = await capability.ExecuteAsync(request, ct);
+                response.Id = requestId;
+
+                await SendNodeInvokeResultAsync(requestId, response.Ok, response.Payload, response.Error);
+                stopwatch.Stop();
+                RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Client is shutting down; response is no longer needed
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"[NODE] Command execution failed: {command}", ex);
+                stopwatch.Stop();
+                try { await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed"); } catch { }
+                RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
+            }
+            finally
+            {
+                _invokeSemaphore.Release();
+            }
+        }, CancellationToken.None);
     }
     
     private async Task SendNodeInvokeResultAsync(string requestId, bool success, object? payload, string? error)
@@ -562,7 +595,7 @@ public class WindowsNodeClient : WebSocketClientBase
         _logger.Info($"[HANDSHAKE]   isBootstrap={usingBootstrap}, hasNodeDeviceToken={isPaired}");
         _logger.Info($"[HANDSHAKE]   deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
         _logger.Info($"[HANDSHAKE]   nonce={nonce?[..Math.Min(15, nonce?.Length ?? 0)]}...");
-        _logger.Info($"[HANDSHAKE]   signature format={(_useV2Signature ? "v2" : "v3")}, platform=windows, family=desktop");
+        _logger.Info($"[HANDSHAKE]   signature format={(_useV2Signature ? "v2" : "v3")}, platform={_registration.Platform}, family={_registration.DeviceFamily}");
         _logger.Info($"[HANDSHAKE]   auth: {{{authType}}}");
 
         await SendRawAsync(BuildNodeConnectMessage(nonce, ts));
@@ -586,7 +619,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     : _deviceIdentity.SignConnectPayloadV3(
                         nonce, signedAt, ClientId, "node", "node",
                         Array.Empty<string>(), tokenForSignature,
-                        "windows", "desktop");
+                        _registration.Platform, _registration.DeviceFamily);
             }
             catch (Exception ex)
             {
@@ -609,6 +642,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     id = ClientId,  // Must match what we sign in payload
                     version = _registration.Version,
                     platform = _registration.Platform,
+                    deviceFamily = _registration.DeviceFamily,
                     mode = "node",
                     displayName = _registration.DisplayName
                 },
@@ -976,8 +1010,9 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
         
+        // Clone args to ensure it survives document disposal after fire-and-forget
         var args = paramsEl.TryGetProperty("args", out var argsEl) 
-            ? argsEl 
+            ? argsEl.Clone() 
             : default;
         
         _logger.Info($"Received node.invoke: {command}");
@@ -1000,27 +1035,49 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
         
-        var stopwatch = Stopwatch.StartNew();
-        try
+        // Reject immediately if all invoke slots are in use; otherwise fire-and-forget off
+        // the receive loop so that health/pair events aren't blocked by slow capabilities.
+        if (!_invokeSemaphore.Wait(0))
         {
-            // Raise event for UI notification
-            InvokeReceived?.Invoke(this, request);
-            
-            // Execute the command
-            var response = await capability.ExecuteAsync(request);
-            response.Id = requestId;
-             
-            await SendInvokeResponseAsync(response);
-            stopwatch.Stop();
-            RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
+            _logger.Warn($"Invoke slots full, rejecting {command} ({requestId})");
+            await SendErrorResponseAsync(requestId, "node busy, retry");
+            RaiseInvokeCompleted(requestId, command, false, "node busy, retry", TimeSpan.Zero);
+            return;
         }
-        catch (Exception ex)
+
+        var ct = CancellationToken;
+        _ = Task.Run(async () =>
         {
-            _logger.Error($"Command execution failed: {command}", ex);
-            await SendErrorResponseAsync(requestId, "Command execution failed");
-            stopwatch.Stop();
-            RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
-        }
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                // Raise event for UI notification
+                InvokeReceived?.Invoke(this, request);
+
+                // Execute the command
+                var response = await capability.ExecuteAsync(request, ct);
+                response.Id = requestId;
+
+                await SendInvokeResponseAsync(response);
+                stopwatch.Stop();
+                RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Client is shutting down; response is no longer needed
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Command execution failed: {command}", ex);
+                stopwatch.Stop();
+                try { await SendErrorResponseAsync(requestId, "Command execution failed"); } catch { }
+                RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
+            }
+            finally
+            {
+                _invokeSemaphore.Release();
+            }
+        }, CancellationToken.None);
     }
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)

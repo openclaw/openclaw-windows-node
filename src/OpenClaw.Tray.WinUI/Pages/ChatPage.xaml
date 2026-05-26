@@ -2,7 +2,8 @@
 <Page
     x:Class="OpenClawTray.Pages.ChatPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Enabled">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -71,15 +72,16 @@
                     Visibility="Collapsed"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
             <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
-            <TextBlock Text="Waiting for chat to start…"
+            <TextBlock x:Uid="ChatPage_WaitingTitle"
+                       Text="Waiting for chat to start…"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock x:Name="WaitingStatusText"
+            <TextBlock x:Name="WaitingStatusText" x:Uid="ChatPage_WaitingStatusText"
                        Text="The gateway is connected; the chat surface is still coming online."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360"/>
-            <Button x:Name="RetryChatButton" Content="Retry" Click="OnRetryChat" Visibility="Collapsed"
+            <Button x:Name="RetryChatButton" x:Uid="CanvasRetryButton" Content="Retry" Click="OnRetryChat" Visibility="Collapsed"
                     HorizontalAlignment="Center"/>
         </StackPanel>
 
@@ -95,11 +97,11 @@
         <!-- WebView2 navigation error panel. -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
-                <TextBlock Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"
+                <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                 <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            FontFamily="Consolas" Style="{StaticResource CaptionTextBlockStyle}"/>
-                <Button Content="Open in Browser Instead" Click="OnPopout" HorizontalAlignment="Left"/>
+                <Button x:Uid="WebChatOpenBrowserButton" Content="Open in Browser Instead" Click="OnPopout" HorizontalAlignment="Left"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
-using OpenClawTray.Services.LocalGatewaySetup;
 using System;
 using System.IO;
 using System.Threading;
@@ -216,11 +215,7 @@ public sealed partial class SettingsPage : Page
 
     private void LoadGatewaySection(SettingsManager settings)
     {
-        var localDataRoot = Path.Combine(
-            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
-                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
-        var setupStatePath = Path.Combine(localDataRoot, "setup-state.json");
+        var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
 
         _localGatewayInstalled = File.Exists(setupStatePath)
             || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
@@ -309,40 +304,71 @@ public sealed partial class SettingsPage : Page
         UninstallResultBar.IsOpen = false;
 
         _uninstallCts = new CancellationTokenSource();
+        System.Diagnostics.Process? proc = null;
+        string? jsonOutput = null;
         try
         {
-            if (CurrentApp.Settings == null)
-                throw new InvalidOperationException("Settings not available.");
+            var setupExe = App.ResolveSetupEngineUiPath()
+                ?? throw new FileNotFoundException("SetupEngine.UI not found (searched app dir and sibling project output)");
 
-            var engine = LocalGatewayUninstall.Build(CurrentApp.Settings, registry: CurrentApp.Registry);
-            var uninstallResult = await engine.RunAsync(
-                new LocalGatewayUninstallOptions
-                {
-                    DryRun = false,
-                    ConfirmDestructive = true
-                },
-                _uninstallCts.Token);
+            jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-uninstall-{Guid.NewGuid():N}.json");
 
-            if (uninstallResult.Success)
+            var psi = new System.Diagnostics.ProcessStartInfo(setupExe)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("--headless");
+            psi.ArgumentList.Add("--uninstall");
+            psi.ArgumentList.Add("--confirm-destructive");
+            psi.ArgumentList.Add("--json-output");
+            psi.ArgumentList.Add(jsonOutput);
+
+            proc = System.Diagnostics.Process.Start(psi)!;
+            await proc.WaitForExitAsync(_uninstallCts.Token);
+
+            if (proc.ExitCode == 0)
             {
                 ApplyUninstallUiState(UninstallUiState.Success);
                 UninstallResultBar.Severity = InfoBarSeverity.Success;
                 UninstallResultBar.Title = "Local gateway removed";
-                UninstallResultBar.Message = "Setup is reset; you can re-run the wizard from Onboarding.";
+                UninstallResultBar.Message = "Setup is reset; you can re-run setup from the tray menu.";
                 UninstallResultBar.ActionButton = null;
                 UninstallResultBar.IsOpen = true;
             }
             else
             {
                 ApplyUninstallUiState(UninstallUiState.Failure);
-                var errorSummary = uninstallResult.Errors.Count > 0
-                    ? string.Join("; ", uninstallResult.Errors)
-                    : "Removal completed with unknown errors. Check logs for details.";
-                ShowUninstallError(errorSummary);
+                var errorMsg = "Removal completed with errors. Check logs for details.";
+                if (File.Exists(jsonOutput))
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(jsonOutput);
+                        using var doc = System.Text.Json.JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("message", out var msg) && msg.GetString() is { Length: > 0 } m)
+                            errorMsg = m;
+                    }
+                    catch { /* best effort */ }
+                }
+                ShowUninstallError(errorMsg);
             }
+
+            // Clean up temp file
+            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
         }
         catch (OperationCanceledException)
         {
+            try
+            {
+                if (proc is { HasExited: false })
+                {
+                    proc.Kill(entireProcessTree: true);
+                    await proc.WaitForExitAsync(CancellationToken.None);
+                }
+            }
+            catch { /* best effort cancellation cleanup */ }
+
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
             UninstallResultBar.Title = "Removal cancelled";
@@ -357,6 +383,8 @@ public sealed partial class SettingsPage : Page
         }
         finally
         {
+            proc?.Dispose();
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
         }

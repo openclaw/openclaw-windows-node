@@ -20,7 +20,8 @@ public class MxcCommandRunnerTests
         ISandboxExecutor executor,
         ICommandRunner hostFallback,
         SettingsData settings,
-        bool sandboxAvailable = true)
+        bool sandboxAvailable = true,
+        IOpenClawLogger? logger = null)
     {
         return new MxcCommandRunner(
             executor,
@@ -29,23 +30,27 @@ public class MxcCommandRunnerTests
             () => "C:\\test\\settings",
             () => sandboxAvailable,
             invalidateAvailability: null,
-            NullLogger.Instance);
+            logger ?? NullLogger.Instance);
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_DeniesWhenSandboxUnavailable()
+    public async Task RunAsync_SandboxEnabled_FallsBackToHostWhenExecutorIsUnavailable()
     {
+        // Issue #494: when MXC is enabled but the executor reports unavailable at
+        // runtime, fall back to host instead of denying — older Windows users
+        // need their commands to run uncontained, with a warning in the UI.
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
-        var fallback = new FakeCommandRunner();
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host-ran" },
+        };
         var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("Sandboxing is enabled", result.Stderr);
-        Assert.Contains("test reason", result.Stderr);
-        // Fallback must NOT have been called.
-        Assert.Null(fallback.LastRequest);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host-ran", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
     }
 
     [Fact]
@@ -67,12 +72,13 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_MxcUnavailable_BlocksEvenWithSandboxToggleOff()
+    public async Task RunAsync_MxcUnavailable_FallsBackToHost_WithSandboxToggleOff()
     {
-        // The UI hides the toggle when MXC is unavailable. A persisted toggle=OFF
-        // (from a previous run or different machine) must NOT cause the runner to
-        // silently route to host — the page says "commands blocked" and the
-        // runner must match that promise.
+        // Issue #494: on hosts where MXC is unavailable (Windows 10 / old build /
+        // missing wxc-exec), the agent must still be able to run commands.
+        // Route through the host runner; the Sandbox page UI shows a clear
+        // "running uncontained" warning so the user knows the protection
+        // boundary isn't active.
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner
         {
@@ -86,21 +92,23 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("unavailable", result.Stderr, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("blocked", result.Stderr, StringComparison.OrdinalIgnoreCase);
-        // Neither the sandbox executor nor the host fallback should have run.
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
         Assert.Null(executor.LastRequest);
-        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
-    public async Task RunAsync_MxcUnavailable_BlocksEvenWithSandboxToggleOn()
+    public async Task RunAsync_MxcUnavailable_FallsBackToHost_WithSandboxToggleOn()
     {
-        // Same as the toggle-off variant but with toggle=ON. The unavailability
-        // short-circuit should fire BEFORE we get to the executor path.
+        // Same as the toggle-off variant — the !_isSandboxAvailable() short-circuit
+        // fires before either the toggle check or the executor path, and both
+        // routes lead to the host fallback.
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "MXC missing" };
-        var fallback = new FakeCommandRunner();
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
+        };
         var runner = NewRunner(
             executor,
             fallback,
@@ -109,9 +117,10 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("unavailable", result.Stderr, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(fallback.LastRequest);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Null(executor.LastRequest);
     }
 
     [Fact]
@@ -179,14 +188,17 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxUnavailableException_InvalidatesAvailabilityCache()
+    public async Task RunAsync_SandboxUnavailableException_InvalidatesAvailabilityCacheAndFallsBack()
     {
-        // When the executor throws SandboxUnavailableException, the runner should
-        // invoke its invalidate-availability callback so the next command re-probes.
-        // Handles the case where MXC components were removed between this NodeService
-        // starting up and the agent invoking a command.
+        // When the executor throws SandboxUnavailableException at runtime the
+        // runner invokes its invalidate-availability callback (so the next
+        // command re-probes) AND falls back to the host runner for this call
+        // (issue #494 — don't strand the agent).
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "wxc-exec went missing" };
-        var fallback = new FakeCommandRunner();
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
+        };
         var invalidationCount = 0;
         var runner = new MxcCommandRunner(
             executor,
@@ -199,9 +211,10 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
         Assert.Equal(1, invalidationCount);
-        Assert.Contains("wxc-exec went missing", result.Stderr);
+        Assert.NotNull(fallback.LastRequest);
     }
 
     [Fact]
@@ -281,6 +294,16 @@ public class MxcCommandRunnerTests
         }
     }
 
+    private sealed class CapturingLogger : IOpenClawLogger
+    {
+        public List<string> DebugMessages { get; } = new();
+
+        public void Info(string message) { }
+        public void Debug(string message) => DebugMessages.Add(message);
+        public void Warn(string message) { }
+        public void Error(string message, Exception? ex = null) { }
+    }
+
     [Theory]
     [InlineData(0, null, 0)]              // both unset → 0 (no cap)
     [InlineData(30_000, null, 30_000)]    // agent only
@@ -309,6 +332,35 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_LogsSandboxSettingsSnapshotAndPolicy()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var settings = NewSettings(sandboxEnabled: true);
+        settings.SystemRunAllowOutbound = true;
+        settings.SandboxClipboard = SandboxClipboardMode.Both;
+        settings.SandboxDocumentsAccess = SandboxFolderAccess.ReadOnly;
+        settings.SandboxCustomFolders = new()
+        {
+            new SandboxCustomFolder { Path = "C:\\Code\\repo", Access = SandboxFolderAccess.ReadWrite },
+        };
+        var logger = new CapturingLogger();
+        var runner = NewRunner(executor, fallback, settings, logger: logger);
+
+        await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+        var requestLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request", StringComparison.Ordinal));
+        Assert.Contains("sandboxSettingsJson=", requestLog);
+        Assert.Contains("\"systemRunAllowOutbound\":true", requestLog);
+        Assert.Contains("\"sandboxClipboard\":\"both\"", requestLog);
+        Assert.Contains("\"path\":\"C:\\\\Code\\\\repo\"", requestLog);
+        Assert.Contains("\"access\":\"readWrite\"", requestLog);
+        Assert.Contains("policyJson=", requestLog);
+        Assert.Contains("\"network\":{\"allowOutbound\":true", requestLog);
+        Assert.Contains("\"readwritePaths\":[\"C:\\\\Code\\\\repo\"", requestLog);
+    }
+
+    [Fact]
     public async Task RunAsync_PolicyTimeoutCapsAgentTimeout()
     {
         var executor = new FakeSandboxExecutor();
@@ -325,16 +377,25 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_UnavailableExecutor_DeniesWithReason()
+    public async Task RunAsync_UnavailableExecutor_FallsBackToHost()
     {
-        var executor = new UnavailableSandboxExecutor("test: MXC not installed");
-        var fallback = new FakeCommandRunner();
+        // Issue #494: executor reports unavailable at runtime → fall back to
+        // host runner with a warning, not a -1 deny.
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsUnavailable = true,
+            UnavailableReason = "test: MXC not installed",
+        };
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
+        };
         var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("MXC not installed", result.Stderr);
-        Assert.Null(fallback.LastRequest); // never delegated to host
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
     }
 }

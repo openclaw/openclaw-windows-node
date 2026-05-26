@@ -277,12 +277,6 @@ public class OpenClawGatewayClientTests
 
         public void SetOperatorDeviceId(string? id) => SetPrivateField("_operatorDeviceId", id);
 
-        public string CallBuildMissingScopeFixCommands(string missingScope) =>
-            _client.BuildMissingScopeFixCommands(missingScope);
-
-        public string CallBuildPairingApprovalFixCommands() =>
-            _client.BuildPairingApprovalFixCommands();
-
         public string[] GetRequestedOperatorScopes()
         {
             var role = GetConnectRole();
@@ -567,6 +561,32 @@ public class OpenClawGatewayClientTests
         public void Debug(string message) => Logs.Add($"DEBUG: {message}");
         public void Warn(string message) => Logs.Add($"WARN: {message}");
         public void Error(string message, Exception? ex = null) => Logs.Add($"ERROR: {message}");
+    }
+
+    [Fact]
+    public void ProcessRawMessage_ChatEventLogsRawLengthWithoutPayloadContent()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        var rawMessage = "{\"type\":\"event\",\"event\":\"chat\",\"payload\":{\"sessionKey\":\"main\",\"text\":\"super-secret chat payload\",\"role\":\"user\"}}";
+
+        helper.ProcessRawMessage(rawMessage);
+
+        Assert.Contains(logger.Logs, log => log == $"DEBUG: Chat event received: len={rawMessage.Length}");
+        Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ProcessRawMessage_AgentEventLogsRawLengthWithoutPayloadContent()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        var rawMessage = "{\"type\":\"event\",\"event\":\"agent\",\"payload\":{\"sessionKey\":\"main\",\"stream\":\"tool\",\"data\":{\"phase\":\"call\",\"name\":\"shell\",\"args\":{\"command\":\"super-secret command\"}}}}";
+
+        helper.ProcessRawMessage(rawMessage);
+
+        Assert.Contains(logger.Logs, log => log == $"DEBUG: Agent event received: stream=tool len={rawMessage.Length}");
+        Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -1770,174 +1790,6 @@ public class OpenClawGatewayClientTests
 
         // configured && !hasError → ready (second ready clause fires)
         Assert.Equal("ready", channels[0].Status);
-    }
-
-    // ── BuildMissingScopeFixCommands tests ─────────────────────────────────────
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_NullOrEmptyScope_DefaultsToOperatorWrite()
-    {
-        var helper = new GatewayClientTestHelper();
-
-        var output = helper.CallBuildMissingScopeFixCommands("");
-
-        Assert.Contains("Missing scope: operator.write", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_WhitespaceScope_DefaultsToOperatorWrite()
-    {
-        var helper = new GatewayClientTestHelper();
-
-        var output = helper.CallBuildMissingScopeFixCommands("   ");
-
-        Assert.Contains("Missing scope: operator.write", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_WithSpecificScope_IncludesItInOutput()
-    {
-        var helper = new GatewayClientTestHelper();
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.approvals");
-
-        Assert.Contains("Missing scope: operator.approvals", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_EmptyGrantedScopes_ShowsNoneReportedPlaceholder()
-    {
-        var helper = new GatewayClientTestHelper();
-        // _grantedOperatorScopes is empty by default
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.Contains("(none reported by gateway)", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_WithGrantedScopes_ListsScopesInOutput()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetGrantedScopes(["operator.read", "operator.admin"]);
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.Contains("operator.read, operator.admin", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_WithOperatorDeviceId_IncludesItInOutput()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetOperatorDeviceId("test-device-id-abc123");
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.Contains("test-device-id-abc123", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_NoOperatorDeviceId_ShowsNotReportedPlaceholder()
-    {
-        var helper = new GatewayClientTestHelper();
-        // _operatorDeviceId is null by default
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.Contains("(not reported for this operator connection)", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_WithNodeScopes_ShowsNodeTokenWarning()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetGrantedScopes(["node.read", "node.write"]);
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.Contains("Detected node.* scopes", output);
-        Assert.Contains("node token", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_WithOnlyOperatorScopes_NoNodeTokenWarning()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetGrantedScopes(["operator.read", "operator.write"]);
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.DoesNotContain("node token", output);
-    }
-
-    [Fact]
-    public void BuildMissingScopeFixCommands_NodeScopeIsCaseInsensitive()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetGrantedScopes(["NODE.read"]);
-
-        var output = helper.CallBuildMissingScopeFixCommands("operator.write");
-
-        Assert.Contains("Detected node.* scopes", output);
-    }
-
-    // ── BuildPairingApprovalFixCommands tests ──────────────────────────────────
-
-    [Fact]
-    public void BuildPairingApprovalFixCommands_WithOperatorDeviceId_UsesItInOutput()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetOperatorDeviceId("operator-device-abc");
-
-        var output = helper.CallBuildPairingApprovalFixCommands();
-
-        Assert.Contains("operator-device-abc", output);
-    }
-
-    [Fact]
-    public void BuildPairingApprovalFixCommands_NoOperatorDeviceId_FallsBackToDeviceIdentity()
-    {
-        var helper = new GatewayClientTestHelper();
-        // _operatorDeviceId is null by default
-
-        var fallbackId = helper.GetFallbackDeviceId();
-        var output = helper.CallBuildPairingApprovalFixCommands();
-
-        Assert.Contains(fallbackId, output);
-    }
-
-    [Fact]
-    public void BuildPairingApprovalFixCommands_EmptyGrantedScopes_ShowsNoneYetPlaceholder()
-    {
-        var helper = new GatewayClientTestHelper();
-        // _grantedOperatorScopes is empty by default
-
-        var output = helper.CallBuildPairingApprovalFixCommands();
-
-        Assert.Contains("(none reported by gateway yet)", output);
-    }
-
-    [Fact]
-    public void BuildPairingApprovalFixCommands_WithGrantedScopes_ListsThemInOutput()
-    {
-        var helper = new GatewayClientTestHelper();
-        helper.SetGrantedScopes(["operator.read", "operator.pairing"]);
-
-        var output = helper.CallBuildPairingApprovalFixCommands();
-
-        Assert.Contains("operator.read, operator.pairing", output);
-    }
-
-    [Fact]
-    public void BuildPairingApprovalFixCommands_ContainsApprovalInstructions()
-    {
-        var helper = new GatewayClientTestHelper();
-
-        var output = helper.CallBuildPairingApprovalFixCommands();
-
-        Assert.Contains("pairing required", output);
-        Assert.Contains("Approve this Windows tray device ID", output);
     }
 
     // --- HandleRequestError: pairing required ---

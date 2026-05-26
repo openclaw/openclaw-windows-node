@@ -11,6 +11,8 @@ public class OpenClawChatDataProviderTests
     {
         public bool IsConnected { get; set; }
         public ConnectionStatus CurrentStatus { get; set; }
+        public string? MainSessionKey { get; set; }
+        public bool HasHandshakeSnapshot { get; set; }
         public List<string> SentMessages { get; } = new();
         public List<string?> SentSessionKeys { get; } = new();
         public List<string?> SentSessionIds { get; } = new();
@@ -243,9 +245,15 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task ChatMessageReceived_UserEcho_Ignored()
     {
+        // After sending a message locally, the SSE echo of that same text
+        // should be suppressed (already displayed by SendMessageAsync).
+        var tcs = new TaskCompletionSource();
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => tcs.Task;
         await provider.LoadAsync();
-        snapshots.Clear();
+
+        _ = provider.SendMessageAsync("main", "hi");
+        snapshots.Clear(); // clear the snapshot from SendMessageAsync
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -255,7 +263,36 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
+        // The echo should be suppressed — no new snapshot.
         Assert.Empty(snapshots);
+
+        tcs.SetResult();
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhenGatewayThrows_DoesNotSuppressFutureRemoteUserEcho()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => throw new InvalidOperationException("gateway down");
+        await provider.LoadAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            provider.SendMessageAsync("main", "same text"));
+
+        bridge.SendBehavior = null;
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "same text",
+            State = "final"
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.Equal(2, timeline.Entries.Count(e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "same text"));
     }
 
     [Fact]
@@ -396,23 +433,111 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task CreateThreadAsync_WithInitialMessage_SendsAndReturnsMain()
+    public async Task LoadAsync_FreshInstall_NoSessions_ExposesNotReadyComposeTarget()
     {
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
-        await provider.LoadAsync();
-
-        var thread = await provider.CreateThreadAsync("first message");
-
-        Assert.Equal("main", thread.Id);
-        Assert.Equal("first message", bridge.SentMessages[0]);
+        // Replaces the pre-refactor CreateThreadAsync tests: there is no
+        // create-thread RPC on the gateway, so the provider must never
+        // synthesize a thread out of thin air. Instead, the snapshot exposes
+        // a ChatComposeTarget that tells the UI whether/where to send.
+        var (_, provider, _, _) = CreateProvider();
+        var snap = await provider.LoadAsync();
+        Assert.Empty(snap.Threads);
+        Assert.False(snap.ComposeTarget.IsReady);
+        Assert.Null(snap.ComposeTarget.SessionKey);
     }
 
     [Fact]
-    public async Task CreateThreadAsync_WithoutSession_ReturnsSyntheticMain()
+    public async Task LoadAsync_HandshakeKnown_ZeroSessions_ExposesReadyComposeTarget()
     {
-        var (_, provider, _, _) = CreateProvider();
-        var thread = await provider.CreateThreadAsync(null);
-        Assert.Equal("main", thread.Id);
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        // Real gateways always send sessions.list after handshake (even an
+        // empty list). The provider waits for that signal before flipping
+        // ComposeTarget.IsReady on — otherwise the UI would briefly render
+        // the welcome zero-state for returning users mid-handshake.
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+        var snap = await provider.LoadAsync();
+        Assert.Empty(snap.Threads);
+        Assert.True(snap.ComposeTarget.IsReady);
+        Assert.Equal("agent:main:main", snap.ComposeTarget.SessionKey);
+        Assert.Equal("agent:main:main", snap.DefaultThreadId);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HandshakeComplete_NoSessionKey_SignalsIncompatibleGateway()
+    {
+        // When the gateway completes the handshake but does not advertise
+        // a mainSessionKey (or sessionDefaults.mainKey), the provider must surface
+        // an "Incompatible gateway" connection label and a NotReady compose target
+        // so the UI can show a clear "gateway update required" message rather than
+        // silently blocking send. Relates to issue #459.
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = null;   // incompatible gateway: no session key
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var snap = await provider.LoadAsync();
+
+        Assert.Equal("Incompatible gateway", snap.ConnectionStatus);
+        Assert.False(snap.ComposeTarget.IsReady);
+        Assert.Null(snap.ComposeTarget.SessionKey);
+    }
+
+    [Fact]
+    public async Task StatusChanged_IncompatibleGateway_IsReflectedInSnapshotConnectionLabel()
+    {
+        // Raise Connected with handshake present but no session key; the snapshot
+        // must use "Incompatible gateway" rather than the plain "Connected" label.
+        var (bridge, provider, snapshots, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = null;
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        Assert.NotEmpty(snapshots);
+        Assert.Equal("Incompatible gateway", snapshots[^1].ConnectionStatus);
+        Assert.False(snapshots[^1].ComposeTarget.IsReady);
+    }
+
+    [Fact]
+    public async Task LoadAsync_HandshakeKnownButSessionsNotYetReceived_ComposeTargetNotReady()
+    {
+        // Regression: in the brief window between hello-ok (HasHandshakeSnapshot
+        // becomes true) and the first sessions.list, the provider used to expose
+        // a ready ComposeTarget. The chat root would then synthesize a
+        // compose-only thread and render the welcome zero-state — even for a
+        // returning user whose real sessions were about to be delivered. The
+        // sessions-list-received gate keeps ComposeTarget.IsReady=false until
+        // the gateway has confirmed the session list for this connection.
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        // No RaiseSessions yet — simulate the mid-handshake window.
+        var snap = await provider.LoadAsync();
+        Assert.Empty(snap.Threads);
+        Assert.False(snap.ComposeTarget.IsReady);
+    }
+
+    [Fact]
+    public async Task StatusDisconnected_AfterSessionsReceived_ComposeTargetResetsToNotReady()
+    {
+        // The sessions-list-received gate must reset on disconnect — otherwise
+        // a reconnect would keep ComposeTarget ready against a stale session
+        // list from the previous connection.
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+        Assert.True((await provider.LoadAsync()).ComposeTarget.IsReady);
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        var snap = await provider.LoadAsync();
+        Assert.False(snap.ComposeTarget.IsReady);
     }
 
     // ── Parity additions: streaming, lifecycle, reasoning, history, abort ──
@@ -881,6 +1006,25 @@ public class OpenClawChatDataProviderTests
         var timeline = snapshots[^1].Timelines["main"];
         var entry = Assert.Single(timeline.Entries);
         Assert.Equal("line1\nline2", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ItemEndAfterCommandOutput_PreservesOutput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","itemId":"tool-1","output":"hi\n"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("hi\n", entry.ToolOutput);
     }
 
     [Fact]
@@ -1511,11 +1655,10 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task OnChatMessageReceived_LiveUserPlain_StillIgnored()
+    public async Task OnChatMessageReceived_LiveUserPlain_ShownAsRemoteUser()
     {
-        // Regression guard for MEDIUM 2 fix: ordinary live ``role=user``
-        // echoes (no System prefix) must still be dropped — the local
-        // SendMessageAsync path already added that user entry.
+        // After the cross-client sync fix, non-echo user messages from SSE
+        // (e.g. sent from gateway web UI) should appear in the timeline.
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
         snapshots.Clear();
@@ -1528,7 +1671,11 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
-        Assert.Empty(snapshots);
+        Assert.Single(snapshots);
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+        Assert.Equal("hello there", entry.Text);
     }
 
     // ── chat rubber-duck MEDIUM 4: per-message size cap ──
@@ -1690,5 +1837,385 @@ public class OpenClawChatDataProviderTests
         var timeline = snapshots[^1].Timelines["main"];
         var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
         Assert.Contains("test.txt", userEntry.Text);
+    }
+
+    // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
+
+    [Fact]
+    public async Task SessionsUpdated_WhileConnected_EagerlyLoadsHistory()
+    {
+        // When sessions arrive after the connection is already established,
+        // the provider should automatically load history for new threads.
+        var historyRequested = new List<string?>();
+        var (bridge, provider, snapshots, _) = CreateProvider();
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = key ?? "",
+                Messages = new[]
+                {
+                    new ChatMessageInfo { Role = "assistant", Text = "welcome back", State = "final", Ts = 1 },
+                }
+            });
+        };
+        await provider.LoadAsync();
+
+        // Simulate: status → Connected, then sessions arrive.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        bridge.RaiseSessions(new[] { MainSession() });
+
+        // Give fire-and-forget history load time to complete.
+        await Task.Delay(200);
+
+        Assert.Contains("main", historyRequested);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_WhileDisconnected_DoesNotLoadHistory()
+    {
+        var historyRequested = new List<string?>();
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        };
+        await provider.LoadAsync();
+
+        // Status stays Disconnected, sessions arrive.
+        bridge.RaiseSessions(new[] { MainSession() });
+
+        await Task.Delay(100);
+
+        Assert.Empty(historyRequested);
+    }
+
+    // ── OnStatusChanged: broadened reconnect reloads all timelines ──
+
+    [Fact]
+    public async Task StatusChanged_Connected_ClearsHistoryInFlightAndReloads()
+    {
+        // On (re)connect, all timeline threads should be reloaded, not just
+        // those in _historyLoaded.
+        var historyRequested = new List<string?>();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        };
+        await provider.LoadAsync();
+
+        // Transition to Connected — should reload the "main" timeline even
+        // though LoadHistoryAsync was never successfully called before.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await Task.Delay(200);
+
+        Assert.Contains("main", historyRequested);
+    }
+
+    // ── LoadHistoryAsync retry on failure while connected ──
+
+    [Fact]
+    public async Task LoadHistoryAsync_WhenConnected_RetriesAfterFailure()
+    {
+        var calls = 0;
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ =>
+        {
+            calls++;
+            if (calls == 1)
+                throw new InvalidOperationException("gateway not ready");
+
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = new[]
+                {
+                    new ChatMessageInfo { Role = "assistant", Text = "hello", State = "final", Ts = 1 },
+                }
+            });
+        };
+        await provider.LoadAsync();
+
+        // Mark as connected so retry logic triggers.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+
+        // First call fails.
+        Assert.Contains(notifications, n =>
+            n.Kind == ChatProviderNotificationKind.Error &&
+            n.Message?.Contains("gateway not ready") == true);
+
+        // Wait for the 2-second retry.
+        await Task.Delay(3000);
+
+        // Retry should have succeeded.
+        Assert.True(calls >= 2, $"Expected retry, got {calls} calls");
+        Assert.Contains(snapshots, s =>
+            s.Timelines.TryGetValue("main", out var tl) &&
+            tl.Entries.Any(e => e.Kind == ChatTimelineItemKind.Assistant && e.Text == "hello"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Compose-target fix: covers the "fresh install, zero sessions" path
+    //  that previously stranded optimistic state under a synthetic "main"
+    //  key while the gateway echoed events back under "agent:main:main".
+    //  See OpenClawChatDataProvider.BuildSnapshotLocked for the design.
+    // ─────────────────────────────────────────────────────────────────────
+
+    private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots)
+        CreateConnectedProvider(string canonicalMainKey = "agent:main:main")
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = canonicalMainKey;
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        // Mirror real gateway behavior: after handshake the gateway always
+        // emits sessions.list (even an empty one). The provider needs that
+        // signal to flip ComposeTarget.IsReady on, so that the UI doesn't
+        // briefly render the welcome zero-state for returning users whose
+        // real sessions are about to be delivered.
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+        return (bridge, provider, snapshots);
+    }
+
+    private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
+        CreateConnectedProviderWithNotifications(string canonicalMainKey = "agent:main:main")
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = canonicalMainKey;
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+        return (bridge, provider, snapshots, notifications);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_FreshInstall_OptimisticEntryKeyedByCanonicalSessionKey()
+    {
+        // Regression for the zero-state bug: the user clicks a suggestion on
+        // a fresh install (zero sessions). The optimistic entry must land in
+        // a timeline keyed by the gateway's canonical session key — NOT a
+        // literal "main". Otherwise the gateway's chat events (which come
+        // back keyed by the canonical key) build a SECOND timeline and the
+        // optimistic state is orphaned.
+        var (bridge, provider, snapshots) = CreateConnectedProvider("agent:main:main");
+        await provider.LoadAsync();
+
+        await provider.SendMessageAsync("agent:main:main", "hi");
+
+        Assert.Contains(bridge.SentMessages, m => m == "hi");
+        Assert.Equal("agent:main:main", bridge.SentSessionKeys[0]);
+        var latest = snapshots[^1];
+        Assert.True(latest.Timelines.ContainsKey("agent:main:main"));
+        Assert.False(latest.Timelines.ContainsKey("main"),
+            "The provider must never key timelines by the literal 'main' alias.");
+        Assert.Single(latest.Timelines["agent:main:main"].Entries, e => e.Kind == ChatTimelineItemKind.User);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_FreshInstall_SnapshotExposesComposeOnlyTimeline()
+    {
+        // Before the first SessionsUpdated arrives, the gateway-side session
+        // doesn't exist yet, so Threads is empty. But the optimistic user
+        // bubble must still be reachable to the UI: it's stored under the
+        // compose-target key. The UI then synthesizes a compose-only thread
+        // (matching the canonical key) so the timeline can render.
+        var (_, provider, snapshots) = CreateConnectedProvider("agent:main:main");
+        await provider.LoadAsync();
+
+        await provider.SendMessageAsync("agent:main:main", "hi");
+
+        var latest = snapshots[^1];
+        // BuildSnapshotLocked surfaces a synthetic ChatThread when the
+        // compose key has optimistic entries but isn't materialized yet.
+        Assert.Single(latest.Threads);
+        Assert.Equal("agent:main:main", latest.Threads[0].Id);
+        Assert.Equal("agent:main:main", latest.ComposeTarget.SessionKey);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_AfterFirstSend_PreservesOptimisticTimeline()
+    {
+        // The critical assertion: when the gateway materializes the session
+        // and emits SessionsUpdated with the canonical key, the optimistic
+        // entry that was written under that exact key SURVIVES (no second
+        // empty timeline gets created on top of it).
+        var (bridge, provider, snapshots) = CreateConnectedProvider("agent:main:main");
+        await provider.LoadAsync();
+        await provider.SendMessageAsync("agent:main:main", "hi");
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo { Key = "agent:main:main", IsMain = true, DisplayName = "Main session", Status = "active" }
+        });
+
+        var latest = snapshots[^1];
+        Assert.Single(latest.Threads);
+        Assert.Equal("agent:main:main", latest.Threads[0].Id);
+        var timeline = latest.Timelines["agent:main:main"];
+        Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("hi", timeline.Entries.First(e => e.Kind == ChatTimelineItemKind.User).Text);
+    }
+
+    [Fact]
+    public async Task ChatEvent_WithEmptySessionKey_IsDropped()
+    {
+        // The "main" literal fallback in event handlers was the second half
+        // of the bug: it would silently route mis-routed events to a synthetic
+        // bucket. The fix is to drop the event and log — surfacing protocol
+        // bugs instead of papering over them.
+        var (bridge, provider, snapshots, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
+        await provider.LoadAsync();
+        await provider.SendMessageAsync("agent:main:main", "hi");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "",
+            Role = "assistant",
+            Text = "echo with no session key — should be dropped"
+        });
+
+        // And specifically: no synthetic "main" timeline was created.
+        var latest = snapshots[^1];
+        var timeline = latest.Timelines["agent:main:main"];
+        Assert.False(latest.Timelines.ContainsKey("main"));
+        Assert.DoesNotContain(timeline.Entries, e => e.Text.Contains("echo with no session key"));
+        Assert.Contains(timeline.Entries, e =>
+            e.Kind == ChatTimelineItemKind.Status &&
+            e.Tone == ChatTone.Warning &&
+            e.Text == "Chat_Notification_KeylessEventDroppedMessage");
+        Assert.Single(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+        Assert.DoesNotContain(notifications, n =>
+            (n.Title?.Contains("echo with no session key") ?? false) ||
+            (n.Message?.Contains("echo with no session key") ?? false));
+    }
+
+    [Fact]
+    public async Task KeylessEvents_RaiseOnlyOneDiagnostic()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "",
+            Role = "assistant",
+            Text = "first dropped payload"
+        });
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"second dropped payload"}""", sessionKey: ""));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "",
+            Role = "assistant",
+            Text = "third dropped payload"
+        });
+
+        Assert.Single(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+        Assert.Single(snapshots[^1].Timelines["agent:main:main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Status &&
+            e.Text == "Chat_Notification_KeylessEventDroppedMessage");
+        Assert.DoesNotContain(notifications, n =>
+            (n.Title?.Contains("dropped payload") ?? false) ||
+            (n.Message?.Contains("dropped payload") ?? false));
+    }
+
+    [Fact]
+    public async Task AgentEvent_WithEmptySessionKey_IsDroppedAndDiagnosed()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"secret agent payload"}""", sessionKey: ""));
+
+        var latest = snapshots[^1];
+        var timeline = latest.Timelines["agent:main:main"];
+        Assert.False(latest.Timelines.ContainsKey("main"));
+        Assert.DoesNotContain(timeline.Entries, e => e.Text.Contains("secret agent payload"));
+        Assert.Contains(timeline.Entries, e =>
+            e.Kind == ChatTimelineItemKind.Status &&
+            e.Tone == ChatTone.Warning &&
+            e.Text == "Chat_Notification_KeylessEventDroppedMessage");
+        Assert.Single(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+        Assert.DoesNotContain(notifications, n =>
+            (n.Title?.Contains("secret agent payload") ?? false) ||
+            (n.Message?.Contains("secret agent payload") ?? false));
+    }
+
+    [Fact]
+    public async Task ChatEvent_WithCanonicalSessionKey_AppendsToExistingTimeline()
+    {
+        // Happy path: gateway echoes assistant text back under the same
+        // canonical key the optimistic entry used. They land in one timeline.
+        var (bridge, provider, snapshots) = CreateConnectedProvider("agent:main:main");
+        await provider.LoadAsync();
+        await provider.SendMessageAsync("agent:main:main", "hi");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "agent:main:main",
+            Role = "assistant",
+            Text = "hello back",
+            State = "final"
+        });
+
+        var latest = snapshots[^1];
+        var timeline = latest.Timelines["agent:main:main"];
+        Assert.Contains(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User && e.Text == "hi");
+        Assert.Contains(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant && e.Text == "hello back");
+        Assert.False(latest.Timelines.ContainsKey("main"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_PreHandshake_GatewayClientRefusesViaProvider()
+    {
+        // Provider-level proof that the upstream guard fires: SendMessageAsync
+        // bubbles the InvalidOperationException raised by the gateway client's
+        // ResolveEffectiveSessionKey when no canonical sessionKey is known.
+        // (The pure-function unit test for the helper itself lives in
+        //  OpenClawGatewayClientSessionKeyTests in OpenClaw.Shared.Tests.)
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.IsConnected = true;
+        bridge.SendBehavior = (_, key, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new InvalidOperationException(
+                    "chat.send requires a sessionKey, but the gateway handshake has not resolved one yet.");
+            return Task.CompletedTask;
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await provider.SendMessageAsync("", "hi"));
+    }
+
+    [Fact]
+    public async Task ResolveDefaultThreadId_PrefersIsMain_NotLiteralStringMatch()
+    {
+        // The pre-refactor ResolveDefaultThreadIdLocked heuristic compared
+        // thread.Id to the literal "main", which would silently lose the
+        // default when the canonical key was "agent:main:main".
+        var (bridge, provider, snapshots) = CreateConnectedProvider("agent:main:main");
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo { Key = "agent:main:other", IsMain = false, DisplayName = "Other" },
+            new SessionInfo { Key = "agent:main:main",  IsMain = true,  DisplayName = "Main" }
+        });
+        var snap = await provider.LoadAsync();
+        Assert.Equal("agent:main:main", snap.DefaultThreadId);
+    }
+
+    private sealed class TestLogger : OpenClaw.Shared.IOpenClawLogger
+    {
+        public void Debug(string message) { }
+        public void Info(string message) { }
+        public void Warn(string message) { }
+        public void Error(string message, Exception? ex = null) { }
     }
 }

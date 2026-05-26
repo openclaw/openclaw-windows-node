@@ -143,10 +143,10 @@ public sealed partial class SandboxPage : Page
     /// MXC availability AND the current sandbox toggle state. Three visual states:
     ///   1. Available + ON   → 🛡 "Sandbox is on" + toggle visible
     ///   2. Available + OFF  → ⚠ "Sandbox is off — high risk" + toggle visible
-    ///   3. Unavailable      → ⚠ "Sandbox unavailable — commands blocked" + toggle hidden
-    /// When MXC is unavailable the toggle is hidden AND the runner fails closed
-    /// (MxcCommandRunner.RunAsync short-circuits to a deny response). The user
-    /// cannot opt out of the block on an unsupported machine — they must fix MXC.
+    ///   3. Unavailable      → ⚠ "Sandbox unavailable — commands run uncontained" + toggle hidden
+    /// When MXC is unavailable the toggle is hidden and MxcCommandRunner falls
+    /// back to host execution with a warning so older Windows builds are not
+    /// completely blocked.
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
@@ -159,8 +159,8 @@ public sealed partial class SandboxPage : Page
         if (!available)
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox unavailable — commands blocked";
-            SandboxStatusSubtext.Text = "Containment isn't available on this PC.";
+            SandboxStatusTitle.Text = "Node Sandbox unavailable — commands run uncontained";
+            SandboxStatusSubtext.Text = "Containment isn't available on this PC, so commands run without sandbox protection.";
             SandboxEnabledToggle.Visibility = Visibility.Collapsed;
             return;
         }
@@ -185,7 +185,7 @@ public sealed partial class SandboxPage : Page
     /// Shows or hides the prominent "Sandbox unavailable" InfoBar based on availability,
     /// and categorizes the failure mode so we can suggest a relevant action:
     ///   - Windows build/UBR too old → "Open Windows Update"
-    ///   - wxc-exec.exe or run-command.cjs missing → "Show install instructions"
+    ///   - wxc-exec.exe missing → "Show install instructions"
     ///   - Anything else → no primary action, just the learn-more hyperlink
     /// </summary>
     private void UpdateUnavailableActionBar(OpenClaw.Shared.Mxc.MxcAvailability availability)
@@ -205,15 +205,14 @@ public sealed partial class SandboxPage : Page
             r.Contains("Windows build", StringComparison.OrdinalIgnoreCase) ||
             r.Contains("Windows UBR", StringComparison.OrdinalIgnoreCase));
 
-        var isSetupIssue = !availability.IsWxcExecResolvable
-            || availability.RunCommandScriptPath is null;
+        var isSetupIssue = !availability.IsWxcExecResolvable;
 
         if (isWindowsIssue)
         {
             UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
             UnavailableActionMessage.Text =
-                $"{reasonText}\n\nMXC sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
-                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds).";
+                $"{reasonText}\n\nCommands run uncontained on this machine — sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
+                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.";
             UnavailablePrimaryButton.Content = "Open Windows Update";
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
@@ -222,16 +221,16 @@ public sealed partial class SandboxPage : Page
         {
             UnavailableActionBar.Title = "Sandboxing components are missing";
             UnavailableActionMessage.Text =
-                $"{reasonText}\n\nThe MXC bridge script or the wxc-exec binary couldn't be located. " +
-                "If this is a developer build, run `npm ci` at the repository root. " +
-                "Otherwise reinstall the companion app.";
+                $"{reasonText}\n\nThe wxc-exec binary couldn't be located, so commands run uncontained. " +
+                "If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. " +
+                "Otherwise reinstall the companion app to restore sandboxing.";
             UnavailablePrimaryButton.Content = "Show install instructions";
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else
         {
-            UnavailableActionBar.Title = "Sandbox unavailable";
+            UnavailableActionBar.Title = "Sandbox unavailable — commands run uncontained";
             UnavailableActionMessage.Text = reasonText;
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }

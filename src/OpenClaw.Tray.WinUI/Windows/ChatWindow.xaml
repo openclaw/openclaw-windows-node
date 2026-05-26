@@ -69,11 +69,11 @@
         <!-- WebView2 navigation error panel. -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12" VerticalAlignment="Center">
-                <TextBlock Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"
+                <TextBlock x:Uid="ChatWindow_WebChatUnavailable" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                 <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            FontFamily="Consolas" Style="{StaticResource CaptionTextBlockStyle}"/>
-                <Button Content="Retry" Click="OnRetry" HorizontalAlignment="Left"/>
+                <Button x:Uid="ChatWindow_Retry" Content="Retry" Click="OnRetry" HorizontalAlignment="Left"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>

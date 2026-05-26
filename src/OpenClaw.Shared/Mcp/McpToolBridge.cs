@@ -270,6 +270,22 @@ public class McpToolBridge
             "Get tray menu state (status, session count, node count). Returns array of menu items.",
         ["app.search"] =
             "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
+        ["app.dashboard.url"] =
+            "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
+
+        // location.*
+        ["location.get"] =
+            "Get the current device location via Windows.Devices.Geolocation. Args: accuracy ('default'|'high', optional, default 'default'), maxAge (int ms, optional, default 30000 — return a cached fix if it is younger than this), locationTimeout (int ms, optional, default 10000). Returns { latitude, longitude, accuracy (meters), timestamp (ms since epoch) }. Requires Location capability to be enabled and the user to have granted location permission to the app.",
+
+        // device.*
+        ["device.info"] =
+            "Get static device metadata. No args. Returns { deviceName, modelIdentifier, systemName, systemVersion, appVersion, appBuild, locale }.",
+        ["device.status"] =
+            "Get live system health data. Args: sections (string[], optional — subset of ['os','cpu','memory','disk','battery']; omit for all). Returns a map with a 'collectedAt' timestamp and one key per requested section. Each section may contain an 'error' field if collection failed. Also includes legacy fields: thermal, storage, network, uptimeSeconds.",
+
+        // browser.*
+        ["browser.proxy"] =
+            "Proxy an HTTP request to the local OpenClaw browser control host (CDP server) running on gateway port + 2. Args: path (string, required — a local control path like '/json/list' or '/json/activate/<id>'), method ('GET'|'POST'|'DELETE', default 'GET'), body (JSON object, POST/DELETE only), query (object, appended as query params), profile (string, optional browser profile), timeoutMs (int, default 20000, max 120000). Returns { result, files? } where files is present if the response included local file paths. Requires the gateway URL to have an explicit port and the browser control host to be running.",
     };
 
     private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)

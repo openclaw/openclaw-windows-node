@@ -198,6 +198,7 @@ public class NodeRegistration
     public string Id { get; set; } = "";
     public string Version { get; set; } = "";
     public string Platform { get; set; } = "windows";
+    public string DeviceFamily { get; set; } = "Windows";
     public string DisplayName { get; set; } = "";
     public List<string> Capabilities { get; set; } = new();
     public List<string> Commands { get; set; } = new();

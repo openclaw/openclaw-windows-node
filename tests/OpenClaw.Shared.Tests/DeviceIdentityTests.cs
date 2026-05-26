@@ -153,6 +153,31 @@ public class DeviceIdentityIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    [Fact]
+    public void BuildConnectPayloadV3_NormalizesPlatformMetadataForGatewayAuth()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var identity = new DeviceIdentity(dir);
+            identity.Initialize();
+
+            var payload = identity.BuildConnectPayloadV3(
+                nonce: "challenge-nonce",
+                signedAtMs: 1711648000000,
+                clientId: "node-host",
+                clientMode: "node",
+                role: "node",
+                scopes: Array.Empty<string>(),
+                authToken: "mytoken123",
+                platform: "  Windows  ",
+                deviceFamily: "  Windows  ");
+
+            Assert.EndsWith("|windows|windows", payload);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [IntegrationFact]
     public void BuildConnectPayloadV2_HasCorrectFormat()
     {

@@ -46,7 +46,27 @@ public sealed partial class CronPage : Page
         if (client != null)
         {
             ConnectionInfoBar.IsOpen = false;
-            _cronLoading.BeginInitialRefresh();
+
+            // If we already have loaded data (returning to this page), keep showing it
+            // while refreshing in the background
+            if (_cronLoading.HasLoaded)
+            {
+                _cronLoading.BeginRefresh();
+                if (_editingJobId == null)
+                    RebuildJobCards();
+            }
+            else if (_appState.CronList.HasValue)
+            {
+                // First visit but AppState has cached data from gateway — process it
+                _cronLoading.BeginRefresh();
+                UpdateFromGateway(_appState.CronList.Value);
+                if (_appState.CronStatus.HasValue)
+                    ParseCronStatus(_appState.CronStatus.Value);
+            }
+            else
+            {
+                _cronLoading.BeginInitialRefresh();
+            }
             UpdateCronLoadingVisuals();
             _ = client.RequestCronListAsync();
             _ = client.RequestCronStatusAsync();
@@ -150,18 +170,18 @@ public sealed partial class CronPage : Page
         _ = CurrentApp.GatewayClient.RemoveCronJobAsync(jobId);
     }
 
-    private void OnToggleEnabledClick(object sender, RoutedEventArgs e)
+    private void OnEnabledToggleChanged(object sender, RoutedEventArgs e)
     {
-        var jobId = (sender as Button)?.Tag as string;
+        if (sender is not ToggleSwitch ts) return;
+        var jobId = ts.Tag as string;
         if (string.IsNullOrEmpty(jobId)) return;
         if (!_cronLoading.CanEdit) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
 
         var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm != null)
-        {
-            _ = CurrentApp.GatewayClient.UpdateCronJobAsync(jobId, new { enabled = !vm.IsEnabled });
-        }
+        if (vm == null) return;
+        if (ts.IsOn == vm.IsEnabled) return; // no-op (e.g., programmatic init)
+        _ = CurrentApp.GatewayClient.UpdateCronJobAsync(jobId, new { enabled = ts.IsOn });
     }
 
     // --- Job creation/edit form ---
@@ -716,15 +736,13 @@ public sealed partial class CronPage : Page
                 if (status == "ok" || status == "success")
                 {
                     vm.LastResult = "success";
-                    vm.ResultBadgeBackground = new SolidColorBrush(Color.FromArgb(40, 76, 175, 80));
-                    vm.ResultBadgeForeground = new SolidColorBrush(Colors.LimeGreen);
+                    vm.ResultBadgeForeground = (SolidColorBrush)Application.Current.Resources["SystemFillColorSuccessBrush"];
                     vm.ResultBadgeVisibility = Visibility.Visible;
                 }
                 else if (!string.IsNullOrEmpty(status) && status != "none")
                 {
                     vm.LastResult = status;
-                    vm.ResultBadgeBackground = new SolidColorBrush(Color.FromArgb(40, 224, 85, 69));
-                    vm.ResultBadgeForeground = new SolidColorBrush(Color.FromArgb(255, 224, 85, 69));
+                    vm.ResultBadgeForeground = (SolidColorBrush)Application.Current.Resources["SystemFillColorCriticalBrush"];
                     vm.ResultBadgeVisibility = Visibility.Visible;
                 }
             }
@@ -733,15 +751,13 @@ public sealed partial class CronPage : Page
                 if (okEl.ValueKind == JsonValueKind.True)
                 {
                     vm.LastResult = "success";
-                    vm.ResultBadgeBackground = new SolidColorBrush(Color.FromArgb(40, 76, 175, 80));
-                    vm.ResultBadgeForeground = new SolidColorBrush(Colors.LimeGreen);
+                    vm.ResultBadgeForeground = (SolidColorBrush)Application.Current.Resources["SystemFillColorSuccessBrush"];
                     vm.ResultBadgeVisibility = Visibility.Visible;
                 }
                 else if (okEl.ValueKind == JsonValueKind.False)
                 {
                     vm.LastResult = "fail";
-                    vm.ResultBadgeBackground = new SolidColorBrush(Color.FromArgb(40, 224, 85, 69));
-                    vm.ResultBadgeForeground = new SolidColorBrush(Color.FromArgb(255, 224, 85, 69));
+                    vm.ResultBadgeForeground = (SolidColorBrush)Application.Current.Resources["SystemFillColorCriticalBrush"];
                     vm.ResultBadgeVisibility = Visibility.Visible;
                 }
             }
@@ -778,6 +794,7 @@ public sealed partial class CronPage : Page
             }
 
             _jobs = jobs;
+            _cronLoading.Complete(jobs.Count);
 
             // Restore expanded state from persisted set
             foreach (var vm in _jobs)
@@ -789,9 +806,7 @@ public sealed partial class CronPage : Page
             if (jobs.Count > 0)
             {
                 // Don't rebuild cards if we're currently editing inline (would lose the form)
-            _cronLoading.Complete(jobs.Count);
-
-            if (_editingJobId == null)
+                if (_editingJobId == null)
                     RebuildJobCards();
             }
             else
@@ -823,9 +838,10 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
-            SchedulerToggle.IsOn = enabled;
             SchedulerStatusText.Text = enabled ? "Enabled" : "Disabled";
-            SchedulerStatusIndicator.Fill = new SolidColorBrush(enabled ? Colors.LimeGreen : Colors.Gray);
+            SchedulerStatusIndicator.Fill = enabled
+                ? (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"]
+                : (Brush)Application.Current.Resources["SystemFillColorNeutralBrush"];
             StorePathText.Text = storePath;
             NextWakeText.Text = $"· Next wake: {nextWake}";
         });
@@ -1077,10 +1093,11 @@ public sealed partial class CronPage : Page
 
     private Grid? FindParentGrid()
     {
-        // The page's main Grid is inside the ScrollViewer
-        if (this.Content is ScrollViewer sv && sv.Content is Grid g)
-            return g;
-        return null;
+        // The page's main Grid (with row definitions) is named PageRootGrid;
+        // it sits inside an outer wrapper Grid inside the ScrollViewer. Returning
+        // the wrapper instead would lose the row definitions and cause the form
+        // to overlap other rows of the inner grid.
+        return PageRootGrid;
     }
 
     // --- Card building ---
@@ -1102,6 +1119,8 @@ public sealed partial class CronPage : Page
             Margin = new Thickness(0, 2, 0, 0),
             CornerRadius = new CornerRadius(6),
             Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(1),
             Opacity = vm.CardOpacity
         };
 
@@ -1110,15 +1129,15 @@ public sealed partial class CronPage : Page
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // Row 0: Name + badges + chevron
-        var headerGrid = new Grid();
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 0: name
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 1: schedule
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 2: enabled
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 3: result
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 4: running
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 5: spacer
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 6: chevron
+        // Row 0: Name + badges + spacer + toggle + chevron
+        var headerGrid = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 0: name
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 1: schedule
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 2: result
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 3: running
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 4: spacer
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 5: toggle
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 6: chevron
 
         var nameText = new TextBlock { Text = vm.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(nameText, 0);
@@ -1128,32 +1147,22 @@ public sealed partial class CronPage : Page
         {
             CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+            Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
         };
         scheduleBadge.Child = new TextBlock { Text = vm.Schedule, FontSize = 10, FontFamily = new FontFamily("Consolas"), Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
         Grid.SetColumn(scheduleBadge, 1);
         headerGrid.Children.Add(scheduleBadge);
 
-        var enabledBadge = new Border
-        {
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Background = vm.EnabledBadgeBackground
-        };
-        enabledBadge.Child = new TextBlock { Text = vm.EnabledText, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = vm.EnabledBadgeForeground };
-        Grid.SetColumn(enabledBadge, 2);
-        headerGrid.Children.Add(enabledBadge);
-
         if (vm.ResultBadgeVisibility == Visibility.Visible)
         {
             var resultBadge = new Border
             {
-                CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 2, 5, 2), Margin = new Thickness(4, 0, 0, 0),
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Background = vm.ResultBadgeBackground
+                Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
             };
             resultBadge.Child = new TextBlock { Text = vm.LastResult, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = vm.ResultBadgeForeground };
-            Grid.SetColumn(resultBadge, 3);
+            Grid.SetColumn(resultBadge, 2);
             headerGrid.Children.Add(resultBadge);
         }
 
@@ -1164,12 +1173,31 @@ public sealed partial class CronPage : Page
             {
                 CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Background = new SolidColorBrush(Color.FromArgb(40, 33, 150, 243))
+                Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
             };
-            runningBadge.Child = new TextBlock { Text = "⏳ Running", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromArgb(255, 100, 181, 246)) };
-            Grid.SetColumn(runningBadge, 4);
+            runningBadge.Child = new TextBlock { Text = "Running", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = (Brush)Application.Current.Resources["SystemFillColorAttentionBrush"] };
+            Grid.SetColumn(runningBadge, 3);
             headerGrid.Children.Add(runningBadge);
         }
+
+        // Inline enabled/disabled toggle (right-aligned, before chevron).
+        // Stop tapped from bubbling so the card doesn't toggle expand state.
+        var enabledToggle = new ToggleSwitch
+        {
+            Tag = vm.Id,
+            IsOn = vm.IsEnabled,
+            OnContent = string.Empty,
+            OffContent = string.Empty,
+            MinWidth = 0,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 8, 0),
+            IsEnabled = _cronLoading.CanEdit
+        };
+        ToolTipService.SetToolTip(enabledToggle, vm.IsEnabled ? "Disable job" : "Enable job");
+        enabledToggle.Toggled += OnEnabledToggleChanged;
+        enabledToggle.Tapped += (s, ev) => { ev.Handled = true; };
+        Grid.SetColumn(enabledToggle, 5);
+        headerGrid.Children.Add(enabledToggle);
 
         var chevron = new FontIcon { Glyph = "\uE70D", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"] };
         Grid.SetColumn(chevron, 6);
@@ -1250,8 +1278,6 @@ public sealed partial class CronPage : Page
             runNowBtn.Opacity = 0.4;
         }
         buttonsPanel.Children.Add(runNowBtn);
-
-        buttonsPanel.Children.Add(MakeActionButton(vm.ToggleEnabledGlyph, vm.ToggleEnabledText, vm.Id, OnToggleEnabledClick));
 
         var editBtn = MakeActionButton("\uE70F", "Edit", vm.Id, OnEditJobClick);
         if (jobDisabled) editBtn.Opacity = 0.4;
@@ -1573,7 +1599,7 @@ public sealed partial class CronPage : Page
         var metaParts = new List<string>();
         if (!string.IsNullOrEmpty(model)) metaParts.Add(model);
         if (totalTokens > 0) metaParts.Add($"{totalTokens:N0} tokens");
-        if (delivered) metaParts.Add("delivered ✓");
+        if (delivered) metaParts.Add("delivered");
         else if (!string.IsNullOrEmpty(deliveryStatus)) metaParts.Add(deliveryStatus);
 
         if (metaParts.Count > 0)
@@ -1690,16 +1716,8 @@ public sealed partial class CronPage : Page
         public bool IsEnabled { get; set; } = true;
         public bool IsExpanded { get; set; } = false;
         public double CardOpacity => IsEnabled ? 1.0 : 0.5;
-        public string EnabledText => IsEnabled ? "enabled" : "disabled";
-        public SolidColorBrush EnabledBadgeBackground => IsEnabled
-            ? new SolidColorBrush(Color.FromArgb(40, 76, 175, 80))
-            : new SolidColorBrush(Color.FromArgb(40, 230, 168, 23));
-        public SolidColorBrush EnabledBadgeForeground => IsEnabled
-            ? new SolidColorBrush(Colors.LimeGreen)
-            : new SolidColorBrush(Color.FromArgb(255, 230, 168, 23));
         public string LastRunTime { get; set; } = "—";
         public string LastResult { get; set; } = "";
-        public SolidColorBrush ResultBadgeBackground { get; set; } = new(Colors.Gray);
         public SolidColorBrush ResultBadgeForeground { get; set; } = new(Colors.White);
         public Visibility ResultBadgeVisibility { get; set; } = Visibility.Collapsed;
         public string NextRunTime { get; set; } = "—";
@@ -1719,9 +1737,6 @@ public sealed partial class CronPage : Page
         public Visibility WakeModeVisibility { get; set; } = Visibility.Collapsed;
         public string DeliveryText { get; set; } = "";
         public Visibility DeliveryVisibility { get; set; } = Visibility.Collapsed;
-        public string ToggleEnabledLabel => IsEnabled ? "⏸ Disable" : "▶ Enable";
-        public string ToggleEnabledGlyph => IsEnabled ? "\uE7E8" : "\uE768";
-        public string ToggleEnabledText => IsEnabled ? "Disable" : "Enable";
         public string Description { get; set; } = "";
         public Visibility DescriptionVisibility { get; set; } = Visibility.Collapsed;
         public string DetailLine { get; set; } = "";

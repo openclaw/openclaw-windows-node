@@ -45,7 +45,10 @@ public sealed partial class HubWindow : WindowEx
     public VoiceService? VoiceServiceInstance { get; set; }
     /// <summary>When true, ChatPage should auto-start voice recording on next navigation. Consumed (reset to false) by ChatPage.</summary>
     public bool PendingAutoStartVoice { get; set; }
+    /// <summary>Session key the chat surface should select on its next mount. Consumed (cleared) by ChatPage.</summary>
+    public string? PendingChatSessionKey { get; set; }
     public string? NodeFullDeviceId { get; set; }
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
     // Cached gateway data — pages read these on navigation
     public SessionInfo[]? LastSessions { get; private set; }
@@ -78,11 +81,12 @@ public sealed partial class HubWindow : WindowEx
         Closed += (s, e) =>
         {
             IsClosed = true;
+            _gatewayNavHideTimer?.Stop();
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
         };
 
-        this.SetWindowSize(900, 650);
+        this.SetWindowSize(1000, 650);
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
@@ -99,7 +103,11 @@ public sealed partial class HubWindow : WindowEx
         {
             AppModel.PropertyChanged += OnAppModelChanged;
             UpdateTitleBarStatus(AppModel.Status);
-            UpdateGatewayNavVisibility(AppModel.Status == ConnectionStatus.Connected);
+            ScheduleGatewayNavVisibilityForStatus(AppModel.Status, debounceDisconnected: false);
+
+            // Apply agents list that may have arrived before this window opened.
+            if (AppModel.AgentsList.HasValue)
+                RebuildAgentNavItems(AppModel.AgentsList.Value);
         }
     }
 
@@ -121,7 +129,7 @@ public sealed partial class HubWindow : WindowEx
                         DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                         {
                             if (IsClosed) return;
-                            UpdateGatewayNavVisibility(AppModel!.Status == ConnectionStatus.Connected);
+                            ScheduleGatewayNavVisibilityForStatus(AppModel!.Status, debounceDisconnected: true);
                         });
                 });
                 break;
@@ -172,9 +180,19 @@ public sealed partial class HubWindow : WindowEx
         NavView.OpenPaneLength = Math.Clamp(desired, minPane, maxPane);
     }
 
+    private void OnNavContentHostSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);
+    }
+
     private void OnTitleBarStatusTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
         NavigateTo("connection");
+    }
+
+    private void OnNavPaneToggleButtonClick(object sender, RoutedEventArgs e)
+    {
+        NavView.IsPaneOpen = !NavView.IsPaneOpen;
     }
 
     /// <summary>
@@ -368,6 +386,50 @@ public sealed partial class HubWindow : WindowEx
         _ => new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
     };
 
+    private void ScheduleGatewayNavVisibilityForStatus(ConnectionStatus status, bool debounceDisconnected)
+    {
+        switch (GatewayNavVisibilityDebouncePolicy.GetDecision(status, debounceDisconnected))
+        {
+            case GatewayNavVisibilityDecision.ShowNow:
+                _gatewayNavHideTimer?.Stop();
+                UpdateGatewayNavVisibility(connected: true);
+                break;
+            case GatewayNavVisibilityDecision.HideNow:
+                _gatewayNavHideTimer?.Stop();
+                UpdateGatewayNavVisibility(connected: false);
+                break;
+            case GatewayNavVisibilityDecision.ScheduleHide:
+                ScheduleGatewayNavHide();
+                break;
+        }
+    }
+
+    private void ScheduleGatewayNavHide()
+    {
+        if (DispatcherQueue is null)
+        {
+            UpdateGatewayNavVisibility(connected: false);
+            return;
+        }
+
+        _gatewayNavHideTimer ??= DispatcherQueue.CreateTimer();
+        _gatewayNavHideTimer.Interval = GatewayNavVisibilityDebouncePolicy.DisconnectHideDelay;
+        _gatewayNavHideTimer.Tick -= OnGatewayNavHideTimerTick;
+        _gatewayNavHideTimer.Tick += OnGatewayNavHideTimerTick;
+        _gatewayNavHideTimer.Stop();
+        _gatewayNavHideTimer.Start();
+    }
+
+    private void OnGatewayNavHideTimerTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (IsClosed || AppModel is null)
+            return;
+
+        if (GatewayNavVisibilityDebouncePolicy.ShouldHideAfterDelay(AppModel.Status))
+            UpdateGatewayNavVisibility(connected: false);
+    }
+
     private void UpdateGatewayNavVisibility(bool connected)
     {
         try
@@ -378,6 +440,7 @@ public sealed partial class HubWindow : WindowEx
             NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
+            NavCron.Visibility = vis;
             NavAdvanced.Visibility = vis;
             NavGatewaySeparator.Visibility = vis;
 
@@ -703,7 +766,6 @@ public sealed partial class HubWindow : WindowEx
             // Actions
             new() { Icon = "💬", Title = "Open Chat Window", Subtitle = "Open standalone chat", Tag = "chat" },
             new() { Icon = "🌐", Title = "Open Dashboard", Subtitle = "Open web dashboard", Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
-            new() { Icon = "📤", Title = "Quick Send", Subtitle = "Send a quick message", Execute = () => QuickSendAction?.Invoke() },
         };
 
         // Toggle commands
@@ -774,9 +836,6 @@ public sealed partial class HubWindow : WindowEx
             NavigateTo(cmd.Tag);
         }
     }
-
-    /// <summary>Action to open the QuickSend dialog, set by App.xaml.cs.</summary>
-    public Action? QuickSendAction { get; set; }
 
     #region High Contrast icon fallback
 

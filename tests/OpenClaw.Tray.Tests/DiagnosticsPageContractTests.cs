@@ -309,6 +309,21 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void DebugPage_MainAndDetailViewsUseCanonicalCenteredWidthPattern()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"x:Name=""MainView""[\s\S]{0,500}<Grid HorizontalAlignment=""Stretch"">[\s\S]{0,300}<StackPanel HorizontalAlignment=""Stretch""[\s\S]{0,160}MaxWidth=""900""[\s\S]{0,160}Padding=""24,24,24,24"""),
+            xaml);
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"x:Name=""DetailView""[\s\S]{0,400}HorizontalAlignment=""Stretch""[\s\S]{0,300}<Grid MaxWidth=""900""[\s\S]{0,160}HorizontalAlignment=""Stretch""[\s\S]{0,160}Padding=""24,24,24,24"""),
+            xaml);
+    }
+
+    [Fact]
     public void DebugPage_UsesFluentIconCatalog_NotLiteralGlyphs()
     {
         // Per docs/design/iconography.md and AGENT_HANDOFF.md "drift
@@ -354,72 +369,6 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("Reconfigure", xaml);
         Assert.Contains("\u2026", xaml); // U+2026 HORIZONTAL ELLIPSIS
         Assert.DoesNotContain("Relaunch first-run setup", xaml);
-    }
-
-    [Fact]
-    public void DebugPage_PageDimensionsMatchPermissions()
-    {
-        // Page uses MaxWidth=900 + HorizontalAlignment=Center on the
-        // content container, wrapped in a HorizontalAlignment=Stretch
-        // outer container. The Stretch wrapper is REQUIRED — without it,
-        // a content element placed directly inside a ScrollViewer ignores
-        // MaxWidth on wide windows (Center collapses to natural content
-        // width). This has regressed across several sessions; the contract
-        // pins all three pieces of the pattern.
-        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
-        Assert.Contains("MaxWidth=\"900\"", xaml);
-        Assert.Contains("HorizontalAlignment=\"Center\"", xaml);
-        // " Width=" (space-prefixed) distinguishes the fixed-width regression
-        // from the valid MaxWidth="900" attribute we just asserted above.
-        Assert.DoesNotContain(" Width=\"900\"", xaml);
-        Assert.DoesNotContain("MaxWidth=\"1064\"", xaml);
-    }
-
-    [Fact]
-    public void DebugPage_WrapsCenteredContentInStretchingContainer()
-    {
-        // WinUI 3 quirk: a MaxWidth + HorizontalAlignment=Center element
-        // placed directly inside a ScrollViewer is given the ScrollViewer's
-        // full width but then collapses to its natural content size
-        // (which on wide settings pages is "however wide the cards
-        // measure to be" — often filling the entire ScrollViewer).
-        // The fix is to wrap the centered element in a Grid with
-        // HorizontalAlignment=Stretch so the centered child has a known
-        // parent rect to center within. Mirrors PermissionsPage.xaml.
-        // This is the SPECIFIC regression the user has hit multiple
-        // times across sessions — guard it explicitly.
-        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
-        // The string "HorizontalAlignment=\"Stretch\"" must appear on
-        // BOTH the MainView wrapper Grid AND the DetailView outer Grid.
-        // Easiest: count occurrences; we expect at least 2 (one per view).
-        var stretchCount = System.Text.RegularExpressions.Regex.Matches(
-            xaml, "HorizontalAlignment=\"Stretch\"").Count;
-        Assert.True(stretchCount >= 2,
-            $"DebugPage.xaml must wrap MainView and DetailView centered " +
-            $"content in a HorizontalAlignment=Stretch container so MaxWidth=900 " +
-            $"is honored on wide windows. Found {stretchCount} Stretch declarations; " +
-            $"expected at least 2 (one per view).");
-    }
-
-    [Fact]
-    public void DebugPage_DetailViewMatchesMainViewPadding()
-    {
-        // The DetailView Padding must match the MainView ScrollViewer
-        // Padding so the centered 900-wide column doesn't visually
-        // shift (jump up or change horizontal position) when the user
-        // enters or leaves the detail view. Both sides must be
-        // "24,24,24,24" — earlier "24,12,24,24" on the DetailView
-        // caused a visible 12px vertical jolt that the user described
-        // as the views having "different widths".
-        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
-        // MainView ScrollViewer.
-        Assert.Contains("x:Name=\"MainView\"", xaml);
-        // DetailView Grid with matching uniform 24,24,24,24 padding.
-        Assert.Matches(
-            new System.Text.RegularExpressions.Regex(
-                @"x:Name=""DetailView""[\s\S]{0,200}Padding=""24,24,24,24"""),
-            xaml);
-        Assert.DoesNotContain("Padding=\"24,12,24,24\"", xaml);
     }
 
     [Fact]
@@ -536,6 +485,45 @@ public sealed class DiagnosticsPageContractTests
         // Internal route mapping unchanged.
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
         Assert.Contains("\"debug\" => typeof(DebugPage)", cs);
+    }
+
+    [Fact]
+    public void HubWindow_NavPaneToggle_LivesInTitleBarAndHidesBuiltInToggle()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
+        Assert.Contains("x:Uid=\"NavPaneToggleButton\"", xaml);
+        Assert.Contains("x:Name=\"NavPaneToggleButton\"", xaml);
+        Assert.Contains("Click=\"OnNavPaneToggleButtonClick\"", xaml);
+        Assert.Contains("AutomationProperties.Name=\"Toggle navigation pane\"", xaml);
+        Assert.Contains("ToolTipService.ToolTip=\"Toggle navigation pane\"", xaml);
+        Assert.Contains("MinWidth=\"32\" MinHeight=\"32\"", xaml);
+        Assert.Contains("Padding=\"9,0,140,0\"", xaml);
+        Assert.Contains("Background=\"Transparent\"", xaml);
+        Assert.Contains("BorderBrush=\"Transparent\"", xaml);
+        Assert.Contains("BorderThickness=\"0\"", xaml);
+        Assert.Contains("FontSize=\"16\"", xaml);
+        Assert.Contains("Text=\"\ud83e\udd9e\" FontSize=\"18\"", xaml);
+        Assert.Contains("Translation=\"0,-1,0\"", xaml);
+        Assert.Contains("IsPaneToggleButtonVisible=\"False\"", xaml);
+        Assert.Contains("x:Name=\"NavContentHost\"", xaml);
+        Assert.Contains("x:Name=\"NavContentClip\"", xaml);
+        Assert.Contains("SizeChanged=\"OnNavContentHostSizeChanged\"", xaml);
+        Assert.DoesNotContain("x:Name=\"TitleContentDivider\"", xaml);
+
+        var titleBarIndex = xaml.IndexOf("x:Name=\"AppTitleBar\"", StringComparison.Ordinal);
+        var toggleIndex = xaml.IndexOf("x:Name=\"NavPaneToggleButton\"", StringComparison.Ordinal);
+        var iconIndex = xaml.IndexOf("Text=\"\ud83e\udd9e\"", StringComparison.Ordinal);
+        var navViewIndex = xaml.IndexOf("x:Name=\"NavView\"", StringComparison.Ordinal);
+        Assert.True(titleBarIndex >= 0, "The hub title bar must exist.");
+        Assert.True(toggleIndex > titleBarIndex, "The nav pane toggle must live inside the title bar block.");
+        Assert.True(toggleIndex < iconIndex, "The nav pane toggle must appear before the app icon/title.");
+        Assert.True(toggleIndex < navViewIndex, "The nav pane toggle must be outside the NavigationView pane.");
+
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        Assert.Contains("private void OnNavPaneToggleButtonClick", cs);
+        Assert.Contains("NavView.IsPaneOpen = !NavView.IsPaneOpen;", cs);
+        Assert.Contains("private void OnNavContentHostSizeChanged", cs);
+        Assert.Contains("NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);", cs);
     }
 
     [Fact]

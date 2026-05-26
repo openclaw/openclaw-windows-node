@@ -4,9 +4,13 @@ A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered p
 
 *Made with 🦞 love by Scott Hanselman and Molty*
 
-![Molty - Windows Tray App](docs/molty1.png)
+![OpenClaw Windows Hub tray menu](docs/images/openclawwindows1.png)
 
-![Molty - Command Palette](docs/molty2.png)
+![OpenClaw Windows Hub command center](docs/images/openclawwindows2.png)
+
+![OpenClaw Windows Hub pairing and connection settings](docs/images/openclawwindows3.png)
+
+![OpenClaw Windows Hub activity and diagnostics](docs/images/openclawwindows4.png)
 
 ## Projects
 
@@ -393,7 +397,7 @@ openclaw-windows-node/
 │   ├── OpenClaw.Shared.Tests/     # Shared library tests
 │   └── OpenClaw.Tray.Tests/       # Tray app helper tests
 ├── docs/
-│   └── molty1.png                 # Screenshot
+│   └── images/                    # Screenshots
 ├── openclaw-windows-node.slnx     # Solution file
 ├── README.md
 ├── LICENSE
@@ -405,6 +409,8 @@ openclaw-windows-node/
 Settings are stored in:
 - Settings: `%APPDATA%\OpenClawTray\settings.json`
 - Logs: `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`
+- Easy-button setup summary: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`
+- Easy-button setup JSONL: `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`
 
 Default gateway: `ws://localhost:18789`
 

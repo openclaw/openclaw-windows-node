@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.WelcomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="56,64,56,40">
+
+        <!-- Top: Logo + Title + Description -->
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
+            <Image x:Name="LobsterHero"
+                   Source="ms-appx:///Assets/Setup/Lobster.png"
+                   Width="170" Height="170"
+                   HorizontalAlignment="Center" />
+            <TextBlock Text="Get started with OpenClaw"
+                       FontSize="28" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+            <TextBlock TextWrapping="Wrap" TextAlignment="Center"
+                       FontSize="14" Opacity="0.7" MaxWidth="440"
+                       HorizontalAlignment="Center"
+                       Text="OpenClaw lets agents run commands, read and write files, and capture screenshots on this PC. Only set it up on a computer you trust." />
+        </StackPanel>
+
+        <!-- Bottom: Info card + Button + Link (pushed to bottom) -->
+        <StackPanel Grid.Row="2" Spacing="16">
+
+            <!-- Info card -->
+            <Border x:Name="InfoCard" CornerRadius="8" Padding="20,18,20,18">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                    <Border Width="22" Height="22" CornerRadius="11"
+                            Background="#60C8F8" VerticalAlignment="Top">
+                        <TextBlock Text="i" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="Black"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock x:Name="InfoText" Grid.Column="1" TextWrapping="Wrap" FontSize="13"
+                               Opacity="0.85" />
+                </Grid>
+            </Border>
+
+            <!-- Start button -->
+            <Button x:Name="StartButton"
+                    Content="Install new WSL Gateway"
+                    HorizontalAlignment="Stretch"
+                    Height="44" FontSize="15" FontWeight="SemiBold"
+                    Click="StartButton_Click">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
+                </Button.Resources>
+            </Button>
+
+            <!-- Advanced setup link -->
+            <HyperlinkButton Content="Advanced setup"
+                             HorizontalAlignment="Center"
+                             Foreground="#60C8F8" FontSize="14"
+                             Click="AdvancedSetup_Click" />
+
+        </StackPanel>
+
+    </Grid>
+</Page>

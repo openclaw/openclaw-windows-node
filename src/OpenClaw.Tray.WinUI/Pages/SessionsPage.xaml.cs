@@ -82,10 +82,23 @@ public sealed partial class SessionsPage : Page
 
     public void UpdateSessions(SessionInfo[] sessions)
     {
-        _allSessions = sessions;
-        _sessionLoading.Complete(sessions.Length);
+        // Drop cron-spawned sessions (key shape "agent:<id>:cron" — slot is
+        // the third ":"-separated part). They have their own home on the
+        // Cron page; surfacing them here overcrowds the conversation list.
+        _allSessions = sessions
+            .Where(s => !IsCronSession(s))
+            .ToArray();
+        _sessionLoading.Complete(_allSessions.Length);
         RebuildChannelTabs();
         ApplyFilter();
+    }
+
+    private static bool IsCronSession(SessionInfo s)
+    {
+        if (string.IsNullOrEmpty(s.Key)) return false;
+        var parts = s.Key.Split(':');
+        return parts.Length >= 3
+               && string.Equals(parts[2], "cron", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RebuildChannelTabs()
@@ -165,21 +178,17 @@ public sealed partial class SessionsPage : Page
 
     private SessionViewModel ToViewModel(SessionInfo s)
     {
-        var isActive = s.Status == "active" || s.Status == "running";
-
-        // Detail line: Provider · Model · Channel
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(s.Provider)) parts.Add(s.Provider!);
         if (!string.IsNullOrWhiteSpace(s.Model)) parts.Add(s.Model!);
         if (!string.IsNullOrWhiteSpace(s.Channel)) parts.Add(s.Channel!);
 
-        // Token display
         var hasTokens = s.InputTokens > 0 || s.OutputTokens > 0;
         var tokensText = hasTokens
             ? $"↓{FormatTokenCount(s.InputTokens)} / ↑{FormatTokenCount(s.OutputTokens)}"
             : "";
 
-        // Context % — ContextTokens is the window size, TotalTokens is usage
+        // ContextTokens is the window size, TotalTokens is usage.
         double contextPercent = 0;
         if (s.ContextTokens > 0 && s.TotalTokens > 0)
             contextPercent = Math.Min(100.0, (double)s.TotalTokens / s.ContextTokens * 100.0);
@@ -190,12 +199,55 @@ public sealed partial class SessionsPage : Page
             DisplayName = !string.IsNullOrWhiteSpace(s.DisplayName) ? s.DisplayName! : s.Key,
             AgeText = s.AgeText,
             DetailLine = parts.Count > 0 ? string.Join(" · ", parts) : "",
-            StatusColor = new SolidColorBrush(isActive ? Colors.LimeGreen : Colors.Gray),
+            StatusBrush = ResolveStatusBrush(s),
+            StatusTooltip = ResolveStatusTooltip(s),
             TokensText = tokensText,
             ContextPercent = contextPercent,
             HasTokenData = hasTokens || contextPercent > 0,
             CanEdit = _sessionLoading.CanEdit,
         };
+    }
+
+    private static Brush ResolveStatusBrush(SessionInfo s)
+    {
+        var status = s.Status?.Trim().ToLowerInvariant();
+        if (status is "error" or "failed" or "failure")
+            return s_criticalBrush.Value;
+        if (s.AbortedLastRun)
+            return s_cautionBrush.Value;
+        if (status is "active" or "running")
+            return s_successBrush.Value;
+        return s_neutralBrush.Value;
+    }
+
+    private static string ResolveStatusTooltip(SessionInfo s)
+    {
+        var status = s.Status?.Trim().ToLowerInvariant();
+        if (status is "error" or "failed" or "failure") return "Error";
+        if (s.AbortedLastRun) return "Aborted last run";
+        if (status is "active" or "running") return "Running";
+        return "Idle";
+    }
+
+    private static readonly Lazy<Brush> s_successBrush =
+        new(() => (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"]);
+    private static readonly Lazy<Brush> s_cautionBrush =
+        new(() => (Brush)Application.Current.Resources["SystemFillColorCautionBrush"]);
+    private static readonly Lazy<Brush> s_criticalBrush =
+        new(() => (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]);
+    private static readonly Lazy<Brush> s_neutralBrush =
+        new(() => (Brush)Application.Current.Resources["SystemFillColorNeutralBrush"]);
+
+    private void OnOpenChat(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string key)
+        {
+            if (CurrentApp.ActiveHubWindow is HubWindow hub)
+            {
+                hub.PendingChatSessionKey = key;
+            }
+            ((IAppCommands)CurrentApp).Navigate("chat", "sessions");
+        }
     }
 
     private void ChannelSelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -205,37 +257,51 @@ public sealed partial class SessionsPage : Page
         ApplyFilter();
     }
 
+    private static string? ResolveSessionKey(object sender)
+    {
+        if (sender is FrameworkElement fe)
+        {
+            if (fe.DataContext is SessionViewModel vm && !string.IsNullOrEmpty(vm.Key))
+                return vm.Key;
+            if (fe.Tag is string tag && !string.IsNullOrEmpty(tag))
+                return tag;
+            if (fe is MenuFlyoutItem mfi && mfi.Parent is MenuFlyout mf
+                && mf.Target is FrameworkElement target)
+            {
+                if (target.DataContext is SessionViewModel targetVm && !string.IsNullOrEmpty(targetVm.Key))
+                    return targetVm.Key;
+                if (target.Tag is string targetTag && !string.IsNullOrEmpty(targetTag))
+                    return targetTag;
+            }
+        }
+        return null;
+    }
+
     private async void OnResetSession(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string key)
-        {
-            var client = CurrentApp.GatewayClient;
-            if (client == null) { ShowDisconnected(); return; }
-            try { await client.ResetSessionAsync(key); }
-            catch (Exception ex) { ShowActionFailure("Reset failed", ex); }
-        }
+        if (ResolveSessionKey(sender) is not string key) return;
+        var client = CurrentApp.GatewayClient;
+        if (client == null) { ShowDisconnected(); return; }
+        try { await client.ResetSessionAsync(key); }
+        catch (Exception ex) { ShowActionFailure("Reset failed", ex); }
     }
 
     private async void OnDeleteSession(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string key)
-        {
-            var client = CurrentApp.GatewayClient;
-            if (client == null) { ShowDisconnected(); return; }
-            try { await client.DeleteSessionAsync(key); }
-            catch (Exception ex) { ShowActionFailure("Delete failed", ex); }
-        }
+        if (ResolveSessionKey(sender) is not string key) return;
+        var client = CurrentApp.GatewayClient;
+        if (client == null) { ShowDisconnected(); return; }
+        try { await client.DeleteSessionAsync(key); }
+        catch (Exception ex) { ShowActionFailure("Delete failed", ex); }
     }
 
     private async void OnCompactSession(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string key)
-        {
-            var client = CurrentApp.GatewayClient;
-            if (client == null) { ShowDisconnected(); return; }
-            try { await client.CompactSessionAsync(key); }
-            catch (Exception ex) { ShowActionFailure("Compact failed", ex); }
-        }
+        if (ResolveSessionKey(sender) is not string key) return;
+        var client = CurrentApp.GatewayClient;
+        if (client == null) { ShowDisconnected(); return; }
+        try { await client.CompactSessionAsync(key); }
+        catch (Exception ex) { ShowActionFailure("Compact failed", ex); }
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e)
@@ -255,19 +321,14 @@ public sealed partial class SessionsPage : Page
         _ = client.RequestSessionsAsync();
         _ = client.RequestModelsListAsync();
 
-        if (RefreshButton.Content is StackPanel)
+        if (RefreshLabel is not null)
         {
-            // Temporarily update the text inside the StackPanel
-            var sp = (StackPanel)RefreshButton.Content;
-            if (sp.Children.Count > 1 && sp.Children[1] is TextBlock tb)
-            {
-                tb.Text = "Refreshing...";
-                _refreshTimer?.Stop();
-                _refreshTimer = DispatcherQueue.CreateTimer();
-                _refreshTimer.Interval = TimeSpan.FromSeconds(1);
-                _refreshTimer.Tick += (t, a) => { tb.Text = "Refresh"; _refreshTimer.Stop(); };
-                _refreshTimer.Start();
-            }
+            RefreshLabel.Text = "Refreshing...";
+            _refreshTimer?.Stop();
+            _refreshTimer = DispatcherQueue.CreateTimer();
+            _refreshTimer.Interval = TimeSpan.FromSeconds(1);
+            _refreshTimer.Tick += (t, a) => { RefreshLabel.Text = "Refresh"; _refreshTimer.Stop(); };
+            _refreshTimer.Start();
         }
     }
 
@@ -302,7 +363,8 @@ public class SessionViewModel
     public string DisplayName { get; set; } = "";
     public string AgeText { get; set; } = "";
     public string DetailLine { get; set; } = "";
-    public SolidColorBrush StatusColor { get; set; } = new(Colors.Gray);
+    public Brush StatusBrush { get; set; } = new SolidColorBrush(Colors.Gray);
+    public string StatusTooltip { get; set; } = "Idle";
     public string TokensText { get; set; } = "";
     public double ContextPercent { get; set; }
     public bool HasTokenData { get; set; }

@@ -2,62 +2,195 @@
 <Page
     x:Class="OpenClawTray.Pages.WorkspacePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:helpers="using:OpenClawTray.Helpers"
+    SizeChanged="OnPageSizeChanged">
 
-    <Grid RowSpacing="8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <Page.Resources>
+        <Style x:Key="WorkspaceMarkdownH1Style"
+               BasedOn="{StaticResource SubtitleTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,8,0,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        </Style>
+        <Style x:Key="WorkspaceMarkdownH2Style"
+               BasedOn="{StaticResource BaseTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,12,0,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        </Style>
+        <Style x:Key="WorkspaceMarkdownH3Style"
+               BasedOn="{StaticResource BodyStrongTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,12,0,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        </Style>
+        <Style x:Key="WorkspaceMarkdownParagraphStyle"
+               BasedOn="{StaticResource BodyTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        </Style>
+        <Style x:Key="WorkspaceMarkdownListItemStyle"
+               BasedOn="{StaticResource BodyTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="12,0,0,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        </Style>
+        <Style x:Key="WorkspaceCodeTextStyle"
+               BasedOn="{StaticResource CaptionTextBlockStyle}"
+               TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        </Style>
+        <Style x:Key="WorkspaceCodeBlockStyle"
+               BasedOn="{StaticResource WorkspaceCodeTextStyle}"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,4,0,12"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </Style>
+    </Page.Resources>
 
-        <!-- Header: title + path + refresh -->
-        <Grid Grid.Row="0" Padding="24,16,24,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+    <!-- ContentRoot.Width is set in code-behind to min(available, MaxWidth)
+         so the column stays centered with growing white side bars. -->
+    <Grid>
+        <Grid x:Name="ContentRoot"
+              HorizontalAlignment="Center"
+              MaxWidth="900"
+              Padding="24,16,24,16"
+              RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <TextBlock x:Uid="WorkspacePage_TextBlock_22" Grid.Column="0" Text="📂 Workspace" Style="{StaticResource TitleTextBlockStyle}"
-                       VerticalAlignment="Center" Margin="0,0,16,0"/>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Uid="WorkspacePage_TextBlock_22" Grid.Column="0"
+                           Text="Workspace"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           VerticalAlignment="Center"/>
+                <Button x:Name="RefreshButton" Grid.Column="1" Click="RefreshButton_Click"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Refresh, Mode=OneTime}"
+                                  FontSize="16"
+                                  IsTextScaleFactorEnabled="False"/>
+                        <TextBlock x:Uid="WorkspacePage_TextBlock_34" Text="Refresh"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
 
-            <TextBlock x:Name="WorkspacePathText" Grid.Column="1"
+            <TextBlock x:Name="WorkspacePathText" Grid.Row="1"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       VerticalAlignment="Center"/>
+                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
 
-            <Button x:Name="RefreshButton" Grid.Column="2" Click="RefreshButton_Click"
-                    VerticalAlignment="Center">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                    <TextBlock x:Uid="WorkspacePage_TextBlock_34" Text="Refresh"/>
+            <StackPanel Grid.Row="2">
+                <StackPanel x:Name="LoadingPanel" Visibility="Collapsed"
+                            HorizontalAlignment="Center" Spacing="8" Margin="0,24,0,0">
+                    <ProgressRing x:Name="LoadingRing" IsActive="False" Width="24" Height="24"
+                                  HorizontalAlignment="Center"/>
+                    <TextBlock x:Uid="WorkspacePage_LoadingText"
+                               Text="Loading workspace files…"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center"/>
                 </StackPanel>
-            </Button>
-        </Grid>
-
-        <!-- Loading / Info -->
-        <StackPanel Grid.Row="1" Padding="24,0">
-            <StackPanel x:Name="LoadingPanel" Visibility="Collapsed"
-                        HorizontalAlignment="Center" Spacing="8" Margin="0,24,0,0">
-                <ProgressRing x:Name="LoadingRing" IsActive="False" Width="24" Height="24"
-                              HorizontalAlignment="Center"/>
-                <TextBlock Text="Loading workspace files…"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           HorizontalAlignment="Center"/>
+                <InfoBar x:Uid="FallbackInfoBar" x:Name="FallbackInfoBar"
+                         IsOpen="False" IsClosable="False"
+                         Severity="Informational"
+                         Title="Workspace files"/>
             </StackPanel>
-            <InfoBar x:Uid="FallbackInfoBar" x:Name="FallbackInfoBar"
-                     IsOpen="False" IsClosable="False"
-                     Severity="Informational"
-                     Title="Workspace files"/>
-        </StackPanel>
 
-        <!-- File tabs — one tab per workspace file -->
-        <TabView x:Name="FileTabs" Grid.Row="2"
-                 IsAddTabButtonVisible="False"
-                 TabWidthMode="SizeToContent"
-                 SelectionChanged="FileTabs_SelectionChanged"
-                 Visibility="Collapsed"/>
+            <Border x:Name="BodyGrid" Grid.Row="3" Visibility="Collapsed"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="280"/>
+                        <ColumnDefinition Width="1"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="1"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Grid.Column="0" Padding="16,12,16,12">
+                        <TextBlock x:Uid="WorkspacePage_FilesHeader"
+                                   Text="Files"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+
+                    <Grid Grid.Row="0" Grid.Column="2" Padding="16,8,12,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SelectedFileText" Grid.Column="0"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <controls:SelectorBar x:Name="ViewModeSelector" Grid.Column="1"
+                                              Visibility="Collapsed"
+                                              SelectionChanged="ViewModeSelector_SelectionChanged">
+                            <controls:SelectorBarItem x:Uid="WorkspacePage_ViewMode_Rendered"
+                                                      x:Name="ViewModeRenderedItem"
+                                                      Text="Rendered"
+                                                      IsSelected="True"/>
+                            <controls:SelectorBarItem x:Uid="WorkspacePage_ViewMode_Raw"
+                                                      x:Name="ViewModeRawItem"
+                                                      Text="Raw"/>
+                        </controls:SelectorBar>
+                    </Grid>
+
+                    <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                            Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                    <Border Grid.Row="2" Grid.Column="1"
+                            Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                    <ListView x:Name="FileList" Grid.Row="2" Grid.Column="0"
+                              SelectionMode="Single"
+                              SelectionChanged="FileList_SelectionChanged"
+                              ShowsScrollingPlaceholders="False"
+                              Padding="4,4,4,8">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Padding" Value="12,8"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                    </ListView>
+
+                    <ScrollViewer Grid.Row="2" Grid.Column="2"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  Padding="16,12,16,16">
+                        <ContentPresenter x:Name="FileBodyPresenter"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

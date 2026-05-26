@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mcp;
 using Xunit;
 
@@ -462,6 +463,58 @@ public class McpToolBridgeTests
         Assert.DoesNotContain("stt.transcribe", toolNames);
         Assert.DoesNotContain("stt.listen", toolNames);
         Assert.DoesNotContain("stt.status", toolNames);
+    }
+
+    [Fact]
+    public async Task ToolsList_SystemRun_Present_WhenSystemCapabilityIncludesRunCommands()
+    {
+        // Default SystemCapability (includeRunCommands: true) — the
+        // "Run system tools" toggle is on. tools/list advertises both
+        // system.run and system.run.prepare.
+        var caps = new List<INodeCapability>
+        {
+            new SystemCapability(OpenClaw.Shared.NullLogger.Instance),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var toolNames = new HashSet<string>();
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+            toolNames.Add(t.GetProperty("name").GetString()!);
+
+        Assert.Contains("system.run", toolNames);
+        Assert.Contains("system.run.prepare", toolNames);
+        // The rest of the system category is always present.
+        Assert.Contains("system.notify", toolNames);
+        Assert.Contains("system.which", toolNames);
+    }
+
+    [Fact]
+    public async Task ToolsList_SystemRun_Absent_WhenSystemCapabilityExcludesRunCommands()
+    {
+        // "Run system tools" toggle off: NodeService constructs
+        // SystemCapability(includeRunCommands: false). The MCP tools/list
+        // must drop the two run commands but keep the rest of the system
+        // category (notify/which/execApprovals).
+        var caps = new List<INodeCapability>
+        {
+            new SystemCapability(OpenClaw.Shared.NullLogger.Instance, includeRunCommands: false),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var toolNames = new HashSet<string>();
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+            toolNames.Add(t.GetProperty("name").GetString()!);
+
+        Assert.DoesNotContain("system.run", toolNames);
+        Assert.DoesNotContain("system.run.prepare", toolNames);
+        Assert.Contains("system.notify", toolNames);
+        Assert.Contains("system.which", toolNames);
+        Assert.Contains("system.execApprovals.get", toolNames);
+        Assert.Contains("system.execApprovals.set", toolNames);
     }
 
     [Fact]

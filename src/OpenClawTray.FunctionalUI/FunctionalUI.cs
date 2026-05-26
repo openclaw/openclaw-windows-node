@@ -802,6 +802,14 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
     private int _renderPending;
     private bool _disposed;
 
+    /// <summary>
+    /// When true, the control will not auto-dispose on <c>Unloaded</c>.
+    /// Set this when the host lives inside a page with
+    /// <c>NavigationCacheMode="Enabled"</c> so the component tree
+    /// survives page navigation.
+    /// </summary>
+    public bool SuppressAutoDispose { get; set; }
+
     public FunctionalHostControl()
     {
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -810,7 +818,7 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
         VerticalContentAlignment = VerticalAlignment.Stretch;
         Background = ThemeResources.ResolveBrush("SolidBackgroundFillColorBaseBrush");
         IsTabStop = false;
-        Unloaded += (_, _) => Dispose();
+        Unloaded += (_, _) => { if (!SuppressAutoDispose) Dispose(); };
     }
 
     public void Mount(Component component)
@@ -1425,6 +1433,7 @@ internal sealed class UiRenderer(Action requestRender)
         return new GridLength(double.Parse(value, CultureInfo.InvariantCulture), GridUnitType.Pixel);
     }
 
+
     private void SyncChildren(Panel panel, IReadOnlyList<Element?> elements, string path, List<Action> effects)
     {
         var renderedChildren = elements
@@ -1447,6 +1456,21 @@ internal sealed class UiRenderer(Action requestRender)
         var desiredChildren = renderedChildren.Select(child => child.Control).ToArray();
         if (ChildrenMatch(panel, desiredChildren))
             return;
+
+        // Fast path: when panel is empty (e.g. pre-cleared), just add children
+        // directly. Avoids EnsureChildAt → RemoveFromParent which scans ALL
+        // cached controls — O(controls × children) with no benefit when
+        // children have no parent.
+        if (panel.Children.Count == 0)
+        {
+            foreach (var child in desiredChildren)
+            {
+                if (child is FrameworkElement { Parent: { } })
+                    RemoveFromParent(child);
+                panel.Children.Add(child);
+            }
+            return;
+        }
 
         var desiredSet = new HashSet<UIElement>(desiredChildren);
         for (var i = panel.Children.Count - 1; i >= 0; i--)

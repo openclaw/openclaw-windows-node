@@ -1,7 +1,6 @@
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 using OpenClaw.Connection;
-using OpenClawTray.Services.LocalGatewaySetup;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -306,6 +305,52 @@ public class StartupSetupStateTests
     }
 
     [Fact]
+    public async Task ClassifyAsync_AcceptsNumericSetupStatePhase()
+    {
+        using var temp = TempSettings.Create();
+        var localDataPath = Path.Combine(temp.Path, "local-data");
+        Directory.CreateDirectory(localDataPath);
+        File.WriteAllText(
+            Path.Combine(localDataPath, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","Phase":13,"Status":7}""");
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        var wsl = new ThrowingWslCommandRunner();
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: localDataPath);
+
+        Assert.Equal(SetupExistingGatewayKind.AppOwnedLocalWsl, kind);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_RejectsNumericNotStartedSetupStatePhase()
+    {
+        using var temp = TempSettings.Create();
+        var localDataPath = Path.Combine(temp.Path, "local-data");
+        Directory.CreateDirectory(localDataPath);
+        File.WriteAllText(
+            Path.Combine(localDataPath, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","Phase":0,"Status":0}""");
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        var wsl = new ThrowingWslCommandRunner();
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: localDataPath);
+
+        Assert.Equal(SetupExistingGatewayKind.None, kind);
+    }
+
+    [Fact]
     public void RequiresSetup_ReturnsFalse_WhenMcpEnabledEvenWithNodeModeAndNoNodeToken()
     {
         // Regression guard: the original code returned !EnableMcpServer as the
@@ -323,15 +368,13 @@ public class StartupSetupStateTests
     }
 
     [Fact]
-    public void DefaultGatewayUrl_MatchesGuardConstant()
+    public void DefaultGatewayUrl_IsLocalhost18789()
     {
-        // OnboardingExistingConfigGuard.DefaultGatewayUrl is the single source
-        // of truth referenced by StartupSetupState.HasNonDefaultGatewayUrl.
-        // This test exists so a future change to the constant (or a refactor
-        // that re-introduces a duplicate) is caught immediately.
-        Assert.Equal(
-            "ws://localhost:18789",
-            OpenClawTray.Onboarding.Services.OnboardingExistingConfigGuard.DefaultGatewayUrl);
+        // StartupSetupState uses "ws://localhost:18789" as the default gateway URL.
+        // A non-default URL indicates the user has configured an external gateway.
+        // This test guards against accidentally changing the constant.
+        var settings = new SettingsManager(Path.GetTempPath()) { GatewayUrl = "ws://localhost:18789" };
+        Assert.True(StartupSetupState.RequiresSetup(settings, Path.GetTempPath()));
     }
 
     private static void StoreDeviceToken(string dataPath)

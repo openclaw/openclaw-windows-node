@@ -50,7 +50,9 @@ public sealed class AsyncListLoadingPageWiringTests
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "UsagePage.xaml.cs");
 
-        Assert.Contains("cost.Days != _currentPeriodDays", source);
+        Assert.Contains("ShouldApplyUsageCost", source);
+        Assert.Contains("Math.Abs(cost.Days - _currentPeriodDays) <= 1", source);
+        Assert.Contains("return !_dailyCostLoading.HasLoaded", source);
         Assert.Contains("cost.UpdatedAt < _lastAppliedUsageCostUpdatedAtUtc", source);
         Assert.Contains("_dailyCostLoading.BeginInitialRefresh()", source);
     }

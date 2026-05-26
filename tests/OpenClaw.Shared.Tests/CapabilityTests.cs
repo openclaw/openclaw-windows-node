@@ -756,6 +756,83 @@ public class SystemCapabilityTests
             });
         }
     }
+
+    [Fact]
+    public void Commands_IncludeRunByDefault()
+    {
+        // Backward-compatibility: the no-arg path used by every existing test
+        // and call-site must keep advertising system.run + system.run.prepare.
+        var cap = new SystemCapability(NullLogger.Instance);
+        Assert.Contains("system.run", cap.Commands);
+        Assert.Contains("system.run.prepare", cap.Commands);
+        Assert.Contains("system.notify", cap.Commands);
+        Assert.Contains("system.which", cap.Commands);
+        Assert.Contains("system.execApprovals.get", cap.Commands);
+        Assert.Contains("system.execApprovals.set", cap.Commands);
+    }
+
+    [Fact]
+    public void Commands_OmitRunWhenIncludeRunCommandsFalse()
+    {
+        // "Run system tools" toggle off: the run commands disappear from the
+        // declared command list (the handshake's connect message + MCP
+        // tools/list) while the rest of the system category stays.
+        var cap = new SystemCapability(NullLogger.Instance, includeRunCommands: false);
+        Assert.DoesNotContain("system.run", cap.Commands);
+        Assert.DoesNotContain("system.run.prepare", cap.Commands);
+        Assert.Contains("system.notify", cap.Commands);
+        Assert.Contains("system.which", cap.Commands);
+        Assert.Contains("system.execApprovals.get", cap.Commands);
+        Assert.Contains("system.execApprovals.set", cap.Commands);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SystemRun_ReturnsDisabledErrorWhenIncludeRunCommandsFalse()
+    {
+        // Even if a stale gateway allowlist still routes system.run to us
+        // (commands are snapshotted at pairing-approval time), the capability
+        // must refuse before any V2/legacy dispatch runs.
+        var cap = new SystemCapability(NullLogger.Instance, includeRunCommands: false);
+        var resp = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "rn1",
+            Command = "system.run",
+            Args = Parse("""{"cmd":"echo hello"}""")
+        });
+        Assert.False(resp.Ok);
+        Assert.Contains("Run system tools", resp.Error ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SystemRunPrepare_ReturnsDisabledErrorWhenIncludeRunCommandsFalse()
+    {
+        var cap = new SystemCapability(NullLogger.Instance, includeRunCommands: false);
+        var resp = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "rp1",
+            Command = "system.run.prepare",
+            Args = Parse("""{"cmd":"echo hello"}""")
+        });
+        Assert.False(resp.Ok);
+        Assert.Contains("Run system tools", resp.Error ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OtherSystemCommands_StillWorkWhenIncludeRunCommandsFalse()
+    {
+        // system.notify must keep working — the toggle only gates the run
+        // commands. Notifications and the exec-approval reader/writer stay
+        // available so the user can still inspect their policy from the
+        // operator console.
+        var cap = new SystemCapability(NullLogger.Instance, includeRunCommands: false);
+        var resp = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "n1",
+            Command = "system.notify",
+            Args = Parse("""{"title":"Hello","body":"World","sound":false}""")
+        });
+        Assert.True(resp.Ok);
+    }
 }
 
 public class BrowserProxyCapabilityTests

@@ -77,6 +77,8 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_Tts_Description",
         "PermissionsPage_Cap_Stt_Label",
         "PermissionsPage_Cap_Stt_Description",
+        "PermissionsPage_Cap_SystemRun_Label",
+        "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_SttHint_Ready",
         "PermissionsPage_SttHint_Downloading",
         "PermissionsPage_SttHint_FailedFormat",
@@ -102,6 +104,8 @@ public class LocalizationValidationTests
         "PermissionsPage_TtsStatus_DefaultProviderFormat",
         "PermissionsPage_TtsStatus_ElevenLabsSaved",
         "PermissionsPage_McpStatus_TokenReadFailedFormat",
+        // Chat runtime warning seeded English-only until translations land.
+        "Chat_Composer_Placeholder_IncompatibleGateway",
         // InstancesPage / ConnectionPage new strings — seeded English across
         // all locales until translations land. Same precedent as the
         // PermissionsPage runtime keys above. The Manage expander body reuses
@@ -142,6 +146,29 @@ public class LocalizationValidationTests
         "ConnectionPage_NodePairing_Subtitle.Text",
         "AboutPage_MoreDiagnosticsLink.Content",
         "ConnectionStatusWindow.Title",
+        // Hard-coded XAML strings resolved by issue #491 — seeded English-only across
+        // all 5 locales using the deferred-translation pattern. Translations are a
+        // follow-up tracked separately. Same precedent as the PermissionsPage and
+        // InstancesPage runtime keys above.
+        "ConnectionPage_GatewayURL.PlaceholderText",
+        "ConnectionPage_SSHHost.PlaceholderText",
+        "ConnectionPage_SSHUser.PlaceholderText",
+        "ConnectionStatusWindow_SSHHost.PlaceholderText",
+        "ConnectionStatusWindow_SSHUser.PlaceholderText",
+        "ConnectionStatusWindow_WsLocalhost18790.PlaceholderText",
+        "ConnectionStatusWindow_WsLocalhost18790.Text",
+        "CronPage_AmericaChicago.Content",
+        "CronPage_AmericaDenver.Content",
+        "CronPage_AmericaLosAngeles.Content",
+        "CronPage_AmericaNewYork.Content",
+        "CronPage_AsiaTokyo.Content",
+        "CronPage_EuropeBerlin.Content",
+        "CronPage_EuropeLondon.Content",
+        "CronPage_UTC.Content",
+        "SandboxPage_16MiB.Content",
+        "SandboxPage_1MiB.Content",
+        "SandboxPage_64MiB.Content",
+        "SandboxPage_SystemRun.Text",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =
@@ -220,6 +247,34 @@ public class LocalizationValidationTests
         value.Contains("http://", StringComparison.Ordinal) ||
         value.Contains("https://", StringComparison.Ordinal) ||
         value.Contains("~/", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Keys whose value is a Latin-script loanword (e.g. "OK") that reads
+    /// natively in English/French/Dutch but should still be translated for
+    /// non-Latin scripts (zh-CN, zh-TW). For these keys the test permits
+    /// fr-fr and nl-nl to be identical to en-us while zh-cn and zh-tw differ —
+    /// the "all-or-nothing" rule does not apply.
+    /// </summary>
+    private static readonly HashSet<string> LatinScriptInvariantResourceKeys = new(StringComparer.Ordinal)
+    {
+        "Update_OK",
+        "Onboarding_IncompleteSetup_Close",
+    };
+
+    // Locales whose translations are allowed to remain identical to en-us
+    // for keys in LatinScriptInvariantResourceKeys (e.g. "OK"). The check in
+    // Resources_AreTranslatedAllOrNoneAcrossNonEnglishLocales requires the
+    // set of locales sharing the en-us value to *exactly* equal this set.
+    //
+    // Pitfall: adding a new Latin-script locale (say de-de) that also uses
+    // "OK" verbatim will break that test unless de-de is added here too. If
+    // you add such a locale, update this set; if you add a non-Latin-script
+    // locale, do nothing.
+    private static readonly HashSet<string> LatinScriptLocales = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fr-fr",
+        "nl-nl",
+    };
 
     private static bool IsInvariantOrDeferred(string key, string value) =>
         InvariantOrDeferredResourceKeys.Contains(key)
@@ -516,6 +571,15 @@ public class LocalizationValidationTests
 
             if (identicalLocales.Count != localeResw.Count)
             {
+                // Allow Latin-script loanwords (e.g. "OK") to be identical
+                // across en-us/fr-fr/nl-nl while still being translated for
+                // non-Latin-script locales (zh-CN, zh-TW).
+                if (LatinScriptInvariantResourceKeys.Contains(key)
+                    && identicalLocales.All(l => LatinScriptLocales.Contains(l))
+                    && LatinScriptLocales.All(l => identicalLocales.Contains(l, StringComparer.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
                 partial.Add($"{key} ({enValue}) identical in [{string.Join(", ", identicalLocales)}]");
                 continue;
             }

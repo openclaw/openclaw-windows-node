@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw"
-    MinWidth="750" MinHeight="400">
+    MinWidth="1000" MinHeight="400">
 
     <Window.SystemBackdrop>
         <MicaBackdrop/>
@@ -18,26 +18,41 @@
         </Grid.RowDefinitions>
 
         <!-- Custom Title Bar -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Padding="16,0,140,0">
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Padding="9,0,140,0">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
+            <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton" Grid.Column="0"
+                    AutomationProperties.Name="Toggle navigation pane"
+                    MinWidth="32" MinHeight="32"
+                    Padding="0" VerticalAlignment="Center"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
+                    ToolTipService.ToolTip="Toggle navigation pane"
+                    Click="OnNavPaneToggleButtonClick">
+                <FontIcon Glyph="&#xE700;"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="16"/>
+            </Button>
+
             <!-- Icon + Title -->
-            <TextBlock Grid.Column="0" Text="🦞" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBlock x:Uid="TitleText" Grid.Column="1" x:Name="TitleText" Text="OpenClaw Windows Companion"
-                       FontSize="13" VerticalAlignment="Center"
-                       Style="{StaticResource CaptionTextBlockStyle}"/>
+            <TextBlock Grid.Column="1" Text="🦞" FontSize="18" VerticalAlignment="Center" Margin="8,0,8,0" Translation="0,-1,0"/>
+            <TextBlock x:Uid="TitleText" Grid.Column="2" x:Name="TitleText" Text="OpenClaw Windows Companion"
+                        FontSize="13" VerticalAlignment="Center"
+                        Style="{StaticResource CaptionTextBlockStyle}"/>
 
             <!-- Search box -->
-            <AutoSuggestBox x:Uid="TitleSearchBox" Grid.Column="2" x:Name="TitleSearchBox"
-                            PlaceholderText="Search… (Ctrl+E)"
-                            QueryIcon="Find"
-                            HorizontalAlignment="Stretch"
-                            MinWidth="200" MaxWidth="600"
+            <AutoSuggestBox x:Uid="TitleSearchBox" Grid.Column="3" x:Name="TitleSearchBox"
+                             PlaceholderText="Search… (Ctrl+E)"
+                             QueryIcon="Find"
+                             HorizontalAlignment="Stretch"
+                             MinWidth="200" MaxWidth="600"
                             Height="32" VerticalAlignment="Center"
                             Margin="16,0,16,0"
                             TextChanged="OnSearchTextChanged"
@@ -58,7 +73,7 @@
             </AutoSuggestBox>
 
             <!-- Status indicator on the right (clickable → navigates to Connection page) -->
-            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
+            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
                         Tapped="OnTitleBarStatusTapped">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <Ellipse x:Name="TitleStatusDot" Width="8" Height="8" VerticalAlignment="Center" Fill="Gray"/>
@@ -69,26 +84,34 @@
                 <Border Background="{ThemeResource DividerStrokeColorDefaultBrush}" Width="1" Height="14" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <Ellipse x:Name="TitleOpDot" Width="6" Height="6" VerticalAlignment="Center" Fill="Gray"/>
-                    <TextBlock x:Name="TitleOpLabel" Text="Op" FontSize="10" VerticalAlignment="Center"
+                    <TextBlock x:Uid="HubWindow_Op" x:Name="TitleOpLabel" Text="Op" FontSize="10" VerticalAlignment="Center"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <Ellipse x:Name="TitleNodeDot" Width="6" Height="6" VerticalAlignment="Center" Fill="Gray"/>
-                    <TextBlock x:Name="TitleNodeLabel" Text="Node" FontSize="10" VerticalAlignment="Center"
+                    <TextBlock x:Uid="HubWindow_Node" x:Name="TitleNodeLabel" Text="Node" FontSize="10" VerticalAlignment="Center"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 </StackPanel>
             </StackPanel>
         </Grid>
 
         <!-- Main Content -->
-        <NavigationView Grid.Row="1"
-            x:Name="NavView"
-            IsBackButtonVisible="Collapsed"
-            IsSettingsVisible="False"
-            PaneDisplayMode="Left"
-            PaneOpening="OnNavPaneStateChanged"
-            PaneClosing="OnNavPaneStateChanged"
-            SelectionChanged="NavView_SelectionChanged">
+        <Grid x:Name="NavContentHost"
+              Grid.Row="1"
+              SizeChanged="OnNavContentHostSizeChanged">
+            <Grid.Clip>
+                <RectangleGeometry x:Name="NavContentClip"/>
+            </Grid.Clip>
+
+            <NavigationView
+                x:Name="NavView"
+                IsBackButtonVisible="Collapsed"
+                IsSettingsVisible="False"
+                IsPaneToggleButtonVisible="False"
+                PaneDisplayMode="Left"
+                PaneOpening="OnNavPaneStateChanged"
+                PaneClosing="OnNavPaneStateChanged"
+                SelectionChanged="NavView_SelectionChanged">
 
             <NavigationView.Resources>
                 <!-- Match Windows 11 Settings: ~22px colorful icons in a default-height row.
@@ -127,11 +150,11 @@
                 <SvgImageSource x:Key="Info_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Info.svg"/>
             </NavigationView.Resources>
 
-        <NavigationView.MenuItems>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" x:Name="NavChat" Tag="chat" Content="Chat">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItemSeparator/>
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" x:Name="NavChat" Tag="chat" Content="Chat">
+                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}"/></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItemSeparator/>
 
             <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection">
@@ -149,11 +172,14 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="instances" Content="Instances">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Cron">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <!-- Advanced — consolidates gateway-oriented pages -->
-            <NavigationViewItem x:Name="NavAdvanced" Content="Advanced" SelectsOnInvoked="False">
+            <NavigationViewItem x:Uid="HubWindow_Advanced" x:Name="NavAdvanced" Content="Advanced" SelectsOnInvoked="False">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Advanced_Icon}"/></NavigationViewItem.Icon>
                 <NavigationViewItem.MenuItems>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_94" Tag="agentevents" Content="Agent Events">
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_94" Tag="agentevents" Content="Event Stream">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource AgentEvents_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
@@ -172,9 +198,6 @@
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" Tag="usage" Content="Usage">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Usage_Icon}"/></NavigationViewItem.Icon>
-                    </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" Tag="cron" Content="Cron">
-                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                 </NavigationViewItem.MenuItems>
             </NavigationViewItem>
@@ -202,16 +225,17 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_148" Tag="info" Content="Info">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Info_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-        </NavigationView.FooterMenuItems>
+            </NavigationView.FooterMenuItems>
 
-        <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated">
-            <Frame.ContentTransitions>
-                <TransitionCollection>
-                    <NavigationThemeTransition/>
-                </TransitionCollection>
-            </Frame.ContentTransitions>
-        </Frame>
-    </NavigationView>
+            <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated">
+                <Frame.ContentTransitions>
+                    <TransitionCollection>
+                        <NavigationThemeTransition/>
+                    </TransitionCollection>
+                </Frame.ContentTransitions>
+            </Frame>
+        </NavigationView>
+        </Grid>
 
     </Grid>
 </winex:WindowEx>

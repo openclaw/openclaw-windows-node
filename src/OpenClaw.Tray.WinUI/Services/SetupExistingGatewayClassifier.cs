@@ -1,6 +1,5 @@
 using OpenClaw.Shared;
 using OpenClaw.Connection;
-using OpenClawTray.Services.LocalGatewaySetup;
 using System.Text.Json;
 
 namespace OpenClawTray.Services;
@@ -37,7 +36,7 @@ public static class SetupExistingGatewayClassifier
         var hasAnyGateway = HasAnyExistingGatewayConnection(registry, settings, dataPath);
         if (await HasAppOwnedLocalWslGatewayAsync(
                 registry,
-                localDataPath ?? GetLocalDataPath(),
+                localDataPath ?? ResolveLocalDataPath(),
                 wsl,
                 cancellationToken).ConfigureAwait(false))
         {
@@ -140,8 +139,7 @@ public static class SetupExistingGatewayClassifier
 
             if (root.TryGetProperty("Phase", out var phaseEl))
             {
-                var phaseName = phaseEl.GetString();
-                return phaseName is not (null or "NotStarted" or "Failed" or "Cancelled");
+                return PhaseLooksActiveOrComplete(phaseEl);
             }
 
             return true;
@@ -153,11 +151,33 @@ public static class SetupExistingGatewayClassifier
         }
     }
 
-    private static string GetLocalDataPath()
+    public static string ResolveLocalDataPath()
     {
-        return Path.Combine(
-            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
-                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray");
+        if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR") is { Length: > 0 } localAppDataRoot)
+            return Path.Combine(localAppDataRoot, "OpenClawTray");
+
+        if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR") is { Length: > 0 } localDataDir)
+            return localDataDir;
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
+    }
+
+    private static bool PhaseLooksActiveOrComplete(JsonElement phaseEl)
+    {
+        if (phaseEl.ValueKind == JsonValueKind.Number && phaseEl.TryGetInt32(out var phaseNumber))
+        {
+            // LocalGatewaySetupPhase: 0=NotStarted; historical failed/cancelled
+            // state is represented by Status, not by Phase. Any later phase is
+            // enough evidence that this is an app-owned local setup.
+            return phaseNumber > 0;
+        }
+
+        if (phaseEl.ValueKind == JsonValueKind.String)
+        {
+            var phaseName = phaseEl.GetString();
+            return phaseName is not (null or "NotStarted" or "Failed" or "Cancelled");
+        }
+
+        return false;
     }
 }

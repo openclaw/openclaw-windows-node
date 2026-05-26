@@ -3,8 +3,6 @@
     <Platform Name="Any CPU" />
     <Platform Name="x64" />
     <Platform Name="ARM64" />
-    <BuildType Name="Debug" />
-    <BuildType Name="Release" />
   </Configurations>
   <Folder Name="/src/">
     <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
@@ -22,7 +20,12 @@
       <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
     <Project Path="src/OpenClawTray.FunctionalUI/OpenClawTray.FunctionalUI.csproj" />
-    <Project Path="src/OpenClawTray.OnboardingV2/OpenClawTray.OnboardingV2.csproj" />
+    <Project Path="src/OpenClaw.SetupEngine/OpenClaw.SetupEngine.csproj" />
+    <Project Path="src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
     <Project Path="src/OpenClaw.SetupPreview/OpenClaw.SetupPreview.csproj">
       <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -42,7 +45,6 @@
     <Project Path="tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj" />
     <Project Path="tests/OpenClawTray.FunctionalUI.Tests/OpenClawTray.FunctionalUI.Tests.csproj" />
-    <Project Path="tests/OpenClawTray.OnboardingV2.Tests/OpenClawTray.OnboardingV2.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.IntegrationTests/OpenClaw.Tray.IntegrationTests.csproj" />
     <Project Path="tests/OpenClaw.Tray.UITests/OpenClaw.Tray.UITests.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />

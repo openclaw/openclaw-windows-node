@@ -335,20 +335,6 @@ public class DeepLinkParserTests
     }
 
     [Fact]
-    public void Handle_Send_PassesPrefillMessage()
-    {
-        string? message = null;
-        var actions = new DeepLinkActions
-        {
-            OpenQuickSend = value => message = value
-        };
-
-        DeepLinkHandler.Handle("openclaw://send?message=hello%20world", actions);
-
-        Assert.Equal("hello world", message);
-    }
-
-    [Fact]
     public async Task Handle_Agent_SendsMessage()
     {
         var sent = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

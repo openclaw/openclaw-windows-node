@@ -83,7 +83,6 @@ public sealed class NodeService : IDisposable
     private TtsCapability? _ttsCapability;
     private TextToSpeechService? _textToSpeechService;
     private VoiceService? _voiceService;
-    private AppCapability? _appCapability;
     private readonly string _dataPath;
     // Identity store location for the role-aware DeviceIdentity. Defaults to
     // _dataPath when no separate path is supplied (preserves existing test
@@ -104,6 +103,11 @@ public sealed class NodeService : IDisposable
     // bridge snapshot can't race a re-register.
     private readonly List<INodeCapability> _capabilities = new();
     private readonly object _capabilitiesLock = new();
+
+    // MCP-only capabilities — visible to local MCP clients but NOT registered
+    // on the gateway WebSocket. Used for app-level testing/control tools that
+    // should not be callable by remote agents.
+    private readonly List<INodeCapability> _mcpOnlyCapabilities = new();
 
     // Serializes AttachClient ↔ DisconnectAsync so a reconnect that overlaps a
     // disconnect can't leave stale subscriptions on an old client or double-
@@ -137,11 +141,10 @@ public sealed class NodeService : IDisposable
     /// </summary>
     public static string McpTokenPath =>
         System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "mcp-token.txt");
-    private readonly bool _enableMcpServer;
+    private volatile bool _enableMcpServer;
     private McpHttpServer? _mcpServer;
     private string? _mcpStartupError;
     public bool IsMcpRunning => _mcpServer != null;
-    public AppCapability? AppCapability => _appCapability;
     public VoiceService? VoiceService => _voiceService;
     public TextToSpeechService? TextToSpeech => _textToSpeechService;
     public string McpEndpoint => McpServerUrl;
@@ -272,12 +275,13 @@ public sealed class NodeService : IDisposable
         {
         _capabilities.Clear();
 
-        // App operations capability (always registered, not gated by a toggle)
-        _appCapability = new AppCapability(_logger);
-        Register(_appCapability);
-
-        // System capability (notifications + command execution)
-        _systemCapability = new SystemCapability(_logger);
+        // System capability (notifications + command execution). The
+        // "Run system tools" toggle gates the run/run.prepare commands
+        // inside the capability — the rest (notify/which/execApprovals)
+        // stay registered regardless.
+        _systemCapability = new SystemCapability(
+            _logger,
+            includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
@@ -394,6 +398,18 @@ public sealed class NodeService : IDisposable
     }
 
     /// <summary>
+    /// Register a capability that is only visible to local MCP clients, not
+    /// the gateway. Used for app-level testing/control tools.
+    /// </summary>
+    public void RegisterMcpOnlyCapability(INodeCapability capability)
+    {
+        lock (_capabilitiesLock)
+        {
+            _mcpOnlyCapabilities.Add(capability);
+        }
+    }
+
+    /// <summary>
     /// Adopt a <see cref="WindowsNodeClient"/> created by an outside party
     /// (typically <see cref="OpenClaw.Connection.NodeConnector"/>)
     /// and register all current capabilities on it. Called via
@@ -457,32 +473,17 @@ public sealed class NodeService : IDisposable
 
         _logger.Info($"[NodeService] AttachClient: capabilitiesBuilt={capabilitiesBuilt}, _capabilities.Count={_capabilities.Count}");
 
-        // First connect after app startup may not have built capability objects yet.
-        // RegisterCapabilities() populates _capabilities and registers them on _nodeClient.
-        if (!capabilitiesBuilt)
-        {
-            _logger.Info("[NodeService] AttachClient: capabilities not yet built, calling RegisterCapabilities()");
-            RegisterCapabilities();
-        }
-        else
-        {
-            // Reconnect path: capabilities already exist, just re-bind to the new client.
-            lock (_capabilitiesLock)
-            {
-                foreach (var capability in _capabilities)
-                {
-                    try
-                    {
-                        client.RegisterCapability(capability);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Warn($"[NodeService] AttachClient: failed to register {capability.Category}: {ex.Message}");
-                    }
-                }
-            }
-            _logger.Info($"[NodeService] AttachClient: re-registered {_capabilities.Count} capabilities on new client");
-        }
+        // Always rebuild from current settings. The previous reconnect path
+        // re-registered the cached _capabilities instances, but _capabilities
+        // is only cleared in DisconnectAsync — which is never invoked on the
+        // reconnect path used by App.OnSettingsSaved (CapabilityReload calls
+        // ReconnectAsync, not DisconnectAsync). That left toggles like
+        // NodeCanvasEnabled / NodeSystemRunEnabled silently requiring a full
+        // app restart to take effect. RegisterCapabilities() clears the list,
+        // rebuilds with current settings, and registers on the new _nodeClient
+        // — correct for first-attach AND reconnect.
+        _logger.Info("[NodeService] AttachClient: rebuilding capabilities from current settings");
+        RegisterCapabilities();
 
         // Log final registration state for diagnostics
         _logger.Info($"[NodeService] AttachClient DONE: client.Registration.Capabilities={client.RegisteredCapabilityCount}, client.Registration.Commands={client.RegisteredCommandCount}");
@@ -498,39 +499,32 @@ public sealed class NodeService : IDisposable
     }
 
     /// <summary>
-    /// Build the <see cref="ICommandRunner"/> for system.run. Picks
-    /// <see cref="MxcCommandRunner"/> wrapping a one-shot AppContainer when MXC is
-    /// available; falls back to <see cref="LocalCommandRunner"/> with an explanatory
-    /// log when it isn't. The choice respects <see cref="SettingsData.SystemRunSandboxMode"/>:
-    /// Required (default) fail-closes; BestEffort uses a host fallback inside MxcCommandRunner;
-    /// Off bypasses MXC entirely.
+    /// Build the <see cref="ICommandRunner"/> for system.run. Returns an
+    /// <see cref="MxcCommandRunner"/> wrapping <see cref="DirectAppContainerExecutor"/>.
+    /// The runner honors <see cref="SettingsData.SystemRunSandboxEnabled"/>
+    /// and, per issue #494, falls back to <see cref="LocalCommandRunner"/>
+    /// at runtime when MXC isn't available on this host.
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
     {
         var availability = _mxcAvailability ??= MxcAvailability.Probe(_logger);
         var hostRunner = new LocalCommandRunner(_logger);
+        var executor = new DirectAppContainerExecutor(availability, _logger);
 
-        ISandboxExecutor executor;
-        if (!availability.HasAnyBackend || availability.RunCommandScriptPath is null)
+        if (availability.HasAnyBackend)
         {
-            // No MXC on this host. We still route through MxcCommandRunner so the
-            // SystemRunSandboxEnabled toggle is honored: when ON, invocation is
-            // denied (fail-closed); when OFF, the inner runner falls back to host.
-            var reason = !availability.HasAnyBackend
-                ? string.Join("; ", availability.UnsupportedReasons)
-                : "tools/mxc/run-command.cjs not found";
-            executor = new UnavailableSandboxExecutor(reason);
-            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable: {reason})");
-        }
-        else
-        {
-            executor = new OneShotAppContainerExecutor(
-                availability,
-                availability.RunCommandScriptPath,
-                _logger);
             _logger.Info(
                 $"[mxc] system.run runner = MxcCommandRunner " +
                 $"(executor={executor.Name}, sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
+        }
+        else
+        {
+            // MXC unavailable on this host. The runner's top-level
+            // !_isSandboxAvailable() guard will route to the host fallback
+            // for every call; the executor is constructed only to satisfy
+            // the constructor contract and is never invoked.
+            var reason = string.Join("; ", availability.UnsupportedReasons);
+            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable, commands will run uncontained: {reason})");
         }
 
         var settingsDirectory = SettingsManager.SettingsDirectoryPath;
@@ -591,14 +585,26 @@ public sealed class NodeService : IDisposable
         {
             // Bridge reads the live _capabilities list every tools/list, so any
             // future Register(...) call is exposed via MCP automatically.
+            // MCP-only capabilities (e.g. AppCapability) are merged in so
+            // they appear in tools/list but never touch the gateway client.
             // The snapshot takes the same lock RegisterCapabilities holds,
             // so a tools/list arriving mid-rebuild observes either the old
             // or the new set — never a partially-cleared list.
             var bridge = new McpToolBridge(
-                () => { lock (_capabilitiesLock) return _capabilities.ToArray(); },
+                () => {
+                    lock (_capabilitiesLock)
+                    {
+                        if (_mcpOnlyCapabilities.Count == 0)
+                            return _capabilities.ToArray();
+                        var merged = new List<INodeCapability>(_capabilities.Count + _mcpOnlyCapabilities.Count);
+                        merged.AddRange(_capabilities);
+                        merged.AddRange(_mcpOnlyCapabilities);
+                        return merged.ToArray();
+                    }
+                },
                 _logger,
                 serverName: "openclaw-tray-mcp",
-                serverVersion: typeof(NodeService).Assembly.GetName().Version?.ToString() ?? "0.0.0");
+                serverVersion: AppVersionInfo.Version);
             // Bearer-token auth. Token is created on first start and persists
             // alongside other OpenClawTray data (so OPENCLAW_TRAY_DATA_DIR
             // isolation in tests scopes the token too); CLI/agent registration
@@ -666,6 +672,42 @@ public sealed class NodeService : IDisposable
         return token;
     }
 
+    /// <summary>
+    /// Update the MCP server state at runtime (e.g. when the user toggles
+    /// EnableMcpServer in the Settings UI). Starts or stops the HTTP server
+    /// and ensures capabilities are registered for MCP-only mode.
+    /// </summary>
+    public void SetMcpEnabled(bool enabled)
+    {
+        _enableMcpServer = enabled;
+
+        if (enabled)
+        {
+            if (_mcpServer != null) return; // already running
+
+            _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
+
+            bool needsCapabilities;
+            lock (_capabilitiesLock) { needsCapabilities = _capabilities.Count == 0; }
+            if (needsCapabilities)
+            {
+                RegisterCapabilities();
+            }
+            else
+            {
+                StartMcpServer();
+            }
+        }
+        else
+        {
+            _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
+            // Always call StopMcpServer to clear stale startup errors even
+            // if the server isn't running. StopMcpServer is lock-protected
+            // and handles _mcpServer == null safely.
+            StopMcpServer();
+        }
+    }
+
     public GatewayNodeInfo? GetLocalNodeInfo()
     {
         if (_nodeClient == null)
@@ -681,6 +723,7 @@ public sealed class NodeService : IDisposable
             Mode = "node",
             Status = IsConnected ? "connected" : "disconnected",
             Platform = "windows",
+            DeviceFamily = "Windows",
             LastSeen = DateTime.UtcNow,
             IsOnline = IsConnected,
             Capabilities = capabilities,
@@ -705,6 +748,8 @@ public sealed class NodeService : IDisposable
             disabled.AddRange(CommandCenterCommandGroups.SafeCompanionCommands.Where(command => command.StartsWith("location.", StringComparison.OrdinalIgnoreCase)));
         if (_settings?.NodeBrowserProxyEnabled == false)
             disabled.Add("browser.proxy");
+        if (_settings?.NodeSystemRunEnabled == false)
+            disabled.AddRange(new[] { "system.run", "system.run.prepare" });
         if (_settings?.NodeSttEnabled != true)
             disabled.Add(SttCapability.TranscribeCommand);
         if (_settings?.NodeTtsEnabled != true)

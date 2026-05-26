@@ -11,7 +11,9 @@ public enum ExecApprovalV2Code
     AllowlistMiss,
     UserDenied,
     ValidationFailed,
-    ResolutionFailed
+    ResolutionFailed,
+    InternalError,  // invariant violations and unexpected internal bugs detected at runtime
+    Allow,          // coordinator approved; caller may execute the command
 }
 
 /// <summary>
@@ -49,6 +51,14 @@ public sealed class ExecApprovalV2Result
 
     public static ExecApprovalV2Result ResolutionFailed(string reason)
         => new(ExecApprovalV2Code.ResolutionFailed, reason);
+
+    public static ExecApprovalV2Result InternalError(string reason)
+        => new(ExecApprovalV2Code.InternalError, reason);
+
+    public static ExecApprovalV2Result Allow()
+        => new(ExecApprovalV2Code.Allow, "approved");
+
+    public bool IsAllow => Code == ExecApprovalV2Code.Allow;
 
     public override string ToString() => $"{Code}: {Reason}";
 }

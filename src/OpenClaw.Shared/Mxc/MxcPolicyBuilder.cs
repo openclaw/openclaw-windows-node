@@ -10,11 +10,11 @@ namespace OpenClaw.Shared.Mxc;
 /// Policy decisions:
 /// <list type="bullet">
 /// <item><c>readonlyPaths</c> — populated from user-granted folders (Documents,
-/// Downloads, Desktop, custom). The Node bridge additionally merges PATH-specific
-/// tool directories so spawned shells can find git/node/python/etc.</item>
-/// <item><c>readwritePaths</c> — user-granted read+write folders. The Node bridge
-/// adds a per-invocation scratch directory and rewrites TEMP/TMP/TMPDIR to point
-/// at it, so the user's real %TEMP% stays out of reach.</item>
+/// Downloads, Desktop, custom). The MXC config builder additionally merges
+/// PATH-specific tool directories so spawned shells can find git/node/python/etc.</item>
+/// <item><c>readwritePaths</c> — user-granted read+write folders. The MXC config
+/// builder adds a per-invocation scratch directory and rewrites TEMP/TMP/TMPDIR
+/// to point at it, so the user's real %TEMP% stays out of reach.</item>
 /// <item><c>deniedPaths</c> — settings directory (protect MCP token, gateway
 /// credentials, ElevenLabs key), <c>~/.ssh</c>, and the common browser profile
 /// roots (Chrome / Edge / Firefox / Brave). Always blocked regardless of grants.</item>
@@ -25,8 +25,9 @@ namespace OpenClaw.Shared.Mxc;
 public static class MxcPolicyBuilder
 {
     /// <summary>
-    /// Policy schema version. Per the @microsoft/mxc-sdk validator, this must be
-    /// in the supported range (currently MIN 0.4.0-alpha, SUPPORTED 0.5.0-alpha).
+    /// Policy schema version. @microsoft/mxc-sdk 0.1.8 accepts 0.4.0-alpha
+    /// through 0.5.0-alpha; keep the documented 0.4.0-alpha schema until we
+    /// intentionally adopt a newer MXC policy contract.
     /// </summary>
     public const string SupportedPolicyVersion = "0.4.0-alpha";
 

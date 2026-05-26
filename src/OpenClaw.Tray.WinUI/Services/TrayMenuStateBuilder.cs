@@ -311,10 +311,6 @@ internal sealed class TrayMenuStateBuilder
         menu.AddMenuItem("Canvas", FluentIconCatalog.Build(FluentIconCatalog.CanvasAct), "canvas");
         // Voice overlay disabled — inline chat voice mode is used instead.
         // menu.AddMenuItem("Voice", FluentIconCatalog.Build(FluentIconCatalog.VoiceAct), "voice");
-        menu.AddMenuItem(
-            LocalizationHelper.GetString("Menu_QuickSend"),
-            FluentIconCatalog.Build(FluentIconCatalog.QuickSend),
-            "quicksend");
 
         // Setup Guide / Reconfigure entry — label flips based on whether prior
         // configuration exists; routes to the existing "setup" action handler.
@@ -1294,6 +1290,9 @@ internal sealed class TrayMenuStateBuilder
         AddPermToggle(items, "Windows node", FluentIconCatalog.System,
             "Run OpenClaw as a local node on this PC",
             () => settings.EnableNodeMode, v => settings.EnableNodeMode = v);
+        AddPermToggle(items, "System tools", FluentIconCatalog.Terminal,
+            "Let agents run shell commands and scripts on this PC",
+            () => settings.NodeSystemRunEnabled, v => settings.NodeSystemRunEnabled = v);
         AddPermToggle(items, "Browser control", FluentIconCatalog.Browser,
             "Let agents drive web browsers via proxy",
             () => settings.NodeBrowserProxyEnabled, v => settings.NodeBrowserProxyEnabled = v);

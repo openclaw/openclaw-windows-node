@@ -86,6 +86,13 @@ public class SettingsManager
     public bool CameraRecordingConsentGiven { get; set; } = false;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    /// <summary>
+    /// Master switch for the <c>system.run</c> / <c>system.run.prepare</c>
+    /// commands. Per-command exec approvals still apply when this is on;
+    /// flipping it off removes those commands from the declared capability
+    /// entirely. Default <c>true</c> (backward compatible).
+    /// </summary>
+    public bool NodeSystemRunEnabled { get; set; } = true;
     public bool NodeSttEnabled { get; set; } = false;
     /// <summary>STT language: "auto" for Whisper auto-detect, or a BCP-47 tag like "en-US".</summary>
     public string SttLanguage { get; set; } = "auto";
@@ -199,6 +206,7 @@ public class SettingsManager
                     CameraRecordingConsentGiven = loaded.CameraRecordingConsentGiven;
                     NodeLocationEnabled = loaded.NodeLocationEnabled;
                     NodeBrowserProxyEnabled = loaded.NodeBrowserProxyEnabled;
+                    NodeSystemRunEnabled = loaded.NodeSystemRunEnabled;
                     NodeSttEnabled = loaded.NodeSttEnabled;
                     SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? SttLanguage : loaded.SttLanguage;
                     SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? SttModelName : loaded.SttModelName;
@@ -320,6 +328,7 @@ public class SettingsManager
         CameraRecordingConsentGiven = CameraRecordingConsentGiven,
         NodeLocationEnabled = NodeLocationEnabled,
         NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
+        NodeSystemRunEnabled = NodeSystemRunEnabled,
         NodeSttEnabled = NodeSttEnabled,
         SttLanguage = SttLanguage,
         SttModelName = SttModelName,

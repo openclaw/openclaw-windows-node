@@ -242,8 +242,7 @@ public sealed class ModalRenderer : IComponentRenderer
     {
         // Render as a real ContentDialog launched from the entry-point child.
         // The entry-point is shown inline; clicking it shows the dialog with
-        // the content-child as its body. Falls back to Expander when no
-        // XamlRoot can be resolved (e.g. surface not yet attached to a window).
+        // the content-child as its body once the trigger is attached to XAML.
         var entryId = ctx.GetSingleChild(c, "entryPointChild");
         var contentId = ctx.GetSingleChild(c, "contentChild");
 

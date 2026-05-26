@@ -114,9 +114,10 @@ public sealed partial class PermissionsPage : Page
     {
         if (CurrentApp.Settings == null || _featureToggles.Count == 0) return;
         var s = CurrentApp.Settings;
-        // Order matches BuildCapabilityToggles: browser, camera, canvas, screen, location, tts, stt.
+        // Order matches BuildCapabilityToggles: system-run, browser, camera, canvas, screen, location, tts, stt.
         bool[] expected =
         {
+            s.NodeSystemRunEnabled,
             s.NodeBrowserProxyEnabled, s.NodeCameraEnabled, s.NodeCanvasEnabled,
             s.NodeScreenEnabled, s.NodeLocationEnabled, s.NodeTtsEnabled, s.NodeSttEnabled,
         };
@@ -151,6 +152,10 @@ public sealed partial class PermissionsPage : Page
         // OnToggleSideEffect runs after the new value is persisted.
         var capabilities = new (string Icon, string Label, string Description, bool Value, Action<bool> Setter, Action<bool>? OnToggleSideEffect)[]
         {
+            ("⚡",
+                LocalizationHelper.GetString("PermissionsPage_Cap_SystemRun_Label"),
+                LocalizationHelper.GetString("PermissionsPage_Cap_SystemRun_Description"),
+                settings.NodeSystemRunEnabled, v => settings.NodeSystemRunEnabled = v, null),
             ("🌐",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Browser_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Browser_Description"),
@@ -489,15 +494,11 @@ public sealed partial class PermissionsPage : Page
             NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.LimeGreen);
             NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Active");
 
-            var caps = new List<string>();
-            if (CurrentApp.Settings?.NodeBrowserProxyEnabled == true) caps.Add("browser");
-            if (CurrentApp.Settings?.NodeCameraEnabled == true) caps.Add("camera");
-            if (CurrentApp.Settings?.NodeCanvasEnabled == true) caps.Add("canvas");
-            if (CurrentApp.Settings?.NodeScreenEnabled == true) caps.Add("screen");
-            if (CurrentApp.Settings?.NodeLocationEnabled == true) caps.Add("location");
-            if (CurrentApp.Settings?.NodeTtsEnabled == true) caps.Add("tts");
-            if (CurrentApp.Settings?.NodeSttEnabled == true) caps.Add("stt");
-            NodeDetailsText.Text = caps.Count > 0
+            // Read capability list from GatewayNodeInfo — same source of truth
+            // used by the tray menu, instances page, and connection page.
+            var caps = NodeCapabilityGating.GetLocalNodeCapabilities(
+                CurrentApp.AppState?.Nodes, CurrentApp.NodeFullDeviceId);
+            NodeDetailsText.Text = caps != null && caps.Count > 0
                 ? LocalizationHelper.Format(
                     "PermissionsPage_NodeStatus_ActiveDetailsFormat",
                     caps.Count, string.Join(", ", caps))

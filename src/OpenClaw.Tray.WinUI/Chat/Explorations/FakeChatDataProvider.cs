@@ -65,6 +65,7 @@ public sealed class FakeChatDataProvider : IChatDataProvider
             ActiveToolCallId: null,
             CurrentIntent: null,
             LocalNonces: ImmutableHashSet<string>.Empty,
+            ActiveToolCalls: ImmutableDictionary<string, string>.Empty,
             HistoryLoaded: true,
             PendingPermission: null);
     }
@@ -87,7 +88,8 @@ public sealed class FakeChatDataProvider : IChatDataProvider
             Timelines: timelines,
             DefaultThreadId: ThreadId,
             ConnectionStatus: "connected",
-            AvailableModels: Models);
+            AvailableModels: Models,
+            ComposeTarget: new ChatComposeTarget(ThreadId, true));
     }
 
     private void RaiseChanged() =>
@@ -95,9 +97,6 @@ public sealed class FakeChatDataProvider : IChatDataProvider
 
     public Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(BuildSnapshot());
-
-    public Task<ChatThread> CreateThreadAsync(string? initialMessage = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ChatThread { Id = ThreadId, Title = "Exploration preview" });
 
     public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
     {

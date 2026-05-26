@@ -32,6 +32,22 @@ public enum ChatPaddingDensity
     Compact,
 }
 
+/// <summary>
+/// Tone used for the user (sent) chat bubble. <c>Accent</c> paints the
+/// bubble with the system accent color at full weight (<c>AccentFillColorDefault</c>) —
+/// classic iMessage-style bold brand-color bubble. <c>Secondary</c> uses the
+/// softer accent variant (<c>AccentFillColorSecondary</c>) — still clearly
+/// the accent color, but a step down in saturation so it doesn't compete
+/// with the accent-colored avatar / send button. Both tones pair with
+/// <c>TextOnAccentFillColorPrimaryBrush</c>, which Fluent guarantees meets
+/// WCAG AA contrast in light, dark, and High Contrast themes.
+/// </summary>
+public enum ChatUserBubbleTone
+{
+    Accent,
+    Secondary,
+}
+
 public enum ChatPreviewTheme
 {
     System,
@@ -69,6 +85,14 @@ public enum ChatPreviewState
     Thinking,
     /// <summary>Composer shows the tool-permission banner with Allow/Deny.</summary>
     PendingPermission,
+    /// <summary>
+    /// Force the pre-connect "Reconnecting to your last conversation…"
+    /// banner that <see cref="OpenClaw.Tray.WinUI.Chat.OpenClawChatRoot"/>
+    /// renders when <c>effectiveThread</c> is null because the gateway
+    /// handshake hasn't completed yet. Lets designers see the banner
+    /// without having to actually disconnect.
+    /// </summary>
+    Reconnecting,
 }
 
 public enum ChatComposerLayout
@@ -106,6 +130,13 @@ public enum ToolBurstStyle
     /// Mirrors the AgentRunCard "Running steps / Completed steps" pattern
     /// from native-chat-v2.</summary>
     TaskList,
+    /// <summary>Smart default — picks per burst state:
+    /// running bursts render Plain (per-step status visible);
+    /// terminal multi-step bursts collapse to CompactSummary (1-line summary,
+    /// click chevron to expand); single-step bursts stay Plain.
+    /// Matches Scott's feedback: keep live progress visible, fold completed
+    /// work into a tidy one-liner once the turn finishes.</summary>
+    Auto,
 }
 
 /// <summary>
@@ -126,23 +157,33 @@ public static class ChatExplorationState
 
     private static ChatPreviewState _previewState = ChatPreviewState.Live;
     private static ChatVariation _variation = ChatVariation.Calm;
-    private static ChatBackdropMode _backdropMode = ChatBackdropMode.Mica;
+    // Defaults below were promoted from Kenny's `preset1` (the previous
+    // per-user IsDefault preset under %APPDATA%\OpenClawTray) so a fresh
+    // install lands on the same look without needing the JSON preset file.
+    // Notable diffs vs the original code defaults:
+    //   BackdropMode      Mica          → Acrylic
+    //   PaddingDensity    Comfortable   → Cozy
+    //   AvatarMode        Both          → AgentOnly
+    //   ComposerIconSize  14            → 16
+    //   SendButtonSize    32            → 40
+    private static ChatBackdropMode _backdropMode = ChatBackdropMode.Acrylic;
     private static ChatPreviewTheme _previewTheme = ChatPreviewTheme.System;
     private static bool _usesHostBackdrop;
 
     private static double _bubbleCornerRadius = 16d;
     private static double _gutter = 64d;
     private static double _messageGap = 12d;
-    private static ChatPaddingDensity _paddingDensity = ChatPaddingDensity.Comfortable;
+    private static ChatPaddingDensity _paddingDensity = ChatPaddingDensity.Cozy;
+    private static ChatUserBubbleTone _userBubbleTone = ChatUserBubbleTone.Secondary;
     private static bool _showTimestamps = true;
 
     private static bool _showAvatars = true;
-    private static ChatAvatarMode _avatarMode = ChatAvatarMode.Both;
+    private static ChatAvatarMode _avatarMode = ChatAvatarMode.AgentOnly;
 
     private static ChatComposerLayout _composerLayout = ChatComposerLayout.ThreeRow;
     private static double _composerCornerRadius = 8d;
-    private static double _composerIconSize = 14d;
-    private static double _sendButtonSize = 32d;
+    private static double _composerIconSize = 16d;
+    private static double _sendButtonSize = 40d;
 
     private static Brush? _accentBrushOverride;
     private static Brush? _userBubbleBrushOverride;
@@ -155,10 +196,10 @@ public static class ChatExplorationState
     private static double _bubbleMaxWidth = 560d;
     private static double _bubbleSideMargin = 8d;
 
-    private static bool _showSenderName = true;
-    private static bool _showModelName = true;
-    private static bool _showTokens;
-    private static bool _showContextPercent;
+    private static bool _showSenderName = false;
+    private static bool _showModelName = false;
+    private static bool _showTokens = true;
+    private static bool _showContextPercent = true;
 
     // Default icon glyphs match production OpenClawComposer.cs.
     private static string _sendIconGlyph   = "\uE724";
@@ -240,6 +281,12 @@ public static class ChatExplorationState
     {
         get => _paddingDensity;
         set { if (_paddingDensity != value) { _paddingDensity = value; RaiseChanged(); } }
+    }
+
+    public static ChatUserBubbleTone UserBubbleTone
+    {
+        get => _userBubbleTone;
+        set { if (_userBubbleTone != value) { _userBubbleTone = value; RaiseChanged(); } }
     }
 
     public static bool ShowTimestamps
@@ -340,6 +387,20 @@ public static class ChatExplorationState
         set { if (_showToolCalls != value) { _showToolCalls = value; RaiseChanged(); } }
     }
 
+    /// <summary>
+    /// Monotonic counter incremented when all tool chip expanded states
+    /// should be reset. The timeline checks this and clears its local
+    /// <c>expandedToolChips</c> set when the value changes.
+    /// </summary>
+    public static int CollapseToolChipsVersion { get; internal set; }
+
+    /// <summary>Signal all tool chip expanded states to collapse.</summary>
+    public static void CollapseAllToolChips()
+    {
+        CollapseToolChipsVersion++;
+        RaiseChanged();
+    }
+
     public static double BubbleMaxWidth
     {
         get => _bubbleMaxWidth;
@@ -394,7 +455,7 @@ public static class ChatExplorationState
 
     // ---- Tool burst (H) ----
 
-    private static ToolBurstStyle _toolBurstStyle = ToolBurstStyle.Plain;
+    private static ToolBurstStyle _toolBurstStyle = ToolBurstStyle.Auto;
     private static bool _showStepNumbers;
 
     /// <summary>

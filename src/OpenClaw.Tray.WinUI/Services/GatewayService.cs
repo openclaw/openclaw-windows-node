@@ -174,6 +174,12 @@ internal sealed class GatewayService
             status = status.ToString()
         });
 
+        // Request agents list on connect so the nav pane can populate.
+        if (status == ConnectionStatus.Connected && sender is IOperatorGatewayClient client)
+        {
+            _ = client.RequestAgentsListAsync();
+        }
+
         EnqueueModelUpdate(() =>
         {
             if (status == ConnectionStatus.Connected)
@@ -464,7 +470,16 @@ internal sealed class GatewayService
     {
         if (sender != _currentClient) return;
         var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.AgentFilesList = cloned);
+        var agentId = cloned.TryGetProperty("agentId", out var aidEl) ? aidEl.GetString() : null;
+        EnqueueModelUpdate(() =>
+        {
+            _state.AgentFilesList = cloned;
+            if (!string.IsNullOrEmpty(agentId))
+            {
+                _state.AgentFilesListAgentId = agentId;
+                _state.CacheAgentFilesList(agentId!, cloned);
+            }
+        });
     }
 
     private void OnAgentFileContentUpdated(object? sender, JsonElement data)

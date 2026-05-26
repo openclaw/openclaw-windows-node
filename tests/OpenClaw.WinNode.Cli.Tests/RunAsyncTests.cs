@@ -87,6 +87,43 @@ public class RunAsyncTests : IDisposable
     }
 
     [Fact]
+    public async Task List_tools_does_not_require_command_and_prints_tools_result()
+    {
+        using var server = new FakeMcpServer
+        {
+            Responder = _ => (HttpStatusCode.OK,
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"system.notify\",\"description\":\"Show a toast\"}]}}",
+                "application/json"),
+        };
+
+        var (o, e) = Buffers();
+        var exit = await CliRunner.RunAsync(
+            new[] { "--list-tools", "--mcp-url", server.Url },
+            o, e, EmptyEnv);
+
+        Assert.Equal(0, exit);
+        Assert.Equal("", e.ToString());
+        Assert.Contains("\"tools\"", o.ToString());
+        Assert.Contains("system.notify", o.ToString());
+
+        using var sent = JsonDocument.Parse(server.LastRequestBody!);
+        Assert.Equal("tools/list", sent.RootElement.GetProperty("method").GetString());
+        Assert.False(sent.RootElement.TryGetProperty("params", out _));
+    }
+
+    [Fact]
+    public async Task List_tools_cannot_be_combined_with_command()
+    {
+        var (o, e) = Buffers();
+        var exit = await CliRunner.RunAsync(
+            new[] { "--list-tools", "--command", "system.notify" },
+            o, e, EmptyEnv);
+
+        Assert.Equal(2, exit);
+        Assert.Contains("cannot be combined", e.ToString());
+    }
+
+    [Fact]
     public async Task Params_must_be_valid_json()
     {
         var (o, e) = Buffers();

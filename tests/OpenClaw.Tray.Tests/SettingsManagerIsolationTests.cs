@@ -3,6 +3,13 @@ using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
 
+[CollectionDefinition(OpenClawTrayDataDirEnvironmentCollection.Name, DisableParallelization = true)]
+public sealed class OpenClawTrayDataDirEnvironmentCollection
+{
+    public const string Name = "OpenClawTrayDataDirEnvironment";
+}
+
+[Collection(OpenClawTrayDataDirEnvironmentCollection.Name)]
 public sealed class SettingsManagerIsolationTests
 {
     [Fact]

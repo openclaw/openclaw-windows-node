@@ -5,149 +5,245 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Enabled">
 
-    <Grid Padding="24,16,24,16" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid HorizontalAlignment="Stretch">
+            <StackPanel Padding="24" Spacing="12"
+                        HorizontalAlignment="Stretch" MaxWidth="900">
 
-        <!-- Inline back link — only shown when the user arrived via a
-             cross-page link from Connection. Set by SessionsPage.Initialize
-             based on HubWindow.LastNavigationOrigin. -->
-        <HyperlinkButton x:Name="BackToConnectionLink" Grid.Row="0"
-                         Click="OnBackToConnectionClicked"
-                         Padding="0" Margin="0,0,0,0"
-                         Visibility="Collapsed"
-                         AutomationProperties.AutomationId="BackToConnectionLink">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <FontIcon Glyph="&#xE72B;" FontSize="12"/>
-                <TextBlock Text="Back to Connection"/>
-            </StackPanel>
-        </HyperlinkButton>
+                <!-- Shown only when the user arrived via Connection's cross-page link. -->
+                <HyperlinkButton x:Name="BackToConnectionLink"
+                                 Click="OnBackToConnectionClicked"
+                                 Padding="0" Margin="0,0,0,4"
+                                 Visibility="Collapsed"
+                                 AutomationProperties.AutomationId="BackToConnectionLink">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE72B;"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="12"
+                                  IsTextScaleFactorEnabled="False"/>
+                        <TextBlock x:Uid="SessionsPage_BackToConnection"
+                                   Text="Back to Connection"
+                                   Style="{StaticResource CaptionTextBlockStyle}"/>
+                    </StackPanel>
+                </HyperlinkButton>
 
-        <!-- Header row: title + refresh -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="Sessions" Style="{StaticResource TitleTextBlockStyle}"/>
-            <Button x:Name="RefreshButton" Grid.Column="1" Click="OnRefresh">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                    <TextBlock Text="Refresh"/>
-                </StackPanel>
-            </Button>
-        </Grid>
+                <TextBlock x:Uid="SessionsPage_Sessions"
+                           Text="Sessions"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           Margin="0,0,0,2"/>
+                <TextBlock Text="Conversations this gateway is currently handling, grouped by channel."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap" Margin="0,0,0,4"/>
 
-        <!-- Channel filter SelectorBar -->
-        <SelectorBar x:Name="ChannelSelector" Grid.Row="2"
-                      SelectionChanged="ChannelSelector_SelectionChanged">
-            <SelectorBarItem x:Name="AllTab" Text="All" IsSelected="True"/>
-        </SelectorBar>
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-        <InfoBar x:Name="ConnectionInfoBar" Grid.Row="3"
-                 IsOpen="False" IsClosable="False" Severity="Warning"
-                 Title="Gateway disconnected"
-                 Message="Connect to a gateway to load sessions.">
-            <InfoBar.ActionButton>
-                <Button Content="Open Connection" Click="OnOpenConnectionClick"/>
-            </InfoBar.ActionButton>
-        </InfoBar>
+                    <SelectorBar x:Name="ChannelSelector" Grid.Column="0"
+                                 VerticalAlignment="Center"
+                                 SelectionChanged="ChannelSelector_SelectionChanged">
+                        <SelectorBarItem x:Uid="SessionsPage_All" x:Name="AllTab" Text="All" IsSelected="True"/>
+                    </SelectorBar>
 
-        <StackPanel x:Name="LoadingState" Grid.Row="4" Orientation="Horizontal" Spacing="12"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Visibility="Collapsed">
-            <ProgressRing IsActive="True" Width="22" Height="22"/>
-            <TextBlock Text="Loading sessions..."
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       VerticalAlignment="Center"/>
-        </StackPanel>
+                    <Button x:Name="RefreshButton" Grid.Column="1"
+                            Click="OnRefresh"
+                            ToolTipService.ToolTip="Refresh sessions"
+                            AutomationProperties.Name="Refresh sessions">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon x:Name="RefreshIcon"
+                                      Glyph="&#xE72C;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="14"
+                                      IsTextScaleFactorEnabled="False"/>
+                            <TextBlock x:Uid="SessionsPage_Refresh" x:Name="RefreshLabel" Text="Refresh"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
 
-        <!-- Empty state -->
-        <StackPanel x:Name="EmptyState" Grid.Row="4" Spacing="8"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Visibility="Collapsed">
-            <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
-            <TextBlock Text="No active sessions"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       HorizontalAlignment="Center"/>
-        </StackPanel>
+                <InfoBar x:Uid="SessionsPage_GatewayDisconnected"
+                         x:Name="ConnectionInfoBar"
+                         IsOpen="False" IsClosable="False" Severity="Warning"
+                         Title="Gateway disconnected"
+                         Message="Connect to a gateway to load sessions.">
+                    <InfoBar.ActionButton>
+                        <Button x:Uid="SessionsPage_OpenConnection" Content="Open Connection" Click="OnOpenConnectionClick"/>
+                    </InfoBar.ActionButton>
+                </InfoBar>
 
-        <!-- Session list -->
-        <ListView x:Name="SessionListView" Grid.Row="4" SelectionMode="None">
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,4">
-                        <Grid RowSpacing="4">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                <!-- Loading / empty / list share this slot; only one is Visible at a time. -->
+                <Grid MinHeight="160">
+                    <StackPanel x:Name="LoadingState"
+                                Orientation="Horizontal" Spacing="12"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                        <ProgressRing IsActive="True" Width="20" Height="20"/>
+                        <TextBlock x:Uid="SessionsPage_LoadingSessions"
+                                   Text="Loading sessions..."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
 
-                            <!-- Row 1: Status dot + name + age -->
-                            <Grid Grid.Row="0" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                         Fill="{Binding StatusColor}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
-                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Grid.Column="2" Text="{Binding AgeText}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="12"/>
-                            </Grid>
+                    <StackPanel x:Name="EmptyState" Spacing="8"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                        <FontIcon Glyph="&#xE8BD;"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="40"
+                                  IsTextScaleFactorEnabled="False"
+                                  HorizontalAlignment="Center"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        <TextBlock x:Uid="SessionsPage_NoActiveSessions"
+                                   Text="No active sessions"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="Sessions appear here when a channel is connected and traffic is flowing."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" TextAlignment="Center"
+                                   MaxWidth="320"/>
+                    </StackPanel>
 
-                            <!-- Row 2: Provider · Model · Channel -->
-                            <TextBlock Grid.Row="1" Text="{Binding DetailLine}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       FontSize="12" TextTrimming="CharacterEllipsis"
-                                       Margin="16,0,0,0"/>
+                    <ListView x:Name="SessionListView"
+                              SelectionMode="None"
+                              ShowsScrollingPlaceholders="False">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                                <Setter Property="Margin" Value="0,0,0,8"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" CornerRadius="8"
+                                        Padding="16,12">
+                                    <Grid RowSpacing="8" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                            <!-- Row 3: Progress bar + token counts -->
-                            <Grid Grid.Row="2" ColumnSpacing="12" Margin="16,2,0,0"
-                                  Visibility="{Binding TokenRowVisibility}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Border CornerRadius="3" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                        BorderThickness="1" Height="8" VerticalAlignment="Center">
-                                    <ProgressBar Value="{Binding ContextPercent}" Maximum="100"
-                                                 Height="6" VerticalAlignment="Center" CornerRadius="2"
-                                                 Background="{ThemeResource ControlFillColorDefaultBrush}"/>
+                                        <StackPanel Grid.Row="0" Grid.Column="0"
+                                                    Orientation="Horizontal" Spacing="10"
+                                                    VerticalAlignment="Center">
+                                            <Ellipse Width="10" Height="10"
+                                                     VerticalAlignment="Center"
+                                                     Fill="{Binding StatusBrush}"
+                                                     ToolTipService.ToolTip="{Binding StatusTooltip}"/>
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="0" Grid.Column="1"
+                                                    Orientation="Horizontal" Spacing="8"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding AgeText}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                                   Text="{Binding DetailLine}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="20,0,0,0"/>
+
+                                        <Grid Grid.Row="2" Grid.Column="0"
+                                              Margin="20,0,8,0"
+                                              ColumnSpacing="12"
+                                              VerticalAlignment="Center"
+                                              Visibility="{Binding TokenRowVisibility}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ProgressBar Value="{Binding ContextPercent}" Maximum="100"
+                                                         Height="4" VerticalAlignment="Center"
+                                                         CornerRadius="2"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding TokensText}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        </Grid>
+
+                                        <StackPanel Grid.Row="2" Grid.Column="1"
+                                                    Orientation="Horizontal" Spacing="4"
+                                                    VerticalAlignment="Center">
+                                            <Button Tag="{Binding Key}"
+                                                    Click="OnOpenChat"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    Content="Open chat"
+                                                    ToolTipService.ToolTip="Open this session in Chat"
+                                                    AutomationProperties.Name="Open in chat"/>
+                                            <Button Tag="{Binding Key}"
+                                                    IsEnabled="{Binding CanEdit}"
+                                                    ToolTipService.ToolTip="More actions"
+                                                    AutomationProperties.Name="More actions">
+                                                <FontIcon Glyph="&#xE712;"
+                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="14"
+                                                          IsTextScaleFactorEnabled="False"/>
+                                                <Button.Flyout>
+                                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_Reset"
+                                                                        Text="Reset"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnResetSession">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE72C;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_Compact"
+                                                                        Text="Compact"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnCompactSession">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE74C;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutSeparator/>
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_Delete"
+                                                                        Text="Delete"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnDeleteSession"
+                                                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE74D;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"
+                                                                          Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                    </MenuFlyout>
+                                                </Button.Flyout>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
-                                <TextBlock Grid.Column="1" Text="{Binding TokensText}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           FontSize="11"/>
-                            </Grid>
-
-                            <!-- Row 4: Action buttons -->
-                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="16,4,0,0">
-                                 <Button Content="Reset" Tag="{Binding Key}" Click="OnResetSession"
-                                         IsEnabled="{Binding CanEdit}"
-                                         Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
-                                 <Button Content="Compact" Tag="{Binding Key}" Click="OnCompactSession"
-                                         IsEnabled="{Binding CanEdit}"
-                                         Style="{StaticResource DefaultButtonStyle}" Padding="8,4"/>
-                                 <Button Content="Delete" Tag="{Binding Key}" Click="OnDeleteSession"
-                                         IsEnabled="{Binding CanEdit}"
-                                         Foreground="IndianRed" Padding="8,4"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
-    </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
 </Page>

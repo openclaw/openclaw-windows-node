@@ -12,7 +12,7 @@
     <DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>
     <StartupObject>OpenClawTray.Program</StartupObject>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <Version>0.4.4</Version>
+    <Version>0.4.7</Version>
     <DefaultLanguage>en-US</DefaultLanguage>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
@@ -41,15 +41,15 @@
     <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
     <AppxBundle>Never</AppxBundle>
     <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
-    <!-- Sync MSIX package version with build version (requires 4-part: X.Y.Z.0).
-         CI passes majorMinorPatch (e.g. 0.3.1) and patches Package.appxmanifest before build. -->
+    <!-- MSIX package version (Identity/Version in Package.appxmanifest) is auto-synced from
+         $(Version) by the SyncAppxManifestVersion target below; this is the only place the
+         Version is written. -->
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
-    <ProjectReference Include="..\OpenClawTray.OnboardingV2\OpenClawTray.OnboardingV2.csproj" />
     <ProjectReference Include="..\OpenClaw.Chat\OpenClaw.Chat.csproj" />
   </ItemGroup>
 
@@ -82,73 +82,158 @@
 
   <PropertyGroup>
     <OpenClawRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</OpenClawRepoRoot>
+    <!-- RID-derived arch for tools/mxc/<arch>/wxc-exec.exe. Falls back to x64
+         when no RID is present (e.g. unpackaged debug builds). -->
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-arm64'">arm64</MxcArch>
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-x64'">x64</MxcArch>
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(PlatformTarget)' == 'ARM64'">arm64</MxcArch>
+    <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == ''">x64</MxcArch>
+    <MxcSdkBinDir>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\bin\$(MxcArch)\</MxcSdkBinDir>
   </PropertyGroup>
 
-  <Target Name="RestoreMxcNodeBridge"
-          BeforeTargets="Build;Publish"
-          Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
-    <Message Importance="high" Text="Restoring MXC node bridge dependencies with npm ci" />
+  <!--
+    Single source of truth for the app version is <Version> in this csproj (see docs/VERSIONING.md).
+    Package.appxmanifest carries a sentinel Version="0.0.0.0" in source; the real version is patched
+    in only when actually packaging MSIX (WindowsPackageType=MSIX), so unpackaged dev builds leave
+    the file untouched and git stays clean. CI's manifest patch step (.github/workflows/ci.yml)
+    only writes Identity/Name and DisplayName; Version is supplied via msbuild /p:Version=... and
+    written by this target.
+
+    Uses a regex string-replace (not XmlPoke) to preserve the manifest's hand-formatted layout.
+    The MSIX Identity/Version must be a 4-part version (X.Y.Z.W) with no pre-release suffix;
+    $(Version) may be 2-, 3- or 4-part and may include a -alpha/+meta suffix from GitVersion.
+  -->
+  <UsingTask TaskName="SyncAppxManifestVersion" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ManifestPath ParameterType="System.String" Required="true" />
+      <FourPartVersion ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+        // Validate the version is a proper 4-part numeric (X.Y.Z.W) before touching the manifest.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(FourPartVersion, @"^\d+\.\d+\.\d+\.\d+$")) {
+            Log.LogError("SyncAppxManifestVersion: '" + FourPartVersion + "' is not a valid 4-part numeric MSIX version.");
+            return false;
+        }
+
+        var text = System.IO.File.ReadAllText(ManifestPath);
+        // Tolerate attribute-order, whitespace around '=', single or double quotes, and case
+        // variations on the Version attribute name. Capture the opening and closing quote
+        // characters so we re-emit them unchanged.
+        var regex = new System.Text.RegularExpressions.Regex(
+            "(<Identity\\b[^>]*?\\bVersion\\s*=\\s*[\"'])[^\"']+([\"'])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!regex.IsMatch(text)) {
+            Log.LogError("SyncAppxManifestVersion: could not find Identity/@Version in " + ManifestPath);
+            return false;
+        }
+        var updated = regex.Replace(text, "${1}" + FourPartVersion + "$2", 1);
+        if (updated == text) {
+            return true;
+        }
+
+        // Clear any read-only attribute (some non-Git SCMs mark files read-only) so the
+        // write doesn't fail with an opaque UnauthorizedAccessException.
+        try {
+            var attrs = System.IO.File.GetAttributes(ManifestPath);
+            if ((attrs & System.IO.FileAttributes.ReadOnly) != 0) {
+                System.IO.File.SetAttributes(ManifestPath, attrs & ~System.IO.FileAttributes.ReadOnly);
+            }
+        } catch (System.Exception ex) {
+            Log.LogWarning("SyncAppxManifestVersion: could not clear read-only on " + ManifestPath + ": " + ex.Message);
+        }
+
+        // Atomic write: stage to a sibling temp file then replace, so parallel readers never
+        // see a truncated manifest. File.Replace is atomic on NTFS. The finally block makes
+        // sure the temp file never lingers (it isn't in .gitignore and would otherwise show
+        // up in `git status` if Replace throws something other than FileNotFoundException).
+        var tempPath = ManifestPath + ".sync-tmp";
+        System.IO.File.WriteAllText(tempPath, updated);
+        try {
+            try {
+                System.IO.File.Replace(tempPath, ManifestPath, destinationBackupFileName: null);
+            } catch (System.IO.FileNotFoundException) {
+                // Replace requires destination to exist; if a concurrent build deleted it, fall
+                // back to a plain move (no 3-arg overload on .NET Framework, which is what the
+                // inline task compiler targets).
+                System.IO.File.Move(tempPath, ManifestPath);
+            }
+        } finally {
+            try {
+                if (System.IO.File.Exists(tempPath)) {
+                    System.IO.File.Delete(tempPath);
+                }
+            } catch { /* best-effort cleanup */ }
+        }
+        Log.LogMessage(MessageImportance.High, "Synced Package.appxmanifest Identity/@Version to " + FourPartVersion);
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="SyncAppxManifestVersionTarget" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" Condition="'$(WindowsPackageType)' == 'MSIX'">
+    <!-- Fail loudly if MSIX packaging was requested but no version was supplied; without
+         this, the target would silently skip and the sentinel 0.0.0.0 in the source manifest
+         would ship in the MSIX package. -->
+    <Error Text="MSIX packaging requested (WindowsPackageType=MSIX) but &lt;Version&gt; is empty. Pass /p:Version=X.Y[.Z] or set &lt;Version&gt; in the csproj." Condition="'$(Version)' == ''" />
+    <PropertyGroup>
+      <_AppxManifestPath>$(MSBuildThisFileDirectory)Package.appxmanifest</_AppxManifestPath>
+      <_StrippedVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</_StrippedVersion>
+      <_VersionDotCount>$([System.Text.RegularExpressions.Regex]::Matches('$(_StrippedVersion)', '\.').Count)</_VersionDotCount>
+      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '3'">$(_StrippedVersion)</_AppxManifestVersion>
+      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '2'">$(_StrippedVersion).0</_AppxManifestVersion>
+      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '1'">$(_StrippedVersion).0.0</_AppxManifestVersion>
+    </PropertyGroup>
+    <Error Text="Cannot derive 4-part MSIX version from &lt;Version&gt;$(Version)&lt;/Version&gt;. Use the form X.Y or X.Y.Z (optionally with -prerelease or +meta suffix)." Condition="'$(_AppxManifestVersion)' == ''" />
+    <SyncAppxManifestVersion ManifestPath="$(_AppxManifestPath)" FourPartVersion="$(_AppxManifestVersion)" />
+  </Target>
+
+  <!-- Fail fast on RIDs we have no wxc-exec binary for, so x86/non-Windows
+       builds don't silently fall back to x64 and ship a broken sandbox.
+       Suppress with -p:VerifyWxcExecShipped=false for SDK-less unit-test builds. -->
+  <Target Name="ValidateMxcArchMapping" BeforeTargets="Build;Publish" Condition="'$(MxcArch)' == '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Text="Unsupported RuntimeIdentifier '$(RuntimeIdentifier)' for MXC sandbox. Only win-x64 and win-arm64 are supported. Override -p:MxcArch=x64 or -p:MxcArch=arm64 if you know what you are doing." />
+  </Target>
+
+  <Target Name="RestoreMxcNodeBridge" BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish" Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
+    <Message Importance="high" Text="Restoring @microsoft/mxc-sdk to extract wxc-exec.exe ($(MxcArch))" />
     <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(OpenClawRepoRoot)" />
   </Target>
 
-  <Target Name="CopyMxcNodeBridgeToOutput" AfterTargets="Build">
+  <!-- Copy ONLY wxc-exec.exe (and any sibling DLLs) for the active arch into
+       $(TargetDir)tools/mxc/<arch>/. No node_modules ships. The C# probe in
+       MxcAvailability.ResolveWxcExec looks here first. -->
+  <Target Name="CopyWxcExecToOutput" AfterTargets="Build">
     <ItemGroup>
-      <_MxcBridgeFiles Include="$(OpenClawRepoRoot)tools\mxc\**\*" />
-      <_MxcSdkFiles Include="$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\**\*" />
-      <_MxcNodePtyFiles Include="$(OpenClawRepoRoot)node_modules\node-pty\**\*" />
-      <_MxcNodeAddonApiFiles Include="$(OpenClawRepoRoot)node_modules\node-addon-api\**\*" />
-      <_MxcSemverFiles Include="$(OpenClawRepoRoot)node_modules\semver\**\*" />
+      <_WxcExecFiles Include="$(MxcSdkBinDir)wxc-exec.exe" />
+      <_WxcExecFiles Include="$(MxcSdkBinDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(_MxcBridgeFiles)"
-          DestinationFiles="@(_MxcBridgeFiles->'$(TargetDir)tools\mxc\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcBridgeFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcSdkFiles)"
-          DestinationFiles="@(_MxcSdkFiles->'$(TargetDir)node_modules\@microsoft\mxc-sdk\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcSdkFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcNodePtyFiles)"
-          DestinationFiles="@(_MxcNodePtyFiles->'$(TargetDir)node_modules\node-pty\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcNodePtyFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcNodeAddonApiFiles)"
-          DestinationFiles="@(_MxcNodeAddonApiFiles->'$(TargetDir)node_modules\node-addon-api\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcNodeAddonApiFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcSemverFiles)"
-          DestinationFiles="@(_MxcSemverFiles->'$(TargetDir)node_modules\semver\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcSemverFiles)' != ''" />
+    <Copy SourceFiles="@(_WxcExecFiles)" DestinationFiles="@(_WxcExecFiles->'$(TargetDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_WxcExecFiles)' != ''" />
   </Target>
 
-  <Target Name="CopyMxcNodeBridgeToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+  <!-- Standalone publish copy. Deliberately not chained to Build so
+       dotnet publish with no-build still works. -->
+  <Target Name="CopyWxcExecToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <ItemGroup>
-      <_MxcPublishBridgeFiles Include="$(OpenClawRepoRoot)tools\mxc\**\*" />
-      <_MxcPublishSdkFiles Include="$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\**\*" />
-      <_MxcPublishNodePtyFiles Include="$(OpenClawRepoRoot)node_modules\node-pty\**\*" />
-      <_MxcPublishNodeAddonApiFiles Include="$(OpenClawRepoRoot)node_modules\node-addon-api\**\*" />
-      <_MxcPublishSemverFiles Include="$(OpenClawRepoRoot)node_modules\semver\**\*" />
+      <_WxcExecPublishFiles Include="$(MxcSdkBinDir)wxc-exec.exe" />
+      <_WxcExecPublishFiles Include="$(MxcSdkBinDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(_MxcPublishBridgeFiles)"
-          DestinationFiles="@(_MxcPublishBridgeFiles->'$(PublishDir)tools\mxc\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishBridgeFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishSdkFiles)"
-          DestinationFiles="@(_MxcPublishSdkFiles->'$(PublishDir)node_modules\@microsoft\mxc-sdk\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishSdkFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishNodePtyFiles)"
-          DestinationFiles="@(_MxcPublishNodePtyFiles->'$(PublishDir)node_modules\node-pty\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishNodePtyFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishNodeAddonApiFiles)"
-          DestinationFiles="@(_MxcPublishNodeAddonApiFiles->'$(PublishDir)node_modules\node-addon-api\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishNodeAddonApiFiles)' != ''" />
-    <Copy SourceFiles="@(_MxcPublishSemverFiles)"
-          DestinationFiles="@(_MxcPublishSemverFiles->'$(PublishDir)node_modules\semver\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_MxcPublishSemverFiles)' != ''" />
+    <Copy SourceFiles="@(_WxcExecPublishFiles)" DestinationFiles="@(_WxcExecPublishFiles->'$(PublishDir)tools\mxc\$(MxcArch)\%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_WxcExecPublishFiles)' != ''" />
+  </Target>
+
+  <!-- Fail the build if wxc-exec.exe didn't land in the expected output path.
+       Catches RID/arch mismatches and silent npm ci skips. Gated on
+       VerifyWxcExecShipped (default true) so unit-test-only builds without
+       npm available can opt out. -->
+  <Target Name="ValidateWxcExecShipped" AfterTargets="CopyWxcExecToOutput" Condition="'$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Condition="!Exists('$(TargetDir)tools\mxc\$(MxcArch)\wxc-exec.exe')" Text="wxc-exec.exe missing at $(TargetDir)tools\mxc\$(MxcArch)\. Check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir). Run `npm ci` at $(OpenClawRepoRoot)." />
+  </Target>
+
+  <!-- Same validation, but after publish, catches publish-no-build runs that
+       silently ship without wxc-exec. -->
+  <Target Name="ValidateWxcExecPublished" AfterTargets="CopyWxcExecToPublish" Condition="'$(PublishDir)' != '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
+    <Error Condition="!Exists('$(PublishDir)tools\mxc\$(MxcArch)\wxc-exec.exe')" Text="wxc-exec.exe missing at $(PublishDir)tools\mxc\$(MxcArch)\. Publish-time copy did not run; check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir)." />
   </Target>
 
   <!-- Copy WebView2Loader.dll to output root for unpackaged app (not needed for MSIX) -->

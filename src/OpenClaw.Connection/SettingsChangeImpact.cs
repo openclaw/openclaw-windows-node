@@ -43,9 +43,15 @@ public static class SettingsChangeClassifier
             return SettingsChangeImpact.OperatorReconnectRequired;
 
         // EnableNodeMode toggled → node reconnect
-        if (prev.EnableNodeMode != next.EnableNodeMode ||
-            prev.EnableMcpServer != next.EnableMcpServer)
+        if (prev.EnableNodeMode != next.EnableNodeMode)
             return SettingsChangeImpact.NodeReconnectRequired;
+
+        // EnableMcpServer toggled → no gateway reconnect needed; the MCP
+        // server is purely local and managed by NodeService.SetMcpEnabled
+        // in the settings-change handler. Classify as UiOnly so the
+        // reconnect path is not triggered.
+        if (prev.EnableMcpServer != next.EnableMcpServer)
+            return SettingsChangeImpact.UiOnly;
 
         // Node capability toggles → capability reload
         if (prev.NodeCanvasEnabled != next.NodeCanvasEnabled ||
@@ -54,7 +60,8 @@ public static class SettingsChangeClassifier
             prev.NodeLocationEnabled != next.NodeLocationEnabled ||
             prev.NodeBrowserProxyEnabled != next.NodeBrowserProxyEnabled ||
             prev.NodeSttEnabled != next.NodeSttEnabled ||
-            prev.NodeTtsEnabled != next.NodeTtsEnabled)
+            prev.NodeTtsEnabled != next.NodeTtsEnabled ||
+            prev.NodeSystemRunEnabled != next.NodeSystemRunEnabled)
             return SettingsChangeImpact.CapabilityReload;
 
         // Check if anything else changed (UI-only changes)

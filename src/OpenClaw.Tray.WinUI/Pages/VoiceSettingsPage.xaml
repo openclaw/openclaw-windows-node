@@ -5,9 +5,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+    <Grid HorizontalAlignment="Stretch">
+        <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="VoiceSettingsPage_PageTitle" x:Name="PageTitleText" Text="🎙️ Voice &amp; Audio" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="VoiceSettingsPage_PageTitle" x:Name="PageTitleText" Text="Voice &amp; Audio" Style="{StaticResource TitleTextBlockStyle}"/>
             <TextBlock x:Uid="VoiceSettingsPage_PageDescription" x:Name="PageDescriptionText"
                        Text="Configure speech-to-text and voice interaction settings. All speech processing runs locally on your device."
                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -64,7 +65,7 @@
                             Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon x:Name="TestVoiceBtnIcon" Glyph="&#xE720;" FontSize="14"/>
-                            <TextBlock x:Name="TestVoiceButtonText" Text="Test Voice Input"/>
+                            <TextBlock x:Uid="VoiceSettingsPage_TestVoiceInput" x:Name="TestVoiceButtonText" Text="Test Voice Input"/>
                         </StackPanel>
                     </Button>
 
@@ -85,7 +86,9 @@
 
                             <!-- Status text (only shown for errors/done) -->
                             <TextBlock x:Name="InlineTestStatus" Text=""
-                                       FontSize="12" Opacity="0.5" HorizontalAlignment="Center"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center"
                                        Visibility="Collapsed"/>
 
                             <!-- Centered buttons -->
@@ -94,7 +97,7 @@
                                         Style="{StaticResource AccentButtonStyle}" Padding="12,8">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon x:Name="InlineTestBtnIcon" Glyph="&#xE720;" FontSize="14"/>
-                                        <TextBlock x:Name="InlineTestBtnLabel" Text="Record" FontSize="13"/>
+                                        <TextBlock x:Uid="VoiceSettingsPage_Record" x:Name="InlineTestBtnLabel" Text="Record" FontSize="13"/>
                                     </StackPanel>
                                 </Button>
                                 <Button x:Name="InlineTestCloseBtn" Click="OnInlineTestCloseClick"
@@ -138,7 +141,8 @@
 
                     <Slider x:Uid="VoiceSettingsPage_SilenceSlider" x:Name="SilenceSlider" Header="Silence timeout (seconds)"
                             Minimum="0.5" Maximum="5" StepFrequency="0.5"
-                            ValueChanged="OnSilenceChanged" Width="250"/>
+                            ValueChanged="OnSilenceChanged" Width="250"
+                            HorizontalAlignment="Left"/>
 
                     <ToggleSwitch x:Uid="VoiceSettingsPage_TtsResponseToggle" x:Name="TtsResponseToggle" Toggled="OnTtsResponseToggled"
                                   Header="Read responses aloud"/>
@@ -153,7 +157,7 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="12">
-                    <TextBlock x:Uid="VoiceSettingsPage_VoiceHeader" x:Name="VoiceHeaderText" Text="🔊 Companion Voice" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_VoiceHeader" x:Name="VoiceHeaderText" Text="Companion Voice" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <TextBlock x:Uid="VoiceSettingsPage_VoiceDescription" x:Name="VoiceDescriptionText"
                                Text="Choose the voice used when reading responses aloud."
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -180,8 +184,13 @@
                             </Button>
                             <Button x:Uid="VoiceSettingsPage_PiperDeleteButton" x:Name="PiperDeleteButton" Click="OnPiperDeleteClick"
                                     Content="Delete" Width="80" Visibility="Collapsed"/>
-                            <Button x:Uid="VoiceSettingsPage_PiperPreviewButton" x:Name="PiperPreviewButton" Click="OnPiperPreviewClick"
-                                    Content="▶ Preview" Width="100" Visibility="Collapsed"/>
+                            <Button x:Name="PiperPreviewButton" Click="OnPiperPreviewClick"
+                                    Width="100" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon x:Name="PiperPreviewIcon" Glyph="&#xE768;" FontSize="14"/>
+                                    <TextBlock x:Name="PiperPreviewLabel" Text="Preview"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                         <ProgressBar x:Name="PiperDownloadProgress" Visibility="Collapsed"
                                      IsIndeterminate="False" Maximum="100" Height="6" Width="400" HorizontalAlignment="Left"/>
@@ -198,8 +207,13 @@
                     <StackPanel x:Name="WindowsVoicePanel" Spacing="8" Visibility="Collapsed">
                         <ComboBox x:Uid="VoiceSettingsPage_WindowsVoiceCombo" x:Name="WindowsVoiceCombo" Header="Voice"
                                   SelectionChanged="OnWindowsVoiceChanged" Width="300"/>
-                        <Button x:Uid="VoiceSettingsPage_PreviewVoiceButton" x:Name="PreviewVoiceButton" Click="OnPreviewVoiceClick"
-                                Content="▶ Preview Voice" Width="140"/>
+                        <Button x:Name="PreviewVoiceButton" Click="OnPreviewVoiceClick"
+                                Width="140">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon x:Name="PreviewVoiceIcon" Glyph="&#xE768;" FontSize="14"/>
+                                <TextBlock x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
 
                     <!-- ElevenLabs settings -->
@@ -228,5 +242,6 @@
             </Border>
 
         </StackPanel>
+    </Grid>
     </ScrollViewer>
 </Page>
