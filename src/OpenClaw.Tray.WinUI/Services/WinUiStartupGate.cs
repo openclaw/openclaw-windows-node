@@ -86,6 +86,36 @@ internal static class WinUiStartupGate
         writeBreadcrumb($"Program.packageInstallAge.readyAfterWait waitMs={wait.TotalMilliseconds:F0}", null);
     }
 
+    internal static void RunWithXamlFactoryRetry(
+        Action startApplication,
+        Action<TimeSpan> delay,
+        Action<string, Exception?> writeBreadcrumb,
+        IReadOnlyList<TimeSpan> retryDelays)
+    {
+        var attempt = 0;
+        while (true)
+        {
+            try
+            {
+                startApplication();
+                return;
+            }
+            catch (COMException ex) when (IsXamlFactoryClassUnavailable(ex))
+            {
+                if (attempt >= retryDelays.Count)
+                {
+                    writeBreadcrumb($"Program.ApplicationStart.xamlFactoryUnavailable.final attempts={attempt}", ex);
+                    throw;
+                }
+
+                var wait = retryDelays[attempt];
+                attempt++;
+                writeBreadcrumb($"Program.ApplicationStart.xamlFactoryUnavailable.retry attempt={attempt} waitMs={wait.TotalMilliseconds:F0}", ex);
+                delay(wait);
+            }
+        }
+    }
+
     internal static bool IsXamlFactoryClassUnavailable(COMException exception) =>
         exception.HResult == ClassFactoryCannotSupplyRequestedClass;
 }

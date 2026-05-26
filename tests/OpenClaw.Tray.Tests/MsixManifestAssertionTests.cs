@@ -235,7 +235,9 @@ public sealed class MsixManifestAssertionTests
             "src", "OpenClaw.Tray.WinUI", "Program.cs"));
 
         Assert.Contains("WriteEarlyStartupBreadcrumb(\"Program.Main.begin\")", program);
-        Assert.Contains("WriteEarlyStartupBreadcrumb(\"Program.ApplicationStart.xamlFactoryUnavailable\"", program);
+        Assert.Contains("RunWithXamlFactoryRetry", program);
+        Assert.Contains("XamlFactoryRetryDelays", program);
+        Assert.Contains("WriteEarlyStartupBreadcrumb", program);
         Assert.Contains("startup.log", program);
     }
 

@@ -17,6 +17,16 @@ internal static class Program
     private static readonly TimeSpan PackageReadyTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan PackageReadyRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan FreshPackageMinimumAge = TimeSpan.FromSeconds(7);
+    private static readonly TimeSpan[] XamlFactoryRetryDelays =
+    [
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(20),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(45),
+        TimeSpan.FromSeconds(60),
+    ];
 
     [STAThread]
     private static void Main(string[] args)
@@ -38,22 +48,18 @@ internal static class Program
             WriteEarlyStartupBreadcrumb,
             FreshPackageMinimumAge);
 
-        try
-        {
-            Application.Start(p =>
+        WinUiStartupGate.RunWithXamlFactoryRetry(
+            () => Application.Start(p =>
             {
                 var context = new Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(
                     Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
                 SynchronizationContext.SetSynchronizationContext(context);
                 new App();
-            });
-            WriteEarlyStartupBreadcrumb("Program.ApplicationStart.returned");
-        }
-        catch (COMException ex) when (WinUiStartupGate.IsXamlFactoryClassUnavailable(ex))
-        {
-            WriteEarlyStartupBreadcrumb("Program.ApplicationStart.xamlFactoryUnavailable", ex);
-            throw;
-        }
+            }),
+            Thread.Sleep,
+            WriteEarlyStartupBreadcrumb,
+            XamlFactoryRetryDelays);
+        WriteEarlyStartupBreadcrumb("Program.ApplicationStart.returned");
     }
 
     private static WinUiStartupGate.PackageReadiness GetPackageReadiness()

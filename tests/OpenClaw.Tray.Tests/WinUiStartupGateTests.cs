@@ -156,6 +156,75 @@ public sealed class WinUiStartupGateTests
         Assert.False(WinUiStartupGate.IsXamlFactoryClassUnavailable(classNotRegistered));
     }
 
+    [Fact]
+    public void RunWithXamlFactoryRetry_RetriesClassFactoryFailureThenSucceeds()
+    {
+        var attempts = 0;
+        var delays = new List<TimeSpan>();
+        var logs = new List<string>();
+
+        WinUiStartupGate.RunWithXamlFactoryRetry(
+            () =>
+            {
+                attempts++;
+                if (attempts < 3)
+                    throw new COMException(
+                        "ClassFactory cannot supply requested class",
+                        WinUiStartupGate.ClassFactoryCannotSupplyRequestedClass);
+            },
+            delay => delays.Add(delay),
+            (phase, _) => logs.Add(phase),
+            [TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(500)]);
+
+        Assert.Equal(3, attempts);
+        Assert.Equal([TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(500)], delays);
+        Assert.Contains(logs, phase => phase.Contains("retry attempt=1", StringComparison.Ordinal));
+        Assert.Contains(logs, phase => phase.Contains("retry attempt=2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RunWithXamlFactoryRetry_RethrowsAfterRetryBudget()
+    {
+        var attempts = 0;
+        var logs = new List<string>();
+
+        var ex = Assert.Throws<COMException>(() =>
+            WinUiStartupGate.RunWithXamlFactoryRetry(
+                () =>
+                {
+                    attempts++;
+                    throw new COMException(
+                        "ClassFactory cannot supply requested class",
+                        WinUiStartupGate.ClassFactoryCannotSupplyRequestedClass);
+                },
+                _ => { },
+                (phase, _) => logs.Add(phase),
+                [TimeSpan.FromMilliseconds(200)]));
+
+        Assert.True(WinUiStartupGate.IsXamlFactoryClassUnavailable(ex));
+        Assert.Equal(2, attempts);
+        Assert.Contains(logs, phase => phase.Contains("final attempts=1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RunWithXamlFactoryRetry_DoesNotRetryOtherComExceptions()
+    {
+        var attempts = 0;
+
+        Assert.Throws<COMException>(() =>
+            WinUiStartupGate.RunWithXamlFactoryRetry(
+                () =>
+                {
+                    attempts++;
+                    throw new COMException("Class not registered", unchecked((int)0x80040154));
+                },
+                _ => throw new InvalidOperationException("Should not delay"),
+                (_, _) => { },
+                [TimeSpan.FromMilliseconds(200)]));
+
+        Assert.Equal(1, attempts);
+    }
+
     private static WinUiStartupGate.PackageReadiness Ready(string description) =>
         new(true, true, description, null);
 
