@@ -609,23 +609,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             StoreSessionOffset(prevSessionIdRef.Current, sv.VerticalOffset);
         }
 
-        void QueueScrollToOffset(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, double targetOffset, bool disableAnimation, bool suppressAutoFollow)
-        {
-            suppressAutoFollowRef.Current = suppressAutoFollow;
-            sv.DispatcherQueue.TryEnqueue(() =>
-            {
-                var target = ClampOffset(targetOffset, sv.ScrollableHeight);
-                sv.ChangeView(null, target, null, disableAnimation);
-                lastVerticalOffsetRef.Current = target;
-                lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
-                StoreSessionOffset(sessionId, target);
-
-                if (suppressAutoFollow)
-                    sv.DispatcherQueue.TryEnqueue(() => suppressAutoFollowRef.Current = false);
-            });
-        }
-
         void QueueScrollToBottom(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, bool disableAnimation)
         {
             isFollowingRef.Current = true;
@@ -783,12 +766,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         ChatEntryMetadata? MetaFor(string id) =>
             meta is not null && meta.TryGetValue(id, out var m) ? m : null;
-
-        Element FooterCaption(string text, HorizontalAlignment align) =>
-            Caption(text)
-                .Foreground(chatStampFg)
-                .Set(t => t.FontSize = 11)
-                .HAlign(align);
 
         // Hover-revealed action icon (copy / read aloud / trash). Opacity 0
         // and not hit-testable until the entry is hovered, then fades in
@@ -1686,7 +1663,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     aggregateStatus = ChatToolCallStatus.Interrupted;
             }
             var (taskStatusText, taskStatusBg, _) = ResolveStatus(new ChatTimelineItem(
-                Id: "agg", Kind: ChatTimelineItemKind.ToolCall, Text: null,
+                Id: "agg", Kind: ChatTimelineItemKind.ToolCall, Text: string.Empty,
                 ToolName: null, ToolResult: aggregateStatus, ToolOutput: null));
 
             string? StepPrefix(int i) => showStepNumbers ? $"{i + 1}." : null;
@@ -1699,12 +1676,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // "Task · 3 steps · 8:16 PM" — used by FooterReframe + as the
             // companion line under the TaskHeader card. Keeps the time so
             // users still get the chronology.
-            string TaskFooter()
-            {
-                var stepsLabel = $"Task · {stepCount} step{(stepCount == 1 ? "" : "s")}";
-                return string.IsNullOrEmpty(timeStr) ? stepsLabel : $"{stepsLabel} · {timeStr}";
-            }
-
             Element CardOf(Element[] rowEls) => Border(VStack(0, rowEls))
                 .Background(toolCardBgBrush)
                 .WithBorder(toolCardBorderBrush, toolCardBorderThickness)

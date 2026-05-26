@@ -79,7 +79,7 @@ public sealed partial class AgentEventsPage : Page
 
     public void Initialize(HubWindow hub)
     {
-        _appState = ((App)Application.Current).AppState;
+        _appState = ((App)Application.Current!).AppState!;
         _appState.AgentEventAdded += OnAgentEventAdded;
         _appState.PropertyChanged += OnAppStateChanged;
         PopulateAgentFilter(hub);

@@ -143,14 +143,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                         canonical: context.DisplayCommand);
                 }
 
-                // Exhaustive mapping without _ so the compiler warns if ExecApprovalPromptOutcome
-                // gains a new value. Allow is unreachable here — handled by the check above.
+                // Allow is unreachable here — handled by the check above. The fallback arm
+                // fails closed for invalid enum values that can still be cast at runtime.
                 followupDecision = promptResult switch
                 {
                     ExecApprovalPromptOutcome.Deny => ExecApprovalDecision.Deny,
                     ExecApprovalPromptOutcome.AllowOnce => ExecApprovalDecision.AllowOnce,
                     ExecApprovalPromptOutcome.AllowAlways => ExecApprovalDecision.AllowAlways,
                     ExecApprovalPromptOutcome.Allow => throw new UnreachableException("prompt-returned-allow handled above"),
+                    _ => throw new UnreachableException($"unknown prompt outcome: {promptResult}"),
                 };
             }
             else

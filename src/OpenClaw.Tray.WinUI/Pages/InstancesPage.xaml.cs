@@ -26,7 +26,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class InstancesPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
 
     public InstancesPage()
@@ -50,7 +50,7 @@ public sealed partial class InstancesPage : Page
             : Visibility.Collapsed;
 
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
 
         Rerender();

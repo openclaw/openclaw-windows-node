@@ -10,7 +10,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class BindingsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private readonly AsyncListLoadingState _bindingsLoading = new();
 
@@ -26,7 +26,7 @@ public sealed partial class BindingsPage : Page
     public void Initialize()
     {
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         // Use cached config if available
         if (_appState?.Config.HasValue == true)
