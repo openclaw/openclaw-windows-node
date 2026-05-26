@@ -88,14 +88,24 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     //   3. Renders raw HTML blocks as selectable plain text.
     //      Net effect: no click-to-navigate hyperlink or network-fetching
     //      image can be manufactured by untrusted Markdown inside a chat bubble.
-    private static Element SafeMarkdownText(string? text) =>
-        TextBlock(string.Empty)
-            .Set(t =>
-            {
-                t.TextWrapping = TextWrapping.Wrap;
-                t.IsTextSelectionEnabled = true;
-                ApplySafeMarkdownInlines(t, text);
-            });
+    private static Element SafeMarkdownText(string? text)
+    {
+        // Fast path: bubbles with no block-level markdown (the common case)
+        // keep the lightweight inline sanitizer to avoid the parser cost.
+        if (!Markdown.ChatMarkdownRenderer.ContainsBlockMarkdown(text))
+        {
+            return TextBlock(string.Empty)
+                .Set(t =>
+                {
+                    t.TextWrapping = TextWrapping.Wrap;
+                    t.IsTextSelectionEnabled = true;
+                    ApplySafeMarkdownInlines(t, text);
+                });
+        }
+        return Markdown.ChatMarkdownRenderer.Render(text)
+               ?? TextBlock(text ?? string.Empty)
+                    .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.IsTextSelectionEnabled = true; });
+    }
 
     // Cache parsed markdown text per TextBlock to avoid re-clearing and
     // rebuilding Inlines on every re-render when message content is stable.
