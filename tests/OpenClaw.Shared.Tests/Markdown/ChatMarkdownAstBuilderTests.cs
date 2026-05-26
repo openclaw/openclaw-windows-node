@@ -238,6 +238,136 @@ public class ChatMarkdownAstBuilderTests
         Assert.Equal("dotnet build", code.Text);
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    //  HTML entity decoding
+    // ────────────────────────────────────────────────────────────────────
+
+    private static string FlattenText(ChatMarkdownDocument doc)
+        => string.Concat(
+            doc.Blocks.OfType<MdParagraph>()
+                .SelectMany(p => p.Inlines.OfType<MdInlineText>())
+                .Select(t => t.Text));
+
+    [Fact]
+    public void NamedEntity_AmpersandDecodes()
+    {
+        // Regression: md4c emits "&amp;" as MarkdownTextType.Entity with the
+        // raw token; without decoding the user sees "AT&amp;T" in the bubble.
+        var doc = Build("AT&amp;T");
+        Assert.Equal("AT&T", FlattenText(doc));
+    }
+
+    [Fact]
+    public void NamedEntity_CopyrightDecodes()
+    {
+        var doc = Build("Hello &copy; World");
+        Assert.Equal("Hello © World", FlattenText(doc));
+    }
+
+    [Theory]
+    [InlineData("&lt;", "<")]
+    [InlineData("&gt;", ">")]
+    [InlineData("&quot;", "\"")]
+    [InlineData("&apos;", "'")]
+    [InlineData("&nbsp;", "\u00A0")]
+    [InlineData("&reg;", "\u00AE")]
+    [InlineData("&hellip;", "\u2026")]
+    [InlineData("&mdash;", "\u2014")]
+    public void NamedEntity_CommonEntitiesDecode(string entity, string expected)
+    {
+        var doc = Build("x" + entity + "y");
+        Assert.Equal("x" + expected + "y", FlattenText(doc));
+    }
+
+    [Fact]
+    public void NumericEntity_DecimalDecodes()
+    {
+        var doc = Build("&#65;&#66;&#67;");
+        Assert.Equal("ABC", FlattenText(doc));
+    }
+
+    [Fact]
+    public void NumericEntity_HexDecodesEitherCase()
+    {
+        var doc = Build("&#x41;&#X42;&#x4a;");
+        Assert.Equal("ABJ", FlattenText(doc));
+    }
+
+    [Fact]
+    public void NumericEntity_SupplementaryCodepointEmitsSurrogatePair()
+    {
+        // U+1F600 GRINNING FACE 😀 — must serialize as a 2-char surrogate pair.
+        var doc = Build("smile &#x1F600; here");
+        var flat = FlattenText(doc);
+        Assert.Equal("smile \U0001F600 here", flat);
+        Assert.Equal(13, flat.Length); // "smile " (6) + surrogate pair (2) + " here" (5)
+    }
+
+    [Fact]
+    public void NumericEntity_NulCodepointReplacedWithU_FFFD()
+    {
+        // CommonMark: &#0; must become U+FFFD, never a literal NUL.
+        var doc = Build("before&#0;after");
+        Assert.Equal("before\uFFFDafter", FlattenText(doc));
+    }
+
+    [Fact]
+    public void NumericEntity_SurrogateReplacedWithU_FFFD()
+    {
+        // CommonMark: codepoints in the surrogate range must be U+FFFD.
+        var doc = Build("x&#xD800;y");
+        Assert.Equal("x\uFFFDy", FlattenText(doc));
+    }
+
+    [Fact]
+    public void UnknownNamedEntity_PassesThroughVerbatim()
+    {
+        // We must not silently swallow text the user wrote.
+        var doc = Build("foo &totallymadeup; bar");
+        Assert.Equal("foo &totallymadeup; bar", FlattenText(doc));
+    }
+
+    [Fact]
+    public void Entity_InsideStrongSpan_Decodes()
+    {
+        var doc = Build("**AT&amp;T**");
+        var para = Assert.IsType<MdParagraph>(Assert.Single(doc.Blocks));
+        var runs = para.Inlines.OfType<MdInlineText>().ToArray();
+        Assert.Contains(runs, r => r.IsStrong && r.Text.Contains('&'));
+        Assert.Equal("AT&T", string.Concat(runs.Where(r => r.IsStrong).Select(r => r.Text)));
+    }
+
+    [Fact]
+    public void NumericEntity_MaxValidCodepointDecodes()
+    {
+        // U+10FFFF is the highest valid Unicode scalar value. It is a non-character
+        // but DecodeEntity should still emit it as a surrogate pair, not U+FFFD.
+        var doc = Build("x&#x10FFFF;y");
+        Assert.Equal("x\U0010FFFFy", FlattenText(doc));
+    }
+
+    [Fact]
+    public void NumericEntity_AboveMaxCodepointReplacedWithU_FFFD()
+    {
+        // &#x110000; is one past the max valid codepoint → must fold to U+FFFD.
+        // md4c may pass this through as Entity or as Normal text depending on
+        // its own validation; either way the rendered text must contain the
+        // U+FFFD replacement character (and never the raw "110000" token).
+        var doc = Build("x&#x110000;y");
+        var flat = FlattenText(doc);
+        Assert.DoesNotContain("110000", flat);
+        Assert.Contains("\uFFFD", flat);
+    }
+
+    [Fact]
+    public void NamedEntity_TwoCodepointSequenceDecodes()
+    {
+        // &fjlig; → "fj" (codepoints U+0066 U+006A). Exercises the cp1 != 0
+        // branch which would otherwise have zero test coverage.
+        var doc = Build("a&fjlig;b");
+        Assert.Equal("afjb", FlattenText(doc));
+    }
+
     [Fact]
     public void Strikethrough_FlagsRunAsStrike()
     {

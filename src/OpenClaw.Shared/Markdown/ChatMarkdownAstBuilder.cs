@@ -582,6 +582,27 @@ public sealed class ChatMarkdownAstBuilder
                     EmitInlineText("\uFFFD");
                 }
                 return 0;
+            case MarkdownTextType.Entity:
+            {
+                // md4c hands us the raw entity reference (e.g. "&amp;",
+                // "&#65;", "&#x41;"). Decode it to the actual Unicode
+                // character(s) so the renderer doesn't display the
+                // literal source token (e.g. "AT&amp;T" → "AT&T").
+                string decoded = DecodeEntity(text);
+                if (_imageDepth > 0 && _imageAlt is not null)
+                {
+                    _imageAlt.Append(decoded);
+                }
+                else if (_linkDepth > 0 && _linkDisplay is not null)
+                {
+                    _linkDisplay.Append(decoded);
+                }
+                else
+                {
+                    EmitInlineText(decoded);
+                }
+                return 0;
+            }
         }
 
         // Inside an image span we capture into the alt buffer.
@@ -635,6 +656,112 @@ public sealed class ChatMarkdownAstBuilder
     {
         if (_stack.Count == 0) return;
         _stack.Peek().Children.Add(block);
+    }
+
+    /// <summary>
+    /// Decodes an HTML entity reference (e.g. <c>&amp;amp;</c>,
+    /// <c>&amp;copy;</c>, <c>&amp;#65;</c>, <c>&amp;#x41;</c>) to its
+    /// Unicode replacement string. Falls back to returning the raw
+    /// token verbatim on unrecognized named entities so the source
+    /// text is never silently lost. Per CommonMark, the NUL codepoint
+    /// and out-of-range numeric entities resolve to U+FFFD.
+    /// </summary>
+    private static string DecodeEntity(ReadOnlySpan<char> token)
+    {
+        // Defensive: a well-formed entity is at minimum "&;".
+        if (token.Length < 2 || token[0] != '&' || token[token.Length - 1] != ';')
+        {
+            return token.ToString();
+        }
+
+        // Numeric character reference: &#NNN; or &#xHH; / &#XHH;
+        if (token.Length >= 4 && token[1] == '#')
+        {
+            ReadOnlySpan<char> digits;
+            int radix;
+            if (token[2] == 'x' || token[2] == 'X')
+            {
+                digits = token.Slice(3, token.Length - 4);
+                radix = 16;
+            }
+            else
+            {
+                digits = token.Slice(2, token.Length - 3);
+                radix = 10;
+            }
+
+            if (digits.Length == 0 || digits.Length > 8)
+            {
+                return token.ToString();
+            }
+
+            int codepoint = 0;
+            foreach (char c in digits)
+            {
+                int digit;
+                if (radix == 10)
+                {
+                    if (c < '0' || c > '9') return token.ToString();
+                    digit = c - '0';
+                }
+                else
+                {
+                    if (c >= '0' && c <= '9') digit = c - '0';
+                    else if (c >= 'a' && c <= 'f') digit = 10 + (c - 'a');
+                    else if (c >= 'A' && c <= 'F') digit = 10 + (c - 'A');
+                    else return token.ToString();
+                }
+                codepoint = (codepoint * radix) + digit;
+                if (codepoint > 0x10FFFF)
+                {
+                    // Out of Unicode range — CommonMark says U+FFFD.
+                    return "\uFFFD";
+                }
+            }
+
+            // CommonMark: NUL → U+FFFD; surrogates / non-characters → U+FFFD.
+            if (codepoint == 0
+                || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+            {
+                return "\uFFFD";
+            }
+            return char.ConvertFromUtf32(codepoint);
+        }
+
+        // Named entity: look up the full "&name;" form in the md4c table.
+        var entity = Md4cEntity.EntityLookup(token);
+        if (entity is null)
+        {
+            // Unrecognized named entity — leave the token alone so the
+            // user can see what was actually written.
+            return token.ToString();
+        }
+
+        uint cp0 = entity.Value.Codepoint0;
+        uint cp1 = entity.Value.Codepoint1;
+        // The md4c entity table uses Codepoint0 == 0 as the "no replacement"
+        // sentinel — fall back to the raw token rather than substituting U+FFFD.
+        if (cp0 == 0) return token.ToString();
+        if (cp1 == 0)
+        {
+            return SafeConvertFromUtf32(cp0);
+        }
+        // A handful of named entities (e.g. &nGt;) map to a 2-codepoint sequence.
+        return SafeConvertFromUtf32(cp0) + SafeConvertFromUtf32(cp1);
+    }
+
+    /// <summary>
+    /// Wraps <see cref="char.ConvertFromUtf32(int)"/> with a defensive check so a
+    /// corrupted entity-table entry (value > U+10FFFF or in the surrogate range)
+    /// cannot throw and crash the markdown pipeline.
+    /// </summary>
+    private static string SafeConvertFromUtf32(uint cp)
+    {
+        if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+        {
+            return "\uFFFD";
+        }
+        return char.ConvertFromUtf32((int)cp);
     }
 
     private IReadOnlyList<MdInline> DrainInlines()
