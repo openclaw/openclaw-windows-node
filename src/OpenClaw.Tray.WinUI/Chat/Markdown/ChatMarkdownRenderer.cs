@@ -286,24 +286,32 @@ public static class ChatMarkdownRenderer
     //  Lists
     // ────────────────────────────────────────────────────────────────────
 
+    private const double BulletMarkerMinWidth  = 10.0;
+    private const double OrderedMarkerMinWidth = 18.0;
+    private const double ListMarkerSpacing     = 0.0;
+
     private static Element RenderList(MdList list)
     {
         var rows = new List<Element?>(list.Items.Count);
         int number = list.Marker == MdListMarker.Ordered ? list.StartNumber : 0;
+        bool isOrdered = list.Marker == MdListMarker.Ordered;
+        double markerMinWidth = isOrdered ? OrderedMarkerMinWidth : BulletMarkerMinWidth;
         foreach (var item in list.Items)
         {
             string marker = item.TaskState switch
             {
-                MdTaskState.Checked   => "\u2611  ",
-                MdTaskState.Unchecked => "\u2610  ",
-                _ => list.Marker == MdListMarker.Ordered
-                        ? $"{number}.  "
-                        : "\u2022  ",
+                MdTaskState.Checked   => "\u2611",
+                MdTaskState.Unchecked => "\u2610",
+                _ => isOrdered ? $"{number}." : "\u2022",
             };
-            if (list.Marker == MdListMarker.Ordered) number++;
+            if (isOrdered) number++;
 
             rows.Add(HStack(
-                TextBlock(marker).FontSize(BodyFontSize).VAlign(VerticalAlignment.Top),
+                ListMarkerSpacing,
+                TextBlock(marker)
+                    .FontSize(BodyFontSize)
+                    .VAlign(VerticalAlignment.Top)
+                    .MinWidth(markerMinWidth),
                 RenderListItemContent(item)));
         }
         return VStack(4.0, rows.ToArray());
