@@ -207,16 +207,23 @@ public class SetupPipelineTests
     {
         var executed = false;
         var ctx = CreateContext();
+        var stepEvents = new List<StepProgressEvent>();
 
         var pipeline = new SetupPipeline([
             new MockStep("s1",
                 (_, _) => { executed = true; return Task.FromResult(StepResult.Ok()); },
                 canSkip: true),
         ]);
+        
+        pipeline.StepProgress += (sender, e) => stepEvents.Add(e);
 
         var result = await pipeline.RunAsync(ctx);
         Assert.Equal(PipelineOutcome.Success, result.Outcome);
-        Assert.False(executed);
+        Assert.False(executed, "Step should not have executed when canSkip is true");
+        
+        // Verify the step was actually skipped via progress events
+        var stepEvent = Assert.Single(stepEvents);
+        Assert.Equal(StepOutcome.Skipped, stepEvent.Outcome);
     }
 
     [Fact]
