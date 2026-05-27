@@ -72,8 +72,8 @@ jobs:
           return "https://github.com/$repo/releases/download/$tag/$escapedName"
         }
 
-        $x64Asset = Get-RequiredAsset -Pattern 'OpenClawCompanion-*-win-x64.msix'
-        $arm64Asset = Get-RequiredAsset -Pattern 'OpenClawCompanion-*-win-arm64.msix'
+        $x64Asset = Get-RequiredAsset -Pattern "OpenClawCompanion-$versionText-win-x64.msix"
+        $arm64Asset = Get-RequiredAsset -Pattern "OpenClawCompanion-$versionText-win-arm64.msix"
         $x64Uri = Get-ReleaseAssetUri -AssetName $x64Asset.name
         $arm64Uri = Get-ReleaseAssetUri -AssetName $arm64Asset.name
 

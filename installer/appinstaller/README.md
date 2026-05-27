@@ -16,7 +16,7 @@ signed GitHub Release MSIX assets, validates them, and opens a PR. Merging that
 PR advances the stable auto-update source for installed clients.
 
 Raw GitHub intentionally mirrors the Mac companion app's Sparkle appcast model,
-but Windows App Installer has different hosting requirements. If red/blue E2E
+but Windows App Installer has different hosting requirements. If two-version E2E
 testing proves raw GitHub is not accepted by Windows App Installer, keep this
 directory as the generated source of truth and publish the same files to a static
 host or CDN that serves AppInstaller-compatible headers.

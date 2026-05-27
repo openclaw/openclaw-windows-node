@@ -133,10 +133,15 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("Expected exactly one ARM64 MSIX artifact", releaseJob);
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix", releaseJob);
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix", releaseJob);
+        Assert.DoesNotContain("OpenClawCompanion-" + "r" + "ed", releaseJob);
+        Assert.DoesNotContain("OpenClawCompanion-" + "b" + "lue", releaseJob);
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller", releaseJob);
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller", releaseJob);
         Assert.Contains("openclaw-x64.appinstaller", releaseJob);
         Assert.Contains("openclaw-arm64.appinstaller", releaseJob);
+        Assert.Contains("Sign Release MSIX Packages", releaseJob);
+        Assert.Contains("files-folder-filter: msix", releaseJob);
+        Assert.Contains("certificate-profile-name: WindowsEdgeLight", releaseJob);
     }
 
     [Fact]
@@ -365,5 +370,9 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("--base master", workflow);
         Assert.Contains("validate-appinstaller-hosting.ps1", workflow);
         Assert.Contains("-AllowGitHubContentTypes", workflow);
+        Assert.Contains("OpenClawCompanion-$versionText-win-x64.msix", workflow);
+        Assert.Contains("OpenClawCompanion-$versionText-win-arm64.msix", workflow);
+        Assert.DoesNotContain("OpenClawCompanion-*-win-x64.msix", workflow);
+        Assert.DoesNotContain("OpenClawCompanion-*-win-arm64.msix", workflow);
     }
 }

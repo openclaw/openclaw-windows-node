@@ -25,7 +25,7 @@
 .PARAMETER AllowGitHubContentTypes
   Candidate-mode compatibility switch for GitHub-hosted release assets. GitHub
   release downloads currently serve MSIX files as application/octet-stream. This
-  switch keeps strict validation as the default while allowing red/blue E2E
+  switch keeps strict validation as the default while allowing two-version E2E
   testing to prove whether Windows AppInstaller accepts GitHub's headers.
 
 .EXAMPLE

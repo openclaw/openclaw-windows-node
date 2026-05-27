@@ -107,8 +107,8 @@ fixed by shipping a higher roll-forward version.
   do not advertise a newer package.
 - Raw GitHub mirrors the Mac companion app's Sparkle appcast pattern, but it
   serves repo files with GitHub-controlled headers. Windows App Installer must
-  still be proven with red/blue E2E validation before this endpoint is treated as
-  durable.
+  still be proven with two-version E2E validation before this endpoint is
+  treated as durable.
 - After the release is created, CI dispatches
   `.github\workflows\appinstaller-feed-pr.yml`. That workflow renders the stable
   feed files from the signed release assets, validates them, and opens a PR.
