@@ -5,8 +5,6 @@ using System.Text.Json;
 using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.Windows.ApplicationModel.DynamicDependency;
-using Windows.ApplicationModel;
 
 namespace OpenClaw.SetupEngine.UI;
 
@@ -14,9 +12,6 @@ internal static class Program
 {
     private const int ClassFactoryCannotSupplyRequestedClass = unchecked((int)0x80040111);
     private const int UnspecifiedFailure = unchecked((int)0x80004005);
-    private const uint WinAppSdkMajorMinor = 0x00020000;
-    private const string WinAppSdkVersionTag = "";
-    private static readonly TimeSpan FreshPackageMinimumAge = TimeSpan.FromSeconds(45);
 
     private static readonly TimeSpan[] XamlFactoryRetryDelays =
     [
@@ -39,8 +34,6 @@ internal static class Program
         }
 
         WriteStartupBreadcrumb("Program.Main.begin");
-        TryInitializeWindowsAppSdkBootstrap();
-        WaitForFreshPackageActivationGrace();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         RunWithXamlFactoryRetry(
             () => Application.Start(p =>
@@ -54,46 +47,6 @@ internal static class Program
             XamlFactoryRetryDelays);
         WriteStartupBreadcrumb("Program.ApplicationStart.returned");
         return 0;
-    }
-
-    private static void TryInitializeWindowsAppSdkBootstrap()
-    {
-        try
-        {
-            WriteStartupBreadcrumb($"Program.WindowsAppSdkBootstrap.begin majorMinor=0x{WinAppSdkMajorMinor:X8}");
-            Bootstrap.Initialize(WinAppSdkMajorMinor, WinAppSdkVersionTag);
-            WriteStartupBreadcrumb("Program.WindowsAppSdkBootstrap.succeeded");
-        }
-        catch (Exception ex)
-        {
-            WriteStartupBreadcrumb("Program.WindowsAppSdkBootstrap.failedContinuing", ex);
-        }
-    }
-
-    private static void WaitForFreshPackageActivationGrace()
-    {
-        try
-        {
-            var installedDate = Package.Current.InstalledDate.ToUniversalTime();
-            var packageAge = DateTimeOffset.UtcNow - installedDate;
-            if (packageAge < TimeSpan.Zero)
-                packageAge = TimeSpan.Zero;
-
-            if (packageAge >= FreshPackageMinimumAge)
-            {
-                WriteStartupBreadcrumb($"Program.packageInstallAge.ready ageMs={packageAge.TotalMilliseconds:F0}");
-                return;
-            }
-
-            var wait = FreshPackageMinimumAge - packageAge;
-            WriteStartupBreadcrumb($"Program.packageInstallAge.wait ageMs={packageAge.TotalMilliseconds:F0} waitMs={wait.TotalMilliseconds:F0}");
-            Thread.Sleep(wait);
-            WriteStartupBreadcrumb($"Program.packageInstallAge.readyAfterWait waitMs={wait.TotalMilliseconds:F0}");
-        }
-        catch (Exception ex)
-        {
-            WriteStartupBreadcrumb("Program.packageInstallAge.unavailable", ex);
-        }
     }
 
     private static void RunWithXamlFactoryRetry(

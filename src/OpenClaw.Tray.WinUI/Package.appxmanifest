@@ -107,7 +107,7 @@
     </Application>
 
     <Application Id="SetupEngine"
-      Executable="SetupEngine\OpenClaw.SetupEngine.UI.exe"
+      Executable="OpenClaw.SetupEngine.UI.exe"
       EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="OpenClaw Setup"
@@ -127,3 +127,4 @@
     <DeviceCapability Name="location" />
   </Capabilities>
 </Package>
+

@@ -2918,20 +2918,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     /// <summary>
     /// Resolves the SetupEngine.UI executable path.
-    /// Checks <c>{AppDir}/SetupEngine/OpenClaw.SetupEngine.UI.exe</c> (standard layout)
-    /// and <c>{AppDir}/OpenClaw.SetupEngine.UI.exe</c> (flat/legacy layout).
+    /// Checks <c>{AppDir}/OpenClaw.SetupEngine.UI.exe</c> (MSIX root layout)
+    /// and <c>{AppDir}/SetupEngine/OpenClaw.SetupEngine.UI.exe</c> (unpackaged/dev layout).
     /// </summary>
     internal static string? ResolveSetupEngineUiPath()
     {
         const string exeName = "OpenClaw.SetupEngine.UI.exe";
 
-        // Standard layout: SetupEngine subfolder (build.ps1 copies here, installer deploys here)
-        var subDir = Path.Combine(AppContext.BaseDirectory, "SetupEngine", exeName);
-        if (File.Exists(subDir)) return subDir;
-
-        // Flat layout fallback (e.g. everything in one folder)
+        // MSIX layout: SetupEngine launches from package root so it shares the
+        // root WinAppSDK activation catalog generated for the tray package.
         var flat = Path.Combine(AppContext.BaseDirectory, exeName);
-        return File.Exists(flat) ? flat : null;
+        if (File.Exists(flat)) return flat;
+
+        // Unpackaged/dev layout: build.ps1 copies the setup app under SetupEngine.
+        var subDir = Path.Combine(AppContext.BaseDirectory, "SetupEngine", exeName);
+        return File.Exists(subDir) ? subDir : null;
     }
 
     internal static string? ResolveSetupEnginePackagedAppUserModelId()

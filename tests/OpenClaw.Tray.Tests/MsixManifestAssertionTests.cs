@@ -176,11 +176,13 @@ public sealed class MsixManifestAssertionTests
         var setupApp = GetApplication(doc, "SetupEngine");
         var setupVisualElements = setupApp.Element(XName.Get("VisualElements", AppxUapNs));
 
-        Assert.Contains("Content Include=\"SetupEngine\\**\\*\"", project);
-        Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngine", ci);
+        Assert.Contains("Content Include=\"SetupEngineRoot\\**\\*\"", project);
+        Assert.Contains("TargetPath=\"%(RecursiveDir)%(Filename)%(Extension)\"", project);
+        Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngineRoot", ci);
+        Assert.Contains("OpenClaw.SetupEngine*", ci);
         Assert.Contains("dotnet publish src/OpenClaw.SetupEngine.UI", ci);
-        Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"SetupEngine\", exeName)", app);
-        Assert.Equal("SetupEngine\\OpenClaw.SetupEngine.UI.exe", (string?)setupApp.Attribute("Executable"));
+        Assert.Contains("Path.Combine(AppContext.BaseDirectory, exeName)", app);
+        Assert.Equal("OpenClaw.SetupEngine.UI.exe", (string?)setupApp.Attribute("Executable"));
         Assert.Equal("Windows.FullTrustApplication", (string?)setupApp.Attribute("EntryPoint"));
         Assert.NotNull(setupVisualElements);
         Assert.Equal("none", (string?)setupVisualElements!.Attribute("AppListEntry"));
@@ -190,12 +192,13 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("setup-engine-startup.log", setupProgram);
         Assert.Contains("0x80040111", setupProgram);
         Assert.Contains("0x80004005", setupProgram);
-        Assert.Contains("Bootstrap.Initialize", setupProgram);
-        Assert.Contains("Program.WindowsAppSdkBootstrap", setupProgram);
-        Assert.Contains("FreshPackageMinimumAge", setupProgram);
-        Assert.Contains("Program.packageInstallAge.wait", setupProgram);
+        Assert.DoesNotContain("Bootstrap.Initialize", setupProgram);
         Assert.Contains("<DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>", setupProject);
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
+        Assert.Contains("<PropertyGroup Condition=\"'$(PackageMsix)' == 'true'\">", setupProject);
+        Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
+        Assert.Contains("<GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>", setupProject);
+        Assert.Contains("-p:PackageMsix=true", ci);
     }
 
     [Fact]
