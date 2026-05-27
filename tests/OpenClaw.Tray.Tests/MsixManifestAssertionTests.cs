@@ -172,6 +172,11 @@ public sealed class MsixManifestAssertionTests
             "src", "OpenClaw.SetupEngine.UI", "Program.cs"));
         var setupProject = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.SetupEngine.UI", "OpenClaw.SetupEngine.UI.csproj"));
+        var msixSetupPublishStart = ci.IndexOf("Publish SetupEngine UI for MSIX payload", StringComparison.Ordinal);
+        Assert.True(msixSetupPublishStart >= 0, "MSIX SetupEngine publish step not found.");
+        var msixSetupPublishEnd = ci.IndexOf("Build MSIX Package", msixSetupPublishStart, StringComparison.Ordinal);
+        Assert.True(msixSetupPublishEnd > msixSetupPublishStart, "MSIX package build step not found after SetupEngine publish.");
+        var msixSetupPublish = ci[msixSetupPublishStart..msixSetupPublishEnd];
         var doc = LoadTrayManifest();
         var setupApp = GetApplication(doc, "SetupEngine");
         var setupVisualElements = setupApp.Element(XName.Get("VisualElements", AppxUapNs));
@@ -197,8 +202,11 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
         Assert.Contains("<PropertyGroup Condition=\"'$(PackageMsix)' == 'true'\">", setupProject);
         Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
+        Assert.Contains("<SelfContained>false</SelfContained>", setupProject);
         Assert.Contains("<GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>", setupProject);
-        Assert.Contains("-p:PackageMsix=true", ci);
+        Assert.Contains("-p:PackageMsix=true", msixSetupPublish);
+        Assert.Contains("--no-self-contained", msixSetupPublish);
+        Assert.DoesNotContain("--self-contained `", msixSetupPublish);
     }
 
     [Fact]

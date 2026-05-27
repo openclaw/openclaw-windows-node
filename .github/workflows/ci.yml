@@ -474,7 +474,7 @@ jobs:
         dotnet publish src/OpenClaw.SetupEngine.UI `
           -c Release `
           -r ${{ matrix.rid }} `
-          --self-contained `
+          --no-self-contained `
           -p:PackageMsix=true `
           -p:Version=${{ needs.test.outputs.semVer }} `
           -o $publishDir

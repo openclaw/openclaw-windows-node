@@ -25,6 +25,7 @@
 
   <PropertyGroup Condition="'$(PackageMsix)' == 'true'">
     <WindowsPackageType>MSIX</WindowsPackageType>
+    <SelfContained>false</SelfContained>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
   </PropertyGroup>
