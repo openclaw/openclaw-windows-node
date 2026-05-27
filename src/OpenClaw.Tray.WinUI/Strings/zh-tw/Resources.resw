@@ -4530,9 +4530,6 @@
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>記錄尾端會經過清理並截斷。敏感權杖、內容、錄製資料與原始設定檔會被排除。分享前請先檢查。</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingInfoBar.Title" xml:space="preserve">
-    <value>分享前請檢查</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>分享前請檢查</value>
   </data>

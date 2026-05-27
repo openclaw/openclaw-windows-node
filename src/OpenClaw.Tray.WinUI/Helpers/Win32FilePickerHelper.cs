@@ -98,7 +98,10 @@ internal static class Win32FilePickerHelper
             finally
             {
                 if (filterSpecPtr != IntPtr.Zero)
+                {
+                    Marshal.DestroyStructure<COMDLG_FILTERSPEC>(filterSpecPtr);
                     Marshal.FreeCoTaskMem(filterSpecPtr);
+                }
             }
         });
         staThread.SetApartmentState(ApartmentState.STA);

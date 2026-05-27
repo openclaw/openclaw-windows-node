@@ -4530,9 +4530,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>Les extraits de journaux sont assainis et tronqués. Les jetons sensibles, les charges utiles, les enregistrements et les fichiers de paramètres bruts sont exclus. Vérifiez avant de partager.</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingInfoBar.Title" xml:space="preserve">
-    <value>Examiner avant de partager</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Examiner avant de partager</value>
   </data>

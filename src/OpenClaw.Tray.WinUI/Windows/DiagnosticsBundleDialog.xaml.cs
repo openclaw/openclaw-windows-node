@@ -100,7 +100,7 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
             var hwnd = _hwndProvider?.Invoke() ?? IntPtr.Zero;
             if (hwnd == IntPtr.Zero)
             {
-                System.Diagnostics.Debug.WriteLine("DiagnosticsBundleDialog save: no host hwnd; skipping picker.");
+                System.Diagnostics.Debug.WriteLine("DiagnosticsBundleDialog save: no host hwnd; saving to Desktop instead.");
                 var fallback = await SaveToDesktopAsync();
                 return new SaveResult(fallback, "Saved to Desktop");
             }

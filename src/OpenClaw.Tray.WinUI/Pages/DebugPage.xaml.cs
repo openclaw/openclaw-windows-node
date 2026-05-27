@@ -462,7 +462,7 @@ public sealed partial class DebugPage : Page
         => CopyDiagnosticText("Support context", CommandCenterTextHelper.BuildSupportContext);
 
     private void OnCopyDebugBundle(object sender, RoutedEventArgs e)
-        => CopyDiagnosticText("Debug bundle", state => DiagnosticsBundleBuilder.Build(state, CurrentApp.GetConnectionDiagnosticEvents()));
+        => CopyDiagnosticText("Summary debug bundle", CommandCenterTextHelper.BuildDebugBundle);
 
     private void OnCopyBrowserSetup(object sender, RoutedEventArgs e)
         => CopyDiagnosticText("Browser setup guidance", CommandCenterTextHelper.BuildBrowserSetupGuidance);

@@ -213,7 +213,7 @@ public sealed class DiagnosticsPageContractTests
         // Each copy handler must pass a human-readable label that
         // shows up in the feedback message.
         Assert.Contains("CopyDiagnosticText(\"Support context\"", cs);
-        Assert.Contains("CopyDiagnosticText(\"Debug bundle\"", cs);
+        Assert.Contains("CopyDiagnosticText(\"Summary debug bundle\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Browser setup guidance\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Port diagnostics\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Capability diagnostics\"", cs);
@@ -555,6 +555,14 @@ public sealed class DiagnosticsPageContractTests
 
         Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", copyDebugBody);
         Assert.DoesNotContain("DiagnosticsBundleBuilder.Build", copyDebugBody);
+
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        var handlerStart = page.IndexOf("private void OnCopyDebugBundle", StringComparison.Ordinal);
+        Assert.True(handlerStart >= 0, "OnCopyDebugBundle must exist.");
+        var handlerBody = page.Substring(handlerStart, Math.Min(260, page.Length - handlerStart));
+
+        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", handlerBody);
+        Assert.DoesNotContain("DiagnosticsBundleBuilder.Build", handlerBody);
 
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
         Assert.Contains("Copy summary debug bundle", xaml);
