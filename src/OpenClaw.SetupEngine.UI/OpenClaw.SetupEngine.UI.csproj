@@ -42,6 +42,10 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(PackageMsix)' == 'true'">
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
   </ItemGroup>

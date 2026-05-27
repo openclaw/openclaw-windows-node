@@ -198,12 +198,16 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("0x80040111", setupProgram);
         Assert.Contains("0x80004005", setupProgram);
         Assert.DoesNotContain("Bootstrap.Initialize", setupProgram);
+        Assert.Contains("EnsureComWrappersInitialized", setupProgram);
+        Assert.Contains("Program.ComWrappers.begin", setupProgram);
+        Assert.Contains("Program.ApplicationStart.attempt", setupProgram);
         Assert.Contains("<DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>", setupProject);
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
         Assert.Contains("<PropertyGroup Condition=\"'$(PackageMsix)' == 'true'\">", setupProject);
         Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
         Assert.Contains("<SelfContained>false</SelfContained>", setupProject);
         Assert.Contains("<GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>", setupProject);
+        Assert.Contains("<FrameworkReference Include=\"Microsoft.WindowsDesktop.App\" />", setupProject);
         Assert.Contains("-p:PackageMsix=true", msixSetupPublish);
         Assert.Contains("--no-self-contained", msixSetupPublish);
         Assert.DoesNotContain("--self-contained `", msixSetupPublish);

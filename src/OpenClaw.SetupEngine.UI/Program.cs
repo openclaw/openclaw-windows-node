@@ -12,6 +12,7 @@ internal static class Program
 {
     private const int ClassFactoryCannotSupplyRequestedClass = unchecked((int)0x80040111);
     private const int UnspecifiedFailure = unchecked((int)0x80004005);
+    private static bool s_comWrappersInitialized;
 
     private static readonly TimeSpan[] XamlFactoryRetryDelays =
     [
@@ -34,19 +35,34 @@ internal static class Program
         }
 
         WriteStartupBreadcrumb("Program.Main.begin");
-        WinRT.ComWrappersSupport.InitializeComWrappers();
         RunWithXamlFactoryRetry(
-            () => Application.Start(p =>
+            () =>
             {
-                var dispatcher = DispatcherQueue.GetForCurrentThread();
-                var context = new DispatcherQueueSynchronizationContext(dispatcher);
-                SynchronizationContext.SetSynchronizationContext(context);
-                new App();
-            }),
+                EnsureComWrappersInitialized();
+                WriteStartupBreadcrumb("Program.ApplicationStart.begin");
+                Application.Start(p =>
+                {
+                    var dispatcher = DispatcherQueue.GetForCurrentThread();
+                    var context = new DispatcherQueueSynchronizationContext(dispatcher);
+                    SynchronizationContext.SetSynchronizationContext(context);
+                    new App();
+                });
+            },
             Thread.Sleep,
             XamlFactoryRetryDelays);
         WriteStartupBreadcrumb("Program.ApplicationStart.returned");
         return 0;
+    }
+
+    private static void EnsureComWrappersInitialized()
+    {
+        if (s_comWrappersInitialized)
+            return;
+
+        WriteStartupBreadcrumb("Program.ComWrappers.begin");
+        WinRT.ComWrappersSupport.InitializeComWrappers();
+        s_comWrappersInitialized = true;
+        WriteStartupBreadcrumb("Program.ComWrappers.succeeded");
     }
 
     private static void RunWithXamlFactoryRetry(
@@ -59,10 +75,11 @@ internal static class Program
         {
             try
             {
+                WriteStartupBreadcrumb($"Program.ApplicationStart.attempt attempt={attempt + 1}");
                 startApplication();
                 return;
             }
-            catch (COMException ex) when (IsTransientXamlFactoryFailure(ex))
+            catch (Exception ex) when (IsTransientXamlFactoryFailure(ex))
             {
                 if (attempt >= retryDelays.Count)
                 {
@@ -78,8 +95,17 @@ internal static class Program
         }
     }
 
-    private static bool IsTransientXamlFactoryFailure(COMException exception) =>
-        exception.HResult is ClassFactoryCannotSupplyRequestedClass or UnspecifiedFailure;
+    private static bool IsTransientXamlFactoryFailure(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is COMException &&
+                current.HResult is ClassFactoryCannotSupplyRequestedClass or UnspecifiedFailure)
+                return true;
+        }
+
+        return false;
+    }
 
     private static void WriteStartupBreadcrumb(string phase, Exception? exception = null)
     {
