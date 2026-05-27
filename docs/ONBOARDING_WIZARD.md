@@ -9,7 +9,7 @@ On first launch, the wizard appears only when there is no usable saved gateway c
 The V2 setup flow walks users through:
 
 1. **Welcome** — Greeting and introduction
-2. **Local setup progress** — App-owned `OpenClawGateway` WSL installation
+2. **Local setup progress** — Fresh app-owned `OpenClawGateway` WSL installation
 3. **Gateway setup** — Gateway-driven provider/model configuration hosted by `GatewayWizardPage`
 4. **Permissions** — Windows system permission review
 5. **All set** — Feature summary and completion
@@ -22,7 +22,7 @@ The setup flow no longer configures remote/manual gateways. The Welcome page's *
 Displays the OpenClaw lobster icon, app title, and a brief description. If an app-owned local WSL gateway already exists, the primary CTA reads **Install new WSL Gateway** and confirmation warns that the current OpenClaw WSL gateway and distro will be deleted. If only an external gateway exists, the CTA remains **Set up locally** and confirmation explains that the external connection remains available in Connections.
 
 ### Local setup progress
-Installs and connects a new app-owned `OpenClawGateway` WSL instance. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
+Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
 ### Wizard
 Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The gateway controls the flow — steps can be:

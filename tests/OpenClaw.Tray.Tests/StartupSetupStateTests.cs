@@ -244,7 +244,12 @@ public class StartupSetupStateTests
         });
         var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
 
-        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(registry, settings, temp.Path, wsl);
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: temp.Path);
 
         Assert.Equal(SetupExistingGatewayKind.AppOwnedLocalWsl, kind);
     }
@@ -263,7 +268,12 @@ public class StartupSetupStateTests
         });
         var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
 
-        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(registry, settings, temp.Path, wsl);
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: temp.Path);
 
         Assert.Equal(SetupExistingGatewayKind.ExternalOnly, kind);
     }
@@ -276,7 +286,12 @@ public class StartupSetupStateTests
         var registry = new GatewayRegistry(temp.Path);
         var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
 
-        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(registry, settings, temp.Path, wsl);
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: temp.Path);
 
         Assert.Equal(SetupExistingGatewayKind.None, kind);
     }
