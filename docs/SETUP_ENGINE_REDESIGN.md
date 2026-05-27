@@ -164,12 +164,12 @@ Executed sequentially. Each step is a small class (30–120 lines) in `SetupStep
 
 | # | Step Class | What It Does |
 |---|-----------|-------------|
-| 1 | `CleanupStaleDistroStep` | Unregister leftover WSL distro if `CleanBeforeRun` |
-| 2 | `CleanupStaleGatewayStep` | Stop orphaned gateway service, remove config |
-| 3 | `PreflightOsStep` | Validate Windows 64-bit, version ≥ 22H2 |
-| 4 | `PreflightWslStep` | Verify WSL installed and version ≥ 2 |
+| 1 | `PreflightOsStep` | Validate Windows 64-bit, version ≥ 22H2 |
+| 2 | `PreflightWslStep` | Verify WSL is installed and supports direct named clean installs |
+| 3 | `CleanupStaleDistroStep` | Unregister leftover app-owned WSL distro and remove its VHD directory if `CleanBeforeRun` |
+| 4 | `CleanupStaleGatewayStep` | Stop orphaned gateway service, remove config |
 | 5 | `PreflightPortStep` | Check gateway port is available |
-| 6 | `CreateWslInstanceStep` | Export base distro → import as new instance |
+| 6 | `CreateWslInstanceStep` | Directly install a fresh app-owned WSL distro; never export a user's Ubuntu distro |
 | 7 | `ConfigureWslInstanceStep` | Write wsl.conf, create user, set dirs |
 | 8 | `ValidateWslLockdownStep` | Verify WSL isolation settings are applied |
 | 9 | `InstallCliStep` | Run install script inside WSL |

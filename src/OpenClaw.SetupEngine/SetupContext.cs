@@ -9,7 +9,7 @@ public sealed class SetupConfig
 {
     public string DistroName { get; set; } = "OpenClawGateway";
     public int GatewayPort { get; set; } = 18789;
-    public string BaseDistro { get; set; } = "";
+    public string BaseDistro { get; set; } = "Ubuntu-24.04";
     public bool SkipPermissions { get; set; }
     public bool SkipWizard { get; set; }
     public bool Headless { get; set; }
@@ -255,7 +255,7 @@ public sealed class SetupContext
     public SetupConfig Config { get; }
     public SetupLogger Logger { get; }
     public TransactionJournal Journal { get; }
-    public CommandRunner Commands { get; }
+    public ICommandRunner Commands { get; }
     public CancellationToken CancellationToken { get; }
 
     // Accumulated state from steps
@@ -274,7 +274,7 @@ public sealed class SetupContext
     // WSL PATH prefix using configured user
     public string WslPathPrefix => WslConstants.GetPathPrefix(Config.Wsl.User);
 
-    public SetupContext(SetupConfig config, SetupLogger logger, TransactionJournal journal, CommandRunner commands, CancellationToken ct)
+    public SetupContext(SetupConfig config, SetupLogger logger, TransactionJournal journal, ICommandRunner commands, CancellationToken ct)
     {
         Config = config;
         Logger = logger;

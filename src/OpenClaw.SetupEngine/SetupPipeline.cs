@@ -42,10 +42,10 @@ public static class SetupStepFactory
     {
         return
         [
-            new CleanupStaleDistroStep(),
-            new CleanupStaleGatewayStep(),
             new PreflightOsStep(),
             new PreflightWslStep(),
+            new CleanupStaleDistroStep(),
+            new CleanupStaleGatewayStep(),
             new PreflightPortStep(),
             new CreateWslInstanceStep(),
             new ConfigureWslInstanceStep(),

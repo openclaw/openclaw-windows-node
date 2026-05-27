@@ -4,7 +4,7 @@
   "DistroName": "OpenClawGateway",
   // Gateway WebSocket port (tray connects here)
   "GatewayPort": 18789,
-  // Base Ubuntu distro to export/import from
+  // Ubuntu release to install as a fresh app-owned WSL gateway distro
   "BaseDistro": "Ubuntu-24.04",
   // Run without UI prompts
   "Headless": true,
