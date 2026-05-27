@@ -112,8 +112,8 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller", service);
 
         var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
-        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-x64.appinstaller", ci);
-        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-arm64.appinstaller", ci);
+        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller", ci);
+        Assert.Contains("https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller", ci);
     }
 
     [Fact]
@@ -135,10 +135,14 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix", releaseJob);
         Assert.DoesNotContain("OpenClawCompanion-" + "r" + "ed", releaseJob);
         Assert.DoesNotContain("OpenClawCompanion-" + "b" + "lue", releaseJob);
-        Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller", releaseJob);
-        Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller", releaseJob);
+        Assert.DoesNotContain("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller", releaseJob);
+        Assert.DoesNotContain("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller", releaseJob);
         Assert.Contains("openclaw-x64.appinstaller", releaseJob);
         Assert.Contains("openclaw-arm64.appinstaller", releaseJob);
+        Assert.DoesNotContain("openclaw-alpha", releaseJob);
+        Assert.DoesNotContain("openclaw*.appinstaller", releaseJob);
+        Assert.Contains("Prepare Release File List", releaseJob);
+        Assert.Contains("!contains(github.ref_name, '-')", releaseJob);
         Assert.Contains("Sign Release MSIX Packages", releaseJob);
         Assert.Contains("files-folder-filter: msix", releaseJob);
         Assert.Contains("certificate-profile-name: WindowsEdgeLight", releaseJob);

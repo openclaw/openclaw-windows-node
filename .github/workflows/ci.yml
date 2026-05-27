@@ -680,14 +680,13 @@ jobs:
     # after install. Each architecture has its own stable URL because the release
     # currently publishes separate .msix packages, not a multi-arch .msixbundle.
     - name: Render AppInstaller
+      if: ${{ !contains(github.ref_name, '-') }}
       shell: pwsh
       run: |
         $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
         $tag = "${{ github.ref_name }}"
         $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
-        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
-        $identityName = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
-        $feedPrefix = if ($isAlpha) { "openclaw-alpha" } else { "openclaw" }
+        $identityName = "OpenClaw.Companion"
         $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
         $x64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
         $arm64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
@@ -697,29 +696,39 @@ jobs:
           -IdentityName $identityName `
           -ProcessorArchitecture x64 `
           -MsixUri $x64Uri `
-          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-x64.appinstaller" `
-          -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller"
+          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller" `
+          -OutputPath "openclaw-x64.appinstaller"
         ./scripts/render-appinstaller.ps1 `
           -Version $version `
           -Publisher $publisher `
           -IdentityName $identityName `
           -ProcessorArchitecture arm64 `
           -MsixUri $arm64Uri `
-          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-arm64.appinstaller" `
-          -OutputPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller"
-        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller" "$feedPrefix-x64.appinstaller"
-        Copy-Item "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller" "$feedPrefix-arm64.appinstaller"
+          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller" `
+          -OutputPath "openclaw-arm64.appinstaller"
+
+    - name: Prepare Release File List
+      id: release-files
+      shell: pwsh
+      run: |
+        $files = @(
+          "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix",
+          "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
+        )
+        if ("${{ contains(github.ref_name, '-') }}" -ne "true") {
+          $files += "openclaw-x64.appinstaller"
+          $files += "openclaw-arm64.appinstaller"
+        }
+
+        "files<<EOF" >> $env:GITHUB_OUTPUT
+        $files >> $env:GITHUB_OUTPUT
+        "EOF" >> $env:GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
-        files: |
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller
-          openclaw*.appinstaller
+        files: ${{ steps.release-files.outputs.files }}
         prerelease: ${{ contains(github.ref_name, '-') }}
         make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         body: |
@@ -728,10 +737,8 @@ jobs:
           ### Downloads
           - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` — Intel / AMD 64-bit, with embedded AppInstaller metadata
           - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` — Windows on ARM, with embedded AppInstaller metadata
-          - **AppInstaller x64**: `${{ contains(github.ref_name, '-') && 'openclaw-alpha-x64.appinstaller' || 'openclaw-x64.appinstaller' }}` — architecture update source for Intel / AMD 64-bit
-          - **AppInstaller ARM64**: `${{ contains(github.ref_name, '-') && 'openclaw-alpha-arm64.appinstaller' || 'openclaw-arm64.appinstaller' }}` — architecture update source for Windows on ARM
-          - **Tag-pinned AppInstaller x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller`
-          - **Tag-pinned AppInstaller ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.appinstaller`
+          - **AppInstaller x64**: `openclaw-x64.appinstaller` — stable architecture update source for Intel / AMD 64-bit (stable releases only)
+          - **AppInstaller ARM64**: `openclaw-arm64.appinstaller` — stable architecture update source for Windows on ARM (stable releases only)
 
           ### Features
           - 🦞 System tray integration with gateway status

@@ -277,6 +277,8 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("WriteEarlyStartupBreadcrumb(\"Program.Main.begin\")", program);
         Assert.Contains("RunWithXamlFactoryRetry", program);
         Assert.Contains("XamlFactoryRetryDelays", program);
+        Assert.Contains("WindowsAppRuntime_EnsureIsLoaded", program);
+        Assert.Contains("Program.WindowsAppRuntimeEnsureLoaded", program);
         Assert.Contains("WriteEarlyStartupBreadcrumb", program);
         Assert.Contains("startup.log", program);
     }

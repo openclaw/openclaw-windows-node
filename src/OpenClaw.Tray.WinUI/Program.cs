@@ -33,6 +33,7 @@ internal static class Program
     {
         WriteEarlyStartupBreadcrumb("Program.Main.begin");
 
+        EnsureWindowsAppRuntimeLoaded();
         ComWrappersSupport.InitializeComWrappers();
         WinUiStartupGate.WaitForPackageReady(
             GetPackageReadiness,
@@ -159,5 +160,22 @@ internal static class Program
                arg.Contains("api_key", StringComparison.OrdinalIgnoreCase)
             ? "<redacted>"
             : arg;
+    }
+
+    [DllImport("Microsoft.WindowsAppRuntime.dll", ExactSpelling = true)]
+    private static extern int WindowsAppRuntime_EnsureIsLoaded();
+
+    private static void EnsureWindowsAppRuntimeLoaded()
+    {
+        WriteEarlyStartupBreadcrumb("Program.WindowsAppRuntimeEnsureLoaded.begin");
+        var hresult = WindowsAppRuntime_EnsureIsLoaded();
+        if (hresult != 0)
+        {
+            var exception = Marshal.GetExceptionForHR(hresult);
+            WriteEarlyStartupBreadcrumb($"Program.WindowsAppRuntimeEnsureLoaded.failed hresult=0x{hresult:X8}", exception);
+            Marshal.ThrowExceptionForHR(hresult);
+        }
+
+        WriteEarlyStartupBreadcrumb("Program.WindowsAppRuntimeEnsureLoaded.succeeded");
     }
 }
