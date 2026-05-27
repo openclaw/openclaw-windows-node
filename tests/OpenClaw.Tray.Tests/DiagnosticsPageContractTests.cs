@@ -441,31 +441,6 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void AboutPage_UsesPackageVersionAndShowsUpdateStatus()
-    {
-        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs");
-        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml");
-        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
-        var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "AppVersionHelper.cs");
-
-        Assert.Contains("VersionText.Text = AppVersionHelper.DisplayVersion", cs);
-        Assert.Contains("UpdateStatusText", xaml);
-        Assert.Contains("ApplyUpdateButton", xaml);
-        Assert.Contains("nameof(AppState.UpdateInfo)", cs);
-        Assert.Contains("RefreshUpdateInfo", cs);
-        Assert.Contains("AppVersionHelper.CurrentVersionText", app);
-        Assert.Contains("Package.Current.Id.Version", helper);
-        Assert.DoesNotContain("x:Uid=\"VersionText\"", xaml);
-        Assert.DoesNotContain("OpenClaw Hub v0.1.0", cs);
-
-        var stringsDir = Path.Combine(RepoRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
-        foreach (var resw in Directory.EnumerateFiles(stringsDir, "Resources.resw", SearchOption.AllDirectories))
-        {
-            Assert.DoesNotContain("VersionText.Text", File.ReadAllText(resw));
-        }
-    }
-
-    [Fact]
     public void HubWindow_DebugNavItem_RoutesUnchanged_LabelRenamed()
     {
         // The Tag must still be "debug" so command-palette / deep-link

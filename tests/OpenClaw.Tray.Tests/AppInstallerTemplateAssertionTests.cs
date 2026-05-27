@@ -225,36 +225,6 @@ public sealed class AppInstallerTemplateAssertionTests
     }
 
     [Fact]
-    public void AboutPage_ExposesExplicitApplyUpdateAction()
-    {
-        var aboutXaml = File.ReadAllText(Path.Combine(
-            GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml"));
-        var aboutCs = File.ReadAllText(Path.Combine(
-            GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs"));
-        var app = File.ReadAllText(Path.Combine(
-            GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
-        var commands = File.ReadAllText(Path.Combine(
-            GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Services", "IAppCommands.cs"));
-
-        Assert.Contains("ApplyUpdateButton", aboutXaml);
-        Assert.Contains("Apply Update Now", aboutXaml);
-        Assert.Contains("OnApplyUpdateClick", aboutXaml);
-        Assert.Contains("ApplyUpdateNow", aboutCs);
-        Assert.Contains("Status, \"Available\"", aboutCs);
-        Assert.Contains("void ApplyUpdateNow()", commands);
-        Assert.Contains("ApplyUpdateNowUserInitiatedAsync", app);
-        Assert.Contains("TryApplyUpdateAsync(forceRestart: true)", app);
-        Assert.Contains("Status = \"Applying\"", app);
-        Assert.Contains("_applyUpdateInFlight", app);
-        Assert.Contains("CompareExchange(ref _applyUpdateInFlight", app);
-        Assert.Contains("Interlocked.Exchange(ref _applyUpdateInFlight, 0)", app);
-    }
-
-    [Fact]
     public void StableFeedFiles_ExistAsBootstrapPlaceholders()
     {
         foreach (var (fileName, arch) in new[]

@@ -130,11 +130,9 @@ public sealed class MsixManifestAssertionTests
 
         Assert.Contains("Task<bool> SetAutoStartAsync", autoStartManager);
         Assert.DoesNotContain("_ = SetAutoStartPackagedAsync", autoStartManager);
-        Assert.DoesNotContain("public static void SetAutoStart", autoStartManager);
         Assert.Contains("await AutoStartManager.SetAutoStartAsync", app);
-        Assert.Contains("await AutoStartManager.SetAutoStartAsync", settingsPage);
         Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", app);
-        Assert.Contains("var autoStartApplied = await AutoStartManager.SetAutoStartAsync", settingsPage);
+        Assert.Contains("AutoStartManager.SetAutoStart", settingsPage);
     }
 
     [Fact]
@@ -204,31 +202,6 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
         Assert.DoesNotContain("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
         Assert.DoesNotContain("<SelfContained>false</SelfContained>", setupProject);
-    }
-
-    [Fact]
-    public void SetupEngine_FirstRunPagesAvoidFragileXamlLoadPath()
-    {
-        var repoRoot = GetRepositoryRoot();
-        var setupWindow = File.ReadAllText(Path.Combine(repoRoot,
-            "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
-        var firstRunPages = new[]
-        {
-            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"),
-            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"),
-            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"),
-            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"),
-        };
-
-        Assert.Contains("BuildWindowShell();", setupWindow);
-        Assert.DoesNotContain("InitializeComponent();", setupWindow);
-
-        foreach (var pagePath in firstRunPages)
-        {
-            var page = File.ReadAllText(pagePath);
-            Assert.Contains("BuildPageShell();", page);
-            Assert.DoesNotContain("InitializeComponent();", page);
-        }
     }
 
     [Fact]

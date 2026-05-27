@@ -97,6 +97,11 @@ public static class AutoStartManager
         }
     }
 
+    public static void SetAutoStart(bool enable)
+    {
+        _ = SetAutoStartAsync(enable);
+    }
+
     private static async Task<bool> SetAutoStartPackagedAsync(bool enable)
     {
         try
