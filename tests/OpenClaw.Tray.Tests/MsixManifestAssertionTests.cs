@@ -175,8 +175,13 @@ public sealed class MsixManifestAssertionTests
         Assert.DoesNotContain(doc.Descendants(XName.Get("Application", AppxFoundationNs)),
             e => string.Equals((string?)e.Attribute("Id"), "SetupEngine", StringComparison.Ordinal));
         Assert.Contains("Content Include=\"SetupEngine\\**\\*\"", project);
+        Assert.Contains("PRIResource=\"false\"", project);
+        Assert.Contains("<PRIResource Remove=\"SetupEngine\\**\\*\" />", project);
         Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngine", ci);
-        Assert.Contains("Copy-Item \"$publishDir\\*\" -Destination $payloadDir -Recurse -Force", ci);
+        Assert.Contains("Start-Process robocopy.exe", ci);
+        Assert.Contains("'*.xbf', 'OpenClaw.SetupEngine.UI.pri'", ci);
+        Assert.Contains("Inject SetupEngine XAML Resources", ci);
+        Assert.Contains("scripts/inject-setupengine-xaml-resources.ps1", ci);
         Assert.Contains("dotnet publish src/OpenClaw.SetupEngine.UI", ci);
         Assert.Contains("--self-contained", ci);
         Assert.Contains("-p:PackageMsix=false", ci);
@@ -200,6 +205,8 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("<ApplicationManifest>app.manifest</ApplicationManifest>", setupProject);
         Assert.Contains("<DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>", setupProject);
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
+        Assert.Contains("CopyXamlResourcesToPublishDirectory", setupProject);
+        Assert.Contains("$(OutputPath)**\\*.xbf;$(OutputPath)*.pri", setupProject);
         Assert.DoesNotContain("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
         Assert.DoesNotContain("<SelfContained>false</SelfContained>", setupProject);
     }

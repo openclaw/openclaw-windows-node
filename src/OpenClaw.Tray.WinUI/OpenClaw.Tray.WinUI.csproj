@@ -81,7 +81,9 @@
              CopyToOutputDirectory="PreserveNewest" />
     <Content Include="SetupEngine\**\*"
              Condition="'$(PackageMsix)' == 'true' And Exists('SetupEngine')"
-             CopyToOutputDirectory="PreserveNewest" />
+             CopyToOutputDirectory="PreserveNewest"
+             PRIResource="false" />
+    <PRIResource Remove="SetupEngine\**\*" />
   </ItemGroup>
 
   <PropertyGroup>

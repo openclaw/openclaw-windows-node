@@ -490,7 +490,12 @@ jobs:
           -p:Version=${{ needs.test.outputs.semVer }} `
           -o $publishDir
         New-Item -ItemType Directory -Force -Path $payloadDir | Out-Null
-        Copy-Item "$publishDir\*" -Destination $payloadDir -Recurse -Force
+        $robocopy = Start-Process robocopy.exe `
+          -ArgumentList @($publishDir, $payloadDir, '/E', '/XF', '*.xbf', 'OpenClaw.SetupEngine.UI.pri') `
+          -Wait `
+          -PassThru `
+          -NoNewWindow
+        if ($robocopy.ExitCode -gt 7) { throw "robocopy failed with exit code $($robocopy.ExitCode)" }
         Get-ChildItem $payloadDir -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
 
     - name: Build MSIX Package
@@ -519,6 +524,13 @@ jobs:
         Write-Host "Found: $($msix.FullName)"
         echo "msix_path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
         echo "msix_name=$($msix.Name)" >> $env:GITHUB_OUTPUT
+
+    - name: Inject SetupEngine XAML Resources
+      shell: pwsh
+      run: |
+        ./scripts/inject-setupengine-xaml-resources.ps1 `
+          -MsixPath "${{ steps.find-msix.outputs.msix_path }}" `
+          -SetupEnginePublishDir "artifacts/setupengine-${{ matrix.rid }}"
 
     - name: Upload MSIX Artifact
       uses: actions/upload-artifact@v7
