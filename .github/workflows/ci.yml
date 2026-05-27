@@ -660,6 +660,43 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
+    - name: Prepare MSIX Payloads for Inner Signing
+      shell: pwsh
+      run: |
+        ./scripts/prepare-msix-payload-signing.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix" `
+          -OutputDirectory "artifacts/msix-payload-signing/win-x64"
+        ./scripts/prepare-msix-payload-signing.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix" `
+          -OutputDirectory "artifacts/msix-payload-signing/win-arm64"
+
+    - name: Sign MSIX Payload Files
+      uses: azure/trusted-signing-action@v2
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: https://wus2.codesigning.azure.net/
+        signing-account-name: hanselman
+        certificate-profile-name: WindowsEdgeLight
+        files-folder: artifacts/msix-payload-signing
+        files-folder-filter: exe,dll,ps1,psm1,psd1
+        files-folder-recurse: true
+        append-signature: true
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Repack MSIX Packages After Payload Signing
+      shell: pwsh
+      run: |
+        ./scripts/repack-msix.ps1 `
+          -PayloadDirectory "artifacts/msix-payload-signing/win-x64" `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
+        ./scripts/repack-msix.ps1 `
+          -PayloadDirectory "artifacts/msix-payload-signing/win-arm64" `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
+
     - name: Sign Release MSIX Packages
       uses: azure/trusted-signing-action@v2
       with:
@@ -675,6 +712,14 @@ jobs:
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
+
+    - name: Verify Signed MSIX Payloads
+      shell: pwsh
+      run: |
+        ./scripts/verify-msix-payload-signatures.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
+        ./scripts/verify-msix-payload-signatures.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
 
     # Render the hosted .appinstaller XML files that Windows AppInstaller polls
     # after install. Each architecture has its own stable URL because the release

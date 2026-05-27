@@ -145,6 +145,14 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("!contains(github.ref_name, '-')", releaseJob);
         Assert.Contains("Sign Release MSIX Packages", releaseJob);
         Assert.Contains("files-folder-filter: msix", releaseJob);
+        Assert.Contains("Prepare MSIX Payloads for Inner Signing", releaseJob);
+        Assert.Contains("Sign MSIX Payload Files", releaseJob);
+        Assert.Contains("files-folder-filter: exe,dll,ps1,psm1,psd1", releaseJob);
+        Assert.Contains("files-folder-recurse: true", releaseJob);
+        Assert.Contains("append-signature: true", releaseJob);
+        Assert.Contains("Repack MSIX Packages After Payload Signing", releaseJob);
+        Assert.Contains("Verify Signed MSIX Payloads", releaseJob);
+        Assert.Contains("verify-msix-payload-signatures.ps1", releaseJob);
         Assert.Contains("certificate-profile-name: WindowsEdgeLight", releaseJob);
     }
 
