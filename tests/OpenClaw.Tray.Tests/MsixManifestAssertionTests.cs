@@ -190,6 +190,10 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("setup-engine-startup.log", setupProgram);
         Assert.Contains("0x80040111", setupProgram);
         Assert.Contains("0x80004005", setupProgram);
+        Assert.Contains("Bootstrap.Initialize", setupProgram);
+        Assert.Contains("Program.WindowsAppSdkBootstrap", setupProgram);
+        Assert.Contains("FreshPackageMinimumAge", setupProgram);
+        Assert.Contains("Program.packageInstallAge.wait", setupProgram);
         Assert.Contains("<DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>", setupProject);
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
     }
