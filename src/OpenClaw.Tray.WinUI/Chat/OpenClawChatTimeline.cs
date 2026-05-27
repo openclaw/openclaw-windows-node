@@ -41,6 +41,11 @@ namespace OpenClawTray.Chat;
 /// footers. Production chat keeps this false so debug exploration presets
 /// cannot expose usage details in the main surface.
 /// </param>
+/// <param name="EnableExplorationControls">
+/// When true, honors Chat Exploration debug visibility controls. Production
+/// chat keeps this false so saved exploration presets cannot hide assistant
+/// bubbles or tool-call progress.
+/// </param>
 public record OpenClawChatTimelineProps(
     string? SessionId,
     IReadOnlyList<ChatTimelineItem> Entries,
@@ -52,6 +57,7 @@ public record OpenClawChatTimelineProps(
     string? DefaultModel = null,
     bool ShowThinkingIndicator = false,
     bool ShowUsageMetadata = false,
+    bool EnableExplorationControls = false,
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0);
@@ -421,8 +427,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var bubbleRadius     = ChatVisualResolver.BubbleCornerRadius();
         var bubblePadding    = ChatVisualResolver.BubbleInnerPadding();
         var bubbleSideMargin = ChatVisualResolver.BubbleSideMargin();
-        var showAsstBubbles  = ChatVisualResolver.ShowAssistantBubbles();
-        var showToolCalls    = ChatVisualResolver.ShowToolCalls();
+        var showAsstBubbles  = !Props.EnableExplorationControls || ChatVisualResolver.ShowAssistantBubbles();
+        var showToolCalls    = !Props.EnableExplorationControls || ChatVisualResolver.ShowToolCalls();
         var gutter           = ChatExplorationState.Gutter;
         var messageGap       = ChatExplorationState.MessageGap;
         var showUserAvatar   = ChatVisualResolver.ShowUserAvatar();
@@ -1756,10 +1762,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // sides). In external mode the card is anchored to toolLeftMargin
             // so its right edge stays parallel to the bubble's, with 6/6
             // vertical breathing room and the gutter on the right.
-            // Nested mode lives inside the assistant bubble's padded content
-            // area, so no extra side inset is needed.
+            // Nested mode stays inside the assistant bubble, but keep a small
+            // radius-aware right inset so status pills avoid the parent
+            // bubble's rounded-corner clip in cozy/high-contrast layouts.
+            var nestedSideInset = (int)Math.Round(Math.Min(bubbleRadius.TopRight, bubblePadding.Right));
             Element Wrap(Element card) => nested
-                ? card.HAlign(HorizontalAlignment.Stretch)
+                ? card.HAlign(HorizontalAlignment.Stretch).Margin(0, 0, nestedSideInset, 0)
                 : AnchorLeft(card).HAlign(HorizontalAlignment.Stretch).Margin(toolLeftMargin, 6, gutter, 6);
 
             // Wrap the card in a left-anchored single-Star Grid so the card

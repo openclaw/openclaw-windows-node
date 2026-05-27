@@ -536,6 +536,7 @@ public sealed class OpenClawChatRoot : Component
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: effectiveThread.Model,
                 ShowThinkingIndicator: showThinking,
+                EnableExplorationControls: _provider is FakeChatDataProvider,
                 OnReadAloud: _onReadAloud is not null
                     ? (text => _onReadAloud(text))
                     : null,
