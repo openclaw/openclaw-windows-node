@@ -3,6 +3,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
@@ -193,11 +194,16 @@ public sealed class OpenClawChatRoot : Component
         var selectedIdForMetadata = selectedIdState.Value ?? snapshot?.DefaultThreadId;
         var entryMetaSnapshot = UseMemo<IReadOnlyDictionary<string, ChatEntryMetadata>?>(() =>
         {
-            if (selectedIdForMetadata is null || _provider is not OpenClawChatDataProvider nativeForMeta)
+            if (selectedIdForMetadata is null)
                 return null;
 
-            return nativeForMeta.GetEntryMetadata(selectedIdForMetadata);
-        }, selectedIdForMetadata ?? string.Empty, snapshot is null ? string.Empty : snapshot);
+            return _provider switch
+            {
+                OpenClawChatDataProvider nativeForMeta => nativeForMeta.GetEntryMetadata(selectedIdForMetadata),
+                FakeChatDataProvider fakeForMeta => fakeForMeta.GetEntryMetadata(selectedIdForMetadata),
+                _ => null
+            };
+        }, selectedIdForMetadata ?? string.Empty, snapshot);
 
         // Preview override (G) — only honored when the chat is bound to a
         // fake provider (i.e. the explorations window). Real production
@@ -229,6 +235,16 @@ public sealed class OpenClawChatRoot : Component
         var selectedThread = selectedId is { } id
             ? Array.Find(snapshot.Threads, t => t.Id == id)
             : null;
+        if (selectedThread is null
+            && selectedIdState.Value is { } staleSelectedId
+            && snapshot.DefaultThreadId is { } fallbackThreadId
+            && !string.Equals(staleSelectedId, fallbackThreadId, StringComparison.Ordinal))
+        {
+            selectedId = fallbackThreadId;
+            selectedThread = Array.Find(snapshot.Threads, t => t.Id == fallbackThreadId);
+            selectedIdState.Set(fallbackThreadId);
+            selectedIdRef.Current = fallbackThreadId;
+        }
 
         // If no real session is selected yet but the provider exposes a ready
         // compose target (gateway connected + handshake snapshot resolved),
@@ -298,6 +314,11 @@ public sealed class OpenClawChatRoot : Component
         // Keep the same dictionary instance across composer-only renders so the
         // timeline can skip re-rendering while the user types.
         var entryMeta = effectiveThread is null ? null : entryMetaSnapshot;
+        var showToolDetails = ChatExplorationState.ShowToolCalls;
+        var usageSummary = showToolDetails
+            ? (ChatUsageFormatter.Format(entries, entryMeta)
+                ?? ChatUsageFormatter.Format(effectiveThread))
+            : null;
 
         // The gateway's default agent identity is "Field" (matches the web UI footer),
         // but for the WinUI tray we surface a generic "Assistant" label so the
@@ -535,6 +556,8 @@ public sealed class OpenClawChatRoot : Component
                 UserSenderLabel: "OpenClaw Windows Tray",
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: effectiveThread.Model,
+                DefaultContextTokens: effectiveThread.ContextTokens,
+                DefaultUsageSummary: usageSummary,
                 ShowThinkingIndicator: showThinking,
                 EnableExplorationControls: _provider is FakeChatDataProvider,
                 OnReadAloud: _onReadAloud is not null
@@ -606,17 +629,31 @@ public sealed class OpenClawChatRoot : Component
                 VoiceAudioLevel: voiceAudioLevel.Value,
                 RegisterVoiceStarter: starter => TriggerVoiceRecording = starter,
                 OnAttachmentPasted: att => pendingAttachment.Set(att),
+                UsageSummary: usageSummary,
                 IsCompact: _isCompact))
             : (bodyIsSkeleton ? RenderSkeletonComposer() : Empty());
 
         var divider = Empty();
+        Element usageIndicator = Empty();
+        if (!suppressComposer
+            && showToolDetails
+            && ChatExplorationState.UsagePlacement == ChatUsagePlacement.AboveComposerCentered
+            && !string.IsNullOrWhiteSpace(usageSummary))
+        {
+            usageIndicator = Caption(usageSummary!)
+                .Foreground((Brush)Application.Current.Resources["TextFillColorSecondaryBrush"])
+                .Set(t => { t.FontSize = 11; t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; })
+                .HAlign(HorizontalAlignment.Center)
+                .Margin(0, 2, 0, 6);
+        }
 
-        // Three rows now (composer absorbs the old StatusBar).
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
+        // Composer absorbs the old StatusBar; usageIndicator is an optional exploration row.
+        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
             header.Grid(row: 0, column: 0),
             divider.Grid(row: 1, column: 0),
             body.Grid(row: 2, column: 0),
-            composer.Grid(row: 3, column: 0)
+            usageIndicator.Grid(row: 3, column: 0),
+            composer.Grid(row: 4, column: 0)
         );
     }
 
@@ -628,6 +665,8 @@ public sealed class OpenClawChatRoot : Component
             Title = "Preview thread",
             Status = ChatThreadStatus.Running,
             Model = snapshot.AvailableModels is { Length: > 0 } m ? m[0] : null,
+            TotalTokens = 15300,
+            ContextTokens = 1_000_000,
             CreatedAt = DateTimeOffset.Now.AddMinutes(-1),
             UpdatedAt = DateTimeOffset.Now,
         };

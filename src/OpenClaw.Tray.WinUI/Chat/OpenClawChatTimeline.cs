@@ -56,6 +56,8 @@ public record OpenClawChatTimelineProps(
     string UserSenderLabel = "OpenClaw Windows Tray",
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
+    long DefaultContextTokens = 0,
+    string? DefaultUsageSummary = null,
     bool ShowThinkingIndicator = false,
     bool ShowUsageMetadata = false,
     bool EnableExplorationControls = false,
@@ -661,6 +663,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var assistantSender = Props.AssistantSenderLabel;
         var defaultModel = Props.DefaultModel;
         var meta = Props.EntryMetadata;
+        string? latestAssistantEntryId = null;
+        for (var i = Props.Entries.Count - 1; i >= 0; i--)
+        {
+            if (Props.Entries[i].Kind == ChatTimelineItemKind.Assistant)
+            {
+                latestAssistantEntryId = Props.Entries[i].Id;
+                break;
+            }
+        }
 
         // ── Web Control UI palette: "dash-light" theme (verified against the
         // bundled assets/index-*.css — dash-light is what the user runs).
@@ -920,13 +931,27 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         Element BuildAssistantFooter(string sender, string time, string? model,
             int? inputTokens, int? outputTokens, int? responseTokens, int? contextPct,
             Brush stampFg,
-            string entryId, string entryText)
+            string entryId, string entryText,
+            string? fallbackUsageSummary)
         {
-            // Honor per-field toggles from ChatExplorationState.
+            // Honor per-field toggles from ChatExplorationState only in the
+            // exploration preview; production chat keeps the assistant footer stable.
             var showSender   = Props.EnableExplorationControls && ChatExplorationState.ShowSenderName;
             var showModel    = Props.EnableExplorationControls && ChatExplorationState.ShowModelName;
             var showTokens   = Props.ShowUsageMetadata && Props.EnableExplorationControls && ChatExplorationState.ShowTokens;
             var showCtxPct   = Props.ShowUsageMetadata && Props.EnableExplorationControls && ChatExplorationState.ShowContextPercent;
+            var showToolDetails = !Props.EnableExplorationControls || ChatExplorationState.ShowToolCalls;
+            var usagePlacement = Props.EnableExplorationControls
+                ? ChatExplorationState.UsagePlacement
+                : ChatUsagePlacement.AssistantFooterInline;
+            var hideFooterUsage = usagePlacement == ChatUsagePlacement.AboveComposerCentered
+                || usagePlacement == ChatUsagePlacement.AssistantFooterInline
+                || usagePlacement == ChatUsagePlacement.ComposerLowerLeft
+                || usagePlacement == ChatUsagePlacement.Hidden;
+            var entryUsageSummary = fallbackUsageSummary;
+            var showInlineUsage = usagePlacement == ChatUsagePlacement.AssistantFooterInline
+                && showToolDetails
+                && !string.IsNullOrWhiteSpace(entryUsageSummary);
 
             var parts = new List<Element>();
             void AddPill(string text)
@@ -947,10 +972,18 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     .VAlign(VerticalAlignment.Center));
 
             AddPill(time);
-            if (showTokens && inputTokens   is int inN)   AddPill($"↑{FormatTokenCount(inN)}");
-            if (showTokens && outputTokens  is int outN)  AddPill($"↓{FormatTokenCount(outN)}");
-            if (showTokens && responseTokens is int respN) AddPill($"R{FormatTokenCount(respN)}");
-            if (showCtxPct && contextPct    is int pct)   AddPill($"{pct}% ctx");
+            if (showInlineUsage)
+            {
+                AddPill("·");
+                AddPill(entryUsageSummary!);
+            }
+            else if (!hideFooterUsage)
+            {
+                if (showTokens && inputTokens   is int inN)   AddPill($"↑{FormatTokenCount(inN)}");
+                if (showTokens && outputTokens  is int outN)  AddPill($"↓{FormatTokenCount(outN)}");
+                if (showTokens && responseTokens is int respN) AddPill($"R{FormatTokenCount(respN)}");
+                if (showCtxPct && contextPct    is int pct)   AddPill($"{pct}% ctx");
+            }
             if (showModel) AddPill(model ?? "");
 
             parts.Add(HoverIcon(entryId, "copy", "\uE8C8", "\uE73E",
@@ -1313,7 +1346,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 footer = BuildAssistantFooter(assistantSender, timeStr, modelStr,
                     entryMeta?.InputTokens, entryMeta?.OutputTokens,
                     entryMeta?.ResponseTokens, entryMeta?.ContextPercent,
-                    chatStampFg, entry.Id, entry.Text ?? "");
+                    chatStampFg, entry.Id, entry.Text ?? "",
+                    entry.Id == latestAssistantEntryId ? Props.DefaultUsageSummary : null);
                 var leftInset = showAssistAvatar ? (36 + bubbleSideMargin) : 0;
                 leftInset += (int)bubblePadding.Left;
                 footer = footer.Margin(leftInset, 2, 0, 0);

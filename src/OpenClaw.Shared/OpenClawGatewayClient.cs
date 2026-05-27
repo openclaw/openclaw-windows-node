@@ -434,6 +434,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             if (string.IsNullOrEmpty(text)) continue;
             if (string.IsNullOrEmpty(role)) continue;
 
+            var (inputTokens, outputTokens, responseTokens, contextPercent) = ExtractChatUsage(m);
             list.Add(new ChatMessageInfo
             {
                 SessionKey = sessionKey,
@@ -443,7 +444,11 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 Ts = ts,
                 OpenClawId = openClawId,
                 OpenClawSeq = openClawSeq,
-                StopReason = stopReason
+                StopReason = stopReason,
+                InputTokens = inputTokens,
+                OutputTokens = outputTokens,
+                ResponseTokens = responseTokens,
+                ContextPercent = contextPercent
             });
         }
         info.Messages = list;

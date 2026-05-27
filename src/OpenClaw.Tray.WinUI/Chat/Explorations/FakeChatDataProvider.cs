@@ -19,6 +19,7 @@ public sealed class FakeChatDataProvider : IChatDataProvider
     private static readonly string[] Models = ["gpt-5.5", "gpt-5.4", "claude-opus-4.7"];
 
     private ChatTimelineState _timeline;
+    private readonly Dictionary<string, ChatEntryMetadata> _metadata = new();
     private int _nextId = 100;
 
     public string DisplayName => "Demo (preview)";
@@ -60,6 +61,17 @@ public sealed class FakeChatDataProvider : IChatDataProvider
             new("d6", ChatTimelineItemKind.Assistant, "This is a second assistant bubble in the same burst — handy for testing avatar alignment and burst spacing."),
         };
 
+        var now = DateTimeOffset.Now;
+        _metadata["d1"] = new(now.AddMinutes(-5), Models[0]);
+        _metadata["d2"] = new(now.AddMinutes(-4), Models[0], InputTokens: 4200, OutputTokens: 720, ResponseTokens: 15300, ContextPercent: 2);
+        _metadata["d3"] = new(now.AddMinutes(-3), Models[0]);
+        _metadata["d3b"] = new(now.AddMinutes(-3), Models[0]);
+        _metadata["d3c"] = new(now.AddMinutes(-3), Models[0]);
+        _metadata["d3d"] = new(now.AddMinutes(-2), Models[0], InputTokens: 5100, OutputTokens: 980, ResponseTokens: 15300, ContextPercent: 2);
+        _metadata["d4"] = new(now.AddMinutes(-1), Models[0]);
+        _metadata["d5"] = new(now.AddSeconds(-40), Models[0], InputTokens: 5700, OutputTokens: 1150, ResponseTokens: 15300, ContextPercent: 2);
+        _metadata["d6"] = new(now.AddSeconds(-30), Models[0], InputTokens: 5700, OutputTokens: 1280, ResponseTokens: 15300, ContextPercent: 2);
+
         _timeline = new ChatTimelineState(
             Entries: entries.ToImmutableList(),
             TurnActive: false,
@@ -83,6 +95,10 @@ public sealed class FakeChatDataProvider : IChatDataProvider
             Status = ChatThreadStatus.Running,
             Activity = ChatActivity.Idle,
             Model = Models[0],
+            InputTokens = 5700,
+            OutputTokens = 1280,
+            TotalTokens = 15300,
+            ContextTokens = 1_000_000,
             CreatedAt = DateTimeOffset.Now.AddMinutes(-5),
             UpdatedAt = DateTimeOffset.Now,
         };
@@ -104,16 +120,26 @@ public sealed class FakeChatDataProvider : IChatDataProvider
 
     public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
     {
+        var userId = $"u{_nextId++}";
+        var assistantId = $"a{_nextId++}";
         var entries = new List<ChatTimelineItem>(_timeline.Entries)
         {
-            new($"u{_nextId++}", ChatTimelineItemKind.User, message),
-            new($"a{_nextId++}", ChatTimelineItemKind.Assistant,
+            new(userId, ChatTimelineItemKind.User, message),
+            new(assistantId, ChatTimelineItemKind.Assistant,
                 "Demo response — no real backend connected. Use the panel toggles to compare styling."),
         };
+        var now = DateTimeOffset.Now;
+        _metadata[userId] = new(now, Models[0]);
+        _metadata[assistantId] = new(now.AddSeconds(1), Models[0], InputTokens: 5900, OutputTokens: 1400, ResponseTokens: 15300, ContextPercent: 2);
         _timeline = _timeline with { Entries = entries.ToImmutableList(), NextId = _nextId };
         RaiseChanged();
         return Task.CompletedTask;
     }
+
+    public IReadOnlyDictionary<string, ChatEntryMetadata> GetEntryMetadata(string threadId)
+        => threadId == ThreadId
+            ? new Dictionary<string, ChatEntryMetadata>(_metadata)
+            : new Dictionary<string, ChatEntryMetadata>();
 
     public Task StopResponseAsync(string threadId, CancellationToken cancellationToken = default)            => Task.CompletedTask;
     public Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default) => Task.CompletedTask;
