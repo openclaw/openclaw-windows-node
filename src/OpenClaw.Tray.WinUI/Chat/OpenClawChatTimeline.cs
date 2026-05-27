@@ -36,6 +36,11 @@ namespace OpenClawTray.Chat;
 /// inside an assistant bubble. Used by callers to bridge the gap between
 /// turn-start and the first assistant delta arriving.
 /// </param>
+/// <param name="ShowUsageMetadata">
+/// When true, allows gateway-reported token/context metadata in assistant
+/// footers. Production chat keeps this false so debug exploration presets
+/// cannot expose usage details in the main surface.
+/// </param>
 public record OpenClawChatTimelineProps(
     string? SessionId,
     IReadOnlyList<ChatTimelineItem> Entries,
@@ -46,6 +51,7 @@ public record OpenClawChatTimelineProps(
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
     bool ShowThinkingIndicator = false,
+    bool ShowUsageMetadata = false,
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0);
@@ -913,8 +919,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // Honor per-field toggles from ChatExplorationState.
             var showSender   = ChatExplorationState.ShowSenderName;
             var showModel    = ChatExplorationState.ShowModelName;
-            var showTokens   = ChatExplorationState.ShowTokens;
-            var showCtxPct   = ChatExplorationState.ShowContextPercent;
+            var showTokens   = Props.ShowUsageMetadata && ChatExplorationState.ShowTokens;
+            var showCtxPct   = Props.ShowUsageMetadata && ChatExplorationState.ShowContextPercent;
 
             var parts = new List<Element>();
             void AddPill(string text)
