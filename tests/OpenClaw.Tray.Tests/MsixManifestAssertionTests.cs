@@ -184,11 +184,17 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("-p:PackageMsix=false", ci);
         Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"SetupEngine\", exeName)", app);
         Assert.Contains("new System.Diagnostics.ProcessStartInfo(setupExePath)", app);
+        Assert.Contains("WorkingDirectory = Path.GetDirectoryName(setupExePath)", app);
         Assert.DoesNotContain("shell:AppsFolder", app);
         Assert.DoesNotContain("SetupEngineApplicationId", app);
         Assert.Contains("setup-engine-startup.log", setupProgram);
-        Assert.DoesNotContain("RunWithXamlFactoryRetry", setupProgram);
+        Assert.Contains("RunWithXamlFactoryRetry", setupProgram);
+        Assert.Contains("Program.ApplicationStart.attempt", setupProgram);
+        Assert.Contains("Program.ApplicationStart.xamlFactoryUnavailable.retry", setupProgram);
+        Assert.Contains("WindowsAppRuntime_EnsureIsLoaded", setupProgram);
+        Assert.Contains("Program.WindowsAppRuntimeEnsureLoaded", setupProgram);
         Assert.DoesNotContain("Bootstrap.Initialize", setupProgram);
+        Assert.DoesNotContain("Program.WindowsAppSdkBootstrap", setupProgram);
         Assert.DoesNotContain("FreshPackageMinimumAge", setupProgram);
         Assert.Contains("<WindowsPackageType>None</WindowsPackageType>", setupProject);
         Assert.Contains("<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>", setupProject);

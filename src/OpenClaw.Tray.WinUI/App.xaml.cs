@@ -2989,7 +2989,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
             {
-                UseShellExecute = true
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(setupExePath) ?? AppContext.BaseDirectory
             };
             var process = System.Diagnostics.Process.Start(psi);
             if (process != null)

@@ -17,8 +17,115 @@ public sealed partial class WelcomePage : Page
 
     public WelcomePage()
     {
-        InitializeComponent();
+        Program.WriteStartupBreadcrumb("WelcomePage.ctor.begin");
+        BuildPageShell();
+        Program.WriteStartupBreadcrumb("WelcomePage.ctor.afterBuildPageShell");
         Loaded += OnLoaded;
+    }
+
+    private void BuildPageShell()
+    {
+        var root = new Grid
+        {
+            Padding = new Thickness(56, 64, 56, 40)
+        };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Spacing = 12
+        };
+        Grid.SetRow(header, 0);
+        header.Children.Add(new TextBlock
+        {
+            Text = "Get started with OpenClaw",
+            FontSize = 28,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        header.Children.Add(new TextBlock
+        {
+            Text = "OpenClaw lets agents run commands, read and write files, and capture screenshots on this PC. Only set it up on a computer you trust.",
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            FontSize = 14,
+            Opacity = 0.7,
+            MaxWidth = 440,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+
+        var footer = new StackPanel
+        {
+            Spacing = 16
+        };
+        Grid.SetRow(footer, 2);
+
+        InfoCard = new Border
+        {
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(20, 18, 20, 18)
+        };
+        var infoGrid = new Grid
+        {
+            ColumnSpacing = 12
+        };
+        infoGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        infoGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        infoGrid.Children.Add(new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(11),
+            Background = new SolidColorBrush(Color.FromArgb(255, 0x60, 0xC8, 0xF8)),
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = new TextBlock
+            {
+                Text = "i",
+                FontSize = 13,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        });
+        InfoText = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13,
+            Opacity = 0.85
+        };
+        Grid.SetColumn(InfoText, 1);
+        infoGrid.Children.Add(InfoText);
+        InfoCard.Child = infoGrid;
+        footer.Children.Add(InfoCard);
+
+        StartButton = new Button
+        {
+            Content = "Install new WSL Gateway",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Height = 44,
+            FontSize = 15,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        };
+        StartButton.Click += StartButton_Click;
+        footer.Children.Add(StartButton);
+
+        var advancedSetup = new HyperlinkButton
+        {
+            Content = "Advanced setup",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 0x60, 0xC8, 0xF8)),
+            FontSize = 14
+        };
+        advancedSetup.Click += AdvancedSetup_Click;
+        footer.Children.Add(advancedSetup);
+
+        root.Children.Add(header);
+        root.Children.Add(footer);
+        Content = root;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -36,7 +143,8 @@ public sealed partial class WelcomePage : Page
         InfoText.Text = "This local setup installs a small WSL Linux instance dedicated to OpenClaw. "
                       + "If you'd rather connect to an existing or remote gateway, choose Advanced setup.";
 
-        StartLobsterBreatheAnimation();
+        if (LobsterHero != null)
+            StartLobsterBreatheAnimation();
     }
 
     private void StartLobsterBreatheAnimation()
