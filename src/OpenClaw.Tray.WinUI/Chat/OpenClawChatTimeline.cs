@@ -235,11 +235,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     private static void ApplyPlainSelectableInlines(TextBlock textBlock, string? text)
     {
         var normalized = text ?? string.Empty;
-        // Short-circuit when the cached text matches, regardless of
-        // whether Inlines were populated (an empty/null text legitimately
-        // leaves Inlines empty, and we should not re-clear on every
-        // re-render in that case).
-        if (s_plainCache.TryGetValue(textBlock, out var cached) && cached == normalized)
+        // ConfigureTextBlock may set Text="" and clear Inlines before this
+        // setter runs again, so only skip when the cached run is still present.
+        if (textBlock.Inlines.Count > 0
+            && s_plainCache.TryGetValue(textBlock, out var cached)
+            && cached == normalized)
             return;
         s_plainCache.AddOrUpdate(textBlock, normalized);
         textBlock.Inlines.Clear();
