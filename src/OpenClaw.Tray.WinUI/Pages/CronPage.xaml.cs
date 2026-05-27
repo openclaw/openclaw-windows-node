@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -128,7 +129,7 @@ public sealed partial class CronPage : Page
         var vm = _jobs.Find(j => j.Id == jobId);
         if (vm != null && !vm.IsEnabled) return;
         _runningJobIds.Add(jobId);
-        btn!.Content = "Running...";
+        btn!.Content = LocalizationHelper.GetString("CronPage_Running");
         btn.IsEnabled = false;
 
         CurrentApp.GatewayClient.RunCronJobAsync(jobId).ContinueWith(t =>
@@ -194,8 +195,8 @@ public sealed partial class CronPage : Page
         _editingJobId = null;
         RestoreFormFromInline(); // ensure form is back in its home position
         ResetForm();
-        FormTitle.Text = "New Job";
-        FormSaveButton.Content = "Create Job";
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_NewJobTitle");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_CreateJobLabel");
         JobFormPanel.Visibility = Visibility.Visible;
     }
 
@@ -209,8 +210,8 @@ public sealed partial class CronPage : Page
         if (vm == null || !vm.IsEnabled) return;
 
         _editingJobId = jobId;
-        FormTitle.Text = "Edit Job";
-        FormSaveButton.Content = "Save Changes";
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_EditJob");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_SaveChanges");
 
         // Populate form fields from VM
         FormName.Text = vm.Name;

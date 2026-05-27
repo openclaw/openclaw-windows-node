@@ -45,6 +45,8 @@ public class LocalizationValidationTests
         // VoiceOverlayWindow window-title key — matches the convention
         // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
+        // Brand name — identical across all locales.
+        "ConnectionPage_TopologyTailscale",
         "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
         "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.
@@ -267,6 +269,8 @@ public class LocalizationValidationTests
     {
         "Update_OK",
         "Onboarding_IncompleteSetup_Close",
+        "ChatPage_OK",
+        "ConnectionPage_ViaSSH",
     };
 
     // Locales whose translations are allowed to remain identical to en-us
