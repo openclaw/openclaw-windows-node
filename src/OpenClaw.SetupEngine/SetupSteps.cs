@@ -718,7 +718,7 @@ public sealed class InstallCliStep : SetupStep
         var user = ctx.Config.Wsl.User;
 
         // Download and run install script (URL configurable)
-        var installUrl = ctx.Config.Gateway.InstallUrl ?? "https://openclaw.ai/install-cli.sh";
+        var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayLkgVersion.DefaultInstallUrl;
 
         // Validate URL is HTTPS to prevent downgrade attacks
         if (!Uri.TryCreate(installUrl, UriKind.Absolute, out var parsedUrl) ||

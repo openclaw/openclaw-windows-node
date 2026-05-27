@@ -34,14 +34,20 @@ jobs:
         match = re.search(r'LkgVersion\s*=\s*"([^"]+)"', source)
         if not match:
             raise SystemExit("Could not parse LkgVersion constant from GatewayLkgVersion.cs")
-        print(match.group(1))
+        pinned = match.group(1)
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*', pinned):
+            raise SystemExit(f"Pinned LkgVersion has unexpected format: {pinned}")
+        print(pinned)
         PY
         )"
         latest="$(python3 - <<'PY'
-        import json, urllib.request
+        import json, re, urllib.request
         with urllib.request.urlopen('https://registry.npmjs.org/openclaw/latest', timeout=30) as r:
             payload = json.load(r)
-        print(payload['version'])
+        latest = payload['version']
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*', latest):
+            raise SystemExit(f"Resolved npm latest version has unexpected format: {latest}")
+        print(latest)
         PY
         )"
 

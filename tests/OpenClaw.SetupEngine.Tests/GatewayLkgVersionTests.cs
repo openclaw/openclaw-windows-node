@@ -20,4 +20,15 @@ public sealed class GatewayLkgVersionTests
 
         Assert.Equal(GatewayLkgVersion.LkgVersion, config.Gateway.Version);
     }
+
+    [Fact]
+    public void ApplyToConfig_DoesNotSetGatewayVersionForCustomInstallUrl()
+    {
+        var config = new SetupConfig();
+        config.Gateway.Version = null;
+        config.Gateway.InstallUrl = "https://contoso.example/install-cli.sh";
+        GatewayLkgVersion.ApplyToConfig(config);
+
+        Assert.Null(config.Gateway.Version);
+    }
 }
