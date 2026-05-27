@@ -114,10 +114,33 @@ public sealed partial class SetupWindow : Window
         Content = root;
     }
 
-    public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
-    public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
-    public void NavigateToWizard() => RootFrame.Navigate(typeof(WizardPage), _config);
-    public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
+    public void NavigateToCapabilities()
+    {
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToCapabilities.begin");
+        RootFrame.Navigate(typeof(CapabilitiesPage), _config);
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToCapabilities.returned");
+    }
+
+    public void NavigateToProgress()
+    {
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToProgress.begin");
+        RootFrame.Navigate(typeof(ProgressPage), _config);
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToProgress.returned");
+    }
+
+    public void NavigateToWizard()
+    {
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToWizard.begin");
+        RootFrame.Navigate(typeof(WizardPage), _config);
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToWizard.returned");
+    }
+
+    public void NavigateToPermissions()
+    {
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToPermissions.begin");
+        RootFrame.Navigate(typeof(PermissionsPage), _config);
+        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToPermissions.returned");
+    }
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
 

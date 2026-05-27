@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -25,13 +27,91 @@ public sealed partial class CapabilitiesPage : Page
 
     public CapabilitiesPage()
     {
-        InitializeComponent();
+        Program.WriteStartupBreadcrumb("CapabilitiesPage.ctor.begin");
+        BuildPageShell();
+        Program.WriteStartupBreadcrumb("CapabilitiesPage.ctor.afterBuildPageShell");
+    }
+
+    private void BuildPageShell()
+    {
+        var root = new Grid
+        {
+            Padding = new Thickness(40, 28, 40, 28)
+        };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = new StackPanel
+        {
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        Grid.SetRow(header, 0);
+        header.Children.Add(new TextBlock
+        {
+            Text = "Configure capabilities",
+            FontSize = 24,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        header.Children.Add(new TextBlock
+        {
+            Text = "Choose which capabilities this node will advertise. You can change these later.",
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            FontSize = 13,
+            Opacity = 0.6,
+            MaxWidth = 440,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+
+        CapGrid = new Grid
+        {
+            ColumnSpacing = 16,
+            RowSpacing = 4
+        };
+        CapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        CapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var scroller = new ScrollViewer
+        {
+            Content = CapGrid,
+            Margin = new Thickness(0, 20, 0, 0),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        Grid.SetRow(scroller, 1);
+
+        var continueButton = new Button
+        {
+            Content = "Continue",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 16, 0, 0),
+            Height = 44,
+            FontSize = 15,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        };
+        continueButton.Resources["ButtonBackground"] = new SolidColorBrush(Color.FromArgb(255, 0x60, 0xC8, 0xF8));
+        continueButton.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Color.FromArgb(255, 0x52, 0xB0, 0xDA));
+        continueButton.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Color.FromArgb(255, 0x46, 0x9B, 0xBC));
+        continueButton.Resources["ButtonForeground"] = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
+        continueButton.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
+        continueButton.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
+        continueButton.Click += Continue_Click;
+        Grid.SetRow(continueButton, 2);
+
+        root.Children.Add(header);
+        root.Children.Add(scroller);
+        root.Children.Add(continueButton);
+        Content = root;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        Program.WriteStartupBreadcrumb("CapabilitiesPage.OnNavigatedTo.begin");
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         BuildToggles();
+        Program.WriteStartupBreadcrumb("CapabilitiesPage.OnNavigatedTo.afterBuildToggles");
     }
 
     private void BuildToggles()
@@ -101,6 +181,7 @@ public sealed partial class CapabilitiesPage : Page
 
     private void Continue_Click(object sender, RoutedEventArgs e)
     {
+        Program.WriteStartupBreadcrumb("CapabilitiesPage.Continue.begin");
         var caps = _config!.Capabilities;
         foreach (var (key, _, _, _) in Capabilities)
         {
@@ -112,5 +193,6 @@ public sealed partial class CapabilitiesPage : Page
         }
 
         App.MainWindow?.NavigateToProgress();
+        Program.WriteStartupBreadcrumb("CapabilitiesPage.Continue.returned");
     }
 }

@@ -206,6 +206,31 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
+    public void SetupEngine_FirstRunPagesAvoidFragileXamlLoadPath()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(repoRoot,
+            "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var firstRunPages = new[]
+        {
+            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"),
+            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"),
+            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"),
+            Path.Combine(repoRoot, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"),
+        };
+
+        Assert.Contains("BuildWindowShell();", setupWindow);
+        Assert.DoesNotContain("InitializeComponent();", setupWindow);
+
+        foreach (var pagePath in firstRunPages)
+        {
+            var page = File.ReadAllText(pagePath);
+            Assert.Contains("BuildPageShell();", page);
+            Assert.DoesNotContain("InitializeComponent();", page);
+        }
+    }
+
+    [Fact]
     public void Tray_DeclaresToastNotificationActivationExtension()
     {
         // Without windows.toastNotificationActivation, MSIX packaged apps do NOT

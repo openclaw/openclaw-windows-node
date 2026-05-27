@@ -36,17 +36,134 @@ public sealed partial class ProgressPage : Page
 
     public ProgressPage()
     {
-        InitializeComponent();
+        Program.WriteStartupBreadcrumb("ProgressPage.ctor.begin");
+        BuildPageShell();
+        Program.WriteStartupBreadcrumb("ProgressPage.ctor.afterBuildPageShell");
         Unloaded += (_, _) => CancelPipeline();
+    }
+
+    private void BuildPageShell()
+    {
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = new StackPanel
+        {
+            Padding = new Thickness(56, 24, 56, 0),
+            Spacing = 4
+        };
+        Grid.SetRow(header, 0);
+        header.Children.Add(new TextBlock
+        {
+            Text = "Setting up locally",
+            FontSize = 26,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        SubtitleText = new TextBlock
+        {
+            FontSize = 13,
+            Opacity = 0.6,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        header.Children.Add(SubtitleText);
+
+        StepsPanel = new StackPanel
+        {
+            Padding = new Thickness(56, 24, 56, 12),
+            Spacing = 18,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        var stepsScroller = new ScrollViewer
+        {
+            Content = StepsPanel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        Grid.SetRow(stepsScroller, 1);
+
+        var logRoot = new Grid
+        {
+            Padding = new Thickness(24, 0, 24, 16)
+        };
+        logRoot.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        logRoot.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(logRoot, 2);
+
+        LogText = new TextBlock
+        {
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 11,
+            TextWrapping = TextWrapping.NoWrap,
+            IsTextSelectionEnabled = true
+        };
+        LogScroller = new ScrollViewer
+        {
+            Content = LogText,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        LogPanel = new Border
+        {
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 8, 12, 8),
+            Height = 200,
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 0, 0, 8),
+            Child = LogScroller
+        };
+        Grid.SetRow(LogPanel, 0);
+
+        var logButtons = new Grid
+        {
+            ColumnSpacing = 8
+        };
+        logButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        logButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        logButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetRow(logButtons, 1);
+
+        OpenLogButton = new Button
+        {
+            Content = "Open log",
+            FontSize = 12,
+            Visibility = Visibility.Collapsed,
+            Padding = new Thickness(8, 4, 8, 4)
+        };
+        OpenLogButton.Click += OpenLog_Click;
+        Grid.SetColumn(OpenLogButton, 1);
+
+        LogToggleButton = new Button
+        {
+            Content = "Show logs ▲",
+            FontSize = 12,
+            Padding = new Thickness(8, 4, 8, 4)
+        };
+        LogToggleButton.Click += LogToggle_Click;
+        Grid.SetColumn(LogToggleButton, 2);
+
+        logButtons.Children.Add(OpenLogButton);
+        logButtons.Children.Add(LogToggleButton);
+        logRoot.Children.Add(LogPanel);
+        logRoot.Children.Add(logButtons);
+
+        root.Children.Add(header);
+        root.Children.Add(stepsScroller);
+        root.Children.Add(logRoot);
+        Content = root;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        Program.WriteStartupBreadcrumb("ProgressPage.OnNavigatedTo.begin");
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
+        Program.WriteStartupBreadcrumb("ProgressPage.OnNavigatedTo.afterBuildStepRows");
         StartPipeline();
+        Program.WriteStartupBreadcrumb("ProgressPage.OnNavigatedTo.afterStartPipeline");
     }
 
     private void BuildStepRows()
@@ -258,10 +375,7 @@ internal sealed class StepRow
     public StepStatus Status { get; private set; }
 
     private readonly TextBlock _label;
-    private readonly ProgressRing _spinner;
-    private readonly Border _idleBadge;
-    private readonly Border _checkBadge;
-    private readonly Border _errorBadge;
+    private readonly TextBlock _statusText;
 
     public StepRow(string displayName)
     {
@@ -272,42 +386,23 @@ internal sealed class StepRow
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        _spinner = new ProgressRing
+        _statusText = new TextBlock
         {
-            Width = 28, Height = 28,
-            MinWidth = 28, MinHeight = 28,
-            IsActive = false,
-            Visibility = Visibility.Collapsed,
-        };
-
-        _idleBadge = CreateEmptyBadge();
-
-        _checkBadge = CreateIconBadge("\uE73E", Color.FromArgb(255, 0x2B, 0xC3, 0x6F), Color.FromArgb(255, 255, 255, 255));
-        _checkBadge.Visibility = Visibility.Collapsed;
-
-        _errorBadge = CreateIconBadge("\uE711", Color.FromArgb(255, 0xE8, 0x11, 0x23), Color.FromArgb(255, 255, 255, 255));
-        _errorBadge.Visibility = Visibility.Collapsed;
-
-        var badgeContainer = new Grid
-        {
-            Width = 32,
-            Height = 32,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Text = "[ ]",
+            Width = 40,
+            FontSize = 13,
+            TextAlignment = TextAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        badgeContainer.Children.Add(_idleBadge);
-        badgeContainer.Children.Add(_spinner);
-        badgeContainer.Children.Add(_checkBadge);
-        badgeContainer.Children.Add(_errorBadge);
 
         var grid = new Grid
         {
             ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
         };
         Grid.SetColumn(_label, 0);
-        Grid.SetColumn(badgeContainer, 1);
+        Grid.SetColumn(_statusText, 1);
         grid.Children.Add(_label);
-        grid.Children.Add(badgeContainer);
+        grid.Children.Add(_statusText);
 
         Element = grid;
     }
@@ -315,46 +410,22 @@ internal sealed class StepRow
     public void SetStatus(StepStatus status)
     {
         Status = status;
-        _spinner.IsActive = status == StepStatus.Running;
-        _spinner.Visibility = status == StepStatus.Running ? Visibility.Visible : Visibility.Collapsed;
-        _idleBadge.Visibility = status == StepStatus.Idle ? Visibility.Visible : Visibility.Collapsed;
-        _checkBadge.Visibility = status == StepStatus.Done ? Visibility.Visible : Visibility.Collapsed;
-        _errorBadge.Visibility = status == StepStatus.Failed ? Visibility.Visible : Visibility.Collapsed;
+        _statusText.Text = status switch
+        {
+            StepStatus.Running => "...",
+            StepStatus.Done => "OK",
+            StepStatus.Failed => "!",
+            _ => "[ ]"
+        };
+        _statusText.Foreground = new SolidColorBrush(status switch
+        {
+            StepStatus.Done => Color.FromArgb(255, 0x2B, 0xC3, 0x6F),
+            StepStatus.Failed => Color.FromArgb(255, 0xE8, 0x11, 0x23),
+            _ => Color.FromArgb(255, 255, 255, 255)
+        });
         _label.Opacity = status == StepStatus.Idle ? 0.72 : 1.0;
         _label.FontWeight = status == StepStatus.Running
             ? Microsoft.UI.Text.FontWeights.SemiBold
             : Microsoft.UI.Text.FontWeights.Normal;
-    }
-
-    private static Border CreateEmptyBadge()
-    {
-        return new Border
-        {
-            Width = 22,
-            Height = 22,
-            CornerRadius = new CornerRadius(11),
-            BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
-        };
-    }
-
-    private static Border CreateIconBadge(string glyph, Color background, Color foreground)
-    {
-        return new Border
-        {
-            Width = 22,
-            Height = 22,
-            CornerRadius = new CornerRadius(11),
-            Background = new SolidColorBrush(background),
-            Child = new FontIcon
-            {
-                Glyph = glyph,
-                FontSize = 12,
-                FontFamily = new FontFamily("Segoe Fluent Icons"),
-                Foreground = new SolidColorBrush(foreground),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            }
-        };
     }
 }
