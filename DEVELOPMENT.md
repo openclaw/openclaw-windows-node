@@ -586,7 +586,7 @@ The repository uses GitHub Actions for continuous integration and release automa
 - The pinned gateway setup version lives in `src/OpenClaw.SetupEngine/GatewayLkgVersion.cs` (`GatewayLkgVersion.LkgVersion`).
 - Setup/E2E consume this as the default source of truth when `Gateway.Version` is not explicitly set.
 - When `Gateway.InstallUrl` points to a custom installer script, SetupEngine does not auto-inject the LKG; set `Gateway.Version` explicitly if your script supports `--version`.
-- The `e2etests` job in `.github/workflows/ci.yml` compares pinned LKG vs npm `openclaw@latest` and emits a **warning** on drift (non-blocking).
+- The `test` job in `.github/workflows/ci.yml` compares pinned LKG vs npm `openclaw@latest` and emits a **warning** on drift (non-blocking).
 - `.github/workflows/gateway-lkg-update.yml` creates or updates one standing draft PR on branch `automation/gateway-lkg-update` to bump `GatewayLkgVersion.LkgVersion` when upstream latest advances.
 
 ### Build Matrix
