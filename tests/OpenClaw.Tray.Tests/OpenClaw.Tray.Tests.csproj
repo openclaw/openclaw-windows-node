@@ -42,6 +42,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsJsonlService.cs" Link="Services\DiagnosticsJsonlService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsLogTailReader.cs" Link="Services\DiagnosticsLogTailReader.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsBundleBuilder.cs" Link="Services\DiagnosticsBundleBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
@@ -56,6 +59,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeCapabilityGating.cs" Link="Services\NodeCapabilityGating.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CommandCenterTextHelper.cs" Link="Helpers\CommandCenterTextHelper.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\Win32FilePickerHelper.cs" Link="Helpers\Win32FilePickerHelper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayStateSnapshot.cs" Link="Services\TrayStateSnapshot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayTooltipBuilder.cs" Link="Services\TrayTooltipBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />

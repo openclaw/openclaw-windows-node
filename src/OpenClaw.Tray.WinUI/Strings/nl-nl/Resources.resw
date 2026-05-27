@@ -4516,9 +4516,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>Controleer voor het delen</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>Gevoelige tokens, opdrachtargumenten, payloads en opnames worden door de bundelmaker uitgesloten.</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Niet verbonden</value>
   </data>
@@ -4530,4 +4527,14 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Geavanceerd</value>
-  </data></root>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>Logfragmenten worden opgeschoond en ingekort. Gevoelige tokens, payloads, opnames en onbewerkte instellingenbestanden worden uitgesloten. Controleer dit voordat u deelt.</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingInfoBar.Title" xml:space="preserve">
+    <value>Controleer voor het delen</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>Controleer voor het delen</value>
+  </data>
+</root>

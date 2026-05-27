@@ -442,7 +442,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _gatewayService.NotificationReceived += OnGatewayNotificationReceived;
         _appState.PropertyChanged += OnAppStateChanged;
 
-        _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
+        _diagnosticsClipboard = new DiagnosticsClipboardService(
+            BuildCommandCenterState,
+            GetConnectionDiagnosticEvents);
         _toastService = new ToastService(() => _settings);
 
         DiagnosticsJsonlService.Write("app.start", new
@@ -2885,6 +2887,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     internal GatewayCommandCenterState BuildCommandCenterState() =>
         new CommandCenterStateBuilder(CaptureSnapshot()).Build();
+
+    internal IReadOnlyList<ConnectionDiagnosticEvent> GetConnectionDiagnosticEvents() =>
+        _connectionManager?.Diagnostics.GetRecent(200) ?? [];
 
     private AppStateSnapshot CaptureSnapshot() => new AppStateSnapshot
     {

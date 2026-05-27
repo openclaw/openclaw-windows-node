@@ -4563,9 +4563,6 @@ On your gateway host (Mac/Linux), run:
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>Review before sharing</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>Sensitive tokens, command arguments, payloads, and recordings are excluded by the bundle builder.</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Disconnected</value>
   </data>
@@ -4577,4 +4574,14 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Advanced</value>
-  </data></root>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>Log tails are sanitized and truncated. Sensitive tokens, payloads, recordings, and raw settings files are excluded. Review before sharing.</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingInfoBar.Title" xml:space="preserve">
+    <value>Review before sharing</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>Review before sharing</value>
+  </data>
+</root>

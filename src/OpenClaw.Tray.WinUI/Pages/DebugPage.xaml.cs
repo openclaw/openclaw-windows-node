@@ -410,9 +410,9 @@ public sealed partial class DebugPage : Page
     {
         await ShowBundlePreviewAsync(
             title: "Diagnostics bundle",
-            buildText: CommandCenterTextHelper.BuildDebugBundle,
+            buildText: state => DiagnosticsBundleBuilder.Build(state, CurrentApp.GetConnectionDiagnosticEvents()),
             suggestedFileName: $"openclaw-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
-            headerCaption: "This is the complete bundle that would be copied or saved.");
+            headerCaption: "This is the complete sanitized bundle that would be copied or saved. Review before sharing.");
     }
 
     private async Task ShowBundlePreviewAsync(
@@ -462,7 +462,7 @@ public sealed partial class DebugPage : Page
         => CopyDiagnosticText("Support context", CommandCenterTextHelper.BuildSupportContext);
 
     private void OnCopyDebugBundle(object sender, RoutedEventArgs e)
-        => CopyDiagnosticText("Debug bundle", CommandCenterTextHelper.BuildDebugBundle);
+        => CopyDiagnosticText("Debug bundle", state => DiagnosticsBundleBuilder.Build(state, CurrentApp.GetConnectionDiagnosticEvents()));
 
     private void OnCopyBrowserSetup(object sender, RoutedEventArgs e)
         => CopyDiagnosticText("Browser setup guidance", CommandCenterTextHelper.BuildBrowserSetupGuidance);

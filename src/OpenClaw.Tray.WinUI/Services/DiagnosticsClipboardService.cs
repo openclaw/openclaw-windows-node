@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClaw.Connection;
 using System;
 
 namespace OpenClawTray.Services;
@@ -11,10 +12,14 @@ namespace OpenClawTray.Services;
 internal sealed class DiagnosticsClipboardService
 {
     private readonly Func<GatewayCommandCenterState> _captureState;
+    private readonly Func<IReadOnlyList<ConnectionDiagnosticEvent>> _captureConnectionEvents;
 
-    public DiagnosticsClipboardService(Func<GatewayCommandCenterState> captureState)
+    public DiagnosticsClipboardService(
+        Func<GatewayCommandCenterState> captureState,
+        Func<IReadOnlyList<ConnectionDiagnosticEvent>>? captureConnectionEvents = null)
     {
         _captureState = captureState;
+        _captureConnectionEvents = captureConnectionEvents ?? (() => []);
     }
 
     public void CopyDiagnostic(string label, Func<GatewayCommandCenterState, string> format)
@@ -34,7 +39,7 @@ internal sealed class DiagnosticsClipboardService
         CopyDiagnostic("support context", CommandCenterTextHelper.BuildSupportContext);
 
     public void CopyDebugBundle() =>
-        CopyDiagnostic("debug bundle", CommandCenterTextHelper.BuildDebugBundle);
+        CopyDiagnostic("debug bundle", state => DiagnosticsBundleBuilder.Build(state, _captureConnectionEvents()));
 
     public void CopyBrowserSetupGuidance() =>
         CopyDiagnostic("browser setup guidance", CommandCenterTextHelper.BuildBrowserSetupGuidance);

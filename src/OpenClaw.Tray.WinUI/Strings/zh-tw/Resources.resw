@@ -4515,9 +4515,6 @@
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>åˆ†äº«å‰è«‹æª¢é–±</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>å¥—ä»¶ç”¢ç”Ÿå™¨æœƒæŽ’é™¤æ•æ„Ÿæ¬Šæ–ã€å‘½ä»¤å¼•æ•¸ã€å…§å®¹èˆ‡éŒ„è£½ã€‚</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>å·²ä¸­æ–·é€£ç·š</value>
   </data>
@@ -4529,4 +4526,14 @@
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>é€²éšŽ</value>
-  </data></root>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>記錄尾端會經過清理並截斷。敏感權杖、內容、錄製資料與原始設定檔會被排除。分享前請先檢查。</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingInfoBar.Title" xml:space="preserve">
+    <value>分享前請檢查</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>分享前請檢查</value>
+  </data>
+</root>
