@@ -97,6 +97,146 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 ApplySafeMarkdownInlines(t, text);
             });
 
+    // Cache plain (non-markdown) text per TextBlock so we can reuse the
+    // assistant-bubble's Inlines-based render path for user prompts without
+    // re-clearing/rebuilding the run on every re-render. Going through
+    // Inlines (instead of the TextBlock.Text property) avoids a WinUI quirk
+    // where setting Text on a selection-enabled TextBlock during a parent
+    // re-render that fires immediately after the user finishes selecting can
+    // leave the glyph layer visually empty until the next focus change.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, string>
+        s_plainCache = new();
+
+    // Per-DispatcherQueue selection-highlight brushes for the user
+    // bubble. The bubble background is the user's chosen system accent
+    // (which may be red, green, purple, …), so a hardcoded color would
+    // clash whenever the accent is non-blue. SystemAccentColorDark2 is
+    // the OS-defined "darker shade of the current accent" — guaranteed
+    // darker than the bubble's AccentFillColorDefault background and
+    // high-contrast against the bubble's white foreground for every
+    // accent. In High Contrast the bubble switches to
+    // SystemColorHighlight (often near-black), so we fall back to the
+    // OS-guaranteed SystemColorHighlightColor for the band there.
+    //
+    // SolidColorBrush is a DependencyObject with thread affinity, so a
+    // single static instance would crash with RPC_E_WRONG_THREAD if a
+    // second window on a different dispatcher ever tried to use it.
+    // Keying by DispatcherQueue keeps one shared brush per window while
+    // still avoiding per-render allocation. ConditionalWeakTable lets a
+    // closing window's brush be collected with its dispatcher. The
+    // brush's Color is mutated in place when the source color changes
+    // (e.g. user switches their accent in Windows Settings) so
+    // already-rendered TextBlocks update atomically.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        Microsoft.UI.Dispatching.DispatcherQueue, SolidColorBrush> s_accentDarkByDispatcher = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        Microsoft.UI.Dispatching.DispatcherQueue, SolidColorBrush> s_hcHighlightByDispatcher = new();
+    // AccessibilitySettings is a WinRT object with DispatcherQueue
+    // affinity: an instance created on one dispatcher cannot reliably
+    // be read from another. We deliberately avoid Lazy<>: Lazy
+    // permanently caches the factory's result, so a single failed
+    // construction would cache null forever and silently disable the
+    // High Contrast code path. Per-dispatcher cache keyed by
+    // ConditionalWeakTable lets each window have its own instance,
+    // collected when its dispatcher dies. On any thrown exception we
+    // drop the cached instance so the next render retries from scratch.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        Microsoft.UI.Dispatching.DispatcherQueue,
+        global::Windows.UI.ViewManagement.AccessibilitySettings> s_a11yByDispatcher = new();
+
+    private static bool TryDetectHighContrast()
+    {
+        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (dispatcher is null)
+        {
+            // Off-thread caller (tests, design-time). One-shot, no caching.
+            try { return new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast; }
+            catch { return false; }
+        }
+        if (!s_a11yByDispatcher.TryGetValue(dispatcher, out var settings))
+        {
+            try
+            {
+                settings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
+                s_a11yByDispatcher.Add(dispatcher, settings);
+            }
+            catch { return false; }
+        }
+        try { return settings.HighContrast; }
+        catch
+        {
+            // Drop the cached instance so the next call retries.
+            s_a11yByDispatcher.Remove(dispatcher);
+            return false;
+        }
+    }
+
+    private static SolidColorBrush GetUserBubbleSelectionBrush(bool isHighContrast)
+    {
+        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        var table = isHighContrast ? s_hcHighlightByDispatcher : s_accentDarkByDispatcher;
+        var color = isHighContrast
+            ? TryGetThemeColor("SystemColorHighlightColor", Microsoft.UI.Colors.Blue)
+            : TryGetThemeColor("SystemAccentColorDark2", Microsoft.UI.Colors.DarkBlue);
+
+        // No dispatcher means we're being called off-thread (e.g.
+        // from a unit test). Allocate a one-shot brush — it can't be
+        // safely cached without a dispatcher to key it on.
+        if (dispatcher is null)
+            return new SolidColorBrush(color);
+
+        if (!table.TryGetValue(dispatcher, out var brush))
+        {
+            brush = new SolidColorBrush(color);
+            table.Add(dispatcher, brush);
+        }
+        else if (brush.Color != color)
+        {
+            // Mutate in place rather than reallocating: TextBlocks
+            // rendered earlier hold a reference to this brush, so
+            // updating .Color updates them atomically without waiting
+            // for the next render pass.
+            brush.Color = color;
+        }
+        return brush;
+    }
+
+    private static Color TryGetThemeColor(string key, Color fallback)
+    {
+        try
+        {
+            var app = Application.Current;
+            if (app is null) return fallback;
+            if (app.Resources.TryGetValue(key, out var v))
+            {
+                // Theme dictionaries usually store Color, but a custom
+                // theme override can supply a SolidColorBrush under the
+                // same key. Accept either rather than silently falling
+                // back to DarkBlue / Blue when the resource is present
+                // but wrapped in a brush.
+                if (v is Color c) return c;
+                if (v is SolidColorBrush brush) return brush.Color;
+            }
+        }
+        catch { /* resource lookup can throw in unpackaged/test hosts */ }
+        return fallback;
+    }
+
+    private static void ApplyPlainSelectableInlines(TextBlock textBlock, string? text)
+    {
+        var normalized = text ?? string.Empty;
+        // Short-circuit when the cached text matches, regardless of
+        // whether Inlines were populated (an empty/null text legitimately
+        // leaves Inlines empty, and we should not re-clear on every
+        // re-render in that case).
+        if (s_plainCache.TryGetValue(textBlock, out var cached) && cached == normalized)
+            return;
+        s_plainCache.AddOrUpdate(textBlock, normalized);
+        textBlock.Inlines.Clear();
+        if (normalized.Length > 0)
+            textBlock.Inlines.Add(new Run { Text = normalized });
+    }
+
     // Cache parsed markdown text per TextBlock to avoid re-clearing and
     // rebuilding Inlines on every re-render when message content is stable.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, string>
@@ -563,13 +703,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // High-contrast themes need a thicker border to render at all
         // (WinUI guidance: 2px minimum). Detect once at render time so the
         // tool card border stays visible when HC is on, normal 1px otherwise.
-        double toolCardBorderThickness = 1;
-        try
-        {
-            if (new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
-                toolCardBorderThickness = 2;
-        }
-        catch { /* AccessibilitySettings can throw in unpackaged hosts; default to 1px. */ }
+        double toolCardBorderThickness = TryDetectHighContrast() ? 2 : 1;
 
         // Avatar: 36×36 circle (Kenny uses circular avatars). Same constructor
         // as before but radius defaults to half the size for a perfect circle.
@@ -972,14 +1106,45 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             foreach (var ae in attachmentElements) bubbleChildren.Add(ae);
             if (hasMessage)
             {
+                // Resolve HC + selection brush once per render method call
+                // rather than per Set-lambda re-run. HC state cannot change
+                // mid-render, and the brush is cached per-dispatcher so
+                // every user bubble in this render shares the same instance.
+                bool isHighContrast = TryDetectHighContrast();
+                var selectionHighlightBrush = GetUserBubbleSelectionBrush(isHighContrast);
                 bubbleChildren.Add(
-                    TextBlock(messageText)
+                    TextBlock(string.Empty)
                         .Set(t =>
                         {
                             t.TextWrapping = TextWrapping.Wrap;
                             t.FontSize = 14;
                             t.Foreground = userBubbleFg;
                             t.IsTextSelectionEnabled = true;
+                            // The default SelectionHighlightColor is the
+                            // system accent — which equals the user bubble's
+                            // background — so the highlight band is invisible
+                            // against the bubble, and WinUI does NOT auto-
+                            // invert an explicitly-set Foreground for
+                            // selected glyphs. Outside High Contrast, use a
+                            // darker shade of the current accent
+                            // (SystemAccentColorDark2) so the band tracks
+                            // whichever accent the user picked while keeping
+                            // the white foreground readable. In High Contrast
+                            // the bubble background switches to
+                            // SystemColorHighlight (often near-black), where
+                            // an accent-derived band may drop below WCAG
+                            // 3:1, so fall back to the system selection
+                            // color the OS guarantees contrasts with both
+                            // surfaces.
+                            t.SelectionHighlightColor = selectionHighlightBrush;
+                            // Render through Inlines (a single Run) rather
+                            // than the .Text property. This matches the
+                            // assistant bubble's selection-safe path and
+                            // sidesteps a WinUI bug where setting Text on a
+                            // selection-enabled TextBlock during a re-render
+                            // triggered by the mouse-up that ends a drag-
+                            // select leaves the glyph layer visually empty.
+                            ApplyPlainSelectableInlines(t, messageText);
                         }));
             }
 
@@ -1418,20 +1583,19 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // Read the live exploration state for the burst variant.
             // Defaults to Auto, which picks the best variant per burst:
             //   - single-step  → Plain (one inline row, nothing to fold)
-            //   - all terminal → CompactSummary (1-line collapsed summary,
+            //   - multi-step   → CompactSummary (1-line collapsed summary,
             //                    click chevron to expand the steps)
-            //   - any running  → Plain (per-step status visible in real time)
-            // Matches Scott's feedback: keep live progress legible while
-            // executing, then tidy up to a one-liner once the turn finishes.
+            // CompactSummary applies even while a step is in-flight: the
+            // header's aggregate status pill flips to "Running" (and back
+            // to "Done") so the user sees live progress without the group
+            // momentarily expanding to show the running row. Expanding
+            // mid-burst would yank the per-step list back into view every
+            // time the agent invoked another tool, which is exactly what
+            // collapsed mode is supposed to avoid.
             var style = ChatExplorationState.ToolBurstStyle;
             if (style == ToolBurstStyle.Auto)
             {
-                bool allTerminal = true;
-                foreach (var e in entries)
-                {
-                    if (e.ToolResult == ChatToolCallStatus.InProgress) { allTerminal = false; break; }
-                }
-                style = (entries.Count >= 2 && allTerminal)
+                style = entries.Count >= 2
                     ? ToolBurstStyle.CompactSummary
                     : ToolBurstStyle.Plain;
             }
@@ -2110,10 +2274,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var nestedConsumed = new System.Collections.Generic.HashSet<int>();
 
         // Nestable rule: a burst nests inside the assistant bubble when it
-        // would otherwise render as a single visible row — i.e. one chip
-        // (count==1) or a collapsed multi-step summary (count>=2 with every
-        // step in a terminal state, under Auto / CompactSummary). In-flight
-        // multi-step bursts stay external so live progress remains visible.
+        // renders as a single visible row — one chip (count==1) or a
+        // collapsed multi-step CompactSummary header (count>=2, under
+        // Auto / CompactSummary). In-flight multi-step bursts also nest;
+        // their aggregate status pill flips Running → Done so live progress
+        // is visible without expanding the group. Error rows stay external
+        // (see check below) so failures remain prominent.
         bool BurstIsNestable(System.Collections.Generic.List<ChatTimelineItem> b)
         {
             if (b.Count == 0) return false;
@@ -2126,15 +2292,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (e.ToolResult == ChatToolCallStatus.Error) return false;
             }
             if (b.Count == 1) return true;
-            bool allTerminal = true;
-            foreach (var e in b)
-            {
-                if (e.ToolResult == ChatToolCallStatus.InProgress) { allTerminal = false; break; }
-            }
+            // Multi-step bursts collapse into a single CompactSummary row
+            // under Auto / CompactSummary, so they fit comfortably inside
+            // an assistant bubble even while a step is in-flight — the
+            // aggregate status pill on the header shows Running/Done.
             var s = ChatExplorationState.ToolBurstStyle;
-            if (s == ToolBurstStyle.Auto || s == ToolBurstStyle.CompactSummary)
-                return allTerminal;
-            return false;
+            return s == ToolBurstStyle.Auto || s == ToolBurstStyle.CompactSummary;
         }
 
         for (int k = 0; k < orderedIdx.Length; k++)
