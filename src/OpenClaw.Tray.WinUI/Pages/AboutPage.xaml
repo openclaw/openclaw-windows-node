@@ -18,7 +18,7 @@
                     <TextBlock Text="🦞" FontSize="48" VerticalAlignment="Center"/>
                     <StackPanel Spacing="4" VerticalAlignment="Center">
                         <TextBlock x:Uid="AboutPage_TextBlock_19" Text="OpenClaw Hub" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                        <TextBlock x:Name="VersionText" Text="v—"
+                        <TextBlock x:Name="VersionText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Uid="AboutPage_TextBlock_23" Text=".NET 10 / WinUI 3 / WinAppSDK 1.8"
@@ -79,18 +79,8 @@
                         <Button x:Uid="CopySupportButton" x:Name="CopySupportButton" Content="Copy Support Context"
                                 Click="OnCopySupportClick"/>
                         <Button x:Uid="CheckUpdatesButton" x:Name="CheckUpdatesButton" Content="Check for Updates"
-                                 Click="OnCheckUpdatesClick"/>
+                                Click="OnCheckUpdatesClick"/>
                     </StackPanel>
-                    <TextBlock x:Name="UpdateStatusText"
-                               Text="Update status: Not checked"
-                               TextWrapping="Wrap"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <Button x:Name="ApplyUpdateButton"
-                            Content="Apply Update Now"
-                            Click="OnApplyUpdateClick"
-                            HorizontalAlignment="Left"
-                            Visibility="Collapsed"/>
                     <HyperlinkButton x:Uid="AboutPage_MoreDiagnosticsLink"
                                      Content="More diagnostics →"
                                      Click="OnMoreDiagnosticsClick"

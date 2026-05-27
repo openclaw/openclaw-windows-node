@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -28,153 +27,15 @@ public sealed partial class WizardPage : Page
 
     public WizardPage()
     {
-        Program.WriteStartupBreadcrumb("WizardPage.ctor.begin");
-        BuildPageShell();
-        Program.WriteStartupBreadcrumb("WizardPage.ctor.afterBuildPageShell");
+        InitializeComponent();
         TextInput.TextChanged += (_, _) => UpdateContinueState();
         SecretInput.PasswordChanged += (_, _) => UpdateContinueState();
     }
 
-    private void BuildPageShell()
-    {
-        var root = new Grid
-        {
-            Padding = new Thickness(48, 32, 48, 32)
-        };
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        var header = new StackPanel
-        {
-            Spacing = 6,
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-        Grid.SetRow(header, 0);
-        header.Children.Add(new TextBlock
-        {
-            Text = "Gateway setup",
-            FontSize = 28,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Center
-        });
-        StatusText = new TextBlock
-        {
-            Text = "Connecting to gateway...",
-            FontSize = 13,
-            Opacity = 0.65,
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-        header.Children.Add(StatusText);
-
-        BusyRing = new ProgressRing
-        {
-            Visibility = Visibility.Collapsed,
-            IsActive = false
-        };
-        TitleText = new TextBlock
-        {
-            FontSize = 22,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap
-        };
-        MessagePanel = new StackPanel { Spacing = 8 };
-        SelectOptions = new StackPanel
-        {
-            Visibility = Visibility.Collapsed,
-            Spacing = 8
-        };
-        MultiOptions = new StackPanel
-        {
-            Visibility = Visibility.Collapsed,
-            Spacing = 8
-        };
-        TextInput = new TextBox
-        {
-            Visibility = Visibility.Collapsed,
-            PlaceholderText = "Enter value"
-        };
-        SecretInput = new PasswordBox
-        {
-            Visibility = Visibility.Collapsed,
-            PlaceholderText = "Enter value"
-        };
-        ErrorText = new TextBlock
-        {
-            Visibility = Visibility.Collapsed,
-            Foreground = new SolidColorBrush(Color.FromArgb(255, 0xFF, 0x6B, 0x6B)),
-            TextWrapping = TextWrapping.Wrap
-        };
-
-        var cardContent = new StackPanel { Spacing = 16 };
-        cardContent.Children.Add(TitleText);
-        cardContent.Children.Add(MessagePanel);
-        cardContent.Children.Add(SelectOptions);
-        cardContent.Children.Add(MultiOptions);
-        cardContent.Children.Add(TextInput);
-        cardContent.Children.Add(SecretInput);
-        cardContent.Children.Add(ErrorText);
-
-        StepCard = new Border
-        {
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(24),
-            MinHeight = 180,
-            Background = new SolidColorBrush(Color.FromArgb(32, 128, 128, 128)),
-            Child = cardContent
-        };
-        var scroller = new ScrollViewer
-        {
-            Content = StepCard,
-            Margin = new Thickness(0, 28, 0, 20),
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        };
-        Grid.SetRow(scroller, 1);
-
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 12
-        };
-        Grid.SetRow(buttons, 2);
-        SecondaryButton = new Button
-        {
-            Content = "Skip",
-            Height = 44,
-            MinWidth = 96,
-            IsEnabled = false
-        };
-        SecondaryButton.Click += Secondary_Click;
-        PrimaryButton = new Button
-        {
-            Content = "Continue",
-            Height = 44,
-            MinWidth = 120,
-            IsEnabled = false
-        };
-        PrimaryButton.Resources["ButtonBackground"] = new SolidColorBrush(Color.FromArgb(255, 0x60, 0xC8, 0xF8));
-        PrimaryButton.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(Color.FromArgb(255, 0x52, 0xB0, 0xDA));
-        PrimaryButton.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(Color.FromArgb(255, 0x46, 0x9B, 0xBC));
-        PrimaryButton.Resources["ButtonForeground"] = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
-        PrimaryButton.Resources["ButtonForegroundPointerOver"] = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
-        PrimaryButton.Resources["ButtonForegroundPressed"] = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0));
-        PrimaryButton.Click += Primary_Click;
-        buttons.Children.Add(SecondaryButton);
-        buttons.Children.Add(PrimaryButton);
-
-        root.Children.Add(header);
-        root.Children.Add(scroller);
-        root.Children.Add(buttons);
-        Content = root;
-    }
-
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        Program.WriteStartupBreadcrumb("WizardPage.OnNavigatedTo.begin");
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         _ = StartWizardAsync();
-        Program.WriteStartupBreadcrumb("WizardPage.OnNavigatedTo.afterStartWizardAsync");
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -195,7 +56,6 @@ public sealed partial class WizardPage : Page
             _client = await ConnectClientAsync();
             SetBusy("Starting wizard...");
             var payload = await _client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
-            Program.WriteStartupBreadcrumb("WizardPage.StartWizardAsync.afterWizardStart");
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
@@ -322,6 +182,8 @@ public sealed partial class WizardPage : Page
         RenderMessage(message);
         StepCard.MinHeight = _stepType == "note" && string.IsNullOrWhiteSpace(message) ? 140 : 260;
         ErrorText.Visibility = Visibility.Collapsed;
+        BusyRing.Visibility = Visibility.Collapsed;
+        BusyRing.IsActive = false;
         StatusText.Text = "Answer the gateway setup question";
         PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
         SecondaryButton.IsEnabled = true;
@@ -726,6 +588,8 @@ public sealed partial class WizardPage : Page
     private void SetBusy(string status)
     {
         StatusText.Text = status;
+        BusyRing.Visibility = Visibility.Visible;
+        BusyRing.IsActive = true;
         PrimaryButton.IsEnabled = false;
         SecondaryButton.IsEnabled = false;
     }
@@ -733,6 +597,8 @@ public sealed partial class WizardPage : Page
     private void ShowError(string message)
     {
         _errorState = true;
+        BusyRing.Visibility = Visibility.Collapsed;
+        BusyRing.IsActive = false;
         StatusText.Text = "Wizard needs attention";
         ErrorText.Text = message;
         ErrorText.Visibility = Visibility.Visible;

@@ -2,7 +2,6 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.SetupEngine.UI.Pages;
 using System.Runtime.InteropServices;
@@ -19,17 +18,13 @@ public sealed partial class SetupWindow : Window
 
     public SetupWindow()
     {
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.begin");
-        BuildWindowShell();
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterBuildWindowShell");
+        InitializeComponent();
 
         // Size window accounting for DPI
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterWindowHandle");
         var dpi = GetDpiForWindow(hwnd);
         var scale = dpi / 96.0;
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(820 * scale)));
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterResize");
 
         // Extend into title bar for modern look
         ExtendsContentIntoTitleBar = true;
@@ -37,7 +32,6 @@ public sealed partial class SetupWindow : Window
 
         // Mica backdrop
         SystemBackdrop = new MicaBackdrop();
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterBackdrop");
 
         // Load config: explicit --config arg, or bundled default-config.json (required)
         var args = Environment.GetCommandLineArgs();
@@ -58,10 +52,8 @@ public sealed partial class SetupWindow : Window
         }
 
         _config = SetupConfig.LoadFromFile(configPath);
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterLoadConfig");
         _config = SetupConfig.FromEnvironment(_config);
         _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterApplyConfig");
 
         Closed += (_, _) =>
         {
@@ -76,71 +68,12 @@ public sealed partial class SetupWindow : Window
         }
 
         RootFrame.Navigate(typeof(WelcomePage), _config);
-        Program.WriteStartupBreadcrumb("SetupWindow.ctor.afterWelcomeNavigate");
     }
 
-    private void BuildWindowShell()
-    {
-        var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(36) });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-        TitleBarDrag = new Grid
-        {
-            Padding = new Thickness(12, 0, 0, 0)
-        };
-        Grid.SetRow(TitleBarDrag, 0);
-
-        var titleContent = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        titleContent.Children.Add(new TextBlock
-        {
-            Text = "OpenClaw Setup",
-            FontSize = 13,
-            Opacity = 0.85,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        TitleBarDrag.Children.Add(titleContent);
-
-        RootFrame = new Frame();
-        Grid.SetRow(RootFrame, 1);
-
-        root.Children.Add(TitleBarDrag);
-        root.Children.Add(RootFrame);
-        Content = root;
-    }
-
-    public void NavigateToCapabilities()
-    {
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToCapabilities.begin");
-        RootFrame.Navigate(typeof(CapabilitiesPage), _config);
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToCapabilities.returned");
-    }
-
-    public void NavigateToProgress()
-    {
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToProgress.begin");
-        RootFrame.Navigate(typeof(ProgressPage), _config);
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToProgress.returned");
-    }
-
-    public void NavigateToWizard()
-    {
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToWizard.begin");
-        RootFrame.Navigate(typeof(WizardPage), _config);
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToWizard.returned");
-    }
-
-    public void NavigateToPermissions()
-    {
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToPermissions.begin");
-        RootFrame.Navigate(typeof(PermissionsPage), _config);
-        Program.WriteStartupBreadcrumb("SetupWindow.NavigateToPermissions.returned");
-    }
+    public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
+    public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
+    public void NavigateToWizard() => RootFrame.Navigate(typeof(WizardPage), _config);
+    public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
 

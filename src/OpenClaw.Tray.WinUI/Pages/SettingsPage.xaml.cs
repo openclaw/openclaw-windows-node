@@ -69,7 +69,7 @@ public sealed partial class SettingsPage : Page
 
     private void WireAutoSaveHandlers()
     {
-        AutoStartToggle.Toggled += async (_, _) => await PersistAutoStartAsync();
+        AutoStartToggle.Toggled += (_, _) => PersistAutoStart();
         GlobalHotkeyToggle.Toggled += (_, _) => Persist(s => s.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn);
         UseLegacyWebChatToggle.Toggled += (_, _) => Persist(s => s.UseLegacyWebChat = UseLegacyWebChatToggle.IsOn);
         NotificationsToggle.Toggled += (_, _) => Persist(s => s.ShowNotifications = NotificationsToggle.IsOn);
@@ -116,7 +116,7 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private async System.Threading.Tasks.Task PersistAutoStartAsync()
+    private void PersistAutoStart()
     {
         if (_loading || CurrentApp.Settings == null) return;
         _saving = true;
@@ -124,22 +124,7 @@ public sealed partial class SettingsPage : Page
         {
             CurrentApp.Settings.AutoStart = AutoStartToggle.IsOn;
             CurrentApp.Settings.Save();
-            var requestedAutoStart = CurrentApp.Settings.AutoStart;
-            var autoStartApplied = await AutoStartManager.SetAutoStartAsync(requestedAutoStart);
-            if (!autoStartApplied)
-            {
-                CurrentApp.Settings.AutoStart = !requestedAutoStart;
-                _loading = true;
-                try
-                {
-                    AutoStartToggle.IsOn = CurrentApp.Settings.AutoStart;
-                }
-                finally
-                {
-                    _loading = false;
-                }
-                CurrentApp.Settings.Save();
-            }
+            AutoStartManager.SetAutoStart(CurrentApp.Settings.AutoStart);
             ((IAppCommands)CurrentApp).NotifySettingsSaved();
             ShowSavedIndicator();
         }

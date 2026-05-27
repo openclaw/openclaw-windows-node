@@ -29,8 +29,6 @@ public sealed partial class AboutPage : Page
     {
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
-        VersionText.Text = AppVersionHelper.DisplayVersion;
-        RefreshUpdateInfo();
         TryLoadGatewayInfo();
     }
 
@@ -41,32 +39,10 @@ public sealed partial class AboutPage : Page
             case nameof(AppState.GatewaySelf):
                 RefreshGatewayInfo();
                 break;
-            case nameof(AppState.UpdateInfo):
-                RefreshUpdateInfo();
-                break;
         }
     }
 
     public void RefreshGatewayInfo() => TryLoadGatewayInfo();
-
-    private void RefreshUpdateInfo()
-    {
-        var update = _appState?.UpdateInfo;
-        if (update == null)
-        {
-            UpdateStatusText.Text = "Update status: Not checked";
-            ApplyUpdateButton.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var detail = string.IsNullOrWhiteSpace(update.Detail)
-            ? string.Empty
-            : $" — {update.Detail}";
-        UpdateStatusText.Text = $"Update status: {update.Status}{detail}";
-        ApplyUpdateButton.Visibility = string.Equals(update.Status, "Available", StringComparison.OrdinalIgnoreCase)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-    }
 
     private void TryLoadGatewayInfo()
     {
@@ -133,7 +109,7 @@ public sealed partial class AboutPage : Page
             }
             else
             {
-                context = $"OpenClaw Hub {AppVersionHelper.DisplayVersion}\n"
+                context = $"OpenClaw Hub {AppVersionInfo.DisplayVersion}\n"
                     + $"OS: {Environment.OSVersion}\n"
                     + $"Runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}\n"
                     + $"Connection: {CurrentApp.AppState?.Status}\n"
@@ -152,11 +128,6 @@ public sealed partial class AboutPage : Page
     private void OnCheckUpdatesClick(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).CheckForUpdates();
-    }
-
-    private void OnApplyUpdateClick(object sender, RoutedEventArgs e)
-    {
-        ((IAppCommands)CurrentApp).ApplyUpdateNow();
     }
 
     private void OnMoreDiagnosticsClick(object sender, RoutedEventArgs e)
