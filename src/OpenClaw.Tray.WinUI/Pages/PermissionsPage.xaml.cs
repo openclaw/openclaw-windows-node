@@ -225,11 +225,14 @@ public sealed partial class PermissionsPage : Page
     /// page-locally so <see cref="UpdateSttEngineHint"/> can surface "downloading" /
     /// failure copy that's accurate regardless of which code path started the download.
     /// </summary>
-    private async void EnsureWhisperModelDownloadedAsync()
+    private void EnsureWhisperModelDownloadedAsync() =>
+        AsyncEventHandlerGuard.Run(
+            EnsureWhisperModelDownloadedCoreAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(EnsureWhisperModelDownloadedAsync));
+
+    private async Task EnsureWhisperModelDownloadedCoreAsync()
     {
-        // async void: ANY uncaught throw bypasses WinUI's UnhandledException handling
-        // and tears down the process. Keep every statement inside the try so we can't
-        // miss a constructor / IO / XAML access that fails before the await.
         var logger = new AppLogger();
         try
         {
@@ -267,7 +270,7 @@ public sealed partial class PermissionsPage : Page
         }
         catch (Exception ex)
         {
-            // Last-resort guard: log and swallow so async void can never crash the app.
+            // Last-resort guard: log and swallow so background work can never crash the app.
             logger.Error($"[PermissionsPage] EnsureWhisperModelDownloadedAsync unexpected failure: {ex}");
         }
     }

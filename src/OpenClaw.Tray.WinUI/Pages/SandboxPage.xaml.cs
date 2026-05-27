@@ -238,7 +238,13 @@ public sealed partial class SandboxPage : Page
         UnavailableActionBar.IsOpen = true;
     }
 
-    private async void OnUnavailableActionClick(object sender, RoutedEventArgs e)
+    private void OnUnavailableActionClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnUnavailableActionClickAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnUnavailableActionClick));
+
+    private async Task OnUnavailableActionClickAsync(object sender)
     {
         if (sender is not Button btn) return;
         var tag = btn.Tag as string;
@@ -460,7 +466,13 @@ public sealed partial class SandboxPage : Page
 
     // ── Event handlers ───────────────────────────────────────────────
 
-    private async void OnSandboxEnabledToggled(object sender, RoutedEventArgs e)
+    private void OnSandboxEnabledToggled(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnSandboxEnabledToggledAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnSandboxEnabledToggled));
+
+    private async Task OnSandboxEnabledToggledAsync()
     {
         if (_suppress) return;
         if (CurrentApp.Settings is not { } s) return;
@@ -556,8 +568,11 @@ public sealed partial class SandboxPage : Page
         Save();
     }
 
-    private async void OnAddCustomFolder(object sender, RoutedEventArgs e)
-        => await PickCustomFolderAsync(SandboxFolderAccess.ReadOnly);
+    private void OnAddCustomFolder(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => PickCustomFolderAsync(SandboxFolderAccess.ReadOnly),
+            new OpenClawTray.AppLogger(),
+            nameof(OnAddCustomFolder));
 
     private async System.Threading.Tasks.Task PickCustomFolderAsync(SandboxFolderAccess access)
     {

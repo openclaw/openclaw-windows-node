@@ -1503,7 +1503,13 @@ public sealed partial class ConnectionPage : Page
         RefreshFromSnapshot(_lastSnapshot);
     }
 
-    private async void OnApplyRepairCode(object sender, RoutedEventArgs e)
+    private void OnApplyRepairCode(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnApplyRepairCodeAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnApplyRepairCode));
+
+    private async Task OnApplyRepairCodeAsync()
     {
         var code = RecoveryRepairCodeBox.Text?.Trim();
         if (string.IsNullOrEmpty(code) || _connectionManager == null) return;
@@ -1522,7 +1528,13 @@ public sealed partial class ConnectionPage : Page
 
     // ─── Saved-gateway row actions ───────────────────────────────────
 
-    private async void OnConnectSavedGateway(object sender, RoutedEventArgs e)
+    private void OnConnectSavedGateway(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnConnectSavedGatewayAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnConnectSavedGateway));
+
+    private async Task OnConnectSavedGatewayAsync(object sender)
     {
         if (sender is not Button btn || btn.Tag is not string gwId) return;
         if (_gatewayRegistry == null || _connectionManager == null) return;
@@ -1603,7 +1615,13 @@ public sealed partial class ConnectionPage : Page
         RefreshFromSnapshot(_lastSnapshot);
     }
 
-    private async void OnSavedRowRemove(object sender, RoutedEventArgs e)
+    private void OnSavedRowRemove(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnSavedRowRemoveAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnSavedRowRemove));
+
+    private async Task OnSavedRowRemoveAsync(object sender)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
         var rec = _gatewayRegistry?.GetById(gwId);
@@ -1744,7 +1762,13 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
-    private async void OnAddSave(object sender, RoutedEventArgs e)
+    private void OnAddSave(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnAddSaveAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnAddSave));
+
+    private async Task OnAddSaveAsync()
     {
         var tag = ActiveAddPaneTag();
         AddResultText.Text = "";
@@ -2161,7 +2185,13 @@ public sealed partial class ConnectionPage : Page
     /// Welcome inline Scan button. Toggles scan on/off; on completion
     /// populates whichever discovered-list panel is visible.
     /// </summary>
-    private async void OnScanGatewaysClicked(object sender, RoutedEventArgs e)
+    private void OnScanGatewaysClicked(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnScanGatewaysClickedAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnScanGatewaysClicked));
+
+    private async Task OnScanGatewaysClickedAsync()
     {
         if (_scanInProgress)
         {

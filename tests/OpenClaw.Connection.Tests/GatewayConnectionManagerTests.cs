@@ -175,6 +175,29 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task DisposeAsync_AwaitsNodeDisconnect()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        var nodeConnector = new BlockingNodeDisconnectConnector();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: nodeConnector);
+
+        await manager.ConnectAsync("gw-1");
+        nodeConnector.BlockDisconnects = true;
+
+        var disposeTask = manager.DisposeAsync().AsTask();
+        await nodeConnector.DisconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(disposeTask.IsCompleted);
+
+        nodeConnector.AllowDisconnect.SetResult(true);
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => manager.ConnectAsync("gw-1"));
+    }
+
+    [Fact]
     public void Diagnostics_IsAccessible()
     {
         Assert.NotNull(_manager.Diagnostics);
@@ -577,6 +600,39 @@ public class GatewayConnectionManagerTests : IDisposable
         }
 
         public Task DisconnectAsync() => Task.CompletedTask;
+
+        public void Dispose() { }
+    }
+
+    private sealed class BlockingNodeDisconnectConnector : INodeConnector
+    {
+        public TaskCompletionSource<bool> DisconnectStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> AllowDisconnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool BlockDisconnects { get; set; }
+        public bool IsConnected => true;
+        public PairingStatus PairingStatus => PairingStatus.Paired;
+        public string? NodeDeviceId => "blocking-node";
+        public NodeConnectionMode Mode => NodeConnectionMode.Gateway;
+
+#pragma warning disable CS0067 // Events required by interface but not fired in tests
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
+#pragma warning restore CS0067
+
+        public Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
+            => Task.CompletedTask;
+
+        public async Task DisconnectAsync()
+        {
+            if (!BlockDisconnects)
+            {
+                return;
+            }
+
+            DisconnectStarted.SetResult(true);
+            await AllowDisconnect.Task;
+        }
 
         public void Dispose() { }
     }

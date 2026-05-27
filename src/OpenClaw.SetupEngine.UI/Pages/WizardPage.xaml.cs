@@ -341,7 +341,13 @@ public sealed partial class WizardPage : Page
             : new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
 
-    private async void Primary_Click(object sender, RoutedEventArgs e)
+    private void Primary_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            PrimaryClickAsync,
+            NullLogger.Instance,
+            nameof(Primary_Click));
+
+    private async Task PrimaryClickAsync()
     {
         if (_errorState)
         {
@@ -352,7 +358,13 @@ public sealed partial class WizardPage : Page
         await SendCurrentAnswerAsync(skip: false);
     }
 
-    private async void Secondary_Click(object sender, RoutedEventArgs e)
+    private void Secondary_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            SecondaryClickAsync,
+            NullLogger.Instance,
+            nameof(Secondary_Click));
+
+    private async Task SecondaryClickAsync()
     {
         if (_errorState)
         {

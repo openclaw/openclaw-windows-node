@@ -44,6 +44,50 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
+    public void CanvasWindow_CleansUpGatewayAuthWebResourceHandler()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "CanvasWindow.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("_webResourceRequestedHandler = OnGatewayWebResourceRequested", source);
+        Assert.Contains("WebResourceRequested += _webResourceRequestedHandler", source);
+        Assert.Contains("WebResourceRequested -= _webResourceRequestedHandler", source);
+        Assert.Contains("RemoveWebResourceRequestedFilter", source);
+        Assert.Contains("_gatewayToken = null", source);
+        Assert.Contains("_trustedGatewayOrigin = null", source);
+        Assert.Contains("IsUriForOrigin(args.Request.Uri, trustedOrigin)", source);
+        Assert.DoesNotContain("WebResourceRequested += (", source);
+    }
+
+    [Fact]
+    public void Source_DoesNotDeclareAsyncVoidHandlers()
+    {
+        var sourceRoot = Path.Combine(GetRepositoryRoot(), "src");
+        var offenders = Directory
+            .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .SelectMany(file =>
+            {
+                var source = File.ReadAllText(file);
+                return Regex.Matches(
+                        source,
+                        @"(?m)^\s*(?:(?:public|private|protected|internal)\s+)?(?:override\s+)?async\s+void\s+[A-Za-z_][A-Za-z0-9_]*\s*\(")
+                    .Select(match => $"{Path.GetRelativePath(sourceRoot, file)}:{LineNumber(source, match.Index)}");
+            })
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Async event handlers must delegate through AsyncEventHandlerGuard instead of declaring async void: " +
+            string.Join(", ", offenders));
+    }
+
+    [Fact]
     public void CommandPalette_HasCommandCenterEntryPoint()
     {
         var sourcePath = Path.Combine(
@@ -467,4 +511,7 @@ public class TrayMenuWindowMarkupTests
 
         throw new InvalidOperationException("Could not find repository root.");
     }
+
+    private static int LineNumber(string source, int index) =>
+        source.AsSpan(0, index).Count('\n') + 1;
 }

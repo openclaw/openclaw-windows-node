@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.Shared;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -59,7 +60,13 @@ public sealed partial class ProgressPage : Page
         }
     }
 
-    private async void StartPipeline()
+    private void StartPipeline() =>
+        AsyncEventHandlerGuard.Run(
+            StartPipelineAsync,
+            NullLogger.Instance,
+            nameof(StartPipeline));
+
+    private async Task StartPipelineAsync()
     {
         var config = _config!;
         if (_runCts != null)

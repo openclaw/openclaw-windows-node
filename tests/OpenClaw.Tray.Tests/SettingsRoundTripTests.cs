@@ -297,6 +297,71 @@ public class SettingsRoundTripTests
         Assert.Null(SettingsManager.UnprotectSettingSecret("dpapi:not-base64"));
     }
 
+    [WindowsFact]
+    public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+
+        try
+        {
+            var settings = new SettingsManager(dir)
+            {
+                TtsElevenLabsApiKey = "elevenlabs-key"
+            };
+
+            settings.Save();
+            Assert.Equal("elevenlabs-key", settings.TtsElevenLabsApiKey);
+
+            using (var saved = JsonDocument.Parse(File.ReadAllText(settingsPath)))
+            {
+                var stored = saved.RootElement.GetProperty(nameof(SettingsData.TtsElevenLabsApiKey)).GetString();
+                Assert.StartsWith("dpapi:", stored);
+                Assert.DoesNotContain("elevenlabs-key", stored);
+            }
+
+            settings.Save();
+            Assert.Equal("elevenlabs-key", settings.TtsElevenLabsApiKey);
+
+            var reloaded = new SettingsManager(dir);
+            Assert.Equal("elevenlabs-key", reloaded.TtsElevenLabsApiKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_ToSettingsData_ReturnsDetachedMutableLists()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var settings = new SettingsManager(dir);
+            settings.A2UIImageHosts.Add("images.example.test");
+            settings.SandboxCustomFolders.Add(new SandboxCustomFolder
+            {
+                Path = "C:\\Temp\\OpenClaw",
+                Access = SandboxFolderAccess.ReadOnly
+            });
+
+            var snapshot = settings.ToSettingsData();
+            snapshot.A2UIImageHosts!.Add("mutated.example.test");
+            snapshot.SandboxCustomFolders![0].Path = "C:\\Mutated";
+
+            Assert.Equal(["images.example.test"], settings.A2UIImageHosts);
+            Assert.Equal("C:\\Temp\\OpenClaw", settings.SandboxCustomFolders[0].Path);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

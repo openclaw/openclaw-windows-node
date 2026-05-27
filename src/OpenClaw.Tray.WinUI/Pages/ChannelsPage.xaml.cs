@@ -316,10 +316,11 @@ public sealed partial class ChannelsPage : Page
         return _configSnapshot.HasRoot;
     }
 
-    private async void OnRefreshAll(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-    }
+    private void OnRefreshAll(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => RefreshAsync(),
+            new OpenClawTray.AppLogger(),
+            nameof(OnRefreshAll));
 
     private async Task RefreshAsync(bool probe = true)
     {

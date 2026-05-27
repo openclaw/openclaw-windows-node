@@ -277,7 +277,13 @@ public sealed partial class SessionsPage : Page
         return null;
     }
 
-    private async void OnResetSession(object sender, RoutedEventArgs e)
+    private void OnResetSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnResetSessionAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnResetSession));
+
+    private async Task OnResetSessionAsync(object sender)
     {
         if (ResolveSessionKey(sender) is not string key) return;
         var client = CurrentApp.GatewayClient;
@@ -286,7 +292,13 @@ public sealed partial class SessionsPage : Page
         catch (Exception ex) { ShowActionFailure("Reset failed", ex); }
     }
 
-    private async void OnDeleteSession(object sender, RoutedEventArgs e)
+    private void OnDeleteSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnDeleteSessionAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnDeleteSession));
+
+    private async Task OnDeleteSessionAsync(object sender)
     {
         if (ResolveSessionKey(sender) is not string key) return;
         var client = CurrentApp.GatewayClient;
@@ -295,7 +307,13 @@ public sealed partial class SessionsPage : Page
         catch (Exception ex) { ShowActionFailure("Delete failed", ex); }
     }
 
-    private async void OnCompactSession(object sender, RoutedEventArgs e)
+    private void OnCompactSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnCompactSessionAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnCompactSession));
+
+    private async Task OnCompactSessionAsync(object sender)
     {
         if (ResolveSessionKey(sender) is not string key) return;
         var client = CurrentApp.GatewayClient;

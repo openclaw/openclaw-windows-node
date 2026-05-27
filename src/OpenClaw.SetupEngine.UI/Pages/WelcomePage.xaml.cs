@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
+using OpenClaw.Shared;
 using System.Diagnostics;
 using System.Numerics;
 using Windows.UI;
@@ -57,7 +58,13 @@ public sealed partial class WelcomePage : Page
         visual.StartAnimation("Scale", pulse);
     }
 
-    private async void StartButton_Click(object sender, RoutedEventArgs e)
+    private void StartButton_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            StartButtonClickAsync,
+            NullLogger.Instance,
+            nameof(StartButton_Click));
+
+    private async Task StartButtonClickAsync()
     {
         var dataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");

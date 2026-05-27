@@ -1,4 +1,5 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using System;
 using System.Collections.Generic;
@@ -513,7 +514,13 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // can toggle to stop playback on a second press.
         var speakingEntryId = UseState<string?>(null, threadSafe: true);
 
-        async void AckAction(string entryId, string actionKey)
+        void AckAction(string entryId, string actionKey) =>
+            AsyncEventHandlerGuard.Run(
+                () => AckActionAsync(entryId, actionKey),
+                new OpenClawTray.AppLogger(),
+                nameof(AckAction));
+
+        async Task AckActionAsync(string entryId, string actionKey)
         {
             var key = entryId + "|" + actionKey;
             ackUpdate(prev =>
@@ -865,7 +872,13 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             catch { /* clipboard contention — silently ignore */ }
         }
 
-        async void ReadAloud(string entryId, string text)
+        void ReadAloud(string entryId, string text) =>
+            AsyncEventHandlerGuard.Run(
+                () => ReadAloudAsync(entryId, text),
+                new OpenClawTray.AppLogger(),
+                nameof(ReadAloud));
+
+        async Task ReadAloudAsync(string entryId, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
 
