@@ -3499,10 +3499,10 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Connection state, gateway URL, runtime, tunnel.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
-    <value>Copy full debug bundle</value>
+    <value>Copier le résumé de diagnostic</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
-    <value>Everything the preview dialog produces, no preview.</value>
+    <value>Résumés générés uniquement ; exclut les extraits de journaux. Utilisez Créer un lot de diagnostics pour examiner les journaux avant de les partager.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
     <value>Copy browser setup guidance</value>

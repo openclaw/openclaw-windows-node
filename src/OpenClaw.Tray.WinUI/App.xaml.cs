@@ -442,9 +442,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _gatewayService.NotificationReceived += OnGatewayNotificationReceived;
         _appState.PropertyChanged += OnAppStateChanged;
 
-        _diagnosticsClipboard = new DiagnosticsClipboardService(
-            BuildCommandCenterState,
-            GetConnectionDiagnosticEvents);
+        _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
 
         DiagnosticsJsonlService.Write("app.start", new

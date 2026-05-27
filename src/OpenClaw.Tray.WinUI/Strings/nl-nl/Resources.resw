@@ -3500,10 +3500,10 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Connection state, gateway URL, runtime, tunnel.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
-    <value>Copy full debug bundle</value>
+    <value>Samenvattende debugbundel kopiëren</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
-    <value>Everything the preview dialog produces, no preview.</value>
+    <value>Alleen gegenereerde samenvattingen; logfragmenten zijn uitgesloten. Gebruik Diagnostische bundel maken om logs vóór het delen te bekijken.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
     <value>Copy browser setup guidance</value>

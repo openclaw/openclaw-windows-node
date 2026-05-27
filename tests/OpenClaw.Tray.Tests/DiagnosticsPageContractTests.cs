@@ -546,6 +546,31 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void DirectCopyDebugBundle_RemainsSummaryOnly_NotLogTailBundle()
+    {
+        var service = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsClipboardService.cs");
+        var copyDebugStart = service.IndexOf("public void CopyDebugBundle()", StringComparison.Ordinal);
+        Assert.True(copyDebugStart >= 0, "CopyDebugBundle must exist.");
+        var copyDebugBody = service.Substring(copyDebugStart, Math.Min(260, service.Length - copyDebugStart));
+
+        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", copyDebugBody);
+        Assert.DoesNotContain("DiagnosticsBundleBuilder.Build", copyDebugBody);
+
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        Assert.Contains("Copy summary debug bundle", xaml);
+        Assert.Contains("excludes log tails", xaml);
+    }
+
+    [Fact]
+    public void FullLogTailBundle_IsOnlyBuiltForPreviewDialog()
+    {
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("OnCreateDiagnosticsBundle", page);
+        Assert.Contains("DiagnosticsBundleBuilder.Build", page);
+        Assert.Contains("ShowBundlePreviewAsync", page);
+    }
+
+    [Fact]
     public void DebugPage_DetailView_UsesGenerationCounterForRaceSafety()
     {
         // Hanselman v2 review #5/#6: long log reads must check a
