@@ -303,19 +303,6 @@
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
 
-                    <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_ChatExplorations"
-                                          Header="Open chat explorations"
-                                          Description="Engineering preview of chat bubble and tool-card rendering.">
-                        <toolkit:SettingsCard.HeaderIcon>
-                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Develop, Mode=OneTime}"
-                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
-                        </toolkit:SettingsCard.HeaderIcon>
-                        <Button x:Uid="DiagnosticsPage_OpenChatExplorationsButton"
-                                Content="Open"
-                                Click="OnOpenChatExplorations"
-                                AutomationProperties.AutomationId="DebugPageOpenChatExplorations"/>
-                    </toolkit:SettingsCard>
-
                     <!-- Reconfigure… — canonical action verb per naming.md
                          (action that walks the user back through the
                          onboarding wizard). Always followed by `…` because

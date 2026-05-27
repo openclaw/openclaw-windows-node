@@ -101,11 +101,9 @@ public sealed class DiagnosticsPageContractTests
         // The "Connection event timeline" SettingsCard button wires to
         // OnOpenEventTimeline, and that handler pops up the standalone
         // ConnectionStatusWindow rather than swapping the in-page
-        // DetailView. Mirrors how "Open chat explorations" launches
-        // ChatExplorationsWindow, per the user's "bring it back as a
-        // popup" feedback on the redesign. The OnOpen* name matches
-        // the popup-launching convention used elsewhere on the page
-        // (OnOpenChatExplorations, OnOpenDiagnosticsFolder), while
+        // DetailView. The OnOpen* name matches the popup-launching
+        // convention used elsewhere on the page
+        // (OnOpenDiagnosticsFolder), while
         // OnShow* is reserved for entering the in-page DetailView
         // (OnShowRecentLog).
         Assert.Contains("Click=\"OnOpenEventTimeline\"", xaml);
@@ -155,13 +153,8 @@ public sealed class DiagnosticsPageContractTests
             xaml);
         Assert.DoesNotContain("DiagnosticsPage_OpenRecentLogButton", xaml);
 
-        // Open chat explorations: inner Button shape — the row is no
-        // longer the click target. Mirrors the popup-launching shape
-        // of the Connection event timeline card.
-        Assert.Matches(
-            new System.Text.RegularExpressions.Regex(
-                @"x:Uid=""DiagnosticsPage_Card_ChatExplorations""[\s\S]{0,600}<Button[\s\S]{0,200}Click=""OnOpenChatExplorations"""),
-            xaml);
+        Assert.DoesNotContain("DiagnosticsPage_Card_ChatExplorations", xaml);
+        Assert.DoesNotContain("OnOpenChatExplorations", xaml);
     }
 
     [Fact]

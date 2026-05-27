@@ -556,7 +556,6 @@ public sealed class OpenClawChatRoot : Component
                 UserSenderLabel: "OpenClaw Windows Tray",
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: effectiveThread.Model,
-                DefaultContextTokens: effectiveThread.ContextTokens,
                 DefaultUsageSummary: usageSummary,
                 ShowThinkingIndicator: showThinking,
                 EnableExplorationControls: _provider is FakeChatDataProvider,
@@ -629,31 +628,16 @@ public sealed class OpenClawChatRoot : Component
                 VoiceAudioLevel: voiceAudioLevel.Value,
                 RegisterVoiceStarter: starter => TriggerVoiceRecording = starter,
                 OnAttachmentPasted: att => pendingAttachment.Set(att),
-                UsageSummary: usageSummary,
                 IsCompact: _isCompact))
             : (bodyIsSkeleton ? RenderSkeletonComposer() : Empty());
 
         var divider = Empty();
-        Element usageIndicator = Empty();
-        if (!suppressComposer
-            && showToolDetails
-            && ChatExplorationState.UsagePlacement == ChatUsagePlacement.AboveComposerCentered
-            && !string.IsNullOrWhiteSpace(usageSummary))
-        {
-            usageIndicator = Caption(usageSummary!)
-                .Foreground((Brush)Application.Current.Resources["TextFillColorSecondaryBrush"])
-                .Set(t => { t.FontSize = 11; t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; })
-                .HAlign(HorizontalAlignment.Center)
-                .Margin(0, 2, 0, 6);
-        }
-
-        // Composer absorbs the old StatusBar; usageIndicator is an optional exploration row.
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+        // Composer absorbs the old StatusBar.
+        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
             header.Grid(row: 0, column: 0),
             divider.Grid(row: 1, column: 0),
             body.Grid(row: 2, column: 0),
-            usageIndicator.Grid(row: 3, column: 0),
-            composer.Grid(row: 4, column: 0)
+            composer.Grid(row: 3, column: 0)
         );
     }
 

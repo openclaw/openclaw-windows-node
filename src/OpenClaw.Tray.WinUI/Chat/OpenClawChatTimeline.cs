@@ -56,7 +56,6 @@ public record OpenClawChatTimelineProps(
     string UserSenderLabel = "OpenClaw Windows Tray",
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
-    long DefaultContextTokens = 0,
     string? DefaultUsageSummary = null,
     bool ShowThinkingIndicator = false,
     bool ShowUsageMetadata = false,
@@ -941,16 +940,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var showTokens   = Props.ShowUsageMetadata && Props.EnableExplorationControls && ChatExplorationState.ShowTokens;
             var showCtxPct   = Props.ShowUsageMetadata && Props.EnableExplorationControls && ChatExplorationState.ShowContextPercent;
             var showToolDetails = !Props.EnableExplorationControls || ChatExplorationState.ShowToolCalls;
-            var usagePlacement = Props.EnableExplorationControls
-                ? ChatExplorationState.UsagePlacement
-                : ChatUsagePlacement.AssistantFooterInline;
-            var hideFooterUsage = usagePlacement == ChatUsagePlacement.AboveComposerCentered
-                || usagePlacement == ChatUsagePlacement.AssistantFooterInline
-                || usagePlacement == ChatUsagePlacement.ComposerLowerLeft
-                || usagePlacement == ChatUsagePlacement.Hidden;
             var entryUsageSummary = fallbackUsageSummary;
-            var showInlineUsage = usagePlacement == ChatUsagePlacement.AssistantFooterInline
-                && showToolDetails
+            var showInlineUsage = showToolDetails
                 && !string.IsNullOrWhiteSpace(entryUsageSummary);
 
             var parts = new List<Element>();
@@ -977,7 +968,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 AddPill("·");
                 AddPill(entryUsageSummary!);
             }
-            else if (!hideFooterUsage)
+            else
             {
                 if (showTokens && inputTokens   is int inN)   AddPill($"↑{FormatTokenCount(inN)}");
                 if (showTokens && outputTokens  is int outN)  AddPill($"↓{FormatTokenCount(outN)}");

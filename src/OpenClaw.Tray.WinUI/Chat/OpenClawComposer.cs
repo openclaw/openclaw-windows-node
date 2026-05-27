@@ -68,7 +68,6 @@ public record OpenClawComposerProps(
     float VoiceAudioLevel = 0f,
     Action<Action>? RegisterVoiceStarter = null,
     Action<ChatAttachment>? OnAttachmentPasted = null,
-    string? UsageSummary = null,
     bool IsCompact = false);
 
 public sealed class OpenClawComposer : Component<OpenClawComposerProps>
@@ -903,16 +902,6 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                .Set(b => { b.MaxWidth = 720; b.HorizontalAlignment = HorizontalAlignment.Stretch; })
             : Empty();
 
-        var showComposerUsage = ChatExplorationState.UsagePlacement == ChatUsagePlacement.ComposerLowerLeft
-            && ChatExplorationState.ShowToolCalls
-            && !string.IsNullOrWhiteSpace(Props.UsageSummary);
-        Element composerUsageLabel = showComposerUsage
-            ? Caption(Props.UsageSummary!)
-                .Foreground((Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"])
-                .Set(t => { t.FontSize = 11; t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; })
-                .VAlign(VerticalAlignment.Center)
-            : Empty();
-
         // ── ComposerLayout 분기 ───────────────────────────────────────
         // ThreeRow:    [3 dropdowns] [textbox] [attach/voice/more ... send]
         // Minimal:     [textbox] [send]
@@ -1022,14 +1011,10 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
                 .WithFlyout(MenuItems(FlyoutPlacementMode.Top, menuItems.ToArray()));
 
-            Element inlineLeft = showComposerUsage
-                ? (FlexRow(combinedPill, composerUsageLabel) with { ColumnGap = 10 })
-                : combinedPill;
-
-            // Put inlineLeft directly into the Grid cell with HAlign(Left).
-            // Wrapping the pill alone in FlexRow caused the Button to stretch to the Star column width.
+            // Put combinedPill directly into the Grid cell with HAlign(Left).
+            // Wrapping in FlexRow caused the Button to stretch to the Star column width.
             var bottomRow = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                inlineLeft.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
+                combinedPill.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
                 (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn) with { ColumnGap = 4 })
                     .HAlign(HorizontalAlignment.Right)
                     .Grid(row: 0, column: 1)
@@ -1050,9 +1035,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }
 
         var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            composerUsageLabel
-                .HAlign(HorizontalAlignment.Left)
-                .Grid(row: 0, column: 0),
+            Empty().Grid(row: 0, column: 0),
             (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)

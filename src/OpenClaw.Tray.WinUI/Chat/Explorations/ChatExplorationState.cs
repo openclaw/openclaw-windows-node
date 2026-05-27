@@ -106,14 +106,6 @@ public enum ChatComposerLayout
     Minimal,
 }
 
-public enum ChatUsagePlacement
-{
-    Hidden,
-    AboveComposerCentered,
-    AssistantFooterInline,
-    ComposerLowerLeft,
-}
-
 /// <summary>
 /// Visual treatment for a contiguous run of <c>ToolCall</c> entries (a
 /// "tool burst") that all belong to the same assistant turn. The burst is
@@ -208,7 +200,6 @@ public static class ChatExplorationState
     private static bool _showModelName = false;
     private static bool _showTokens = true;
     private static bool _showContextPercent = true;
-    private static ChatUsagePlacement _usagePlacement = ChatUsagePlacement.AssistantFooterInline;
 
     // Default icon glyphs match production OpenClawComposer.cs.
     private static string _sendIconGlyph   = "\uE724";
@@ -447,12 +438,6 @@ public static class ChatExplorationState
     {
         get => _showContextPercent;
         set { if (_showContextPercent != value) { _showContextPercent = value; RaiseChanged(); } }
-    }
-
-    public static ChatUsagePlacement UsagePlacement
-    {
-        get => _usagePlacement;
-        set { if (_usagePlacement != value) { _usagePlacement = value; RaiseChanged(); } }
     }
 
     // ---- Composer icon customization (extends E) ----

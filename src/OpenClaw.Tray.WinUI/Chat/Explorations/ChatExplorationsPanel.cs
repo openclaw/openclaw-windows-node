@@ -61,16 +61,6 @@ public class ChatExplorationsPanel : Component
         var safeIdx = presets.Count == 0 ? 0 : Math.Clamp(selectedPresetIdx.Value, 0, presets.Count - 1);
         var selectedPreset = presets.Count == 0 ? null : presets[safeIdx];
 
-        var usageQuickSection = Section("Usage options",
-            TextBlock("Preview: 15.3K/1M (2%)").Set(t => { t.FontSize = 12; t.Opacity = 0.85; }),
-            (FlexRow(
-                UsagePlacementButton("Timestamp", ChatUsagePlacement.AssistantFooterInline),
-                UsagePlacementButton("Chat box top", ChatUsagePlacement.AboveComposerCentered),
-                UsagePlacementButton("Input lower-left", ChatUsagePlacement.ComposerLowerLeft),
-                UsagePlacementButton("Hide", ChatUsagePlacement.Hidden)
-            ) with { ColumnGap = 6 })
-        );
-
         var variationSection = Section("B. Variation preset",
             EnumCombo("Variation", ChatExplorationState.Variation,
                 v => { ChatExplorationState.Variation = v; ChatVariationPresets.Apply(v); },
@@ -154,15 +144,6 @@ public class ChatExplorationsPanel : Component
                 v => ChatExplorationState.ShowTokens = v),
             Toggle("  Show context %", ChatExplorationState.ShowContextPercent,
                 v => ChatExplorationState.ShowContextPercent = v)
-        );
-
-        var usageSection = Section("C.2. Usage placement",
-            EnumCombo("Usage placement", ChatExplorationState.UsagePlacement,
-                v => ChatExplorationState.UsagePlacement = v,
-                ChatUsagePlacement.AboveComposerCentered,
-                ChatUsagePlacement.AssistantFooterInline,
-                ChatUsagePlacement.ComposerLowerLeft,
-                ChatUsagePlacement.Hidden)
         );
 
         // ── D. Avatar ────────────────────────────────────────────────
@@ -266,7 +247,6 @@ public class ChatExplorationsPanel : Component
             ChatExplorationState.AssistantBubbleBrushOverride = null;
             ChatExplorationState.SendButtonBrushOverride = null;
             ChatExplorationState.PreviewState = ChatPreviewState.Live;
-            ChatExplorationState.UsagePlacement = ChatUsagePlacement.AssistantFooterInline;
         });
 
         var pinBtn = Button(
@@ -290,9 +270,8 @@ public class ChatExplorationsPanel : Component
 
         var content = VStack(12,
             TextBlock("Chat explorations").Set(t => { t.FontSize = 18; t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; }),
-            usageQuickSection,
             backdropSection, variationSection,
-            bubbleSection, visibilitySection, usageSection,
+            bubbleSection, visibilitySection,
             avatarSection,
             composerSection, iconsSection,
             brushSection,
@@ -329,28 +308,6 @@ public class ChatExplorationsPanel : Component
 
     static Element Toggle(string label, bool isChecked, Action<bool> set)
         => CheckBox(isChecked, set, label);
-
-    static Element UsagePlacementButton(string label, ChatUsagePlacement placement)
-    {
-        var isActive = ChatExplorationState.UsagePlacement == placement;
-        return Button(label, () => ChatExplorationState.UsagePlacement = placement)
-            .Set(b =>
-            {
-                b.Height = 30;
-                b.MinWidth = 0;
-                b.Padding = new Thickness(10, 4, 10, 4);
-                b.CornerRadius = new CornerRadius(6);
-                b.FontSize = 12;
-            })
-            .Resources(r =>
-            {
-                r.Set("ButtonBackground", isActive ? Ref("AccentFillColorDefaultBrush") : Ref("SubtleFillColorSecondaryBrush"));
-                r.Set("ButtonBackgroundPointerOver", isActive ? Ref("AccentFillColorSecondaryBrush") : Ref("SubtleFillColorTertiaryBrush"));
-                r.Set("ButtonBackgroundPressed", isActive ? Ref("AccentFillColorTertiaryBrush") : Ref("SubtleFillColorSecondaryBrush"));
-                r.Set("ButtonForeground", isActive ? Ref("TextOnAccentFillColorPrimaryBrush") : Ref("TextFillColorPrimaryBrush"));
-                r.Set("ButtonBorderBrush", Ref("ControlStrokeColorDefaultBrush"));
-            });
-    }
 
     static Element EnumCombo<T>(string label, T current, Action<T> set, params T[] options) where T : struct, Enum
     {
