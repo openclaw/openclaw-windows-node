@@ -2640,9 +2640,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ Téléchargement requis</value>
   </data>
-  <data name="VoiceSettingsPage_StatusDownloadRequiredActive" xml:space="preserve">
-    <value>Téléchargement requis avant que la saisie vocale fonctionne</value>
-  </data>
   <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
     <value>La saisie vocale n'est pas prête tant qu'au moins un modèle vocal n'a pas été téléchargé.</value>
   </data>

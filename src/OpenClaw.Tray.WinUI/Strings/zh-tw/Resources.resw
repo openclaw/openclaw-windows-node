@@ -2640,9 +2640,6 @@
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ 需要下載</value>
   </data>
-  <data name="VoiceSettingsPage_StatusDownloadRequiredActive" xml:space="preserve">
-    <value>需要先下載模型，語音輸入才能使用</value>
-  </data>
   <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
     <value>至少下載一個語音模型後，語音輸入才可使用。</value>
   </data>

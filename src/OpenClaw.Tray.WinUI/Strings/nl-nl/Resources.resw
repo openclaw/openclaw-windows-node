@@ -2641,9 +2641,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ Download vereist</value>
   </data>
-  <data name="VoiceSettingsPage_StatusDownloadRequiredActive" xml:space="preserve">
-    <value>Download vereist voordat spraakinvoer werkt</value>
-  </data>
   <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
     <value>Spraakinvoer is pas klaar nadat ten minste één spraakmodel is gedownload.</value>
   </data>

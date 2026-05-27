@@ -148,9 +148,7 @@ public sealed partial class VoiceSettingsPage : Page
         }
         else
         {
-            ModelStatusText.Text = SttEnabledToggle.IsOn
-                ? L("VoiceSettingsPage_StatusDownloadRequiredActive")
-                : L("VoiceSettingsPage_StatusDownloadRequired");
+            ModelStatusText.Text = L("VoiceSettingsPage_StatusDownloadRequired");
             DownloadButtonText.Text = L("VoiceSettingsPage_ButtonDownloadModel");
             TestVoiceButton.Visibility = Visibility.Collapsed;
         }

@@ -2688,9 +2688,6 @@ On your gateway host (Mac/Linux), run:
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ Download required</value>
   </data>
-  <data name="VoiceSettingsPage_StatusDownloadRequiredActive" xml:space="preserve">
-    <value>Download required before voice input works</value>
-  </data>
   <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
     <value>Voice input is not ready until at least one speech model is downloaded.</value>
   </data>
