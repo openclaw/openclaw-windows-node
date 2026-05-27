@@ -32,8 +32,8 @@ namespace OpenClawTray.Chat;
 /// <param name="AssistantSenderLabel">Sender label shown below assistant cards.</param>
 /// <param name="DefaultModel">Fallback model name when an entry's metadata doesn't carry one.</param>
 /// <param name="ShowThinkingIndicator">
-/// When true, renders an inline "<c>&lt;agent&gt; is thinking…</c>" placeholder
-/// at the bottom of the timeline. Used by callers to bridge the gap between
+/// When true, renders an italic "<c>&lt;agent&gt; is thinking…</c>" placeholder
+/// inside an assistant bubble. Used by callers to bridge the gap between
 /// turn-start and the first assistant delta arriving.
 /// </param>
 public record OpenClawChatTimelineProps(
@@ -476,9 +476,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // fine for the entry counts we deal with (typically <100 visible).
         var hoveredEntries = UseState<HashSet<string>>(new HashSet<string>(), threadSafe: true);
 
-        // Thinking-row dot animation. Cycles 0→1→2→3→0 every 400ms while the
+        // Thinking-bubble dot animation. Cycles 0→1→2→3→0 every 400ms while the
         // ShowThinkingIndicator prop is true; drives the trailing "." / ".." /
-        // "..." in the "<name> is thinking" caption so the row visibly pulses
+        // "..." in the "<name> is thinking" text so the bubble visibly pulses
         // without needing a ProgressRing (which renders awkwardly at small
         // sizes). DispatcherTimer fires on the UI thread so the reducer call
         // is safe. UseReducer (not UseState) because the timer-tick closure
@@ -1226,7 +1226,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // (and left indent) stay exactly parallel as the bubble grows
         // with content. Single-element Border[] used as a mutable slot
         // since these are local functions (no nested class allowed).
-        Element RenderAssistantEntry(ChatTimelineItem entry, bool startsBurst, bool endsBurst, bool showAvatar, Microsoft.UI.Xaml.Controls.Border[]? bubbleSlot = null, Element? nestedTool = null)
+        Element RenderAssistantEntry(
+            ChatTimelineItem entry,
+            bool startsBurst,
+            bool endsBurst,
+            bool showAvatar,
+            Microsoft.UI.Xaml.Controls.Border[]? bubbleSlot = null,
+            Element? nestedTool = null,
+            Element? overrideBubbleContent = null,
+            bool suppressFooter = false)
         {
             if (string.IsNullOrEmpty(entry.Text))
                 return Empty();
@@ -1254,7 +1262,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // collapsed multi-step summary) is rendered INSIDE the bubble's
             // content area — directly below the assistant text with a small
             // top gap — so it visually reads as a child of the bubble.
-            Element bubbleContent = SafeMarkdownText(entry.Text);
+            Element bubbleContent = overrideBubbleContent ?? SafeMarkdownText(entry.Text);
             if (nestedTool != null)
             {
                 // Top gap (markdown bottom → tool card top) needs to be a
@@ -1284,7 +1292,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 card.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 1)
             ).HAlign(HorizontalAlignment.Stretch);
             Element footer = Empty();
-            if (endsBurst && showTimestamps)
+            if (endsBurst && showTimestamps && !suppressFooter)
             {
                 var entryMeta = MetaFor(entry.Id);
                 var timeStr = FormatTime(entryMeta?.Timestamp);
@@ -2397,7 +2405,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(entry.Id);
         }
 
-        // Inline "thinking" indicator rendered just below the last entry
+        // Inline "thinking" indicator rendered as a real assistant bubble
         // when caller signals we're between turn-start and the first byte.
         Element thinkingIndicator = Empty();
         if (Props.ShowThinkingIndicator)
@@ -2411,22 +2419,28 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var trimmed = rawText.TrimEnd('…', '.', ' ');
             var dots = thinkingDotPhase;
             var animatedSuffix = new string('.', dots) + new string('\u00A0', 3 - dots);
-            thinkingIndicator = Border(
-                (FlexRow(
-                    AssistantAvatar().VAlign(VerticalAlignment.Center),
-                    Caption(trimmed + animatedSuffix)
-                        .Foreground(chatStampFg)
-                        .Set(t => { t.FontStyle = global::Windows.UI.Text.FontStyle.Italic; t.FontSize = 13; })
-                        .VAlign(VerticalAlignment.Center)
-                ) with { ColumnGap = 8 })
-            ).Margin(12, 4, 60, 4)
-             .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+            var thinkingText = trimmed + animatedSuffix;
+            thinkingIndicator = RenderAssistantEntry(
+                new ChatTimelineItem("__thinking__", ChatTimelineItemKind.Assistant, thinkingText, IsStreaming: true),
+                startsBurst: true,
+                endsBurst: true,
+                showAvatar: true,
+                overrideBubbleContent: TextBlock(thinkingText)
+                    .Set(t =>
+                    {
+                        t.TextWrapping = TextWrapping.Wrap;
+                        t.IsTextSelectionEnabled = true;
+                        t.FontStyle = global::Windows.UI.Text.FontStyle.Italic;
+                        t.Foreground = chatTextFg;
+                    }),
+                suppressFooter: true)
+                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         }
 
         // Build the final element list, splicing the thinking indicator
         // inline RIGHT AFTER the most recent User entry so tool bursts that
-        // follow it visually hang below "Agent is thinking…" (and below the
-        // assistant reply once one streams in).
+        // follow it visually hang below the "Agent is thinking…" bubble
+        // (and below the assistant reply once one streams in).
         Element[] timelineRows;
         if (Props.ShowThinkingIndicator && renderedEntries.Length > 0)
         {
