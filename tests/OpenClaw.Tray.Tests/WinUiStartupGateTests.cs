@@ -145,14 +145,18 @@ public sealed class WinUiStartupGateTests
     }
 
     [Fact]
-    public void IsXamlFactoryClassUnavailable_OnlyMatchesClassFactoryFailure()
+    public void IsXamlFactoryClassUnavailable_MatchesObservedTransientStartupFailures()
     {
         var classFactoryFailure = new COMException(
             "ClassFactory cannot supply requested class",
             WinUiStartupGate.ClassFactoryCannotSupplyRequestedClass);
+        var unspecifiedFailure = new COMException(
+            "Unspecified failure",
+            WinUiStartupGate.UnspecifiedFailure);
         var classNotRegistered = new COMException("Class not registered", unchecked((int)0x80040154));
 
         Assert.True(WinUiStartupGate.IsXamlFactoryClassUnavailable(classFactoryFailure));
+        Assert.True(WinUiStartupGate.IsXamlFactoryClassUnavailable(unspecifiedFailure));
         Assert.False(WinUiStartupGate.IsXamlFactoryClassUnavailable(classNotRegistered));
     }
 
@@ -180,6 +184,29 @@ public sealed class WinUiStartupGateTests
         Assert.Equal([TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(500)], delays);
         Assert.Contains(logs, phase => phase.Contains("retry attempt=1", StringComparison.Ordinal));
         Assert.Contains(logs, phase => phase.Contains("retry attempt=2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RunWithXamlFactoryRetry_RetriesUnspecifiedFailureThenSucceeds()
+    {
+        var attempts = 0;
+        var delays = new List<TimeSpan>();
+        var logs = new List<string>();
+
+        WinUiStartupGate.RunWithXamlFactoryRetry(
+            () =>
+            {
+                attempts++;
+                if (attempts == 1)
+                    throw new COMException("Unspecified failure", WinUiStartupGate.UnspecifiedFailure);
+            },
+            delay => delays.Add(delay),
+            (phase, _) => logs.Add(phase),
+            [TimeSpan.FromMilliseconds(200)]);
+
+        Assert.Equal(2, attempts);
+        Assert.Equal([TimeSpan.FromMilliseconds(200)], delays);
+        Assert.Contains(logs, phase => phase.Contains("retry attempt=1", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -6,6 +6,7 @@ namespace OpenClawTray.Services;
 internal static class WinUiStartupGate
 {
     internal const int ClassFactoryCannotSupplyRequestedClass = unchecked((int)0x80040111);
+    internal const int UnspecifiedFailure = unchecked((int)0x80004005);
 
     internal readonly record struct PackageReadiness(
         bool IsAvailable,
@@ -117,5 +118,5 @@ internal static class WinUiStartupGate
     }
 
     internal static bool IsXamlFactoryClassUnavailable(COMException exception) =>
-        exception.HResult == ClassFactoryCannotSupplyRequestedClass;
+        exception.HResult is ClassFactoryCannotSupplyRequestedClass or UnspecifiedFailure;
 }

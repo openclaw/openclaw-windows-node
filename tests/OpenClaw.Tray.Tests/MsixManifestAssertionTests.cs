@@ -188,6 +188,7 @@ public sealed class MsixManifestAssertionTests
         Assert.DoesNotContain("shell:AppsFolder", app);
         Assert.DoesNotContain("SetupEngineApplicationId", app);
         Assert.Contains("setup-engine-startup.log", setupProgram);
+        Assert.Contains("Select(RedactStartupArg).ToArray()", setupProgram);
         Assert.Contains("RunWithXamlFactoryRetry", setupProgram);
         Assert.Contains("Program.ApplicationStart.attempt", setupProgram);
         Assert.Contains("Program.ApplicationStart.xamlFactoryUnavailable.retry", setupProgram);

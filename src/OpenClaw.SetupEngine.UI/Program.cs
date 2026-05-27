@@ -129,7 +129,7 @@ internal static class Program
                 phase,
                 pid = Environment.ProcessId,
                 processPath = Environment.ProcessPath,
-                args = Environment.GetCommandLineArgs(),
+                args = Environment.GetCommandLineArgs().Select(RedactStartupArg).ToArray(),
                 exception = exception?.ToString()
             };
 
@@ -141,5 +141,22 @@ internal static class Program
         {
             // Last-ditch startup breadcrumbs must never prevent setup launch.
         }
+    }
+
+    private static string RedactStartupArg(string arg)
+    {
+        if (Uri.TryCreate(arg, UriKind.Absolute, out var uri) &&
+            string.Equals(uri.Scheme, "openclaw", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrEmpty(uri.Query)
+                ? arg
+                : arg[..^uri.Query.Length] + "?<redacted>";
+        }
+
+        return arg.Contains("token=", StringComparison.OrdinalIgnoreCase) ||
+               arg.Contains("apikey", StringComparison.OrdinalIgnoreCase) ||
+               arg.Contains("api_key", StringComparison.OrdinalIgnoreCase)
+            ? "<redacted>"
+            : arg;
     }
 }
