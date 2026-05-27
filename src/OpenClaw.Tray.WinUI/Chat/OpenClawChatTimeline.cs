@@ -410,6 +410,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var explorationRevRef = UseRef(0);
         UseEffect((Func<Action>)(() =>
         {
+            if (!Props.EnableExplorationControls)
+                return () => { };
+
             // Use a Ref for the counter to avoid stale-closure: the effect
             // runs once, so explorationRev.Value would be stuck at 0. The
             // Ref's .Current is always live, ensuring every Changed event
@@ -423,14 +426,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             return () => ChatExplorationState.Changed -= h;
         }));
 
-        // Live values from ChatExplorationState (groups C/D/F).
-        var bubbleRadius     = ChatVisualResolver.BubbleCornerRadius();
-        var bubblePadding    = ChatVisualResolver.BubbleInnerPadding();
-        var bubbleSideMargin = ChatVisualResolver.BubbleSideMargin();
+        // Production chat uses stable visual defaults; Chat Exploration state
+        // is honored only inside the fake preview surface.
+        var bubbleRadius     = Props.EnableExplorationControls ? ChatVisualResolver.BubbleCornerRadius() : new CornerRadius(16);
+        var bubblePadding    = Props.EnableExplorationControls ? ChatVisualResolver.BubbleInnerPadding() : new Thickness(16, 12, 16, 12);
+        var bubbleSideMargin = Props.EnableExplorationControls ? ChatVisualResolver.BubbleSideMargin() : 8;
         var showAsstBubbles  = !Props.EnableExplorationControls || ChatVisualResolver.ShowAssistantBubbles();
         var showToolCalls    = !Props.EnableExplorationControls || ChatVisualResolver.ShowToolCalls();
-        var gutter           = ChatExplorationState.Gutter;
-        var messageGap       = ChatExplorationState.MessageGap;
+        var gutter           = Props.EnableExplorationControls ? ChatExplorationState.Gutter : 64;
+        var messageGap       = Props.EnableExplorationControls ? ChatExplorationState.MessageGap : 12;
         var showUserAvatar   = Props.EnableExplorationControls && ChatVisualResolver.ShowUserAvatar();
         var showAssistAvatar = !Props.EnableExplorationControls || ChatVisualResolver.ShowAssistantAvatar();
         var showTimestamps   = !Props.EnableExplorationControls || ChatVisualResolver.ShowTimestamps();
@@ -463,10 +467,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // Track the last-seen CollapseToolChipsVersion so we clear expanded
         // state when the user toggles tool calls off (collapsed view should
         // start fresh when re-shown).
-        var lastCollapseVersion = UseRef(ChatExplorationState.CollapseToolChipsVersion);
-        if (lastCollapseVersion.Current != ChatExplorationState.CollapseToolChipsVersion)
+        var collapseToolChipsVersion = Props.EnableExplorationControls ? ChatExplorationState.CollapseToolChipsVersion : 0;
+        var lastCollapseVersion = UseRef(collapseToolChipsVersion);
+        if (lastCollapseVersion.Current != collapseToolChipsVersion)
         {
-            lastCollapseVersion.Current = ChatExplorationState.CollapseToolChipsVersion;
+            lastCollapseVersion.Current = collapseToolChipsVersion;
             if (expandedToolChips.Value.Count > 0)
                 expandedToolChips.Set(new HashSet<string>());
         }
@@ -683,10 +688,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // Acrylic), let it show through by using a transparent chat-page fill.
         // Otherwise fall back to the subtle layer color so Solid mode still
         // reads as a flat surface.
-        var chatPageBg = ChatExplorationState.BackdropMode == ChatBackdropMode.Solid
+        var chatPageBg = Props.EnableExplorationControls && ChatExplorationState.BackdropMode == ChatBackdropMode.Solid
             ? themeBrush("SubtleFillColorSecondaryBrush")
             : (Brush)new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        var assistantBubbleBg   = ChatVisualResolver.AssistantBubbleBrush(themeBrush("SubtleFillColorSecondaryBrush"));
+        var assistantBubbleBg   = Props.EnableExplorationControls
+            ? ChatVisualResolver.AssistantBubbleBrush(themeBrush("SubtleFillColorSecondaryBrush"))
+            : themeBrush("SubtleFillColorSecondaryBrush");
         var assistantBubbleBdr  = themeBrush("ControlStrokeColorDefaultBrush");
         // User bubble brushes vary with the configured tone. Accent → bold
         // brand-color bubble with white text (classic iMessage feel).
@@ -695,21 +702,24 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // ``TextOnAccentFillColorPrimaryBrush``, which Fluent guarantees
         // meets WCAG AA contrast against any accent-tinted fill in both
         // light and dark themes (Microsoft's Fluent design token spec).
-        var userToneIsAccent    = ChatExplorationState.UserBubbleTone == ChatUserBubbleTone.Accent;
-        var userBubbleBg        = ChatVisualResolver.UserBubbleBrush(
-            themeBrush(userToneIsAccent ? "AccentFillColorDefaultBrush" : "AccentFillColorSecondaryBrush"));
+        var userToneIsAccent    = Props.EnableExplorationControls && ChatExplorationState.UserBubbleTone == ChatUserBubbleTone.Accent;
+        var userBubbleBg        = Props.EnableExplorationControls
+            ? ChatVisualResolver.UserBubbleBrush(themeBrush(userToneIsAccent ? "AccentFillColorDefaultBrush" : "AccentFillColorSecondaryBrush"))
+            : themeBrush("AccentFillColorSecondaryBrush");
         var userBubbleBdr       = themeBrush(userToneIsAccent ? "AccentFillColorDefaultBrush" : "AccentFillColorSecondaryBrush");
         var userBubbleFg        = themeBrush("TextOnAccentFillColorPrimaryBrush");
         var avatarPanelBg       = themeBrush("SubtleFillColorTertiaryBrush");
         var avatarBorder        = themeBrush("ControlStrokeColorDefaultBrush");
         var assistantAvatarFg   = themeBrush("TextFillColorSecondaryBrush");
-        var userAvatarBg        = ChatVisualResolver.AccentBrush(themeBrush("AccentFillColorDefaultBrush"));
+        var userAvatarBg        = Props.EnableExplorationControls
+            ? ChatVisualResolver.AccentBrush(themeBrush("AccentFillColorDefaultBrush"))
+            : themeBrush("AccentFillColorDefaultBrush");
         var userAvatarFg        = themeBrush("TextOnAccentFillColorPrimaryBrush");
         // a11y: timestamps and "is thinking" caption sit directly on the
         // window backdrop. On Mica/Acrylic the system tint is translucent,
         // so Tertiary text can fall below WCAG AA. Bump to Secondary when
         // the chat surface is transparent over a host backdrop.
-        var chatStampFg         = ChatExplorationState.BackdropMode == ChatBackdropMode.Solid
+        var chatStampFg         = Props.EnableExplorationControls && ChatExplorationState.BackdropMode == ChatBackdropMode.Solid
             ? themeBrush("TextFillColorTertiaryBrush")
             : themeBrush("TextFillColorSecondaryBrush");
         var chatTextFg          = themeBrush("TextFillColorPrimaryBrush");
@@ -976,7 +986,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         Element BuildUserFooter(string sender, string time, Brush stampFg,
             string entryId, string entryText)
         {
-            var showSender = ChatExplorationState.ShowSenderName;
+            var showSender = Props.EnableExplorationControls && ChatExplorationState.ShowSenderName;
             var parts = new List<Element>
             {
                 HoverIcon(entryId, "copy", "\uE8C8", "\uE73E",
@@ -1611,7 +1621,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             }
 
             // ── Style-aware composition ──────────────────────────────
-            // Read the live exploration state for the burst variant.
+            // Read the live exploration state for the burst variant only in
+            // the debug preview. Production chat uses stable Auto behavior.
             // Defaults to Auto, which picks the best variant per burst:
             //   - single-step  → Plain (one inline row, nothing to fold)
             //   - multi-step   → CompactSummary (1-line collapsed summary,
@@ -1623,14 +1634,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // mid-burst would yank the per-step list back into view every
             // time the agent invoked another tool, which is exactly what
             // collapsed mode is supposed to avoid.
-            var style = ChatExplorationState.ToolBurstStyle;
+            var style = Props.EnableExplorationControls ? ChatExplorationState.ToolBurstStyle : ToolBurstStyle.Auto;
             if (style == ToolBurstStyle.Auto)
             {
                 style = entries.Count >= 2
                     ? ToolBurstStyle.CompactSummary
                     : ToolBurstStyle.Plain;
             }
-            var showStepNumbers = ChatExplorationState.ShowStepNumbers && entries.Count > 1;
+            var showStepNumbers = Props.EnableExplorationControls && ChatExplorationState.ShowStepNumbers && entries.Count > 1;
             var stepCount = entries.Count;
 
             // Tool burst alignment: align outer left to the assistant bubble's
