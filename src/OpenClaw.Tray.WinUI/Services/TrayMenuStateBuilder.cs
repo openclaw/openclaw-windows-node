@@ -94,21 +94,11 @@ internal sealed class TrayMenuStateBuilder
         Grid.SetColumn(brandRow, 0);
         brandGrid.Children.Add(brandRow);
 
-        var connectionToggle = new ToggleSwitch
-        {
-            IsOn = isConnected,
-            OnContent = string.Empty,
-            OffContent = string.Empty,
-            VerticalAlignment = VerticalAlignment.Center,
-            MinWidth = 0,
-            Width = 40,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0),
-            IsEnabled = _snapshot.CurrentStatus == ConnectionStatus.Connected
-                || _snapshot.CurrentStatus == ConnectionStatus.Disconnected
-                || _snapshot.CurrentStatus == ConnectionStatus.Error
-        };
-        AutomationProperties.SetName(connectionToggle, "Gateway connection");
+        var canToggleConnection = _snapshot.CurrentStatus == ConnectionStatus.Connected
+            || _snapshot.CurrentStatus == ConnectionStatus.Disconnected
+            || _snapshot.CurrentStatus == ConnectionStatus.Error;
+        var connectionToggle = menu.CreateMenuToggleSwitch(isConnected, "Gateway connection", canToggleConnection);
+        connectionToggle.Margin = new Thickness(0);
         ToolTipService.SetToolTip(connectionToggle,
             isConnected ? "Connected - toggle off to disconnect" : "Disconnected - toggle on to connect");
         connectionToggle.Toggled += (s, ev) =>

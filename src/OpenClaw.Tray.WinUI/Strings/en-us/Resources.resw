@@ -1656,6 +1656,54 @@ On your gateway host (Mac/Linux), run:
   <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
     <value>Refresh</value>
   </data>
+  <data name="ConfigPage_OpenConnection.Content" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="ConfigPage_ConnectionInfoBar.Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="ConfigPage_ConnectionInfoBar.Message" xml:space="preserve">
+    <value>Connect to a gateway to load and save configuration.</value>
+  </data>
+  <data name="ConfigPage_LoadingText.Text" xml:space="preserve">
+    <value>Loading gateway config...</value>
+  </data>
+  <data name="ConfigPage_EditorLabel.Text" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="ConfigSearchBox.PlaceholderText" xml:space="preserve">
+    <value>Filter settings</value>
+  </data>
+  <data name="ToggleJsonPreviewButton.Content" xml:space="preserve">
+    <value>Collapse JSON</value>
+  </data>
+  <data name="ToggleJsonPreviewButton_Show.Content" xml:space="preserve">
+    <value>Show JSON</value>
+  </data>
+  <data name="ResetSectionButton.Content" xml:space="preserve">
+    <value>Reset section</value>
+  </data>
+  <data name="DetailLoadingText.Text" xml:space="preserve">
+    <value>Loading section...</value>
+  </data>
+  <data name="ConfigPage_LoadingFullConfigPreview" xml:space="preserve">
+    <value>Loading full config preview...</value>
+  </data>
+  <data name="ConfigPage_LoadingSectionFormat" xml:space="preserve">
+    <value>Loading {0}...</value>
+  </data>
+  <data name="SelectedJsonPreviewTitle.Text" xml:space="preserve">
+    <value>JSON preview</value>
+  </data>
+  <data name="SelectedJsonCaption.Text" xml:space="preserve">
+    <value>Compare the gateway value with the proposed unsaved value.</value>
+  </data>
+  <data name="CopySelectedJsonButton.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
   <data name="ConfigPage_TabViewItem_34.Text" xml:space="preserve">
     <value>Editor</value>
   </data>
@@ -1674,7 +1722,22 @@ On your gateway host (Mac/Linux), run:
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>Open Dashboard</value>
   </data>
+  <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
+    <value>Saving configuration</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogBody" xml:space="preserve">
+    <value>OpenClaw is applying your edits. The gateway may restart briefly and reconnect automatically.</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogAccepted" xml:space="preserve">
+    <value>Gateway is restarting...</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogWaiting" xml:space="preserve">
+    <value>Reconnecting...</value>
+  </data>
   <data name="SaveButton.Content" xml:space="preserve">
+    <value>Save Changes</value>
+  </data>
+  <data name="SaveButtonText.Text" xml:space="preserve">
     <value>Save Changes</value>
   </data>
   <data name="ConnectionPage_TextBlock_10.Text" xml:space="preserve">
@@ -2386,7 +2449,7 @@ On your gateway host (Mac/Linux), run:
     <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
-    <value>Editing gateway configuration (openclaw.json) fetched from the connected gateway</value>
+    <value>Edit gateway configuration (openclaw.json) with a schema-guided form.</value>
   </data>
   <data name="DetailPlaceholder.Text" xml:space="preserve">
     <value>Select a section from the tree to edit its settings.</value>

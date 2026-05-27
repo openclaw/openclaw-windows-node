@@ -1,14 +1,20 @@
-using Microsoft.UI;
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.Connection;
+using OpenClaw.Shared;
+using OpenClawTray.Controls;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
@@ -16,83 +22,178 @@ namespace OpenClawTray.Pages;
 public sealed partial class ConfigPage : Page
 {
     private static readonly JsonElement s_emptyObject = JsonDocument.Parse("{}").RootElement.Clone();
+    private const double JsonPreviewAutoCollapseWidth = 1040;
+    private const double JsonPreviewAutoExpandWidth = 1120;
+    private const double JsonPreviewMinWidth = 340;
 
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
     private AppState? _appState;
     private JsonElement? _lastConfig;
     private JsonElement? _lastSchema;
-    private string? _baseHash;
+    private ConfigEditorSnapshot _serverSnapshot = ConfigEditorSnapshot.Empty;
+    private ConfigEditorSnapshot _editSnapshot = ConfigEditorSnapshot.Empty;
+    private IOperatorGatewayClient? _permissionClient;
 
-    private JsonElement? _selectedElement;
     private string _selectedPath = "";
-    private readonly Dictionary<TreeViewNode, (string Path, JsonElement Element)> _nodeMap = new();
-    private readonly Dictionary<string, object?> _pendingChanges = new();
-
+    private string _searchText = "";
     private bool _showSchemaFallback;
+    private bool _loading;
+    private bool _saving;
+    private bool _initialized;
+    private bool _jsonPreviewVisible = true;
+    private bool _jsonPreviewCollapsedByUser;
+    private bool _refreshConfigAfterReconnect;
+    private bool _refreshConfigWhenGatewayAvailable;
+    private ContentDialog? _reconnectDialog;
+    private TextBlock? _reconnectDialogMessage;
+    private GridLength _jsonPreviewExpandedWidth = new(360);
+    private int _detailRenderVersion;
+    private string _selectedJsonCopyText = "";
+    private readonly DispatcherTimer _searchDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _reconnectCompletionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _reconnectTimeoutTimer = new() { Interval = TimeSpan.FromSeconds(45) };
+    private readonly DispatcherTimer _statusDismissTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+
+    private readonly Dictionary<TreeViewNode, (string Path, JsonElement Element)> _nodeMap = new();
+    private readonly Dictionary<string, object?> _pendingChanges = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
 
     public ConfigPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Required;
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+            UnsubscribePermissionClient();
+            _searchDebounceTimer.Stop();
+            _reconnectCompletionTimer.Stop();
+            _reconnectTimeoutTimer.Stop();
+            _statusDismissTimer.Stop();
+        };
+        StatusInfoBar.Closed += (_, _) =>
+        {
+            _statusDismissTimer.Stop();
+            SetInfoBarOpen(StatusInfoBar, false);
+        };
+        _searchDebounceTimer.Tick += (_, _) =>
+        {
+            _searchDebounceTimer.Stop();
+            RenderTree();
+            RestoreSelectedDetail();
+        };
+        _reconnectCompletionTimer.Tick += (_, _) =>
+        {
+            _reconnectCompletionTimer.Stop();
+            CompleteReconnectIfReady();
+        };
+        _reconnectTimeoutTimer.Tick += (_, _) =>
+        {
+            _reconnectTimeoutTimer.Stop();
+            HandleReconnectTimeout();
+        };
+        _statusDismissTimer.Tick += (_, _) =>
+        {
+            _statusDismissTimer.Stop();
+            SetInfoBarOpen(StatusInfoBar, false);
         };
     }
 
     public void Initialize()
     {
+        if (_appState != null)
+            _appState.PropertyChanged -= OnAppStateChanged;
+
         _appState = CurrentApp.AppState;
         _appState.PropertyChanged += OnAppStateChanged;
-        OpenClawTray.Services.Logger.Info("[ConfigPage] Initialize");
-        if (CurrentApp.GatewayClient != null)
+        SubscribePermissionClient(CurrentApp.GatewayClient);
+        Logger.Info("[ConfigPage] Initialize");
+        if (CompleteReconnectIfReady())
+            return;
+
+        if (!_initialized || !_serverSnapshot.HasRoot || !_lastSchema.HasValue)
         {
-            _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
-            _ = CurrentApp.GatewayClient.RequestConfigAsync();
+            _initialized = true;
+            RefreshFromGateway();
+        }
+        else
+        {
+            SetInfoBarOpen(ConnectionInfoBar, CurrentApp.GatewayClient == null);
+            UpdatePermissionBanner();
+            UpdateMetaAndButtons();
         }
     }
 
     public void UpdateConfig(JsonElement config)
     {
         var configSnapshot = config.Clone();
-        try
+        RunOnUiThread(() =>
         {
-            OpenClawTray.Services.Logger.Info("[ConfigPage] UpdateConfig received");
-            _lastConfig = configSnapshot;
-
-            // Get baseHash from the config.get response
-            // The gateway returns a 'hash' field which is SHA256 of the raw file content
-            if (configSnapshot.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
+            try
             {
-                _baseHash = bh.GetString();
-            }
-            else if (configSnapshot.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
-            {
-                _baseHash = hashEl.GetString();
-            }
-            else if (configSnapshot.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
-            {
-                // Fallback: compute from raw content
-                var rawContent = rawEl.GetString();
-                if (rawContent != null)
+                Logger.Info("[ConfigPage] UpdateConfig received");
+                if (GetConfigPermissionState() == ConfigPermissionState.NoRead)
                 {
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
-                    var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-                    _baseHash = Convert.ToHexStringLower(hash);
+                    ClearConfigViewForNoRead();
+                    UpdatePermissionBanner();
+                    UpdateMetaAndButtons();
+                    return;
                 }
+
+                _lastConfig = configSnapshot;
+                _serverSnapshot = ConfigEditorModel.CaptureSnapshot(configSnapshot);
+                if (_pendingChanges.Count == 0)
+                    _editSnapshot = _serverSnapshot;
+
+                if (configSnapshot.TryGetProperty("path", out var pathEl) &&
+                    pathEl.ValueKind == JsonValueKind.String)
+                    ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-guided form.";
+
+                _loading = false;
+                SetInfoBarOpen(ConnectionInfoBar, CurrentApp.GatewayClient == null);
+                UpdatePermissionBanner();
+                RenderTree();
+                RestoreSelectedDetail();
+                UpdateSelectedJsonPreviewForCurrentSelection();
+                UpdateMetaAndButtons();
             }
+            catch (Exception ex)
+            {
+                Logger.Error($"[ConfigPage] Failed to render config: {ex}");
+                ShowConfigRenderError("Config unavailable", "The gateway config could not be rendered. Refresh and try again.");
+            }
+        });
+    }
 
-            // Show file path in subtitle if available
-            if (configSnapshot.TryGetProperty("path", out var pathEl))
-                ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-driven form";
-
-            RenderTree();
-            UpdateRawJson();
-        }
-        catch (Exception ex)
+    public void UpdateConfigSchema(JsonElement schema)
+    {
+        var schemaSnapshot = schema.Clone();
+        RunOnUiThread(() =>
         {
-            OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config: {ex}");
-            ShowConfigRenderError();
-        }
+            try
+            {
+                if (GetConfigPermissionState() == ConfigPermissionState.NoRead)
+                {
+                    ClearConfigViewForNoRead();
+                    UpdatePermissionBanner();
+                    UpdateMetaAndButtons();
+                    return;
+                }
+
+                _lastSchema = schemaSnapshot;
+                _loading = false;
+                UpdatePermissionBanner();
+                RenderTree();
+                RestoreSelectedDetail();
+                UpdateSelectedJsonPreviewForCurrentSelection();
+                UpdateMetaAndButtons();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
+                ShowConfigRenderError("Schema unavailable", "The gateway schema could not be rendered. Raw JSON remains available as a read-only preview.");
+            }
+        });
     }
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -105,24 +206,65 @@ public sealed partial class ConfigPage : Page
             case nameof(AppState.ConfigSchema):
                 if (_appState!.ConfigSchema.HasValue) UpdateConfigSchema(_appState.ConfigSchema.Value);
                 break;
+            case nameof(AppState.Status):
+                SubscribePermissionClient(CurrentApp.GatewayClient);
+                UpdateConnectionBanner();
+                UpdatePermissionBanner();
+                var configPermissionState = GetConfigPermissionState();
+                if (configPermissionState == ConfigPermissionState.Disconnected && _refreshConfigAfterReconnect)
+                {
+                    ShowStatus("Gateway restarting", "Saving changes. The gateway is restarting and will reconnect automatically.", InfoBarSeverity.Informational);
+                    ShowReconnectDialog(LocalizationHelper.GetString("ConfigPage_ReconnectDialogWaiting"));
+                }
+                else if (_refreshConfigAfterReconnect &&
+                         configPermissionState is (ConfigPermissionState.ReadOnly or ConfigPermissionState.ReadWrite))
+                {
+                    CompleteReconnectIfReady();
+                    return;
+                }
+                UpdateMetaAndButtons();
+                break;
         }
     }
 
-    public void UpdateConfigSchema(JsonElement schema)
+    private void SubscribePermissionClient(IOperatorGatewayClient? client)
     {
-        var schemaSnapshot = schema.Clone();
-        try
+        if (ReferenceEquals(_permissionClient, client))
+            return;
+
+        UnsubscribePermissionClient();
+        _permissionClient = client;
+        if (_permissionClient != null)
+            _permissionClient.HandshakeSucceeded += OnGatewayHandshakeSucceeded;
+    }
+
+    private void UnsubscribePermissionClient()
+    {
+        if (_permissionClient != null)
+            _permissionClient.HandshakeSucceeded -= OnGatewayHandshakeSucceeded;
+        _permissionClient = null;
+    }
+
+    private void OnGatewayHandshakeSucceeded(object? sender, EventArgs e)
+    {
+        RunOnUiThread(() =>
         {
-            _lastSchema = schemaSnapshot;
-            // Re-render tree if config is already loaded
-            if (_lastConfig.HasValue)
-                RenderTree();
-        }
-        catch (Exception ex)
-        {
-            OpenClawTray.Services.Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
-            ShowConfigRenderError();
-        }
+            UpdatePermissionBanner();
+            var permissionState = GetConfigPermissionState();
+            if (CompleteReconnectIfReady())
+                return;
+
+            if (permissionState is ConfigPermissionState.ReadOnly or ConfigPermissionState.ReadWrite &&
+                !_loading &&
+                (!_serverSnapshot.HasRoot || !_lastSchema.HasValue))
+            {
+                RefreshFromGateway();
+            }
+            else
+            {
+                UpdateMetaAndButtons();
+            }
+        });
     }
 
     private void RenderTree()
@@ -132,39 +274,973 @@ public sealed partial class ConfigPage : Page
 
         if (_lastSchema.HasValue)
         {
-            // Schema-driven tree
             _showSchemaFallback = false;
             ApplyPaneVisibility();
 
-            var schema = _lastSchema.Value;
-            var schemaRoot = schema.TryGetProperty("schema", out var sr) ? sr : schema;
-            var configRoot = _lastConfig.HasValue ? ExtractConfigRoot(_lastConfig.Value) : (JsonElement?)null;
+            var schemaRoot = GetSchemaRoot(_lastSchema.Value);
+            var configRoot = _serverSnapshot.HasRoot ? _serverSnapshot.Root : (JsonElement?)null;
 
-            BuildSchemaTreeNodes(ConfigTree.RootNodes, schemaRoot, configRoot, "");
-            ExpandAll(ConfigTree.RootNodes);
+            var rootElement = configRoot ?? s_emptyObject;
+            var rootNode = new TreeViewNode { IsExpanded = true };
+            BuildSchemaTreeNodes(rootNode.Children, schemaRoot, configRoot, "");
+            var rootVisible = string.IsNullOrWhiteSpace(_searchText) ||
+                              MatchesSearch("", schemaRoot) ||
+                              rootNode.Children.Count > 0;
+            if (rootVisible)
+            {
+                var dirtyCount = CountPathsUnder("", _pendingChanges.Keys);
+                var invalidCount = CountPathsUnder("", _validationErrors.Keys);
+                var label = "Full config";
+                if (dirtyCount > 0) label += $" • {dirtyCount} changed";
+                if (invalidCount > 0) label += $" • {invalidCount} issue{(invalidCount == 1 ? "" : "s")}";
+                rootNode.Content = $"📁 {label}";
+                _nodeMap[rootNode] = ("", rootElement);
+                ConfigTree.RootNodes.Add(rootNode);
+            }
+            UpdateSearchMetaText();
         }
         else
         {
-            // No schema — show fallback panel (whether or not config loaded)
             _showSchemaFallback = true;
             ApplyPaneVisibility();
+            UpdateSearchMetaText();
         }
     }
 
-    private static JsonElement ExtractConfigRoot(JsonElement configResponse)
+    private bool BuildSchemaTreeNodes(IList<TreeViewNode> parent, JsonElement schema, JsonElement? config, string basePath)
     {
-        if (configResponse.TryGetProperty("parsed", out var parsed))
-            return parsed;
-        if (configResponse.TryGetProperty("config", out var config))
-            return config;
-        return configResponse;
+        if (!schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+            return false;
+
+        var anyVisible = false;
+        foreach (var prop in properties.EnumerateObject().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var path = string.IsNullOrEmpty(basePath) ? prop.Name : $"{basePath}.{prop.Name}";
+            var propType = ExtractSchemaType(prop.Value);
+            if (propType != "object" && !prop.Value.TryGetProperty("properties", out _))
+                continue;
+
+            var configValue = config.HasValue && config.Value.TryGetProperty(prop.Name, out var cv)
+                ? (JsonElement?)cv
+                : null;
+
+            var node = new TreeViewNode();
+            var childVisible = BuildSchemaTreeNodes(node.Children, prop.Value, configValue, path);
+            var selfMatches = MatchesSearch(path, prop.Value);
+            if (!selfMatches && !childVisible && !string.IsNullOrWhiteSpace(_searchText))
+                continue;
+
+            var dirtyCount = CountPathsUnder(path, _pendingChanges.Keys);
+            var invalidCount = CountPathsUnder(path, _validationErrors.Keys);
+            var label = FriendlyLabel(prop.Name);
+            if (dirtyCount > 0) label += $" • {dirtyCount} changed";
+            if (invalidCount > 0) label += $" • {invalidCount} issue{(invalidCount == 1 ? "" : "s")}";
+
+            node.Content = $"📁 {label}";
+            node.IsExpanded = !string.IsNullOrWhiteSpace(_searchText) && (selfMatches || childVisible);
+            _nodeMap[node] = (path, configValue ?? s_emptyObject);
+            parent.Add(node);
+            anyVisible = true;
+        }
+
+        return anyVisible;
     }
 
-    /// <summary>
-    /// JSON Schema's "type" keyword may be either a string ("object") or an
-    /// array of strings (["string","null"]). Returns the first non-null type
-    /// when an array is encountered, or null if "type" is missing/unsupported.
-    /// </summary>
+    private void RestoreSelectedDetail()
+    {
+        if (!_serverSnapshot.HasRoot || !_lastSchema.HasValue)
+            return;
+
+        if (TryGetElementAtPath(_serverSnapshot.Root, _selectedPath, out var element))
+        {
+            ShowDetail(_selectedPath, element);
+            return;
+        }
+
+        _selectedPath = "";
+        ShowDetail("", _serverSnapshot.Root);
+    }
+
+    private void ShowDetail(string path, JsonElement element)
+    {
+        if (!_lastSchema.HasValue)
+            return;
+
+        DetailPanel.Children.Clear();
+        DetailPlaceholder.Visibility = Visibility.Collapsed;
+        _selectedPath = path;
+        DetailBreadcrumb.Text = BuildBreadcrumb(path);
+        DetailPath.Text = string.IsNullOrEmpty(path) ? "Full config" : FriendlyLabel(path.Split('.').Last());
+
+        var nodeSchema = ResolveSchemaAtPath(GetSchemaRoot(_lastSchema.Value), path);
+        var displayElement = ConfigEditorModel.ApplyRelativeChanges(element, path, _pendingChanges);
+        var sectionDirty = CountPathsUnder(path, _pendingChanges.Keys) > 0;
+        ResetSectionButton.Visibility = sectionDirty ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSelectedJsonPreview(path, element, displayElement);
+
+        if (string.IsNullOrEmpty(path))
+        {
+            DetailType.Text = displayElement.ValueKind == JsonValueKind.Object
+                ? $"Root object · {displayElement.EnumerateObject().Count()} top-level properties"
+                : displayElement.ValueKind.ToString();
+            if (TryBuildRootLeafSchema(nodeSchema, out var leafSchema))
+            {
+                var editor = new SchemaConfigEditor();
+                editor.LoadSchema(leafSchema, displayElement);
+                editor.ConfigChanged += (_, args) => ApplyEditorChanges(path, args);
+                DetailPanel.Children.Add(editor);
+            }
+            else
+            {
+                DetailPanel.Children.Add(new TextBlock
+                {
+                    Text = "Select a child section to edit fields. The full root config is available in the JSON preview.",
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+            return;
+        }
+
+        if (nodeSchema.HasValue && nodeSchema.Value.TryGetProperty("description", out var desc) &&
+            desc.ValueKind == JsonValueKind.String)
+        {
+            DetailType.Text = desc.GetString() ?? "";
+        }
+        else
+        {
+            DetailType.Text = displayElement.ValueKind == JsonValueKind.Object
+                ? $"Object · {displayElement.EnumerateObject().Count()} properties"
+                : displayElement.ValueKind.ToString();
+        }
+
+        if (nodeSchema.HasValue && displayElement.ValueKind == JsonValueKind.Object)
+        {
+            var editor = new SchemaConfigEditor();
+            editor.LoadSchema(nodeSchema.Value, displayElement);
+            editor.IsEnabled = !IsConfigEditingLocked(GetConfigPermissionState());
+            editor.ConfigChanged += (_, args) => ApplyEditorChanges(path, args);
+            DetailPanel.Children.Add(editor);
+            return;
+        }
+
+        DetailPanel.Children.Add(new TextBlock
+        {
+            Text = "This section is shown in the JSON preview because the schema shape is not editable in the form yet.",
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            TextWrapping = TextWrapping.Wrap
+        });
+    }
+
+    private void ApplyEditorChanges(string sectionPath, SchemaConfigChangedEventArgs args)
+    {
+        if (IsConfigEditingLocked(GetConfigPermissionState()))
+            return;
+
+        if (_pendingChanges.Count == 0 && _serverSnapshot.HasRoot)
+            _editSnapshot = _serverSnapshot;
+
+        foreach (var (path, value) in args.Changes)
+        {
+            var fullPath = string.IsNullOrEmpty(sectionPath) ? path : $"{sectionPath}.{path}";
+            if (ReferenceEquals(value, SchemaConfigEditor.RemovePendingValue))
+            {
+                _pendingChanges.Remove(fullPath);
+                _validationErrors.Remove(fullPath);
+            }
+            else
+            {
+                _pendingChanges[fullPath] = value;
+            }
+        }
+
+        RemoveSectionEntries(sectionPath, _validationErrors);
+        foreach (var (path, error) in args.ValidationErrors)
+        {
+            var fullPath = string.IsNullOrEmpty(sectionPath) ? path : $"{sectionPath}.{path}";
+            _validationErrors[fullPath] = error;
+        }
+
+        RenderTree();
+        UpdateSelectedJsonPreviewForCurrentSelection();
+        UpdateMetaAndButtons();
+    }
+
+    private async void OnSave(object sender, RoutedEventArgs e)
+    {
+        if (_saving) return;
+
+        if (_pendingChanges.Count == 0)
+        {
+            ShowStatus("No changes", "There is nothing to save.", InfoBarSeverity.Informational);
+            return;
+        }
+
+        if (_validationErrors.Count > 0)
+        {
+            var first = _validationErrors.First();
+            ShowStatus("Fix validation errors", $"{first.Key}: {first.Value}", InfoBarSeverity.Error);
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        var client = CurrentApp.GatewayClient;
+        if (client == null)
+        {
+            ShowStatus("Not connected", "Connect to a gateway before saving config.", InfoBarSeverity.Error);
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        if (!OperatorScopeHelper.CanWriteConfig(client.GrantedOperatorScopes))
+        {
+            ShowStatus("Config is read-only", "This operator token does not have operator.write permission, so config changes cannot be saved.", InfoBarSeverity.Warning);
+            UpdatePermissionBanner();
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        var saveBase = _editSnapshot.HasRoot ? _editSnapshot : _serverSnapshot;
+        if (!saveBase.HasRoot)
+        {
+            ShowStatus("Config not loaded", "Refresh the gateway config before saving.", InfoBarSeverity.Error);
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        _saving = true;
+        UpdateMetaAndButtons();
+        ShowStatus("Saving config…", $"Writing {_pendingChanges.Count} change(s) to the gateway.", InfoBarSeverity.Informational);
+
+        try
+        {
+            var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
+            var result = await client.PatchConfigDetailedAsync(updated, saveBase.BaseHash);
+            if (!result.Ok)
+            {
+                if (result.LooksLikeStaleBaseHash)
+                {
+                    _editSnapshot = ConfigEditorSnapshot.Empty;
+                    _ = client.RequestConfigAsync();
+                    ShowStatus(
+                        "Gateway config changed elsewhere",
+                        $"Your edits are preserved. The latest config is being refreshed; review the form and try Save again. Details: {result.Error ?? "stale config hash"}",
+                        InfoBarSeverity.Warning);
+                }
+                else
+                {
+                    ShowStatus(
+                        "Save failed",
+                        result.Error ?? "The gateway rejected the config update. Your changes are preserved.",
+                        InfoBarSeverity.Error);
+                }
+                return;
+            }
+
+            _pendingChanges.Clear();
+            _validationErrors.Clear();
+            _editSnapshot = ConfigEditorSnapshot.Empty;
+            _refreshConfigAfterReconnect = true;
+            _refreshConfigWhenGatewayAvailable = true;
+            ShowReconnectDialog(LocalizationHelper.GetString("ConfigPage_ReconnectDialogAccepted"));
+            ShowStatus("Gateway restarting", "Saving changes. The gateway is restarting and will reconnect automatically.", InfoBarSeverity.Informational);
+            _reconnectCompletionTimer.Stop();
+            _reconnectCompletionTimer.Start();
+            _reconnectTimeoutTimer.Stop();
+            _reconnectTimeoutTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("Save failed", $"{ex.Message} Your changes are preserved.", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            UpdateMetaAndButtons();
+            RestoreSelectedDetail();
+            UpdateSelectedJsonPreviewForCurrentSelection();
+        }
+    }
+
+    private void OnRefresh(object sender, RoutedEventArgs e)
+    {
+        RefreshFromGateway();
+    }
+
+    private void RefreshFromGateway()
+    {
+        UpdateConnectionBanner();
+        var permissionState = GetConfigPermissionState();
+        if (CurrentApp.GatewayClient == null)
+        {
+            _loading = false;
+            UpdatePermissionBanner();
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        if (permissionState == ConfigPermissionState.Checking)
+        {
+            _loading = false;
+            SaveStatus.Text = "Checking config permissions…";
+            UpdatePermissionBanner();
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        if (permissionState == ConfigPermissionState.NoRead)
+        {
+            ClearConfigViewForNoRead();
+            UpdatePermissionBanner();
+            UpdateMetaAndButtons();
+            return;
+        }
+
+        _loading = true;
+        LoadingState.Visibility = Visibility.Visible;
+        SaveStatus.Text = "Refreshing…";
+        UpdatePermissionBanner();
+        _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
+        _ = CurrentApp.GatewayClient.RequestConfigAsync();
+        UpdateMetaAndButtons();
+    }
+
+    private void UpdateConnectionBanner()
+    {
+        SetInfoBarOpen(ConnectionInfoBar, GetConfigPermissionState() == ConfigPermissionState.Disconnected);
+    }
+
+    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        _searchText = ConfigSearchBox.Text.Trim();
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
+    }
+
+    private void OnDiscardChanges(object sender, RoutedEventArgs e)
+    {
+        _pendingChanges.Clear();
+        _validationErrors.Clear();
+        _editSnapshot = ConfigEditorSnapshot.Empty;
+        ShowStatus("Changes discarded", "The form is back to the last config loaded from the gateway.", InfoBarSeverity.Informational);
+        RenderTree();
+        RestoreSelectedDetail();
+        UpdateSelectedJsonPreviewForCurrentSelection();
+        UpdateMetaAndButtons();
+    }
+
+    private void OnResetSection(object sender, RoutedEventArgs e)
+    {
+        RemoveSectionEntries(_selectedPath, _pendingChanges);
+        RemoveSectionEntries(_selectedPath, _validationErrors);
+        var sectionLabel = string.IsNullOrEmpty(_selectedPath) ? "Full config" : _selectedPath;
+        ShowStatus("Section reset", $"{sectionLabel} is back to the last loaded gateway value.", InfoBarSeverity.Informational);
+        RenderTree();
+        RestoreSelectedDetail();
+        UpdateSelectedJsonPreviewForCurrentSelection();
+        UpdateMetaAndButtons();
+    }
+
+    private void OnOpenConnection(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).Navigate("connection");
+    }
+
+    private void OnOpenDashboard(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).OpenDashboard("config");
+    }
+
+    private void OnCopySelectedJson(object sender, RoutedEventArgs e)
+    {
+        var package = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(_selectedJsonCopyText);
+        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        ShowStatus("Copied JSON diff", "The selected section diff was copied to the clipboard.", InfoBarSeverity.Success);
+    }
+
+    private void OnToggleJsonPreview(object sender, RoutedEventArgs e)
+    {
+        _jsonPreviewCollapsedByUser = _jsonPreviewVisible;
+        _jsonPreviewVisible = !_jsonPreviewVisible;
+        ApplyJsonPreviewVisibility();
+    }
+
+    private void OnSchemaTreeGridSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_jsonPreviewVisible && e.NewSize.Width < JsonPreviewAutoCollapseWidth)
+        {
+            _jsonPreviewVisible = false;
+            ApplyJsonPreviewVisibility();
+        }
+        else if (!_jsonPreviewVisible && !_jsonPreviewCollapsedByUser && e.NewSize.Width >= JsonPreviewAutoExpandWidth)
+        {
+            _jsonPreviewVisible = true;
+            ApplyJsonPreviewVisibility();
+        }
+    }
+
+    private void ApplyPaneVisibility()
+    {
+        if (EditorPane is null || NoSchemaPanel is null) return;
+
+        EditorPane.Visibility = !_showSchemaFallback ? Visibility.Visible : Visibility.Collapsed;
+        NoSchemaPanel.Visibility = _showSchemaFallback ? Visibility.Visible : Visibility.Collapsed;
+        ConfigSearchBox.Visibility = !_showSchemaFallback ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateSelectedJsonPreviewForCurrentSelection()
+    {
+        if (SelectedJsonDiffText is null)
+            return;
+
+        var previewSnapshot = GetPreviewSnapshot();
+        if (!previewSnapshot.HasRoot)
+        {
+            SelectedJsonCaption.Text = "Select a section to preview its JSON.";
+            RenderJsonDiff("{}", "{}");
+            return;
+        }
+
+        var element = TryGetElementAtPath(previewSnapshot.Root, _selectedPath, out var current)
+            ? current
+            : s_emptyObject;
+        UpdateSelectedJsonPreview(_selectedPath, element, ConfigEditorModel.ApplyRelativeChanges(element, _selectedPath, _pendingChanges));
+    }
+
+    private ConfigEditorSnapshot GetPreviewSnapshot() =>
+        _pendingChanges.Count > 0 && _editSnapshot.HasRoot ? _editSnapshot : _serverSnapshot;
+
+    private void UpdateSelectedJsonPreview(string path, JsonElement gatewayElement, JsonElement proposedElement)
+    {
+        if (SelectedJsonDiffText is null)
+            return;
+
+        try
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var gatewayJson = JsonSerializer.Serialize(gatewayElement, options);
+            var dirtyCount = CountPathsUnder(path, _pendingChanges.Keys);
+            var label = string.IsNullOrEmpty(path) ? "Full config" : path;
+            if (string.IsNullOrEmpty(path))
+            {
+                var proposedJson = dirtyCount > 0
+                    ? JsonSerializer.Serialize(ConfigEditorModel.ApplyChanges(gatewayElement, _pendingChanges), options)
+                    : gatewayJson;
+                RenderJsonDiff(gatewayJson, proposedJson);
+                SelectedJsonCaption.Text = dirtyCount > 0
+                    ? $"{label}: {dirtyCount} unsaved change{(dirtyCount == 1 ? "" : "s")} highlighted below."
+                    : $"{label}: no unsaved edits.";
+            }
+            else
+            {
+                var proposedJson = JsonSerializer.Serialize(proposedElement, options);
+                RenderJsonDiff(gatewayJson, proposedJson);
+                SelectedJsonCaption.Text = dirtyCount > 0
+                    ? $"{label}: {dirtyCount} unsaved change{(dirtyCount == 1 ? "" : "s")} highlighted below."
+                    : $"{label}: proposed value matches the last loaded gateway config.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[ConfigPage] Failed to build selected JSON preview: {ex.Message}");
+            SelectedJsonCaption.Text = "Selected section JSON preview is unavailable.";
+            RenderJsonDiff(gatewayElement.GetRawText(), proposedElement.GetRawText());
+        }
+    }
+
+    private void RenderJsonDiff(string gatewayJson, string proposedJson)
+    {
+        SelectedJsonDiffText.Blocks.Clear();
+        var paragraph = new Paragraph();
+        var defaultBrush = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        var addedBrush = new SolidColorBrush(Microsoft.UI.Colors.LightGreen);
+        var removedBrush = new SolidColorBrush(Microsoft.UI.Colors.IndianRed);
+
+        var copyLines = new List<string>();
+        void AddLine(JsonDiffLine line)
+        {
+            var changeBrush = line.Kind == JsonDiffLineKind.Removed ? removedBrush : addedBrush;
+            copyLines.Add(line.CopyText);
+            paragraph.Inlines.Add(new Run
+            {
+                Text = line.Prefix,
+                Foreground = line.Kind == JsonDiffLineKind.Unchanged ? defaultBrush : changeBrush
+            });
+            foreach (var segment in line.Segments)
+            {
+                paragraph.Inlines.Add(new Run
+                {
+                    Text = segment.Text,
+                    Foreground = line.Kind == JsonDiffLineKind.Unchanged || !segment.IsChanged ? defaultBrush : changeBrush
+                });
+            }
+            paragraph.Inlines.Add(new LineBreak());
+        }
+
+        foreach (var line in JsonDiffFormatter.CreateDiff(gatewayJson, proposedJson))
+            AddLine(line);
+
+        _selectedJsonCopyText = string.Join(Environment.NewLine, copyLines);
+        SelectedJsonDiffText.Blocks.Add(paragraph);
+    }
+
+    private void ApplyJsonPreviewVisibility()
+    {
+        if (_jsonPreviewVisible)
+        {
+            JsonPreviewColumn.MinWidth = JsonPreviewMinWidth;
+            JsonPreviewColumn.Width = _jsonPreviewExpandedWidth;
+        }
+        else
+        {
+            if (JsonPreviewColumn.Width.Value > 0)
+                _jsonPreviewExpandedWidth = JsonPreviewColumn.Width;
+            JsonPreviewColumn.MinWidth = 0;
+            JsonPreviewColumn.Width = new GridLength(0);
+        }
+
+        SelectedJsonPreviewPane.Visibility = _jsonPreviewVisible ? Visibility.Visible : Visibility.Collapsed;
+        JsonPreviewSplitter.Visibility = _jsonPreviewVisible ? Visibility.Visible : Visibility.Collapsed;
+        ToggleJsonPreviewButton.Content = LocalizationHelper.GetString(_jsonPreviewVisible
+            ? "ToggleJsonPreviewButton.Content"
+            : "ToggleJsonPreviewButton_Show.Content");
+    }
+
+    private void UpdateSearchMetaText()
+    {
+        if (SearchMetaText is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            SearchMetaText.Text = "";
+            return;
+        }
+
+        var visibleCount = CountVisibleTreeNodes(ConfigTree.RootNodes);
+        SearchMetaText.Text = visibleCount == 0
+            ? "No matches"
+            : $"{visibleCount} shown";
+    }
+
+    private void UpdateMetaAndButtons()
+    {
+        LoadingState.Visibility = _loading ? Visibility.Visible : Visibility.Collapsed;
+        var dirtyCount = _pendingChanges.Count;
+        var invalidCount = _validationErrors.Count;
+        var permissionState = GetConfigPermissionState();
+        var canWriteConfig = permissionState == ConfigPermissionState.ReadWrite;
+        var editingLocked = IsConfigEditingLocked(permissionState);
+        ConfigMetaText.Text = dirtyCount == 0
+            ? "No unsaved changes."
+            : $"{dirtyCount} unsaved change{(dirtyCount == 1 ? "" : "s")}" +
+              (invalidCount > 0 ? $" · {invalidCount} validation issue{(invalidCount == 1 ? "" : "s")}" : "");
+
+        SaveStatus.Text = BuildSaveStatusText(permissionState, dirtyCount, invalidCount);
+        SaveStatusIcon.Glyph = BuildSaveStatusGlyph(permissionState, dirtyCount, invalidCount);
+        AccessSummaryText.Text = BuildAccessSummaryText(permissionState, dirtyCount, invalidCount);
+        SetDetailEditingEnabled(!editingLocked);
+        ResetSectionButton.IsEnabled = !editingLocked;
+
+        SaveButton.IsEnabled = !_saving && !_loading && canWriteConfig && dirtyCount > 0 && invalidCount == 0;
+        DiscardButton.IsEnabled = !editingLocked && dirtyCount > 0;
+    }
+
+    private bool IsConfigEditingLocked(ConfigPermissionState permissionState) =>
+        _saving ||
+        _refreshConfigAfterReconnect ||
+        permissionState is ConfigPermissionState.Disconnected or ConfigPermissionState.Checking or ConfigPermissionState.NoRead;
+
+    private void SetDetailEditingEnabled(bool isEnabled)
+    {
+        foreach (var child in DetailPanel.Children)
+        {
+            if (child is Control control)
+                control.IsEnabled = isEnabled;
+        }
+    }
+
+    private string BuildSaveStatusText(ConfigPermissionState permissionState, int dirtyCount, int invalidCount)
+    {
+        if (_saving)
+            return "Saving…";
+        if (permissionState == ConfigPermissionState.Disconnected)
+            return _refreshConfigAfterReconnect ? "Gateway restarting…" : "Connect to a gateway to edit";
+        if (permissionState == ConfigPermissionState.Checking)
+            return "Checking permissions…";
+        if (permissionState == ConfigPermissionState.NoRead)
+            return "Config unavailable: missing operator.read";
+        if (permissionState == ConfigPermissionState.ReadOnly && dirtyCount > 0)
+            return "Read-only: missing operator.write";
+        if (invalidCount > 0)
+            return "Fix validation errors before saving";
+        if (dirtyCount > 0)
+            return "Unsaved changes";
+        return "No unsaved changes";
+    }
+
+    private string BuildSaveStatusGlyph(ConfigPermissionState permissionState, int dirtyCount, int invalidCount)
+    {
+        if (_saving)
+            return "\uE895";
+        if (permissionState is ConfigPermissionState.Disconnected or ConfigPermissionState.NoRead)
+            return "\uE783";
+        if (permissionState == ConfigPermissionState.Checking || _refreshConfigAfterReconnect)
+            return "\uE895";
+        if (invalidCount > 0 || permissionState == ConfigPermissionState.ReadOnly && dirtyCount > 0)
+            return "\uE7BA";
+        if (dirtyCount > 0)
+            return "\uE70F";
+        return "\uE73E";
+    }
+
+    private void CompleteGatewayReconnect(bool refreshLatestConfig)
+    {
+        _refreshConfigAfterReconnect = false;
+        _refreshConfigWhenGatewayAvailable = false;
+        _reconnectCompletionTimer.Stop();
+        _reconnectTimeoutTimer.Stop();
+        DismissReconnectDialog();
+        ShowStatus(
+            "Gateway reconnected",
+            refreshLatestConfig
+                ? "Configuration saved and the gateway connection is back. Refreshing the latest config."
+                : "Configuration saved and the latest gateway config is loaded.",
+            InfoBarSeverity.Success);
+
+        if (refreshLatestConfig)
+            RefreshFromGateway();
+    }
+
+    private bool CompleteReconnectIfReady()
+    {
+        if ((!_refreshConfigAfterReconnect && !_refreshConfigWhenGatewayAvailable) ||
+            GetConfigPermissionState() is not (ConfigPermissionState.ReadOnly or ConfigPermissionState.ReadWrite))
+            return false;
+
+        CompleteGatewayReconnect(refreshLatestConfig: true);
+        return true;
+    }
+
+    private void HandleReconnectTimeout()
+    {
+        if (!_refreshConfigAfterReconnect)
+            return;
+
+        if (CompleteReconnectIfReady())
+            return;
+
+        _refreshConfigAfterReconnect = false;
+        _refreshConfigWhenGatewayAvailable = true;
+        _reconnectCompletionTimer.Stop();
+        DismissReconnectDialog();
+        ShowStatus(
+            "Gateway still reconnecting",
+            "The config save was accepted, but the gateway has not reconnected yet. You can keep this page open or use Connection to check status.",
+            InfoBarSeverity.Warning);
+        UpdateMetaAndButtons();
+    }
+
+    private void ShowReconnectDialog(string message)
+    {
+        if (_reconnectDialog != null)
+        {
+            if (_reconnectDialogMessage != null)
+                _reconnectDialogMessage.Text = message;
+            return;
+        }
+
+        if (XamlRoot == null)
+            return;
+
+        _reconnectDialogMessage = new TextBlock
+        {
+            Text = message,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            Text = LocalizationHelper.GetString("ConfigPage_ReconnectDialogBody"),
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        content.Children.Add(new ProgressRing
+        {
+            IsActive = true,
+            Width = 32,
+            Height = 32,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        content.Children.Add(_reconnectDialogMessage);
+
+        var dialog = new ContentDialog
+        {
+            Title = LocalizationHelper.GetString("ConfigPage_ReconnectDialogTitle"),
+            Content = content,
+            XamlRoot = XamlRoot
+        };
+
+        _reconnectDialog = dialog;
+        dialog.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_reconnectDialog, dialog))
+            {
+                _reconnectDialog = null;
+                _reconnectDialogMessage = null;
+            }
+        };
+
+        _ = ShowReconnectDialogAsync(dialog);
+    }
+
+    private async Task ShowReconnectDialogAsync(ContentDialog dialog)
+    {
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[ConfigPage] Could not show reconnect dialog because another dialog is open: {ex.Message}");
+            if (ReferenceEquals(_reconnectDialog, dialog))
+            {
+                _reconnectDialog = null;
+                _reconnectDialogMessage = null;
+            }
+        }
+        catch (COMException ex)
+        {
+            Logger.Warn($"[ConfigPage] Could not show reconnect dialog because its XamlRoot is unavailable: {ex.Message}");
+            if (ReferenceEquals(_reconnectDialog, dialog))
+            {
+                _reconnectDialog = null;
+                _reconnectDialogMessage = null;
+            }
+        }
+    }
+
+    private void DismissReconnectDialog()
+    {
+        if (_reconnectDialog == null)
+            return;
+
+        try
+        {
+            _reconnectDialog.Hide();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[ConfigPage] Could not dismiss reconnect dialog: {ex.Message}");
+        }
+        catch (COMException ex)
+        {
+            Logger.Warn($"[ConfigPage] Could not dismiss reconnect dialog: {ex.Message}");
+        }
+    }
+
+    private static string BuildAccessSummaryText(ConfigPermissionState permissionState, int dirtyCount, int invalidCount)
+    {
+        var access = permissionState switch
+        {
+            ConfigPermissionState.Disconnected => "Disconnected",
+            ConfigPermissionState.Checking => "Checking access",
+            ConfigPermissionState.NoRead => "No config read access",
+            ConfigPermissionState.ReadOnly => "Read-only access",
+            ConfigPermissionState.ReadWrite => "Read/write access",
+            _ => "Unknown access"
+        };
+        var changes = $"{dirtyCount} change{(dirtyCount == 1 ? "" : "s")}";
+        var validation = invalidCount == 0
+            ? "Local validation clean"
+            : $"{invalidCount} validation issue{(invalidCount == 1 ? "" : "s")}";
+        return $"{access} · {changes} · {validation}";
+    }
+
+    private void ShowConfigRenderError(string title, string message)
+    {
+        _loading = false;
+        _showSchemaFallback = true;
+        ApplyPaneVisibility();
+        ShowStatus(title, message, InfoBarSeverity.Error);
+        UpdateMetaAndButtons();
+    }
+
+    private void ShowStatus(string title, string message, InfoBarSeverity severity)
+    {
+        _statusDismissTimer.Stop();
+        StatusInfoBar.Title = title;
+        StatusInfoBar.Message = message;
+        StatusInfoBar.Severity = severity;
+        SetInfoBarOpen(StatusInfoBar, true);
+
+        if (!_refreshConfigAfterReconnect &&
+            severity is InfoBarSeverity.Success or InfoBarSeverity.Informational)
+        {
+            _statusDismissTimer.Start();
+        }
+    }
+
+    private static void SetInfoBarOpen(InfoBar bar, bool open)
+    {
+        bar.IsOpen = open;
+        bar.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private enum ConfigPermissionState
+    {
+        Disconnected,
+        Checking,
+        NoRead,
+        ReadOnly,
+        ReadWrite,
+    }
+
+    private ConfigPermissionState GetConfigPermissionState()
+    {
+        var client = CurrentApp.GatewayClient;
+        if (client == null || !client.IsConnectedToGateway)
+            return ConfigPermissionState.Disconnected;
+
+        if (!client.HasHandshakeSnapshot)
+            return ConfigPermissionState.Checking;
+
+        var scopes = client.GrantedOperatorScopes;
+        if (!OperatorScopeHelper.CanReadConfig(scopes))
+            return ConfigPermissionState.NoRead;
+
+        return OperatorScopeHelper.CanWriteConfig(scopes)
+            ? ConfigPermissionState.ReadWrite
+            : ConfigPermissionState.ReadOnly;
+    }
+
+    private void UpdatePermissionBanner()
+    {
+        if (PermissionInfoBar is null)
+            return;
+
+        switch (GetConfigPermissionState())
+        {
+            case ConfigPermissionState.Checking:
+                PermissionInfoBar.Title = "Checking config permissions";
+                PermissionInfoBar.Message = "Waiting for the gateway to report this operator's permissions.";
+                PermissionInfoBar.Severity = InfoBarSeverity.Informational;
+                SetInfoBarOpen(PermissionInfoBar, true);
+                break;
+            case ConfigPermissionState.NoRead:
+                ClearConfigViewForNoRead();
+                PermissionInfoBar.Title = "Config unavailable";
+                PermissionInfoBar.Message = "This operator token lacks operator.read permission, so the gateway config cannot be loaded here.";
+                PermissionInfoBar.Severity = InfoBarSeverity.Error;
+                SetInfoBarOpen(PermissionInfoBar, true);
+                break;
+            case ConfigPermissionState.ReadOnly:
+                PermissionInfoBar.Title = "Config is read-only";
+                PermissionInfoBar.Message = "This operator token can read config but lacks operator.write permission. You can inspect and validate drafts, but Save is disabled.";
+                PermissionInfoBar.Severity = InfoBarSeverity.Warning;
+                SetInfoBarOpen(PermissionInfoBar, true);
+                break;
+            default:
+                SetInfoBarOpen(PermissionInfoBar, false);
+                break;
+        }
+    }
+
+    private void ClearConfigViewForNoRead()
+    {
+        _detailRenderVersion++;
+        _loading = false;
+        _lastConfig = null;
+        _lastSchema = null;
+        _serverSnapshot = ConfigEditorSnapshot.Empty;
+        _editSnapshot = ConfigEditorSnapshot.Empty;
+        _pendingChanges.Clear();
+        _validationErrors.Clear();
+        _selectedPath = "";
+        _showSchemaFallback = true;
+        ConfigTree.RootNodes.Clear();
+        DetailPanel.Children.Clear();
+        DetailPlaceholder.Text = "Config cannot be loaded because this operator token does not have read permission.";
+        DetailPlaceholder.Visibility = Visibility.Visible;
+        DetailBreadcrumb.Text = "";
+        DetailPath.Text = "Config unavailable";
+        DetailType.Text = "Missing operator.read permission";
+        ResetSectionButton.Visibility = Visibility.Collapsed;
+        RenderJsonDiff("{}", "{}");
+        SelectedJsonCaption.Text = "Config preview is unavailable without read permission.";
+        ApplyPaneVisibility();
+    }
+
+    private static bool TryBuildRootLeafSchema(JsonElement? rootSchema, out JsonElement leafSchema)
+    {
+        leafSchema = default;
+        if (!rootSchema.HasValue ||
+            !rootSchema.Value.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+            return false;
+
+        var leafProperties = new JsonObject();
+        foreach (var prop in properties.EnumerateObject())
+        {
+            var propType = ExtractSchemaType(prop.Value);
+            if (propType == "object" || prop.Value.TryGetProperty("properties", out _))
+                continue;
+
+            leafProperties[prop.Name] = JsonNode.Parse(prop.Value.GetRawText());
+        }
+
+        if (leafProperties.Count == 0)
+            return false;
+
+        var schemaObject = new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = leafProperties
+        };
+
+        if (rootSchema.Value.TryGetProperty("required", out var required) &&
+            required.ValueKind == JsonValueKind.Array)
+        {
+            var requiredLeaves = new JsonArray();
+            foreach (var item in required.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String &&
+                    item.GetString() is { } name &&
+                    leafProperties.ContainsKey(name))
+                    requiredLeaves.Add(name);
+            }
+
+            if (requiredLeaves.Count > 0)
+                schemaObject["required"] = requiredLeaves;
+        }
+
+        using var document = JsonDocument.Parse(schemaObject.ToJsonString());
+        leafSchema = document.RootElement.Clone();
+        return true;
+    }
+
+    private void RunOnUiThread(Action action)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            action();
+        }
+        else
+        {
+            DispatcherQueue.TryEnqueue(() => action());
+        }
+    }
+
+    private static JsonElement GetSchemaRoot(JsonElement schema)
+    {
+        return schema.TryGetProperty("schema", out var schemaRoot) ? schemaRoot : schema;
+    }
+
     private static string? ExtractSchemaType(JsonElement schemaNode)
     {
         if (!schemaNode.TryGetProperty("type", out var typeEl)) return null;
@@ -181,164 +1257,6 @@ public sealed partial class ConfigPage : Page
         return null;
     }
 
-    private void ShowConfigRenderError()
-    {
-        _showSchemaFallback = true;
-        ApplyPaneVisibility();
-        SaveButton.IsEnabled = false;
-        SaveStatus.Text = "Config unavailable";
-    }
-
-    /// <summary>
-    /// Reconciles which Row 2 surface is visible: Editor, Raw JSON, or
-    /// the "no schema" fallback.
-    /// </summary>
-    private void ApplyPaneVisibility()
-    {
-        if (EditorPane is null || RawJsonPane is null || NoSchemaPanel is null) return;
-
-        var rawSelected = (ConfigSelector?.SelectedItem?.Tag as string) == "raw";
-
-        RawJsonPane.Visibility = rawSelected ? Visibility.Visible : Visibility.Collapsed;
-        EditorPane.Visibility  = (!rawSelected && !_showSchemaFallback) ? Visibility.Visible : Visibility.Collapsed;
-        NoSchemaPanel.Visibility = (!rawSelected && _showSchemaFallback) ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void BuildSchemaTreeNodes(IList<TreeViewNode> parent, JsonElement schema, JsonElement? config, string basePath)
-    {
-        if (!schema.TryGetProperty("properties", out var properties) ||
-            properties.ValueKind != JsonValueKind.Object) return;
-
-        foreach (var prop in properties.EnumerateObject().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            var path = string.IsNullOrEmpty(basePath) ? prop.Name : $"{basePath}.{prop.Name}";
-            var node = new TreeViewNode();
-
-            var desc = prop.Value.TryGetProperty("description", out var descEl) && descEl.ValueKind == JsonValueKind.String
-                ? descEl.GetString() : null;
-            var label = string.IsNullOrEmpty(desc) ? prop.Name : $"{prop.Name} — {desc}";
-
-            var propType = ExtractSchemaType(prop.Value);
-            var configValue = config.HasValue && config.Value.TryGetProperty(prop.Name, out var cv) ? (JsonElement?)cv : null;
-
-            if (propType == "object" || (prop.Value.TryGetProperty("properties", out _)))
-            {
-                node.Content = $"📁 {prop.Name}";
-                node.IsExpanded = true;
-                // Store config value if available, otherwise empty object (not the schema!)
-                var nodeElement = configValue ?? s_emptyObject;
-                _nodeMap[node] = (path, nodeElement);
-                BuildSchemaTreeNodes(node.Children, prop.Value, configValue, path);
-                parent.Add(node);
-            }
-            // Leaf nodes are not shown in the tree — they appear as edit controls
-            // in the detail panel when their parent folder is selected
-        }
-    }
-
-    private void OnOpenDashboard(object sender, RoutedEventArgs e)
-    {
-        ((IAppCommands)CurrentApp).OpenDashboard("config");
-    }
-
-    private static void ExpandAll(IList<TreeViewNode> nodes)
-    {
-        foreach (var node in nodes)
-        {
-            node.IsExpanded = true;
-            if (node.Children.Count > 0)
-                ExpandAll(node.Children);
-        }
-    }
-
-    private async void OnSave(object sender, RoutedEventArgs e)
-    {
-        // Capture changes from the currently displayed editor
-        if (DetailPanel.Children.Count > 0 && DetailPanel.Children[0] is Controls.SchemaConfigEditor activeEditor)
-        {
-            foreach (var kv in activeEditor.GetChanges())
-            {
-                var fullPath = string.IsNullOrEmpty(_selectedPath)
-                    ? kv.Key
-                    : (string.IsNullOrEmpty(kv.Key) ? _selectedPath : $"{_selectedPath}.{kv.Key}");
-                _pendingChanges[fullPath] = kv.Value;
-            }
-        }
-
-        if (_pendingChanges.Count == 0)
-        {
-            SaveStatus.Text = "No changes";
-            return;
-        }
-
-        if (CurrentApp.GatewayClient == null || !_lastConfig.HasValue)
-        {
-            SaveStatus.Text = "Not connected";
-            return;
-        }
-
-        // Build the full config with changes applied
-        // The config.get response has { path, exists, raw, parsed } — use parsed
-        var configRoot = _lastConfig.Value.TryGetProperty("parsed", out var pr) ? pr
-            : (_lastConfig.Value.TryGetProperty("config", out var cr) ? cr : _lastConfig.Value);
-        var configDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(configRoot.GetRawText(),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? new Dictionary<string, object?>();
-
-        // Apply dot-path changes to the config dict
-        foreach (var kv in _pendingChanges)
-        {
-            SetNestedValue(configDict, kv.Key, kv.Value);
-        }
-
-        // Serialize back and send as raw
-        var updatedJson = JsonSerializer.Serialize(configDict, new JsonSerializerOptions { WriteIndented = true });
-        var updatedElement = JsonDocument.Parse(updatedJson).RootElement;
-
-        SaveButton.IsEnabled = false;
-        SaveStatus.Text = "Saving...";
-        try
-        {
-            var ok = await CurrentApp.GatewayClient.PatchConfigAsync(updatedElement, _baseHash);
-            SaveStatus.Text = ok ? "✓ Saved" : "✗ Save failed — changes preserved";
-
-            if (ok)
-            {
-                _pendingChanges.Clear();
-                _ = CurrentApp.GatewayClient.RequestConfigAsync();
-            }
-        }
-        catch (Exception) { SaveStatus.Text = "✗ Save failed — changes preserved"; }
-        finally { SaveButton.IsEnabled = true; }
-    }
-
-    private static void SetNestedValue(Dictionary<string, object?> dict, string dotPath, object? value)
-    {
-        var segments = dotPath.Split('.');
-        var current = dict;
-        for (int i = 0; i < segments.Length - 1; i++)
-        {
-            if (current.TryGetValue(segments[i], out var existing) && existing is JsonElement je && je.ValueKind == JsonValueKind.Object)
-            {
-                var child = JsonSerializer.Deserialize<Dictionary<string, object?>>(je.GetRawText()) ?? new();
-                current[segments[i]] = child;
-                current = child;
-            }
-            else if (existing is Dictionary<string, object?> childDict)
-            {
-                current = childDict;
-            }
-            else
-            {
-                var newChild = new Dictionary<string, object?>();
-                current[segments[i]] = newChild;
-                current = newChild;
-            }
-        }
-        current[segments[^1]] = value;
-    }
-
-    /// <summary>Walk the JSON Schema tree to find the sub-schema at a dot-separated path.</summary>
     private static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
     {
         if (string.IsNullOrEmpty(path)) return schema;
@@ -358,431 +1276,140 @@ public sealed partial class ConfigPage : Page
         return current;
     }
 
-    private void OnRefresh(object sender, RoutedEventArgs e)
+    private static bool TryGetElementAtPath(JsonElement root, string path, out JsonElement element)
     {
-        if (CurrentApp.GatewayClient != null)
+        element = root;
+        if (root.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            return false;
+
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
         {
-            SaveStatus.Text = "";
-            _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
-            _ = CurrentApp.GatewayClient.RequestConfigAsync();
+            if (element.ValueKind != JsonValueKind.Object ||
+                !element.TryGetProperty(segment, out element))
+                return false;
         }
+
+        return true;
     }
 
-    private void UpdateRawJson()
-    {
-        if (RawJsonText is null) return;
-
-        if (_lastConfig.HasValue)
-        {
-            try
-            {
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                var configRoot = _lastConfig.Value.TryGetProperty("parsed", out var pr) ? pr
-                    : (_lastConfig.Value.TryGetProperty("config", out var cr) ? cr : _lastConfig.Value);
-                RawJsonText.Text = JsonSerializer.Serialize(configRoot, options);
-            }
-            catch
-            {
-                RawJsonText.Text = _lastConfig.Value.GetRawText();
-            }
-        }
-        else
-        {
-            RawJsonText.Text = "No config loaded.";
-        }
-    }
-
-    private void OnConfigSelectorChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
-    {
-        ApplyPaneVisibility();
-
-        if ((sender.SelectedItem?.Tag as string) == "raw")
-            UpdateRawJson();
-    }
-
-    // ── Fallback TreeView methods (used when schema is unavailable) ──
-
-    private void BuildTreeNodes(IList<TreeViewNode> parent, JsonElement element, string basePath, int depth = 0)
-    {
-        if (element.ValueKind != JsonValueKind.Object) return;
-
-        foreach (var prop in element.EnumerateObject())
-        {
-            var path = string.IsNullOrEmpty(basePath) ? prop.Name : $"{basePath}.{prop.Name}";
-            var node = new TreeViewNode();
-
-            if (prop.Value.ValueKind == JsonValueKind.Object)
-            {
-                bool hasObjectOrArrayChild = false;
-                foreach (var child in prop.Value.EnumerateObject())
-                {
-                    if (child.Value.ValueKind == JsonValueKind.Object || child.Value.ValueKind == JsonValueKind.Array)
-                    { hasObjectOrArrayChild = true; break; }
-                }
-
-                node.Content = $"📁 {prop.Name}";
-                node.IsExpanded = depth < 1;
-                _nodeMap[node] = (path, prop.Value);
-                BuildTreeNodes(node.Children, prop.Value, path, depth + 1);
-            }
-            else if (prop.Value.ValueKind == JsonValueKind.Array)
-            {
-                node.Content = $"📋 {prop.Name} [{prop.Value.GetArrayLength()}]";
-                _nodeMap[node] = (path, prop.Value);
-                int idx = 0;
-                foreach (var item in prop.Value.EnumerateArray())
-                {
-                    if (item.ValueKind == JsonValueKind.Object)
-                    {
-                        var childNode = new TreeViewNode();
-                        var itemPath = $"{path}[{idx}]";
-                        var label = TryGetLabel(item) ?? $"[{idx}]";
-                        childNode.Content = $"  {label}";
-                        _nodeMap[childNode] = (itemPath, item);
-                        node.Children.Add(childNode);
-                    }
-                    idx++;
-                }
-            }
-            else
-            {
-                continue;
-            }
-
-            parent.Add(node);
-        }
-    }
-
-    private void OnTreeItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    private async void OnTreeItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is TreeViewNode node && _nodeMap.TryGetValue(node, out var entry))
         {
-            _selectedElement = entry.Element;
-            _selectedPath = entry.Path;
-            ShowDetail(entry.Path, entry.Element);
+            await ShowDetailWithProgress(entry.Path, entry.Element);
         }
     }
 
-    private void ShowDetail(string path, JsonElement element)
+    private async Task ShowDetailWithProgress(string path, JsonElement element)
     {
-        DetailPanel.Children.Clear();
-        DetailPlaceholder.Visibility = Visibility.Collapsed;
-        DetailPath.Text = path;
+        var renderVersion = ++_detailRenderVersion;
+        DetailPath.Text = string.IsNullOrEmpty(path) ? "Full config" : path;
+        DetailType.Text = "Loading section...";
+        ResetSectionButton.Visibility = Visibility.Collapsed;
+        DetailLoadingText.Text = string.IsNullOrEmpty(path)
+            ? LocalizationHelper.GetString("ConfigPage_LoadingFullConfigPreview")
+            : LocalizationHelper.Format("ConfigPage_LoadingSectionFormat", path);
+        DetailLoadingOverlay.Visibility = Visibility.Visible;
+        await Task.Delay(50);
 
-        // Try to find schema for this path
-        JsonElement? nodeSchema = null;
-        if (_lastSchema.HasValue)
-        {
-            var schema = _lastSchema.Value;
-            var schemaRoot = schema.TryGetProperty("schema", out var sr) ? sr : schema;
-            nodeSchema = ResolveSchemaAtPath(schemaRoot, path);
-        }
+        if (renderVersion != _detailRenderVersion)
+            return;
 
-        // Show description from schema if available
-        if (nodeSchema.HasValue && nodeSchema.Value.TryGetProperty("description", out var desc)
-            && desc.ValueKind == JsonValueKind.String)
+        try
         {
-            DetailType.Text = desc.GetString() ?? "";
+            ShowDetail(path, element);
+            UpdateMetaAndButtons();
         }
-        else
+        finally
         {
-            switch (element.ValueKind)
+            if (renderVersion == _detailRenderVersion)
+                DetailLoadingOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private bool MatchesSearch(string path, JsonElement schemaNode)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+            return true;
+
+        if (path.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (schemaNode.TryGetProperty("title", out var title) &&
+            title.ValueKind == JsonValueKind.String &&
+            (title.GetString()?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true))
+            return true;
+
+        if (schemaNode.TryGetProperty("description", out var desc) &&
+            desc.ValueKind == JsonValueKind.String &&
+            (desc.GetString()?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true))
+            return true;
+
+        if (schemaNode.TryGetProperty("properties", out var properties) &&
+            properties.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in properties.EnumerateObject())
             {
-                case JsonValueKind.Object: DetailType.Text = $"Object · {element.EnumerateObject().Count()} properties"; break;
-                case JsonValueKind.Array: DetailType.Text = $"Array · {element.GetArrayLength()} items"; break;
-                default: DetailType.Text = element.ValueKind.ToString(); break;
+                var childPath = string.IsNullOrEmpty(path) ? property.Name : $"{path}.{property.Name}";
+                if (MatchesSearch(childPath, property.Value))
+                    return true;
             }
         }
 
-        // Use schema editor for this subtree
-        if (nodeSchema.HasValue && element.ValueKind == JsonValueKind.Object)
+        return false;
+    }
+
+    private static int CountPathsUnder(string sectionPath, IEnumerable<string> paths)
+    {
+        var prefix = sectionPath + ".";
+        if (string.IsNullOrEmpty(sectionPath))
+            return paths.Count();
+
+        return paths.Count(p => string.Equals(p, sectionPath, StringComparison.Ordinal) ||
+                                p.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    private static void RemoveSectionEntries<T>(string sectionPath, Dictionary<string, T> values)
+    {
+        var prefix = sectionPath + ".";
+        if (string.IsNullOrEmpty(sectionPath))
         {
-            var editor = new Controls.SchemaConfigEditor();
-            editor.LoadSchema(nodeSchema.Value, element);
-            editor.ConfigChanged += (s, changes) =>
-            {
-                foreach (var kv in changes)
-                {
-                    var fullPath = string.IsNullOrEmpty(kv.Key) ? path : $"{path}.{kv.Key}";
-                    _pendingChanges[fullPath] = kv.Value;
-                }
-            };
-            DetailPanel.Children.Add(editor);
+            values.Clear();
             return;
         }
 
-        switch (element.ValueKind)
+        foreach (var key in values.Keys
+                     .Where(k => string.Equals(k, sectionPath, StringComparison.Ordinal) ||
+                                 k.StartsWith(prefix, StringComparison.Ordinal))
+                     .ToList())
         {
-            case JsonValueKind.Object:
-                DetailType.Text = $"Object · {element.EnumerateObject().Count()} properties";
-                foreach (var prop in element.EnumerateObject())
-                {
-                    var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                    var keyBlock = new TextBlock
-                    {
-                        Text = prop.Name,
-                        FontWeight = FontWeights.SemiBold,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        FontSize = 13
-                    };
-                    Grid.SetColumn(keyBlock, 0);
-                    row.Children.Add(keyBlock);
-
-                    var propPath = $"{path}.{prop.Name}";
-                    var editControl = CreateEditableControl(prop.Value, propPath);
-                    Grid.SetColumn(editControl, 1);
-                    row.Children.Add(editControl);
-
-                    DetailPanel.Children.Add(row);
-
-                    DetailPanel.Children.Add(new Border
-                    {
-                        Height = 1,
-                        Background = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"],
-                        Margin = new Thickness(0, 2, 0, 2),
-                        Opacity = 0.3
-                    });
-                }
-                break;
-
-            case JsonValueKind.Array:
-                DetailType.Text = $"Array · {element.GetArrayLength()} items";
-                int idx = 0;
-                foreach (var item in element.EnumerateArray())
-                {
-                    var card = new Border
-                    {
-                        Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
-                        CornerRadius = new CornerRadius(6),
-                        Padding = new Thickness(12, 8, 12, 8),
-                        Margin = new Thickness(0, 4, 0, 4)
-                    };
-
-                    if (item.ValueKind == JsonValueKind.Object)
-                    {
-                        var sp = new StackPanel { Spacing = 4 };
-                        sp.Children.Add(new TextBlock
-                        {
-                            Text = TryGetLabel(item) ?? $"Item {idx}",
-                            FontWeight = FontWeights.SemiBold,
-                            FontSize = 13
-                        });
-                        foreach (var sub in item.EnumerateObject())
-                        {
-                            var subRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                            subRow.Children.Add(new TextBlock
-                            {
-                                Text = sub.Name,
-                                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                                FontSize = 12, Width = 140
-                            });
-                            subRow.Children.Add(new TextBlock
-                            {
-                                Text = FormatValue(sub.Value),
-                                FontFamily = new FontFamily("Consolas"),
-                                FontSize = 12,
-                                IsTextSelectionEnabled = true,
-                                TextWrapping = TextWrapping.Wrap
-                            });
-                            sp.Children.Add(subRow);
-                        }
-                        card.Child = sp;
-                    }
-                    else
-                    {
-                        card.Child = new TextBlock
-                        {
-                            Text = FormatValue(item),
-                            FontFamily = new FontFamily("Consolas"),
-                            IsTextSelectionEnabled = true
-                        };
-                    }
-                    DetailPanel.Children.Add(card);
-                    idx++;
-                }
-                break;
-
-            default:
-                DetailType.Text = element.ValueKind.ToString();
-                var valueText = new TextBlock
-                {
-                    Text = FormatValue(element),
-                    FontFamily = new FontFamily("Consolas"),
-                    FontSize = 16,
-                    IsTextSelectionEnabled = true,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 8, 0, 8)
-                };
-                DetailPanel.Children.Add(valueText);
-                break;
+            values.Remove(key);
         }
     }
 
-    private FrameworkElement CreateEditableControl(JsonElement value, string configPath)
+    private static string FriendlyLabel(string name)
     {
-        switch (value.ValueKind)
+        var result = System.Text.RegularExpressions.Regex.Replace(name, "([a-z])([A-Z])", "$1 $2");
+        result = result.Replace("_", " ");
+        return result.Length == 0 ? name : char.ToUpperInvariant(result[0]) + result[1..];
+    }
+
+    private static string BuildBreadcrumb(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return "Full config";
+
+        return "Full config / " + string.Join(" / ", path.Split('.').Select(FriendlyLabel));
+    }
+
+    private static int CountVisibleTreeNodes(IList<TreeViewNode> nodes)
+    {
+        var count = 0;
+        foreach (var node in nodes)
         {
-            case JsonValueKind.String:
-                var str = value.GetString() ?? "";
-                var isSecret = configPath.Contains("token", StringComparison.OrdinalIgnoreCase) ||
-                              configPath.Contains("password", StringComparison.OrdinalIgnoreCase) ||
-                              configPath.Contains("secret", StringComparison.OrdinalIgnoreCase);
-                var textBox = new TextBox
-                {
-                    Text = str,
-                    FontFamily = new FontFamily("Consolas"),
-                    FontSize = 13,
-                    MinWidth = 200,
-                    Tag = configPath
-                };
-                if (isSecret && str.Length > 8)
-                {
-                    textBox.Text = str[..4] + "••••••••";
-                    textBox.IsReadOnly = true;
-                    textBox.Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-                }
-                else
-                {
-                    textBox.LostFocus += (s, e) => OnValueEdited(configPath, textBox.Text);
-                }
-                return textBox;
-
-            case JsonValueKind.Number:
-                var numBox = new TextBox
-                {
-                    Text = value.GetRawText(),
-                    FontFamily = new FontFamily("Consolas"),
-                    FontSize = 13,
-                    MinWidth = 100,
-                    Tag = configPath
-                };
-                numBox.LostFocus += (s, e) =>
-                {
-                    if (int.TryParse(numBox.Text, out var intVal))
-                        OnValueEdited(configPath, intVal);
-                    else if (double.TryParse(numBox.Text, out var dblVal))
-                        OnValueEdited(configPath, dblVal);
-                };
-                return numBox;
-
-            case JsonValueKind.True:
-            case JsonValueKind.False:
-                var toggle = new ToggleSwitch
-                {
-                    IsOn = value.GetBoolean(),
-                    OnContent = "true",
-                    OffContent = "false",
-                    MinWidth = 0,
-                    Tag = configPath
-                };
-                toggle.Toggled += (s, e) => OnValueEdited(configPath, toggle.IsOn);
-                return toggle;
-
-            case JsonValueKind.Null:
-                return new TextBlock
-                {
-                    Text = "null",
-                    FontStyle = global::Windows.UI.Text.FontStyle.Italic,
-                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                    FontSize = 13,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-
-            case JsonValueKind.Object:
-                var objPanel = new StackPanel { Spacing = 2 };
-                foreach (var sub in value.EnumerateObject())
-                {
-                    var subRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-                    subRow.Children.Add(new TextBlock
-                    {
-                        Text = $"{sub.Name}:",
-                        FontSize = 12,
-                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-                    });
-                    subRow.Children.Add(new TextBlock
-                    {
-                        Text = FormatValue(sub.Value),
-                        FontFamily = new FontFamily("Consolas"),
-                        FontSize = 12
-                    });
-                    objPanel.Children.Add(subRow);
-                }
-                return objPanel;
-
-            case JsonValueKind.Array:
-                var arr = value;
-                bool allStr = true;
-                foreach (var item in arr.EnumerateArray())
-                    if (item.ValueKind != JsonValueKind.String) { allStr = false; break; }
-
-                if (allStr && arr.GetArrayLength() <= 30)
-                {
-                    return new TextBlock
-                    {
-                        Text = string.Join(", ", arr.EnumerateArray().Select(v => v.GetString())),
-                        FontFamily = new FontFamily("Consolas"),
-                        FontSize = 12,
-                        TextWrapping = TextWrapping.Wrap,
-                        IsTextSelectionEnabled = true
-                    };
-                }
-                return new TextBlock
-                {
-                    Text = $"[ {arr.GetArrayLength()} items ]",
-                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                    FontSize = 12
-                };
-
-            default:
-                return new TextBlock { Text = value.GetRawText(), FontFamily = new FontFamily("Consolas"), FontSize = 13 };
+            count++;
+            count += CountVisibleTreeNodes(node.Children);
         }
+        return count;
     }
-
-    private void OnValueEdited(string configPath, object newValue)
-    {
-        if (CurrentApp.GatewayClient == null) return;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var success = await CurrentApp.GatewayClient.SetConfigAsync(configPath, newValue);
-                DispatcherQueue?.TryEnqueue(() =>
-                {
-                    SaveStatus.Text = success
-                        ? $"✅ Sent {configPath}"
-                        : $"❌ Failed to save {configPath}";
-                    if (success && CurrentApp.GatewayClient != null)
-                        _ = CurrentApp.GatewayClient.RequestConfigAsync();
-                });
-            }
-            catch (Exception ex)
-            {
-                DispatcherQueue?.TryEnqueue(() => SaveStatus.Text = $"❌ {ex.Message}");
-            }
-        });
-    }
-
-    private static string? TryGetLabel(JsonElement obj)
-    {
-        foreach (var key in new[] { "name", "id", "displayName", "key", "title" })
-        {
-            if (obj.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.String)
-                return val.GetString();
-        }
-        return null;
-    }
-
-    private static string FormatValue(JsonElement value) => value.ValueKind switch
-    {
-        JsonValueKind.String => value.GetString() ?? "",
-        JsonValueKind.Number => value.GetRawText(),
-        JsonValueKind.True => "true",
-        JsonValueKind.False => "false",
-        JsonValueKind.Null => "null",
-        _ => value.GetRawText()
-    };
 }

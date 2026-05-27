@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenClaw.E2ETests;
 using OpenClaw.SetupEngine;
 
 namespace OpenClaw.E2ETests.Setup;
@@ -30,7 +31,7 @@ public class SetupAndConnectTests
             throw new InvalidOperationException("E2E fixture MCP client not initialized");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task FullSetup_TrayConnects_OperatorAndNode()
     {
         // Call app.status and verify the tray is fully connected
@@ -52,7 +53,7 @@ public class SetupAndConnectTests
         Assert.True(nodePaired, $"nodePaired should be true; full status: {rawJson}");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task FullSetup_NodeCapabilities_Propagated()
     {
         using var doc = await _fixture.Client!.CallToolExpectSuccessAsync("app.nodes");
@@ -93,7 +94,7 @@ public class SetupAndConnectTests
             $"Expected node IsOnline=true; node: {windowsNode.GetRawText()}");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task FullSetup_WslAndGatewayConfiguration_FilesValidated()
     {
         var wslConf = await _fixture.RunInWslAsync("cat /etc/wsl.conf", TimeSpan.FromSeconds(15));
@@ -160,7 +161,7 @@ public class SetupAndConnectTests
         Assert.Contains(Directory.EnumerateFiles(identityDir), path => Path.GetFileName(path).Contains("device-key", StringComparison.OrdinalIgnoreCase));
     }
 
-    [Fact]
+    [E2EFact]
     public async Task FullSetup_TrayStartsWslKeepAlive()
     {
         var logLine = await _fixture.WaitForTrayKeepAliveStartedAsync();
@@ -175,7 +176,7 @@ public class SetupAndConnectTests
         Assert.Contains("sleep infinity", keepAlive.Stdout);
     }
 
-    [Fact]
+    [E2EFact]
     public async Task FullSetup_DashboardLink_UsesSharedGatewayTokenFragmentAfterPairing()
     {
         using var dashboardDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.dashboard.url");
@@ -205,7 +206,7 @@ public class SetupAndConnectTests
             $"Expected dashboard/shared-token request to succeed, got HTTP {status}; stderr={result.Stderr}");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task FullSetup_OpenClawCommand_IsOnDefaultWslPath()
     {
         var loginShell = await _fixture.RunInWslAsync("bash -lc 'openclaw --version'", TimeSpan.FromSeconds(15));

@@ -4,6 +4,7 @@
     x:Class="OpenClawTray.Windows.TrayMenuWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw Menu"
     Width="320"
@@ -12,6 +13,147 @@
     <!-- Acrylic backdrop applied in code-behind via BackdropHelper -->
 
     <Grid x:Name="RootGrid" Background="Transparent">
+        <Grid.Resources>
+            <Style x:Key="TrayMenuInstantToggleSwitchStyle" TargetType="ToggleSwitch">
+                <Setter Property="Foreground" Value="{ThemeResource ToggleSwitchContentForeground}" />
+                <Setter Property="UseSystemFocusVisuals" Value="{StaticResource UseSystemFocusVisuals}" />
+                <Setter Property="FocusVisualMargin" Value="-7,-3,-7,-3" />
+                <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleSwitch">
+                            <Grid Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal">
+                                            <VisualState.Setters>
+                                                <Setter Target="OuterBorder.Fill" Value="{ThemeResource ToggleSwitchFillOff}" />
+                                                <Setter Target="OuterBorder.Stroke" Value="{ThemeResource ToggleSwitchStrokeOff}" />
+                                                <Setter Target="SwitchKnobBounds.Fill" Value="{ThemeResource ToggleSwitchFillOn}" />
+                                                <Setter Target="SwitchKnobBounds.Stroke" Value="{ThemeResource ToggleSwitchStrokeOn}" />
+                                                <Setter Target="SwitchKnobOn.Background" Value="{ThemeResource ToggleSwitchKnobFillOn}" />
+                                                <Setter Target="SwitchKnobOff.Fill" Value="{ThemeResource ToggleSwitchKnobFillOff}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="OuterBorder.Fill" Value="{ThemeResource ToggleSwitchFillOffPointerOver}" />
+                                                <Setter Target="OuterBorder.Stroke" Value="{ThemeResource ToggleSwitchStrokeOffPointerOver}" />
+                                                <Setter Target="SwitchKnobBounds.Fill" Value="{ThemeResource ToggleSwitchFillOnPointerOver}" />
+                                                <Setter Target="SwitchKnobBounds.Stroke" Value="{ThemeResource ToggleSwitchStrokeOnPointerOver}" />
+                                                <Setter Target="SwitchKnobOn.Background" Value="{ThemeResource ToggleSwitchKnobFillOnPointerOver}" />
+                                                <Setter Target="SwitchKnobOff.Fill" Value="{ThemeResource ToggleSwitchKnobFillOffPointerOver}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="OuterBorder.Fill" Value="{ThemeResource ToggleSwitchFillOffPressed}" />
+                                                <Setter Target="OuterBorder.Stroke" Value="{ThemeResource ToggleSwitchStrokeOffPressed}" />
+                                                <Setter Target="SwitchKnobBounds.Fill" Value="{ThemeResource ToggleSwitchFillOnPressed}" />
+                                                <Setter Target="SwitchKnobBounds.Stroke" Value="{ThemeResource ToggleSwitchStrokeOnPressed}" />
+                                                <Setter Target="SwitchKnobOn.Background" Value="{ThemeResource ToggleSwitchKnobFillOnPressed}" />
+                                                <Setter Target="SwitchKnobOff.Fill" Value="{ThemeResource ToggleSwitchKnobFillOffPressed}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="OuterBorder.Fill" Value="{ThemeResource ToggleSwitchFillOffDisabled}" />
+                                                <Setter Target="OuterBorder.Stroke" Value="{ThemeResource ToggleSwitchStrokeOffDisabled}" />
+                                                <Setter Target="SwitchKnobBounds.Fill" Value="{ThemeResource ToggleSwitchFillOnDisabled}" />
+                                                <Setter Target="SwitchKnobBounds.Stroke" Value="{ThemeResource ToggleSwitchStrokeOnDisabled}" />
+                                                <Setter Target="SwitchKnobOn.Background" Value="{ThemeResource ToggleSwitchKnobFillOnDisabled}" />
+                                                <Setter Target="SwitchKnobOff.Fill" Value="{ThemeResource ToggleSwitchKnobFillOffDisabled}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+
+                                    <VisualStateGroup x:Name="ToggleStates">
+                                        <VisualState x:Name="Off">
+                                            <VisualState.Setters>
+                                                <Setter Target="KnobTranslateTransform.X" Value="0" />
+                                                <Setter Target="OuterBorder.Opacity" Value="1" />
+                                                <Setter Target="SwitchKnobBounds.Opacity" Value="0" />
+                                                <Setter Target="SwitchKnobOn.Opacity" Value="0" />
+                                                <Setter Target="SwitchKnobOff.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="On">
+                                            <VisualState.Setters>
+                                                <Setter Target="KnobTranslateTransform.X" Value="20" />
+                                                <Setter Target="OuterBorder.Opacity" Value="0" />
+                                                <Setter Target="SwitchKnobBounds.Opacity" Value="1" />
+                                                <Setter Target="SwitchKnobOn.Opacity" Value="1" />
+                                                <Setter Target="SwitchKnobOff.Opacity" Value="0" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <Grid Width="40"
+                                      Height="20"
+                                      Control.IsTemplateFocusTarget="True">
+                                    <Rectangle x:Name="OuterBorder"
+                                               Width="40"
+                                               Height="20"
+                                               RadiusX="10"
+                                               RadiusY="10"
+                                               Fill="{ThemeResource ToggleSwitchFillOff}"
+                                               Stroke="{ThemeResource ToggleSwitchStrokeOff}"
+                                               StrokeThickness="{ThemeResource ToggleSwitchOuterBorderStrokeThickness}" />
+                                    <Rectangle x:Name="SwitchKnobBounds"
+                                               Width="40"
+                                               Height="20"
+                                               RadiusX="10"
+                                               RadiusY="10"
+                                               Fill="{ThemeResource ToggleSwitchFillOn}"
+                                               Stroke="{ThemeResource ToggleSwitchStrokeOn}"
+                                               StrokeThickness="{ThemeResource ToggleSwitchOnStrokeThickness}"
+                                               Opacity="0" />
+                                    <Grid x:Name="SwitchKnob"
+                                          Width="20"
+                                          Height="20"
+                                          HorizontalAlignment="Left">
+                                        <Border x:Name="SwitchKnobOn"
+                                                Width="12"
+                                                Height="12"
+                                                Margin="0,0,1,0"
+                                                HorizontalAlignment="Center"
+                                                Background="{ThemeResource ToggleSwitchKnobFillOn}"
+                                                BorderBrush="{ThemeResource ToggleSwitchKnobStrokeOn}"
+                                                BackgroundSizing="OuterBorderEdge"
+                                                CornerRadius="7"
+                                                Opacity="0" />
+                                        <Rectangle x:Name="SwitchKnobOff"
+                                                   Width="12"
+                                                   Height="12"
+                                                   Margin="-1,0,0,0"
+                                                   HorizontalAlignment="Center"
+                                                   Fill="{ThemeResource ToggleSwitchKnobFillOff}"
+                                                   RadiusX="7"
+                                                   RadiusY="7" />
+                                        <Grid.RenderTransform>
+                                            <TranslateTransform x:Name="KnobTranslateTransform" />
+                                        </Grid.RenderTransform>
+                                    </Grid>
+                                    <primitives:Thumb x:Name="SwitchThumb"
+                                                      AutomationProperties.AccessibilityView="Raw">
+                                        <primitives:Thumb.Template>
+                                            <ControlTemplate TargetType="primitives:Thumb">
+                                                <Rectangle Fill="Transparent" />
+                                            </ControlTemplate>
+                                        </primitives:Thumb.Template>
+                                    </primitives:Thumb>
+                                </Grid>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </Grid.Resources>
+
         <Border Background="Transparent"
                 BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"

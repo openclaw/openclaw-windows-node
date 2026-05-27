@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -365,29 +364,13 @@ public class ExecApprovalV2RoutingTests
     [Fact]
     public void ProductionWiring_SetV2Handler_NotCalledInSrc()
     {
-        var repoRoot = FindRepoRoot();
-        Assert.NotNull(repoRoot);
-
-        var srcDir = Path.Combine(repoRoot, "src");
-        var violations = Directory
-            .GetFiles(srcDir, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.EndsWith("SystemCapability.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(f => File.ReadAllText(f).Contains("SetV2Handler", StringComparison.Ordinal))
+        var violations = ProductionSourceFiles.All
+            .Where(f => !f.Path.EndsWith("SystemCapability.cs", StringComparison.OrdinalIgnoreCase))
+            .Where(f => f.Text.Contains("SetV2Handler", StringComparison.Ordinal))
+            .Select(f => f.Path)
             .ToList();
 
         Assert.Empty(violations);
-    }
-
-    private static string? FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "openclaw-windows-node.slnx")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-        return null;
     }
 
     // -------------------------------------------------------------------------

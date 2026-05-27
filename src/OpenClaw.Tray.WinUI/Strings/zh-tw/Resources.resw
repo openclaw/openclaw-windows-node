@@ -1608,6 +1608,54 @@
   <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
     <value>é‡æ–°æ•´ç†</value>
   </data>
+  <data name="ConfigPage_OpenConnection.Content" xml:space="preserve">
+    <value>開啟連線</value>
+  </data>
+  <data name="ConfigPage_ConnectionInfoBar.Title" xml:space="preserve">
+    <value>閘道已中斷連線</value>
+  </data>
+  <data name="ConfigPage_ConnectionInfoBar.Message" xml:space="preserve">
+    <value>連線到閘道以載入並儲存設定。</value>
+  </data>
+  <data name="ConfigPage_LoadingText.Text" xml:space="preserve">
+    <value>正在載入閘道設定...</value>
+  </data>
+  <data name="ConfigPage_EditorLabel.Text" xml:space="preserve">
+    <value>編輯器</value>
+  </data>
+  <data name="ConfigSearchBox.PlaceholderText" xml:space="preserve">
+    <value>篩選設定</value>
+  </data>
+  <data name="ToggleJsonPreviewButton.Content" xml:space="preserve">
+    <value>摺疊 JSON</value>
+  </data>
+  <data name="ToggleJsonPreviewButton_Show.Content" xml:space="preserve">
+    <value>顯示 JSON</value>
+  </data>
+  <data name="ResetSectionButton.Content" xml:space="preserve">
+    <value>重設區段</value>
+  </data>
+  <data name="DetailLoadingText.Text" xml:space="preserve">
+    <value>正在載入區段...</value>
+  </data>
+  <data name="ConfigPage_LoadingFullConfigPreview" xml:space="preserve">
+    <value>正在載入完整設定預覽...</value>
+  </data>
+  <data name="ConfigPage_LoadingSectionFormat" xml:space="preserve">
+    <value>正在載入 {0}...</value>
+  </data>
+  <data name="SelectedJsonPreviewTitle.Text" xml:space="preserve">
+    <value>JSON 預覽</value>
+  </data>
+  <data name="SelectedJsonCaption.Text" xml:space="preserve">
+    <value>比較閘道值與建議的未儲存值。</value>
+  </data>
+  <data name="CopySelectedJsonButton.Content" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>捨棄變更</value>
+  </data>
   <data name="ConfigPage_TabViewItem_34.Text" xml:space="preserve">
     <value>ç·¨è¼¯å™¨</value>
   </data>
@@ -1626,7 +1674,22 @@
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>é–‹å•Ÿå„€è¡¨æ¿</value>
   </data>
+  <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
+    <value>Saving configuration</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogBody" xml:space="preserve">
+    <value>OpenClaw is applying your edits. The gateway may restart briefly and reconnect automatically.</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogAccepted" xml:space="preserve">
+    <value>Gateway is restarting...</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogWaiting" xml:space="preserve">
+    <value>Reconnecting...</value>
+  </data>
   <data name="SaveButton.Content" xml:space="preserve">
+    <value>å„²å­˜è®Šæ›´</value>
+  </data>
+  <data name="SaveButtonText.Text" xml:space="preserve">
     <value>å„²å­˜è®Šæ›´</value>
   </data>
   <data name="ConnectionPage_TextBlock_10.Text" xml:space="preserve">
@@ -2338,7 +2401,7 @@
     <value>æ‰€æœ‰è¨Šæ¯éƒ½æœƒè·¯ç”±è‡³é è¨­ä»£ç†ç¨‹å¼ã€‚æ–°å¢žç¹«çµä»¥é€²è¡Œå¤šä»£ç†ç¨‹å¼è·¯ç”±ã€‚</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
-    <value>æ­£åœ¨ç·¨è¼¯å¾žå·²é€£ç·šé–˜é“æ“·å–çš„é–˜é“è¨­å®š (openclaw.json)</value>
+    <value>使用結構描述引導的表單編輯閘道設定 (openclaw.json)。</value>
   </data>
   <data name="DetailPlaceholder.Text" xml:space="preserve">
     <value>å¾žæ¨¹ç‹€ç›®éŒ„é¸å–å€æ®µä»¥ç·¨è¼¯å…¶è¨­å®šã€‚</value>
@@ -4467,4 +4530,3 @@
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>é€²éšŽ</value>
   </data></root>
-

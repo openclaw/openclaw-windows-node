@@ -59,12 +59,24 @@ function Test-IsLocalizableValue {
     return $true
 }
 
+function Test-IsSourceXaml {
+    param([System.IO.FileInfo]$File)
+
+    $relativePath = Get-RelativePath $winUiRoot $File.FullName
+    $segments = $relativePath -split '[\\/]'
+    # Build output can contain generated/copied XAML; only source XAML should drive localization findings.
+    return $segments -notcontains 'bin' -and $segments -notcontains 'obj'
+}
+
 function Get-XamlLocalizationFindings {
     $resourceKeys = Get-ResourceKeys
     $missingResources = [System.Collections.Generic.List[string]]::new()
     $hardcodedValues = [System.Collections.Generic.List[string]]::new()
 
-    Get-ChildItem -LiteralPath $winUiRoot -Recurse -Filter *.xaml | Sort-Object FullName | ForEach-Object {
+    Get-ChildItem -LiteralPath $winUiRoot -Recurse -Filter *.xaml -File |
+        Where-Object { Test-IsSourceXaml $_ } |
+        Sort-Object FullName |
+        ForEach-Object {
         $xamlPath = $_.FullName
         $relativePath = Get-RelativePath $repoRoot $xamlPath
         [xml]$xml = Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8

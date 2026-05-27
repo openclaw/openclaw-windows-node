@@ -1608,6 +1608,54 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="ConfigPage_TextBlock_21.Text" xml:space="preserve">
     <value>Actualiser</value>
   </data>
+  <data name="ConfigPage_OpenConnection.Content" xml:space="preserve">
+    <value>Ouvrir la connexion</value>
+  </data>
+  <data name="ConfigPage_ConnectionInfoBar.Title" xml:space="preserve">
+    <value>Passerelle déconnectée</value>
+  </data>
+  <data name="ConfigPage_ConnectionInfoBar.Message" xml:space="preserve">
+    <value>Connectez-vous à une passerelle pour charger et enregistrer la configuration.</value>
+  </data>
+  <data name="ConfigPage_LoadingText.Text" xml:space="preserve">
+    <value>Chargement de la configuration de la passerelle...</value>
+  </data>
+  <data name="ConfigPage_EditorLabel.Text" xml:space="preserve">
+    <value>Éditeur</value>
+  </data>
+  <data name="ConfigSearchBox.PlaceholderText" xml:space="preserve">
+    <value>Filtrer les paramètres</value>
+  </data>
+  <data name="ToggleJsonPreviewButton.Content" xml:space="preserve">
+    <value>Réduire JSON</value>
+  </data>
+  <data name="ToggleJsonPreviewButton_Show.Content" xml:space="preserve">
+    <value>Afficher JSON</value>
+  </data>
+  <data name="ResetSectionButton.Content" xml:space="preserve">
+    <value>Réinitialiser la section</value>
+  </data>
+  <data name="DetailLoadingText.Text" xml:space="preserve">
+    <value>Chargement de la section...</value>
+  </data>
+  <data name="ConfigPage_LoadingFullConfigPreview" xml:space="preserve">
+    <value>Chargement de l’aperçu complet de la configuration...</value>
+  </data>
+  <data name="ConfigPage_LoadingSectionFormat" xml:space="preserve">
+    <value>Chargement de {0}...</value>
+  </data>
+  <data name="SelectedJsonPreviewTitle.Text" xml:space="preserve">
+    <value>Aperçu JSON</value>
+  </data>
+  <data name="SelectedJsonCaption.Text" xml:space="preserve">
+    <value>Comparez la valeur de la passerelle avec la valeur non enregistrée proposée.</value>
+  </data>
+  <data name="CopySelectedJsonButton.Content" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>Ignorer les modifications</value>
+  </data>
   <data name="ConfigPage_TabViewItem_34.Text" xml:space="preserve">
     <value>Éditeur</value>
   </data>
@@ -1626,7 +1674,22 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
+  <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
+    <value>Saving configuration</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogBody" xml:space="preserve">
+    <value>OpenClaw is applying your edits. The gateway may restart briefly and reconnect automatically.</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogAccepted" xml:space="preserve">
+    <value>Gateway is restarting...</value>
+  </data>
+  <data name="ConfigPage_ReconnectDialogWaiting" xml:space="preserve">
+    <value>Reconnecting...</value>
+  </data>
   <data name="SaveButton.Content" xml:space="preserve">
+    <value>Enregistrer les modifications</value>
+  </data>
+  <data name="SaveButtonText.Text" xml:space="preserve">
     <value>Enregistrer les modifications</value>
   </data>
   <data name="ConnectionPage_TextBlock_10.Text" xml:space="preserve">
@@ -2338,7 +2401,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Tous les messages sont acheminés vers l’agent par défaut. Ajoutez des liaisons pour le routage multi-agent.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
-    <value>Modification de la configuration de la passerelle (openclaw.json) récupérée depuis la passerelle connectée</value>
+    <value>Modifiez la configuration de la passerelle (openclaw.json) avec un formulaire guidé par schéma.</value>
   </data>
   <data name="DetailPlaceholder.Text" xml:space="preserve">
     <value>Sélectionnez une section dans l’arborescence pour modifier ses paramètres.</value>

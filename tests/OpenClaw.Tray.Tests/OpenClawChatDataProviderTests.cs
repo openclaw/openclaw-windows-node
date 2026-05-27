@@ -1847,10 +1847,12 @@ public class OpenClawChatDataProviderTests
         // When sessions arrive after the connection is already established,
         // the provider should automatically load history for new threads.
         var historyRequested = new List<string?>();
+        var historyLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (bridge, provider, snapshots, _) = CreateProvider();
         bridge.HistoryBehavior = key =>
         {
             historyRequested.Add(key);
+            historyLoaded.TrySetResult();
             return Task.FromResult(new ChatHistoryInfo
             {
                 SessionKey = key ?? "",
@@ -1868,8 +1870,8 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseSessions(new[] { MainSession() });
 
-        // Give fire-and-forget history load time to complete.
-        await Task.Delay(200);
+        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.Same(historyLoaded.Task, completed);
 
         Assert.Contains("main", historyRequested);
     }
@@ -1912,9 +1914,17 @@ public class OpenClawChatDataProviderTests
 
         // Transition to Connected — should reload the "main" timeline even
         // though LoadHistoryAsync was never successfully called before.
+        var historyLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = key =>
+        {
+            historyRequested.Add(key);
+            historyLoaded.TrySetResult();
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        };
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        await Task.Delay(200);
+        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.Same(historyLoaded.Task, completed);
 
         Assert.Contains("main", historyRequested);
     }
