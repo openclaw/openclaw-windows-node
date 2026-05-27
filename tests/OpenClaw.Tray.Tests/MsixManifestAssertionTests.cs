@@ -172,45 +172,31 @@ public sealed class MsixManifestAssertionTests
             "src", "OpenClaw.SetupEngine.UI", "Program.cs"));
         var setupProject = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.SetupEngine.UI", "OpenClaw.SetupEngine.UI.csproj"));
-        var msixSetupPublishStart = ci.IndexOf("Publish SetupEngine UI for MSIX payload", StringComparison.Ordinal);
-        Assert.True(msixSetupPublishStart >= 0, "MSIX SetupEngine publish step not found.");
-        var msixSetupPublishEnd = ci.IndexOf("Build MSIX Package", msixSetupPublishStart, StringComparison.Ordinal);
-        Assert.True(msixSetupPublishEnd > msixSetupPublishStart, "MSIX package build step not found after SetupEngine publish.");
-        var msixSetupPublish = ci[msixSetupPublishStart..msixSetupPublishEnd];
         var doc = LoadTrayManifest();
-        var setupApp = GetApplication(doc, "SetupEngine");
-        var setupVisualElements = setupApp.Element(XName.Get("VisualElements", AppxUapNs));
 
-        Assert.Contains("Content Include=\"SetupEngineRoot\\**\\*\"", project);
-        Assert.Contains("TargetPath=\"%(RecursiveDir)%(Filename)%(Extension)\"", project);
-        Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngineRoot", ci);
-        Assert.Contains("OpenClaw.SetupEngine*", ci);
+        Assert.DoesNotContain(doc.Descendants(XName.Get("Application", AppxFoundationNs)),
+            e => string.Equals((string?)e.Attribute("Id"), "SetupEngine", StringComparison.Ordinal));
+        Assert.Contains("Content Include=\"SetupEngine\\**\\*\"", project);
+        Assert.Contains("src/OpenClaw.Tray.WinUI/SetupEngine", ci);
+        Assert.Contains("Copy-Item \"$publishDir\\*\" -Destination $payloadDir -Recurse -Force", ci);
         Assert.Contains("dotnet publish src/OpenClaw.SetupEngine.UI", ci);
-        Assert.Contains("Path.Combine(AppContext.BaseDirectory, exeName)", app);
-        Assert.Equal("OpenClaw.SetupEngine.UI.exe", (string?)setupApp.Attribute("Executable"));
-        Assert.Equal("Windows.FullTrustApplication", (string?)setupApp.Attribute("EntryPoint"));
-        Assert.NotNull(setupVisualElements);
-        Assert.Equal("none", (string?)setupVisualElements!.Attribute("AppListEntry"));
-        Assert.Contains("shell:AppsFolder", app);
-        Assert.Contains("!{SetupEngineApplicationId}", app);
-        Assert.Contains("RunWithXamlFactoryRetry", setupProgram);
+        Assert.Contains("--self-contained", ci);
+        Assert.Contains("-p:PackageMsix=false", ci);
+        Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"SetupEngine\", exeName)", app);
+        Assert.Contains("new System.Diagnostics.ProcessStartInfo(setupExePath)", app);
+        Assert.DoesNotContain("shell:AppsFolder", app);
+        Assert.DoesNotContain("SetupEngineApplicationId", app);
         Assert.Contains("setup-engine-startup.log", setupProgram);
-        Assert.Contains("0x80040111", setupProgram);
-        Assert.Contains("0x80004005", setupProgram);
+        Assert.DoesNotContain("RunWithXamlFactoryRetry", setupProgram);
         Assert.DoesNotContain("Bootstrap.Initialize", setupProgram);
-        Assert.Contains("EnsureComWrappersInitialized", setupProgram);
-        Assert.Contains("Program.ComWrappers.begin", setupProgram);
-        Assert.Contains("Program.ApplicationStart.attempt", setupProgram);
+        Assert.DoesNotContain("FreshPackageMinimumAge", setupProgram);
+        Assert.Contains("<WindowsPackageType>None</WindowsPackageType>", setupProject);
+        Assert.Contains("<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>", setupProject);
+        Assert.Contains("<ApplicationManifest>app.manifest</ApplicationManifest>", setupProject);
         Assert.Contains("<DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>", setupProject);
         Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
-        Assert.Contains("<PropertyGroup Condition=\"'$(PackageMsix)' == 'true'\">", setupProject);
-        Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
-        Assert.Contains("<SelfContained>false</SelfContained>", setupProject);
-        Assert.Contains("<GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>", setupProject);
-        Assert.Contains("<FrameworkReference Include=\"Microsoft.WindowsDesktop.App\" />", setupProject);
-        Assert.Contains("-p:PackageMsix=true", msixSetupPublish);
-        Assert.Contains("--no-self-contained", msixSetupPublish);
-        Assert.DoesNotContain("--self-contained `", msixSetupPublish);
+        Assert.DoesNotContain("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
+        Assert.DoesNotContain("<SelfContained>false</SelfContained>", setupProject);
     }
 
     [Fact]

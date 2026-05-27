@@ -78,10 +78,8 @@
     <Content Include="openclaw.appinstaller"
              Condition="'$(PackageMsix)' == 'true' And Exists('openclaw.appinstaller')"
              CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="SetupEngineRoot\**\*"
-             Condition="'$(PackageMsix)' == 'true' And Exists('SetupEngineRoot')"
-             Link="%(RecursiveDir)%(Filename)%(Extension)"
-             TargetPath="%(RecursiveDir)%(Filename)%(Extension)"
+    <Content Include="SetupEngine\**\*"
+             Condition="'$(PackageMsix)' == 'true' And Exists('SetupEngine')"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

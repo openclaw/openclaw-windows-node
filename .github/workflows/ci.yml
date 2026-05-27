@@ -468,21 +468,19 @@ jobs:
       shell: pwsh
       run: |
         $publishDir = "artifacts/setupengine-${{ matrix.rid }}"
-        $payloadDir = "src/OpenClaw.Tray.WinUI/SetupEngineRoot"
+        $payloadDir = "src/OpenClaw.Tray.WinUI/SetupEngine"
         Remove-Item $publishDir -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $payloadDir -Recurse -Force -ErrorAction SilentlyContinue
         dotnet publish src/OpenClaw.SetupEngine.UI `
           -c Release `
           -r ${{ matrix.rid }} `
-          --no-self-contained `
-          -p:PackageMsix=true `
+          --self-contained `
+          -p:PackageMsix=false `
           -p:Version=${{ needs.test.outputs.semVer }} `
           -o $publishDir
         New-Item -ItemType Directory -Force -Path $payloadDir | Out-Null
-        Get-ChildItem $publishDir -File |
-          Where-Object { $_.Name -like 'OpenClaw.SetupEngine*' -or $_.Name -eq 'default-config.json' } |
-          Copy-Item -Destination $payloadDir -Force
-        Get-ChildItem $payloadDir | Select-Object Name, Length | Format-Table -AutoSize
+        Copy-Item "$publishDir\*" -Destination $payloadDir -Recurse -Force
+        Get-ChildItem $payloadDir -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
 
     - name: Build MSIX Package
       run: >

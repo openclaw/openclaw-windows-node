@@ -106,17 +106,6 @@
       </Extensions>
     </Application>
 
-    <Application Id="SetupEngine"
-      Executable="OpenClaw.SetupEngine.UI.exe"
-      EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="OpenClaw Setup"
-        Description="OpenClaw Gateway setup wizard"
-        BackgroundColor="transparent"
-        AppListEntry="none"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png" />
-    </Application>
   </Applications>
 
   <Capabilities>
@@ -127,4 +116,5 @@
     <DeviceCapability Name="location" />
   </Capabilities>
 </Package>
+
 

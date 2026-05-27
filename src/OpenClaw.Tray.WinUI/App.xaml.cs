@@ -31,8 +31,6 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal const string SetupEngineApplicationId = "SetupEngine";
-
     private TrayIcon? _trayIcon;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
@@ -2918,55 +2916,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     /// <summary>
     /// Resolves the SetupEngine.UI executable path.
-    /// Checks <c>{AppDir}/OpenClaw.SetupEngine.UI.exe</c> (MSIX root layout)
-    /// and <c>{AppDir}/SetupEngine/OpenClaw.SetupEngine.UI.exe</c> (unpackaged/dev layout).
+    /// Checks <c>{AppDir}/SetupEngine/OpenClaw.SetupEngine.UI.exe</c> (standard layout)
+    /// and <c>{AppDir}/OpenClaw.SetupEngine.UI.exe</c> (flat/legacy layout).
     /// </summary>
     internal static string? ResolveSetupEngineUiPath()
     {
         const string exeName = "OpenClaw.SetupEngine.UI.exe";
 
-        // MSIX layout: SetupEngine launches from package root so it shares the
-        // root WinAppSDK activation catalog generated for the tray package.
-        var flat = Path.Combine(AppContext.BaseDirectory, exeName);
-        if (File.Exists(flat)) return flat;
-
-        // Unpackaged/dev layout: build.ps1 copies the setup app under SetupEngine.
+        // Standard layout: SetupEngine subfolder (build.ps1 copies here, installer deploys here)
         var subDir = Path.Combine(AppContext.BaseDirectory, "SetupEngine", exeName);
-        return File.Exists(subDir) ? subDir : null;
-    }
+        if (File.Exists(subDir)) return subDir;
 
-    internal static string? ResolveSetupEnginePackagedAppUserModelId()
-    {
-        if (!PackageHelper.IsPackaged)
-            return null;
-
-        try
-        {
-            var familyName = global::Windows.ApplicationModel.Package.Current.Id.FamilyName;
-            return $"{familyName}!{SetupEngineApplicationId}";
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to resolve packaged SetupEngine app user model ID: {ex.Message}");
-            return null;
-        }
-    }
-
-    internal static System.Diagnostics.ProcessStartInfo CreateSetupEngineUiStartInfo(string setupExePath)
-    {
-        var appUserModelId = ResolveSetupEnginePackagedAppUserModelId();
-        if (!string.IsNullOrWhiteSpace(appUserModelId))
-        {
-            return new System.Diagnostics.ProcessStartInfo($@"shell:AppsFolder\{appUserModelId}")
-            {
-                UseShellExecute = true
-            };
-        }
-
-        return new System.Diagnostics.ProcessStartInfo(setupExePath)
-        {
-            UseShellExecute = true
-        };
+        // Flat layout fallback (e.g. everything in one folder)
+        var flat = Path.Combine(AppContext.BaseDirectory, exeName);
+        return File.Exists(flat) ? flat : null;
     }
 
     [DllImport("user32.dll")]
@@ -3024,7 +2987,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-            var psi = CreateSetupEngineUiStartInfo(setupExePath);
+            var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
+            {
+                UseShellExecute = true
+            };
             var process = System.Diagnostics.Process.Start(psi);
             if (process != null)
             {
@@ -3032,7 +2998,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 TryBringSetupEngineToFront(process);
                 process.Dispose();
             }
-            Logger.Info($"Launched SetupEngine.UI for setup via {psi.FileName}");
+            Logger.Info("Launched SetupEngine.UI for setup");
         }
         catch (Exception ex)
         {
