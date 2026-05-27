@@ -53,6 +53,7 @@ public sealed partial class SetupWindow : Window
 
         _config = SetupConfig.LoadFromFile(configPath);
         _config = SetupConfig.FromEnvironment(_config);
+        GatewayLkgVersion.ApplyToConfig(_config);
         _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
 
         Closed += (_, _) =>

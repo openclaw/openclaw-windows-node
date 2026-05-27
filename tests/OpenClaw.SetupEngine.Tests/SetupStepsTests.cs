@@ -217,6 +217,22 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("HTTPS", result.Message);
     }
 
+    [Fact]
+    public void InstallCli_BuildInstallCommand_UsesDefaultWhenVersionMissing()
+    {
+        var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", null);
+
+        Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash", command);
+    }
+
+    [Fact]
+    public void InstallCli_BuildInstallCommand_AppendsVersionWhenConfigured()
+    {
+        var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", "2026.5.22");
+
+        Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version '2026.5.22'", command);
+    }
+
     private static int GetFreeTcpPort()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);

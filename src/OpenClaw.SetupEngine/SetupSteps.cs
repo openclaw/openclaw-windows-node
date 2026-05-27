@@ -727,9 +727,16 @@ public sealed class InstallCliStep : SetupStep
             return StepResult.Fail($"Installer URL must be HTTPS: {installUrl}");
         }
 
-        // Shell-quote the URL and enforce TLS
-        var escapedUrl = installUrl.Replace("'", "'\\''");
-        var installScript = $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
+        string installScript;
+        try
+        {
+            installScript = BuildInstallCommand(installUrl, ctx.Config.Gateway.Version);
+        }
+        catch (ArgumentException ex)
+        {
+            return StepResult.Fail(ex.Message);
+        }
+
         var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
 
         if (result.ExitCode != 0)
@@ -761,6 +768,20 @@ public sealed class InstallCliStep : SetupStep
         }
 
         return StepResult.Fail("CLI installed but not found in any known location");
+    }
+
+    internal static string BuildInstallCommand(string installUrl, string? requestedVersion)
+    {
+        var escapedUrl = ShellEscape(installUrl);
+        if (string.IsNullOrWhiteSpace(requestedVersion))
+            return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
+
+        var trimmedVersion = requestedVersion.Trim();
+        if (trimmedVersion.Contains('\n') || trimmedVersion.Contains('\r'))
+            throw new ArgumentException("Gateway version cannot contain newlines.");
+
+        var escapedVersion = ShellEscape(trimmedVersion);
+        return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
@@ -809,6 +830,8 @@ public sealed class InstallCliStep : SetupStep
         ctx.Logger.Info($"OpenClaw CLI available on default PATH: {bareVerify.Stdout.Trim()}");
         return StepResult.Ok();
     }
+
+    private static string ShellEscape(string value) => value.Replace("'", "'\\''");
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {

@@ -581,6 +581,13 @@ The repository uses GitHub Actions for continuous integration and release automa
 - Pull requests to `main` or `master`
 - Git tags matching `v*` (e.g., `v1.2.3`) for releases
 
+### Gateway LKG version automation
+
+- The pinned gateway setup version lives in `src/OpenClaw.SetupEngine/GatewayLkgVersion.cs` (`GatewayLkgVersion.LkgVersion`).
+- Setup/E2E consume this as the default source of truth when `Gateway.Version` is not explicitly set.
+- The `e2etests` job in `.github/workflows/ci.yml` compares pinned LKG vs npm `openclaw@latest` and emits a **warning** on drift (non-blocking).
+- `.github/workflows/gateway-lkg-update.yml` creates or updates one standing draft PR on branch `automation/gateway-lkg-update` to bump `GatewayLkgVersion.LkgVersion` when upstream latest advances.
+
 ### Build Matrix
 
 The CI builds multiple configurations:

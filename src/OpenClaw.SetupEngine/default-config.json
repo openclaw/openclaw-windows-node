@@ -73,7 +73,7 @@
     "Bind": "loopback",
     // Override CLI install script URL (null = https://openclaw.ai/install-cli.sh)
     "InstallUrl": null,
-    // Pin gateway version (null = latest)
+    // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
     "Version": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,

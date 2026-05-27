@@ -39,6 +39,45 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Detect gateway LKG drift from npm latest
+      id: gateway_lkg_drift
+      continue-on-error: true
+      shell: pwsh
+      run: |
+        $sourcePath = "src/OpenClaw.SetupEngine/GatewayLkgVersion.cs"
+        $source = Get-Content -LiteralPath $sourcePath -Raw
+        $match = [regex]::Match($source, 'LkgVersion\s*=\s*"([^"]+)"')
+        if (-not $match.Success) {
+          throw "Unable to parse LKG version from $sourcePath"
+        }
+
+        $pinned = $match.Groups[1].Value
+        $latest = (Invoke-RestMethod -Uri "https://registry.npmjs.org/openclaw/latest" -TimeoutSec 30).version
+        if ([string]::IsNullOrWhiteSpace($latest)) {
+          throw "Unable to resolve npm latest version for openclaw."
+        }
+
+        "pinned=$pinned" >> $env:GITHUB_OUTPUT
+        "latest=$latest" >> $env:GITHUB_OUTPUT
+
+        if ($pinned -ne $latest) {
+          "drifted=true" >> $env:GITHUB_OUTPUT
+          Write-Host "::warning::Gateway LKG drift detected: pinned $pinned, npm latest $latest. Run gateway-lkg-update workflow to refresh the standing draft PR."
+          Write-Error "Gateway LKG drift detected (pinned $pinned, npm latest $latest)."
+          "### :warning: Gateway LKG drift detected" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Pinned LKG: $pinned" >> $env:GITHUB_STEP_SUMMARY
+          "- npm latest: $latest" >> $env:GITHUB_STEP_SUMMARY
+          "- Action: run `gateway-lkg-update` to refresh the standing draft PR." >> $env:GITHUB_STEP_SUMMARY
+          exit 1
+        } else {
+          "drifted=false" >> $env:GITHUB_OUTPUT
+          Write-Host "Gateway LKG is current ($pinned)."
+          "### Gateway LKG is current" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Pinned LKG: $pinned" >> $env:GITHUB_STEP_SUMMARY
+        }
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v5
       with:
