@@ -23,6 +23,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
+    private readonly object _disposeLock = new();
 
     private long _generation;
     private CancellationTokenSource? _operationCts;
@@ -30,6 +31,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _activeIdentityPath; // identity directory for the active connection
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
     private bool _disposed;
+    private Task? _disposeTask;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
     private string? _lastAutoApprovedRequestId; // prevent auto-approve loops
     private string? _autoApproveInFlight; // atomic guard against concurrent approval of same requestId
@@ -128,7 +130,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             oldCts?.Dispose();
 
             // Dispose old client
-            DisposeActiveClient();
+            await DisposeActiveClientAsync();
 
             // Update snapshot with gateway info
             _stateMachine.Current = _stateMachine.Current with
@@ -273,7 +275,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            DisconnectCore();
+            await DisconnectCoreAsync();
         }
         finally
         {
@@ -282,10 +284,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     }
 
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
-    private void DisconnectCore()
+    private async Task DisconnectCoreAsync()
     {
         var prev = _stateMachine.Current.OverallState;
-        DisposeActiveClient();
+        await DisposeActiveClientAsync();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
         EmitStateChanged(prev);
@@ -297,7 +299,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            DisconnectCore();
+            await DisconnectCoreAsync();
             await ConnectCoreAsync();
         }
         finally
@@ -312,7 +314,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            DisconnectCore();
+            await DisconnectCoreAsync();
             // Stop tunnel when switching gateways — the new one may not need it.
             // Use a bounded timeout to avoid blocking all connection transitions.
             if (_tunnelManager?.IsActive == true)
@@ -767,7 +769,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return true;
     }
 
-    private async void OnNodeStatusChanged(object? sender, ConnectionStatus status)
+    private void OnNodeStatusChanged(object? sender, ConnectionStatus status) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnNodeStatusChangedAsync(status),
+            _logger,
+            nameof(OnNodeStatusChanged),
+            ex => _diagnostics.Record("node", "Node status handler failed", ex.Message));
+
+    private async Task OnNodeStatusChangedAsync(ConnectionStatus status)
     {
         _diagnostics.Record("node", $"Node status: {status}");
 
@@ -815,7 +824,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private async void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e)
+    private void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnNodePairingStatusChangedAsync(e),
+            _logger,
+            nameof(OnNodePairingStatusChanged),
+            ex => _diagnostics.Record("node", "Node pairing handler failed", ex.Message));
+
+    private async Task OnNodePairingStatusChangedAsync(PairingStatusEventArgs e)
     {
         _diagnostics.Record("node", $"Node pairing: {e.Status}");
 
@@ -926,12 +942,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         StateChanged?.Invoke(this, snapshot);
     }
 
-    private void DisposeActiveClient()
+    private async Task DisposeActiveClientAsync()
     {
-        // Disconnect node first — run on threadpool to avoid sync context deadlocks
+        // Disconnect node first, but do not block the caller thread; shutdown
+        // and reconnect paths await this with a bounded timeout.
         if (_nodeConnector != null)
         {
-            try { Task.Run(() => _nodeConnector.DisconnectAsync()).Wait(TimeSpan.FromSeconds(2)); }
+            try { await WaitWithTimeoutAsync(_nodeConnector.DisconnectAsync(), TimeSpan.FromSeconds(2), "Node disconnect"); }
             catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
         }
 
@@ -951,42 +968,116 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    private async Task WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
+    {
+        var completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
+        if (completed != task)
+        {
+            _logger.Warn($"[ConnMgr] {operation} timed out after {timeout.TotalSeconds:F1}s");
+            return;
+        }
+
+        await task.ConfigureAwait(false);
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
+    public ValueTask DisposeAsync()
+    {
+        var task = EnsureDisposeTask();
+        return new ValueTask(task);
+    }
+
     public void Dispose()
+    {
+        ObserveBackgroundFault(EnsureDisposeTask(), "[ConnMgr] Dispose error");
+    }
+
+    private Task EnsureDisposeTask()
+    {
+        lock (_disposeLock)
+        {
+            return _disposeTask ??= DisposeCoreAsync();
+        }
+    }
+
+    private async Task DisposeCoreAsync()
     {
         if (_disposed) return;
         _disposed = true;
+        _operationCts?.Cancel();
+
         // Unsubscribe from node events before disposing the semaphore
-        // to prevent async void handlers from crashing via ObjectDisposedException.
+        // to prevent guarded async handlers from racing the disposed semaphore.
         if (_nodeConnector != null)
         {
             _nodeConnector.StatusChanged -= OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged -= OnNodePairingStatusChanged;
         }
         // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
-        // Use a short timeout — if something is stuck, proceed with disposal anyway.
-        try { _transitionSemaphore.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        // Use a short timeout — if something is stuck, proceed with disposal anyway,
+        // but do not dispose the semaphore out from under the holder.
+        var semaphoreEntered = false;
+        try
+        {
+            semaphoreEntered = await _transitionSemaphore.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            if (!semaphoreEntered)
+                _logger.Warn("[ConnMgr] Dispose timed out waiting for transition semaphore");
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
         try
         {
             _stateMachine.TryTransition(ConnectionTrigger.Disposed);
-            DisposeActiveClient();
-            // Stop tunnel on app shutdown — run on threadpool with timeout to avoid stalling exit
+            await DisposeActiveClientAsync();
+            // Stop tunnel on app shutdown with timeout to avoid stalling exit.
             if (_tunnelManager?.IsActive == true)
             {
-                try { Task.Run(() => _tunnelManager.StopAsync()).Wait(TimeSpan.FromSeconds(3)); }
-                catch { /* shutting down — best effort */ }
+                try { await WaitWithTimeoutAsync(_tunnelManager.StopAsync(), TimeSpan.FromSeconds(3), "Tunnel stop"); }
+                catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error during dispose: {ex.Message}"); }
             }
-            _operationCts?.Cancel();
             _operationCts?.Dispose();
+            _operationCts = null;
         }
         finally
         {
-            try { _transitionSemaphore.Release(); } catch { }
-            _transitionSemaphore.Dispose();
+            if (semaphoreEntered)
+            {
+                try { _transitionSemaphore.Release(); } catch { }
+                _transitionSemaphore.Dispose();
+            }
+
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    private void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            _logger.Warn($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            _logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => _logger.Warn($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 }

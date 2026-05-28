@@ -2688,6 +2688,27 @@ On your gateway host (Mac/Linux), run:
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ Download required</value>
   </data>
+  <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
+    <value>Voice input is not ready until at least one speech model is downloaded.</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffTitle" xml:space="preserve">
+    <value>Voice Input Is Off</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
+    <value>Turn on Speech-to-Text in Voice settings, then download a speech model before using the microphone in chat.</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
+    <value>Speech Model Required</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
+    <value>Speech-to-Text is on, but voice input will not work until at least one speech model is downloaded.</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
+    <value>Open Voice &amp; Audio Settings</value>
+  </data>
+  <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
   <data name="VoiceSettingsPage_ButtonReDownload" xml:space="preserve">
     <value>Re-download</value>
   </data>

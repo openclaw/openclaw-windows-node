@@ -93,7 +93,13 @@ public sealed partial class AboutPage : Page
         }
     }
 
-    private async void OnCopySupportClick(object sender, RoutedEventArgs e)
+    private void OnCopySupportClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnCopySupportClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnCopySupportClick));
+
+    private async Task OnCopySupportClickAsync()
     {
         try
         {

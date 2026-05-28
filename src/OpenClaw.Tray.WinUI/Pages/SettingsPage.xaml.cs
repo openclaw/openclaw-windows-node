@@ -237,7 +237,13 @@ public sealed partial class SettingsPage : Page
         catch { }
     }
 
-    private async void OnRemoveGateway(object sender, RoutedEventArgs e)
+    private void OnRemoveGateway(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnRemoveGatewayAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnRemoveGateway));
+
+    private async Task OnRemoveGatewayAsync()
     {
         var dialogContent = new StackPanel { Spacing = 8 };
         dialogContent.Children.Add(new TextBlock

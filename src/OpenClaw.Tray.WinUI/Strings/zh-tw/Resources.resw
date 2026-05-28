@@ -2640,6 +2640,27 @@
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ 需要下載</value>
   </data>
+  <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
+    <value>至少下載一個語音模型後，語音輸入才可使用。</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffTitle" xml:space="preserve">
+    <value>語音輸入已關閉</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
+    <value>請在語音設定中開啟語音轉文字，然後下載語音模型，才能在聊天中使用麥克風。</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
+    <value>需要語音模型</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
+    <value>語音轉文字已開啟，但至少下載一個語音模型後，語音輸入才會運作。</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
+    <value>開啟語音和音訊設定</value>
+  </data>
+  <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
+    <value>關閉</value>
+  </data>
   <data name="VoiceSettingsPage_ButtonReDownload" xml:space="preserve">
     <value>é‡æ–°ä¸‹è¼‰</value>
   </data>

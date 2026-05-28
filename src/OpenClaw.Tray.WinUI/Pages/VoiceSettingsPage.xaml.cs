@@ -166,6 +166,8 @@ public sealed partial class VoiceSettingsPage : Page
         CurrentApp.Settings.NodeSttEnabled = SttEnabledToggle.IsOn;
         CurrentApp.Settings.Save();
         UpdateCardVisibility();
+        UpdateModelStatus();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
     }
 
     private void OnModelChanged(object sender, SelectionChangedEventArgs e)
@@ -212,7 +214,13 @@ public sealed partial class VoiceSettingsPage : Page
         CurrentApp.Settings.Save();
     }
 
-    private async void OnDownloadClick(object sender, RoutedEventArgs e)
+    private void OnDownloadClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnDownloadClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnDownloadClick));
+
+    private async Task OnDownloadClickAsync()
     {
         if (CurrentApp.Settings == null) return;
 
@@ -296,7 +304,7 @@ public sealed partial class VoiceSettingsPage : Page
 
     // â”€â”€ TTS Voice Selection â”€â”€
 
-    private async void OnTestVoiceClick(object sender, RoutedEventArgs e)
+    private void OnTestVoiceClick(object sender, RoutedEventArgs e)
     {
         if (CurrentApp.Settings == null) return;
 
@@ -310,7 +318,13 @@ public sealed partial class VoiceSettingsPage : Page
         InlineTestPillHost.Visibility = Visibility.Collapsed;
     }
 
-    private async void OnInlineTestCloseClick(object sender, RoutedEventArgs e)
+    private void OnInlineTestCloseClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnInlineTestCloseClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnInlineTestCloseClick));
+
+    private async Task OnInlineTestCloseClickAsync()
     {
         await StopInlineTestAsync();
         InlineTestArea.Visibility = Visibility.Collapsed;
@@ -382,7 +396,13 @@ public sealed partial class VoiceSettingsPage : Page
         InlineTestPillHost.Children.Add(_inlineTestPillContainer);
     }
 
-    private async void OnInlineTestStartClick(object sender, RoutedEventArgs e)
+    private void OnInlineTestStartClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnInlineTestStartClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnInlineTestStartClick));
+
+    private async Task OnInlineTestStartClickAsync()
     {
         if (CurrentApp.Settings == null) return;
         InlineTestStartBtn.IsEnabled = false;
@@ -617,7 +637,13 @@ public sealed partial class VoiceSettingsPage : Page
         PiperDownloadProgress.Visibility = Visibility.Collapsed;
     }
 
-    private async void OnPiperDownloadClick(object sender, RoutedEventArgs e)
+    private void OnPiperDownloadClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnPiperDownloadClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnPiperDownloadClick));
+
+    private async Task OnPiperDownloadClickAsync()
     {
         if (CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
@@ -704,7 +730,13 @@ public sealed partial class VoiceSettingsPage : Page
         }
     }
 
-    private async void OnPiperPreviewClick(object sender, RoutedEventArgs e)
+    private void OnPiperPreviewClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnPiperPreviewClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnPiperPreviewClick));
+
+    private async Task OnPiperPreviewClickAsync()
     {
         if (CurrentApp.Settings == null) return;
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
@@ -808,7 +840,13 @@ public sealed partial class VoiceSettingsPage : Page
         }
     }
 
-    private async void OnPreviewVoiceClick(object sender, RoutedEventArgs e)
+    private void OnPreviewVoiceClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnPreviewVoiceClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnPreviewVoiceClick));
+
+    private async Task OnPreviewVoiceClickAsync()
     {
         if (CurrentApp.Settings == null) return;
 

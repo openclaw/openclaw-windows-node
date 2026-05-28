@@ -363,7 +363,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return null;
     }
 
-    protected override async void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnLaunchedAsync(args),
+            new AppLogger(),
+            nameof(OnLaunched));
+
+    private async Task OnLaunchedAsync(LaunchActivatedEventArgs args)
     {
         _startupArgs = Environment.GetCommandLineArgs();
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
@@ -477,9 +483,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Initialize tray icon FIRST (window-less pattern from WinUIEx).
         // The tray is application chrome and must always survive any failure
-        // in the onboarding wizard. OnLaunched is async void, so a synchronous
-        // throw inside the OnboardingWindow constructor would otherwise
-        // propagate through `await ShowOnboardingAsync()` and abort OnLaunched
+        // in the onboarding wizard. OnLaunched delegates through a guarded
+        // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
         InitializeTrayIcon();
         // Apply the user's saved default chat preset (if any) before any chat
@@ -839,7 +844,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowTrayMenuPopup();
     }
 
-    private async void ShowTrayMenuPopup()
+    private void ShowTrayMenuPopup()
     {
         try
         {
@@ -3168,7 +3173,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
 
-    private async void ToggleChannel(string channelName)
+    private void ToggleChannel(string channelName) =>
+        AsyncEventHandlerGuard.Run(
+            () => ToggleChannelAsync(channelName),
+            new AppLogger(),
+            nameof(ToggleChannel));
+
+    private async Task ToggleChannelAsync(string channelName)
     {
         var client = _connectionManager?.OperatorClient;
         if (client == null) return;
@@ -4083,56 +4094,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    #region Toast Activation
-
-    private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args)
-    {
-        var arguments = ToastArguments.Parse(args.Argument);
-        
-        if (arguments.TryGetValue("action", out var action))
-        {
-            OnUiThread(() =>
-            {
-                switch (action)
-                {
-                    case "open_url" when arguments.TryGetValue("url", out var url):
-                        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-                        catch { }
-                        break;
-                    case "open_dashboard":
-                        OpenDashboard();
-                        break;
-                    case "open_settings":
-                        ShowSettings();
-                        break;
-                    case "open_chat":
-                        ShowWebChat();
-                        break;
-                    case "open_activity":
-                        // ActivityPage removed — redirect to Channels.
-                        ShowHub("channels");
-                        break;
-                    case "copy_pairing_command" when arguments.TryGetValue("command", out var command):
-                        CopyTextToClipboard(command);
-                        _toastService!.ShowToast(new ToastContentBuilder()
-                            .AddText(LocalizationHelper.GetString("Toast_PairingCommandCopied"))
-                            .AddText(command));
-                        break;
-                }
-            });
-        }
-    }
-
-    public static void CopyTextToClipboard(string text)
-    {
-        ClipboardHelper.CopyText(text);
-    }
-
-    #endregion
-
     #region Exit
 
     private void ExitApplication()
+    {
+        _ = ExitApplicationAsync();
+    }
+
+    private async Task ExitApplicationAsync()
     {
         if (_isExiting)
         {
@@ -4158,10 +4127,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         });
 
         // Dispose runtime services
-        SafeShutdownStep("gateway client", () =>
+        var connectionManager = _connectionManager;
+        if (connectionManager != null)
         {
-            _connectionManager?.Dispose();
-        });
+            await SafeShutdownStepAsync("gateway client", async () =>
+            {
+                await connectionManager.DisposeAsync();
+            });
+            _connectionManager = null;
+        }
 
         SafeShutdownStep("chat coordinator", () =>
         {
@@ -4169,17 +4143,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _chatCoordinator = null;
         });
 
-        SafeShutdownStep("node service", () =>
+        var nodeService = _nodeService;
+        if (nodeService != null)
         {
-            _nodeService?.Dispose();
+            await SafeShutdownStepAsync("node service", async () =>
+            {
+                await nodeService.DisposeAsync();
+            });
             _nodeService = null;
-        });
+        }
 
-        SafeShutdownStep("standalone voice service", () =>
+        var standaloneVoiceService = _standaloneVoiceService;
+        if (standaloneVoiceService != null)
         {
-            _standaloneVoiceService?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            await SafeShutdownStepAsync("standalone voice service", async () =>
+            {
+                await standaloneVoiceService.DisposeAsync();
+            });
             _standaloneVoiceService = null;
-        });
+        }
 
         SafeShutdownStep("ssh tunnel service", () =>
         {
@@ -4237,6 +4219,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Shutdown: disposing {name}");
             action();
+            Logger.Info($"Shutdown: disposed {name}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
+        }
+    }
+
+    private static async Task SafeShutdownStepAsync(string name, Func<Task> action)
+    {
+        try
+        {
+            Logger.Info($"Shutdown: disposing {name}");
+            await action();
             Logger.Info($"Shutdown: disposed {name}");
         }
         catch (Exception ex)
@@ -4303,7 +4299,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    private async void OnSshTunnelExited(object? sender, int exitCode)
+    private void OnSshTunnelExited(object? sender, int exitCode) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnSshTunnelExitedAsync(exitCode),
+            new AppLogger(),
+            nameof(OnSshTunnelExited));
+
+    private async Task OnSshTunnelExitedAsync(int exitCode)
     {
         Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
         _sshTunnelService?.MarkRestarting(exitCode);

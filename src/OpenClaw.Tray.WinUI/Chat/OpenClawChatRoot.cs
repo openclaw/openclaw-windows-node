@@ -307,12 +307,24 @@ public sealed class OpenClawChatRoot : Component
         // restore the per-agent name here.
         const string assistantSenderLabel = "Assistant";
 
-        // Show inline "thinking" indicator when the turn is active but the
-        // last visible entry is NOT an assistant block yet — i.e. we're between
-        // the user's send and the first assistant delta arriving.
-        var showThinking = timeline.TurnActive
-            && (timeline.Entries.Count == 0
-                || timeline.Entries[timeline.Entries.Count - 1].Kind != ChatTimelineItemKind.Assistant);
+        // Show inline "thinking" indicator only until this turn has an
+        // assistant bubble. Tool calls can arrive before the first assistant
+        // delta; those should nest under the thinking bubble instead of
+        // suppressing it. Once an assistant entry exists in the current turn,
+        // tool calls nest there and the thinking placeholder goes away.
+        var currentTurnHasAssistant = false;
+        for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+        {
+            var kind = timeline.Entries[i].Kind;
+            if (kind == ChatTimelineItemKind.User)
+                break;
+            if (kind == ChatTimelineItemKind.Assistant)
+            {
+                currentTurnHasAssistant = true;
+                break;
+            }
+        }
+        var showThinking = timeline.TurnActive && !currentTurnHasAssistant;
 
         // Apply preview-state overrides for the four data-dependent states.
         // These mutate locals only — real provider data on disk is untouched.
@@ -524,6 +536,7 @@ public sealed class OpenClawChatRoot : Component
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: effectiveThread.Model,
                 ShowThinkingIndicator: showThinking,
+                EnableExplorationControls: _provider is FakeChatDataProvider,
                 OnReadAloud: _onReadAloud is not null
                     ? (text => _onReadAloud(text))
                     : null,
