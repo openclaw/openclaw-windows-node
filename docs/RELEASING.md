@@ -27,6 +27,27 @@ git push origin vX.Y.Z-alpha.1
 
 The stable MSIX package identity is `OpenClaw.Companion`. Alpha-tagged MSIX packages are patched during CI to use `OpenClaw.Companion.Alpha`, which lets testers install the signed alpha package without upgrading a stable MSIX install.
 
+## Alpha update testing
+
+Normal update checks stay on stable releases. To test alpha release updates from a local Release build, isolate the run and opt into the alpha update channel before launching:
+
+```powershell
+$env:OPENCLAW_TRAY_DATA_DIR = "$env:TEMP\OpenClawTray-alpha-test"
+$env:OPENCLAW_UPDATE_CHANNEL = "alpha"
+.\run-app-local.ps1 -Configuration Release -AllowNonMaster
+```
+
+`OPENCLAW_UPDATE_CHANNEL=alpha` enables pre-release checks and release-list fetching. The in-app updater downloads ZIP assets only; MSIX alpha packages are installed or sideloaded separately under the `OpenClaw.Companion.Alpha` identity.
+
+To force a local lower-version baseline against an already-published alpha, build the Release output with an explicit older version, then launch that output:
+
+```powershell
+dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -c Release -r win-x64 -p:Version=0.5.0
+$env:OPENCLAW_TRAY_DATA_DIR = "$env:TEMP\OpenClawTray-alpha-test"
+$env:OPENCLAW_UPDATE_CHANNEL = "alpha"
+.\run-app-local.ps1 -Configuration Release -NoBuild -AllowNonMaster
+```
+
 ## Why this is the correct flow
 
 - `GitVersion.yml` is configured for `ContinuousDelivery` with `tag-prefix: 'v'`.

@@ -29,10 +29,10 @@ public static class AppVersionInfo
     /// </summary>
     internal static string? TestOverride { get; set; }
 
-    /// <summary>Bare version string, e.g. <c>"0.4.7"</c>.</summary>
+    /// <summary>Bare version string, e.g. <c>"0.6.0-alpha.1"</c>.</summary>
     public static string Version => TestOverride ?? _version;
 
-    /// <summary>Version prefixed with <c>v</c>, e.g. <c>"v0.4.7"</c>.</summary>
+    /// <summary>Version prefixed with <c>v</c>, e.g. <c>"v0.6.0-alpha.1"</c>.</summary>
     public static string DisplayVersion => "v" + Version;
 
     private static string ResolveVersion()
@@ -48,7 +48,7 @@ public static class AppVersionInfo
                 ?.InformationalVersion;
             if (!string.IsNullOrWhiteSpace(informational))
             {
-                return NormalizeSemVer(informational);
+                return NormalizeInformationalVersion(informational);
             }
 
             var name = assembly.GetName().Version;
@@ -82,20 +82,12 @@ public static class AppVersionInfo
         return null;
     }
 
-    private static string NormalizeSemVer(string s)
+    internal static string NormalizeInformationalVersion(string s)
     {
-        // Strip SourceLink build metadata, e.g. "0.4.7+abc123" -> "0.4.7".
+        // Strip SourceLink build metadata, e.g. "0.6.0-alpha.1+abc123" -> "0.6.0-alpha.1".
         var plus = s.IndexOf('+');
         if (plus >= 0) s = s.Substring(0, plus);
-
-        // Strip the SemVer pre-release suffix, e.g. "0.4.7-beta.1" -> "0.4.7".
-        // This keeps the UI string aligned with Updatum, which compares the
-        // numeric AssemblyVersion only. Revisit if pre-release labels should
-        // ever be surfaced to users.
-        var dash = s.IndexOf('-');
-        if (dash >= 0) s = s.Substring(0, dash);
 
         return s;
     }
 }
-

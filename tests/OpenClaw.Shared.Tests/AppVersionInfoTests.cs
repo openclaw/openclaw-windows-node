@@ -67,10 +67,23 @@ public sealed class AppVersionInfoTests : IDisposable
     [Theory]
     [InlineData("1.2.3", "1.2.3")]
     [InlineData("0.4.7", "0.4.7")]
+    [InlineData("0.6.0-alpha.1", "0.6.0-alpha.1")]
     [InlineData("10.0.0", "10.0.0")]
     public void DisplayVersion_AlwaysEqualsVPlusVersion(string version, string expected)
     {
         AppVersionInfo.TestOverride = version;
         Assert.Equal("v" + expected, AppVersionInfo.DisplayVersion);
+    }
+
+    [Theory]
+    [InlineData("0.6.0", "0.6.0")]
+    [InlineData("0.6.0+abc123", "0.6.0")]
+    [InlineData("0.6.0-alpha.1", "0.6.0-alpha.1")]
+    [InlineData("0.6.0-alpha.1+abc123", "0.6.0-alpha.1")]
+    public void NormalizeInformationalVersion_StripsBuildMetadataButKeepsPreRelease(
+        string input,
+        string expected)
+    {
+        Assert.Equal(expected, AppVersionInfo.NormalizeInformationalVersion(input));
     }
 }

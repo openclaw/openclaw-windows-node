@@ -54,6 +54,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayNavVisibilityDebouncePolicy.cs" Link="Services\GatewayNavVisibilityDebouncePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeInvokeActivityFormatter.cs" Link="Services\NodeInvokeActivityFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeCapabilityGating.cs" Link="Services\NodeCapabilityGating.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateChannelPolicy.cs" Link="Services\UpdateChannelPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ToastActivationRouter.cs" Link="Services\ToastActivationRouter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />

@@ -32,9 +32,12 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
+    internal static readonly UpdateChannelSettings UpdateChannel = UpdateChannelPolicy.Resolve();
     internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
     {
-        FetchOnlyLatestRelease = true,
+        FetchOnlyLatestRelease = UpdateChannel.FetchOnlyLatestRelease,
+        AllowPreReleases = UpdateChannel.AllowPreReleases,
+        AssetExtensionFilter = UpdateChannel.AssetExtensionFilter,
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
     };
 

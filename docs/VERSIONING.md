@@ -6,10 +6,10 @@ This project uses GitVersion for automatic semantic versioning based on git tags
 
 ### Version Properties in .csproj
 
-The project file (`OpenClaw.Tray.WinUI.csproj`) defines only the `<Version>` property:
+The project file (`OpenClaw.Tray.WinUI.csproj`) defines only the `<Version>` property. CI release builds override this value from the pushed tag; the checked-in value is the local-development fallback:
 
 ```xml
-<Version>0.3.0</Version>
+<Version>0.6.0-alpha.1</Version>
 ```
 
 Other version-related properties (`FileVersion` and `AssemblyVersion`) are **not** explicitly set in the csproj files. This is intentional.
@@ -17,9 +17,9 @@ Other version-related properties (`FileVersion` and `AssemblyVersion`) are **not
 ### Automatic Version Derivation
 
 When only `<Version>` is set in a .NET project:
-- **AssemblyVersion**: Automatically set to the numeric part of `Version` (e.g., `0.3.0` → `0.3.0.0`)
-- **FileVersion**: Automatically set to the numeric part of `Version` (e.g., `0.3.0` → `0.3.0.0`)
-- **InformationalVersion**: Set to the full `Version` value including suffixes (e.g., `0.3.0-beta.1`)
+- **AssemblyVersion**: Automatically set to the numeric part of `Version` (e.g., `0.6.0-alpha.1` -> `0.6.0.0`)
+- **FileVersion**: Automatically set to the numeric part of `Version` (e.g., `0.6.0-alpha.1` -> `0.6.0.0`)
+- **InformationalVersion**: Set to the full `Version` value including suffixes (e.g., `0.6.0-alpha.1`)
 
 This ensures all version properties stay in sync automatically.
 
@@ -31,7 +31,7 @@ During CI builds (`.github/workflows/ci.yml`), GitVersion determines the semanti
 dotnet build -p:Version=${{ needs.test.outputs.semVer }}
 ```
 
-This `-p:Version=...` argument overrides the `<Version>` property in the csproj, and consequently also sets `FileVersion` and `AssemblyVersion` to match.
+This `-p:Version=...` argument overrides the `<Version>` property in the csproj, and consequently also sets `FileVersion`, `AssemblyVersion`, and `InformationalVersion` from the release tag.
 
 ### Auto-Updater Version Detection
 
@@ -41,7 +41,9 @@ The Updatum auto-updater determines the current application version by reading t
 Assembly.GetExecutingAssembly().GetName().Version
 ```
 
-This is why it's critical that `AssemblyVersion` (and `FileVersion`) match the semantic version - otherwise, the updater will get confused and keep offering the same update repeatedly.
+This is why it's critical that `AssemblyVersion` (and `FileVersion`) match the numeric release version - otherwise, the updater will get confused and keep offering the same update repeatedly. Pre-release labels are preserved in `InformationalVersion` for display and diagnostics, but the updater's comparison is numeric.
+
+Stable update checks use GitHub's latest release endpoint and ignore pre-releases. Alpha testing is opt-in: set `OPENCLAW_UPDATE_CHANNEL=alpha` before launching a Release build. That enables Updatum pre-release checks and makes it fetch the release list instead of only the latest stable release. The updater is also constrained to `.zip` release assets, because the portable ZIP payloads are the assets intended for in-app replacement; MSIX packages are installed/sideloaded separately.
 
 ## Historical Issue
 
@@ -79,8 +81,8 @@ By removing the hardcoded `FileVersion` and `AssemblyVersion` properties, they n
 
 `src/OpenClaw.Shared/AppVersionInfo.cs` exposes:
 
-- `AppVersionInfo.Version` → bare string, e.g. `"0.4.7"`
-- `AppVersionInfo.DisplayVersion` → `"v"` prefix, e.g. `"v0.4.7"`
+- `AppVersionInfo.Version` -> bare string, e.g. `"0.6.0-alpha.1"`
+- `AppVersionInfo.DisplayVersion` -> `"v"` prefix, e.g. `"v0.6.0-alpha.1"`
 
 It resolves the version by:
 
@@ -88,8 +90,8 @@ It resolves the version by:
    still report the tray's version rather than the testhost / dotnet host).
 2. Falling back to `Assembly.GetEntryAssembly()`, then to the Shared assembly.
 3. Reading `AssemblyInformationalVersionAttribute` (preferred) or `AssemblyVersion`.
-4. Stripping SourceLink build metadata (`+abc123`) **and** the SemVer pre-release suffix (`-beta.1`) so the
-   displayed value matches what Updatum compares (Updatum reads the numeric `AssemblyVersion` only).
+4. Stripping SourceLink build metadata (`+abc123`) while preserving SemVer pre-release suffixes (`-alpha.1`) so
+   alpha builds are visibly identifiable in About, diagnostics, handshakes, and update-check status.
 
 For tests that need a deterministic value regardless of host process, set the `internal` test hook:
 
