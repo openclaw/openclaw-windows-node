@@ -895,14 +895,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
 
-        ClearPendingPermissionAndPublish(threadId, expectedRequestId: requestId);
+        ClearPendingPermissionAndPublish(threadId, expectedRequestId: requestId,
+            decision: allow ? ChatPermissionDecision.Allowed : ChatPermissionDecision.Denied);
     }
 
     // expectedRequestId: when non-null, the clear is a no-op unless the
     // currently-pending banner's RequestId matches. This protects against
     // the responder-race where a fresh approval arrives between the
     // user's tap and the post-send clear.
-    private void ClearPendingPermissionAndPublish(string threadId, string? expectedRequestId = null)
+    //
+    // decision: terminal state to stamp on the matching inline timeline
+    // entry. The user's local Allow/Deny click passes Allowed/Denied so
+    // the bubble collapses to the correct badge immediately. The
+    // backstop path triggered by the gateway echo passes Expired, which
+    // only takes effect if the user hasn't already decided locally
+    // (ResolvePermission protects already-decided entries).
+    private void ClearPendingPermissionAndPublish(string threadId, string? expectedRequestId = null,
+        ChatPermissionDecision decision = ChatPermissionDecision.Expired)
     {
         ChatDataSnapshot snapshot;
         lock (_gate)
@@ -919,8 +928,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 Logger.Info($"[Approval] clear skipped — pending is '{current.PendingPermission.RequestId}', expected '{expectedRequestId}' (newer approval superseded)");
                 return;
             }
-            Logger.Info($"[Approval] clearing PendingPermission requestId='{current.PendingPermission.RequestId}' on thread='{threadId}'");
-            _timelines[threadId] = ChatTimelineReducer.ClearPermission(current);
+            Logger.Info($"[Approval] clearing PendingPermission requestId='{current.PendingPermission.RequestId}' on thread='{threadId}' decision={decision}");
+            _timelines[threadId] = ChatTimelineReducer.ResolvePermission(current, current.PendingPermission.RequestId, decision);
             snapshot = BuildSnapshotLocked();
         }
         Publish(snapshot);

@@ -382,6 +382,20 @@ public sealed class OpenClawChatRoot : Component
                     PermissionKind: "execute",
                     ToolName: "shell",
                     Detail: "Run `git status` in the current repo.");
+                // Approval UI now lives in the timeline (not a composer
+                // banner), so the preview state needs a synthetic
+                // PermissionRequest entry to make the inline bubble visible.
+                entries = new[]
+                {
+                    new ChatTimelineItem(
+                        "preview-perm-entry",
+                        ChatTimelineItemKind.PermissionRequest,
+                        "Run `git status` in the current repo.",
+                        ToolName: "shell",
+                        IntentSummary: "execute",
+                        PermissionRequestId: "preview-perm",
+                        PermissionDecision: ChatPermissionDecision.Pending)
+                };
                 break;
 
             case ChatPreviewState.Reconnecting:
@@ -406,6 +420,12 @@ public sealed class OpenClawChatRoot : Component
         // the welcome screen doesn't flicker on top of an as-yet
         // unloaded timeline. See OpenClawChatDataProvider.HistoryLoaded
         // — set to true only inside LoadHistoryAsync's rebuild.
+        // Note: `pendingPermissionOverride is null` is now redundant for
+        // live data — the reducer's ApplyPermissionRequest pushes a
+        // PermissionRequest timeline entry whenever PendingPermission is
+        // set, so `entries.Count > 0` already covers that case. The guard
+        // remains as a defensive check for preview/explorations paths
+        // that may seed PendingPermission without populating entries.
         var isEmptyConversation = entries.Count == 0
             && !showThinking
             && pendingPermissionOverride is null;
@@ -541,7 +561,8 @@ public sealed class OpenClawChatRoot : Component
                     ? (text => _onReadAloud(text))
                     : null,
                 OnStopSpeaking: _onStopSpeaking,
-                ScrollToBottomToken: scrollToBottomToken.Value));
+                ScrollToBottomToken: scrollToBottomToken.Value,
+                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id!, rid, allow)));
         }
 
         // Session list for the composer dropdown — grouped by agent, keyed by
@@ -594,7 +615,6 @@ public sealed class OpenClawChatRoot : Component
             ? Component<OpenClawComposer, OpenClawComposerProps>(new(
                 ConnectionState: connState,
                 TurnActive: turnActiveOverride,
-                PendingPermission: pendingPermissionOverride,
                 ChannelLabel: effectiveThread.Title ?? "OpenClaw Windows Tray",
                 ChannelId: effectiveThread.Id!,
                 AvailableChannels: channelGroups,
@@ -607,7 +627,6 @@ public sealed class OpenClawChatRoot : Component
                     OnSend(effectiveThread.Id!, msg, att);
                 },
                 OnStop: () => OnStop(effectiveThread.Id!),
-                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id!, rid, allow),
                 OnChannelChanged: id =>
                 {
                     selectedIdState.Set(id);
