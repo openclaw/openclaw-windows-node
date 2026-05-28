@@ -43,6 +43,10 @@
                     <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
                                FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
                                Foreground="#FF6B6B" />
+                    <HyperlinkButton x:Name="HelpLink"
+                                     Visibility="Collapsed"
+                                     Padding="0"
+                                     FontSize="13" />
                     <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
                                      Click="ViewLog_Click" Padding="0"
                                      FontSize="13" />

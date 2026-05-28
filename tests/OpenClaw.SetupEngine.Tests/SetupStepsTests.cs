@@ -237,6 +237,7 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("Update WSL", result.Message);
+        Assert.Contains(WslInstallSupport.UpdateUrl, result.Message);
     }
 
     [Fact]
@@ -252,7 +253,7 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("too old", result.Message);
-        Assert.Contains("wsl --update", result.Message);
+        Assert.Contains(WslInstallSupport.UpdateUrl, result.Message);
     }
 
     [Fact]
@@ -320,6 +321,83 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("download failed", result.Message);
+        Assert.DoesNotContain(commands.Calls, c => c.Arguments.SequenceEqual(["--shutdown"]));
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_PartialCleanupSkipsInstallPathDeleteWhenDistroStateIsUnknown()
+    {
+        var listCalls = 0;
+        var installPath = "";
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                listCalls++;
+                return listCalls == 1 ? Ok("") : Fail("list failed");
+            }
+            if (args.Contains("--install"))
+            {
+                Directory.CreateDirectory(installPath);
+                File.WriteAllText(Path.Combine(installPath, "ext4.vhdx"), "partial");
+                return Fail("download failed");
+            }
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]))
+                return Fail("terminate unavailable");
+            if (args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+                return Fail("unregister unavailable");
+            if (args.SequenceEqual(["--shutdown"]))
+                return Ok();
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+        installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+
+        var result = await new CreateWslInstanceStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("download failed", result.Message);
+        Assert.Contains("could not confirm whether distro 'OpenClawGateway' is still registered", result.Message);
+        Assert.Contains("skipped deleting app-owned install path", result.Message);
+        Assert.True(File.Exists(Path.Combine(installPath, "ext4.vhdx")));
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_PartialCleanupDeletesInstallPathWhenListFailsButDistroIsAlreadyGone()
+    {
+        var listCalls = 0;
+        var installPath = "";
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                listCalls++;
+                return listCalls == 1 ? Ok("") : Fail("list failed");
+            }
+            if (args.Contains("--install"))
+            {
+                Directory.CreateDirectory(installPath);
+                File.WriteAllText(Path.Combine(installPath, "ext4.vhdx"), "partial");
+                return Fail("download failed");
+            }
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]) ||
+                args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+            {
+                return Fail("There is no distribution with the supplied name.");
+            }
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+        installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+
+        var result = await new CreateWslInstanceStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("download failed", result.Message);
+        Assert.DoesNotContain("Partial app-owned distro cleanup also failed", result.Message);
+        Assert.False(Directory.Exists(installPath));
         Assert.DoesNotContain(commands.Calls, c => c.Arguments.SequenceEqual(["--shutdown"]));
     }
 
