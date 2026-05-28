@@ -267,7 +267,9 @@ if ($failCount -eq 0) {
             $winUIOutputDirectory = ".\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid"
             $winUIManifestPath = ".\$winUIProjectDirectory\Package.appxmanifest"
             Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild" -ForegroundColor White
-            Write-Host "            winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --debug-output" -ForegroundColor DarkGray
+            Write-Host "  Isolated: .\run-app-local.ps1 -NoBuild -Isolated" -ForegroundColor White
+            Write-Host "  WinApp:   .\run-app-local.ps1 -NoBuild -UseWinApp" -ForegroundColor White
+            Write-Host "            Direct launch is default. -UseWinApp runs: winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --debug-output" -ForegroundColor DarkGray
         } else {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
         }
