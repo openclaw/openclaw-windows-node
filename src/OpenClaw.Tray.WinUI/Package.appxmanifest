@@ -86,10 +86,9 @@
              also update the COM class Id below to match (Windows refuses to
              register the toast activator if the two drift).
 
-             Note: we declare the activator but do NOT currently consume click
-             callbacks (no CoRegisterClassObject in App.OnLaunched yet). Toast
-             clicks therefore just open / activate the tray via the standard
-             single-instance path. Wiring click handlers is a follow-up. -->
+              Toast click callbacks are routed through
+              ToastNotificationManagerCompat.OnActivated in App.ToastActivation.cs.
+              Cold activations still use the normal single-instance path. -->
         <com:Extension Category="windows.comServer">
           <com:ComServer>
             <com:ExeServer Executable="OpenClaw.Tray.WinUI.exe"

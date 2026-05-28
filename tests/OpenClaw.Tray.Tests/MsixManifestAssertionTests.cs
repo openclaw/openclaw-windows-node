@@ -165,6 +165,8 @@ public sealed class MsixManifestAssertionTests
         var project = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
         Assert.Contains("openclaw.appinstaller", project);
+        Assert.Contains("ValidateEmbeddedAppInstaller", project);
+        Assert.Contains("MSIX packaging requires src\\OpenClaw.Tray.WinUI\\openclaw.appinstaller", project);
     }
 
     [Fact]

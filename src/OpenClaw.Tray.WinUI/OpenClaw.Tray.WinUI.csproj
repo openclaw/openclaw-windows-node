@@ -194,6 +194,10 @@
     <SyncAppxManifestVersion ManifestPath="$(_AppxManifestPath)" FourPartVersion="$(_AppxManifestVersion)" />
   </Target>
 
+  <Target Name="ValidateEmbeddedAppInstaller" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" Condition="'$(PackageMsix)' == 'true'">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)openclaw.appinstaller')" Text="MSIX packaging requires src\OpenClaw.Tray.WinUI\openclaw.appinstaller because Package.appxmanifest declares uap13:AutoUpdate. Render it with scripts\render-appinstaller.ps1 before building the MSIX." />
+  </Target>
+
   <!-- Fail fast on RIDs we have no wxc-exec binary for, so x86/non-Windows
        builds don't silently fall back to x64 and ship a broken sandbox.
        Suppress with -p:VerifyWxcExecShipped=false for SDK-less unit-test builds. -->
