@@ -505,6 +505,106 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(2, distroVersion);
     }
 
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_DetectsFirmwareVirtualizationOff()
+    {
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(
+            "WSL2 is unable to start since virtualization is not enabled on this machine. "
+            + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
+            + "and virtualization is turned on in your computer's firmware settings.",
+            out var message));
+        Assert.Contains("BIOS", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_DetectsCanonical0x80370102Error()
+    {
+        // This is the actual error wsl.exe emits on modern Windows builds when
+        // the Virtual Machine Platform / Hyper-V feature is disabled.
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(
+            "WSL 2 requires an update to its kernel component.\n"
+            + "For information please visit https://aka.ms/wsl2kernel\n"
+            + "Error: 0x80370102 The virtual machine could not be started because a "
+            + "required feature is not installed.",
+            out var message));
+        Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", message);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_ReturnsFalseForHealthyStatus()
+    {
+        Assert.False(WslInstallSupport.TryGetEnvironmentIssue(
+            "Default Distribution: OpenClawGateway\nDefault Version: 2\n",
+            out var message));
+        Assert.Equal(string.Empty, message);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_FailsTerminalWhenVirtualizationDisabledInFirmware()
+    {
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args is ["--version"])
+                return Ok("WSL version: 2.7.3.0\n");
+            if (args is ["--status"])
+                return Ok(
+                    "WSL2 is unable to start since virtualization is not enabled on this machine. "
+                    + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
+                    + "and virtualization is turned on in your computer's firmware settings.");
+            return Ok();
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("BIOS", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_FailsTerminalWhenWslEmitsHcsServiceNotAvailable()
+    {
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args is ["--version"])
+                return Ok("WSL version: 2.7.3.0\n");
+            if (args is ["--status"])
+                return Ok(
+                    "WSL 2 requires an update to its kernel component.\n"
+                    + "Error: 0x80370102 The virtual machine could not be started because a "
+                    + "required feature is not installed.");
+            return Ok();
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Virtual Machine Platform", result.Message);
+        Assert.Contains("wsl --install --no-distribution", result.Message);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_SucceedsWhenStatusOutputIsHealthy()
+    {
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args is ["--version"])
+                return Ok("WSL version: 2.7.3.0\n");
+            if (args is ["--status"])
+                return Ok("Default Distribution: OpenClawGateway\nDefault Version: 2\n");
+            return Ok();
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+    }
+
     private static int GetFreeTcpPort()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
