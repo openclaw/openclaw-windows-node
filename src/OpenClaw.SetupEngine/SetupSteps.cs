@@ -1653,6 +1653,10 @@ public sealed class PairNodeStep : SetupStep
             return StepResult.Fail($"Gateway not reachable before node pairing: {ex.Message}");
         }
 
+        var drainResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, ct);
+        if (!drainResult.IsSuccess)
+            return drainResult;
+
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         WindowsNodeClient? client = null;
 
@@ -2004,12 +2008,12 @@ public sealed class VerifyEndToEndStep : SetupStep
         return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
     }
 
-    private static async Task<StepResult> DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
+    internal static async Task<StepResult> DrainPendingDeviceApprovalsAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
         if (string.IsNullOrWhiteSpace(token))
-            return StepResult.Fail("No gateway token available to drain pending approvals");
+            return StepResult.Fail("No gateway token available to drain pending device approvals");
 
         var pathPrefix = ctx.WslPathPrefix;
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
@@ -2062,6 +2066,24 @@ public sealed class VerifyEndToEndStep : SetupStep
 
             return StepResult.Fail($"Could not select pending device approval for drain (exit {preview.ExitCode}): {parsed.Error ?? preview.Stderr.Trim()}");
         }
+
+        return StepResult.Ok("Pending device approvals drained");
+    }
+
+    private static async Task<StepResult> DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var deviceDrainResult = await DrainPendingDeviceApprovalsAsync(ctx, ct);
+        if (!deviceDrainResult.IsSuccess)
+            return deviceDrainResult;
+
+        var distro = ctx.DistroName!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return StepResult.Fail("No gateway token available to drain pending approvals");
+
+        var pathPrefix = ctx.WslPathPrefix;
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        const int maxDrainIterations = 10;
 
         for (var i = 0; i < maxDrainIterations; i++)
         {
