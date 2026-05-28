@@ -344,6 +344,10 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 Output/
+publish-local-*/
+publish-local-setup-*/
+publish-sandbox-*/
+publish-sandbox-setup-*/
 *.lscache
 test_ws.py
 

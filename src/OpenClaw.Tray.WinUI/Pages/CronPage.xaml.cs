@@ -17,7 +17,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class CronPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private List<CronJobViewModel> _jobs = new();
     private Border? _editingCard = null; // card hidden during inline edit
@@ -40,7 +40,7 @@ public sealed partial class CronPage : Page
     public void Initialize()
     {
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         var client = CurrentApp.GatewayClient;
         if (client != null)
@@ -139,7 +139,8 @@ public sealed partial class CronPage : Page
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     _runningJobIds.Remove(jobId);
-                    _ = CurrentApp.GatewayClient?.RequestCronListAsync();
+                    var client = CurrentApp.GatewayClient;
+                    if (client != null) _ = client.RequestCronListAsync();
                 });
             }
         });
@@ -153,7 +154,8 @@ public sealed partial class CronPage : Page
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     _runningJobIds.Remove(jobId);
-                    _ = CurrentApp.GatewayClient?.RequestCronListAsync();
+                    var client = CurrentApp.GatewayClient;
+                    if (client != null) _ = client.RequestCronListAsync();
                 });
             }
         });

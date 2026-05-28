@@ -7,11 +7,6 @@
   <Folder Name="/src/">
     <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
     <Project Path="src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj" />
-    <Project Path="src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj">
-      <Platform Solution="*|Any CPU" Project="x64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-    </Project>
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
     <Project Path="src/OpenClaw.Connection/OpenClaw.Connection.csproj" />
     <Project Path="src/OpenClaw.Chat/OpenClaw.Chat.csproj">
@@ -22,12 +17,6 @@
     <Project Path="src/OpenClawTray.FunctionalUI/OpenClawTray.FunctionalUI.csproj" />
     <Project Path="src/OpenClaw.SetupEngine/OpenClaw.SetupEngine.csproj" />
     <Project Path="src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj">
-      <Platform Solution="*|Any CPU" Project="x64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-    </Project>
-    <Project Path="src/OpenClaw.SetupPreview/OpenClaw.SetupPreview.csproj">
-      <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
       <Platform Solution="*|Any CPU" Project="x64" />
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|ARM64" Project="ARM64" />

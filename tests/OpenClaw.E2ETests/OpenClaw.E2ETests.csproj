@@ -2,10 +2,14 @@
 
   <PropertyGroup>
     <!--
+      E2E tests are Windows-only: they call SetupEngine's Program.Main which
+      is marked [SupportedOSPlatform("windows")]. Override the default TFM
+      from Directory.Build.props so CA1416 doesn't fire.
       CI builds with -r win-x64 plus no-restore. Without RuntimeIdentifiers
       declared here, the top-level dotnet restore produces only default-RID
       assets and the no-restore build fails with NETSDK1047.
     -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 

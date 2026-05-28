@@ -287,7 +287,7 @@ Keep `HubWindow` as the Command Center host, with pages/sections for:
 | Agent events ring | Implemented | Activity Stream keeps a 400-event rich ring and support bundle window |
 | Permissions matrix | Implemented first slice | Command Center shows safe Windows privacy settings deep links without probing devices |
 | Onboarding security banner | Implemented | Setup Wizard warns about agent control of enabled local command/screen/camera/location/browser/canvas surfaces |
-| Debug actions | Implemented | Tray, Command Center, deep links, and PowerToys expose logs/config/diagnostics, health/update actions, managed SSH restart, support context, debug bundle, browser setup, and copyable diagnostics/summaries |
+| Debug actions | Implemented | Tray, Command Center, and deep links expose logs/config/diagnostics, health/update actions, managed SSH restart, support context, debug bundle, browser setup, and copyable diagnostics/summaries |
 | Voice/Talk | Missing | Separate roadmap track |
 | Cron/Skills settings | Missing/limited | Separate roadmap track |
 
@@ -551,4 +551,3 @@ Implement Phase 1 now:
 - Keep everything read-only and diagnostic.
 
 This is the cleanest bridge between today's working Command Center and the Mac-style Mission Control product vision. It does not require a native Windows gateway, protocol changes, or privacy-sensitive live tests.
-

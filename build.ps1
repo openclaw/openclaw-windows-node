@@ -6,7 +6,7 @@
     Builds all projects, checks prerequisites, and provides clear guidance.
 
 .PARAMETER Project
-    Which project to build: All, Tray, WinUI, Shared, CommandPalette, Cli
+    Which project to build: All, Tray, WinUI, Shared, Cli
     Default: All
 
 .PARAMETER Configuration
@@ -23,7 +23,7 @@
 #>
 
 param(
-    [ValidateSet("All", "Tray", "WinUI", "Shared", "CommandPalette", "Cli", "WinNodeCli", "SetupEngine")]
+    [ValidateSet("All", "Tray", "WinUI", "Shared", "Cli", "WinNodeCli", "SetupEngine")]
     [string]$Project = "All",
     
     [ValidateSet("Debug", "Release")]
@@ -203,7 +203,6 @@ $projects = @{
     "WinNodeCli" = @{ Path = "src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj"; UseRid = $false }
     "Tray" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
     "WinUI" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
-    "CommandPalette" = @{ Path = "src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj"; UseRid = $false }
     "SetupEngine" = @{ Path = "src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj"; UseRid = $true }
 }
 
@@ -265,7 +264,10 @@ if ($failCount -eq 0) {
         $winUIProjectDirectory = (Split-Path -Parent $winUIProjectPath).Replace("/", "\")
 
         if ($winUITargetFramework) {
-            Write-Host "  WinUI:    .\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid\OpenClaw.Tray.WinUI.exe" -ForegroundColor White
+            $winUIOutputDirectory = ".\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid"
+            $winUIManifestPath = ".\$winUIProjectDirectory\Package.appxmanifest"
+            Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild" -ForegroundColor White
+            Write-Host "            winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --debug-output" -ForegroundColor DarkGray
         } else {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
         }

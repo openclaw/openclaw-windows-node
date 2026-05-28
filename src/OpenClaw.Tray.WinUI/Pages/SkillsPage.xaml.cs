@@ -12,7 +12,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SkillsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private List<SkillData> _allSkills = new();
 
@@ -29,7 +29,7 @@ public sealed partial class SkillsPage : Page
 
     public void Initialize()
     {
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         PopulateAgentFilter();
 

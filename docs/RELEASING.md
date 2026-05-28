@@ -25,7 +25,7 @@ git tag -a vX.Y.Z-alpha.1 -m "Alpha vX.Y.Z-alpha.1"
 git push origin vX.Y.Z-alpha.1
 ```
 
-The stable MSIX package identity is `OpenClaw.Companion`. Alpha-tagged MSIX packages are patched during CI to use `OpenClaw.Companion.Alpha`, which lets testers install the signed alpha package without upgrading a stable MSIX install. Command Palette packaging remains separate from the MSIX package.
+The stable MSIX package identity is `OpenClaw.Companion`. Alpha-tagged MSIX packages are patched during CI to use `OpenClaw.Companion.Alpha`, which lets testers install the signed alpha package without upgrading a stable MSIX install.
 
 ## Why this is the correct flow
 
@@ -60,4 +60,3 @@ git push origin :refs/tags/vX.Y.Z
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
-

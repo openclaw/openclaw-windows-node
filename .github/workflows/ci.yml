@@ -42,6 +42,48 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Detect gateway LKG drift from npm latest
+      id: gateway_lkg_drift
+      continue-on-error: true
+      shell: pwsh
+      run: |
+        $sourcePath = "src/OpenClaw.SetupEngine/GatewayLkgVersion.cs"
+        $source = Get-Content -LiteralPath $sourcePath -Raw
+        $match = [regex]::Match($source, 'LkgVersion\s*=\s*"([^"]+)"')
+        if (-not $match.Success) {
+          throw "Unable to parse LKG version from $sourcePath"
+        }
+
+        $pinned = $match.Groups[1].Value
+        $latest = (Invoke-RestMethod -Uri "https://registry.npmjs.org/openclaw/latest" -TimeoutSec 30).version
+        if ([string]::IsNullOrWhiteSpace($latest)) {
+          throw "Unable to resolve npm latest version for openclaw."
+        }
+        if ($latest -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*$') {
+          throw "Resolved npm latest version has unexpected format: $latest"
+        }
+
+        "pinned=$pinned" >> $env:GITHUB_OUTPUT
+        "latest=$latest" >> $env:GITHUB_OUTPUT
+
+        if ($pinned -ne $latest) {
+          "drifted=true" >> $env:GITHUB_OUTPUT
+          Write-Host "::warning::Gateway LKG drift detected: pinned $pinned, npm latest $latest. Run gateway-lkg-update workflow to refresh the standing draft PR."
+          Write-Error "Gateway LKG drift detected (pinned $pinned, npm latest $latest)."
+          "### :warning: Gateway LKG drift detected" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Pinned LKG: $pinned" >> $env:GITHUB_STEP_SUMMARY
+          "- npm latest: $latest" >> $env:GITHUB_STEP_SUMMARY
+          "- Action: run `gateway-lkg-update` to refresh the standing draft PR." >> $env:GITHUB_STEP_SUMMARY
+          exit 1
+        } else {
+          "drifted=false" >> $env:GITHUB_OUTPUT
+          Write-Host "Gateway LKG is current ($pinned)."
+          "### Gateway LKG is current" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Pinned LKG: $pinned" >> $env:GITHUB_STEP_SUMMARY
+        }
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v5
       with:
@@ -161,14 +203,14 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.0, stable),
+    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.1, stable),
     # which looks up the framework package by identity. The hosted windows-2025
     # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 2.0.1 in the csprojs.
-    - name: Install WindowsAppRuntime 2.0.1
+    # Version pinned to match Microsoft.WindowsAppSDK 2.1.3 in the csprojs.
+    - name: Install WindowsAppRuntime 2.1.3
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe"
+        $url = "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
@@ -363,6 +405,7 @@ jobs:
         certificate-profile-name: WindowsEdgeLight
         files-folder: publish
         files-folder-filter: exe
+        files-folder-recurse: true
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
@@ -465,43 +508,9 @@ jobs:
         name: openclaw-msix-${{ matrix.rid }}
         path: ${{ steps.find-msix.outputs.msix_path }}
 
-  build-extension:
-    needs: [test, e2etests]
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        platform: [x64, arm64]
-
-    steps:
-    - uses: actions/checkout@v6
-
-    - name: Setup .NET 10
-      uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: 10.0.x
-
-    - name: Cache NuGet packages
-      uses: actions/cache@v5
-      with:
-        path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
-
-    - name: Restore Command Palette Extension
-      run: dotnet restore src/OpenClaw.CommandPalette
-
-    - name: Build Command Palette Extension
-      run: dotnet build src/OpenClaw.CommandPalette -c Debug -p:Platform=${{ matrix.platform }} --no-restore
-
-    - name: Upload Extension Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: openclaw-commandpalette-${{ matrix.platform }}
-        path: src/OpenClaw.CommandPalette/bin/${{ matrix.platform }}/Debug/
-
   release:
-    needs: [repo-hygiene, test, e2etests, build, build-msix, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
+    needs: [repo-hygiene, test, e2etests, build, build-msix]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
       actions: read
@@ -521,18 +530,6 @@ jobs:
       with:
         name: openclaw-tray-win-arm64
         path: artifacts/tray-win-arm64
-
-    - name: Download win-x64 cmdpal artifact
-      uses: actions/download-artifact@v8
-      with:
-        name: openclaw-commandpalette-x64
-        path: artifacts/cmdpal-x64
-
-    - name: Download win-arm64 cmdpal artifact
-      uses: actions/download-artifact@v8
-      with:
-        name: openclaw-commandpalette-arm64
-        path: artifacts/cmdpal-arm64
 
     - name: Download win-x64 MSIX artifact
       uses: actions/download-artifact@v8
@@ -584,6 +581,7 @@ jobs:
         certificate-profile-name: WindowsEdgeLight
         files-folder: artifacts/tray-win-arm64
         files-folder-filter: exe
+        files-folder-recurse: true
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
@@ -620,11 +618,6 @@ jobs:
         # Prepare x64 files
         mkdir publish-x64
         copy artifacts/tray-win-x64/* publish-x64/ -Recurse
-        mkdir publish-x64\cmdpal
-        $manifestFolder = Get-ChildItem -Path "artifacts/cmdpal-x64" -Recurse -Filter "AppxManifest.xml" | Select-Object -First 1
-        if ($manifestFolder) {
-          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-x64\cmdpal -Recurse
-        }
         # Build installer
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 installer.iss
 
@@ -633,11 +626,6 @@ jobs:
         # Prepare arm64 files
         mkdir publish-arm64
         copy artifacts/tray-win-arm64/* publish-arm64/ -Recurse
-        mkdir publish-arm64\cmdpal
-        $manifestFolder = Get-ChildItem -Path "artifacts/cmdpal-arm64" -Recurse -Filter "AppxManifest.xml" | Select-Object -First 1
-        if ($manifestFolder) {
-          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-arm64\cmdpal -Recurse
-        }
         # Build installer
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
 
@@ -666,8 +654,8 @@ jobs:
       with:
         generate_release_notes: true
         files: |
-          Output/OpenClawTray-Setup-x64.exe
-          Output/OpenClawTray-Setup-arm64.exe
+          Output/OpenClawCompanion-Setup-x64.exe
+          Output/OpenClawCompanion-Setup-arm64.exe
           OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
           OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
           OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix
@@ -678,8 +666,8 @@ jobs:
           ## OpenClaw Windows Hub ${{ github.ref_name }}
 
           ### Downloads
-          - **Installer (x64)**: `OpenClawTray-Setup-x64.exe` - Intel/AMD 64-bit
-          - **Installer (ARM64)**: `OpenClawTray-Setup-arm64.exe` - Windows on ARM (Surface, etc.)
+          - **Installer (x64)**: `OpenClawCompanion-Setup-x64.exe` - Intel/AMD 64-bit
+          - **Installer (ARM64)**: `OpenClawCompanion-Setup-arm64.exe` - Windows on ARM (Surface, etc.)
           - **Portable x64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip`
           - **Portable ARM64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip`
           - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` - Packaged (camera/mic consent)
@@ -687,7 +675,6 @@ jobs:
 
           ### Features
           - 🦞 System tray integration with gateway status
-          - 🎯 PowerToys Command Palette extension (optional)
           - 🔄 Auto-updates from GitHub Releases
           - ✅ Code-signed with Azure Trusted Signing
           - 📦 MSIX package available for native camera/microphone consent prompts
@@ -696,10 +683,8 @@ jobs:
           - Windows 10 version 1903 or later
           - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
           - OpenClaw gateway running locally
-          - PowerToys (for Command Palette extension)
 
           ### Quick Start
           1. Run the installer for your architecture (or sideload the MSIX for camera consent)
-          2. Optionally enable Command Palette extension during install
-          3. Launch from Start Menu or system tray
-          4. Right-click tray icon → Settings to configure
+          2. Launch from Start Menu or system tray
+          3. Right-click tray icon → Settings to configure

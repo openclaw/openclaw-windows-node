@@ -13,7 +13,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class UsagePage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private IOperatorGatewayClient? _trackedClient;
     // Default matches the XAML-selected Period7DaysItem (IsSelected="True").
@@ -41,7 +41,7 @@ public sealed partial class UsagePage : Page
     public void Initialize()
     {
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         if (CurrentApp.ConnectionManager != null)
         {

@@ -44,4 +44,100 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("var mutexName = \"OpenClawTray\";", appXamlCs);
     }
 
+    [Fact]
+    public void Installer_DoesNotShipCommandPaletteExtension()
+    {
+        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
+
+        Assert.DoesNotContain("cmdpalette", iss, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CommandPalette", iss, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Add-AppxPackage", iss, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Remove-AppxPackage", iss, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Installer_CreatesStartMenuEntrypointsForTraySetupAndSupport()
+    {
+        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
+
+        Assert.Contains(@"#define MyAppName ""OpenClaw Companion""", iss);
+        Assert.Contains(@"#define MyCompression ""lzma""", iss);
+        Assert.Contains(@"#define MySolidCompression ""yes""", iss);
+        Assert.Contains("OutputBaseFilename=OpenClawCompanion-Setup-{#MyAppArch}", iss);
+        Assert.Contains(@"Name: ""{group}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\SetupEngine\OpenClaw.SetupEngine.UI.exe""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://commandcenter""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://chat""", iss);
+        Assert.Contains(@"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://check-updates""", iss);
+    }
+
+    [Fact]
+    public void Installer_RegistersOpenClawProtocol()
+    {
+        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
+
+        Assert.Contains(@"Subkey: ""Software\Classes\openclaw""", iss);
+        Assert.Contains(@"ValueName: ""URL Protocol""", iss);
+        Assert.Contains(@"Subkey: ""Software\Classes\openclaw\shell\open\command""", iss);
+        Assert.Contains(@"{app}\{#MyAppExeName}", iss);
+        Assert.Contains(@"""%1""", iss);
+    }
+
+    [Fact]
+    public void ReleaseBuildCopiesSetupEngineIntoInstallerPayload()
+    {
+        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
+        var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+
+        Assert.Contains(@"FileExists(publish + ""\SetupEngine\OpenClaw.SetupEngine.UI.exe"")", iss);
+        Assert.Contains("Publish SetupEngine.UI", ci);
+        Assert.Contains(@"dotnet publish src/OpenClaw.SetupEngine.UI", ci);
+        Assert.Contains(@"mkdir publish\SetupEngine", ci);
+        Assert.Contains(@"copy publish-setup\* publish\SetupEngine\ -Recurse", ci);
+    }
+
+    [Fact]
+    public void MxcSdk_IsRestoredCopiedValidatedAndIncludedInInstallerPayload()
+    {
+        var repositoryRoot = GetRepositoryRoot();
+        var packageJson = File.ReadAllText(Path.Combine(repositoryRoot, "package.json"));
+        var trayProject = File.ReadAllText(Path.Combine(
+            repositoryRoot, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var iss = File.ReadAllText(Path.Combine(repositoryRoot, "installer.iss"));
+
+        Assert.Contains(@"""@microsoft/mxc-sdk""", packageJson);
+        Assert.Contains("RestoreMxcNodeBridge", trayProject);
+        Assert.Contains("npm ci --no-audit --no-fund", trayProject);
+        Assert.Contains("CopyWxcExecToOutput", trayProject);
+        Assert.Contains("CopyWxcExecToPublish", trayProject);
+        Assert.Contains("ValidateWxcExecShipped", trayProject);
+        Assert.Contains("ValidateWxcExecPublished", trayProject);
+        Assert.Contains(@"tools\mxc\$(MxcArch)\wxc-exec.exe", trayProject);
+
+        // The Inno payload recurses through the prepared publish directory, so
+        // publish-time tools\mxc\<arch>\wxc-exec.exe is shipped with the app.
+        Assert.Contains(@"Source: ""{#publish}\*""; DestDir: ""{app}""; Flags: ignoreversion recursesubdirs", iss);
+    }
+
+    [Fact]
+    public void MxcRuntime_ProbesShippedWxcExecAndSystemRunUsesIt()
+    {
+        var repositoryRoot = GetRepositoryRoot();
+        var availability = File.ReadAllText(Path.Combine(
+            repositoryRoot, "src", "OpenClaw.Shared", "Mxc", "MxcAvailability.cs"));
+        var nodeService = File.ReadAllText(Path.Combine(
+            repositoryRoot, "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+
+        Assert.Contains(@"Path.Combine(root, ""tools"", ""mxc"", arch, ""wxc-exec.exe"")", availability);
+        Assert.Contains("WxcExecOverrideEnvVar", availability);
+        Assert.Contains("node_modules", availability);
+        Assert.Contains("@microsoft", availability);
+        Assert.Contains("mxc-sdk", availability);
+
+        Assert.Contains("private ICommandRunner BuildSystemRunRunner()", nodeService);
+        Assert.Contains("MxcAvailability.Probe(_logger)", nodeService);
+        Assert.Contains("new DirectAppContainerExecutor(availability, _logger)", nodeService);
+        Assert.Contains("return new MxcCommandRunner(", nodeService);
+    }
+
 }

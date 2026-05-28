@@ -72,7 +72,7 @@ Set the `OPENCLAW_LANGUAGE` environment variable before launching the app:
 
 ```powershell
 $env:OPENCLAW_LANGUAGE = "fr-fr"  # or nl-nl, zh-cn, zh-tw
-.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\win-x64\OpenClaw.Tray.WinUI.exe
+.\run-app-local.ps1 -NoBuild
 ```
 
 This overrides `LocalizationHelper.GetString()` calls for menus, toasts, dialogs, and the onboarding wizard. The language is validated against the supported locale list.
