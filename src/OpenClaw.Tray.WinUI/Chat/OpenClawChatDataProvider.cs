@@ -1148,12 +1148,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         // Permanent low-volume trace for chat-message arrivals. One line per
         // frame the gateway sends, ordered by arrival. Includes a short
-        // FNV-1a hash so two near-duplicate frames can be told apart at a
-        // glance when hunting the duplicate-bubble bug (the reducer's
-        // identical-text safety net only catches BYTE-equal dupes; if the
-        // two frames differ by a single char the dupe survives). The hash
-        // alone is enough to tell frames apart without logging user/LLM
-        // content (PII) into the on-disk tray log.
+        // per-process-salted hash so two near-duplicate frames can be told
+        // apart at a glance when hunting the duplicate-bubble bug (the
+        // reducer's identical-text safety net only catches BYTE-equal
+        // dupes; if the two frames differ by a single char the dupe
+        // survives). The hash is seeded with a random value that rotates
+        // on every tray restart, so it cannot be reproduced from a guessed
+        // plaintext outside this process — it is a per-run frame
+        // discriminator, not a content fingerprint.
         var traceText = message.Text ?? string.Empty;
         Logger.Info(
             $"[ChatTrace] chat.message thread='{message.SessionKey}' role='{message.Role}' " +
@@ -2439,13 +2441,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     }
 
     // ── [ChatTrace] helpers ─────────────────────────────────────────────
-    // Short FNV-1a 32-bit hash of the message text. Used in trace logs to
-    // tell two near-duplicate frames apart without dumping the full text.
-    // Not a security hash; collision risk is acceptable for diagnostics.
+    // Per-process random seed for ChatTraceHash. Mixing this into the FNV
+    // initial state keeps identical-text frames colliding within a single
+    // tray run (so duplicate-bubble diagnostics still work) while making
+    // the hash useless as a content fingerprint outside this process: an
+    // attacker with the log file can no longer rebuild the hash for a
+    // guessed plaintext, and the value rotates on every tray restart.
+    private static readonly uint ChatTraceHashSeed = unchecked((uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue));
+
+    // Short FNV-1a-style 32-bit fold of the message text, seeded with a
+    // per-process random value. Used in trace logs to tell two near-
+    // duplicate frames apart at a glance without dumping the text itself.
+    // Not a security hash; not reproducible outside this process.
     private static string ChatTraceHash(string text)
     {
         if (string.IsNullOrEmpty(text)) return "00000000";
-        uint h = 2166136261u;
+        uint h = ChatTraceHashSeed;
         for (int i = 0; i < text.Length; i++)
         {
             h ^= text[i];
