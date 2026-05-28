@@ -44,7 +44,7 @@ Open Command Palette (`Win+Alt+Space`), type **"OpenClaw"** — you should see t
 | **🧭 Setup Wizard** | Opens QR, setup code, and manual gateway pairing |
 | **🧭 Command Center** | Opens gateway, tunnel, node, browser, and support diagnostics |
 | **🔄 Run Health Check** | Refreshes gateway or node connection health |
-| **⬇️ Check for Updates** | Runs a manual GitHub Releases update check |
+| **⬇️ Check for Updates** | Checks the MSIX AppInstaller update feed |
 | **⚡ Activity Stream** | Opens recent tray activity and support bundle actions |
 | **📋 Notification History** | Opens recent OpenClaw tray notifications in the Activity page |
 | **⚙️ Settings** | Opens the OpenClaw Tray Settings page |

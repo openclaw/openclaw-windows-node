@@ -206,6 +206,16 @@ public sealed class TrayMenuPopupCompositionTests
     }
 
     [Fact]
+    public void BuildTrayMenuPopup_RendersCheckForUpdatesAction()
+    {
+        var src = ReadStateBuilder();
+        Assert.Contains("LocalizationHelper.GetString(\"Menu_CheckForUpdates\")", src);
+        Assert.Contains("FluentIconCatalog.Build(FluentIconCatalog.Refresh)", src);
+        Assert.Contains("\"checkupdates\"", src);
+        Assert.Contains("case \"checkupdates\":", ReadAppXaml());
+    }
+
+    [Fact]
     public void BuildTrayMenuPopup_BatchesUpdates()
     {
         var src = ReadAppXaml();
@@ -241,6 +251,8 @@ public sealed class TrayMenuPopupCompositionTests
             "reconnect",    // brand-header button (when disconnected)
             "permissions",  // permissions row
             "setup",        // setup/reconfigure row
+            "quicksend",    // quicksend row
+            "checkupdates", // updates row
             "companion",    // footer
             "about",        // footer
             "exit",         // footer

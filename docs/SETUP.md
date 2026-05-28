@@ -14,34 +14,42 @@ Before installing, make sure you have:
 
 ### 1. Download the Installer
 
-Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the latest installer for your architecture:
+Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the installer, portable ZIP, or signed MSIX for your architecture:
 
-| File | Architecture |
+| File | Description |
 |------|-------------|
-| `OpenClawTray-Setup-x64.exe` | Intel / AMD (most PCs) |
-| `OpenClawTray-Setup-arm64.exe` | ARM64 (Surface Pro X, Snapdragon laptops) |
+| `OpenClawTray-Setup-x64.exe` | Legacy installer for Intel / AMD 64-bit |
+| `OpenClawTray-Setup-arm64.exe` | Legacy installer for ARM64 |
+| `OpenClawTray-X.Y.Z-win-x64.zip` | Portable/Updatum channel for Intel / AMD 64-bit |
+| `OpenClawTray-X.Y.Z-win-arm64.zip` | Portable/Updatum channel for ARM64 |
+| `OpenClawCompanion-X.Y.Z-win-x64.msix` | Recommended for Intel / AMD 64-bit; includes embedded AppInstaller metadata on supported Windows builds |
+| `OpenClawCompanion-X.Y.Z-win-arm64.msix` | Recommended for ARM64 (Surface Pro X, Snapdragon laptops); includes embedded AppInstaller metadata on supported Windows builds |
+| `openclaw-x64.appinstaller` | Stable update source / alternate install path for Intel / AMD 64-bit |
+| `openclaw-arm64.appinstaller` | Stable update source / alternate install path for ARM64 |
 
-If you're unsure, use the **x64** installer.
+If you're unsure which architecture you need, most Intel/AMD PCs use x64 and Snapdragon/Surface-on-ARM devices use ARM64. A future MSIX bundle can collapse this to one download, but the current release uses architecture-specific packages.
 
-### 2. Run the Installer
+### 2. Install OpenClaw
 
-Double-click the downloaded `.exe`. Windows may show a SmartScreen prompt — click **More info → Run anyway** (this is normal for code-signed apps that haven't yet accumulated reputation).
+For the legacy installer, double-click the downloaded `.exe`. Windows may show a SmartScreen prompt — click **More info → Run anyway** if needed.
 
-The installer runs without requiring administrator privileges.
+For MSIX, double-click the signed `.msix`. Windows AppInstaller opens, shows the publisher (Scott Hanselman, code-signed via Azure Trusted Signing), and offers to install. On supported Windows builds, the MSIX also seeds the stable `.appinstaller` URL for background updates.
 
-### 3. Choose Optional Components
+The install runs without requiring administrator privileges.
 
-The installer offers two optional components:
+### 3. Optional integrations
 
-- **Create Desktop Icon** — adds a shortcut to your desktop.
-- **Start OpenClaw Tray when Windows starts** — launches Molty automatically at login (recommended).
-- **Install PowerToys Command Palette extension** — enables OpenClaw commands in PowerToys Command Palette (requires [PowerToys](https://github.com/microsoft/PowerToys) to be installed). See [POWERTOYS.md](./POWERTOYS.md) for details.
+The installer can create shortcuts, enable startup, and register the Command Palette extension. The MSIX installs the tray app; optional integrations are configured from inside the app:
+
+- **PowerToys Command Palette extension** — install separately if you use PowerToys; see [POWERTOYS.md](./POWERTOYS.md).
+- **Launch at Windows sign-in** — toggle in **Settings → Auto-start** (uses the Windows StartupTask API; the user can revoke it from Task Manager → Startup).
 
 ### 4. First Launch
 
-After the installer finishes, OpenClaw Tray starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
+After install, OpenClaw Tray starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
+
 
 ### 5. Onboarding Wizard
 

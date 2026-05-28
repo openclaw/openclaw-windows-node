@@ -57,6 +57,19 @@ internal static class CliRunner
             return args.Length == 0 ? 2 : 0;
         }
 
+        // Standalone subcommands intercepted BEFORE argument parsing because
+        // they don't need a --command and bypass the MCP transport entirely.
+        // Currently: --purge-wsl-orphans (recovery path for users who removed
+        // the MSIX without running the in-app "Reset & remove" first; see
+        // docs/uninstall-msix.md).
+        if (args.Contains("--purge-wsl-orphans"))
+        {
+            var confirm = args.Contains("--confirm-destructive");
+            var json = args.Contains("--json-output");
+            var forceEvenIfInstalled = args.Contains(OrphanPurger.ForceEvenIfInstalledFlag);
+            return await OrphanPurger.RunAsync(confirm, json, stdout, stderr, envLookup, forceEvenIfInstalled);
+        }
+
         WinNodeOptions options;
         try
         {
@@ -831,11 +844,22 @@ internal static class CliRunner
         stdout.WriteLine("  --verbose                    Print endpoint + ignored flags to stderr");
         stdout.WriteLine("  --help, -h                   Show this help");
         stdout.WriteLine();
+        stdout.WriteLine("Recovery subcommands (do not require --command):");
+        stdout.WriteLine("  --purge-wsl-orphans          Detect WSL distros / %APPDATA% files / openclaw://");
+        stdout.WriteLine("                               registry keys left behind by a Remove-AppxPackage that");
+        stdout.WriteLine("                               skipped the in-app Reset & remove. Dry-run by default;");
+        stdout.WriteLine("                               pass --confirm-destructive to actually delete.");
+        stdout.WriteLine("    --confirm-destructive      Apply the deletions (otherwise dry-run; exit 1 if dirty)");
+        stdout.WriteLine("    --force-even-if-installed  Override the installed/running safety guard");
+        stdout.WriteLine("    --json-output              Emit the orphan/removed/failed report as JSON");
+        stdout.WriteLine();
         stdout.WriteLine("Examples:");
         stdout.WriteLine("  winnode --command system.which --params '{\"bins\":[\"git\",\"node\"]}'");
         stdout.WriteLine("  winnode --list-tools");
         stdout.WriteLine("  winnode --command screen.snapshot");
         stdout.WriteLine("  winnode --command canvas.present --params '{\"url\":\"https://example.com\"}'");
+        stdout.WriteLine("  winnode --purge-wsl-orphans --json-output                    # dry-run");
+        stdout.WriteLine("  winnode --purge-wsl-orphans --confirm-destructive --json-output");
         stdout.WriteLine();
         stdout.WriteLine("See skill.md (next to this exe) for the full agent reference: every supported");
         stdout.WriteLine("command, its argument schema, and the A2UI v0.8 JSONL grammar.");

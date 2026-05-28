@@ -373,7 +373,6 @@ jobs:
   build-msix:
     needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -425,9 +424,85 @@ jobs:
         $xml.Package.Identity.Name = $identityName
         $xml.Package.Identity.Version = $version
         $xml.Package.Properties.DisplayName = $displayName
-        $xml.Package.Applications.Application.VisualElements.DisplayName = $displayName
+        $trayApp = $xml.Package.Applications.Application | Where-Object { $_.Id -eq "App" } | Select-Object -First 1
+        if (-not $trayApp) { throw "Tray application Id='App' not found in $manifest" }
+        $trayApp.VisualElements.DisplayName = $displayName
         $xml.Save((Resolve-Path $manifest))
         Write-Host "Patched MSIX manifest to identity $identityName, display name '$displayName', version $version"
+
+    - name: Patch CommandPalette MSIX manifest metadata
+      shell: pwsh
+      run: |
+        # Keep the CommandPalette extension package metadata in lockstep with the
+        # parent tray package so both sign under the same Trusted Signing cert
+        # subject and are discoverable as a coherent product. The repo template
+        # ships with placeholder Microsoft values that must NEVER ship.
+        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
+        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
+        $trayIdentity = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
+        $cmdpalIdentity = "$trayIdentity.CommandPalette"
+        $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $publisherDisplay = "Scott Hanselman"
+        $manifest = "src/OpenClaw.CommandPalette/Package.appxmanifest"
+        [xml]$xml = Get-Content $manifest
+        $xml.Package.Identity.Name = $cmdpalIdentity
+        $xml.Package.Identity.Publisher = $publisher
+        $xml.Package.Identity.Version = $version
+        $xml.Package.Properties.PublisherDisplayName = $publisherDisplay
+        $xml.Save((Resolve-Path $manifest))
+        Write-Host "Patched CommandPalette MSIX manifest to identity $cmdpalIdentity, publisher '$publisher', version $version"
+
+    - name: Render embedded AppInstaller
+      shell: pwsh
+      run: |
+        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
+        $assetVersion = "${{ needs.test.outputs.semVer }}"
+        $tag = "${{ github.ref_name }}"
+        $arch = if ("${{ matrix.rid }}" -eq "win-arm64") { "arm64" } else { "x64" }
+        $runtimeAsset = "Microsoft.WindowsAppRuntime.2-2.0.1.0-${{ matrix.rid }}.msix"
+        $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+        $msixUri = "$base/OpenClawCompanion-$assetVersion-${{ matrix.rid }}.msix"
+        $runtimeUri = "$base/$runtimeAsset"
+        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
+        $identityName = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
+        $feedPrefix = if ($isAlpha) { "openclaw-alpha" } else { "openclaw" }
+        $appInstallerUri = "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/$feedPrefix-$arch.appinstaller"
+        ./scripts/render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -IdentityName $identityName `
+          -ProcessorArchitecture $arch `
+          -MsixUri $msixUri `
+          -WindowsAppRuntimeUri $runtimeUri `
+          -AppInstallerUri $appInstallerUri `
+          -OutputPath "src/OpenClaw.Tray.WinUI/openclaw.appinstaller"
+
+    - name: Publish SetupEngine UI for MSIX payload
+      shell: pwsh
+      run: |
+        $publishDir = "artifacts/setupengine-${{ matrix.rid }}"
+        $payloadDir = "src/OpenClaw.Tray.WinUI/SetupEngine"
+        Remove-Item $publishDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $payloadDir -Recurse -Force -ErrorAction SilentlyContinue
+        dotnet publish src/OpenClaw.SetupEngine.UI `
+          -c Release `
+          -r ${{ matrix.rid }} `
+          --self-contained `
+          -p:PackageMsix=false `
+          -p:WindowsAppSDKSelfContained=false `
+          -p:WindowsAppSdkDeploymentManagerInitialize=false `
+          -p:WindowsAppSdkBootstrapInitialize=false `
+          -p:Version=${{ needs.test.outputs.semVer }} `
+          -o $publishDir
+        New-Item -ItemType Directory -Force -Path $payloadDir | Out-Null
+        $robocopy = Start-Process robocopy.exe `
+          -ArgumentList @($publishDir, $payloadDir, '/E', '/XF', '*.xbf', 'OpenClaw.SetupEngine.UI.pri') `
+          -Wait `
+          -PassThru `
+          -NoNewWindow
+        if ($robocopy.ExitCode -gt 7) { throw "robocopy failed with exit code $($robocopy.ExitCode)" }
+        Get-ChildItem $payloadDir -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
 
     - name: Build MSIX Package
       run: >
@@ -455,6 +530,13 @@ jobs:
         Write-Host "Found: $($msix.FullName)"
         echo "msix_path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
         echo "msix_name=$($msix.Name)" >> $env:GITHUB_OUTPUT
+
+    - name: Inject SetupEngine XAML Resources
+      shell: pwsh
+      run: |
+        ./scripts/inject-setupengine-xaml-resources.ps1 `
+          -MsixPath "${{ steps.find-msix.outputs.msix_path }}" `
+          -SetupEnginePublishDir "artifacts/setupengine-${{ matrix.rid }}"
 
     - name: Upload MSIX Artifact
       uses: actions/upload-artifact@v7
@@ -498,13 +580,22 @@ jobs:
 
   release:
     needs: [repo-hygiene, test, e2etests, build, build-msix, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-msix.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: write
 
     steps:
     - uses: actions/checkout@v6
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Restore Windows App SDK runtime package
+      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
 
     - name: Download win-x64 tray artifact
       uses: actions/download-artifact@v8
@@ -532,7 +623,6 @@ jobs:
 
     - name: Download win-x64 MSIX artifact
       uses: actions/download-artifact@v8
-      continue-on-error: true
       id: msix-x64
       with:
         name: openclaw-msix-win-x64
@@ -540,21 +630,21 @@ jobs:
 
     - name: Download win-arm64 MSIX artifact
       uses: actions/download-artifact@v8
-      continue-on-error: true
       id: msix-arm64
       with:
         name: openclaw-msix-win-arm64
         path: artifacts/msix-arm64
 
     - name: Rename MSIX packages
-      if: steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success'
       shell: pwsh
       run: |
         $assetVersion = "${{ needs.test.outputs.semVer }}"
-        $x64 = Get-ChildItem -Path artifacts/msix-x64 -Filter "*.msix" | Select-Object -First 1
-        $arm64 = Get-ChildItem -Path artifacts/msix-arm64 -Filter "*.msix" | Select-Object -First 1
-        if ($x64) { Copy-Item $x64.FullName "OpenClawCompanion-$assetVersion-win-x64.msix" }
-        if ($arm64) { Copy-Item $arm64.FullName "OpenClawCompanion-$assetVersion-win-arm64.msix" }
+        $x64 = @(Get-ChildItem -Path artifacts/msix-x64 -Recurse -Filter "*.msix")
+        $arm64 = @(Get-ChildItem -Path artifacts/msix-arm64 -Recurse -Filter "*.msix")
+        if ($x64.Count -ne 1) { throw "Expected exactly one x64 MSIX artifact, found $($x64.Count)." }
+        if ($arm64.Count -ne 1) { throw "Expected exactly one ARM64 MSIX artifact, found $($arm64.Count)." }
+        Copy-Item $x64[0].FullName "OpenClawCompanion-$assetVersion-win-x64.msix"
+        Copy-Item $arm64[0].FullName "OpenClawCompanion-$assetVersion-win-arm64.msix"
 
     - name: Disable NuGet source mapping for signing
       shell: pwsh
@@ -584,63 +674,40 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    - name: Sign Release MSIX Packages
-      if: steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success'
-      uses: azure/trusted-signing-action@v2
-      with:
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        endpoint: https://wus2.codesigning.azure.net/
-        signing-account-name: hanselman
-        certificate-profile-name: WindowsEdgeLight
-        files-folder: .
-        files-folder-filter: msix
-        files-folder-depth: 1
-        file-digest: SHA256
-        timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        timestamp-digest: SHA256
-
-    # Create ZIP files for Updatum auto-update (needs "win-x64" in filename)
+    # Create ZIP files for the existing Updatum auto-update channel.
     - name: Create Release ZIPs
+      shell: pwsh
       run: |
         Compress-Archive -Path artifacts/tray-win-x64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
         Compress-Archive -Path artifacts/tray-win-arm64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
 
-    # Inno Setup installer for x64
+    # Inno installers stay in the release while MSIX/AppInstaller is added.
     - name: Install Inno Setup
       run: choco install innosetup -y
 
     - name: Build x64 Installer
+      shell: pwsh
       run: |
-        # Prepare x64 files
-        mkdir publish-x64
-        copy artifacts/tray-win-x64/* publish-x64/ -Recurse
-        mkdir publish-x64\cmdpal
+        New-Item -ItemType Directory -Force -Path publish-x64 | Out-Null
+        Copy-Item artifacts/tray-win-x64/* publish-x64/ -Recurse -Force
+        New-Item -ItemType Directory -Force -Path publish-x64\cmdpal | Out-Null
         $manifestFolder = Get-ChildItem -Path "artifacts/cmdpal-x64" -Recurse -Filter "AppxManifest.xml" | Select-Object -First 1
         if ($manifestFolder) {
-          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-x64\cmdpal -Recurse
+          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-x64\cmdpal -Recurse -Force
         }
-        # Build installer
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 installer.iss
 
     - name: Build arm64 Installer
+      shell: pwsh
       run: |
-        # Prepare arm64 files
-        mkdir publish-arm64
-        copy artifacts/tray-win-arm64/* publish-arm64/ -Recurse
-        mkdir publish-arm64\cmdpal
+        New-Item -ItemType Directory -Force -Path publish-arm64 | Out-Null
+        Copy-Item artifacts/tray-win-arm64/* publish-arm64/ -Recurse -Force
+        New-Item -ItemType Directory -Force -Path publish-arm64\cmdpal | Out-Null
         $manifestFolder = Get-ChildItem -Path "artifacts/cmdpal-arm64" -Recurse -Filter "AppxManifest.xml" | Select-Object -First 1
         if ($manifestFolder) {
-          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-arm64\cmdpal -Recurse
+          Copy-Item "$($manifestFolder.DirectoryName)\*" -Destination publish-arm64\cmdpal -Recurse -Force
         }
-        # Build installer
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
-
-    - name: Azure Login for Signing
-      uses: azure/login@v3
-      with:
-        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
     - name: Sign Installer
       uses: azure/trusted-signing-action@v2
@@ -657,17 +724,142 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
+    - name: Prepare MSIX Payloads for Inner Signing
+      shell: pwsh
+      run: |
+        ./scripts/prepare-msix-payload-signing.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix" `
+          -OutputDirectory "artifacts/msix-payload-signing/win-x64"
+        ./scripts/prepare-msix-payload-signing.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix" `
+          -OutputDirectory "artifacts/msix-payload-signing/win-arm64"
+
+    - name: Sign MSIX Payload Files
+      uses: azure/trusted-signing-action@v2
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: https://wus2.codesigning.azure.net/
+        signing-account-name: hanselman
+        certificate-profile-name: WindowsEdgeLight
+        files-folder: artifacts/msix-payload-signing
+        files-folder-filter: exe,dll,ps1,psm1,psd1
+        files-folder-recurse: true
+        append-signature: true
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Repack MSIX Packages After Payload Signing
+      shell: pwsh
+      run: |
+        ./scripts/repack-msix.ps1 `
+          -PayloadDirectory "artifacts/msix-payload-signing/win-x64" `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
+        ./scripts/repack-msix.ps1 `
+          -PayloadDirectory "artifacts/msix-payload-signing/win-arm64" `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
+
+    - name: Sign Release MSIX Packages
+      uses: azure/trusted-signing-action@v2
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: https://wus2.codesigning.azure.net/
+        signing-account-name: hanselman
+        certificate-profile-name: WindowsEdgeLight
+        files-folder: .
+        files-folder-filter: msix
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Verify Signed MSIX Payloads
+      shell: pwsh
+      run: |
+        ./scripts/verify-msix-payload-signatures.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
+        ./scripts/verify-msix-payload-signatures.ps1 `
+          -MsixPath "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
+
+    - name: Copy Windows App SDK Framework Packages
+      shell: pwsh
+      run: |
+        $globalPackages = (dotnet nuget locals global-packages -l) -replace '^global-packages:\s*', ''
+        $runtimeRoot = Join-Path $globalPackages 'microsoft.windowsappsdk.runtime\2.0.1\tools\MSIX'
+        $x64Runtime = Join-Path $runtimeRoot 'win10-x64\Microsoft.WindowsAppRuntime.2.msix'
+        $arm64Runtime = Join-Path $runtimeRoot 'win10-arm64\Microsoft.WindowsAppRuntime.2.msix'
+        if (-not (Test-Path $x64Runtime)) { throw "Windows App Runtime x64 framework package not found: $x64Runtime" }
+        if (-not (Test-Path $arm64Runtime)) { throw "Windows App Runtime ARM64 framework package not found: $arm64Runtime" }
+        Copy-Item $x64Runtime "Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix" -Force
+        Copy-Item $arm64Runtime "Microsoft.WindowsAppRuntime.2-2.0.1.0-win-arm64.msix" -Force
+
+    # Render the hosted .appinstaller XML files that Windows AppInstaller polls
+    # after install. Each architecture has its own stable URL because the release
+    # currently publishes separate .msix packages, not a multi-arch .msixbundle.
+    - name: Render AppInstaller
+      if: ${{ !contains(github.ref_name, '-') }}
+      shell: pwsh
+      run: |
+        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
+        $tag = "${{ github.ref_name }}"
+        $publisher = "CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+        $identityName = "OpenClaw.Companion"
+        $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+        $x64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix"
+        $arm64Uri = "$base/OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix"
+        $x64RuntimeUri = "$base/Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix"
+        $arm64RuntimeUri = "$base/Microsoft.WindowsAppRuntime.2-2.0.1.0-win-arm64.msix"
+        ./scripts/render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -IdentityName $identityName `
+          -ProcessorArchitecture x64 `
+          -MsixUri $x64Uri `
+          -WindowsAppRuntimeUri $x64RuntimeUri `
+          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller" `
+          -OutputPath "openclaw-x64.appinstaller"
+        ./scripts/render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -IdentityName $identityName `
+          -ProcessorArchitecture arm64 `
+          -MsixUri $arm64Uri `
+          -WindowsAppRuntimeUri $arm64RuntimeUri `
+          -AppInstallerUri "https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller" `
+          -OutputPath "openclaw-arm64.appinstaller"
+
+    - name: Prepare Release File List
+      id: release-files
+      shell: pwsh
+      run: |
+        $files = @(
+          "Output/OpenClawTray-Setup-x64.exe",
+          "Output/OpenClawTray-Setup-arm64.exe",
+          "OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip",
+          "OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip",
+          "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix",
+          "OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix",
+          "Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix",
+          "Microsoft.WindowsAppRuntime.2-2.0.1.0-win-arm64.msix"
+        )
+        if ("${{ contains(github.ref_name, '-') }}" -ne "true") {
+          $files += "openclaw-x64.appinstaller"
+          $files += "openclaw-arm64.appinstaller"
+        }
+
+        "files<<EOF" >> $env:GITHUB_OUTPUT
+        $files >> $env:GITHUB_OUTPUT
+        "EOF" >> $env:GITHUB_OUTPUT
+
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
-        files: |
-          Output/OpenClawTray-Setup-x64.exe
-          Output/OpenClawTray-Setup-arm64.exe
-          OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
-          OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix
-          OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix
+        files: ${{ steps.release-files.outputs.files }}
         prerelease: ${{ contains(github.ref_name, '-') }}
         make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         body: |
@@ -678,15 +870,19 @@ jobs:
           - **Installer (ARM64)**: `OpenClawTray-Setup-arm64.exe` - Windows on ARM (Surface, etc.)
           - **Portable x64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip`
           - **Portable ARM64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip`
-          - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` - Packaged (camera/mic consent)
-          - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` - Packaged (camera/mic consent)
+          - **MSIX x64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix` — Intel / AMD 64-bit, with embedded AppInstaller metadata
+          - **MSIX ARM64**: `OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix` — Windows on ARM, with embedded AppInstaller metadata
+          - **Windows App Runtime x64**: `Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix` — framework dependency used by the x64 AppInstaller feed
+          - **Windows App Runtime ARM64**: `Microsoft.WindowsAppRuntime.2-2.0.1.0-win-arm64.msix` — framework dependency used by the ARM64 AppInstaller feed
+          - **AppInstaller x64**: `openclaw-x64.appinstaller` — stable architecture update source for Intel / AMD 64-bit (stable releases only)
+          - **AppInstaller ARM64**: `openclaw-arm64.appinstaller` — stable architecture update source for Windows on ARM (stable releases only)
 
           ### Features
           - 🦞 System tray integration with gateway status
           - 🎯 PowerToys Command Palette extension (optional)
-          - 🔄 Auto-updates from GitHub Releases
+          - 🔄 Auto-updates via Windows AppInstaller for MSIX and Updatum for the legacy installer/portable channel
           - ✅ Code-signed with Azure Trusted Signing
-          - 📦 MSIX package available for native camera/microphone consent prompts
+          - 📦 MSIX package available for native camera/microphone/location consent prompts under our package name
 
           ### Requirements
           - Windows 10 version 1903 or later
@@ -695,7 +891,18 @@ jobs:
           - PowerToys (for Command Palette extension)
 
           ### Quick Start
-          1. Run the installer for your architecture (or sideload the MSIX for camera consent)
-          2. Optionally enable Command Palette extension during install
-          3. Launch from Start Menu or system tray
-          4. Right-click tray icon → Settings to configure
+          1. Run the installer for your architecture, use the portable ZIP, or install the signed MSIX for packaged app identity.
+          2. Optionally enable Command Palette extension during install.
+          3. Launch from Start Menu or system tray.
+          4. Right-click tray icon → Settings to configure.
+
+    - name: Request AppInstaller feed PR
+      if: success()
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh workflow run appinstaller-feed-pr.yml `
+          --repo "${{ github.repository }}" `
+          --ref master `
+          -f tag="${{ github.ref_name }}"

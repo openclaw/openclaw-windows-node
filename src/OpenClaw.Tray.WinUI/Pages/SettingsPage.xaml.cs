@@ -116,15 +116,38 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void PersistAutoStart()
+    private void PersistAutoStart() =>
+        AsyncEventHandlerGuard.Run(
+            PersistAutoStartAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(PersistAutoStart));
+
+    private async Task PersistAutoStartAsync()
     {
-        if (_loading || CurrentApp.Settings == null) return;
+        var settings = CurrentApp.Settings;
+        if (_loading || settings == null) return;
         _saving = true;
         try
         {
-            CurrentApp.Settings.AutoStart = AutoStartToggle.IsOn;
-            CurrentApp.Settings.Save();
-            AutoStartManager.SetAutoStart(CurrentApp.Settings.AutoStart);
+            var requestedAutoStart = AutoStartToggle.IsOn;
+            settings.AutoStart = requestedAutoStart;
+            settings.Save();
+            var autoStartApplied = await AutoStartManager.SetAutoStartAsync(requestedAutoStart);
+            if (!autoStartApplied)
+            {
+                settings.AutoStart = !requestedAutoStart;
+                settings.Save();
+                _loading = true;
+                try
+                {
+                    AutoStartToggle.IsOn = settings.AutoStart;
+                }
+                finally
+                {
+                    _loading = false;
+                }
+            }
+
             ((IAppCommands)CurrentApp).NotifySettingsSaved();
             ShowSavedIndicator();
         }

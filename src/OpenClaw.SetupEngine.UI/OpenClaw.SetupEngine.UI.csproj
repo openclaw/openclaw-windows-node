@@ -49,4 +49,15 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <Target Name="CopyXamlResourcesToPublishDirectory"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_SetupEngineXamlResource Include="$(OutputPath)**\*.xbf;$(OutputPath)*.pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SetupEngineXamlResource)"
+          DestinationFiles="@(_SetupEngineXamlResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

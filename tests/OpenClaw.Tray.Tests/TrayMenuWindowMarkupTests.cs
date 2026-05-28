@@ -156,6 +156,7 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("Run Health Check", source);
         Assert.Contains(@"openclaw://check-updates", source);
         Assert.Contains("Check for Updates", source);
+        Assert.Contains("MSIX AppInstaller update feed", source);
         Assert.Contains(@"openclaw://logs", source);
         Assert.Contains("Open Log File", source);
     }
@@ -202,6 +203,7 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("Open Diagnostics Folder", source);
         Assert.Contains(@"openclaw://check-updates", source);
         Assert.Contains("Check for Updates", source);
+        Assert.Contains("MSIX AppInstaller update feed", source);
         Assert.Contains(@"openclaw://support-context", source);
         Assert.Contains("Copy Support Context", source);
         Assert.Contains(@"openclaw://debug-bundle", source);

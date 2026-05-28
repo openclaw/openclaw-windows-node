@@ -50,6 +50,72 @@ After pushing a tag, confirm in GitHub Actions:
 - jobs complete successfully (build, build-msix, release)
 - release assets are attached to the tag release
 
+## Non-Store auto-update via `.appinstaller`
+
+OpenClaw Companion ships outside the Microsoft Store but still wants
+quiet updates. The supported pattern is a signed MSIX with embedded
+`.appinstaller` metadata plus a hosted `.appinstaller` XML file that Windows
+AppInstaller polls. The CI release job renders one file per architecture from
+`installer/openclaw-companion.appinstaller.template` via
+`scripts/render-appinstaller.ps1` and attaches tag-pinned AppInstaller files plus
+stable-name copies to the GitHub release:
+
+- `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`
+- `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`
+- stable-name copy `openclaw-x64.appinstaller`
+- stable-name copy `openclaw-arm64.appinstaller`
+
+The `.appinstaller` policy intentionally uses only:
+
+```xml
+<UpdateSettings>
+  <AutomaticBackgroundTask />
+</UpdateSettings>
+```
+
+Do not add `OnLaunch` or `ForceUpdateFromAnyVersion` to production output.
+Updates should happen quietly in the background and bad releases should be
+fixed by shipping a higher roll-forward version.
+
+### How an install gets to a new version
+
+1. **Embedded App Installer metadata** — on Windows builds that support
+   `uap13:AutoUpdate`, double-clicking the signed MSIX seeds the stable
+   architecture-specific `.appinstaller` URL.
+2. **Hosted `.appinstaller` install** — users or enterprise tools can install
+   from `openclaw-x64.appinstaller` or `openclaw-arm64.appinstaller`, which
+   records the same stable source URL.
+3. **Windows background task** — `AutomaticBackgroundTask` lets Windows poll
+   that source URL without cold-start App Installer UI.
+4. **In-app, on demand** — the tray's "Check for updates" command asks Windows
+   to fetch the architecture-specific `.appinstaller` and avoids force-closing
+   the tray by default. If an update is accepted while the app is in use, the UI
+   should tell the user to restart OpenClaw when convenient.
+
+### Important caveats for the release operator
+
+- The `Version` attribute in the rendered `.appinstaller`, the `Version`
+  attribute inside `<MainPackage>`, and the `<Identity Version=…>` of the
+  matching MSIX must all match exactly.
+- The rendered `<MainPackage ProcessorArchitecture=…>` must match the MSIX URL:
+  x64 files point at x64 MSIX assets and arm64 files point at ARM64 assets.
+- The embedded stable feed URLs currently point at raw GitHub files in this repo:
+  `installer\appinstaller\openclaw-x64.appinstaller` and
+  `installer\appinstaller\openclaw-arm64.appinstaller`.
+- Those files are checked in as `0.0.0.0` bootstrap placeholders so the raw
+  URLs do not 404 before the first feed-update PR is merged. They intentionally
+  do not advertise a newer package.
+- Raw GitHub mirrors the Mac companion app's Sparkle appcast pattern, but it
+  serves repo files with GitHub-controlled headers. Windows App Installer must
+  still be proven with two-version E2E validation before this endpoint is
+  treated as durable.
+- After the release is created, CI dispatches
+  `.github\workflows\appinstaller-feed-pr.yml`. That workflow renders the stable
+  feed files from the signed release assets, validates them, and opens a PR.
+  Merging that PR advances the stable update source.
+- Pre-release/alpha feed updates are intentionally blocked until maintainers
+  choose a separate channel strategy.
+
 ## If you need to retag
 
 If a tag points to the wrong commit:
@@ -60,4 +126,5 @@ git push origin :refs/tags/vX.Y.Z
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
+
 

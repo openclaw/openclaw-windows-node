@@ -27,6 +27,15 @@ Related issues: #5 (Canvas Panel), #6 (Skills Settings UI), #7 (DEVELOPMENT.md),
 - [Technical Deep Dives](#technical-deep-dives)
 - [Contributing](#contributing)
 
+## Related design notes
+
+- **[MSIX packaging of `OpenClaw.WinNode.Cli`](./WINNODE_CLI_MSIX_PACKAGING.md)** — the
+  worker-node CLI and the tray today share state via `%APPDATA%\OpenClawTray\...`,
+  which works under MSIX only by coincidence. The committed decision is to
+  package the CLI inside the tray MSIX as a second `<Application>` with a
+  `windows.appExecutionAlias` so the shared-state contract becomes enforceable
+  rather than implicit.
+
 ---
 
 ## Current State

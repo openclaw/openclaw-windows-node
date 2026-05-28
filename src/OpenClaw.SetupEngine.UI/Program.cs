@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -16,6 +17,7 @@ internal static class Program
             return OpenClaw.SetupEngine.Program.Main(args).GetAwaiter().GetResult();
         }
 
+        EnsureWindowsAppRuntimeLoaded();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(p =>
         {
@@ -25,5 +27,17 @@ internal static class Program
             new App();
         });
         return 0;
+    }
+
+    [DllImport("Microsoft.WindowsAppRuntime.dll", ExactSpelling = true)]
+    private static extern int WindowsAppRuntime_EnsureIsLoaded();
+
+    private static void EnsureWindowsAppRuntimeLoaded()
+    {
+        var hresult = WindowsAppRuntime_EnsureIsLoaded();
+        if (hresult != 0)
+        {
+            Marshal.ThrowExceptionForHR(hresult);
+        }
     }
 }

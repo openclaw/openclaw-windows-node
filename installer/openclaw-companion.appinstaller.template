@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenClaw Companion AppInstaller template.
+
+  CI renders this template per tag in .github/workflows/ci.yml (release job)
+  via scripts/render-appinstaller.ps1 by string-substituting:
+    {{VERSION}}              - 4-part version, e.g. 0.5.3.0 (must match the
+                               MSIX <Identity Version="…"> exactly)
+    {{PUBLISHER}}            - quoted publisher subject from the MSIX manifest
+                               e.g. "CN=Scott Hanselman, O=Scott Hanselman, …"
+     {{PROCESSOR_ARCHITECTURE}} - x64 or arm64; must match the MSIX package
+     {{IDENTITY_NAME}}        - MSIX package identity, e.g. OpenClaw.Companion
+     {{MSIX_URI}}             - absolute URL of the matching architecture .msix
+     {{WINDOWS_APP_RUNTIME_URI}} - absolute URL of the matching architecture
+                                  Microsoft.WindowsAppRuntime.2 framework .msix
+     {{APPINSTALLER_URI}}     - absolute URL of THIS rendered .appinstaller file
+                                on the stable channel
+
+  See docs/RELEASING.md for the AppInstaller update flow and hosting caveats.
+-->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="{{VERSION}}"
+  Uri="{{APPINSTALLER_URI}}">
+
+  <MainPackage
+    Name="{{IDENTITY_NAME}}"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="{{PROCESSOR_ARCHITECTURE}}"
+    Uri="{{MSIX_URI}}" />
+
+  <Dependencies>
+    <Package
+      Name="Microsoft.WindowsAppRuntime.2"
+      Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+      Version="2.0.1.0"
+      ProcessorArchitecture="{{PROCESSOR_ARCHITECTURE}}"
+      Uri="{{WINDOWS_APP_RUNTIME_URI}}" />
+  </Dependencies>
+
+  <!-- Quiet OS-managed background checks. No OnLaunch UI and no downgrade rollback. -->
+  <UpdateSettings>
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>

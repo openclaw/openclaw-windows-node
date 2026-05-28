@@ -618,19 +618,24 @@ On every build, the following artifacts are uploaded:
 When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
 
 1. **Build & Sign:**
-   - All artifacts built for x64 and ARM64
-   - Executables signed with Azure Trusted Signing certificate
+   - MSIX packages built for x64 and ARM64
+   - Both `.msix` files are signed with the Azure Trusted Signing certificate after the architecture-specific AppInstaller metadata is embedded
 
-2. **Create Installers:**
-   - Inno Setup creates Windows installers
-   - Includes both Tray app and Command Palette extension
-   - Separate installers for x64 and ARM64
+2. **Render AppInstaller:**
+   - `scripts/render-appinstaller.ps1` produces architecture-specific AppInstaller files:
+      `OpenClawCompanion-X.Y.Z-win-x64.appinstaller`,
+      `OpenClawCompanion-X.Y.Z-win-arm64.appinstaller`,
+      `openclaw-x64.appinstaller`, and `openclaw-arm64.appinstaller`
+   - After release creation, a follow-up workflow opens a maintainer-reviewed PR
+     to update the raw GitHub stable feed files under `installer\appinstaller\`.
+     See [`docs/RELEASING.md`](./docs/RELEASING.md) for the AppInstaller update flow.
 
 3. **GitHub Release:**
    - Automatic release created with tag name
-   - Includes:
-     - Installers: `OpenClawTray-Setup-x64.exe`, `OpenClawTray-Setup-arm64.exe`
-     - Portable ZIPs: `OpenClawTray-{version}-win-x64.zip`, `OpenClawTray-{version}-win-arm64.zip`
+   - Attached assets:
+     - `OpenClawCompanion-X.Y.Z-win-x64.msix` and `-win-arm64.msix`
+      - `openclaw-x64.appinstaller` and `openclaw-arm64.appinstaller` (stable-name feed copies)
+     - `OpenClawCompanion-X.Y.Z-win-x64.appinstaller` and `-win-arm64.appinstaller` (tag-pinned)
    - Release notes auto-generated from commits
 
 ### Monitoring CI

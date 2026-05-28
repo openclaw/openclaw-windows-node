@@ -136,6 +136,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private GatewayService? _gatewayService;
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
+    private int _applyUpdateInFlight;
     
     /// <summary>
     /// Cached connection status — sole writer is OnManagerStateChanged.
@@ -475,6 +476,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        NotificationSettingsRegistrationService.EnsureRegistered();
 
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
@@ -2761,8 +2763,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _globalHotkey?.Unregister();
         }
 
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
-
         // Notify ad-hoc listeners (e.g. ChatWindow may be alive but not
         // owned by the hub) that settings have changed. Marshal onto the
         // UI thread because IAppCommands.NotifySettingsSaved is a public
@@ -2974,6 +2974,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         if (_settings == null) return;
 
+        if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        {
+            await LaunchPackagedSetupEngineAsync();
+            return;
+        }
+
         var setupExePath = ResolveSetupEngineUiPath();
         if (setupExePath == null)
         {
@@ -2998,7 +3004,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
             {
-                UseShellExecute = true
+                UseShellExecute = false,
+                WorkingDirectory = Path.GetDirectoryName(setupExePath) ?? AppContext.BaseDirectory
             };
             var process = System.Diagnostics.Process.Start(psi);
             if (process != null)
@@ -3012,6 +3019,49 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         catch (Exception ex)
         {
             Logger.Error($"Failed to launch SetupEngine.UI: {ex.Message}");
+        }
+    }
+
+    private async Task LaunchPackagedSetupEngineAsync()
+    {
+        var setupProcesses = System.Diagnostics.Process.GetProcessesByName("OpenClaw.SetupEngine.UI");
+        if (setupProcesses.Length > 0)
+        {
+            Logger.Info("SetupEngine.UI already running — focusing existing instance");
+            foreach (var p in setupProcesses)
+            {
+                TryBringSetupEngineToFront(p);
+            }
+            foreach (var p in setupProcesses) p.Dispose();
+            return;
+        }
+
+        try
+        {
+            var setupExePath = ResolveSetupEngineUiPath();
+            if (setupExePath == null)
+            {
+                Logger.Error($"SetupEngine.UI not found (searched {AppContext.BaseDirectory})");
+                return;
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = Path.GetDirectoryName(setupExePath) ?? AppContext.BaseDirectory
+            };
+            var process = System.Diagnostics.Process.Start(psi);
+            if (process != null)
+            {
+                await Task.Delay(500);
+                TryBringSetupEngineToFront(process);
+                process.Dispose();
+            }
+            Logger.Info("Launched packaged SetupEngine.UI for setup");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to activate packaged SetupEngine.UI: {ex.Message}");
         }
     }
 
@@ -3118,6 +3168,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowVoiceOverlay() => ShowHub("voice");
     void IAppCommands.ShowChat() => ShowChatWindow();
     void IAppCommands.CheckForUpdates() => _ = CheckForUpdatesUserInitiatedAsync();
+    void IAppCommands.ApplyUpdateNow() => _ = ApplyUpdateNowUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
@@ -3160,12 +3211,24 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void ToggleAutoStart()
+    private void ToggleAutoStart() =>
+        AsyncEventHandlerGuard.Run(
+            ToggleAutoStartAsync,
+            new AppLogger(),
+            nameof(ToggleAutoStart));
+
+    private async Task ToggleAutoStartAsync()
     {
         if (_settings == null) return;
         _settings.AutoStart = !_settings.AutoStart;
         _settings.Save();
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
+        var requestedAutoStart = _settings.AutoStart;
+        var autoStartApplied = await AutoStartManager.SetAutoStartAsync(requestedAutoStart);
+        if (!autoStartApplied)
+        {
+            _settings.AutoStart = !requestedAutoStart;
+            _settings.Save();
+        }
     }
 
     private void OpenLogFile()
@@ -3260,20 +3323,33 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private static UpdateCommandCenterInfo BuildInitialUpdateInfo() => new()
     {
         Status = "Not checked",
-        CurrentVersion = AppVersionInfo.Version
+        CurrentVersion = AppVersionHelper.CurrentVersionText
     };
 
-    // Cross-path concurrency for update checks, split into two phases:
+    // Cross-path concurrency for legacy Updatum checks, split into two phases:
     //  - _updateCheckGate: held only during the metadata/network check.
-    //    Short timeout so contended callers don't block on user thinking.
-    //  - _updateInstallInProgress: Interlocked flag covering the user-facing
-    //    UpdateDialog + download + install. Prevents two parallel installs
-    //    without holding a lock across user interaction.
+    //  - _updateInstallInProgress: held while the prompt/download/install runs.
     private readonly System.Threading.SemaphoreSlim _updateCheckGate = new(1, 1);
     private int _updateInstallInProgress;
 
     private async Task<bool> CheckForUpdatesAsync(bool userInitiated = false)
     {
+        // Packaged apps under MSIX don't need an in-app startup poll. Windows
+        // AppInstaller polls our hosted .appinstaller with AutomaticBackgroundTask
+        // and the tray only surfaces pending/manual update state on demand.
+        if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        {
+            Logger.Info("Skipping startup update check (packaged build; AppInstaller polls in the background)");
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Managed",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "managed by Windows AppInstaller"
+            };
+            return true;
+        }
+
         // === Stage 1: metadata check (gate-protected) ===
         if (!await _updateCheckGate.WaitAsync(TimeSpan.FromSeconds(30)))
         {
@@ -3288,7 +3364,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     Detail = "another update check is already in progress; try again in a moment"
                 };
             }
-            return true; // Don't block launch
+            return true;
         }
 
 #if DEBUG
@@ -3338,9 +3414,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             var release = AppUpdater.LatestRelease!;
             if (string.IsNullOrEmpty(release.TagName))
             {
-                // Defensive: AppUpdater says an update is available but the
-                // release has no tag. Don't silently claim "up to date" —
-                // surface as Failed so the user sees something is off.
                 Logger.Warn("Update reported available but release has no TagName");
                 _appState!.UpdateInfo = new UpdateCommandCenterInfo
                 {
@@ -3378,9 +3451,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Info("Update check cancelled");
             if (_appState != null)
             {
-                // Avoid leaving Status="Checking" stale for the manual flow
-                // or the command-center UI. Surface as Failed with a clear
-                // "cancelled" detail.
                 _appState.UpdateInfo = new UpdateCommandCenterInfo
                 {
                     Status = "Failed",
@@ -3408,15 +3478,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         finally
         {
-            // Release the gate BEFORE user interaction & download/install.
-            // Holding it across these long phases would silently time-out
-            // any concurrent manual click.
             _updateCheckGate.Release();
         }
 
         // === Stage 2: user-interactive prompt + download/install ===
-        // Gate is released. Use Interlocked flag so concurrent callers can't
-        // start a second parallel install while we're prompting/downloading.
         if (System.Threading.Interlocked.CompareExchange(ref _updateInstallInProgress, 1, 0) != 0)
         {
             Logger.Info("Update prompt/install already in progress; skipping");
@@ -3443,26 +3508,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             catch (System.Runtime.InteropServices.COMException ex)
             {
-                // Visual tree torn down mid-await (e.g. window closed).
-                // Treat as "remind me later" rather than tainting Status with
-                // "Failed" — the network check itself succeeded.
                 Logger.Warn($"[Update] Prompt dialog dismissed before completion: 0x{ex.HResult:X8}");
                 return true;
             }
             catch (InvalidOperationException ex)
             {
-                // Another ContentDialog is already open on this XamlRoot.
                 Logger.Warn($"[Update] Prompt dialog could not be shown: {ex.Message}");
                 return true;
             }
 
             if (result == UpdateDialogResult.Download)
             {
-                // Assign a fresh object rather than mutating .Detail in place:
-                // a concurrent loser of the install-flag CAS may have just
-                // overwritten _appState.UpdateInfo with a "Failed" object,
-                // and mutating its Detail would leave Status="Failed" with
-                // our "download requested" detail — briefly inconsistent.
                 _appState!.UpdateInfo = new UpdateCommandCenterInfo
                 {
                     Status = "Available",
@@ -3479,8 +3535,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 var installed = await DownloadAndInstallUpdateAsync();
                 if (!installed)
                 {
-                    // Surface the failure so callers (and the manual-check
-                    // dialog) don't show stale "download requested" state.
                     _appState!.UpdateInfo = new UpdateCommandCenterInfo
                     {
                         Status = "Failed",
@@ -3489,7 +3543,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                         Detail = "download or install failed"
                     };
                 }
-                return !installed; // Don't launch if update succeeded
+                return !installed;
             }
 
             if (result == UpdateDialogResult.Skip && _settings != null)
@@ -3509,13 +3563,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 && string.Equals(_settings.SkippedUpdateTag, releaseTag,
                                  StringComparison.OrdinalIgnoreCase))
             {
-                // User explicitly bypassed the remembered skip for THIS
-                // release and picked RemindLater — clear the stale tag.
                 _settings.SkippedUpdateTag = string.Empty;
                 _settings.Save();
             }
 
-            return true; // RemindLater or Skip - continue launch
+            return true;
         }
         catch (Exception ex)
         {
@@ -3541,8 +3593,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
     // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
-    // otherwise open two ContentDialogs on the same XamlRoot which throws
-    // COMException. One in-flight manual check at a time is enough.
+    // otherwise open two ContentDialogs on the same XamlRoot which throws.
     private int _manualUpdateCheckInFlight;
 
     private async Task CheckForUpdatesUserInitiatedAsync()
@@ -3556,15 +3607,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             Logger.Info("Manual update check requested");
-            // Pass userInitiated=true so an explicit click bypasses the
-            // "remind me later" SkippedUpdateTag — the user is asking *now*.
+
+            if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+            {
+                await CheckForPackagedAppInstallerUpdateAsync();
+                return;
+            }
+
             var shouldContinue = await CheckForUpdatesAsync(userInitiated: true);
             UpdateStatusDetailWindow();
 
-            // The "Available" path already prompts via UpdateDialog. For the
-            // other terminal states a manual click would otherwise produce no
-            // UI at all, leaving users wondering whether the click registered.
-            // Surface each explicitly with a small OK dialog.
             var info = _appState?.UpdateInfo;
             if (info != null)
             {
@@ -3577,10 +3629,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                             LocalizationHelper.Format("Update_Message_UpToDate", info.CurrentVersion));
                         break;
                     case "Failed":
-                        // Format string ends with "\n\n{0}"; an empty Detail
-                        // would leave a dangling blank line. Trim only the
-                        // newline characters we added, never arbitrary
-                        // whitespace from the localized string.
                         var failedMessage = LocalizationHelper
                             .Format("Update_Message_Failed", info.Detail ?? "")
                             .TrimEnd('\r', '\n');
@@ -3590,11 +3638,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                             failedMessage);
                         break;
 #if DEBUG
-                    // Status="Skipped" is only produced by the DEBUG short-circuit
-                    // in CheckForUpdatesAsync. User-skipped versions keep
-                    // Status="Available", so this case must not exist in RELEASE
-                    // or it would surface a confusing "disabled in debug builds"
-                    // dialog to end users.
                     case "Skipped":
                         await ShowUpdateInfoDialogAsync(
                             "Skipped",
@@ -3616,11 +3659,129 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
+    private async Task CheckForPackagedAppInstallerUpdateAsync()
+    {
+        _appState!.UpdateInfo = new UpdateCommandCenterInfo
+        {
+            Status = "Checking",
+            CurrentVersion = AppVersionHelper.CurrentVersionText,
+            CheckedAt = DateTime.UtcNow,
+            Detail = $"querying {AppInstallerUpdateService.LatestAppInstallerUri}"
+        };
+        UpdateStatusDetailWindow();
+
+        var outcome = await AppInstallerUpdateService.CheckForUpdateAsync();
+        _appState!.UpdateInfo = outcome.Outcome switch
+        {
+            AppInstallerUpdateService.UpdateOutcome.UpdateAvailable => new UpdateCommandCenterInfo
+            {
+                Status = "Available",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update available"
+            },
+            AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
+            {
+                Status = "Ready",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
+            },
+            AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
+            {
+                Status = "Ready",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
+            },
+            AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
+            {
+                Status = "Current",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "no updates available"
+            },
+            _ => new UpdateCommandCenterInfo
+            {
+                Status = "Failed",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update failed"
+            }
+        };
+        UpdateStatusDetailWindow();
+    }
+
+    private async Task ApplyUpdateNowUserInitiatedAsync()
+    {
+        if (System.Threading.Interlocked.CompareExchange(ref _applyUpdateInFlight, 1, 0) != 0)
+        {
+            Logger.Info("Apply update ignored: another apply request is already in progress");
+            return;
+        }
+
+        Logger.Info("Apply update now requested");
+
+        try
+        {
+            if (!OpenClawTray.Helpers.PackageHelper.IsPackaged)
+            {
+                await CheckForUpdatesAsync();
+                UpdateStatusDetailWindow();
+                return;
+            }
+
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Applying",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "asking Windows AppInstaller to apply the available update"
+            };
+            UpdateStatusDetailWindow();
+
+            var outcome = await AppInstallerUpdateService.TryApplyUpdateAsync(forceRestart: true);
+            _appState!.UpdateInfo = outcome.Outcome switch
+            {
+                AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
+                {
+                    Status = "Ready",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
+                },
+                AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
+                {
+                    Status = "Ready",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
+                },
+                AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
+                {
+                    Status = "Current",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "no updates available"
+                },
+                _ => new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionHelper.CurrentVersionText,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = outcome.DetailMessage ?? "update failed"
+                }
+            };
+            UpdateStatusDetailWindow();
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _applyUpdateInFlight, 0);
+        }
+    }
+
     private async Task ShowUpdateInfoDialogAsync(string logKey, string title, string message)
     {
-        // Prefer the Hub window when open so the dialog appears modal to what
-        // the user is actually looking at; fall back to the hidden keep-alive
-        // window so the dialog still renders if the Hub has been dismissed.
         XamlRoot? xamlRoot = null;
         if (_hubWindow != null && !_hubWindow.IsClosed)
             xamlRoot = (_hubWindow.Content as FrameworkElement)?.XamlRoot;
@@ -3628,8 +3789,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             xamlRoot = (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
         if (xamlRoot == null)
         {
-            // Log the stable English key, not the localized title, so log
-            // grepping works across locales.
             Logger.Warn($"[Update] No XAML root available to show dialog: {logKey}");
             return;
         }
@@ -3648,17 +3807,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
-            // ContentDialog.ShowAsync throws COMException if its XamlRoot's
-            // visual tree is torn down mid-await (e.g. Hub window closed).
             Logger.Warn($"[Update] Dialog dismissed before completion ({logKey}): 0x{ex.HResult:X8}");
         }
         catch (InvalidOperationException ex)
         {
-            // WinUI throws InvalidOperationException when another ContentDialog
-            // is already open on the same thread/XamlRoot. The re-entrancy
-            // guard only blocks duplicate *update* dialogs; collisions with
-            // other features' dialogs (onboarding, connection, etc.) must be
-            // tolerated here so the fire-and-forget call sites don't crash.
             Logger.Warn($"[Update] Dialog could not be shown ({logKey}): {ex.Message}");
         }
     }
@@ -3669,7 +3821,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             progressDialog = new DownloadProgressDialog(AppUpdater);
-            progressDialog.ShowAsync(); // Fire and forget
+            progressDialog.ShowAsync();
 
             var downloadedAsset = await AppUpdater.DownloadUpdateAsync();
 
@@ -3702,13 +3854,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         catch (System.Runtime.InteropServices.COMException)
         {
-            // Window already closed — closing a closed WinUI window throws
-            // COMException 0x80070578. Swallow so a real exception in the
-            // outer catch isn't masked by this cleanup failure.
         }
         catch (InvalidOperationException)
         {
-            // Same as above for other "already-disposed" race variants.
         }
     }
 
@@ -4204,3 +4352,4 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 }
+

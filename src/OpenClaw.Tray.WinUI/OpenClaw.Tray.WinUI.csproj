@@ -33,7 +33,8 @@
   <!-- MSIX packaged: enables camera/mic consent prompts, package identity -->
   <PropertyGroup Condition="'$(PackageMsix)' == 'true'">
     <WindowsPackageType>MSIX</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
     <AppxBundle>Never</AppxBundle>
@@ -74,6 +75,14 @@
 
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="openclaw.appinstaller"
+             Condition="'$(PackageMsix)' == 'true' And Exists('openclaw.appinstaller')"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="SetupEngine\**\*"
+             Condition="'$(PackageMsix)' == 'true' And Exists('SetupEngine')"
+             CopyToOutputDirectory="PreserveNewest"
+             PRIResource="false" />
+    <PRIResource Remove="SetupEngine\**\*" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -183,6 +192,10 @@
     </PropertyGroup>
     <Error Text="Cannot derive 4-part MSIX version from &lt;Version&gt;$(Version)&lt;/Version&gt;. Use the form X.Y or X.Y.Z (optionally with -prerelease or +meta suffix)." Condition="'$(_AppxManifestVersion)' == ''" />
     <SyncAppxManifestVersion ManifestPath="$(_AppxManifestPath)" FourPartVersion="$(_AppxManifestVersion)" />
+  </Target>
+
+  <Target Name="ValidateEmbeddedAppInstaller" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" Condition="'$(PackageMsix)' == 'true'">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)openclaw.appinstaller')" Text="MSIX packaging requires src\OpenClaw.Tray.WinUI\openclaw.appinstaller because Package.appxmanifest declares uap13:AutoUpdate. Render it with scripts\render-appinstaller.ps1 before building the MSIX." />
   </Target>
 
   <!-- Fail fast on RIDs we have no wxc-exec binary for, so x86/non-Windows

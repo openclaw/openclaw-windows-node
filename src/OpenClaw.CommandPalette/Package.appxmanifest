@@ -8,22 +8,25 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap3 rescap">
 
+  <!-- IMPORTANT: Identity Name, Publisher, PublisherDisplayName and Version are
+       patched by CI (.github/workflows/ci.yml step "Patch CommandPalette MSIX
+       manifest metadata") so they match the parent tray package and the Azure
+       Trusted Signing certificate subject exactly. The values here are local-dev
+       fallbacks only and must never ship in a release build. -->
   <Identity
-    Name="OpenClaw"
-    Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+    Name="OpenClaw.Companion.CommandPalette"
+    Publisher="CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
     Version="0.0.1.0" />
-  <!-- When you're ready to publish your extension, you'll need to change the
-       Publisher= to match your own identity -->
 
   <Properties>
-    <DisplayName>OpenClaw</DisplayName>
-    <PublisherDisplayName>A Lone Developer</PublisherDisplayName>
+    <DisplayName>OpenClaw Companion Command Palette</DisplayName>
+    <PublisherDisplayName>Scott Hanselman</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.19041.0" />
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.19041.0" />
+    <!-- Win32 desktop-only; the Universal device family is unused and was a VS template default. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
 
   <Resources>
