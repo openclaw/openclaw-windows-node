@@ -470,15 +470,67 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
-    public void TurnEnd_ClearsPendingPermission()
+    public void TurnEnd_PreservesPendingPermission()
     {
+        // Exec approvals can outlive the originating turn: the gateway emits
+        // ``exec.approval.resolved`` after the user clicks Allow/Deny in the
+        // dashboard or tray, and that resolution is what should clear the
+        // banner — not turn-end. See OpenClawChatDataProvider's approval
+        // flow and ChatTimelineReducer.ApplyTurnEnd for the rationale.
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
             new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
 
         var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
 
-        Assert.Null(updated.PendingPermission);
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-1", updated.PendingPermission!.RequestId);
+    }
+
+    [Fact]
+    public void ToolOutput_PreservesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("ok", ToolCallId: null));
+
+        Assert.NotNull(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void ToolError_PreservesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("boom", ToolCallId: null));
+
+        Assert.NotNull(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void SecondPermissionRequest_ReplacesPriorPendingPermission()
+    {
+        // A second exec-approval can arrive before the first is resolved
+        // (the gateway is free to issue them in sequence). The reducer
+        // must surface the newest request so the user is responding to
+        // the live one — not silently keep the stale prior request.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        Assert.Equal("req-1", state.PendingPermission!.RequestId);
+
+        var updated = ChatTimelineReducer.Apply(
+            state,
+            new ChatPermissionRequestEvent("req-2", "shell.exec", "bash", "rm -rf /tmp/x"));
+
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-2", updated.PendingPermission!.RequestId);
+        Assert.Equal("rm -rf /tmp/x", updated.PendingPermission.Detail);
     }
 
     // ── Status and system events ──

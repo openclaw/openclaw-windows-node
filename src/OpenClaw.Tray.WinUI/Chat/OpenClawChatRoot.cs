@@ -250,7 +250,7 @@ public sealed class OpenClawChatRoot : Component
             composeOnlyThread = new ChatThread
             {
                 Id = composeKey,
-                Title = lastState?.ThreadTitle ?? "Main session",
+                Title = lastState?.ThreadTitle ?? "OpenClaw Windows Tray",
                 Model = lastState?.Model,
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
@@ -547,16 +547,42 @@ public sealed class OpenClawChatRoot : Component
             .OrderBy(g => g.Key.Equals("main", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .Select(g => new ChannelGroup(
-                AgentLabel: g.Key.Length > 0 ? char.ToUpper(g.Key[0]) + g.Key[1..] : "Unknown",
+                AgentLabel: g.Key.Length > 0 ? char.ToUpperInvariant(g.Key[0]) + g.Key[1..] : "Unknown",
                 Sessions: g.Select(t => (Id: t.Id, Title: t.Title!)).ToArray()))
             .ToArray();
+
+        // If the compose-only synthetic thread isn't represented in any group
+        // (e.g. fresh install: the gateway has no real sessions yet), inject a
+        // single-entry "Main" group so the composer's channel combo isn't blank.
+        //
+        // Thread-id format (see OpenClawChatDataProvider): the canonical key
+        // is ``agent:<agentId>:<slot>`` (e.g. ``agent:main:default``). The
+        // first segment is always literal ``agent``; the second is the
+        // agent identifier we use to label the channel group; the third is
+        // the slot/session-instance within that agent. When the key
+        // doesn't match this layout we fall back to a generic "Main"
+        // label rather than mis-parsing some other id shape.
+        if (effectiveThread is not null && !ChannelGroupsContain(channelGroups, effectiveThread.Id))
+        {
+            var parts = (effectiveThread.Id ?? "").Split(':');
+            var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";
+            var agentLabel = agentId.Length > 0 ? char.ToUpperInvariant(agentId[0]) + agentId[1..] : "Main";
+            var syntheticGroup = new ChannelGroup(
+                AgentLabel: agentLabel,
+                Sessions: new[] { (Id: effectiveThread.Id, Title: effectiveThread.Title ?? "OpenClaw Windows Tray") });
+
+            var augmented = new ChannelGroup[channelGroups.Length + 1];
+            augmented[0] = syntheticGroup;
+            Array.Copy(channelGroups, 0, augmented, 1, channelGroups.Length);
+            channelGroups = augmented;
+        }
 
         Element composer = (effectiveThread is not null && !suppressComposer)
             ? Component<OpenClawComposer, OpenClawComposerProps>(new(
                 ConnectionState: connState,
                 TurnActive: turnActiveOverride,
                 PendingPermission: pendingPermissionOverride,
-                ChannelLabel: effectiveThread.Title ?? "Main session",
+                ChannelLabel: effectiveThread.Title ?? "OpenClaw Windows Tray",
                 ChannelId: effectiveThread.Id,
                 AvailableChannels: channelGroups,
                 AvailableModels: snapshot.AvailableModels,
@@ -605,6 +631,21 @@ public sealed class OpenClawChatRoot : Component
             body.Grid(row: 2, column: 0),
             composer.Grid(row: 3, column: 0)
         );
+    }
+
+    // Cheap allocation-free probe for "does any group contain a session with
+    // the given id?" — avoids the LINQ Any().Any() allocation in the render
+    // hot path.
+    private static bool ChannelGroupsContain(ChannelGroup[] groups, string id)
+    {
+        foreach (var g in groups)
+        {
+            foreach (var s in g.Sessions)
+            {
+                if (s.Id == id) return true;
+            }
+        }
+        return false;
     }
 
     private static ChatThread SynthesizePreviewThread(ChatDataSnapshot snapshot)

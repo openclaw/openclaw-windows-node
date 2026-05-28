@@ -123,7 +123,11 @@ public static class ChatTimelineReducer
             // Don't remove from ActiveToolCalls here: multiple output events can arrive
             // for the same tool (command_output + item end). Mapping is cleared at turn end.
             ActiveToolCallId = (entryId == state.ActiveToolCallId) ? null : state.ActiveToolCallId,
-            PendingPermission = null
+            // NOTE: PendingPermission intentionally preserved. Exec-approval
+            // events interleave with tool item events (chip start → approval
+            // → tool output), so wiping the banner on tool output would race
+            // it off-screen. Callers clear via ClearPermission on user click
+            // or on phase=resolved.
         };
     }
 
@@ -147,7 +151,7 @@ public static class ChatTimelineReducer
             Entries = entries,
             ActiveToolCallId = (entryId == state.ActiveToolCallId) ? null : state.ActiveToolCallId,
             ActiveToolCalls = e.ToolCallId is { } k ? state.ActiveToolCalls.Remove(k) : state.ActiveToolCalls,
-            PendingPermission = null
+            // PendingPermission preserved — see ApplyToolOutput note.
         };
     }
 
@@ -312,7 +316,8 @@ public static class ChatTimelineReducer
             ActiveReasoningId = null,
             ActiveToolCallId = null,
             ActiveToolCalls = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
-            PendingPermission = null
+            // PendingPermission preserved — exec approvals may outlive their
+            // originating turn (gateway emits phase=resolved to clear).
         };
     }
 

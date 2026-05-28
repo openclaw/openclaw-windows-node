@@ -2952,6 +2952,15 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Refuser</value>
   </data>
+  <data name="Chat_Permission_Title" xml:space="preserve">
+    <value>Approbation d'exécution requise</value>
+  </data>
+  <data name="Chat_Permission_Subtitle" xml:space="preserve">
+    <value>Une approbation est requise pour exécuter la commande ci-dessous sur ce compagnon Windows. Cliquez sur Autoriser pour continuer, ou Refuser pour annuler.</value>
+  </data>
+  <data name="Chat_Permission_Caption" xml:space="preserve">
+    <value>Une approbation est requise pour chaque commande selon la stratégie active. Votre choix s'applique uniquement à cette demande.</value>
+  </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Connexion à la passerelle…</value>
   </data>

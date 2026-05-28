@@ -885,25 +885,57 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
         Element permissionBanner = Props.PendingPermission is { } perm
             ? Border(
-                Grid([GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
-                    TextBlock($"⚠ {perm.ToolName}: {perm.Detail}")
-                        .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.TextTrimming = TextTrimming.CharacterEllipsis; })
-                        .HAlign(HorizontalAlignment.Stretch)
-                        .VAlign(VerticalAlignment.Center)
-                        .Grid(row: 0, column: 0),
-                    Button(LocalizationHelper.GetString("Chat_Permission_Allow"), () => Props.OnPermissionResponse(perm.RequestId, true))
-                        .Set(b => { b.CornerRadius = new CornerRadius(4); b.Padding = new Thickness(12, 4, 12, 4); b.MinWidth = 0; b.MinHeight = 0; })
-                        .VAlign(VerticalAlignment.Center)
-                        .Margin(8, 0, 0, 0)
-                        .Grid(row: 0, column: 1),
-                    Button(LocalizationHelper.GetString("Chat_Permission_Deny"), () => Props.OnPermissionResponse(perm.RequestId, false))
-                        .Set(b => { b.CornerRadius = new CornerRadius(4); b.Padding = new Thickness(12, 4, 12, 4); b.MinWidth = 0; b.MinHeight = 0; })
-                        .VAlign(VerticalAlignment.Center)
-                        .Margin(8, 0, 0, 0)
-                        .Grid(row: 0, column: 2)
-                ).Padding(12, 16, 12, 16)
+                VStack(8,
+                    TextBlock($"⚠ {(string.IsNullOrWhiteSpace(perm.PermissionKind) ? LocalizationHelper.GetString("Chat_Permission_Title") : perm.PermissionKind)}")
+                        .Set(t => { t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; t.TextWrapping = TextWrapping.Wrap; }),
+                    TextBlock(LocalizationHelper.GetString("Chat_Permission_Subtitle"))
+                        .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.Opacity = 0.85; }),
+                    Border(
+                        TextBlock(perm.Detail ?? string.Empty)
+                            .Set(t =>
+                            {
+                                t.TextWrapping = TextWrapping.Wrap;
+                                t.FontFamily = new FontFamily("Consolas, Cascadia Mono, Menlo, monospace");
+                                t.FontSize = 12;
+                                t.IsTextSelectionEnabled = true;
+                            })
+                            .Padding(10, 8, 10, 8)
+                    ).CornerRadius(6)
+                     .Set(b =>
+                     {
+                         b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+                         b.BorderThickness = new Thickness(1);
+                         b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardStrokeColorDefaultBrush"];
+                     }),
+                    TextBlock(LocalizationHelper.GetString("Chat_Permission_Caption"))
+                        .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.FontSize = 11; t.Opacity = 0.7; }),
+                    HStack(8,
+                        Button(LocalizationHelper.GetString("Chat_Permission_Allow"), () => Props.OnPermissionResponse(perm.RequestId, true))
+                            .Set(b =>
+                            {
+                                b.CornerRadius = new CornerRadius(4);
+                                b.Padding = new Thickness(14, 6, 14, 6);
+                                b.MinWidth = 0; b.MinHeight = 0;
+                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; } catch { }
+                            }),
+                        Button(LocalizationHelper.GetString("Chat_Permission_Deny"), () => Props.OnPermissionResponse(perm.RequestId, false))
+                            .Set(b =>
+                            {
+                                b.CornerRadius = new CornerRadius(4);
+                                b.Padding = new Thickness(14, 6, 14, 6);
+                                b.MinWidth = 0; b.MinHeight = 0;
+                            })
+                    ).HAlign(HorizontalAlignment.Right)
+                ).Padding(14, 14, 14, 14)
               ).CornerRadius(8).Margin(24, 16, 24, 16)
-               .Set(b => { b.MaxWidth = 720; b.HorizontalAlignment = HorizontalAlignment.Stretch; })
+               .Set(b =>
+               {
+                   b.MaxWidth = 720;
+                   b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                   b.BorderThickness = new Thickness(1);
+                   b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardStrokeColorDefaultBrush"];
+                   b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["LayerFillColorDefaultBrush"];
+               })
             : Empty();
 
         // ── ComposerLayout 분기 ───────────────────────────────────────
