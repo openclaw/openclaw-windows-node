@@ -1,3 +1,28 @@
+<#
+.SYNOPSIS
+    Validates WinUI localization resources and selected localization tests.
+
+.DESCRIPTION
+    Checks source XAML for controls with x:Uid values that are missing matching
+    Resources.resw entries. It also reports candidate hard-coded localizable XAML
+    strings so localization gaps are visible during review.
+
+    By default the script also runs the focused tray localization test filters.
+    Use -SkipDotNetTests when you only want the static XAML/resource scan.
+
+.PARAMETER StrictHardcodedXaml
+    Treat candidate hard-coded XAML strings as errors instead of warnings.
+
+.PARAMETER SkipDotNetTests
+    Skip the focused dotnet test invocation and only run the static scan.
+
+.EXAMPLE
+    .\scripts\Test-Localization.ps1
+
+.EXAMPLE
+    .\scripts\Test-Localization.ps1 -StrictHardcodedXaml
+#>
+[CmdletBinding()]
 param(
     [switch]$StrictHardcodedXaml,
     [switch]$SkipDotNetTests

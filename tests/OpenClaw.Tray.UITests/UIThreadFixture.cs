@@ -32,14 +32,14 @@ namespace OpenClaw.Tray.UITests;
 public sealed class UIThreadFixture : IDisposable
 {
     // Match the Microsoft.WindowsAppSDK package's runtime major/minor. The
-    // bootstrapper resolves a system-installed Microsoft.WindowsAppRuntime.2.0
+    // bootstrapper resolves a system-installed Microsoft.WindowsAppRuntime.2.1
     // framework MSIX (stable channel = empty version
     // tag). On dev machines and on CI the runtime is installed out-of-band — see
     // .github/workflows/ci.yml ("Install WindowsAppRuntime") and the README setup
     // notes. Self-contained deployment was tried but doesn't survive the xunit
     // testhost: the testhost.exe lives in the .NET SDK directory, so the SDK's
     // P/Invoke-based auto-initializer can't probe the test bin folder.
-    private const uint WinAppSdkMajorMinor = 0x00020000;
+    private const uint WinAppSdkMajorMinor = 0x00020001;
     private const string WinAppSdkVersionTag = "";
     private const int DefaultStartupTimeoutSeconds = 90;
 

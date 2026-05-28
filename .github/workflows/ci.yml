@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [ master, main ]
 
+permissions:
+  contents: read
+
 jobs:
   repo-hygiene:
     runs-on: ubuntu-latest
@@ -158,14 +161,14 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.0, stable),
+    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.1, stable),
     # which looks up the framework package by identity. The hosted windows-2025
     # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 2.0.1 in the csprojs.
-    - name: Install WindowsAppRuntime 2.0.1
+    # Version pinned to match Microsoft.WindowsAppSDK 2.1.3 in the csprojs.
+    - name: Install WindowsAppRuntime 2.1.3
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe"
+        $url = "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
@@ -501,6 +504,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && needs.build-extension.result == 'success' && !cancelled()
     runs-on: windows-latest
     permissions:
+      actions: read
       contents: write
 
     steps:
