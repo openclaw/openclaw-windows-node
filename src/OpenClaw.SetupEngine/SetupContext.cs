@@ -71,6 +71,15 @@ public sealed class SetupConfig
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = true
     };
+
+    /// <summary>
+    /// Minimal write-only options for producing human-readable JSON files.
+    /// Shared to avoid repeated heap allocation at call sites.
+    /// </summary>
+    internal static readonly JsonSerializerOptions JsonWriteOptions = new()
+    {
+        WriteIndented = true
+    };
 }
 
 // ─── WSL Configuration ───
@@ -220,7 +229,7 @@ public sealed class TraySettingsConfig
             settings.TryAdd(kvp.Key, kvp.Value);
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(settingsPath, json);
     }
 }

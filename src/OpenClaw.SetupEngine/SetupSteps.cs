@@ -2213,7 +2213,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             History = Array.Empty<object>()
         };
 
-        var json = System.Text.Json.JsonSerializer.Serialize(state, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var json = System.Text.Json.JsonSerializer.Serialize(state, SetupConfig.JsonWriteOptions);
         await AtomicFile.WriteAllTextAsync(statePath, json, ct);
         ctx.Logger.Info($"Wrote setup-state.json: DistroName={ctx.DistroName}");
     }
@@ -2286,7 +2286,7 @@ public sealed class StartKeepaliveStep : SetupStep
             StartTimeUtc = DateTimeOffset.UtcNow,
             ProcessName = "wsl"
         };
-        var json = System.Text.Json.JsonSerializer.Serialize(marker, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var json = System.Text.Json.JsonSerializer.Serialize(marker, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(markerPath, json);
         ctx.Logger.Info($"Wrote keepalive marker: {markerPath}");
     }

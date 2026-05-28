@@ -523,7 +523,7 @@ public class DeviceIdentity
     /// </summary>
     private static void AtomicWriteKeyFile(string path, DeviceKeyData data)
     {
-        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(data, JsonSerializerOptionsCache.WriteIndented);
         var dir = Path.GetDirectoryName(path);
         var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
         var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");

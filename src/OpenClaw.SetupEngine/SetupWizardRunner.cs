@@ -279,7 +279,7 @@ public sealed class SetupWizardRunner
             Steps = discoveredSteps
         };
 
-        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(template, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(basePath, json);
         _ctx.Logger.Info($"Wizard answer template written: {basePath}");
         return basePath;

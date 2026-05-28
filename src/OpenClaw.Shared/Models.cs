@@ -1789,7 +1789,7 @@ public class AgentEventInfo
             if (_cachedDataJson != null) return _cachedDataJson;
             try
             {
-                _cachedDataJson = JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true });
+                _cachedDataJson = JsonSerializer.Serialize(Data, JsonSerializerOptionsCache.WriteIndented);
             }
             catch
             {

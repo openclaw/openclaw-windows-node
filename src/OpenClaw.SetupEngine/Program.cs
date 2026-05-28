@@ -191,7 +191,7 @@ public static class Program
                 logPath = config.LogPath,
                 journalPath
             };
-            var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, SetupConfig.JsonWriteOptions);
             await AtomicFile.WriteAllTextAsync(jsonOutput, json);
         }
 
