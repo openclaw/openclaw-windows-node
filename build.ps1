@@ -270,16 +270,6 @@ if ($failCount -eq 0) {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
         }
     }
-
-    # Auto-cleanup any Terminal ghost frames that snuck through during MSIX
-    # packaging / XAML compilation / signtool. The in-process test cleanup
-    # (tests/OpenClaw.Tray.Tests/WinAppSdkGhostWindowCleanup.cs) only runs
-    # inside the testhost lifetime; build-time tooling that spawns Cascadia
-    # hosting windows leaks ghosts that this script catches.
-    $ghostCleanup = Join-Path $PSScriptRoot "scripts\cleanup-ghost-windows.ps1"
-    if (Test-Path $ghostCleanup) {
-        & $ghostCleanup -Quiet
-    }
 } else {
     Write-Host "❌ $failCount build(s) failed" -ForegroundColor Red
     exit 1

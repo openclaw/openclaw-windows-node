@@ -27,10 +27,6 @@ Notes:
   - `$env:OPENCLAW_REPO_ROOT='D:\github\moltbot-windows-hub.<worktree-name>'`
 - Tray tests must isolate `SettingsManager` from real user settings. Do not use `new SettingsManager()` in tests unless the test intentionally reads `%APPDATA%\OpenClawTray\settings.json`; pass a temp settings directory or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
 - Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
-- **Windows Terminal ghost frames**: tray tests and MSIX packaging tools (`MakeAppx`, `signtool`, the WindowsAppSDK markup compiler) can leak blank "Terminal" windows that survive testhost / msbuild exit. The in-process cleanup at `tests/OpenClaw.Tray.Tests/WinAppSdkGhostWindowCleanup.cs` catches most of them; `build.ps1` invokes the manual fallback at the end of every build. If you see blank Terminal windows piling up after a manual / interrupted test run, run `scripts/cleanup-ghost-windows.ps1` (no admin needed; safe — only touches `CASCADIA_HOSTING_WINDOW_CLASS` windows ≥1000×500 with title literally `Terminal` owned by `WindowsTerminal`).
-  - **Win11 default-terminal-app trigger**: on a stock Win11 install, `HKCU\Console\%%Startup\DelegationConsole` is set to the Windows Terminal CLSID, which means EVERY console-spawning child (gh, git, dotnet, pwsh, an agent's tool invocations) allocates a Cascadia frame. Most close cleanly; a small fraction leak. For high-shell-activity sessions, prefer one of:
-    - `./scripts/cleanup-ghost-windows.ps1 -Daemon` (foreground watcher, Ctrl+C to stop)
-    - `./scripts/cleanup-ghost-windows.ps1 -InstallScheduledTask` (registers a hidden 5-minute task under the current user; uninstall with `-UninstallScheduledTask`)
 - Do not claim completion without reporting validation results.
 
 ## Architecture Context for New Agents
