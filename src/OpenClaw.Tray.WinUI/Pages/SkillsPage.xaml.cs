@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -92,7 +93,13 @@ public sealed partial class SkillsPage : Page
             _ = client.RequestSkillsStatusAsync(GetSelectedAgentId());
     }
 
-    private async void OnToggleSkillClick(object sender, RoutedEventArgs e)
+    private void OnToggleSkillClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnToggleSkillClickAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnToggleSkillClick));
+
+    private async Task OnToggleSkillClickAsync(object sender)
     {
         if (sender is not Button btn || btn.Tag is not string skillKey) return;
         if (CurrentApp.GatewayClient == null) return;

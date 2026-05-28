@@ -265,7 +265,13 @@ public sealed partial class VoiceOverlayWindow : WindowEx
         }
     }
 
-    private async void OnStartStopClick(object sender, RoutedEventArgs e)
+    private void OnStartStopClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnStartStopClickAsync,
+            _logger,
+            nameof(OnStartStopClick));
+
+    private async Task OnStartStopClickAsync()
     {
         try
         {
@@ -319,7 +325,13 @@ public sealed partial class VoiceOverlayWindow : WindowEx
         }
     }
 
-    private async void OnMuteClick(object sender, RoutedEventArgs e)
+    private void OnMuteClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnMuteClickAsync,
+            _logger,
+            nameof(OnMuteClick));
+
+    private async Task OnMuteClickAsync()
     {
         _isMuted = !_isMuted;
         MuteIcon.Glyph = _isMuted ? "\uE74F" : "\uE767"; // Muted / Volume

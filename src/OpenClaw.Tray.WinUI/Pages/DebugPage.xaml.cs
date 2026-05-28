@@ -406,14 +406,15 @@ public sealed partial class DebugPage : Page
 
     // ── Section 1: Share diagnostics with support ────────────────────
 
-    private async void OnCreateDiagnosticsBundle(object sender, RoutedEventArgs e)
-    {
-        await ShowBundlePreviewAsync(
-            title: "Diagnostics bundle",
-            buildText: CommandCenterTextHelper.BuildDebugBundle,
-            suggestedFileName: $"openclaw-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
-            headerCaption: "This is the complete bundle that would be copied or saved.");
-    }
+    private void OnCreateDiagnosticsBundle(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => ShowBundlePreviewAsync(
+                title: "Diagnostics bundle",
+                buildText: CommandCenterTextHelper.BuildDebugBundle,
+                suggestedFileName: $"openclaw-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+                headerCaption: "This is the complete bundle that would be copied or saved."),
+            new OpenClawTray.AppLogger(),
+            nameof(OnCreateDiagnosticsBundle));
 
     private async Task ShowBundlePreviewAsync(
         string title,
@@ -673,7 +674,13 @@ public sealed partial class DebugPage : Page
         }
     }
 
-    private async void OnRelaunchOnboarding(object sender, RoutedEventArgs e)
+    private void OnRelaunchOnboarding(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnRelaunchOnboardingAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnRelaunchOnboarding));
+
+    private async Task OnRelaunchOnboardingAsync()
     {
         if (XamlRoot == null) return;
 

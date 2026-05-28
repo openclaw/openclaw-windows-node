@@ -581,7 +581,13 @@ public sealed class SetupWizardWindow : WindowEx
             ? DateTimeOffset.FromUnixTimeMilliseconds(value)
             : DateTimeOffset.FromUnixTimeSeconds(value);
 
-    private async void OnPasteSetupFromClipboard(object sender, RoutedEventArgs e)
+    private void OnPasteSetupFromClipboard(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnPasteSetupFromClipboardAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnPasteSetupFromClipboard));
+
+    private async Task OnPasteSetupFromClipboardAsync()
     {
         try
         {
@@ -614,7 +620,13 @@ public sealed class SetupWizardWindow : WindowEx
         }
     }
 
-    private async void OnImportQrImage(object sender, RoutedEventArgs e)
+    private void OnImportQrImage(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnImportQrImageAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnImportQrImage));
+
+    private async Task OnImportQrImageAsync()
     {
         try
         {
@@ -715,7 +727,13 @@ public sealed class SetupWizardWindow : WindowEx
         UpdatePairingStatusText();
     }
 
-    private async void OnTestConnection(object sender, RoutedEventArgs e)
+    private void OnTestConnection(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnTestConnectionAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnTestConnection));
+
+    private async Task OnTestConnectionAsync()
     {
         _draftGatewayUrl = _gatewayUrlBox.Text.Trim();
         _draftToken = _tokenBox.Text;

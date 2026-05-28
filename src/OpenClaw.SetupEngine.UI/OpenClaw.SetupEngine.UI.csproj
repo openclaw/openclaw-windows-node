@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
+    <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
   <!-- Reuse Setup assets from the Tray project -->

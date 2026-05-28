@@ -504,54 +504,34 @@ public sealed partial class ChatWindow : WindowEx
 
     private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
-        var voiceService = (App.Current as App)?.VoiceServiceInstance;
+        var app = App.Current as App;
+        if (app is null || app.Settings?.NodeSttEnabled != true)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
+                () => app?.ShowHub("voice"));
+            return null;
+        }
+
+        var voiceService = app.VoiceServiceInstance;
         var host = _functionalHost;
-        if (voiceService is null) return null;
+        if (voiceService is null)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
+                () => app.ShowHub("voice"));
+            return null;
+        }
 
         // If the STT model isn't downloaded yet, prompt the user and open voice settings.
         if (!voiceService.IsModelDownloaded)
         {
-            // Must dispatch to UI thread — this method runs on a background thread.
-            var tcs = new TaskCompletionSource();
-            DispatcherQueue?.TryEnqueue(async () =>
-            {
-                try
-                {
-                    var dialog = new ContentDialog
-                    {
-                        Title = "Voice Model Required",
-                        Content = "The speech-to-text model needs to be installed before you can use voice input. Would you like to open Voice settings to install it?",
-                        PrimaryButtonText = "Open Voice Settings",
-                        CloseButtonText = "Cancel",
-                        XamlRoot = Content?.XamlRoot
-                    };
-                    // Light-dismiss: close when the user taps the smoke overlay.
-                    dialog.Opened += (s, _) =>
-                    {
-                        if (s is ContentDialog d)
-                        {
-                            // The smoke-screen overlay is the first open popup whose
-                            // child is NOT the dialog itself.
-                            foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
-                            {
-                                if (popup.Child is UIElement overlay && overlay != d)
-                                {
-                                    overlay.Tapped += (_, _) => d.Hide();
-                                    break;
-                                }
-                            }
-                        }
-                    };
-                    var result = await dialog.ShowAsync();
-                    if (result == ContentDialogResult.Primary)
-                    {
-                        (App.Current as App)?.ShowHub("voice");
-                    }
-                }
-                catch { /* dialog already open or window closing */ }
-                finally { tcs.TrySetResult(); }
-            });
-            await tcs.Task;
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredMessage"),
+                () => app.ShowHub("voice"));
             return null;
         }
 
@@ -578,6 +558,56 @@ public sealed partial class ChatWindow : WindowEx
             host?.SetVoiceTranscript(null);
             host?.SetVoiceAudioLevel(0f);
         }
+    }
+
+    private async Task ShowVoiceSettingsDialogAsync(string title, string message, Action openVoiceSettings)
+    {
+        var tcs = new TaskCompletionSource();
+        if (DispatcherQueue is null || !DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = title,
+                    Content = message,
+                    PrimaryButtonText = LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
+                    CloseButtonText = LocalizationHelper.GetString("ChatVoiceDialog_Dismiss"),
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = Content?.XamlRoot
+                };
+                dialog.Opened += (s, _) =>
+                {
+                    if (s is ContentDialog d)
+                    {
+                        foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
+                        {
+                            if (popup.Child is UIElement overlay && overlay != d)
+                            {
+                                overlay.Tapped += (_, _) => d.Hide();
+                                break;
+                            }
+                        }
+                    }
+                };
+
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                    openVoiceSettings();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Logger.Warn($"Voice settings dialog could not be shown: {ex.Message}");
+            }
+            finally
+            {
+                tcs.TrySetResult();
+            }
+        }))
+        {
+            return;
+        }
+
+        await tcs.Task;
     }
 
     private async Task PickAndAttachFileAsync()

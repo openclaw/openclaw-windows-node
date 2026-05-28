@@ -348,6 +348,57 @@ public class McpHttpServerTests
     }
 
     [Fact]
+    public async Task DisposeAsync_DuringInFlightHandler_DoesNotSurfaceObjectDisposedException()
+    {
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cap = new GatedCapability(release);
+        var (server, http, _) = BootWith(cap);
+
+        var unobserved = new List<Exception>();
+        EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
+        {
+            foreach (var ex in e.Exception.InnerExceptions) unobserved.Add(ex);
+            e.SetObserved();
+        };
+        TaskScheduler.UnobservedTaskException += handler;
+
+        try
+        {
+            var inflight = Task.Run(async () =>
+            {
+                try
+                {
+                    await http.PostAsync("/", new StringContent(
+                        @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""gate.wait""}}",
+                        Encoding.UTF8, "application/json"));
+                }
+                catch { /* socket may close on shutdown; not what we're testing */ }
+            });
+
+            var entered = await Task.WhenAny(cap.Entered, Task.Delay(2000));
+            Assert.Equal(cap.Entered, entered);
+
+            var disposeTask = server.DisposeAsync().AsTask();
+            release.TrySetResult(true);
+            await disposeTask;
+            await inflight;
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.DoesNotContain(unobserved, e => e is ObjectDisposedException);
+            Assert.DoesNotContain(unobserved, e => e is SemaphoreFullException);
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= handler;
+            release.TrySetResult(true);
+            http.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task SlowBody_TimesOut_FreesHandlerSlot()
     {
         // CR-003: a client that opens a POST and dribbles bytes must not pin

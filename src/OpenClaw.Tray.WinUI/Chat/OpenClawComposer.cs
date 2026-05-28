@@ -785,10 +785,6 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             })
             .Set(b => b.Opacity = showTools ? 1.0 : 0.55);
 
-        var settingsBtn = Props.OnSettingsClick is not null
-            ? IconButton("\uE713", "Settings", () => Props.OnSettingsClick())
-            : Empty();
-
         // Send button — always present so the user can queue follow-up messages
         // even while the assistant is responding.
         var defaultSendBrush = ChatVisualResolver.UserBubbleBrush(
@@ -1051,7 +1047,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             // Wrapping in FlexRow caused the Button to stretch to the Star column width.
             var bottomRow = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
                 combinedPill.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
-                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, settingsBtn, actionBtn, stopBtn) with { ColumnGap = 4 })                    .HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 1)
+                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn) with { ColumnGap = 4 })
+                    .HAlign(HorizontalAlignment.Right)
+                    .Grid(row: 0, column: 1)
             );
 
             return VStack(0,
@@ -1069,7 +1067,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }
 
         var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, settingsBtn, actionBtn, stopBtn)
+            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
             .Grid(row: 0, column: 1)
