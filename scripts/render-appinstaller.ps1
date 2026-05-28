@@ -30,6 +30,11 @@
 .PARAMETER MsixUri
   Absolute https:// URL of the matching architecture .msix release asset.
 
+.PARAMETER WindowsAppRuntimeUri
+  Absolute https:// URL of the matching architecture Microsoft.WindowsAppRuntime.2
+  framework .msix release asset. AppInstaller installs this dependency when it
+  is missing, avoiding a launch-time runtime acquisition prompt.
+
 .PARAMETER AppInstallerUri
   Absolute https:// URL of THIS rendered .appinstaller file on the stable
   channel (e.g. https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller).
@@ -49,6 +54,7 @@
     -IdentityName OpenClaw.Companion `
     -ProcessorArchitecture x64 `
     -MsixUri https://github.com/.../v0.5.3/OpenClawCompanion-0.5.3-win-x64.msix `
+    -WindowsAppRuntimeUri https://github.com/.../v0.5.3/Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix `
     -AppInstallerUri https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-x64.appinstaller `
     -OutputPath OpenClawCompanion-0.5.3-win-x64.appinstaller
 #>
@@ -60,6 +66,7 @@ param(
   [string] $IdentityName = 'OpenClaw.Companion',
   [Parameter(Mandatory)] [ValidateSet('x64', 'arm64')] [string] $ProcessorArchitecture,
   [Parameter(Mandatory)] [string] $MsixUri,
+  [Parameter(Mandatory)] [string] $WindowsAppRuntimeUri,
   [Parameter(Mandatory)] [string] $AppInstallerUri,
   [Parameter(Mandatory)] [string] $OutputPath,
   [switch] $AllowHttpForLocalTest
@@ -88,6 +95,7 @@ if ([string]::IsNullOrWhiteSpace($IdentityName)) {
 # http://127.0.0.1 with -AllowHttpForLocalTest.
 foreach ($pair in @(
     @{ Name = 'MsixUri';         Value = $MsixUri },
+    @{ Name = 'WindowsAppRuntimeUri'; Value = $WindowsAppRuntimeUri },
     @{ Name = 'AppInstallerUri'; Value = $AppInstallerUri }
   )) {
   $u = $null
@@ -118,6 +126,7 @@ $rendered = $rendered.Replace('{{PUBLISHER}}',              $Publisher)
 $rendered = $rendered.Replace('{{IDENTITY_NAME}}',          $IdentityName)
 $rendered = $rendered.Replace('{{PROCESSOR_ARCHITECTURE}}', $ProcessorArchitecture)
 $rendered = $rendered.Replace('{{MSIX_URI}}',               $MsixUri)
+$rendered = $rendered.Replace('{{WINDOWS_APP_RUNTIME_URI}}', $WindowsAppRuntimeUri)
 $rendered = $rendered.Replace('{{APPINSTALLER_URI}}',       $AppInstallerUri)
 if ($rendered -match '\{\{[A-Z0-9_]+\}\}') {
   throw "Rendered XML still contains unresolved template token(s): $($Matches[0])"
@@ -148,6 +157,22 @@ if ($mainPackage.ProcessorArchitecture -ne $ProcessorArchitecture) {
 if ($mainPackage.Uri -ne $MsixUri) {
   throw "Rendered XML has package Uri '$($mainPackage.Uri)' but expected '$MsixUri'."
 }
+$dependency = $xml.AppInstaller.Dependencies.Package | Where-Object { $_.Name -eq 'Microsoft.WindowsAppRuntime.2' } | Select-Object -First 1
+if ($null -eq $dependency) {
+  throw "Rendered XML must contain a Microsoft.WindowsAppRuntime.2 dependency package."
+}
+if ($dependency.Publisher -ne 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US') {
+  throw "Rendered XML has Windows App Runtime Publisher '$($dependency.Publisher)'."
+}
+if ($dependency.Version -ne '2.0.1.0') {
+  throw "Rendered XML has Windows App Runtime Version '$($dependency.Version)' but expected '2.0.1.0'."
+}
+if ($dependency.ProcessorArchitecture -ne $ProcessorArchitecture) {
+  throw "Rendered XML has Windows App Runtime ProcessorArchitecture '$($dependency.ProcessorArchitecture)' but expected '$ProcessorArchitecture'."
+}
+if ($dependency.Uri -ne $WindowsAppRuntimeUri) {
+  throw "Rendered XML has Windows App Runtime Uri '$($dependency.Uri)' but expected '$WindowsAppRuntimeUri'."
+}
 
 $outDir = Split-Path -Parent $OutputPath
 if ($outDir -and -not (Test-Path $outDir)) {
@@ -161,4 +186,5 @@ Write-Host "  Publisher:       $Publisher"
 Write-Host "  Identity:        $IdentityName"
 Write-Host "  Architecture:    $ProcessorArchitecture"
 Write-Host "  MSIX URI:        $MsixUri"
+Write-Host "  Windows App Runtime URI: $WindowsAppRuntimeUri"
 Write-Host "  AppInstaller URI: $AppInstallerUri"

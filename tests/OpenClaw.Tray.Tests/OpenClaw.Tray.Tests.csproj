@@ -39,7 +39,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SingleInstanceLaunchGuard.cs" Link="Services\SingleInstanceLaunchGuard.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WinUiStartupGate.cs" Link="Services\WinUiStartupGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConfigEditorModel.cs" Link="Services\ConfigEditorModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />

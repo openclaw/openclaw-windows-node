@@ -65,6 +65,7 @@ public sealed class AppInstallerTemplateAssertionTests
     [InlineData("{{IDENTITY_NAME}}")]
     [InlineData("{{PROCESSOR_ARCHITECTURE}}")]
     [InlineData("{{MSIX_URI}}")]
+    [InlineData("{{WINDOWS_APP_RUNTIME_URI}}")]
     [InlineData("{{APPINSTALLER_URI}}")]
     public void Template_DeclaresExpectedPlaceholder(string token)
     {
@@ -102,6 +103,23 @@ public sealed class AppInstallerTemplateAssertionTests
     }
 
     [Fact]
+    public void Template_DeclaresWindowsAppRuntimeFrameworkDependency()
+    {
+        var doc = XDocument.Parse(LoadTemplate());
+        XNamespace ns = "http://schemas.microsoft.com/appx/appinstaller/2018";
+
+        var dependency = doc.Descendants(ns + "Dependencies")
+            .Elements(ns + "Package")
+            .Single(e => (string?)e.Attribute("Name") == "Microsoft.WindowsAppRuntime.2");
+
+        Assert.Equal("CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+            (string?)dependency.Attribute("Publisher"));
+        Assert.Equal("2.0.1.0", (string?)dependency.Attribute("Version"));
+        Assert.Equal("{{PROCESSOR_ARCHITECTURE}}", (string?)dependency.Attribute("ProcessorArchitecture"));
+        Assert.Equal("{{WINDOWS_APP_RUNTIME_URI}}", (string?)dependency.Attribute("Uri"));
+    }
+
+    [Fact]
     public void InAppService_PointsAtSameStableArchitectureUrlsAsReleaseChannel()
     {
         var service = File.ReadAllText(Path.Combine(
@@ -133,6 +151,12 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("Expected exactly one ARM64 MSIX artifact", releaseJob);
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.msix", releaseJob);
         Assert.Contains("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-arm64.msix", releaseJob);
+        Assert.Contains("Output/OpenClawTray-Setup-x64.exe", releaseJob);
+        Assert.Contains("Output/OpenClawTray-Setup-arm64.exe", releaseJob);
+        Assert.Contains("OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip", releaseJob);
+        Assert.Contains("OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip", releaseJob);
+        Assert.Contains("Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix", releaseJob);
+        Assert.Contains("Microsoft.WindowsAppRuntime.2-2.0.1.0-win-arm64.msix", releaseJob);
         Assert.DoesNotContain("OpenClawCompanion-" + "r" + "ed", releaseJob);
         Assert.DoesNotContain("OpenClawCompanion-" + "b" + "lue", releaseJob);
         Assert.DoesNotContain("OpenClawCompanion-${{ needs.test.outputs.semVer }}-win-x64.appinstaller", releaseJob);
@@ -153,6 +177,12 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("Repack MSIX Packages After Payload Signing", releaseJob);
         Assert.Contains("Verify Signed MSIX Payloads", releaseJob);
         Assert.Contains("verify-msix-payload-signatures.ps1", releaseJob);
+        Assert.Contains("Copy Windows App SDK Framework Packages", releaseJob);
+        Assert.Contains("Create Release ZIPs", releaseJob);
+        Assert.Contains("Install Inno Setup", releaseJob);
+        Assert.Contains("Build x64 Installer", releaseJob);
+        Assert.Contains("Build arm64 Installer", releaseJob);
+        Assert.Contains("Sign Installer", releaseJob);
         Assert.Contains("certificate-profile-name: WindowsEdgeLight", releaseJob);
     }
 
@@ -354,6 +384,10 @@ public sealed class AppInstallerTemplateAssertionTests
         Assert.Contains("-AllowGitHubContentTypes", workflow);
         Assert.Contains("OpenClawCompanion-$versionText-win-x64.msix", workflow);
         Assert.Contains("OpenClawCompanion-$versionText-win-arm64.msix", workflow);
+        Assert.Contains("Microsoft.WindowsAppRuntime.2-2.0.1.0-win-x64.msix", workflow);
+        Assert.Contains("Microsoft.WindowsAppRuntime.2-2.0.1.0-win-arm64.msix", workflow);
+        Assert.Contains("-WindowsAppRuntimeUri $x64RuntimeUri", workflow);
+        Assert.Contains("-WindowsAppRuntimeUri $arm64RuntimeUri", workflow);
         Assert.DoesNotContain("OpenClawCompanion-*-win-x64.msix", workflow);
         Assert.DoesNotContain("OpenClawCompanion-*-win-arm64.msix", workflow);
     }

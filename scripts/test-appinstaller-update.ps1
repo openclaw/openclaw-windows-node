@@ -66,6 +66,12 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
   Copy-Item $MsixVnPath  (Join-Path $tmp 'vN.msix')
   Copy-Item $MsixVn1Path (Join-Path $tmp 'vNplus1.msix')
+  $globalPackages = (dotnet nuget locals global-packages -l) -replace '^global-packages:\s*', ''
+  $runtimeMsix = Join-Path $globalPackages 'microsoft.windowsappsdk.runtime\2.0.1\tools\MSIX\win10-x64\Microsoft.WindowsAppRuntime.2.msix'
+  if (-not (Test-Path $runtimeMsix)) {
+    throw "Windows App Runtime framework package not found: $runtimeMsix"
+  }
+  Copy-Item $runtimeMsix (Join-Path $tmp 'Microsoft.WindowsAppRuntime.2.msix') -Force
 
   $baseUri = "http://127.0.0.1:$Port"
   $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -77,6 +83,7 @@ try {
       -Publisher $Publisher `
       -ProcessorArchitecture x64 `
       -MsixUri "$baseUri/$MsixFileName" `
+      -WindowsAppRuntimeUri "$baseUri/Microsoft.WindowsAppRuntime.2.msix" `
       -AppInstallerUri "$baseUri/openclaw.appinstaller" `
       -OutputPath $OutputPath `
       -AllowHttpForLocalTest

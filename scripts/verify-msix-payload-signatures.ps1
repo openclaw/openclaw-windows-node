@@ -6,7 +6,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $MsixPath
+    [string] $MsixPath,
+
+    [string] $MakeAppxPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,7 +28,28 @@ $unsupportedScriptExtensions = @('.cmd', '.bat', '.vbs', '.js')
 
 try {
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
-    Expand-Archive -LiteralPath $MsixPath -DestinationPath $tempRoot -Force
+    if ([string]::IsNullOrWhiteSpace($MakeAppxPath)) {
+        $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+        $MakeAppxPath = Get-ChildItem $kitsRoot -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\makeappx\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+        if ([string]::IsNullOrWhiteSpace($MakeAppxPath)) {
+            $globalPackages = (dotnet nuget locals global-packages -l) -replace '^global-packages:\s*', ''
+            $MakeAppxPath = Get-ChildItem $globalPackages -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\x64\\makeappx\.exe$' } |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1 -ExpandProperty FullName
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($MakeAppxPath) -or -not (Test-Path -LiteralPath $MakeAppxPath -PathType Leaf)) {
+        throw "makeappx.exe not found. Pass -MakeAppxPath or install Windows SDK build tools."
+    }
+
+    & $MakeAppxPath unpack /p $MsixPath /d $tempRoot /o | Write-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "makeappx.exe unpack failed with exit code $LASTEXITCODE"
+    }
 
     $payloadFiles = Get-ChildItem -LiteralPath $tempRoot -Recurse -File
     $unsupportedScripts = @($payloadFiles | Where-Object { $_.Extension.ToLowerInvariant() -in $unsupportedScriptExtensions })

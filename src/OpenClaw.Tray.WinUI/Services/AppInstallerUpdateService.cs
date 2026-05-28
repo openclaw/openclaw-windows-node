@@ -9,7 +9,7 @@ using OpenClawTray.Helpers;
 namespace OpenClawTray.Services;
 
 /// <summary>
-/// MSIX-only update path. When the tray is running as a packaged app the
+/// MSIX packaged update path. When the tray is running as a packaged app the
 /// canonical non-Store auto-update channel is an <c>.appinstaller</c> file
 /// hosted at a stable URL (see <c>installer/openclaw-companion.appinstaller.template</c>
 /// and <c>docs/RELEASING.md</c>). Windows AppInstaller polls that URL via
@@ -18,8 +18,7 @@ namespace OpenClawTray.Services;
 /// click "Check for updates" without making force-shutdown the default.
 ///
 /// This service is only invoked when <see cref="PackageHelper.IsPackaged"/>
-/// is true. The unpackaged dev / debug path is intentionally unchanged
-/// (it stamps status in <c>App.xaml.cs</c> and does not try to self-update).
+/// is true. The unpackaged installer/portable path continues to use Updatum.
 /// </summary>
 internal static class AppInstallerUpdateService
 {

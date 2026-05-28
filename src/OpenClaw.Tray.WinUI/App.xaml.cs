@@ -25,12 +25,19 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Updatum;
 using WinUIEx;
 
 namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
+    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
+    {
+        FetchOnlyLatestRelease = true,
+        InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
+    };
+
     private TrayIcon? _trayIcon;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
@@ -2962,6 +2969,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         if (_settings == null) return;
 
+        if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+        {
+            await LaunchPackagedSetupEngineAsync();
+            return;
+        }
+
         var setupExePath = ResolveSetupEngineUiPath();
         if (setupExePath == null)
         {
@@ -2986,7 +2999,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
             {
-                UseShellExecute = true,
+                UseShellExecute = false,
                 WorkingDirectory = Path.GetDirectoryName(setupExePath) ?? AppContext.BaseDirectory
             };
             var process = System.Diagnostics.Process.Start(psi);
@@ -3001,6 +3014,49 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         catch (Exception ex)
         {
             Logger.Error($"Failed to launch SetupEngine.UI: {ex.Message}");
+        }
+    }
+
+    private async Task LaunchPackagedSetupEngineAsync()
+    {
+        var setupProcesses = System.Diagnostics.Process.GetProcessesByName("OpenClaw.SetupEngine.UI");
+        if (setupProcesses.Length > 0)
+        {
+            Logger.Info("SetupEngine.UI already running — focusing existing instance");
+            foreach (var p in setupProcesses)
+            {
+                TryBringSetupEngineToFront(p);
+            }
+            foreach (var p in setupProcesses) p.Dispose();
+            return;
+        }
+
+        try
+        {
+            var setupExePath = ResolveSetupEngineUiPath();
+            if (setupExePath == null)
+            {
+                Logger.Error($"SetupEngine.UI not found (searched {AppContext.BaseDirectory})");
+                return;
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = Path.GetDirectoryName(setupExePath) ?? AppContext.BaseDirectory
+            };
+            var process = System.Diagnostics.Process.Start(psi);
+            if (process != null)
+            {
+                await Task.Delay(500);
+                TryBringSetupEngineToFront(process);
+                process.Dispose();
+            }
+            Logger.Info("Launched packaged SetupEngine.UI for setup");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to activate packaged SetupEngine.UI: {ex.Message}");
         }
     }
 
@@ -3253,7 +3309,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         CurrentVersion = AppVersionHelper.CurrentVersionText
     };
 
-    private async Task<bool> CheckForUpdatesAsync()
+    // Cross-path concurrency for legacy Updatum checks, split into two phases:
+    //  - _updateCheckGate: held only during the metadata/network check.
+    //  - _updateInstallInProgress: held while the prompt/download/install runs.
+    private readonly System.Threading.SemaphoreSlim _updateCheckGate = new(1, 1);
+    private int _updateInstallInProgress;
+
+    private async Task<bool> CheckForUpdatesAsync(bool userInitiated = false)
     {
         // Packaged apps under MSIX don't need an in-app startup poll. Windows
         // AppInstaller polls our hosted .appinstaller with AutomaticBackgroundTask
@@ -3271,99 +3333,365 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return true;
         }
 
+        // === Stage 1: metadata check (gate-protected) ===
+        if (!await _updateCheckGate.WaitAsync(TimeSpan.FromSeconds(30)))
+        {
+            Logger.Warn("Update check gate timed out: another check is in progress");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "another update check is already in progress; try again in a moment"
+                };
+            }
+            return true;
+        }
+
+#if DEBUG
         try
         {
-            // Unpackaged builds (dev / debug / CI hosts) have no shipping update
-            // channel ΓÇö there's no MSIX to apply.
-            // Just stamp the UpdateInfo so the diagnostics panel reflects the
-            // current state and let the app launch.
-            Logger.Info("Skipping update check (unpackaged build; no update channel available)");
+            Logger.Info("Skipping update check in debug build");
             _appState!.UpdateInfo = new UpdateCommandCenterInfo
             {
                 Status = "Skipped",
-                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow,
-                Detail = "unpackaged build; install the MSIX for auto-update"
+                Detail = "debug build"
             };
+            return true;
+        }
+        finally
+        {
+            _updateCheckGate.Release();
+        }
+#else
+        string releaseTag;
+        string changelog;
+        try
+        {
+            Logger.Info("Checking for updates...");
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Checking",
+                CurrentVersion = AppVersionInfo.Version,
+                CheckedAt = DateTime.UtcNow
+            };
+            var updateFound = await AppUpdater.CheckForUpdatesAsync();
+
+            if (!updateFound)
+            {
+                Logger.Info("No updates available");
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Current",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "no updates available"
+                };
+                return true;
+            }
+
+            var release = AppUpdater.LatestRelease!;
+            if (string.IsNullOrEmpty(release.TagName))
+            {
+                Logger.Warn("Update reported available but release has no TagName");
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "update metadata incomplete (missing version tag)"
+                };
+                return true;
+            }
+
+            releaseTag = release.TagName;
+            changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
+            Logger.Info($"Update available: {releaseTag}");
+            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Available",
+                CurrentVersion = AppVersionInfo.Version,
+                LatestVersion = releaseTag,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "prompted"
+            };
+
+            if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
+                string.Equals(_settings.SkippedUpdateTag, releaseTag, StringComparison.OrdinalIgnoreCase) &&
+                !userInitiated)
+            {
+                Logger.Info($"Skipping update prompt for remembered version {releaseTag}");
+                _appState!.UpdateInfo.Detail = "skipped by user";
+                return true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Info("Update check cancelled");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "update check cancelled"
+                };
+            }
             return true;
         }
         catch (Exception ex)
         {
             Logger.Warn($"Update check failed: {ex.Message}");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = ex.Message
+                };
+            }
+            return true;
+        }
+        finally
+        {
+            _updateCheckGate.Release();
+        }
+
+        // === Stage 2: user-interactive prompt + download/install ===
+        if (System.Threading.Interlocked.CompareExchange(ref _updateInstallInProgress, 1, 0) != 0)
+        {
+            Logger.Info("Update prompt/install already in progress; skipping");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "an update is already being downloaded or installed"
+                };
+            }
+            return true;
+        }
+
+        try
+        {
+            var dialog = new UpdateDialog(releaseTag, changelog);
+            UpdateDialogResult result;
+            try
+            {
+                result = await dialog.ShowAsync();
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+            {
+                Logger.Warn($"[Update] Prompt dialog dismissed before completion: 0x{ex.HResult:X8}");
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                Logger.Warn($"[Update] Prompt dialog could not be shown: {ex.Message}");
+                return true;
+            }
+
+            if (result == UpdateDialogResult.Download)
+            {
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Available",
+                    CurrentVersion = AppVersionInfo.Version,
+                    LatestVersion = releaseTag,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "download requested"
+                };
+                if (_settings != null)
+                {
+                    _settings.SkippedUpdateTag = string.Empty;
+                    _settings.Save();
+                }
+                var installed = await DownloadAndInstallUpdateAsync();
+                if (!installed)
+                {
+                    _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                    {
+                        Status = "Failed",
+                        CurrentVersion = AppVersionInfo.Version,
+                        CheckedAt = DateTime.UtcNow,
+                        Detail = "download or install failed"
+                    };
+                }
+                return !installed;
+            }
+
+            if (result == UpdateDialogResult.Skip && _settings != null)
+            {
+                _settings.SkippedUpdateTag = releaseTag;
+                _settings.Save();
+                _appState!.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Available",
+                    CurrentVersion = AppVersionInfo.Version,
+                    LatestVersion = releaseTag,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = "skipped by user"
+                };
+            }
+            else if (userInitiated && _settings != null
+                && string.Equals(_settings.SkippedUpdateTag, releaseTag,
+                                 StringComparison.OrdinalIgnoreCase))
+            {
+                _settings.SkippedUpdateTag = string.Empty;
+                _settings.Save();
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Update prompt/install failed: {ex.Message}");
+            if (_appState != null)
+            {
+                _appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Failed",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = ex.Message
+                };
+            }
+            return true;
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _updateInstallInProgress, 0);
+        }
+#endif
+    }
+
+    // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
+    // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
+    // otherwise open two ContentDialogs on the same XamlRoot which throws.
+    private int _manualUpdateCheckInFlight;
+
+    private async Task CheckForUpdatesUserInitiatedAsync()
+    {
+        if (System.Threading.Interlocked.CompareExchange(ref _manualUpdateCheckInFlight, 1, 0) != 0)
+        {
+            Logger.Info("Manual update check ignored: another check is already in progress");
+            return;
+        }
+
+        try
+        {
+            Logger.Info("Manual update check requested");
+
+            if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
+            {
+                await CheckForPackagedAppInstallerUpdateAsync();
+                return;
+            }
+
+            var shouldContinue = await CheckForUpdatesAsync(userInitiated: true);
+            UpdateStatusDetailWindow();
+
+            var info = _appState?.UpdateInfo;
+            if (info != null)
+            {
+                switch (info.Status)
+                {
+                    case "Current":
+                        await ShowUpdateInfoDialogAsync(
+                            "UpToDate",
+                            LocalizationHelper.GetString("Update_Title_UpToDate"),
+                            LocalizationHelper.Format("Update_Message_UpToDate", info.CurrentVersion));
+                        break;
+                    case "Failed":
+                        var failedMessage = LocalizationHelper
+                            .Format("Update_Message_Failed", info.Detail ?? "")
+                            .TrimEnd('\r', '\n');
+                        await ShowUpdateInfoDialogAsync(
+                            "Failed",
+                            LocalizationHelper.GetString("Update_Title_Failed"),
+                            failedMessage);
+                        break;
+#if DEBUG
+                    case "Skipped":
+                        await ShowUpdateInfoDialogAsync(
+                            "Skipped",
+                            LocalizationHelper.GetString("Update_Title_Skipped"),
+                            LocalizationHelper.GetString("Update_Message_Skipped_Debug"));
+                        break;
+#endif
+                }
+            }
+
+            if (!shouldContinue)
+            {
+                Exit();
+            }
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _manualUpdateCheckInFlight, 0);
+        }
+    }
+
+    private async Task CheckForPackagedAppInstallerUpdateAsync()
+    {
+        _appState!.UpdateInfo = new UpdateCommandCenterInfo
+        {
+            Status = "Checking",
+            CurrentVersion = AppVersionHelper.CurrentVersionText,
+            CheckedAt = DateTime.UtcNow,
+            Detail = $"querying {AppInstallerUpdateService.LatestAppInstallerUri}"
+        };
+        UpdateStatusDetailWindow();
+
+        var outcome = await AppInstallerUpdateService.CheckForUpdateAsync();
+        _appState!.UpdateInfo = outcome.Outcome switch
+        {
+            AppInstallerUpdateService.UpdateOutcome.UpdateAvailable => new UpdateCommandCenterInfo
+            {
+                Status = "Available",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update available"
+            },
+            AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
+            {
+                Status = "Ready",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
+            },
+            AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
+            {
+                Status = "Ready",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
+            },
+            AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
+            {
+                Status = "Current",
+                CurrentVersion = AppVersionHelper.CurrentVersionText,
+                CheckedAt = DateTime.UtcNow,
+                Detail = outcome.DetailMessage ?? "no updates available"
+            },
+            _ => new UpdateCommandCenterInfo
             {
                 Status = "Failed",
                 CurrentVersion = AppVersionHelper.CurrentVersionText,
                 CheckedAt = DateTime.UtcNow,
-                Detail = ex.Message
-            };
-            return true;
-        }
-    }
-
-    private async Task CheckForUpdatesUserInitiatedAsync()
-    {
-        Logger.Info("Manual update check requested");
-
-        // Packaged: read the stable architecture feed and compare versions.
-        // "Check for updates" must not stage/register packages on every click.
-        if (OpenClawTray.Helpers.PackageHelper.IsPackaged)
-        {
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Checking",
-                CurrentVersion = AppVersionHelper.CurrentVersionText,
-                CheckedAt = DateTime.UtcNow,
-                Detail = $"querying {AppInstallerUpdateService.LatestAppInstallerUri}"
-            };
-            UpdateStatusDetailWindow();
-
-            var outcome = await AppInstallerUpdateService.CheckForUpdateAsync();
-            _appState!.UpdateInfo = outcome.Outcome switch
-            {
-                AppInstallerUpdateService.UpdateOutcome.UpdateAvailable => new UpdateCommandCenterInfo
-                {
-                    Status = "Available",
-                    CurrentVersion = AppVersionHelper.CurrentVersionText,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = outcome.DetailMessage ?? "update available"
-                },
-                AppInstallerUpdateService.UpdateOutcome.UpdateQueued => new UpdateCommandCenterInfo
-                {
-                    Status = "Ready",
-                    CurrentVersion = AppVersionHelper.CurrentVersionText,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = outcome.DetailMessage ?? "update accepted; restart OpenClaw when convenient"
-                },
-                AppInstallerUpdateService.UpdateOutcome.UpdatePendingRestart => new UpdateCommandCenterInfo
-                {
-                    Status = "Ready",
-                    CurrentVersion = AppVersionHelper.CurrentVersionText,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = outcome.DetailMessage ?? "update available; close and reopen OpenClaw to finish"
-                },
-                AppInstallerUpdateService.UpdateOutcome.NoUpdateAvailable => new UpdateCommandCenterInfo
-                {
-                    Status = "Current",
-                    CurrentVersion = AppVersionHelper.CurrentVersionText,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = outcome.DetailMessage ?? "no updates available"
-                },
-                _ => new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionHelper.CurrentVersionText,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = outcome.DetailMessage ?? "update failed"
-                }
-            };
-            UpdateStatusDetailWindow();
-            return;
-        }
-
-        // Unpackaged: no update channel. Show the user the same "skipped" status
-        // the startup check would set.
-        await CheckForUpdatesAsync();
+                Detail = outcome.DetailMessage ?? "update failed"
+            }
+        };
         UpdateStatusDetailWindow();
     }
 
@@ -3432,6 +3760,86 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         finally
         {
             System.Threading.Interlocked.Exchange(ref _applyUpdateInFlight, 0);
+        }
+    }
+
+    private async Task ShowUpdateInfoDialogAsync(string logKey, string title, string message)
+    {
+        XamlRoot? xamlRoot = null;
+        if (_hubWindow != null && !_hubWindow.IsClosed)
+            xamlRoot = (_hubWindow.Content as FrameworkElement)?.XamlRoot;
+        if (xamlRoot == null)
+            xamlRoot = (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
+        if (xamlRoot == null)
+        {
+            Logger.Warn($"[Update] No XAML root available to show dialog: {logKey}");
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            CloseButtonText = LocalizationHelper.GetString("Update_OK"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = xamlRoot
+        };
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            Logger.Warn($"[Update] Dialog dismissed before completion ({logKey}): 0x{ex.HResult:X8}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warn($"[Update] Dialog could not be shown ({logKey}): {ex.Message}");
+        }
+    }
+
+    private async Task<bool> DownloadAndInstallUpdateAsync()
+    {
+        DownloadProgressDialog? progressDialog = null;
+        try
+        {
+            progressDialog = new DownloadProgressDialog(AppUpdater);
+            progressDialog.ShowAsync();
+
+            var downloadedAsset = await AppUpdater.DownloadUpdateAsync();
+
+            TryCloseProgressDialog(progressDialog);
+
+            if (downloadedAsset == null || !System.IO.File.Exists(downloadedAsset.FilePath))
+            {
+                Logger.Error("Update download failed or file missing");
+                return false;
+            }
+
+            Logger.Info("Installing update and restarting...");
+            await AppUpdater.InstallUpdateAsync(downloadedAsset);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Update failed: {ex.Message}");
+            TryCloseProgressDialog(progressDialog);
+            return false;
+        }
+    }
+
+    private static void TryCloseProgressDialog(DownloadProgressDialog? dialog)
+    {
+        if (dialog == null) return;
+        try
+        {
+            dialog.Close();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
         }
     }
 

@@ -26,6 +26,13 @@ if ([string]::IsNullOrWhiteSpace($MakeAppxPath)) {
         Where-Object { $_.FullName -match '\\x64\\makeappx\.exe$' } |
         Sort-Object FullName -Descending |
         Select-Object -First 1 -ExpandProperty FullName
+    if ([string]::IsNullOrWhiteSpace($MakeAppxPath)) {
+        $globalPackages = (dotnet nuget locals global-packages -l) -replace '^global-packages:\s*', ''
+        $MakeAppxPath = Get-ChildItem $globalPackages -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\makeappx\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
 }
 if ([string]::IsNullOrWhiteSpace($MakeAppxPath) -or -not (Test-Path -LiteralPath $MakeAppxPath -PathType Leaf)) {
     throw "makeappx.exe not found. Pass -MakeAppxPath or install Windows SDK build tools."

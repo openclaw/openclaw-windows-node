@@ -64,6 +64,16 @@ public sealed class MsixManifestAssertionTests
         doc.Descendants(XName.Get("Application", AppxFoundationNs))
             .Single(e => (string?)e.Attribute("Id") == id);
 
+    private static string GetPropertyGroup(string project, string condition)
+    {
+        var marker = $"<PropertyGroup Condition=\"{condition}\">";
+        var start = project.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"PropertyGroup with condition {condition} not found.");
+        var end = project.IndexOf("</PropertyGroup>", start, StringComparison.Ordinal);
+        Assert.True(end >= 0, $"PropertyGroup with condition {condition} is not closed.");
+        return project[start..(end + "</PropertyGroup>".Length)];
+    }
+
     [Fact]
     public void Tray_CapabilitySet_IsExactlyTheAuditedList()
     {
@@ -158,6 +168,22 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
+    public void Tray_MsixBuildUsesWindowsAppSdkFrameworkPackage()
+    {
+        var project = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var unpackagedGroup = GetPropertyGroup(project, "'$(PackageMsix)' != 'true'");
+        var packagedGroup = GetPropertyGroup(project, "'$(PackageMsix)' == 'true'");
+
+        Assert.Contains("<WindowsPackageType>None</WindowsPackageType>", unpackagedGroup);
+        Assert.Contains("<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>", unpackagedGroup);
+        Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", packagedGroup);
+        Assert.Contains("<WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>", packagedGroup);
+        Assert.Contains("<WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>", packagedGroup);
+        Assert.Contains("<PackageReference Include=\"Microsoft.WindowsAppSDK\" Version=\"2.0.1\" />", project);
+    }
+
+    [Fact]
     public void Tray_PackagesSetupEngineUiForFirstRunSetup()
     {
         var project = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
@@ -174,6 +200,8 @@ public sealed class MsixManifestAssertionTests
 
         Assert.DoesNotContain(doc.Descendants(XName.Get("Application", AppxFoundationNs)),
             e => string.Equals((string?)e.Attribute("Id"), "SetupEngine", StringComparison.Ordinal));
+        Assert.DoesNotContain(doc.Descendants(XName.Get("Extension", AppxDesktopNs)),
+            e => (string?)e.Attribute("Category") == "windows.fullTrustProcess");
         Assert.Contains("Content Include=\"SetupEngine\\**\\*\"", project);
         Assert.Contains("PRIResource=\"false\"", project);
         Assert.Contains("<PRIResource Remove=\"SetupEngine\\**\\*\" />", project);
@@ -185,26 +213,28 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("dotnet publish src/OpenClaw.SetupEngine.UI", ci);
         Assert.Contains("--self-contained", ci);
         Assert.Contains("-p:PackageMsix=false", ci);
+        Assert.Contains("-p:WindowsAppSDKSelfContained=false", ci);
+        Assert.Contains("-p:WindowsAppSdkDeploymentManagerInitialize=false", ci);
+        Assert.Contains("-p:WindowsAppSdkBootstrapInitialize=false", ci);
         Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"SetupEngine\", exeName)", app);
+        Assert.Contains("Launched packaged SetupEngine.UI for setup", app);
         Assert.Contains("new System.Diagnostics.ProcessStartInfo(setupExePath)", app);
+        Assert.Contains("UseShellExecute = false", app);
         Assert.Contains("WorkingDirectory = Path.GetDirectoryName(setupExePath)", app);
-        Assert.DoesNotContain("shell:AppsFolder", app);
-        Assert.DoesNotContain("SetupEngineApplicationId", app);
+        Assert.Contains("ComWrappersSupport.InitializeComWrappers", setupProgram);
+        Assert.Contains("Application.Start", setupProgram);
         Assert.Contains("setup-engine-startup.log", setupProgram);
-        Assert.Contains("Select(RedactStartupArg).ToArray()", setupProgram);
-        Assert.Contains("RunWithXamlFactoryRetry", setupProgram);
-        Assert.Contains("Program.ApplicationStart.attempt", setupProgram);
-        Assert.Contains("Program.ApplicationStart.xamlFactoryUnavailable.retry", setupProgram);
+        Assert.DoesNotContain("RunWithXamlFactoryRetry", setupProgram);
+        Assert.DoesNotContain("Program.ApplicationStart.xamlFactoryUnavailable.retry", setupProgram);
         Assert.Contains("WindowsAppRuntime_EnsureIsLoaded", setupProgram);
-        Assert.Contains("Program.WindowsAppRuntimeEnsureLoaded", setupProgram);
         Assert.DoesNotContain("Bootstrap.Initialize", setupProgram);
         Assert.DoesNotContain("Program.WindowsAppSdkBootstrap", setupProgram);
         Assert.DoesNotContain("FreshPackageMinimumAge", setupProgram);
         Assert.Contains("<WindowsPackageType>None</WindowsPackageType>", setupProject);
         Assert.Contains("<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>", setupProject);
         Assert.Contains("<ApplicationManifest>app.manifest</ApplicationManifest>", setupProject);
-        Assert.Contains("<DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>", setupProject);
-        Assert.Contains("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
+        Assert.DoesNotContain("<DisableXamlGeneratedMain>", setupProject);
+        Assert.DoesNotContain("<StartupObject>OpenClaw.SetupEngine.UI.Program</StartupObject>", setupProject);
         Assert.Contains("CopyXamlResourcesToPublishDirectory", setupProject);
         Assert.Contains("$(OutputPath)**\\*.xbf;$(OutputPath)*.pri", setupProject);
         Assert.DoesNotContain("<WindowsPackageType>MSIX</WindowsPackageType>", setupProject);
@@ -269,18 +299,16 @@ public sealed class MsixManifestAssertionTests
     }
 
     [Fact]
-    public void Tray_WritesEarlyStartupBreadcrumbForPostInstallLaunchDiagnostics()
+    public void Tray_UsesGeneratedWinUiEntrypointWithoutStartupRetry()
     {
-        var program = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Program.cs"));
+        var project = File.ReadAllText(Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var programPath = Path.Combine(GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Program.cs");
 
-        Assert.Contains("WriteEarlyStartupBreadcrumb(\"Program.Main.begin\")", program);
-        Assert.Contains("RunWithXamlFactoryRetry", program);
-        Assert.Contains("XamlFactoryRetryDelays", program);
-        Assert.Contains("WindowsAppRuntime_EnsureIsLoaded", program);
-        Assert.Contains("Program.WindowsAppRuntimeEnsureLoaded", program);
-        Assert.Contains("WriteEarlyStartupBreadcrumb", program);
-        Assert.Contains("startup.log", program);
+        Assert.False(File.Exists(programPath), "Tray should use the generated WinUI entry point, not a startup retry wrapper.");
+        Assert.DoesNotContain("<DisableXamlGeneratedMain>", project);
+        Assert.DoesNotContain("<StartupObject>OpenClawTray.Program</StartupObject>", project);
     }
 
     [Fact]

@@ -31,7 +31,8 @@ that is easy to break by accident:
 
 In short: the contract works today by coincidence. If anyone moves the tray to
 `StorageFolder` APIs, the CLI stops finding the token without any compile-time
-or runtime warning. We need to lock this down before we ship MSIX-only.
+or runtime warning. We need to lock this down before the MSIX distribution path
+becomes a primary install option.
 
 ## Options considered
 

@@ -37,8 +37,8 @@ multi-launch behaviour, real WSL distros, and the dirty-uninstall recovery.
    - Version: the tag version
 4. Click **Install**.
 5. **Assert** the installer closes and the tray icon appears in the notification
-   area within 5 s. If it does not, collect the packaged startup breadcrumb at
-   `%LOCALAPPDATA%\Packages\OpenClaw.Companion_*\LocalState\startup.log`.
+   area within 5 s. If it does not, collect `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`
+   plus Windows AppX/AppInstaller event logs for the failed activation.
 6. **Assert** `Get-AppxPackage OpenClaw.Companion*` returns one row with the
    expected `Publisher` and a 4-part `Version`.
 7. **Assert** `Package.GetAppInstallerInfo()` or an equivalent package query
