@@ -37,6 +37,9 @@ public sealed class InstallerIssAssertionTests
     {
         var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
         Assert.Contains("AppMutex=OpenClawTray", iss);
+        Assert.Contains("Inno requires \"{{\" to emit a literal opening brace in AppId.", iss);
+        Assert.Contains("AppId={{M0LTB0T-TRAY-4PP1-D3N7}", iss);
+        Assert.DoesNotContain("AppId={{M0LTB0T-TRAY-4PP1-D3N7}}", iss);
 
         // The matching tray-side mutex name must be present in App.xaml.cs.
         var appXamlCs = File.ReadAllText(Path.Combine(
@@ -69,6 +72,18 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://commandcenter""", iss);
         Assert.Contains(@"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://chat""", iss);
         Assert.Contains(@"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://check-updates""", iss);
+    }
+
+    [Fact]
+    public void Installer_RemovesGeneratedAppStateOnUninstall()
+    {
+        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
+
+        Assert.Contains("[UninstallRun]", iss);
+        Assert.Contains("Uninstall-LocalGateway.ps1", iss);
+        Assert.Contains("Start-Sleep -Seconds 3", iss);
+        Assert.Contains("[UninstallDelete]", iss);
+        Assert.Contains(@"Type: filesandordirs; Name: ""{app}""", iss);
     }
 
     [Fact]
