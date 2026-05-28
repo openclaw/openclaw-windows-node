@@ -1,6 +1,23 @@
-# Command Palette Development Script
-# Usage: .\tools\cmdpal-dev.ps1 [build|deploy|remove|cycle]
+<#
+.SYNOPSIS
+    Build, deploy, remove, or inspect the OpenClaw Command Palette extension.
 
+.DESCRIPTION
+    Developer helper for the Command Palette project. It builds the extension
+    for the current CPU architecture, registers loose package files for local
+    testing, removes any installed OpenClaw package, or performs the full
+    remove/build/deploy cycle.
+
+.PARAMETER Action
+    Operation to run: build, deploy, remove, status, or cycle. Defaults to cycle.
+
+.EXAMPLE
+    .\tools\cmdpal-dev.ps1 cycle
+
+.EXAMPLE
+    .\tools\cmdpal-dev.ps1 status
+#>
+[CmdletBinding()]
 param(
     [Parameter(Position=0)]
     [ValidateSet('build', 'deploy', 'remove', 'cycle', 'status')]

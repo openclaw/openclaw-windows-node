@@ -265,7 +265,10 @@ if ($failCount -eq 0) {
         $winUIProjectDirectory = (Split-Path -Parent $winUIProjectPath).Replace("/", "\")
 
         if ($winUITargetFramework) {
-            Write-Host "  WinUI:    .\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid\OpenClaw.Tray.WinUI.exe" -ForegroundColor White
+            $winUIOutputDirectory = ".\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid"
+            $winUIManifestPath = ".\$winUIProjectDirectory\Package.appxmanifest"
+            Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild" -ForegroundColor White
+            Write-Host "            winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --debug-output" -ForegroundColor DarkGray
         } else {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
         }

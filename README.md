@@ -67,9 +67,14 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
 ### Run Tray App
 
 ```powershell
-# Run the exe directly (path includes runtime identifier)
-.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\win-arm64\OpenClaw.Tray.WinUI.exe  # ARM64
-.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\win-x64\OpenClaw.Tray.WinUI.exe    # x64
+# Build and launch through the Windows App SDK activation path
+.\run-app-local.ps1
+
+# If you already built, skip rebuild and launch the existing Debug output
+.\run-app-local.ps1 -NoBuild
+
+# Manual equivalent (replace win-x64 with win-arm64 on ARM64)
+winapp run ".\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64" --manifest ".\src\OpenClaw.Tray.WinUI\Package.appxmanifest" --debug-output
 ```
 
 ### Run CLI WebSocket Validator
@@ -434,4 +439,3 @@ MIT License - see [LICENSE](LICENSE)
 ---
 
 *Formerly known as Moltbot, formerly known as Clawdbot*
-
