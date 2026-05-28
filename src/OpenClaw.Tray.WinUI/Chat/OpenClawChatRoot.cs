@@ -582,7 +582,7 @@ public sealed class OpenClawChatRoot : Component
             var agentLabel = agentId.Length > 0 ? char.ToUpperInvariant(agentId[0]) + agentId[1..] : "Main";
             var syntheticGroup = new ChannelGroup(
                 AgentLabel: agentLabel,
-                Sessions: new[] { (Id: effectiveThread.Id, Title: effectiveThread.Title ?? "OpenClaw Windows Tray") });
+                Sessions: new[] { (Id: effectiveThread.Id!, Title: effectiveThread.Title ?? "OpenClaw Windows Tray") });
 
             var augmented = new ChannelGroup[channelGroups.Length + 1];
             augmented[0] = syntheticGroup;
@@ -596,7 +596,7 @@ public sealed class OpenClawChatRoot : Component
                 TurnActive: turnActiveOverride,
                 PendingPermission: pendingPermissionOverride,
                 ChannelLabel: effectiveThread.Title ?? "OpenClaw Windows Tray",
-                ChannelId: effectiveThread.Id,
+                ChannelId: effectiveThread.Id!,
                 AvailableChannels: channelGroups,
                 AvailableModels: snapshot.AvailableModels,
                 CurrentModel: effectiveThread.Model,
@@ -604,18 +604,18 @@ public sealed class OpenClawChatRoot : Component
                 OnSend: (msg, att) =>
                 {
                     pendingAttachment.Set(null);
-                    OnSend(effectiveThread.Id, msg, att);
+                    OnSend(effectiveThread.Id!, msg, att);
                 },
-                OnStop: () => OnStop(effectiveThread.Id),
-                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id, rid, allow),
+                OnStop: () => OnStop(effectiveThread.Id!),
+                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id!, rid, allow),
                 OnChannelChanged: id =>
                 {
                     selectedIdState.Set(id);
                     selectedIdRef.Current = id;
                 },
-                OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(effectiveThread.Id, model, ct)),
-                OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(effectiveThread.Id, level, ct)),
-                OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(effectiveThread.Id, allowAll, ct)),
+                OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(effectiveThread.Id!, model, ct)),
+                OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(effectiveThread.Id!, level, ct)),
+                OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(effectiveThread.Id!, allowAll, ct)),
                 OnVoiceRequest: _onVoiceRequest,
                 OnAttachClick: _onAttachClick,
                 PendingAttachment: pendingAttachment.Value,
