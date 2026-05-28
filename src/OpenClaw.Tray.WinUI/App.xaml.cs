@@ -3211,7 +3211,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private async void ToggleAutoStart()
+    private void ToggleAutoStart() =>
+        AsyncEventHandlerGuard.Run(
+            ToggleAutoStartAsync,
+            new AppLogger(),
+            nameof(ToggleAutoStart));
+
+    private async Task ToggleAutoStartAsync()
     {
         if (_settings == null) return;
         _settings.AutoStart = !_settings.AutoStart;

@@ -223,7 +223,7 @@ public sealed class MsixManifestAssertionTests
         Assert.Contains("WorkingDirectory = Path.GetDirectoryName(setupExePath)", app);
         Assert.Contains("ComWrappersSupport.InitializeComWrappers", setupProgram);
         Assert.Contains("Application.Start", setupProgram);
-        Assert.Contains("setup-engine-startup.log", setupProgram);
+        Assert.DoesNotContain("setup-engine-startup.log", setupProgram);
         Assert.DoesNotContain("RunWithXamlFactoryRetry", setupProgram);
         Assert.DoesNotContain("Program.ApplicationStart.xamlFactoryUnavailable.retry", setupProgram);
         Assert.Contains("WindowsAppRuntime_EnsureIsLoaded", setupProgram);
