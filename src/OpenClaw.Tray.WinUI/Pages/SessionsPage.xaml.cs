@@ -14,7 +14,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SessionsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private SessionInfo[]? _allSessions;
     private string _activeChannel = "all";
@@ -35,7 +35,7 @@ public sealed partial class SessionsPage : Page
     {
         // Guard against duplicate subscriptions (NavigationCacheMode reuses page)
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
 
         // Show "← Back to Connection" only when the user arrived from

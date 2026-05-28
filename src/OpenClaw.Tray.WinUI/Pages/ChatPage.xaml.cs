@@ -22,7 +22,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class ChatPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private HubWindow? _hub;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
@@ -276,7 +276,7 @@ public sealed partial class ChatPage : Page
         // If the V hotkey (or another caller) requested auto-start voice,
         // trigger it after the UI thread processes the mount (composer needs
         // to render first so TriggerVoiceRecording is registered).
-        if (_hub.PendingAutoStartVoice)
+        if (_hub?.PendingAutoStartVoice == true)
         {
             _hub.PendingAutoStartVoice = false;
             DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -487,7 +487,7 @@ public sealed partial class ChatPage : Page
             }
 
             Logger.Info("[ChatPage] Operator handshake ready; probing chat HTTP surface");
-            ready = await ProbeChatSurfaceAsync(_chatUrl, TimeSpan.FromSeconds(30), cancellationToken);
+            ready = await ProbeChatSurfaceAsync(_chatUrl!, TimeSpan.FromSeconds(30), cancellationToken);
             if (!ready)
             {
                 ShowChatReadinessFailure($"Timed out waiting for chat at {gatewayUrl}. Retry once the gateway is ready.");

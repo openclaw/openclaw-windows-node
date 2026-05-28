@@ -14,14 +14,13 @@ A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered p
 
 ## Projects
 
-This monorepo contains four projects:
+This monorepo contains the Windows hub, shared client libraries, and CLI utilities:
 
 | Project | Description |
 |---------|-------------|
 | **OpenClaw.Tray.WinUI** | System tray application (WinUI 3) for quick access to OpenClaw |
 | **OpenClaw.Shared** | Shared gateway client library |
 | **OpenClaw.Cli** | CLI validator for WebSocket connect/send/probe using tray settings |
-| **OpenClaw.CommandPalette** | PowerToys Command Palette extension |
 
 ## 🚀 Quick Start
 
@@ -32,7 +31,6 @@ This monorepo contains four projects:
 - .NET 10.0 SDK - https://dotnet.microsoft.com/download/dotnet/10.0
 - Windows 10 SDK (for WinUI build) - install via Visual Studio or standalone
 - WebView2 Runtime - pre-installed on modern Windows, or get from https://developer.microsoft.com/microsoft-edge/webview2
-- PowerToys (optional, for Command Palette extension) — see [docs/POWERTOYS.md](docs/POWERTOYS.md)
 
 ### Build
 
@@ -174,7 +172,6 @@ These features are available in Windows but not in the Mac app:
 | Modern flyout menu | Windows 11-style with dark/light mode |
 | Deep links | `openclaw://` URL scheme with IPC |
 | First-run onboarding | 6-screen guided setup wizard (Welcome → Connection → Wizard → Permissions → Chat → Ready) |
-| PowerToys integration | Command Palette extension |
 
 ### 🔌 Node Mode (Agent Control)
 
@@ -343,44 +340,6 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 
 Deep links work even when Molty is already running - they're forwarded via IPC.
 
-## 📦 OpenClaw.CommandPalette
-
-PowerToys Command Palette extension for quick OpenClaw access.
-
-### Commands
-- **🦞 Open Dashboard** - Launch the OpenClaw web dashboard
-- **💬 Dashboard: Sessions** - Open the sessions dashboard
-- **📡 Dashboard: Channels** - Open the channel configuration dashboard
-- **🧩 Dashboard: Skills** - Open the skills dashboard
-- **⏱️ Dashboard: Cron** - Open the scheduled jobs dashboard
-- **💬 Web Chat** - Open the embedded Chat page
-- **📝 Quick Send** - Open the Quick Send dialog to compose a message
-- **🧭 Setup Wizard** - Open pairing/setup
-- **🧭 Command Center** - Open diagnostics and support actions
-- **🔄 Run Health Check** - Refresh connection health
-- **⬇️ Check for Updates** - Run a manual GitHub Releases update check
-- **⚡ Activity Stream** - Open recent activity
-- **📋 Notification History** - Open notification history in the Activity page
-- **⚙️ Settings** - Open the OpenClaw Tray Settings page
-- **📄 Open Log File / 📁 Logs / 🗂️ Config / 🧪 Diagnostics** - Open support files and folders
-- **📋 Copy Support Context** - Copy redacted Command Center metadata
-- **🧰 Copy Debug Bundle** - Copy combined support, port, capability, node, channel, and activity diagnostics
-- **🌐 Copy Browser Setup** - Copy browser.proxy and node-host setup guidance
-- **🔌 Copy Port Diagnostics** - Copy gateway/browser/tunnel port owners and stop hints
-- **🛡️ Copy Capability Diagnostics** - Copy permission, allowlist, and parity diagnostics
-- **🖥️ Copy Node Inventory** - Copy node capabilities, commands, and policy status
-- **📡 Copy Channel Summary** - Copy channel health and start/stop availability
-- **⚡ Copy Activity Summary** - Copy recent tray activity
-- **🧩 Copy Extensibility Summary** - Copy channel, skills, and cron surface guidance
-- **🔁 Restart SSH Tunnel** - Restart the tray-managed SSH tunnel when enabled
-
-### Installation
-1. Run the OpenClaw Tray installer and tick **"Install PowerToys Command Palette extension"**, or
-2. Register manually: `Add-AppxPackage -Register "$env:LOCALAPPDATA\OpenClawTray\CommandPalette\AppxManifest.xml" -ForceApplicationShutdown`
-3. Open Command Palette (`Win+Alt+Space`) and type "OpenClaw" to see commands
-
-See [docs/POWERTOYS.md](docs/POWERTOYS.md) for detailed setup and troubleshooting.
-
 ## 📦 OpenClaw.Shared
 
 Shared library containing:
@@ -396,8 +355,7 @@ Shared library containing:
 openclaw-windows-node/
 ├── src/
 │   ├── OpenClaw.Shared/           # Shared gateway library
-│   ├── OpenClaw.Tray.WinUI/       # System tray app (WinUI 3)
-│   └── OpenClaw.CommandPalette/   # PowerToys extension
+│   └── OpenClaw.Tray.WinUI/       # System tray app (WinUI 3)
 ├── tests/
 │   ├── OpenClaw.Shared.Tests/     # Shared library tests
 │   └── OpenClaw.Tray.Tests/       # Tray app helper tests

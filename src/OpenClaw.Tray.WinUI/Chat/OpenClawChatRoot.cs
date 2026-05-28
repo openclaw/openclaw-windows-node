@@ -197,7 +197,7 @@ public sealed class OpenClawChatRoot : Component
                 return null;
 
             return nativeForMeta.GetEntryMetadata(selectedIdForMetadata);
-        }, selectedIdForMetadata ?? string.Empty, snapshot);
+        }, selectedIdForMetadata ?? string.Empty, snapshot is null ? string.Empty : snapshot);
 
         // Preview override (G) — only honored when the chat is bound to a
         // fake provider (i.e. the explorations window). Real production

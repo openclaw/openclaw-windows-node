@@ -49,4 +49,22 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <OpenClawSetupEngineGeneratedOutputDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\'))</OpenClawSetupEngineGeneratedOutputDirectory>
+  </PropertyGroup>
+
+  <!-- dotnet publish for unpackaged WinUI can omit generated XAML artifacts; copy the
+       generated layout pieces from the build output so installer payloads stay runnable. -->
+  <Target Name="CopyGeneratedWinUiArtifactsToPublish"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' and '$(RuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawSetupEngineGeneratedOutputDirectory)**\*.xbf" />
+      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawSetupEngineGeneratedOutputDirectory)**\*.pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_GeneratedWinUiPublishArtifacts)"
+          DestinationFiles="@(_GeneratedWinUiPublishArtifacts->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

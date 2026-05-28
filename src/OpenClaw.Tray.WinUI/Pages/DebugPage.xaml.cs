@@ -38,7 +38,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class DebugPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
 
     private AppState? _appState;
     private bool _suppressOverrideChange;
@@ -100,7 +100,7 @@ public sealed partial class DebugPage : Page
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         CurrentApp.SettingsChanged -= OnSettingsChanged;
 
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         if (_appState != null) _appState.PropertyChanged += OnAppStateChanged;
         // Listen for Settings → Save round-trips so the gateway URL in
         // the top InfoBar updates without waiting for a Status flip

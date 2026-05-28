@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
-    <Compile Include="..\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
   </ItemGroup>
 
   <ItemGroup>

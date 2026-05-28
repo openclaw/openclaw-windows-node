@@ -212,6 +212,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private void WriteConfig()
     {
+        var lkgVersion = GatewayLkgVersion.ResolveLkgVersion();
         var config = new
         {
             DistroName = _distroName,
@@ -246,6 +247,10 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 NodeTtsEnabled = true,
                 NodeSttEnabled = true,
             },
+            Gateway = new
+            {
+                Version = lkgVersion
+            }
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });

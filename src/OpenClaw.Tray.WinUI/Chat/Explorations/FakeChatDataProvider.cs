@@ -24,7 +24,11 @@ public sealed class FakeChatDataProvider : IChatDataProvider
     public string DisplayName => "Demo (preview)";
 
     public event EventHandler<ChatDataChangedEventArgs>? Changed;
-    public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
+    public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested
+    {
+        add { }
+        remove { }
+    }
 
     public FakeChatDataProvider()
     {

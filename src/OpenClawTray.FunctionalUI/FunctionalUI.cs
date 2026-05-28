@@ -9,7 +9,6 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using System.Globalization;
 using Windows.UI;
 using Windows.UI.Text;
-using OpenClawTray.Services;
 using WinGrid = Microsoft.UI.Xaml.Controls.Grid;
 
 namespace OpenClawTray.FunctionalUI.Core
@@ -1728,7 +1727,7 @@ internal sealed class UiRenderer(Action requestRender)
     {
         if (sender is RadioButtons { Tag: RadioButtonsElement element } rb)
         {
-            Logger.Debug($"[WizardDiag] RadioButtons.SelectionChanged: idx={rb.SelectedIndex} itemCount={rb.Items?.Count ?? 0}");
+            System.Diagnostics.Debug.WriteLine($"[WizardDiag] RadioButtons.SelectionChanged: idx={rb.SelectedIndex} itemCount={rb.Items?.Count ?? 0}");
             element.OnSelectionChanged?.Invoke(rb.SelectedIndex);
         }
     }

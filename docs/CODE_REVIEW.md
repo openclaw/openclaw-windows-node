@@ -17,7 +17,6 @@ This document provides a comprehensive code review of the OpenClaw Windows Hub r
 ## Project Structure
 - **OpenClaw.Shared**: WebSocket gateway client and data models (✅ Cross-platform compatible)
 - **OpenClaw.Tray.WinUI**: WinUI 3 system tray application (⚠️ Windows-only)
-- **OpenClaw.CommandPalette**: PowerToys extension (⚠️ Windows-only)
 
 ## Code Quality Analysis
 
@@ -312,7 +311,7 @@ if (Key.Contains('/') || Key.Contains('\\'))
 - Clean separation of concerns
 
 ### ⚠️ Notes
-- Tray and CommandPalette projects require Windows to build (WinUI 3 / Windows App SDK, PowerToys SDK)
+- Tray projects require Windows to build (WinUI 3 / Windows App SDK)
 - Tests can run cross-platform (tested on Linux)
 - Consider adding CI/CD with cross-platform build matrix
 
@@ -375,4 +374,3 @@ should not be treated as the live source of truth for current issue status.
 **Reviewer**: GitHub Copilot Coding Agent
 **Test Coverage**: See [`TEST_COVERAGE.md`](./TEST_COVERAGE.md) for current counts
 **Overall Grade**: B+ (Good, with room for improvement)
-

@@ -15,7 +15,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class WorkspacePage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
 
     // file name (case-insensitive) → its list item
@@ -51,7 +51,7 @@ public sealed partial class WorkspacePage : Page
 
     public void Initialize()
     {
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
 
         if (_appState.TryGetCachedAgentFilesList(AgentId, out var cachedData))

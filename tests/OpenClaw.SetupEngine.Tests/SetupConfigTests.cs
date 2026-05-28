@@ -24,6 +24,7 @@ public class SetupConfigTests : IDisposable
         var config = new SetupConfig();
         Assert.Equal("OpenClawGateway", config.DistroName);
         Assert.Equal(18789, config.GatewayPort);
+        Assert.Equal("Ubuntu-24.04", config.BaseDistro);
         Assert.False(config.Headless);
         Assert.False(config.DryRun);
         Assert.Equal("trace", config.LogLevel);

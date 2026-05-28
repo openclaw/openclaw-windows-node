@@ -329,7 +329,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         if (NodeCapabilityGating.ShouldRegisterTts(_settings))
         {
-            _textToSpeechService ??= new TextToSpeechService(_logger, _settings);
+            var settings = _settings ?? throw new InvalidOperationException("Settings are required to register text-to-speech.");
+            _textToSpeechService ??= new TextToSpeechService(_logger, settings);
             _ttsCapability = new TtsCapability(_logger);
             _ttsCapability.SpeakRequested += OnTtsSpeakAsync;
             Register(_ttsCapability);
@@ -344,7 +345,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // builds. When the Whisper model isn't downloaded yet, the
             // handlers return a clear error pointing the caller at the
             // Voice Settings page; there is no automatic fallback.
-            _voiceService ??= new VoiceService(_logger, _settings);
+            var settings = _settings ?? throw new InvalidOperationException("Settings are required to register speech-to-text.");
+            _voiceService ??= new VoiceService(_logger, settings);
             _sttCapability = new SttCapability(_logger);
             _sttCapability.TranscribeRequested += OnSttTranscribeAsync;
             _sttCapability.ListenRequested += OnSttListenAsync;

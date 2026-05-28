@@ -137,9 +137,10 @@ public sealed class AudioPipeline : IAsyncDisposable
             _vadChunkCount = 0;
 
             SetState(AudioPipelineState.Listening);
+            var captureFormat = _captureFormat ?? throw new InvalidOperationException("Audio capture format was not initialized.");
             var sttStatus = _stt.IsModelLoaded ? "loaded" : "NOT loaded";
-            _logger.Info($"Audio pipeline started: {_captureFormat.SampleRate}Hz {_captureFormat.BitsPerSample}bit {_captureFormat.Channels}ch → 16kHz mono, VAD=energy, STT={sttStatus}");
-            DiagnosticMessage?.Invoke($"Mic: {_captureFormat.SampleRate}Hz, STT model: {sttStatus}");
+            _logger.Info($"Audio pipeline started: {captureFormat.SampleRate}Hz {captureFormat.BitsPerSample}bit {captureFormat.Channels}ch → 16kHz mono, VAD=energy, STT={sttStatus}");
+            DiagnosticMessage?.Invoke($"Mic: {captureFormat.SampleRate}Hz, STT model: {sttStatus}");
         }
         catch (System.Runtime.InteropServices.COMException ex) when (
             ex.HResult == unchecked((int)0x80070005) || // E_ACCESSDENIED

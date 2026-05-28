@@ -1,5 +1,8 @@
+using System.Runtime.Versioning;
+
 namespace OpenClaw.SetupEngine;
 
+[SupportedOSPlatform("windows")]
 public static class Program
 {
     public static async Task<int> Main(string[] args)
@@ -45,6 +48,7 @@ public static class Program
 
         // Apply CLI overrides
         config = SetupConfig.FromEnvironment(config);
+        GatewayLkgVersion.ApplyToConfig(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
         if (noRollback) config.RollbackOnFailure = false;

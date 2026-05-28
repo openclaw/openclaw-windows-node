@@ -37,7 +37,6 @@ Related issues: #5 (Canvas Panel), #6 (Skills Settings UI), #7 (DEVELOPMENT.md),
 |-----------|--------|---------|
 | `OpenClaw.Shared` | ✅ Working | Gateway WebSocket client library (.NET) |
 | `OpenClaw.Tray.WinUI` | ✅ Working | System tray app — status, Quick Send, WebChat (WebView2), toast notifications, channel control |
-| `OpenClaw.CommandPalette` | ✅ Working | PowerToys extension for quick commands |
 | Windows Node | ✅ Implemented | Canvas, screen, camera, location, device info/status, system.run, notifications — all working via Node Mode |
 | Windows Gateway | ❌ Unexplored | Gateway runs in WSL2 only |
 
@@ -617,7 +616,6 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [ ] Bundled/browser-control host installer/launcher
 - [ ] UI Automation (Windows equivalent of macOS Accessibility API)
 - [ ] Auto-update improvements (current auto-update from GitHub Releases → MSI/MSIX?)
-- [x] PowerToys Command Palette integration for Command Center diagnostics entrypoint
 
 ---
 

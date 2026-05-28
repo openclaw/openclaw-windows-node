@@ -1,6 +1,6 @@
-# OpenClaw Tray — Installation & Setup Guide
+# OpenClaw Companion — Installation & Setup Guide
 
-This guide covers installing OpenClaw Tray (Molty) on Windows using the pre-built installer. For building from source, see [DEVELOPMENT.md](../DEVELOPMENT.md).
+This guide covers installing OpenClaw Companion (Molty) on Windows using the pre-built installer. For building from source, see [DEVELOPMENT.md](../DEVELOPMENT.md).
 
 ## Prerequisites
 
@@ -18,8 +18,8 @@ Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/rele
 
 | File | Architecture |
 |------|-------------|
-| `OpenClawTray-Setup-x64.exe` | Intel / AMD (most PCs) |
-| `OpenClawTray-Setup-arm64.exe` | ARM64 (Surface Pro X, Snapdragon laptops) |
+| `OpenClawCompanion-Setup-x64.exe` | Intel / AMD (most PCs) |
+| `OpenClawCompanion-Setup-arm64.exe` | ARM64 (Surface Pro X, Snapdragon laptops) |
 
 If you're unsure, use the **x64** installer.
 
@@ -31,17 +31,18 @@ The installer runs without requiring administrator privileges.
 
 ### 3. Choose Optional Components
 
-The installer offers two optional components:
+The installer offers optional shortcuts and startup integration:
 
 - **Create Desktop Icon** — adds a shortcut to your desktop.
-- **Start OpenClaw Tray when Windows starts** — launches Molty automatically at login (recommended).
-- **Install PowerToys Command Palette extension** — enables OpenClaw commands in PowerToys Command Palette (requires [PowerToys](https://github.com/microsoft/PowerToys) to be installed). See [POWERTOYS.md](./POWERTOYS.md) for details.
+- **Start OpenClaw Companion when Windows starts** — launches Molty automatically at login (recommended).
 
 ### 4. First Launch
 
-After the installer finishes, OpenClaw Tray starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
+After the installer finishes, OpenClaw Companion starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
+
+The installer also creates a Start Menu group with shortcuts for **OpenClaw Companion**, **OpenClaw Gateway Setup**, **OpenClaw Companion Settings**, **OpenClaw Chat**, **Check for Updates**, and uninstall. The Gateway Setup shortcut launches the bundled local WSL/onboarding setup app.
 
 ### 5. Onboarding Wizard
 
@@ -86,7 +87,7 @@ Left-click the icon to open the quick-access menu. Right-click for context optio
 
 ## Deep Links
 
-OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a browser or another app:
+OpenClaw Companion responds to `openclaw://` deep links, which can be invoked from a browser or another app:
 
 | Link | Action |
 |------|--------|
@@ -127,7 +128,7 @@ OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a 
 
 1. Check Task Manager for `OpenClaw.Tray.WinUI.exe` — if it's running, the icon may be hidden.
 2. Drag the icon out of the hidden overflow area to always show it.
-3. If the process isn't running, try launching from Start Menu → **OpenClaw Tray**.
+3. If the process isn't running, try launching from Start Menu → **OpenClaw Companion**.
 
 ### "WebView2 Runtime is missing" error
 
@@ -184,10 +185,10 @@ Settings are stored at `%APPDATA%\OpenClawTray\settings.json`. If this file is c
 
 ## Updating
 
-OpenClaw Tray checks for updates automatically and shows a notification when a new version is available. Click **Update** to download and apply the update. You can also manually check by re-downloading from the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases).
+OpenClaw Companion checks for updates automatically and shows a notification when a new version is available. Click **Update** to download and apply the update. You can also manually check by re-downloading from the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases).
 
 ## Uninstalling
 
-Go to **Settings → Apps → Installed apps**, find **OpenClaw Tray**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel.
+Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel.
 
 Your settings file at `%APPDATA%\OpenClawTray\settings.json` and device identity files under `%APPDATA%\OpenClawTray\` (including per-gateway keys at `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`) are not removed automatically — delete them manually if you want a clean uninstall.
