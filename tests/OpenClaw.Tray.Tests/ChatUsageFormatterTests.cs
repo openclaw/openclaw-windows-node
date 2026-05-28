@@ -68,6 +68,37 @@ public class ChatUsageFormatterTests
     }
 
     [Fact]
+    public void Format_LatestAssistantMetadataTakesPrecedenceOverLowerThreadTotals()
+    {
+        var thread = new ChatThread
+        {
+            Id = "main",
+            Title = "Main",
+            TotalTokens = 1_000,
+            ContextTokens = 400_000,
+        };
+        var entries = new[]
+        {
+            new ChatTimelineItem("u1", ChatTimelineItemKind.User, "hi"),
+            new ChatTimelineItem("a1", ChatTimelineItemKind.Assistant, "hello"),
+        };
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["a1"] = new(
+                Timestamp: DateTimeOffset.Now,
+                Model: "gpt-5.5",
+                ResponseTokens: 68_000,
+                ContextTokens: 400_000,
+                ContextPercent: 17),
+        };
+
+        var displayedUsage = ChatUsageFormatter.Format(entries, metadata)
+            ?? ChatUsageFormatter.Format(thread);
+
+        Assert.Equal("68.0K/400.0K (17%)", displayedUsage);
+    }
+
+    [Fact]
     public void Format_UsesSingleEntryMetadata()
     {
         var metadata = new ChatEntryMetadata(

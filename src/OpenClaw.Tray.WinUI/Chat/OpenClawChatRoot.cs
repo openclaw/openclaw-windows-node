@@ -203,7 +203,7 @@ public sealed class OpenClawChatRoot : Component
                 FakeChatDataProvider fakeForMeta => fakeForMeta.GetEntryMetadata(selectedIdForMetadata),
                 _ => null
             };
-        }, selectedIdForMetadata ?? string.Empty, snapshot);
+        }, selectedIdForMetadata ?? string.Empty, snapshot is null ? string.Empty : snapshot);
 
         // Preview override (G) — only honored when the chat is bound to a
         // fake provider (i.e. the explorations window). Real production
