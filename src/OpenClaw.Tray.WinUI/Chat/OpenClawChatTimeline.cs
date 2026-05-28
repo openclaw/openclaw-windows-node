@@ -427,13 +427,13 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             return () => ChatExplorationState.Changed -= h;
         }));
 
-        // Production chat uses stable visual defaults; Chat Exploration state
-        // is honored only inside the fake preview surface.
+        // Production chat uses stable visual defaults. Tool-call visibility is
+        // the one user-facing composer toggle that applies outside preview.
         var bubbleRadius     = Props.EnableExplorationControls ? ChatVisualResolver.BubbleCornerRadius() : new CornerRadius(16);
         var bubblePadding    = Props.EnableExplorationControls ? ChatVisualResolver.BubbleInnerPadding() : new Thickness(16, 12, 16, 12);
         var bubbleSideMargin = Props.EnableExplorationControls ? ChatVisualResolver.BubbleSideMargin() : 8;
         var showAsstBubbles  = !Props.EnableExplorationControls || ChatVisualResolver.ShowAssistantBubbles();
-        var showToolCalls    = !Props.EnableExplorationControls || ChatVisualResolver.ShowToolCalls();
+        var showToolCalls    = ChatVisualResolver.ShowToolCalls();
         var gutter           = Props.EnableExplorationControls ? ChatExplorationState.Gutter : 64;
         var messageGap       = Props.EnableExplorationControls ? ChatExplorationState.MessageGap : 12;
         var showUserAvatar   = Props.EnableExplorationControls && ChatVisualResolver.ShowUserAvatar();
@@ -468,7 +468,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // Track the last-seen CollapseToolChipsVersion so we clear expanded
         // state when the user toggles tool calls off (collapsed view should
         // start fresh when re-shown).
-        var collapseToolChipsVersion = Props.EnableExplorationControls ? ChatExplorationState.CollapseToolChipsVersion : 0;
+        var collapseToolChipsVersion = ChatExplorationState.CollapseToolChipsVersion;
         var lastCollapseVersion = UseRef(collapseToolChipsVersion);
         if (lastCollapseVersion.Current != collapseToolChipsVersion)
         {

@@ -18,7 +18,9 @@
 #endif
 
 [Setup]
-AppId={{M0LTB0T-TRAY-4PP1-D3N7}}
+; Inno requires "{{" to emit a literal opening brace in AppId.
+; Do not add a second closing brace here; that creates a malformed uninstall registry key.
+AppId={{M0LTB0T-TRAY-4PP1-D3N7}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -101,3 +103,13 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 ; leaving 279+ application files behind after unins000.exe reports exit 0.
 ; runhidden suppresses the console window that would otherwise flash briefly.
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall-LocalGateway.ps1"""; Flags: shellexec waituntilterminated runhidden; StatusMsg: "Removing local WSL gateway..."
+; The hook launches our self-contained tray executable from {app}. Windows can
+; keep just-loaded .NET/WinUI DLL handles around briefly after the process exits;
+; give those handles time to release before Inno deletes the app directory.
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Start-Sleep -Seconds 3"""; Flags: waituntilterminated runhidden; StatusMsg: "Preparing installed files for removal..."
+
+[UninstallDelete]
+; The tray creates runtime state (logs, WSL files, JSON metadata) under the
+; dedicated {app} directory. Remove the directory after the gateway cleanup hook
+; has finished so uninstall leaves neither app files nor generated state behind.
+Type: filesandordirs; Name: "{app}"
