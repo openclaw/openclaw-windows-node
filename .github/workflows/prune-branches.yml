@@ -1,0 +1,136 @@
+name: Prune stale branches
+
+on:
+  schedule:
+    - cron: "42 4 * * 1" # every Monday at 04:42 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  prune:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged and stale remote branches
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const protectedBranches = new Set(["master", "main", "release"]);
+            const staleDays = 60;
+            const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000);
+
+            // Get the default branch SHA for merge detection
+            const { data: repoData } = await github.rest.repos.get({ owner, repo });
+            const defaultBranch = repoData.default_branch;
+            const { data: defaultRef } = await github.rest.git.getRef({
+              owner,
+              repo,
+              ref: `heads/${defaultBranch}`,
+            });
+            const defaultSha = defaultRef.object.sha;
+
+            // List all branches (paginated)
+            let branches = [];
+            let page = 1;
+            while (true) {
+              const { data } = await github.rest.repos.listBranches({
+                owner,
+                repo,
+                per_page: 100,
+                page,
+              });
+              if (data.length === 0) break;
+              branches = branches.concat(data);
+              page++;
+            }
+
+            let deletedMerged = 0;
+            let deletedStale = 0;
+            let skipped = 0;
+
+            for (const branch of branches) {
+              const name = branch.name;
+
+              // Never delete protected branches
+              if (protectedBranches.has(name) || branch.protected) {
+                continue;
+              }
+
+              // Never delete the memory branch used by repo-assist
+              if (name.startsWith("memory/")) {
+                continue;
+              }
+
+              // Check if merged into default branch
+              try {
+                const { status } = await github.rest.repos.compareCommits({
+                  owner,
+                  repo,
+                  base: defaultBranch,
+                  head: name,
+                });
+                // 'identical' or 'behind' means fully merged
+                if (status === "identical" || status === "behind") {
+                  core.info(`Deleting merged branch: ${name}`);
+                  await github.rest.git.deleteRef({
+                    owner,
+                    repo,
+                    ref: `heads/${name}`,
+                  });
+                  deletedMerged++;
+                  continue;
+                }
+              } catch (e) {
+                // compare can 404 for diverged histories; fall through to staleness check
+              }
+
+              // Check if branch has an open PR — skip if so
+              const { data: prs } = await github.rest.pulls.list({
+                owner,
+                repo,
+                head: `${owner}:${name}`,
+                state: "open",
+                per_page: 1,
+              });
+              if (prs.length > 0) {
+                skipped++;
+                continue;
+              }
+
+              // Check staleness by last commit date
+              try {
+                const { data: branchData } = await github.rest.repos.getBranch({
+                  owner,
+                  repo,
+                  branch: name,
+                });
+                const lastCommitDate = new Date(
+                  branchData.commit.commit.committer.date
+                );
+                if (lastCommitDate < cutoff) {
+                  core.info(
+                    `Deleting stale branch (${staleDays}+ days): ${name} (last commit: ${lastCommitDate.toISOString()})`
+                  );
+                  await github.rest.git.deleteRef({
+                    owner,
+                    repo,
+                    ref: `heads/${name}`,
+                  });
+                  deletedStale++;
+                } else {
+                  skipped++;
+                }
+              } catch (e) {
+                core.warning(`Error checking branch ${name}: ${e.message}`);
+                skipped++;
+              }
+            }
+
+            core.info(
+              `Done. Deleted ${deletedMerged} merged + ${deletedStale} stale branches. Skipped ${skipped}.`
+            );
