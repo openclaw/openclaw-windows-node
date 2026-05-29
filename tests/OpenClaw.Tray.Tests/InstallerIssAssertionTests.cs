@@ -117,6 +117,8 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("wsl-keepalive", script);
         Assert.Contains("Test-DistroListed", script);
         Assert.Contains("Test-DistroNotFound", script);
+        Assert.Contains("FileAttributes]::ReparsePoint", script);
+        Assert.Contains("Refusing to recursively delete reparse point", script);
         Assert.Contains("for ($attempt = 1; $attempt -le 6; $attempt++)", script);
         Assert.Contains("exit $unregisterResult.ExitCode", script);
         Assert.DoesNotContain("OpenClaw.Tray.WinUI.exe", script);

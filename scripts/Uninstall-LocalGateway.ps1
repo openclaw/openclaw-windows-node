@@ -545,6 +545,11 @@ function Remove-GatewayDirectory {
         return
     }
 
+    $gatewayItem = Get-Item -LiteralPath $gatewayDirectory -Force -ErrorAction Stop
+    if (($gatewayItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing to recursively delete reparse point '$gatewayDirectory'."
+    }
+
     $lastError = $null
     for ($attempt = 1; $attempt -le 6; $attempt++) {
         try {
