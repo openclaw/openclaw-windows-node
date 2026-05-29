@@ -103,6 +103,10 @@ Format first if formatting can change line locations. Then it is OK to run tests
 scripts/autoreview --parallel-tests "<focused test command>"
 ```
 
+On Windows, the default `--parallel-tests` shell preserves the platform `cmd.exe`
+semantics used by Python `shell=True`. Use `--parallel-tests-shell powershell`
+or `--parallel-tests-shell pwsh` when the focused test command is PowerShell-specific.
+
 Tradeoff: tests may force code changes that stale the review. If tests or review lead to code edits, rerun the affected tests and rerun review until no accepted/actionable findings remain. Once that rerun exits cleanly, stop; do not spend another long review cycle on redundant confirmation.
 
 ## Review Panels
@@ -147,6 +151,22 @@ OpenClaw Windows Node repo-local helper:
 .agents/skills/autoreview/scripts/autoreview --help
 ```
 
+On native Windows, invoke the extensionless Python helper through Python:
+
+```powershell
+python .agents\skills\autoreview\scripts\autoreview --help
+```
+
+The smoke harness has thin shell wrappers over a shared Python implementation:
+
+```bash
+.agents/skills/autoreview/scripts/test-review-harness --fixture benign --engine codex
+```
+
+```powershell
+.agents\skills\autoreview\scripts\test-review-harness.ps1 -Fixture benign -Engine codex
+```
+
 The helper:
 
 - chooses dirty local changes first
@@ -157,7 +177,7 @@ The helper:
 - use `--mode commit --commit <ref>` for already-committed work, especially clean default-branch work after landing
 - should be left in `--mode auto` or forced to `--mode branch` for PR/branch work; do not force `--mode local` after committing
 - writes only to stdout unless `--output`, `--json-output`, or live streamed engine stderr is set
-- supports `--dry-run`, `--parallel-tests`, `--prompt`, `--prompt-file`, `--dataset`, `--no-tools`, `--no-web-search`, and commit refs
+- supports `--dry-run`, `--parallel-tests`, `--parallel-tests-shell`, `--prompt`, `--prompt-file`, `--dataset`, `--no-tools`, `--no-web-search`, and commit refs
 - supports `--stream-engine-output` or `AUTOREVIEW_STREAM_ENGINE_OUTPUT=1` for live engine text while preserving structured validation; Codex and Claude hide tool/file event details, emit compact activity summaries, and report usage at turn completion
 - supports opt-in review panels with `--panel` / `--reviewers`, plus per-engine `--model` and `--thinking`
 - allows read-only tools and web search by default only for sandboxed Codex review; forbids nested review in the prompt; Codex is run through `codex exec` with read-only sandbox and structured output
