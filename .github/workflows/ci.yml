@@ -389,14 +389,13 @@ jobs:
       run: |
         $expected = "${{ needs.test.outputs.semVer }}"
         $assemblyPath = Resolve-Path "publish\OpenClaw.Tray.WinUI.dll"
-        $assembly = [System.Reflection.Assembly]::LoadFile($assemblyPath)
-        $attribute = $assembly.GetCustomAttributes([System.Reflection.AssemblyInformationalVersionAttribute], $false) | Select-Object -First 1
-        if (-not $attribute) {
-          throw "OpenClaw.Tray.WinUI.dll is missing AssemblyInformationalVersionAttribute."
+        $metadata = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($assemblyPath)
+        if ([string]::IsNullOrWhiteSpace($metadata.ProductVersion)) {
+          throw "OpenClaw.Tray.WinUI.dll is missing ProductVersion metadata."
         }
-        $actual = $attribute.InformationalVersion -replace '\+.*$', ''
+        $actual = $metadata.ProductVersion -replace '\+.*$', ''
         if ($actual -ne $expected) {
-          throw "AssemblyInformationalVersion '$actual' did not match GitVersion SemVer '$expected'."
+          throw "ProductVersion '$actual' did not match GitVersion SemVer '$expected'."
         }
 
     - name: Disable NuGet source mapping for signing
