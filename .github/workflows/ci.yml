@@ -396,7 +396,15 @@ jobs:
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
-    - name: Sign Executable
+    - name: Stage OpenClaw Executables for Signing
+      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path signing-input -Force | Out-Null
+        New-Item -ItemType HardLink -Path signing-input\OpenClaw.Tray.WinUI.exe -Target publish\OpenClaw.Tray.WinUI.exe | Out-Null
+        New-Item -ItemType HardLink -Path signing-input\OpenClaw.SetupEngine.UI.exe -Target publish\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
+
+    - name: Sign OpenClaw Executables
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
       uses: azure/trusted-signing-action@v2
       with:
@@ -406,12 +414,17 @@ jobs:
         endpoint: https://wus2.codesigning.azure.net/
         signing-account-name: hanselman
         certificate-profile-name: WindowsEdgeLight
-        files-folder: publish
+        files-folder: signing-input
         files-folder-filter: exe
-        files-folder-recurse: true
+        files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
+
+    - name: Verify Release Executable Signing Policy
+      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
+      shell: pwsh
+      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath publish -RequireSignedOpenClaw
 
     - name: Upload Tray Artifact
       uses: actions/upload-artifact@v7
@@ -574,7 +587,14 @@ jobs:
       with:
         creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
-    - name: Sign ARM64 Executables
+    - name: Stage ARM64 OpenClaw Executables for Signing
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path signing-input-arm64 -Force | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
+
+    - name: Sign ARM64 OpenClaw Executables
       uses: azure/trusted-signing-action@v2
       with:
         azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -583,12 +603,16 @@ jobs:
         endpoint: https://wus2.codesigning.azure.net/
         signing-account-name: hanselman
         certificate-profile-name: WindowsEdgeLight
-        files-folder: artifacts/tray-win-arm64
+        files-folder: signing-input-arm64
         files-folder-filter: exe
-        files-folder-recurse: true
+        files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
+
+    - name: Verify ARM64 Release Executable Signing Policy
+      shell: pwsh
+      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw
 
     - name: Sign Release MSIX Packages
       if: steps.msix-x64.outcome == 'success' || steps.msix-arm64.outcome == 'success'
