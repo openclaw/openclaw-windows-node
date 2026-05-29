@@ -353,6 +353,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v5
@@ -371,16 +373,31 @@ jobs:
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
 
     - name: Build WinUI Tray App (Release)
-      run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }} -p:Version=${{ needs.test.outputs.semVer }}
+      run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }}
 
     - name: Publish WinUI Tray App
-      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -p:Version=${{ needs.test.outputs.semVer }} -o publish
+      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish
 
     - name: Publish SetupEngine.UI
       run: |
-        dotnet publish src/OpenClaw.SetupEngine.UI -c Release -r ${{ matrix.rid }} --self-contained -p:Version=${{ needs.test.outputs.semVer }} -o publish-setup
+        dotnet publish src/OpenClaw.SetupEngine.UI -c Release -r ${{ matrix.rid }} --self-contained -o publish-setup
         mkdir publish\SetupEngine
         copy publish-setup\* publish\SetupEngine\ -Recurse
+
+    - name: Verify GitVersion assembly metadata
+      shell: pwsh
+      run: |
+        $expected = "${{ needs.test.outputs.semVer }}"
+        $assemblyPath = Resolve-Path "publish\OpenClaw.Tray.WinUI.dll"
+        $assembly = [System.Reflection.Assembly]::LoadFile($assemblyPath)
+        $attribute = $assembly.GetCustomAttributes([System.Reflection.AssemblyInformationalVersionAttribute], $false) | Select-Object -First 1
+        if (-not $attribute) {
+          throw "OpenClaw.Tray.WinUI.dll is missing AssemblyInformationalVersionAttribute."
+        }
+        $actual = $attribute.InformationalVersion -replace '\+.*$', ''
+        if ($actual -ne $expected) {
+          throw "AssemblyInformationalVersion '$actual' did not match GitVersion SemVer '$expected'."
+        }
 
     - name: Disable NuGet source mapping for signing
       if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
@@ -450,6 +467,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET 10 for VS MSBuild
       uses: actions/setup-dotnet@v5
@@ -505,7 +524,6 @@ jobs:
         /p:AppxPackageSigningEnabled=false
         /p:AppxBundle=Never
         /p:UapAppxPackageBuildMode=SideloadOnly
-        /p:Version=${{ needs.test.outputs.majorMinorPatch }}
         /p:AppxPackageDir=AppPackages\
 
     - name: Find MSIX Package
@@ -661,7 +679,6 @@ jobs:
           - 🦞 System tray integration with gateway status
           - 🔄 Auto-updates from GitHub Releases
           - ✅ Code-signed with Azure Trusted Signing
-          - 📦 MSIX package available for native camera/microphone consent prompts
 
           ### Requirements
           - Windows 10 version 1903 or later
@@ -669,6 +686,6 @@ jobs:
           - OpenClaw gateway running locally
 
           ### Quick Start
-          1. Run the installer for your architecture (or sideload the MSIX for camera consent)
+          1. Run the installer for your architecture
           2. Launch from Start Menu or system tray
           3. Right-click tray icon → Settings to configure

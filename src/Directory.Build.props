@@ -12,4 +12,8 @@
     <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="GitVersion.MsBuild" Version="6.4.0" PrivateAssets="all" />
+  </ItemGroup>
+
 </Project>

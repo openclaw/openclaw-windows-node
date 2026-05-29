@@ -180,7 +180,8 @@ Only tag when `HEAD == origin/master`.
 ## Versioning rules
 
 - Do not manually bump project or manifest versions for routine releases.
-- Treat csproj `<Version>` as a local fallback for dev builds.
+- Do not add csproj `<Version>` release fallbacks; product versions come from
+  GitVersion/tag history.
 - Release versions come from the tag (`vX.Y.Z` or `vX.Y.Z-alpha.N`).
-- CI computes the version from git history/tags and passes it to builds.
-
+- CI computes GitVersion outputs for artifact naming, while product builds use
+  GitVersion-backed assembly metadata.

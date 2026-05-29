@@ -73,15 +73,6 @@ function Resolve-InnoCompiler {
     throw "Inno Setup compiler (ISCC.exe) was not found. Install it, or rerun with -InstallInno."
 }
 
-function Get-ProjectVersion {
-    $projectPath = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
-    [xml]$project = Get-Content -LiteralPath $projectPath -Raw
-    $project.Project.PropertyGroup |
-        ForEach-Object { $_.Version } |
-        Where-Object { $_ } |
-        Select-Object -First 1
-}
-
 function Get-RidForArch {
     param([string]$Architecture)
     if ($Architecture -eq "arm64") {
@@ -104,24 +95,36 @@ function Publish-ArchitecturePayload {
     Remove-Item -LiteralPath $publishDir, $setupPublishDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $publishDir | Out-Null
 
-    dotnet publish .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj `
-        -c $Configuration `
-        -r $RuntimeIdentifier `
-        --self-contained `
-        -p:Version=$PublishVersion `
-        -o $publishDir `
-        -v:minimal
+    $trayPublishArgs = @(
+        ".\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj",
+        "-c", $Configuration,
+        "-r", $RuntimeIdentifier,
+        "--self-contained",
+        "-o", $publishDir,
+        "-v:minimal"
+    )
+    if ($PublishVersion) {
+        $trayPublishArgs += "-p:Version=$PublishVersion"
+    }
+
+    dotnet publish @trayPublishArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Tray publish failed for $Architecture."
     }
 
-    dotnet publish .\src\OpenClaw.SetupEngine.UI\OpenClaw.SetupEngine.UI.csproj `
-        -c $Configuration `
-        -r $RuntimeIdentifier `
-        --self-contained `
-        -p:Version=$PublishVersion `
-        -o $setupPublishDir `
-        -v:minimal
+    $setupPublishArgs = @(
+        ".\src\OpenClaw.SetupEngine.UI\OpenClaw.SetupEngine.UI.csproj",
+        "-c", $Configuration,
+        "-r", $RuntimeIdentifier,
+        "--self-contained",
+        "-o", $setupPublishDir,
+        "-v:minimal"
+    )
+    if ($PublishVersion) {
+        $setupPublishArgs += "-p:Version=$PublishVersion"
+    }
+
+    dotnet publish @setupPublishArgs
     if ($LASTEXITCODE -ne 0) {
         throw "SetupEngine.UI publish failed for $Architecture."
     }
@@ -178,8 +181,11 @@ function Invoke-InnoCompiler {
     }
 }
 
+$versionWasProvided = $PSBoundParameters.ContainsKey("Version")
+
 if (-not $Version) {
-    $Version = Get-ProjectVersion
+    $versionScript = Join-Path $PSScriptRoot "Get-OpenClawVersion.ps1"
+    $Version = & $versionScript -Variable SemVer
 }
 
 if (-not $Version) {
@@ -198,7 +204,8 @@ Write-Host "No publish: $($NoPublish.IsPresent)"
 foreach ($architecture in $architectures) {
     $rid = Get-RidForArch $architecture
     if (-not $NoPublish) {
-        Publish-ArchitecturePayload -Architecture $architecture -RuntimeIdentifier $rid -PublishVersion $Version
+        $publishVersion = if ($versionWasProvided) { $Version } else { $null }
+        Publish-ArchitecturePayload -Architecture $architecture -RuntimeIdentifier $rid -PublishVersion $publishVersion
     }
 
     $payload = Assert-PayloadReady $architecture
