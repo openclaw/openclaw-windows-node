@@ -33,6 +33,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private bool _disposed;
     private Task? _disposeTask;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
+    private string? _operatorTokenRecoveryAttemptedGatewayId;
     private string? _lastAutoApprovedRequestId; // prevent auto-approve loops
     private string? _autoApproveInFlight; // atomic guard against concurrent approval of same requestId
 
@@ -149,6 +150,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.RecordCredentialResolution(credential);
             _activeIdentityPath = perGatewayIdentityDir;
             _activeGatewayRecordId = record.Id;
+            _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
 
             if (credential == null)
             {
@@ -241,12 +243,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             };
             lifecycle.DataClient.V2SignatureFallback += (s, _) =>
             {
-                _gatewayNeedsV2Signature = true;
+                if (Interlocked.Read(ref _generation) != gen) return;
+                RememberGatewayNeedsV2Signature(record.Id);
             };
 
             // Local gateways only support v2 signatures — skip the v3 attempt entirely
             // to avoid a spurious "metadata-upgrade" re-pairing triggered by the v3→v2 fallback.
-            if (record.IsLocal)
+            if (record.IsLocal || record.RequiresV2Signature)
                 _gatewayNeedsV2Signature = true;
 
             // If we already know this gateway needs v2, tell the client upfront
@@ -488,6 +491,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (Interlocked.Read(ref _generation) != gen) return;
 
+            if (TryScheduleOperatorTokenRecovery(message, gen))
+                return;
+
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("error", "Authentication failed", message);
             _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, message);
@@ -498,6 +504,48 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
     }
+
+    private bool TryScheduleOperatorTokenRecovery(string message, long gen)
+    {
+        if (!IsOperatorDeviceTokenMismatch(message) ||
+            _activeGatewayRecordId == null ||
+            _activeIdentityPath == null ||
+            _operatorTokenRecoveryAttemptedGatewayId == _activeGatewayRecordId)
+        {
+            return false;
+        }
+
+        var record = _registry.GetById(_activeGatewayRecordId);
+        if (record == null || string.IsNullOrWhiteSpace(record.BootstrapToken))
+            return false;
+
+        if (!DeviceIdentity.TryClearDeviceToken(_activeIdentityPath, _logger))
+            return false;
+
+        _operatorTokenRecoveryAttemptedGatewayId = _activeGatewayRecordId;
+        _diagnostics.Record("credential", "Cleared stale operator device token; reconnecting with bootstrap token");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _reconnectDelay(TimeSpan.FromMilliseconds(200));
+                if (Interlocked.Read(ref _generation) != gen || _disposed) return;
+                await ReconnectAsync();
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[ConnMgr] Operator token recovery reconnect failed: {ex.Message}");
+            }
+        });
+
+        return true;
+    }
+
+    private static bool IsOperatorDeviceTokenMismatch(string message) =>
+        message.Contains("device token mismatch", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("AUTH_DEVICE_TOKEN_MISMATCH", StringComparison.OrdinalIgnoreCase);
 
     private async Task HandleHandshakeSucceededAsync(long gen)
     {
@@ -510,6 +558,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.Record("state", "Handshake succeeded (hello-ok)");
             _stateMachine.TryTransition(ConnectionTrigger.HandshakeSucceeded);
             _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
+            if (_operatorTokenRecoveryAttemptedGatewayId == _activeGatewayRecordId)
+                _operatorTokenRecoveryAttemptedGatewayId = null;
 
             // Update device ID from client
             if (_activeLifecycle?.DataClient is { } client)
@@ -576,6 +626,25 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _registry.Save();
                 _diagnostics.Record("credential", "Cleared bootstrap token — both roles paired");
             }
+        }
+    }
+
+    private void RememberGatewayNeedsV2Signature(string? gatewayRecordId)
+    {
+        _gatewayNeedsV2Signature = true;
+
+        if (string.IsNullOrWhiteSpace(gatewayRecordId))
+            return;
+
+        try
+        {
+            _registry.Update(gatewayRecordId, r => r.RequiresV2Signature ? r : r with { RequiresV2Signature = true });
+            _registry.Save();
+            _diagnostics.Record("credential", "Remembered gateway v2 signature requirement");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Failed to persist v2 signature requirement: {ex.Message}");
         }
     }
 

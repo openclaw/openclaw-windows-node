@@ -424,6 +424,24 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void OperatorConnect_FreshBootstrapDevice_StartsWithV2Signature()
+    {
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true);
+        helper.SetDeviceTokenForTest(null);
+
+        Assert.True(helper.Client.UseV2Signature);
+    }
+
+    [Fact]
+    public void OperatorConnect_SharedTokenDevice_StartsWithV3Signature()
+    {
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: false);
+        helper.SetDeviceTokenForTest(null);
+
+        Assert.False(helper.Client.UseV2Signature);
+    }
+
+    [Fact]
     public async Task RequestSkillsStatusAsync_RemembersRequestedAgentScope()
     {
         var helper = new GatewayClientTestHelper();

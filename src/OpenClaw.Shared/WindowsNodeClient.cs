@@ -117,6 +117,7 @@ public class WindowsNodeClient : WebSocketClientBase
         // Initialize device identity
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
+        _useV2Signature |= !string.IsNullOrEmpty(_bootstrapToken) && string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
         
         // Initialize registration
         _registration = new NodeRegistration

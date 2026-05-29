@@ -808,6 +808,56 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public void BuildNodeConnectMessage_FreshBootstrapDevice_StartsWithV2Signature()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient(
+                "ws://localhost:18789",
+                "",
+                dataPath,
+                bootstrapToken: "bootstrap-token-123");
+
+            Assert.True(client.UseV2Signature);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void BuildNodeConnectMessage_StoredDeviceTokenWithBootstrap_DoesNotForceV2Signature()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            var identity = new DeviceIdentity(dataPath);
+            identity.Initialize();
+            identity.StoreDeviceTokenForRole("node", "stored-device-token", null);
+
+            using var client = new WindowsNodeClient(
+                "ws://localhost:18789",
+                "",
+                dataPath,
+                bootstrapToken: "bootstrap-token-123");
+
+            Assert.False(client.UseV2Signature);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public void BuildNodeConnectMessage_UsesStoredDeviceToken_OverBootstrapToken()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");

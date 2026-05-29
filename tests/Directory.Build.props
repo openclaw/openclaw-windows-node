@@ -11,6 +11,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <OpenClawLibsodiumVersion>1.0.20.1</OpenClawLibsodiumVersion>
     <!-- Audit direct + transitive dependencies for known CVEs during restore,
          matching the setting in src/Directory.Build.props. -->
     <NuGetAuditMode>all</NuGetAuditMode>
@@ -32,5 +33,13 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <Target Name="CopyWindowsNativeCryptoForTestHost" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <ItemGroup>
+      <OpenClawNativeCrypto Include="$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-x64\native\libsodium.dll" Condition="'$(PROCESSOR_ARCHITECTURE)' != 'ARM64' And Exists('$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-x64\native\libsodium.dll')" />
+      <OpenClawNativeCrypto Include="$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-arm64\native\libsodium.dll" Condition="'$(PROCESSOR_ARCHITECTURE)' == 'ARM64' And Exists('$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-arm64\native\libsodium.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(OpenClawNativeCrypto)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

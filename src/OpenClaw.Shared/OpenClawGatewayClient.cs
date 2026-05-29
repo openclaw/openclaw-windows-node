@@ -244,6 +244,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
         _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
+        _useV2Signature |= _tokenIsBootstrapToken && string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
     }
 
     public async Task DisconnectAsync()

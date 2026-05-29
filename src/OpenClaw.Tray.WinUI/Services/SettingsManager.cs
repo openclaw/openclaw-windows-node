@@ -424,6 +424,28 @@ public class SettingsManager
         return ProtectedSecretPrefix + Convert.ToBase64String(protectedBytes);
     }
 
+    internal static bool CanProtectSettingSecretsForCurrentUser()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes("openclaw-dpapi-probe");
+            var protectedBytes = ProtectedData.Protect(bytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
+            var unprotectedBytes = ProtectedData.Unprotect(protectedBytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
+            return bytes.SequenceEqual(unprotectedBytes);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     internal static string? UnprotectSettingSecret(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
