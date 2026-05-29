@@ -130,6 +130,42 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, string>
         s_plainCache = new();
 
+    // FontFamily instances are immutable, but `new FontFamily(...)` per
+    // render allocates a fresh CLR object whose reference does not equal
+    // the previous one. Reassigning a referentially-different FontFamily
+    // to a TextBlock invalidates its inline runs even when the source
+    // string is identical, which (in the tool-output panel) makes
+    // multi-line wrapped text vanish during a pointer-exit re-render.
+    // Caching sidesteps both the GC pressure and the invalidation.
+    //
+    // FontFamily is a DependencyObject with thread affinity, so a single
+    // process-wide singleton would crash with RPC_E_WRONG_THREAD if a
+    // second window on a different dispatcher ever tried to read it.
+    // Keying by DispatcherQueue mirrors the brush cache above: one
+    // shared instance per window, collected with its dispatcher.
+    // Off-dispatcher callers (tests, design-time) get a one-shot
+    // uncached instance — correct, just not reused.
+    private const string MonoFontFamilySource = "Cascadia Code, Cascadia Mono, Consolas";
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        Microsoft.UI.Dispatching.DispatcherQueue, FontFamily> s_monoFontByDispatcher = new();
+    private static FontFamily s_monoFontFamily
+    {
+        get
+        {
+            var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            if (dispatcher is null)
+            {
+                return new FontFamily(MonoFontFamilySource);
+            }
+            if (!s_monoFontByDispatcher.TryGetValue(dispatcher, out var family))
+            {
+                family = new FontFamily(MonoFontFamilySource);
+                s_monoFontByDispatcher.Add(dispatcher, family);
+            }
+            return family;
+        }
+    }
+
     // Per-DispatcherQueue selection-highlight brushes for the user
     // bubble. The bubble background is the user's chosen system accent
     // (which may be red, green, purple, …), so a hardcoded color would
@@ -1432,7 +1468,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             Caption(labelText).Foreground(SecondaryText)
                                 .Set(t =>
                                 {
-                                    t.FontFamily = new FontFamily("Cascadia Code, Cascadia Mono, Consolas");
+                                    t.FontFamily = s_monoFontFamily;
                                     t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
                                 })
                                 .VAlign(VerticalAlignment.Center)
@@ -1471,6 +1507,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 ).Set(b => b.MinHeight = 32);
 
                 Element body = Empty();
+                bool hasExpandedBody = false;
                 if (isExpanded)
                 {
                     var sections = new System.Collections.Generic.List<Element>();
@@ -1506,14 +1543,31 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                         var codeBlock = Border(
                             ScrollView(
-                                TextBlock(displayText)
+                                // Use Text="" + Inlines populated by
+                                // ApplyPlainSelectableInlines so that the
+                                // ConditionalWeakTable cache short-circuits
+                                // re-population on hover-out re-renders.
+                                // Setting Text directly (even value-guarded)
+                                // leaves the rendered run unanchored, which
+                                // lets WinUI drop the text glyphs during a
+                                // pointer-exit re-render while keeping any
+                                // active selection rectangles around. This
+                                // mirrors the working markdown-bubble path.
+                                TextBlock("")
                                     .Set(t =>
                                     {
-                                        t.FontFamily = new FontFamily("Cascadia Code, Cascadia Mono, Consolas");
+                                        // Hoisted static FontFamily is the
+                                        // critical bit — reassigning the same
+                                        // reference is a DP-equality no-op,
+                                        // so this setter is safe to re-run on
+                                        // every render without invalidating
+                                        // the selection.
+                                        t.FontFamily = s_monoFontFamily;
                                         t.FontSize = 11;
                                         t.TextWrapping = TextWrapping.Wrap;
                                         t.IsTextSelectionEnabled = true;
                                         t.LineHeight = 16;
+                                        ApplyPlainSelectableInlines(t, displayText);
                                     })
                                     .Foreground(SecondaryText)
                                     .Padding(11, 8, 11, 10)
@@ -1557,7 +1611,25 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         sections.Add(BuildSection(outLabel, entry.ToolOutput!));
                     }
 
-                    body = Border(VStack(0, sections.ToArray())).Background(blockHeaderBg);
+                    hasExpandedBody = sections.Count > 0;
+                    if (hasExpandedBody)
+                    {
+                        var bodyBorder = Border(VStack(0, sections.ToArray())).Background(blockHeaderBg);
+                        // When this row is the last in the card AND expanded
+                        // with actual content, the body sits at the bottom
+                        // edge — it must own the bottom rounded corners so
+                        // the row blends into the card instead of showing a
+                        // square edge clipped by the card's rounding.
+                        if (isLast)
+                        {
+                            bodyBorder = bodyBorder.Set(b => b.CornerRadius = new CornerRadius(0, 0, 8, 8));
+                        }
+                        body = bodyBorder;
+                    }
+                    // sections.Count == 0 leaves `body` as the default
+                    // Empty() above so no phantom bordered strip stacks under
+                    // the header. The header keeps its own bottom rounding
+                    // via hasExpandedBody=false.
                 }
 
                 Action toggle = () =>
@@ -1568,32 +1640,26 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     expandedToolChips.Set(next);
                 };
 
-                // 1px separator between rows (skipped on the first row). The
-                // separator lives inside the row so collapsed/expanded heights
-                // both keep continuity with the next row above.
-                var rowContent = VStack(0, headerRow, body);
-                var rowWithSeparator = isFirst
-                    ? (Element)rowContent
-                    : Border(rowContent)
-                        .Set(b =>
-                        {
-                            b.BorderThickness = new Thickness(0, 1, 0, 0);
-                            b.BorderBrush = toolCardBorderBrush;
-                        });
-
-                return Button(rowWithSeparator, toggle)
+                // Scope the toggle Button to the header only — the body
+                // contains selectable TextBlocks (TOOL OUTPUT / CALL), and
+                // wrapping body in the Button caused unhandled PointerReleased
+                // events inside the body's padding/whitespace to bubble up
+                // and fire Click → collapse the section while the user was
+                // trying to select text.
+                var headerButton = Button(headerRow, toggle)
                     .Set(b =>
                     {
                         b.HorizontalAlignment = HorizontalAlignment.Stretch;
                         b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                         b.Padding = new Thickness(0);
-                        // Round only the outer corners so rows blend into the
-                        // wrapping card without leaving gaps.
+                        // Top corners follow isFirst. Bottom corners follow
+                        // isLast unless the expanded body below owns them
+                        // (i.e., expanded AND has at least one section).
                         b.CornerRadius = new CornerRadius(
                             isFirst ? 8 : 0,
                             isFirst ? 8 : 0,
-                            isLast ? 8 : 0,
-                            isLast ? 8 : 0);
+                            (isLast && !hasExpandedBody) ? 8 : 0,
+                            (isLast && !hasExpandedBody) ? 8 : 0);
                     })
                     .Resources(r => r
                         .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
@@ -1608,6 +1674,21 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
                         .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
                         .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)));
+
+                // 1px separator between rows (skipped on the first row). The
+                // separator lives inside the row so collapsed/expanded heights
+                // both keep continuity with the next row above.
+                var rowStack = VStack(0, headerButton, body);
+                var rowWithSeparator = isFirst
+                    ? (Element)rowStack
+                    : Border(rowStack)
+                        .Set(b =>
+                        {
+                            b.BorderThickness = new Thickness(0, 1, 0, 0);
+                            b.BorderBrush = toolCardBorderBrush;
+                        });
+
+                return rowWithSeparator;
             }
 
             // ── Style-aware composition ──────────────────────────────
@@ -2169,7 +2250,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                 {
                                     t.FontSize = 12;
                                     t.TextWrapping = TextWrapping.Wrap;
-                                    t.FontFamily = new FontFamily("Cascadia Code, Cascadia Mono, Consolas");
+                                    t.FontFamily = s_monoFontFamily;
                                 })
                                 .Foreground(TertiaryText)
                                 .Padding(0, 4, 0, 4),
