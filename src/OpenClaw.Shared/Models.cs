@@ -635,6 +635,12 @@ public class GatewaySelfInfo
     public int? MaxPayload { get; set; }
     public int? MaxBufferedBytes { get; set; }
     public int? TickIntervalMs { get; set; }
+    /// <summary>
+    /// Per-surface base URLs sent by the gateway in hello-ok, already scoped
+    /// with the plugin-node capability token (oc_cap). Used by canvas/A2UI to
+    /// fetch hosted documents from <c>/__openclaw__/canvas/...</c> without 401.
+    /// </summary>
+    public Dictionary<string, string>? PluginSurfaceUrls { get; set; }
     public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
 
     public bool HasAnyDetails =>
@@ -684,6 +690,23 @@ public class GatewaySelfInfo
             ApplySnapshot(info, snapshot);
         }
 
+        if (payload.TryGetProperty("pluginSurfaceUrls", out var surfaces) &&
+            surfaces.ValueKind == JsonValueKind.Object)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var prop in surfaces.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == JsonValueKind.String)
+                {
+                    var v = prop.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(v))
+                        map[prop.Name] = v!;
+                }
+            }
+            if (map.Count > 0)
+                info.PluginSurfaceUrls = map;
+        }
+
         return info;
     }
 
@@ -717,6 +740,7 @@ public class GatewaySelfInfo
             MaxPayload = update.MaxPayload ?? MaxPayload,
             MaxBufferedBytes = update.MaxBufferedBytes ?? MaxBufferedBytes,
             TickIntervalMs = update.TickIntervalMs ?? TickIntervalMs,
+            PluginSurfaceUrls = update.PluginSurfaceUrls ?? PluginSurfaceUrls,
             LastUpdatedUtc = update.LastUpdatedUtc
         };
     }

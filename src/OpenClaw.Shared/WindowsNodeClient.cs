@@ -75,6 +75,17 @@ public class WindowsNodeClient : WebSocketClientBase
     public string? NodeId => _nodeId;
     public string GatewayUrl => GatewayUrlForDisplay;
     public IReadOnlyList<INodeCapability> Capabilities => _capabilities;
+
+    /// <summary>
+    /// Per-surface base URL the gateway sent for the canvas plugin, already
+    /// scoped with a plugin-node capability token (oc_cap). Relative canvas URLs
+    /// from <c>canvas.present</c> must be prefixed with this, not the bare
+    /// gateway origin — otherwise the gateway returns 401 on
+    /// <c>/__openclaw__/canvas/*</c>. May be <c>null</c> before the first
+    /// hello-ok with a registered canvas surface.
+    /// </summary>
+    public string? CanvasSurfaceUrl => _canvasSurfaceUrl;
+    private volatile string? _canvasSurfaceUrl;
     
     /// <summary>True if connected but waiting for pairing approval on gateway</summary>
     public bool IsPendingApproval => _isPendingApproval;
@@ -1173,8 +1184,21 @@ public class WindowsNodeClient : WebSocketClientBase
 
     private void PublishGatewaySelf(GatewaySelfInfo info)
     {
-        if (!info.HasAnyDetails)
+        if (!info.HasAnyDetails && info.PluginSurfaceUrls == null)
             return;
+
+        if (info.PluginSurfaceUrls != null)
+        {
+            if (info.PluginSurfaceUrls.TryGetValue("canvas", out var canvasUrl) &&
+                !string.IsNullOrWhiteSpace(canvasUrl))
+            {
+                _canvasSurfaceUrl = canvasUrl.TrimEnd('/');
+            }
+            else
+            {
+                _canvasSurfaceUrl = null;
+            }
+        }
 
         GatewaySelfUpdated?.Invoke(this, info);
     }
