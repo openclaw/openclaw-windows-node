@@ -408,51 +408,6 @@ jobs:
           throw "ProductVersion '$actual' did not match GitVersion SemVer '$expected'."
         }
 
-    - name: Disable NuGet source mapping for signing
-      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      shell: pwsh
-      run: |
-        if (Test-Path NuGet.Config) {
-          Rename-Item NuGet.Config NuGet.Config.signing.bak -Force
-        }
-
-    - name: Azure Login for Signing
-      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/login@v3
-      with:
-        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
-
-    - name: Stage OpenClaw Executables for Signing
-      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Path signing-input -Force | Out-Null
-        New-Item -ItemType HardLink -Path signing-input\OpenClaw.Tray.WinUI.exe -Target publish\OpenClaw.Tray.WinUI.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input\OpenClaw.SetupEngine.exe -Target publish\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input\OpenClaw.SetupEngine.UI.exe -Target publish\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
-
-    - name: Sign OpenClaw Executables
-      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      uses: azure/trusted-signing-action@v2
-      with:
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        endpoint: https://wus2.codesigning.azure.net/
-        signing-account-name: hanselman
-        certificate-profile-name: WindowsEdgeLight
-        files-folder: signing-input
-        files-folder-filter: exe
-        files-folder-depth: 1
-        file-digest: SHA256
-        timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        timestamp-digest: SHA256
-
-    - name: Verify Release Executable Signing Policy
-      if: startsWith(github.ref, 'refs/tags/v') && matrix.rid != 'win-arm64'
-      shell: pwsh
-      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath publish -RequireSignedOpenClaw
-
     - name: Upload Tray Artifact
       uses: actions/upload-artifact@v7
       with:
@@ -558,9 +513,11 @@ jobs:
     needs: [repo-hygiene, test, e2etests, build]
     if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && !cancelled()
     runs-on: windows-latest
+    environment: release-signing
     permissions:
       actions: read
       contents: write
+      id-token: write
 
     steps:
     - uses: actions/checkout@v6
@@ -588,7 +545,17 @@ jobs:
     - name: Azure Login for Release Signing
       uses: azure/login@v3
       with:
-        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Stage x64 OpenClaw Executables for Signing
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path signing-input-x64 -Force | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-x64\OpenClaw.Tray.WinUI.exe | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
 
     - name: Stage ARM64 OpenClaw Executables for Signing
       shell: pwsh
@@ -598,21 +565,35 @@ jobs:
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
 
-    - name: Sign ARM64 OpenClaw Executables
-      uses: azure/trusted-signing-action@v2
+    - name: Sign x64 OpenClaw Executables
+      uses: azure/artifact-signing-action@v2
       with:
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        endpoint: https://wus2.codesigning.azure.net/
-        signing-account-name: hanselman
-        certificate-profile-name: WindowsEdgeLight
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-input-x64
+        files-folder-filter: exe
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Sign ARM64 OpenClaw Executables
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
         files-folder: signing-input-arm64
         files-folder-filter: exe
         files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
+
+    - name: Verify x64 Release Executable Signing Policy
+      shell: pwsh
+      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-x64 -RequireSignedOpenClaw
 
     - name: Verify ARM64 Release Executable Signing Policy
       shell: pwsh
@@ -644,20 +625,12 @@ jobs:
         # Build installer
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
 
-    - name: Azure Login for Signing
-      uses: azure/login@v3
+    - name: Sign Installers
+      uses: azure/artifact-signing-action@v2
       with:
-        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
-
-    - name: Sign Installer
-      uses: azure/trusted-signing-action@v2
-      with:
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        endpoint: https://wus2.codesigning.azure.net/
-        signing-account-name: hanselman
-        certificate-profile-name: WindowsEdgeLight
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
         files-folder: Output
         files-folder-filter: exe
         file-digest: SHA256
@@ -687,7 +660,7 @@ jobs:
           ### Features
           - 🦞 System tray integration with gateway status
           - 🔄 Auto-updates from GitHub Releases
-          - ✅ Code-signed with Azure Trusted Signing
+          - ✅ Code-signed with Azure Artifact Signing
 
           ### Requirements
           - Windows 10 version 1903 or later

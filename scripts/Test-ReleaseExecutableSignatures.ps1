@@ -24,7 +24,7 @@ param(
 
     [switch]$RequireSignedOpenClaw,
 
-    [string]$OpenClawSignerPattern = "hanselman|OpenClaw|Scott Hanselman"
+    [string]$OpenClawSignerPattern = "OpenClaw Foundation"
 )
 
 Set-StrictMode -Version Latest

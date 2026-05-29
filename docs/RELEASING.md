@@ -100,12 +100,32 @@ CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
 verifier fails closed on unknown `.exe` files so future payload changes are
 reviewed deliberately.
 
+The current Azure Artifact Signing resource is:
+
+- Account: `openclaw`
+- Certificate profile: `openclaw`
+- Endpoint: `https://eus.codesigning.azure.net/`
+- Public trust certificate subject:
+  `CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US`
+
+GitHub Actions authenticates with Azure through OIDC, not a stored client
+secret. The release job runs in the `release-signing` environment and requires:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+
+Do not add `AZURE_CLIENT_SECRET` back to the release workflow. The Entra app
+registration should have a federated credential for:
+`repo:openclaw/openclaw-windows-node:environment:release-signing`.
+
 ## How CI signs payload executables
 
 The release workflow does not recursively sign every `.exe`. Instead it creates
-a temporary signing input directory with hardlinks to only the OpenClaw-owned
-executables, then runs Azure Trusted Signing on that allowlist. Because these
-are NTFS hardlinks, signing the staged file signs the real payload file.
+temporary signing input directories with hardlinks to only the OpenClaw-owned
+executables from the x64 and ARM64 payloads, then runs Azure Artifact Signing on
+those allowlists. Because these are NTFS hardlinks, signing the staged file
+signs the real payload file.
 
 After signing, CI verifies the actual payload directory, not the staging folder.
 If hardlink signing does not affect the payload, the verifier fails before
@@ -127,12 +147,13 @@ MSIX jobs may appear as skipped while MSIX is paused.
 The release job should:
 
 1. Download x64/ARM64 tray payload artifacts.
-2. Sign only the OpenClaw-owned EXEs.
-3. Verify executable signing policy.
-4. Create portable ZIPs.
-5. Build Inno installers.
-6. Sign installers.
-7. Create a GitHub prerelease with installer and ZIP assets only.
+2. Authenticate to Azure with OIDC in the `release-signing` environment.
+3. Sign only the OpenClaw-owned EXEs in both payloads.
+4. Verify executable signing policy.
+5. Create portable ZIPs.
+6. Build Inno installers.
+7. Sign installers.
+8. Create a GitHub prerelease with installer and ZIP assets only.
 
 ## Post-release verification
 
