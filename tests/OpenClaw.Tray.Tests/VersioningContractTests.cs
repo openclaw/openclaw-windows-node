@@ -59,6 +59,23 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void GitVersion_MainBranchPreservesAlphaReleaseTags()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var configPath = Path.Combine(repoRoot, "GitVersion.yml");
+        var config = File.ReadAllText(configPath);
+        var mainBranchMatch = Regex.Match(
+            config,
+            @"(?ms)^  main:\s*$\r?\n(?<body>.*?)(?=^  \S|\z)",
+            RegexOptions.CultureInvariant);
+
+        Assert.True(mainBranchMatch.Success, "GitVersion.yml must configure the main branch.");
+        Assert.Matches(
+            @"(?m)^\s+label:\s*'?alpha'?\s*$",
+            mainBranchMatch.Groups["body"].Value);
+    }
+
+    [Fact]
     public void ActiveCodeAndTests_DoNotContainStaleReleaseVersion()
     {
         var repoRoot = GetRepositoryRoot();

@@ -106,6 +106,16 @@ jobs:
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4
 
+    - name: Verify tag version output
+      if: startsWith(github.ref, 'refs/tags/v')
+      shell: pwsh
+      run: |
+        $expected = "${{ github.ref_name }}" -replace '^v', ''
+        $actual = "${{ steps.gitversion.outputs.semVer }}"
+        if ($actual -ne $expected) {
+          throw "GitVersion SemVer '$actual' did not match tag '$expected'."
+        }
+
     - name: Restore dependencies
       run: dotnet restore
 
