@@ -69,7 +69,7 @@ Name: "startupicon"; Description: "Start OpenClaw Companion when Windows starts"
 [Files]
 ; WinUI Tray app - include all files (WinUI needs DLLs, not single-file)
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-; WSL gateway uninstall helper — invoked by [UninstallRun] to drive clean removal
+; WSL gateway uninstall helper copied to {tmp} by [Code] during uninstall.
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
@@ -91,25 +91,150 @@ Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: st
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-[UninstallRun]
-; ORDERING NOTE: Inno Setup runs [UninstallRun] entries BEFORE deleting {app}
-; directory contents.  This guarantees OpenClawTray.exe is still present when
-; the script executes.  See Inno docs: "[UninstallRun] section".
-; Fallback: if OpenClawTray.exe is missing for any reason, Uninstall-LocalGateway.ps1
-; logs the error to {app}\uninstall-gateway-error.log and exits 0 so Inno continues.
-; *** DO NOT COMMENT OUT OR REMOVE THE Flags LINE BELOW ***
-; waituntilterminated is non-negotiable: without it Inno races ahead and deletes
-; {app} while the PowerShell hook (and the CLI engine it invokes) is still running,
-; leaving 279+ application files behind after unins000.exe reports exit 0.
-; runhidden suppresses the console window that would otherwise flash briefly.
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall-LocalGateway.ps1"""; Flags: shellexec waituntilterminated runhidden; StatusMsg: "Removing local WSL gateway..."
-; The hook launches our self-contained tray executable from {app}. Windows can
-; keep just-loaded .NET/WinUI DLL handles around briefly after the process exits;
-; give those handles time to release before Inno deletes the app directory.
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Start-Sleep -Seconds 3"""; Flags: waituntilterminated runhidden; StatusMsg: "Preparing installed files for removal..."
+[Code]
+var
+  LocalGatewayCleanupChoiceInitialized: Boolean;
+  LocalGatewayCleanupRequested: Boolean;
+  LocalGatewayCleanupSucceeded: Boolean;
 
-[UninstallDelete]
-; The tray creates runtime state (logs, WSL files, JSON metadata) under the
-; dedicated {app} directory. Remove the directory after the gateway cleanup hook
-; has finished so uninstall leaves neither app files nor generated state behind.
-Type: filesandordirs; Name: "{app}"
+procedure EnsureLocalGatewayCleanupChoice;
+begin
+  if LocalGatewayCleanupChoiceInitialized then
+    Exit;
+
+  LocalGatewayCleanupChoiceInitialized := True;
+
+  if UninstallSilent() then
+  begin
+    LocalGatewayCleanupRequested := True;
+    Log('Silent uninstall: local gateway cleanup will run automatically.');
+  end
+  else
+  begin
+    LocalGatewayCleanupRequested :=
+      MsgBox(
+        'Do you also want to remove the OpenClaw local WSL gateway?' + #13#10#13#10 +
+        'Choose Yes to unregister the OpenClawGateway WSL distro and remove generated local gateway state.' + #13#10 +
+        'Choose No to leave the local gateway and generated local state on this computer.',
+        mbConfirmation,
+        MB_YESNO) = IDYES;
+
+    if LocalGatewayCleanupRequested then
+      Log('User chose to remove the local WSL gateway.')
+    else
+      Log('User chose to preserve the local WSL gateway and generated state.');
+  end;
+end;
+
+function RunLocalGatewayCleanupOnce(var ResultCode: Integer): Boolean;
+var
+  SourceScriptPath: string;
+  TempScriptPath: string;
+  Params: string;
+begin
+  SourceScriptPath := ExpandConstant('{app}\Uninstall-LocalGateway.ps1');
+  TempScriptPath := ExpandConstant('{tmp}\Uninstall-LocalGateway.ps1');
+
+  if not FileExists(SourceScriptPath) then
+  begin
+    ResultCode := 2;
+    Log('Local gateway cleanup script is missing: ' + SourceScriptPath);
+    Result := False;
+    Exit;
+  end;
+
+  if FileExists(TempScriptPath) then
+    DeleteFile(TempScriptPath);
+
+  if not CopyFile(SourceScriptPath, TempScriptPath, False) then
+  begin
+    ResultCode := 3;
+    Log('Failed to copy local gateway cleanup script to: ' + TempScriptPath);
+    Result := False;
+    Exit;
+  end;
+
+  Params :=
+    '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(TempScriptPath) +
+    ' -AppRoot ' + AddQuotes(ExpandConstant('{app}'));
+
+  Log('Running local gateway cleanup script from {tmp}.');
+  Result :=
+    Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params,
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+
+  if Result then
+    Log('Local gateway cleanup script exited with code ' + IntToStr(ResultCode) + '.')
+  else
+    Log('Failed to start local gateway cleanup script. System error: ' + IntToStr(ResultCode) + '.');
+end;
+
+procedure RunLocalGatewayCleanup;
+var
+  ResultCode: Integer;
+  Retry: Boolean;
+  Started: Boolean;
+begin
+  if not LocalGatewayCleanupRequested then
+    Exit;
+
+  LocalGatewayCleanupSucceeded := False;
+
+  repeat
+    Retry := False;
+    UninstallProgressForm.StatusLabel.Caption := 'Removing local WSL gateway...';
+    Started := RunLocalGatewayCleanupOnce(ResultCode);
+
+    if Started and (ResultCode = 0) then
+    begin
+      LocalGatewayCleanupSucceeded := True;
+      Log('Local gateway cleanup completed successfully.');
+      Exit;
+    end;
+
+    if UninstallSilent() then
+    begin
+      Log('Local gateway cleanup failed during silent uninstall; continuing without deleting generated state.');
+      Exit;
+    end;
+
+    Retry :=
+      MsgBox(
+        'OpenClaw could not remove the local WSL gateway.' + #13#10#13#10 +
+        'Exit code: ' + IntToStr(ResultCode) + #13#10#13#10 +
+        'Select Retry to try again, or Cancel to continue uninstalling OpenClaw and leave local gateway state on disk.',
+        mbError,
+        MB_RETRYCANCEL) = IDRETRY;
+  until not Retry;
+
+  Log('User continued uninstall after local gateway cleanup failed; generated state will be preserved.');
+end;
+
+procedure DeleteGeneratedAppState;
+begin
+  if not LocalGatewayCleanupSucceeded then
+    Exit;
+
+  if DelTree(ExpandConstant('{app}'), True, True, True) then
+    Log('Deleted generated app state from {app}.')
+  else
+    Log('Generated app state in {app} could not be fully deleted; continuing uninstall.');
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    EnsureLocalGatewayCleanupChoice;
+    RunLocalGatewayCleanup;
+  end
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    DeleteGeneratedAppState;
+  end;
+end;
