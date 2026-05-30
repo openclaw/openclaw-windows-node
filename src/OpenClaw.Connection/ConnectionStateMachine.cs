@@ -49,7 +49,9 @@ internal sealed class ConnectionStateMachine
                 _operatorState is RoleConnectionState.Connecting or RoleConnectionState.Error,
 
             ConnectionTrigger.HandshakeSucceeded =>
-                _operatorState is RoleConnectionState.Connecting or RoleConnectionState.Error,
+                _operatorState is RoleConnectionState.Connecting
+                    or RoleConnectionState.PairingRequired
+                    or RoleConnectionState.Error,
 
             ConnectionTrigger.PairingPending =>
                 _operatorState is RoleConnectionState.Connecting or RoleConnectionState.Connected or RoleConnectionState.Error,
