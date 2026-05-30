@@ -2,12 +2,13 @@
 
 ## Overview
 
-The Setup Engine is a **standalone, config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two projects:
+The Setup Engine is a **config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two setup projects plus the tray host:
 
-1. **`OpenClaw.SetupEngine`** — Headless pipeline (console exe). Runs 18 steps sequentially with full JSONL logging, transaction journal, and rollback support.
-2. **`OpenClaw.SetupEngine.UI`** — WinUI3 app that wraps the same pipeline with a 5-page fluent wizard UI.
+1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Runs 18 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+2. **`OpenClaw.SetupEngine.UI`** — WinUI3 setup window/pages that wrap the same pipeline with a fluent wizard UI.
+3. **`OpenClaw.Tray.WinUI`** — The only shipped WinUI executable. It hosts `SetupWindow` directly and self-restarts after successful setup.
 
-Both accept a JSON config file to customize behavior. A bundled `default-config.json` ships with each exe and provides secure defaults (loopback bind, WSL isolation, systemd enabled). All defaults can be overridden via config file or environment variables.
+The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, WSL isolation, systemd enabled). Defaults can be overridden via config file or environment variables.
 
 ---
 
@@ -15,7 +16,7 @@ Both accept a JSON config file to customize behavior. A bundled `default-config.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  OpenClaw.SetupEngine (net10.0, console exe)                │
+│  OpenClaw.SetupEngine (net10.0 library)                     │
 │                                                             │
 │  SetupPipeline ──→ 18 SetupStep classes ──→ StepResult      │
 │       │                    │                                │
@@ -29,8 +30,14 @@ Both accept a JSON config file to customize behavior. A bundled `default-config.
          │
 ┌─────────────────────────────────────────────────────────────┐
 │  OpenClaw.SetupEngine.UI (net10.0-windows10.0.22621, WinUI3)│
-│  5 pages, direct code-behind, no MVVM                       │
+│  SetupWindow + pages, direct code-behind, no MVVM           │
 │  Welcome → Capabilities → Progress → Permissions → Complete │
+└─────────────────────────────────────────────────────────────┘
+         ▲ hosted by project reference
+         │
+┌─────────────────────────────────────────────────────────────┐
+│  OpenClaw.Tray.WinUI.exe                                    │
+│  setup launch/focus, advanced setup route, self-restart     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -40,8 +47,8 @@ Both accept a JSON config file to customize behavior. A bundled `default-config.
 
 ```
 src/OpenClaw.SetupEngine/
-├── OpenClaw.SetupEngine.csproj    # net10.0, console exe
-├── Program.cs                     # CLI entry: --config, --headless, --dry-run, --rollback-on-failure
+├── OpenClaw.SetupEngine.csproj    # net10.0 library
+├── Program.cs                     # callable entry: --config, --headless, --dry-run, --rollback-on-failure
 ├── SetupPipeline.cs               # Sequential step orchestrator (132 lines)
 ├── SetupContext.cs                # Config model + shared state bag (217 lines)
 ├── SetupSteps.cs                  # All setup step implementations
@@ -53,10 +60,8 @@ src/OpenClaw.SetupEngine/
 └── default-config.json            # THE source of truth for all config values
 
 src/OpenClaw.SetupEngine.UI/
-├── OpenClaw.SetupEngine.UI.csproj # WinAppSDK 2.1.3, self-contained
-├── App.xaml / App.xaml.cs         # Application entry
-├── Program.cs                     # Main with WinUI activation
-├── SetupWindow.xaml / .xaml.cs    # 720×820 window, Mica, title bar, navigation
+├── OpenClaw.SetupEngine.UI.csproj # WinAppSDK 2.1.3 library referenced by tray
+├── SetupWindow.xaml / .xaml.cs    # 720×820 window, Mica, title bar, navigation, setup events
 └── Pages/
     ├── WelcomePage.xaml / .cs     # Logo, info card, Install button + ContentDialog
     ├── CapabilitiesPage.xaml / .cs # 2-column grid with icons + descriptions
@@ -284,8 +289,8 @@ The WinUI app is a **thin shell** — no business logic, just rendering pipeline
 - Party popper image
 - "All set!" / error heading
 - Amber "Node Mode Active" warning banner
-- "Launch OpenClaw at startup?" toggle (writes HKCU Run registry)
-- "Finish" button launches tray and closes
+- "Launch OpenClaw at startup?" toggle (reported to tray host)
+- "Finish" button asks the tray host to self-restart and open chat
 
 ### Window Properties
 - 720×820 logical pixels (DPI-scaled)
@@ -296,29 +301,28 @@ The WinUI app is a **thin shell** — no business logic, just rendering pipeline
 
 ## CLI Usage
 
-### Headless (Console Exe)
+### Headless runner
 
 ```
-OpenClaw.SetupEngine.exe                                    # uses bundled default-config.json
-OpenClaw.SetupEngine.exe --config custom.json               # explicit config
-OpenClaw.SetupEngine.exe --config custom.json --headless    # force headless
-OpenClaw.SetupEngine.exe --dry-run                          # validate config, don't execute
-OpenClaw.SetupEngine.exe --rollback-on-failure              # clean up on failure
-OpenClaw.SetupEngine.exe --no-rollback-on-failure           # explicit rollback opt-out
-OpenClaw.SetupEngine.exe --log-path ./trace.log             # override log location
+OpenClaw.SetupEngine.Program.Main(args)                    # uses bundled default-config.json
+OpenClaw.SetupEngine.Program.Main(["--config", "custom.json"])
+OpenClaw.SetupEngine.Program.Main(["--headless"])
+OpenClaw.SetupEngine.Program.Main(["--dry-run"])           # validate config, don't execute
+OpenClaw.SetupEngine.Program.Main(["--rollback-on-failure"])
+OpenClaw.SetupEngine.Program.Main(["--no-rollback-on-failure"])
+OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
 Exit codes: 0 = success, 1 = failure
 
-### UI (WinUI Exe)
+### UI (hosted by tray)
 
-```
-OpenClaw.SetupEngine.UI.exe                                 # uses bundled default-config.json
-OpenClaw.SetupEngine.UI.exe --config custom.json            # explicit config
-OpenClaw.SetupEngine.UI.exe --no-rollback-on-failure        # debug opt-out from UI cleanup
+``` 
+OpenClaw.Tray.WinUI.exe openclaw://setup                   # opens/focuses hosted setup window
+OpenClaw.Tray.WinUI.exe --post-setup-restart --wait-for-pid <oldPid> --post-setup-launch chat
 ```
 
-Uses the bundled default config when no explicit `--config` is supplied.
+The tray hosts `SetupWindow` from `OpenClaw.SetupEngine.UI`. After successful setup it starts a fresh tray process and exits, preserving clean post-setup state without shipping a second WinUI app.
 
 ---
 
@@ -328,14 +332,15 @@ Uses the bundled default config when no explicit `--config` is supplied.
 # Build headless engine
 dotnet build src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj
 
-# Build UI app (requires Platform specification)
-dotnet build src\OpenClaw.SetupEngine.UI\OpenClaw.SetupEngine.UI.csproj -p:Platform=x64
+# Build tray-hosted UI
+dotnet build src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64
 
-# Run UI
-Start-Process "src\OpenClaw.SetupEngine.UI\bin\x64\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.SetupEngine.UI.exe"
+# Run hosted setup
+& "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe" openclaw://setup
 
-# Run headless
-& "src\OpenClaw.SetupEngine\bin\Debug\net10.0\OpenClaw.SetupEngine.exe"
+# Run headless uninstall through the tray executable
+& "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe" --uninstall --dry-run
+
 ```
 
 ---

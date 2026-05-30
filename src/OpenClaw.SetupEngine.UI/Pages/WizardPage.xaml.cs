@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.SetupEngine.UI;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -164,9 +165,9 @@ public sealed partial class WizardPage : Page
 
             await DisconnectAsync();
             if (_config!.SkipPermissions)
-                App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+                SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
             else
-                App.MainWindow?.NavigateToPermissions();
+                SetupWindow.Active?.NavigateToPermissions();
             return;
         }
 
@@ -697,9 +698,9 @@ public sealed partial class WizardPage : Page
         SetBusy("Skipping wizard...");
         await CancelCurrentSessionAsync();
         if (_config!.SkipPermissions)
-            App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+            SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
         else
-            App.MainWindow?.NavigateToPermissions();
+            SetupWindow.Active?.NavigateToPermissions();
     }
 
     private async Task CancelCurrentSessionAsync()
@@ -709,7 +710,7 @@ public sealed partial class WizardPage : Page
             try { await _client.SendWizardRequestAsync("wizard.cancel", new { sessionId = _sessionId }, timeoutMs: 10_000); }
             catch { }
         }
-
+        await DisconnectAsync();
         await DisconnectAsync();
     }
 

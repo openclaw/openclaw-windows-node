@@ -21,7 +21,7 @@ build/sign/publish release artifacts.
    ```powershell
    Select-String .\.github\workflows\ci.yml -Pattern `
      "Verify Release Executable Signing Policy", `
-     "OpenClaw.SetupEngine.exe", `
+     "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
      "Paused for alpha"
    ```
@@ -85,14 +85,11 @@ identity.
 OpenClaw-owned executables:
 
 - `OpenClaw.Tray.WinUI.exe`
-- `SetupEngine\OpenClaw.SetupEngine.exe`
-- `SetupEngine\OpenClaw.SetupEngine.UI.exe`
 
 Third-party/runtime executables that must not be OpenClaw-signed:
 
 - `tools\mxc\<arch>\wxc-exec.exe`
 - `createdump.exe`
-- `SetupEngine\createdump.exe`
 - `RestartAgent.exe`
 - `SetupEngine\RestartAgent.exe`
 
@@ -185,8 +182,6 @@ Expected:
 - Installer EXEs are signed.
 - In ZIP payload:
   - `OpenClaw.Tray.WinUI.exe` is OpenClaw-signed.
-  - `SetupEngine\OpenClaw.SetupEngine.exe` is OpenClaw-signed.
-  - `SetupEngine\OpenClaw.SetupEngine.UI.exe` is OpenClaw-signed.
   - `wxc-exec.exe`, `createdump.exe`, and `RestartAgent.exe` are not
     OpenClaw-signed.
 

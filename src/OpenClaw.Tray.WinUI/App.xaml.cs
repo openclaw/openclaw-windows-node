@@ -27,6 +27,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Updatum;
 using WinUIEx;
+using SetupCompletedEventArgs = OpenClaw.SetupEngine.UI.SetupCompletedEventArgs;
+using SetupWindow = OpenClaw.SetupEngine.UI.SetupWindow;
 
 namespace OpenClawTray;
 
@@ -108,7 +110,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// Used by onboarding pages that need to host file pickers / dialogs.
     /// </summary>
     public IntPtr GetOnboardingWindowHandle()
-        => IntPtr.Zero; // SetupEngine.UI is out-of-process; no onboarding window in tray
+        => _setupWindow is null
+            ? IntPtr.Zero
+            : WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow);
 
     /// <summary>
     /// Returns the HWND of the Hub window, or IntPtr.Zero if it isn't open.
@@ -176,9 +180,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
+    private SetupWindow? _setupWindow;
 
     private string[]? _startupArgs;
     private string? _pendingProtocolUri;
+    private bool _isPostSetupRestart;
+    private string? _postSetupLaunch;
     // OPENCLAW_TRAY_DATA_DIR isolates a test instance: settings, logs, run marker,
     // crash log, exec approvals, and the single-instance mutex name all derive from it.
     private static readonly string? DataDirOverride =
@@ -202,6 +209,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public App()
     {
+        WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs());
         StartupInputConfigurator.Configure();
 
         // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
@@ -226,6 +234,46 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+    }
+
+    private static bool HasArg(string[] args, string name) =>
+        args.Any(arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+
+    private static string? GetArgValue(string[] args, string name)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+
+        return null;
+    }
+
+    private static void WaitForRestartSourceIfRequested(string[] args)
+    {
+        var pidValue = GetArgValue(args, "--wait-for-pid");
+        if (!int.TryParse(pidValue, NumberStyles.None, CultureInfo.InvariantCulture, out var pid) ||
+            pid <= 0 ||
+            pid == Environment.ProcessId)
+        {
+            return;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (!process.HasExited)
+                process.WaitForExit(TimeSpan.FromSeconds(60));
+        }
+        catch (ArgumentException)
+        {
+            // The source process already exited.
+        }
+        catch (Exception ex)
+        {
+            try { Logger.Warn($"Post-setup restart wait for PID {pid} failed: {ex.Message}"); } catch { }
+        }
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
@@ -286,6 +334,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         _startupArgs = Environment.GetCommandLineArgs();
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        _isPostSetupRestart = HasArg(_startupArgs, "--post-setup-restart");
+        _postSetupLaunch = GetArgValue(_startupArgs, "--post-setup-launch");
 
         // -----------------------------------------------------------------------
         // CLI uninstall path — headless; never shows tray or any windows.
@@ -323,12 +373,29 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             mutexName = $"OpenClawTray-{Convert.ToHexString(hash, 0, 4)}";
         }
         _mutex = new Mutex(true, mutexName, out bool createdNew);
-        if (!createdNew)
+        var ownsMutex = createdNew;
+        if (!ownsMutex && _isPostSetupRestart)
+        {
+            try
+            {
+                Logger.Warn("Post-setup restart found an existing tray mutex after waiting for the old process; waiting briefly for mutex release.");
+                ownsMutex = _mutex.WaitOne(TimeSpan.FromSeconds(15));
+            }
+            catch (AbandonedMutexException)
+            {
+                Logger.Warn("Post-setup restart acquired abandoned tray mutex.");
+                ownsMutex = true;
+            }
+        }
+
+        if (!ownsMutex)
         {
             // Forward deep link args to running instance (command-line or protocol activation)
             var deepLink = protocolUri
                 ?? (_startupArgs.Length > 1 && _startupArgs[1].StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase)
-                    ? _startupArgs[1] : null);
+                    ? _startupArgs[1] : null)
+                ?? (string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase)
+                    ? "openclaw://chat" : null);
             if (deepLink != null)
             {
                 SendDeepLinkToRunningInstance(deepLink);
@@ -495,7 +562,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // down the tray; user can retry via the Setup Guide menu item.
         try
         {
-            if (RequiresSetup(_settings) ||
+            if ((!_isPostSetupRestart && RequiresSetup(_settings)) ||
                 Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
             {
                 await ShowOnboardingAsync();
@@ -556,6 +623,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (startupDeepLink != null)
         {
             await HandleDeepLinkAsync(startupDeepLink);
+        }
+        else if (string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleDeepLinkAsync("openclaw://chat");
         }
 
         Logger.Info("Application started (WinUI 3)");
@@ -2933,95 +3004,122 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowHub("channels");
     }
 
-    /// <summary>
-    /// Resolves the SetupEngine.UI executable path.
-    /// Checks <c>{AppDir}/SetupEngine/OpenClaw.SetupEngine.UI.exe</c> (standard layout)
-    /// and <c>{AppDir}/OpenClaw.SetupEngine.UI.exe</c> (flat/legacy layout).
-    /// </summary>
-    internal static string? ResolveSetupEngineUiPath()
+    private Task ShowOnboardingAsync()
     {
-        const string exeName = "OpenClaw.SetupEngine.UI.exe";
+        if (_settings == null)
+            return Task.CompletedTask;
 
-        // Standard layout: SetupEngine subfolder (build.ps1 copies here, installer deploys here)
-        var subDir = Path.Combine(AppContext.BaseDirectory, "SetupEngine", exeName);
-        if (File.Exists(subDir)) return subDir;
-
-        // Flat layout fallback (e.g. everything in one folder)
-        var flat = Path.Combine(AppContext.BaseDirectory, exeName);
-        return File.Exists(flat) ? flat : null;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    private const int SwRestore = 9;
-    private const int SwShownormal = 1;
-
-    private static bool TryBringSetupEngineToFront(System.Diagnostics.Process process)
-    {
-        try
+        if (_setupWindow != null)
         {
-            process.Refresh();
-            var hwnd = process.MainWindowHandle;
-            if (hwnd == IntPtr.Zero)
-                return false;
-
-            ShowWindow(hwnd, SwRestore);
-            ShowWindow(hwnd, SwShownormal);
-            return SetForegroundWindow(hwnd);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to focus SetupEngine.UI: {ex.Message}");
-            return false;
-        }
-    }
-
-    private async Task ShowOnboardingAsync()
-    {
-        if (_settings == null) return;
-
-        var setupExePath = ResolveSetupEngineUiPath();
-        if (setupExePath == null)
-        {
-            Logger.Error($"SetupEngine.UI not found (searched {AppContext.BaseDirectory} and sibling project output)");
-            return;
-        }
-
-        // Single-instance guard — don't launch if already running
-        var setupProcesses = System.Diagnostics.Process.GetProcessesByName("OpenClaw.SetupEngine.UI");
-        if (setupProcesses.Length > 0)
-        {
-            Logger.Info("SetupEngine.UI already running — focusing existing instance");
-            foreach (var p in setupProcesses)
-            {
-                TryBringSetupEngineToFront(p);
-            }
-            foreach (var p in setupProcesses) p.Dispose();
-            return;
+            _setupWindow.BringToFrontForSetupLaunch();
+            return Task.CompletedTask;
         }
 
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
+            var setupWindow = new SetupWindow();
+            _setupWindow = setupWindow;
+            setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
+            setupWindow.SetupCompleted += OnSetupCompleted;
+            setupWindow.Closed += (_, _) =>
             {
-                UseShellExecute = true
+                if (ReferenceEquals(_setupWindow, setupWindow))
+                    _setupWindow = null;
             };
-            var process = System.Diagnostics.Process.Start(psi);
-            if (process != null)
-            {
-                await Task.Delay(500);
-                TryBringSetupEngineToFront(process);
-                process.Dispose();
-            }
-            Logger.Info("Launched SetupEngine.UI for setup");
+            setupWindow.BringToFrontForSetupLaunch();
+            Logger.Info("Opened tray-hosted setup window");
         }
         catch (Exception ex)
         {
-            Logger.Error($"Failed to launch SetupEngine.UI: {ex.Message}");
+            Logger.Error($"Failed to open setup window: {ex}");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)
+    {
+        ShowHub("connection");
+        _setupWindow?.Close();
+    }
+
+    private void OnSetupCompleted(object? sender, SetupCompletedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => RestartAfterSetupAsync(e.EnableAutoStart),
+            new AppLogger(),
+            nameof(OnSetupCompleted));
+
+    private async Task RestartAfterSetupAsync(bool enableAutoStart)
+    {
+        if (enableAutoStart)
+            AutoStartManager.SetAutoStart(true);
+
+        var exePath = ResolveCurrentExecutablePath();
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        {
+            await ShowSetupRestartErrorAsync("OpenClaw setup finished, but the tray executable could not be found for restart.");
+            return;
+        }
+
+        try
+        {
+            var psi = new ProcessStartInfo(exePath)
+            {
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("--post-setup-restart");
+            psi.ArgumentList.Add("--wait-for-pid");
+            psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+            psi.ArgumentList.Add("--post-setup-launch");
+            psi.ArgumentList.Add("chat");
+
+            var restarted = Process.Start(psi);
+            if (restarted == null)
+                throw new InvalidOperationException("Process.Start returned null.");
+            restarted.Dispose();
+
+            Logger.Info("Started post-setup tray restart process");
+            _setupWindow?.Close();
+            await ExitApplicationAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to restart tray after setup: {ex}");
+            await ShowSetupRestartErrorAsync("OpenClaw setup finished, but restarting the tray failed. The current tray will keep running; please exit and reopen OpenClaw.");
+        }
+    }
+
+    private async Task ShowSetupRestartErrorAsync(string message)
+    {
+        if (_setupWindow?.Content is not FrameworkElement root || root.XamlRoot is null)
+        {
+            Logger.Error(message);
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Restart OpenClaw",
+            Content = message,
+            CloseButtonText = "OK",
+            XamlRoot = root.XamlRoot,
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static string? ResolveCurrentExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+            return Environment.ProcessPath;
+
+        try
+        {
+            return Process.GetCurrentProcess().MainModule?.FileName;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -4041,6 +4139,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Close windows explicitly for deterministic shutdown tracing.
         SafeShutdownStep("chat window", () => { _chatWindow?.ForceClose(); _chatWindow = null; });
+        SafeShutdownStep("setup window", () => { _setupWindow?.Close(); _setupWindow = null; });
         SafeShutdownStep("tray menu window", () => CloseWindow(_trayMenuWindow));
         _trayMenuWindow = null;
         SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));

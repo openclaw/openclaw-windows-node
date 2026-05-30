@@ -46,8 +46,6 @@ function Get-ExecutableClassification {
 
     switch -Regex ($RelativePath) {
         '^OpenClaw\.Tray\.WinUI\.exe$' { return "OpenClawOwned" }
-        '^SetupEngine\\OpenClaw\.SetupEngine\.exe$' { return "OpenClawOwned" }
-        '^SetupEngine\\OpenClaw\.SetupEngine\.UI\.exe$' { return "OpenClawOwned" }
         '(^|\\)createdump\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)RestartAgent\.exe$' { return "ThirdPartyExcluded" }
         '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$' { return "ThirdPartyExcluded" }
@@ -100,11 +98,11 @@ foreach ($exe in $executables) {
 if (-not ($executables | Where-Object RelativePath -eq "OpenClaw.Tray.WinUI.exe")) {
     $errors.Add("Missing OpenClaw.Tray.WinUI.exe.")
 }
-if (-not ($executables | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.exe")) {
-    $errors.Add("Missing SetupEngine\OpenClaw.SetupEngine.exe.")
+if ($executables | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.UI.exe") {
+    $errors.Add("SetupEngine\OpenClaw.SetupEngine.UI.exe should not be present in the release payload.")
 }
-if (-not ($executables | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.UI.exe")) {
-    $errors.Add("Missing SetupEngine\OpenClaw.SetupEngine.UI.exe.")
+if ($executables | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.exe") {
+    $errors.Add("SetupEngine\OpenClaw.SetupEngine.exe should not be present in the release payload.")
 }
 if (-not ($executables | Where-Object RelativePath -match '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$')) {
     $errors.Add("Missing tools\mxc\<arch>\wxc-exec.exe third-party executable.")

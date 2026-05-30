@@ -388,12 +388,6 @@ jobs:
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish
 
-    - name: Publish SetupEngine.UI
-      run: |
-        dotnet publish src/OpenClaw.SetupEngine.UI -c Release -r ${{ matrix.rid }} --self-contained -o publish-setup
-        mkdir publish\SetupEngine
-        copy publish-setup\* publish\SetupEngine\ -Recurse
-
     - name: Verify x64 Native Runtime Payload
       if: matrix.rid == 'win-x64'
       shell: pwsh
@@ -568,16 +562,12 @@ jobs:
       run: |
         New-Item -ItemType Directory -Path signing-input-x64 -Force | Out-Null
         New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-x64\OpenClaw.Tray.WinUI.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
 
     - name: Stage ARM64 OpenClaw Executables for Signing
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Path signing-input-arm64 -Force | Out-Null
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
 
     - name: Sign x64 OpenClaw Executables
       uses: azure/artifact-signing-action@v2

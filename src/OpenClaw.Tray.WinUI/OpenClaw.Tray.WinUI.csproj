@@ -45,6 +45,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
+    <ProjectReference Include="..\OpenClaw.SetupEngine.UI\OpenClaw.SetupEngine.UI.csproj" />
     <ProjectReference Include="..\OpenClawTray.FunctionalUI\OpenClawTray.FunctionalUI.csproj" />
     <ProjectReference Include="..\OpenClaw.Chat\OpenClaw.Chat.csproj" />
   </ItemGroup>
@@ -73,10 +74,14 @@
 
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\OpenClaw.SetupEngine\default-config.json"
+             Link="default-config.json"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
     <OpenClawRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</OpenClawRepoRoot>
+    <OpenClawSetupDefaultConfig>$(OpenClawRepoRoot)src\OpenClaw.SetupEngine\default-config.json</OpenClawSetupDefaultConfig>
     <!-- RID-derived arch for tools/mxc/<arch>/wxc-exec.exe. Falls back to x64
          when no RID is present (e.g. unpackaged debug builds). -->
     <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-arm64'">arm64</MxcArch>
@@ -241,6 +246,14 @@
     </PropertyGroup>
     <Message Importance="high" Text="Copying WebView2Loader.dll from $(WebView2LoaderSource)" />
     <Copy SourceFiles="$(WebView2LoaderSource)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(WebView2LoaderSource)')" />
+  </Target>
+
+  <Target Name="CopySetupDefaultConfigToOutput" AfterTargets="Build">
+    <Copy SourceFiles="$(OpenClawSetupDefaultConfig)" DestinationFiles="$(TargetDir)default-config.json" SkipUnchangedFiles="true" Condition="Exists('$(OpenClawSetupDefaultConfig)')" />
+  </Target>
+
+  <Target Name="CopySetupDefaultConfigToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <Copy SourceFiles="$(OpenClawSetupDefaultConfig)" DestinationFiles="$(PublishDir)default-config.json" SkipUnchangedFiles="true" Condition="Exists('$(OpenClawSetupDefaultConfig)')" />
   </Target>
 
 </Project>
