@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -90,18 +91,32 @@ internal static class WslInstallSupport
     // sentences are not, and over-broad fallbacks just create false
     // positives.
     public static bool TryGetEnvironmentIssue(string output, out string message)
+        => TryGetEnvironmentIssue(output, RuntimeInformation.OSArchitecture, out message);
+
+    // Architecture-aware overload. Internal so tests can exercise both x64
+    // and Arm64 wordings without depending on the host process arch.
+    internal static bool TryGetEnvironmentIssue(string output, Architecture architecture, out string message)
     {
         var text = Normalize(output);
 
-        // Firmware virtualization off (VT-x/AMD-V disabled in BIOS/UEFI).
-        // wsl.exe emits this when the Windows feature is installed but the
-        // CPU virtualization extension is turned off; remediation requires
-        // a trip into firmware settings, not `wsl --install`.
+        // Firmware virtualization off. wsl.exe emits this when the Windows
+        // feature is installed but the CPU virtualization extension is
+        // turned off; remediation requires a trip into firmware settings,
+        // not `wsl --install`. The remediation wording differs by CPU
+        // architecture: VT-x/AMD-V/SVM are x86-specific terms that don't
+        // exist on Arm64 (Surface Pro X / Pro 9 SQ3 / Pro 11), where the
+        // extensions are ARMv8 EL2 and the UEFI label is generic.
         if (Contains(text, "virtualization is not enabled"))
         {
-            message = "WSL2 requires hardware virtualization, but it is disabled in firmware. "
-                + "Enable VT-x/AMD-V (Intel VT or AMD SVM) in your computer's BIOS/UEFI settings, "
-                + "reboot, then retry setup.";
+            message = architecture == Architecture.Arm64
+                ? "WSL2 requires hardware virtualization, but it is disabled. "
+                    + "On ARM64 devices (e.g. Surface), enable virtualization in your device's UEFI "
+                    + "settings (look for 'Virtualization Support' or similar). On managed devices this "
+                    + "may be controlled by your organization's Intune / device-management policy. "
+                    + "Reboot, then retry setup."
+                : "WSL2 requires hardware virtualization, but it is disabled in firmware. "
+                    + "Enable VT-x/AMD-V (Intel VT or AMD SVM) in your computer's BIOS/UEFI settings, "
+                    + "reboot, then retry setup.";
             return true;
         }
 
