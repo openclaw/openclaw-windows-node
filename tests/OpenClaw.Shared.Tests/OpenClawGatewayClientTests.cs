@@ -367,6 +367,14 @@ public class OpenClawGatewayClientTests
 
         public string? GetPairingRequiredRequestId() => _client.PairingRequiredRequestId;
 
+        public bool ShouldAutoReconnectForTest()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ShouldAutoReconnect",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (bool)method!.Invoke(_client, null)!;
+        }
+
         public string GetSignatureTokenMode()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -1828,6 +1836,31 @@ public class OpenClawGatewayClientTests
         """);
 
         Assert.True(helper.GetPairingRequiredFlag());
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_KeepsAutoReconnectEnabled()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-retry", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-retry",
+            "ok": false,
+            "error": {
+                "message": "pairing required for this device",
+                "details": {
+                    "code": "PAIRING_REQUIRED",
+                    "requestId": "abc-123"
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+        Assert.True(helper.ShouldAutoReconnectForTest());
     }
 
     [Fact]

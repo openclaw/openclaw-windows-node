@@ -159,7 +159,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     protected override bool ShouldAutoReconnect()
     {
-        return !_pairingRequiredAwaitingApproval && !_authFailed;
+        // PairingRequired must stay visible, but approval only takes effect on a fresh socket.
+        return !_authFailed;
     }
 
     protected override void OnDisconnected()
