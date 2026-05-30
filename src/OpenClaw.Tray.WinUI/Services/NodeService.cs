@@ -94,6 +94,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // single shared location, role distinction inside).
     private readonly string _identityDataPath;
     private string? _token;
+    private readonly Func<string?>? _sharedGatewayTokenResolver;
 
     // Authoritative capability list — populated by RegisterCapabilities and
     // shared with both the gateway client (when present) and the MCP bridge.
@@ -188,7 +189,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         Func<FrameworkElement?>? rootProvider = null,
         SettingsManager? settings = null,
         bool enableMcpServer = false,
-        string? identityDataPath = null)
+        string? identityDataPath = null,
+        Func<string?>? sharedGatewayTokenResolver = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
@@ -197,6 +199,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
+        _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
         _screenCaptureService = new ScreenCaptureService(logger);
         _screenRecordingService = new ScreenRecordingService(logger);
         _cameraCaptureService = new CameraCaptureService(logger);
@@ -361,17 +364,27 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _deviceCapability = new DeviceCapability(_logger, _deviceStatusProvider);
         Register(_deviceCapability);
 
-        // BrowserProxy needs a live gateway connection — only register when gateway is up.
+        // BrowserProxy needs a live gateway connection AND the shared gateway token
+        // for auth against the browser control host. If we only have a node device token,
+        // auth will fail — so only register when the shared token is available.
         if (_nodeClient != null && NodeCapabilityGating.ShouldRegisterBrowserProxy(_settings))
         {
-            _browserProxyCapability = new BrowserProxyCapability(
-                _logger,
-                _nodeClient.GatewayUrl,
-                _token,
-                sshRemoteGatewayPort: _settings?.UseSshTunnel == true
-                    ? _settings.SshTunnelRemotePort
-                    : null);
-            Register(_browserProxyCapability);
+            var sharedToken = _sharedGatewayTokenResolver?.Invoke();
+            if (!string.IsNullOrWhiteSpace(sharedToken))
+            {
+                _browserProxyCapability = new BrowserProxyCapability(
+                    _logger,
+                    _nodeClient.GatewayUrl,
+                    sharedToken,
+                    sshRemoteGatewayPort: _settings?.UseSshTunnel == true
+                        ? _settings.SshTunnelRemotePort
+                        : null);
+                Register(_browserProxyCapability);
+            }
+            else
+            {
+                _logger.Info("BrowserProxy capability skipped: no shared gateway token available for browser-control auth");
+            }
         }
 
         if (_nodeClient != null)
