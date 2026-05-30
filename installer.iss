@@ -62,6 +62,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
   #error SetupEngine.UI payload missing. Publish OpenClaw.SetupEngine.UI into {#publish}\SetupEngine before compiling the installer.
 #endif
 
+; vcRedist should point at the architecture-matching Visual C++ Runtime
+; redistributable in CI release builds.
+#ifndef vcRedist
+  #define vcRedist ""
+#endif
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "startupicon"; Description: "Start OpenClaw Companion when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
@@ -71,6 +77,9 @@ Name: "startupicon"; Description: "Start OpenClaw Companion when Windows starts"
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 ; WSL gateway uninstall helper copied to {tmp} by [Code] during uninstall.
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
+#if vcRedist != ""
+Source: "{#vcRedist}"; DestDir: "{tmp}"; DestName: "vc_redist.exe"; Flags: deleteafterinstall; AfterInstall: InstallVCRuntime
+#endif
 
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\openclaw"; ValueType: string; ValueName: ""; ValueData: "URL:OpenClaw Protocol"; Flags: uninsdeletekey
@@ -89,13 +98,56 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent; Check: ShouldLaunchTray
 
 [Code]
 var
+  VCRuntimeInstallSucceeded: Boolean;
   LocalGatewayCleanupChoiceInitialized: Boolean;
   LocalGatewayCleanupRequested: Boolean;
   LocalGatewayCleanupSucceeded: Boolean;
+
+#if vcRedist != ""
+procedure InstallVCRuntime;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  VCRuntimeInstallSucceeded := False;
+  Log('Running bundled Visual C++ Runtime redistributable.');
+  Started :=
+    Exec(
+      ExpandConstant('{tmp}\vc_redist.exe'),
+      '/install /quiet /norestart',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+
+  if not Started then
+  begin
+    Log('Failed to start Visual C++ Runtime redistributable. System error: ' + IntToStr(ResultCode) + '.');
+    Exit;
+  end;
+
+  VCRuntimeInstallSucceeded := (ResultCode = 0) or (ResultCode = 3010) or (ResultCode = 1641);
+  if VCRuntimeInstallSucceeded then
+    Log('Visual C++ Runtime redistributable exited with success code ' + IntToStr(ResultCode) + '.')
+  else
+    Log('Visual C++ Runtime redistributable failed with exit code ' + IntToStr(ResultCode) + '.');
+end;
+#endif
+
+function ShouldLaunchTray: Boolean;
+begin
+#if vcRedist != ""
+  Result := VCRuntimeInstallSucceeded;
+  if not Result then
+    Log('Skipping post-install tray launch because Visual C++ Runtime installation did not succeed.');
+#else
+  Result := True;
+#endif
+end;
 
 procedure EnsureLocalGatewayCleanupChoice;
 begin

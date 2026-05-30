@@ -69,9 +69,8 @@ For the current alpha flow, ship only:
 - Inno setup installers:
   - `OpenClawCompanion-Setup-x64.exe`
   - `OpenClawCompanion-Setup-arm64.exe`
-- Portable ZIP payloads for Updatum:
+- Portable ZIP payload for Updatum:
   - `OpenClawTray-<version>-win-x64.zip`
-  - `OpenClawTray-<version>-win-arm64.zip`
 
 MSIX artifacts are intentionally paused for alpha while we focus on the Inno
 installer path and signed portable update payloads. Re-enable MSIX only when we
@@ -99,6 +98,16 @@ Third-party/runtime executables that must not be OpenClaw-signed:
 CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
 verifier fails closed on unknown `.exe` files so future payload changes are
 reviewed deliberately.
+
+CI also checks native runtime dependencies before release packaging. The x64
+portable payload must ship `vcruntime140.dll` next to every `libsodium.dll`
+copy. The release job must Authenticode-verify Microsoft's x64 and ARM64 Visual
+C++ Runtime redistributables before passing the architecture-matching
+redistributable to Inno. The installer runs the redistributable before launching
+the tray so clean or stale Windows hosts can repair the runtime before Ed25519
+device keys are generated or loaded, and it skips the post-install tray launch
+if the runtime installer fails. ARM64 portable ZIPs are paused until the release
+pipeline has a trusted app-local ARM64 VC runtime source.
 
 The current Azure Artifact Signing resource is:
 
@@ -150,10 +159,10 @@ The release job should:
 2. Authenticate to Azure with OIDC in the `release-signing` environment.
 3. Sign only the OpenClaw-owned EXEs in both payloads.
 4. Verify executable signing policy.
-5. Create portable ZIPs.
+5. Create the portable x64 ZIP.
 6. Build Inno installers.
 7. Sign installers.
-8. Create a GitHub prerelease with installer and ZIP assets only.
+8. Create a GitHub prerelease with installer and x64 ZIP assets only.
 
 ## Post-release verification
 

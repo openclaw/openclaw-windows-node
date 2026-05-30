@@ -49,6 +49,43 @@ public sealed class ReleaseSigningWorkflowTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_BundlesAndVerifiesNativeRuntimeDependencies()
+    {
+        var root = GetRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        var installer = File.ReadAllText(Path.Combine(root, "installer.iss"));
+        var verifier = File.ReadAllText(Path.Combine(root, "scripts", "Test-ReleaseNativeDependencies.ps1"));
+        var targets = File.ReadAllText(Path.Combine(root, "src", "Directory.Build.targets"));
+
+        Assert.Contains("Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime", workflow);
+        Assert.Contains("Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-x64 -RequireAppLocalVCRuntime", workflow);
+        Assert.Contains("https://aka.ms/vc14/vc_redist.x64.exe", workflow);
+        Assert.Contains("https://aka.ms/vc14/vc_redist.arm64.exe", workflow);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $redist.Path", workflow);
+        Assert.Contains("O=Microsoft Corporation", workflow);
+        Assert.Contains("-InstallerVCRedistPath vc_redist.x64.exe", workflow);
+        Assert.Contains("publish-arm64 -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe", workflow);
+        Assert.Contains("/DvcRedist=vc_redist.x64.exe", workflow);
+        Assert.Contains("/DvcRedist=vc_redist.arm64.exe", workflow);
+        Assert.DoesNotContain("copy vc_redist.x64.exe publish-x64", workflow);
+        Assert.DoesNotContain("copy vc_redist.x64.exe publish-arm64", workflow);
+        Assert.DoesNotContain("win-arm64.zip", workflow);
+        Assert.Contains("AfterInstall: InstallVCRuntime", installer);
+        Assert.Contains("Exec(", installer);
+        Assert.Contains("ResultCode = 3010", installer);
+        Assert.Contains("ShouldLaunchTray", installer);
+        Assert.Contains("Skipping post-install tray launch", installer);
+        Assert.DoesNotContain(@"Filename: ""{tmp}\vc_redist.exe""", installer);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $File.FullName", verifier);
+        Assert.Contains("Get-VCRuntimeFiles", verifier);
+        Assert.Contains("vcruntime140.dll", verifier);
+        Assert.Contains("libsodium.dll", verifier);
+        Assert.Contains("OpenClawNativeDependencyProbe", verifier);
+        Assert.Contains("SkipNativeLoadProbe", verifier);
+        Assert.Contains("CopyOpenClawVCRuntimeToPublish", targets);
+    }
+
+    [Fact]
     public void ReleaseWorkflow_PausesMsixForAlpha()
     {
         var workflow = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));

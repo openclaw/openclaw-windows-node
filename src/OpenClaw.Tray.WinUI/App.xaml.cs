@@ -1442,8 +1442,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ? "last successful gateway"
             : "credentialed gateway";
         Logger.Info($"Connecting to {connectionKind} during {context}: {record.Url} ({credential.Source})");
-        _ = _connectionManager.ConnectAsync(record.Id);
+        ObserveBackgroundFault(
+            _connectionManager.ConnectAsync(record.Id),
+            $"[App] Startup gateway connect failed during {context}");
         return true;
+    }
+
+    private static void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            Logger.Error($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            Logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => Logger.Error($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 
     private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(GatewayRecord record)
