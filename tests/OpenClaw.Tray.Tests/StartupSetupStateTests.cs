@@ -230,6 +230,40 @@ public class StartupSetupStateTests
     }
 
     [Fact]
+    public void RequiresSetup_ReturnsFalse_WhenNodeModeHasActiveBootstrapGateway()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path) { EnableNodeMode = true };
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "bootstrap-gateway",
+            Url = "wss://remote.example.com",
+            BootstrapToken = "bootstrap-token"
+        });
+        registry.SetActive("bootstrap-gateway");
+
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.False(StartupSetupState.CanStartNodeGateway(settings, temp.Path));
+    }
+
+    [Fact]
+    public void RequiresSetup_ReturnsTrue_WhenNodeModeHasInactiveBootstrapGateway()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path) { EnableNodeMode = true };
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "inactive-bootstrap-gateway",
+            Url = "wss://remote.example.com",
+            BootstrapToken = "bootstrap-token"
+        });
+
+        Assert.True(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+    }
+
+    [Fact]
     public async Task ClassifyAsync_ReturnsAppOwnedLocalWsl_WhenDistroAndLocalRegistryEvidenceExist()
     {
         using var temp = TempSettings.Create();
