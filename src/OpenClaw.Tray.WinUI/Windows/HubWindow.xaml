@@ -227,7 +227,7 @@
             </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated">
+            <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated" NavigationFailed="OnContentFrameNavigationFailed">
                 <Frame.ContentTransitions>
                     <TransitionCollection>
                         <NavigationThemeTransition/>

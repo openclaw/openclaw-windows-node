@@ -18,10 +18,17 @@ public sealed partial class HubWindow : WindowEx
     public bool IsClosed { get; private set; }
 
     private static App CurrentApp => (App)Application.Current;
+    private static TaskCompletionSource<bool> CreateCompletedContentReady()
+    {
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ready.SetResult(true);
+        return ready;
+    }
 
     internal AppState? AppModel { get; set; }
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;
+    private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
 
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
@@ -80,6 +87,7 @@ public sealed partial class HubWindow : WindowEx
         Closed += (s, e) =>
         {
             IsClosed = true;
+            _contentReady.TrySetResult(true);
             _gatewayNavHideTimer?.Stop();
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
@@ -285,6 +293,7 @@ public sealed partial class HubWindow : WindowEx
         // re-invokes the current page.
         if (ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
+            _contentReady = CreateCompletedContentReady();
             // Same as above: Frame.Navigate is skipped, so
             // OnContentFrameNavigated won't run to consume the origin. If the
             // caller changed origin context, refresh the active page so inline
@@ -312,7 +321,20 @@ public sealed partial class HubWindow : WindowEx
 
         // Pass the tag as the navigation parameter so OnContentFrameNavigated
         // can recover the canonical destination on Back/Forward.
-        ContentFrame.Navigate(pageType, tag);
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _contentReady = ready;
+        if (!ContentFrame.Navigate(pageType, tag))
+            CompleteContentReady(ready);
+    }
+
+    public async Task WaitForCurrentContentReadyAsync()
+    {
+        var ready = _contentReady;
+        var completed = await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        if (completed == ready.Task)
+            await ready.Task;
+        else
+            ready.TrySetResult(true);
     }
 
     private static NavigationViewItem? FindNavItemForTag(IList<object> items, string tag)
@@ -544,6 +566,41 @@ public sealed partial class HubWindow : WindowEx
         }
 
         InitializeCurrentPage();
+        ArmContentReady(e.Content as FrameworkElement);
+    }
+
+    private void OnContentFrameNavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    {
+        _contentReady.TrySetResult(true);
+    }
+
+    private void ArmContentReady(FrameworkElement? element)
+    {
+        var ready = _contentReady;
+        if (element == null || element.IsLoaded)
+        {
+            CompleteContentReady(ready);
+            return;
+        }
+
+        RoutedEventHandler? loaded = null;
+        loaded = (_, _) =>
+        {
+            element.Loaded -= loaded;
+            CompleteContentReady(ready);
+        };
+        element.Loaded += loaded;
+    }
+
+    private void CompleteContentReady(TaskCompletionSource<bool> ready)
+    {
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (ReferenceEquals(_contentReady, ready))
+                    ready.TrySetResult(true);
+            });
     }
 
     /// <summary>

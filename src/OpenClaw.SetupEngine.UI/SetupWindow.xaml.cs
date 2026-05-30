@@ -12,11 +12,15 @@ public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
     private SetupRunLock? _setupLock;
+    private readonly TaskCompletionSource<bool> _initialContentReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool _isClosed;
 
     public static SetupWindow? Active { get; private set; }
 
     public event EventHandler? AdvancedSetupRequested;
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
+    public bool IsClosed => _isClosed;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -69,6 +73,8 @@ public sealed partial class SetupWindow : Window
 
         Closed += (_, _) =>
         {
+            _isClosed = true;
+            _initialContentReady.TrySetResult(true);
             _setupLock?.Dispose();
             _setupLock = null;
             if (ReferenceEquals(Active, this))
@@ -106,6 +112,15 @@ public sealed partial class SetupWindow : Window
         return true;
     }
 
+    public async Task WaitForInitialContentReadyAsync()
+    {
+        var completed = await Task.WhenAny(_initialContentReady.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        if (completed == _initialContentReady.Task)
+            await _initialContentReady.Task;
+        else
+            _initialContentReady.TrySetResult(true);
+    }
+
     public void BringToFrontForSetupLaunch()
     {
         Activate();
@@ -129,6 +144,42 @@ public sealed partial class SetupWindow : Window
                 p.IsAlwaysOnTop = false;
         };
         timer.Start();
+    }
+
+    private void RootFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        if (e.Content is FrameworkElement element)
+        {
+            if (element.IsLoaded)
+            {
+                CompleteInitialContentReady();
+                return;
+            }
+
+            RoutedEventHandler? loaded = null;
+            loaded = (_, _) =>
+            {
+                element.Loaded -= loaded;
+                CompleteInitialContentReady();
+            };
+            element.Loaded += loaded;
+            return;
+        }
+
+        CompleteInitialContentReady();
+    }
+
+    private void RootFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    {
+        _initialContentReady.TrySetResult(true);
+    }
+
+    private void CompleteInitialContentReady()
+    {
+        RootFrame.Navigated -= RootFrame_Navigated;
+        DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.Low,
+            () => _initialContentReady.TrySetResult(true));
     }
 
     private static string? GetArg(string[] args, string name)

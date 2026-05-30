@@ -560,12 +560,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
         // down the tray; user can retry via the Setup Guide menu item.
+        var setupShownDuringStartup = false;
         try
         {
             if ((!_isPostSetupRestart && RequiresSetup(_settings)) ||
                 Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
             {
                 await ShowOnboardingAsync();
+                setupShownDuringStartup = true;
             }
         }
         catch (Exception ex)
@@ -620,11 +622,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var startupDeepLink = _pendingProtocolUri
             ?? (_startupArgs.Length > 1 && _startupArgs[1].StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase)
                 ? _startupArgs[1] : null);
-        if (startupDeepLink != null)
+        if (!setupShownDuringStartup && startupDeepLink != null)
         {
             await HandleDeepLinkAsync(startupDeepLink);
         }
-        else if (string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase))
+        else if (!setupShownDuringStartup && string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase))
         {
             await HandleDeepLinkAsync("openclaw://chat");
         }
@@ -2738,7 +2740,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         if (activate)
         {
-            _hubWindow.Activate();
+            var hubWindow = _hubWindow;
+            AsyncEventHandlerGuard.Run(
+                () => ActivateHubWhenReadyAsync(hubWindow),
+                new AppLogger(),
+                nameof(ActivateHubWhenReadyAsync));
         }
         else
         {
@@ -2759,6 +2765,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             catch { /* swallow */ }
         }
+    }
+
+    private async Task ActivateHubWhenReadyAsync(HubWindow hubWindow)
+    {
+        await hubWindow.WaitForCurrentContentReadyAsync();
+        if (ReferenceEquals(_hubWindow, hubWindow) && !hubWindow.IsClosed)
+            hubWindow.Activate();
     }
 
     private void ShowSettings()
@@ -3004,15 +3017,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowHub("channels");
     }
 
-    private Task ShowOnboardingAsync()
+    private async Task ShowOnboardingAsync()
     {
         if (_settings == null)
-            return Task.CompletedTask;
+            return;
 
         if (_setupWindow != null)
         {
-            _setupWindow.BringToFrontForSetupLaunch();
-            return Task.CompletedTask;
+            var existingSetupWindow = _setupWindow;
+            await existingSetupWindow.WaitForInitialContentReadyAsync();
+            if (ReferenceEquals(_setupWindow, existingSetupWindow) && !existingSetupWindow.IsClosed)
+                existingSetupWindow.BringToFrontForSetupLaunch();
+            return;
         }
 
         try
@@ -3026,15 +3042,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 if (ReferenceEquals(_setupWindow, setupWindow))
                     _setupWindow = null;
             };
-            setupWindow.BringToFrontForSetupLaunch();
-            Logger.Info("Opened tray-hosted setup window");
+            await setupWindow.WaitForInitialContentReadyAsync();
+            if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
+            {
+                setupWindow.BringToFrontForSetupLaunch();
+                Logger.Info("Opened tray-hosted setup window");
+            }
         }
         catch (Exception ex)
         {
             Logger.Error($"Failed to open setup window: {ex}");
         }
-
-        return Task.CompletedTask;
     }
 
     private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)
