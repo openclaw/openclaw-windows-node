@@ -3010,7 +3010,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                     // HIGH 4: log shape only — content previously
                     // surfaced in the operator log.
                     _logger.Info($"Assistant response: role={role} state={state} len={text.Length}");
-                    EmitChatNotification(text);
+                    EmitChatNotification(text, sessionKey);
                 }
             }
         }
@@ -3030,7 +3030,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 {
                     // HIGH 4: log shape only.
                     _logger.Info($"Assistant response (legacy): role={role} state={state} len={text.Length}");
-                    EmitChatNotification(text);
+                    EmitChatNotification(text, sessionKey);
                 }
             }
         }
@@ -3170,13 +3170,14 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    private void EmitChatNotification(string text)
+    private void EmitChatNotification(string text, string? sessionKey = null)
     {
         var displayText = text.Length > 200 ? text[..200] + "…" : text;
         var notification = new OpenClawNotification
         {
             Message = displayText,
-            IsChat = true
+            IsChat = true,
+            SessionKey = sessionKey
         };
         var (title, type) = _categorizer.Classify(notification, _userRules);
         notification.Title = title;
