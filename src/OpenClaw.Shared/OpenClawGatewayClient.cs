@@ -1172,6 +1172,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 role, requestedScopes, signatureToken,
                 OperatorPlatform, OperatorDeviceFamily);
 
+        var appVersion = AppVersionInfo.Version;
+
         // Use "cli" client ID for native apps - no browser security checks
         var msg = new
         {
@@ -1185,7 +1187,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 client = new
                 {
                     id = OperatorClientId,  // Native client ID
-                    version = "1.0.0",
+                    version = appVersion,
                     platform = OperatorPlatform,
                     mode = OperatorClientMode,
                     displayName = OperatorClientDisplayName
@@ -1197,7 +1199,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 permissions = new { },
                 auth = BuildAuthPayload(),
                 locale = "en-US",
-                userAgent = "openclaw-windows-tray/1.0.0",
+                userAgent = $"openclaw-windows-tray/{appVersion}",
                 device = new
                 {
                     id = _deviceIdentity.DeviceId,
