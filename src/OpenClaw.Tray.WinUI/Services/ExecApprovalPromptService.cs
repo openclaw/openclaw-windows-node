@@ -196,10 +196,14 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
                 if (messageResult < 0)
                     throw new InvalidOperationException("Could not read approval prompt window message");
 
+                if (message.message == WindowMessagePromptCompleted)
+                    break;
+
                 TranslateMessage(ref message);
                 DispatchMessageW(ref message);
             }
 
+            CleanupWindow();
             return _decision;
         }
 
@@ -317,6 +321,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
                     {
                         Prompts.Remove(hwnd);
                     }
+                    prompt._hwnd = IntPtr.Zero;
                     prompt._completed = true;
                     return IntPtr.Zero;
                 default:
@@ -344,6 +349,9 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
 
         private void Complete(int buttonId)
         {
+            if (_completed)
+                return;
+
             _decision = buttonId switch
             {
                 AllowOnceButtonId => ExecApprovalPromptDecision.AllowOnce(),
@@ -352,10 +360,27 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
             };
             _completed = true;
             if (_hwnd != IntPtr.Zero)
-                DestroyWindow(_hwnd);
+                ShowWindow(_hwnd, ShowWindowCommandHide);
+
+            if (_hwnd != IntPtr.Zero)
+                PostMessageW(_hwnd, WindowMessageClose, IntPtr.Zero, IntPtr.Zero);
 
             if (_threadId != 0)
                 PostThreadMessageW(_threadId, WindowMessagePromptCompleted, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        private void CleanupWindow()
+        {
+            if (_hwnd == IntPtr.Zero)
+                return;
+
+            var hwnd = _hwnd;
+            _hwnd = IntPtr.Zero;
+            lock (PromptLock)
+            {
+                Prompts.Remove(hwnd);
+            }
+            DestroyWindow(hwnd);
         }
 
         private static int ButtonIdFromWParam(IntPtr wParam) => (int)((long)wParam & 0xffff);
@@ -418,6 +443,9 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         private static extern bool DestroyWindow(IntPtr hwnd);
 
         [DllImport("user32.dll")]
+        private static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hwnd, int nCmdShow);
 
         [DllImport("user32.dll")]
@@ -463,6 +491,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         private const int SystemMetricScreenWidth = 0;
         private const int SystemMetricScreenHeight = 1;
         private const int DefaultGuiFont = 17;
+        private const int ShowWindowCommandHide = 0;
         private const int ShowWindowCommandShow = 5;
         private const int ColorWindow = 5;
 
