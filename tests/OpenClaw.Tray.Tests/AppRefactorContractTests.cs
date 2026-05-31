@@ -95,7 +95,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ToastActivationRouter.Route", method);
         Assert.Contains("OpenDashboard = () => OpenDashboard()", method);
         Assert.Contains("OpenSettings = ShowSettings", method);
-        Assert.Contains("OpenChat = ShowWebChat", method);
+        Assert.Contains("OpenChat = sessionKey => ShowWebChat(sessionKey)", method);
         Assert.Contains("OpenActivity = () => ShowHub(\"channels\")", method);
         Assert.Contains("CopyPairingCommand = command =>", method);
     }
