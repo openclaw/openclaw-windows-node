@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -193,6 +195,14 @@ public class LocalizationValidationTests
         "Onboarding_Ready_Node_Notify_Sub",
     ];
 
+    private static readonly IReadOnlyDictionary<char, byte> Windows1252Bytes = BuildWindows1252ByteMap();
+
+    private static readonly IReadOnlyDictionary<char, byte> CodePage437Bytes = BuildCodePage437ByteMap();
+
+    private static readonly UTF8Encoding StrictUtf8 = new(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
+
     private static string GetRepositoryRoot()
     {
         var envRepoRoot = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
@@ -223,6 +233,139 @@ public class LocalizationValidationTests
                 e => e.Attribute("name")!.Value,
                 e => e.Element("value")?.Value ?? string.Empty);
     }
+
+    private static Dictionary<char, byte> BuildWindows1252ByteMap()
+    {
+        var map = Enumerable.Range(0, 256)
+            .ToDictionary(i => (char)i, i => (byte)i);
+
+        map['€'] = 0x80;
+        map['‚'] = 0x82;
+        map['ƒ'] = 0x83;
+        map['„'] = 0x84;
+        map['…'] = 0x85;
+        map['†'] = 0x86;
+        map['‡'] = 0x87;
+        map['ˆ'] = 0x88;
+        map['‰'] = 0x89;
+        map['Š'] = 0x8A;
+        map['‹'] = 0x8B;
+        map['Œ'] = 0x8C;
+        map['Ž'] = 0x8E;
+        map['‘'] = 0x91;
+        map['’'] = 0x92;
+        map['“'] = 0x93;
+        map['”'] = 0x94;
+        map['•'] = 0x95;
+        map['–'] = 0x96;
+        map['—'] = 0x97;
+        map['˜'] = 0x98;
+        map['™'] = 0x99;
+        map['š'] = 0x9A;
+        map['›'] = 0x9B;
+        map['œ'] = 0x9C;
+        map['ž'] = 0x9E;
+        map['Ÿ'] = 0x9F;
+
+        return map;
+    }
+
+    private static Dictionary<char, byte> BuildCodePage437ByteMap()
+    {
+        var map = Enumerable.Range(0, 128)
+            .ToDictionary(i => (char)i, i => (byte)i);
+
+        const string high =
+            "ÇüéâäàåçêëèïîìÄÅ" +
+            "ÉæÆôöòûùÿÖÜ¢£¥₧ƒ" +
+            "áíóúñÑªº¿⌐¬½¼¡«»" +
+            "░▒▓│┤╡╢╖╕╣║╗╝╜╛┐" +
+            "└┴┬├─┼╞╟╚╔╩╦╠═╬╧" +
+            "╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀" +
+            "αßΓπΣσµτΦΘΩδ∞φε∩" +
+            "≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ";
+
+        for (var i = 0; i < high.Length; i++)
+            map[high[i]] = (byte)(i + 128);
+
+        return map;
+    }
+
+    private static bool TryDecodeKnownMojibake(string value, out string decoded)
+    {
+        return TryDecodeMojibake(value, Windows1252Bytes, out decoded)
+            || TryDecodeMojibake(value, CodePage437Bytes, out decoded);
+    }
+
+    private static bool TryDecodeMojibake(
+        string value,
+        IReadOnlyDictionary<char, byte> byteMap,
+        out string decoded)
+    {
+        decoded = string.Empty;
+
+        for (var start = 0; start < value.Length; start++)
+        {
+            if (!byteMap.ContainsKey(value[start]))
+                continue;
+
+            var runEnd = start;
+            while (runEnd < value.Length && byteMap.ContainsKey(value[runEnd]))
+                runEnd++;
+
+            for (var length = runEnd - start; length >= 2; length--)
+            {
+                for (var offset = start; offset <= runEnd - length; offset++)
+                {
+                    var candidate = value.Substring(offset, length);
+                    if (TryDecodeMojibakeRun(candidate, byteMap, out decoded))
+                        return true;
+                }
+            }
+
+            start = runEnd;
+        }
+
+        return false;
+    }
+
+    private static bool TryDecodeMojibakeRun(
+        string value,
+        IReadOnlyDictionary<char, byte> byteMap,
+        out string decoded)
+    {
+        decoded = string.Empty;
+
+        if (!value.Any(c => c > 0x7F))
+            return false;
+
+        var bytes = new byte[value.Length];
+        for (var i = 0; i < value.Length; i++)
+            bytes[i] = byteMap[value[i]];
+
+        try
+        {
+            decoded = StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
+
+        return !string.Equals(decoded, value, StringComparison.Ordinal) && IsPlausibleDecodedMojibake(decoded);
+    }
+
+    private static bool IsPlausibleDecodedMojibake(string decoded) =>
+        decoded.Any(char.IsLetter) &&
+        decoded.All(c =>
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(c);
+            return category != UnicodeCategory.Control &&
+                   category != UnicodeCategory.Format &&
+                   category != UnicodeCategory.NonSpacingMark &&
+                   category != UnicodeCategory.SpacingCombiningMark &&
+                   category != UnicodeCategory.EnclosingMark;
+        });
 
     private static bool IsNonLocalizableXamlValue(string value) =>
         string.IsNullOrWhiteSpace(value) ||
@@ -255,6 +398,26 @@ public class LocalizationValidationTests
         value.Contains("http://", StringComparison.Ordinal) ||
         value.Contains("https://", StringComparison.Ordinal) ||
         value.Contains("~/", StringComparison.Ordinal);
+
+    [Fact]
+    public void MojibakeDetector_FindsWindows1252Substrings()
+    {
+        Assert.True(TryDecodeKnownMojibake("连接状态 è¿ž 👍", out var decoded));
+        Assert.Contains("连", decoded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MojibakeDetector_FindsCodePage437Substrings()
+    {
+        Assert.True(TryDecodeKnownMojibake("SSH ΘÜºΘüô", out var decoded));
+        Assert.Contains("隧道", decoded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MojibakeDetector_AllowsLegitimateUnicode()
+    {
+        Assert.False(TryDecodeKnownMojibake("连接状态 Café 👍", out _));
+    }
 
     /// <summary>
     /// Keys whose value is a Latin-script loanword (e.g. "OK") that reads
@@ -505,6 +668,31 @@ public class LocalizationValidationTests
             Assert.True(duplicates.Count == 0,
                 $"Locale '{locale}' has duplicate keys: {string.Join(", ", duplicates)}");
         }
+    }
+
+    [Fact]
+    public void NoLocale_HasWindows1252MojibakeValues()
+    {
+        var stringsDir = GetStringsDirectory();
+        var localeDirs = Directory.GetDirectories(stringsDir);
+        var offenders = new List<string>();
+
+        foreach (var localeDir in localeDirs)
+        {
+            var locale = Path.GetFileName(localeDir);
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            foreach (var (key, value) in LoadResw(reswPath))
+            {
+                if (TryDecodeKnownMojibake(value, out var decoded))
+                    offenders.Add($"{locale}::{key} decodes to '{decoded}'");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            $"Found {offenders.Count} Windows-1252 mojibake resource value(s): " +
+            string.Join("; ", offenders.Take(20)));
     }
 
     [Fact]

@@ -138,7 +138,7 @@
     <value>EXTENSIBILITÉ</value>
   </data>
   <data name="StatusNodesHeader.Text" xml:space="preserve">
-    <value>NÅ’UDS</value>
+    <value>NŒUDS</value>
   </data>
   <data name="StatusRecentActivityHeader.Text" xml:space="preserve">
     <value>ACTIVITÉ RÉCENTE</value>
@@ -228,7 +228,7 @@
     <value>Ouvrir</value>
   </data>
   <data name="StatusCopyNodeInventoryButton.Content" xml:space="preserve">
-    <value>Copier l'inventaire des nÅ“uds</value>
+    <value>Copier l'inventaire des nœuds</value>
   </data>
   <data name="StatusOpenStreamButton.Content" xml:space="preserve">
     <value>Ouvrir le flux</value>
@@ -246,7 +246,7 @@
     <value>Utilisations</value>
   </data>
   <data name="ActivityFilterNodes.Content" xml:space="preserve">
-    <value>NÅ“uds</value>
+    <value>Nœuds</value>
   </data>
   <data name="ActivityFilterNotifications.Content" xml:space="preserve">
     <value>Alertes</value>
@@ -446,7 +446,7 @@
     <value>Diagnostics des capacités</value>
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
-    <value>Inventaire des nÅ“uds</value>
+    <value>Inventaire des nœuds</value>
   </data>
   <data name="Menu_ChannelSummary" xml:space="preserve">
     <value>Résumé des canaux</value>
@@ -467,7 +467,7 @@
     <value>Séances ({0})</value>
   </data>
   <data name="Menu_NodesFormat" xml:space="preserve">
-    <value>NÅ“uds ({0})</value>
+    <value>Nœuds ({0})</value>
   </data>
   <data name="Menu_RecentActivityFormat" xml:space="preserve">
     <value>Activité récente ({0})</value>
@@ -872,19 +872,19 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>✅ Code de configuration décodé — appuyez sur Tester la connexion</value>
   </data>
   <data name="Setup_NodeModeTitle" xml:space="preserve">
-    <value>Activer le mode nÅ“ud (optionnel)</value>
+    <value>Activer le mode nœud (optionnel)</value>
   </data>
   <data name="Setup_NodeModeDescription" xml:space="preserve">
     <value>Le mode nœud permet à votre machine Windows d'exécuter des tâches pour OpenClaw — comme la capture d'écran, l'accès caméra et le dessin sur canevas.</value>
   </data>
   <data name="Setup_NodeModeSecurityTitle" xml:space="preserve">
-    <value>Activez le mode nÅ“ud uniquement pour les passerelles et agents de confiance</value>
+    <value>Activez le mode nœud uniquement pour les passerelles et agents de confiance</value>
   </data>
   <data name="Setup_NodeModeSecurityMessage" xml:space="preserve">
     <value>Les agents approuvés peuvent exécuter des commandes locales et accéder aux surfaces activées comme l'écran, la caméra, la localisation, le navigateur et le canevas. Vous pouvez désactiver des groupes de capacités plus tard dans Paramètres.</value>
   </data>
   <data name="Setup_NodeModeToggle" xml:space="preserve">
-    <value>Activer le mode nÅ“ud</value>
+    <value>Activer le mode nœud</value>
   </data>
   <data name="Setup_DeviceIdLoading" xml:space="preserve">
     <value>ID de l'appareil : chargement...</value>
@@ -1145,7 +1145,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Collez le token d'amorçage</value>
   </data>
   <data name="Onboarding_Connection_NodeMode" xml:space="preserve">
-    <value>Mode nÅ“ud</value>
+    <value>Mode nœud</value>
   </data>
   <data name="Onboarding_Connection_TestConnection" xml:space="preserve">
     <value>Tester la connexion</value>
@@ -1358,7 +1358,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Utilisateur SSH</value>
   </data>
   <data name="Onboarding_Connection_SshHost" xml:space="preserve">
-    <value>H├┤te SSH</value>
+    <value>Hôte SSH</value>
   </data>
   <data name="Onboarding_Connection_SshRemotePort" xml:space="preserve">
     <value>Port de la passerelle distante</value>
@@ -1765,7 +1765,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>user</value>
   </data>
   <data name="SshHostBox.Header" xml:space="preserve">
-    <value>H├┤te SSH</value>
+    <value>Hôte SSH</value>
   </data>
   <data name="SshHostBox.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
@@ -1867,7 +1867,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>URL de la passerelle</value>
   </data>
   <data name="DebugPage_TextBlock_61.Text" xml:space="preserve">
-    <value>Mode nÅ“ud</value>
+    <value>Mode nœud</value>
   </data>
   <data name="DebugPage_TextBlock_72.Text" xml:space="preserve">
     <value>Identité de l’appareil</value>
@@ -1957,7 +1957,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value> (désactivée)</value>
   </data>
   <data name="NodesPage_Rename_Title" xml:space="preserve">
-    <value>Renommer le nÅ“ud</value>
+    <value>Renommer le nœud</value>
   </data>
   <data name="NodesPage_Rename_Body" xml:space="preserve">
     <value>Choisissez un nouveau nom d'affichage pour {0}.</value>
@@ -1975,7 +1975,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Échec du renommage.</value>
   </data>
   <data name="NodesPage_Forget_Title" xml:space="preserve">
-    <value>Oublier le nÅ“ud ?</value>
+    <value>Oublier le nœud ?</value>
   </data>
   <data name="NodesPage_Forget_Body" xml:space="preserve">
     <value>Cela supprimera l'enregistrement du nœud ci-dessous dans la passerelle. Le nœud devra se réappairer pour pouvoir se reconnecter.</value>
@@ -1984,7 +1984,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Les sessions opérateur et de chat actives qui ciblent ce nœud perdront l'accès immédiatement.</value>
   </data>
   <data name="NodesPage_Forget_Primary" xml:space="preserve">
-    <value>Oublier le nÅ“ud</value>
+    <value>Oublier le nœud</value>
   </data>
   <data name="NodesPage_Forget_Error_Generic" xml:space="preserve">
     <value>Impossible d'oublier le nœud — passerelle inaccessible ou autorisation refusée.</value>
@@ -3673,7 +3673,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Voir les instances ›</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
-    <value>Mode nÅ“ud</value>
+    <value>Mode nœud</value>
   </data>
   <data name="ConnectionPage_WhenOnThisPC.Text" xml:space="preserve">
     <value>Lorsqu'il est activé, ce PC s'enregistre comme nœud et offre les capacités ci-dessous aux agents via la passerelle.</value>
@@ -4081,7 +4081,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Autorisations</value>
   </data>
   <data name="PermissionsPage_NodeMode.Text" xml:space="preserve">
-    <value>Mode nÅ“ud</value>
+    <value>Mode nœud</value>
   </data>
   <data name="PermissionsPage_WhenOnThisPC.Text" xml:space="preserve">
     <value>Lorsqu'il est activé, ce PC s'enregistre comme nœud et offre les capacités ci-dessous aux agents via la passerelle.</value>
@@ -4438,7 +4438,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Erreur</value>
   </data>
   <data name="ConnectionStatusWindow_NODE.Text" xml:space="preserve">
-    <value>NÅ’UD</value>
+    <value>NŒUD</value>
   </data>
   <data name="ConnectionStatusWindow_Off2.Text" xml:space="preserve">
     <value>Désactivé</value>
@@ -4546,7 +4546,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Op.</value>
   </data>
   <data name="HubWindow_Node.Text" xml:space="preserve">
-    <value>NÅ“ud</value>
+    <value>Nœud</value>
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Avancé</value>
