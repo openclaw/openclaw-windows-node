@@ -64,6 +64,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// <summary>The full device ID of the local node service (if running).</summary>
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
 
+    /// <summary>
+    /// Session key that the chat surface should select on its next mount.
+    /// Used when the user clicks a session from SessionsPage or a notification
+    /// while the HubWindow may not yet exist. Consumed (cleared) by ChatPage.
+    /// </summary>
+    public string? PendingChatSessionKey { get; set; }
+
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
 
     /// <summary>
@@ -2460,10 +2467,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             if (notification.IsChat)
             {
-                builder.AddArgument("action", "open_chat")
-                       .AddButton(new ToastButton()
-                           .SetContent("Open Chat")
-                           .AddArgument("action", "open_chat"));
+                builder.AddArgument("action", "open_chat");
+                if (!string.IsNullOrEmpty(notification.SessionKey))
+                {
+                    builder.AddArgument("sessionKey", notification.SessionKey);
+                }
+                builder.AddButton(new ToastButton()
+                    .SetContent("Open Chat")
+                    .AddArgument("action", "open_chat")
+                    .AddArgument("sessionKey", notification.SessionKey ?? ""));
             }
 
             _toastService!.ShowToast(builder);
@@ -2869,7 +2881,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void ShowWebChat()
+    private void ShowWebChat(string? sessionKey = null)
     {
         if (_settings == null) return;
         if (!TryResolveChatCredentials(out _, out _, out _, out var isBootstrapToken))
@@ -2886,6 +2898,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 "Chat",
                 "Gateway pairing is not complete");
             return;
+        }
+
+        // Stash the session key on both App (fallback when HubWindow doesn't exist)
+        // and HubWindow (existing path) so ChatPage can pick it up after navigation.
+        if (!string.IsNullOrEmpty(sessionKey))
+        {
+            PendingChatSessionKey = sessionKey;
+            if (_hubWindow != null)
+            {
+                _hubWindow.PendingChatSessionKey = sessionKey;
+            }
         }
 
         ShowHub("chat");
@@ -3550,7 +3573,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             CopyActivitySummary = _diagnosticsClipboard!.CopyActivitySummary,
             CopyExtensibilitySummary = _diagnosticsClipboard!.CopyExtensibilitySummary,
             RestartSshTunnel = RestartSshTunnel,
-            OpenChat = ShowWebChat,
+            OpenChat = () => ShowWebChat(),
             OpenCommandCenter = ShowStatusDetail,
             OpenTrayMenu = ShowTrayMenuPopup,
             OpenActivityStream = ShowActivityStream,

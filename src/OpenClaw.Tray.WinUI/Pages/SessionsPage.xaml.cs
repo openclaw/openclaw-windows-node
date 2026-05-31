@@ -243,6 +243,9 @@ public sealed partial class SessionsPage : Page
     {
         if (sender is Button btn && btn.Tag is string key)
         {
+            // Stash the target session on both App (fallback when the HubWindow
+            // doesn't exist yet) and HubWindow (existing path consumed by ChatPage).
+            CurrentApp.PendingChatSessionKey = key;
             if (CurrentApp.ActiveHubWindow is HubWindow hub)
             {
                 hub.PendingChatSessionKey = key;
