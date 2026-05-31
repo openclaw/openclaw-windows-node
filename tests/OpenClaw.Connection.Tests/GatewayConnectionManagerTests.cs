@@ -657,6 +657,9 @@ public class GatewayConnectionManagerTests : IDisposable
         public void SimulateV2SignatureFallback() =>
             _client.SimulateV2SignatureFallback();
 
+        public void SimulateDeviceTokenReceived(string token, string role, string[]? scopes = null) =>
+            _client.SimulateDeviceTokenReceived(token, role, scopes);
+
         public void Dispose() { }
     }
 
@@ -697,6 +700,18 @@ public class GatewayConnectionManagerTests : IDisposable
             {
                 var handler = field.GetValue(this) as EventHandler;
                 handler?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        public void SimulateDeviceTokenReceived(string token, string role, string[]? scopes = null)
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(DeviceTokenReceived),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            if (field != null)
+            {
+                var handler = field.GetValue(this) as EventHandler<DeviceTokenReceivedEventArgs>;
+                handler?.Invoke(this, new DeviceTokenReceivedEventArgs(token, scopes, role));
             }
         }
     }
@@ -743,6 +758,97 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.True(record.LastConnected.HasValue);
         Assert.Equal("shared-tok", record.SharedGatewayToken);
         Assert.Equal("TestGW", record.FriendlyName);
+    }
+
+    // ─── DeviceTokenReceived / bootstrap handoff tests ───
+
+    [Fact]
+    public async Task DeviceTokenReceived_NodeRole_ClearsBootstrapTokenFromRegistry()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bs-secret"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.SimulateDeviceTokenReceived("node-device-token", "node");
+        await Task.Delay(50);
+
+        var updated = _registry.GetById("gw-1");
+        Assert.Null(updated?.BootstrapToken);
+    }
+
+    [Fact]
+    public async Task DeviceTokenReceived_OperatorRole_PreservesBootstrapToken()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bs-secret"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator");
+        await Task.Delay(50);
+
+        var record = _registry.GetById("gw-1");
+        Assert.Equal("bs-secret", record?.BootstrapToken);
+    }
+
+    [Fact]
+    public async Task DeviceTokenReceived_NodeRole_WhenBootstrapAlreadyNull_Succeeds()
+    {
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-1", Url = "wss://test" });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+
+        // Should not throw even when bootstrap is already null
+        lifecycle.SimulateDeviceTokenReceived("node-device-token", "node");
+        await Task.Delay(50);
+
+        var record = _registry.GetById("gw-1");
+        Assert.Null(record?.BootstrapToken);
+    }
+
+    [Fact]
+    public async Task DeviceTokenReceived_WithIdentityStore_PersistsToken()
+    {
+        var capturedTokens = new List<(string path, string token, string role)>();
+        var store = new CaptureIdentityStore(capturedTokens);
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            identityStore: store);
+
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-1", Url = "wss://test" });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator");
+        await Task.Delay(50);
+
+        Assert.Single(capturedTokens, t => t.token == "op-device-token" && t.role == "operator");
+    }
+
+    private sealed class CaptureIdentityStore : IDeviceIdentityStore
+    {
+        private readonly List<(string path, string token, string role)> _captured;
+        public CaptureIdentityStore(List<(string, string, string)> captured) => _captured = captured;
+        public void StoreToken(string identityPath, string token, string[]? scopes, string role) =>
+            _captured.Add((identityPath, token, role));
     }
 
     private sealed class CountingNodeConnector : INodeConnector
