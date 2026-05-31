@@ -92,6 +92,13 @@ public class OpenClawNotification
     public string? Agent { get; set; }     // agent name/identifier
     public string? Intent { get; set; }    // normalized intent (reminder, build, alert)
     public string[]? Tags { get; set; }    // free-form routing tags
+
+    /// <summary>
+    /// The session key associated with this notification (e.g. the chat session
+    /// that produced an assistant response). Used by toast activation to open
+    /// the specific session instead of the default/main session.
+    /// </summary>
+    public string? SessionKey { get; set; }
 }
 
 /// <summary>
