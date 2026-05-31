@@ -135,6 +135,9 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
 
         private readonly string _text;
         private IntPtr _hwnd;
+        private IntPtr _allowOnceButtonHwnd;
+        private IntPtr _alwaysAllowButtonHwnd;
+        private IntPtr _denyButtonHwnd;
         private ExecApprovalPromptDecision _decision = ExecApprovalPromptDecision.Deny();
         private bool _completed;
 
@@ -243,10 +246,10 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
 
             var totalButtonWidth = ButtonWidth * 3 + ButtonGap * 2;
             var firstLeft = WindowWidth - 20 - totalButtonWidth;
-            CreateChild(hwnd, "BUTTON", "Allow once", firstLeft, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AllowOnceButtonId, font);
-            CreateChild(hwnd, "BUTTON", "Always allow", firstLeft + ButtonWidth + ButtonGap, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AlwaysAllowButtonId, font);
-            var denyButton = CreateChild(hwnd, "BUTTON", "Deny", firstLeft + (ButtonWidth + ButtonGap) * 2, ButtonTop, ButtonWidth, ButtonHeight, ButtonStyleDefaultPushButton, DenyButtonId, font);
-            SetFocus(denyButton);
+            _allowOnceButtonHwnd = CreateChild(hwnd, "BUTTON", "Allow once", firstLeft, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AllowOnceButtonId, font);
+            _alwaysAllowButtonHwnd = CreateChild(hwnd, "BUTTON", "Always allow", firstLeft + ButtonWidth + ButtonGap, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AlwaysAllowButtonId, font);
+            _denyButtonHwnd = CreateChild(hwnd, "BUTTON", "Deny", firstLeft + (ButtonWidth + ButtonGap) * 2, ButtonTop, ButtonWidth, ButtonHeight, ButtonStyleDefaultPushButton, DenyButtonId, font);
+            SetFocus(_denyButtonHwnd);
         }
 
         private static IntPtr CreateChild(
@@ -296,10 +299,10 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
             switch (message)
             {
                 case WindowMessageCommand:
-                    var buttonId = ButtonIdFromWParam(wParam);
-                    if (buttonId is AllowOnceButtonId or AlwaysAllowButtonId or DenyButtonId)
+                    var buttonId = prompt.ResolveButtonCommand(wParam, lParam);
+                    if (buttonId.HasValue)
                     {
-                        prompt.Complete(buttonId);
+                        prompt.Complete(buttonId.Value);
                         return IntPtr.Zero;
                     }
 
@@ -317,6 +320,24 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
                 default:
                     return DefWindowProcW(hwnd, message, wParam, lParam);
             }
+        }
+
+        private int? ResolveButtonCommand(IntPtr wParam, IntPtr lParam)
+        {
+            var buttonId = ButtonIdFromWParam(wParam);
+            if (buttonId is AllowOnceButtonId or AlwaysAllowButtonId or DenyButtonId)
+                return buttonId;
+
+            if (lParam == _allowOnceButtonHwnd)
+                return AllowOnceButtonId;
+
+            if (lParam == _alwaysAllowButtonHwnd)
+                return AlwaysAllowButtonId;
+
+            if (lParam == _denyButtonHwnd)
+                return DenyButtonId;
+
+            return null;
         }
 
         private void Complete(int buttonId)
