@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-05-30T12:44:12Z",
-  "last_run_id": "26684097206",
+  "last_run": "2026-05-31T01:26:33Z",
+  "last_run_id": "26699926026",
   "backlog_cursor": {
     "issue_number": 593,
     "comment_cursor": 593
@@ -56,9 +56,10 @@
     "460": {"pr": 540, "branch": "repo-assist/fix-issue-460-test-determinism", "status": "closed-no-merge", "note": "Fix was committed to master directly (2ca3457). Issue should be closed."},
     "462": {"pr": 531, "branch": "repo-assist/fix-issue-462-trackpad-scroll", "status": "closed-conflict", "date": "2026-05-26", "note": "Fix was committed directly to master (51c4b4fd). Issue still open."},
     "552": {"pr": null, "branch": "repo-assist/fix-issue-552-async-void-connection-handlers", "status": "open", "date": "2026-05-27", "note": "Partial fix: guarded OnNodeStatusChanged and OnNodePairingStatusChanged in GatewayConnectionManager. WinUI layer still needs a separate pass."},
-    "570": {"pr": 571, "branch": "repo-assist/fix-issue-570-bump-version-0.5.0", "status": "open", "date": "2026-05-28", "note": "Bump <Version> 0.4.7->0.5.0, use AppVersionInfo.DisplayVersion in A2UIDashboardScaleTest."},
-    "583": {"pr": 585, "branch": "repo-assist/fix-issue-583-mojibake-resources", "status": "open", "date": "2026-05-29", "note": "Fix Windows-1252-misread-as-UTF8 double-encoding in zh-cn (1012 strings), zh-tw (1023 strings), fr-fr (17 strings)."},
-    "590": {"pr": null, "branch": "repo-assist/fix-issue-590-a11y-tool-output-automation", "status": "open", "date": "2026-05-30", "note": "Set explicit AutomationName on CompactSummary headerButton and body Border. Tray tests 870/0. Needs Windows Narrator smoke test."}
+    "570": {"pr": 571, "branch": "repo-assist/fix-issue-570-bump-version-0.5.0", "status": "open", "date": "2026-05-28"},
+    "583": {"pr": 585, "branch": "repo-assist/fix-issue-583-mojibake-resources", "status": "open", "date": "2026-05-29"},
+    "590": {"pr": 603, "branch": "repo-assist/fix-issue-590-a11y-tool-output-automation", "status": "open", "date": "2026-05-30", "note": "Set explicit AutomationName on CompactSummary headerButton and body Border. PR #603 created."},
+    "593": {"pr": null, "branch": "repo-assist/fix-issue-593-arm64-wsl-virt-message", "status": "open", "date": "2026-05-31", "note": "Branch RuntimeInformation.OSArchitecture on Arm64 to show UEFI/Intune/HVCI wording instead of VT-x/AMD-V. PR pending creation."}
   },
   "improve_attempts": {
     "deep-link-parser-tests": {"pr": 456, "branch": "repo-assist/improve-deeplink-tests-2026-05-19", "status": "merged", "date": "2026-05-19"},
@@ -67,14 +68,14 @@
     "channel-result-tests": {"pr": 528, "branch": "repo-assist/improve-channel-result-tests-2026-05-23", "status": "merged", "date": "2026-05-26"},
     "operatorscopehelper-tests": {"pr": 530, "branch": "repo-assist/improve-operatorscopehelper-tests-2026-05-24", "status": "merged", "date": "2026-05-26"},
     "activitystreamservice-tests": {"pr": 535, "branch": "repo-assist/improve-activitystreamservice-tests-2026-05-25", "status": "merged", "date": "2026-05-26"},
-    "execcmdtoken-tests": {"pr": 548, "branch": "repo-assist/improve-execcmdtoken-tests-2026-05-27", "status": "open", "date": "2026-05-27", "note": "66 tests for ExecCommandToken and ExecEnvInvocationUnwrapper"},
-    "json-options-cache": {"pr": 566, "branch": "repo-assist/improve-json-options-cache-2026-05-28", "status": "open", "date": "2026-05-28", "note": "Eliminate 10 inline JsonSerializerOptions allocations in OpenClaw.Shared (3 sites) and OpenClaw.SetupEngine (6 sites)."},
-    "deriveoverall-tests": {"pr": 595, "branch": "repo-assist/improve-deriveoverall-tests-2026-05-30", "status": "open", "date": "2026-05-30", "note": "6 missing DeriveOverall edge cases: node errors/pairing when nodeEnabled=false, startup fallthrough Connected+Idle+true."}
+    "execcmdtoken-tests": {"pr": 548, "branch": "repo-assist/improve-execcmdtoken-tests-2026-05-27", "status": "open", "date": "2026-05-27"},
+    "json-options-cache": {"pr": 566, "branch": "repo-assist/improve-json-options-cache-2026-05-28", "status": "open", "date": "2026-05-28"},
+    "deriveoverall-tests": {"pr": 595, "branch": "repo-assist/improve-deriveoverall-tests-2026-05-30", "status": "open", "date": "2026-05-30"}
   },
   "engineering_attempts": {
-    "treat-warnings-as-errors": {"pr": 527, "branch": "repo-assist/eng-treat-warnings-as-errors-2026-05-23", "status": "closed-no-merge", "date": "2026-05-26"},
-    "nuget-audit-tests": {"pr": 539, "branch": "repo-assist/eng-nuget-audit-tests-2026-05-25", "status": "merged", "date": "2026-05-26"},
-    "bump-nuget-packages-2026-05-29": {"pr": 578, "branch": "repo-assist/eng-bump-nuget-packages-2026-05-29", "status": "open", "date": "2026-05-29", "note": "Microsoft.NET.Test.Sdk 18.4->18.6, System.Security.Cryptography.ProtectedData 10.0.0->10.0.8, Zeroconf 3.6.11->3.7.16"}
+    "treat-warnings-as-errors": {"pr": 527, "status": "closed-no-merge"},
+    "nuget-audit-tests": {"pr": 539, "status": "merged"},
+    "bump-nuget-packages-2026-05-29": {"pr": 578, "status": "open"}
   },
   "monthly_activity_issue": 435,
   "engineering_checks": {
@@ -86,5 +87,5 @@
   },
   "open_repo_assist_issues": [435],
   "closed_repo_assist_prs": [448, 456, 464, 472, 482, 495, 522, 528, 530, 532, 535, 539],
-  "notes": "2026-05-30 (run 26684097206): Task 2+3. Commented on #590 (a11y analysis) and #569 (localization: exclude timezone ids, en-us-only quick wins). Fixed #590 a11y: added AutomationName to CompactSummary headerButton and body Border in OpenClawChatTimeline.cs. Tray tests 870/0 passing. PR pending creation on branch repo-assist/fix-issue-590-a11y-tool-output-automation."
+  "notes": "2026-05-31 (run 26699926026): Task 3+10. Created PR for #590 a11y fix (PR #603, already existed from prior run). Created new ARM64 fix for #593 in branch repo-assist/fix-issue-593-arm64-wsl-virt-message - branches RuntimeInformation.OSArchitecture to show Arm64-specific UEFI/HVCI message. Infrastructure failures (GitVersion env-file) prevent build validation in this environment - pre-existing issue."
 }
