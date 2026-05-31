@@ -138,6 +138,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         private IntPtr _allowOnceButtonHwnd;
         private IntPtr _alwaysAllowButtonHwnd;
         private IntPtr _denyButtonHwnd;
+        private uint _threadId;
         private ExecApprovalPromptDecision _decision = ExecApprovalPromptDecision.Deny();
         private bool _completed;
 
@@ -149,6 +150,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         public ExecApprovalPromptDecision Show()
         {
             EnsureClassRegistered();
+            _threadId = GetCurrentThreadId();
 
             var x = Math.Max(0, (GetSystemMetrics(SystemMetricScreenWidth) - WindowWidth) / 2);
             var y = Math.Max(0, (GetSystemMetrics(SystemMetricScreenHeight) - WindowHeight) / 2);
@@ -351,6 +353,9 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
             _completed = true;
             if (_hwnd != IntPtr.Zero)
                 DestroyWindow(_hwnd);
+
+            if (_threadId != 0)
+                PostThreadMessageW(_threadId, WindowMessagePromptCompleted, IntPtr.Zero, IntPtr.Zero);
         }
 
         private static int ButtonIdFromWParam(IntPtr wParam) => (int)((long)wParam & 0xffff);
@@ -436,6 +441,12 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         [DllImport("user32.dll")]
         private static extern void PostQuitMessage(int nExitCode);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostThreadMessageW(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
         [DllImport("user32.dll")]
         private static extern int GetSystemMetrics(int nIndex);
 
@@ -459,6 +470,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         private const uint WindowMessageClose = 0x0010;
         private const uint WindowMessageDestroy = 0x0002;
         private const uint WindowMessageSetFont = 0x0030;
+        private const uint WindowMessagePromptCompleted = 0x8000;
 
         private const uint WindowExStyleDialogModalFrame = 0x00000001;
         private const uint WindowExStyleTopMost = 0x00000008;
