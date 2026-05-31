@@ -423,7 +423,7 @@ public sealed partial class ChatPage : Page
                 return;
             }
 
-            if (!GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage))
+            if (!GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage, _pendingWebViewSessionKey))
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
@@ -432,6 +432,7 @@ public sealed partial class ChatPage : Page
             }
             _chatUrl = chatUrl;
             _chatUrl = chatUrl;
+            _pendingWebViewSessionKey = null;
 
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Collapsed;
