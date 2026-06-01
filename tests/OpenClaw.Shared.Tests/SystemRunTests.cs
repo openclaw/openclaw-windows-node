@@ -431,6 +431,42 @@ public class SystemRunTests
     }
 
     [Fact]
+    public async Task SystemRun_WithPromptPolicy_PromptsOnceForShellWrapper_WhenUserApprovesOnce()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-wrapper-1",
+                Command = "system.run",
+                Args = Parse("""{"command":"cmd /c echo hello"}""")
+            });
+
+            Assert.True(res.Ok, res.Error);
+            Assert.NotNull(runner.LastRequest);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Empty(policy.Rules);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task SystemRun_WithPromptPolicy_PersistsExactAllowRule_WhenUserAlwaysAllows()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
@@ -457,6 +493,88 @@ public class SystemRunTests
             Assert.Single(policy.Rules);
             Assert.Equal("whoami", policy.Rules[0].Pattern);
             Assert.Equal(ExecApprovalAction.Allow, policy.Rules[0].Action);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_AlwaysAllowWrapperPersistsSingleRule_AndCoversRepeat()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AlwaysAllow());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "prompt-wrapper-2",
+                Command = "system.run",
+                Args = Parse("""{"command":"cmd /c echo repeat"}""")
+            };
+
+            var first = await cap.ExecuteAsync(req);
+            Assert.True(first.Ok, first.Error);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Single(policy.Rules);
+            Assert.Equal("cmd /c echo repeat", policy.Rules[0].Pattern);
+
+            var second = await cap.ExecuteAsync(req);
+            Assert.True(second.Ok, second.Error);
+            Assert.Equal(1, prompt.CallCount);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_StillDeniesExplicitBlockedShellWrapperPayload()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "del *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-wrapper-3",
+                Command = "system.run",
+                Args = Parse("""{"command":"cmd /c del C:\\important.txt"}""")
+            });
+
+            Assert.False(res.Ok);
+            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(runner.LastRequest);
+            Assert.Equal(1, prompt.CallCount);
         }
         finally
         {
@@ -525,10 +643,15 @@ public class SystemRunTests
             _decision = decision;
         }
 
+        public int CallCount { get; private set; }
+
         public Task<ExecApprovalPromptDecision> RequestAsync(
             ExecApprovalPromptRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(_decision);
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(_decision);
+        }
     }
 }
 

@@ -1428,12 +1428,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// </summary>
     private bool TryConnectGatewayIfCredentialAvailable(GatewayRecord record, string context)
     {
-        if (_connectionManager == null)
+        if (_connectionManager == null || _gatewayRegistry == null)
             return false;
 
-        var credential = ResolveStartupOperatorCredential(record);
+        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
+        var credential = ResolveStartupOperatorCredential(record, resolver, identityDir);
         if (credential == null)
         {
+            var nodeCredential = ResolveStartupNodeCredential(record, resolver, identityDir);
+            if (nodeCredential != null && ShouldInitializeNodeService())
+            {
+                Logger.Info(
+                    $"Connecting node-only gateway during {context}: {record.Url} ({nodeCredential.Source})");
+                ObserveBackgroundFault(
+                    _connectionManager.ConnectNodeOnlyAsync(record.Id),
+                    $"[App] Startup node-only gateway connect failed during {context}");
+                return true;
+            }
+
             Logger.Info($"Active gateway has no usable credential — skipping {context} connect");
             return false;
         }
@@ -1442,17 +1455,44 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ? "last successful gateway"
             : "credentialed gateway";
         Logger.Info($"Connecting to {connectionKind} during {context}: {record.Url} ({credential.Source})");
-        _ = _connectionManager.ConnectAsync(record.Id);
+        ObserveBackgroundFault(
+            _connectionManager.ConnectAsync(record.Id),
+            $"[App] Startup gateway connect failed during {context}");
         return true;
     }
 
-    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(GatewayRecord record)
+    private static void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            Logger.Error($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            Logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => Logger.Error($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+    }
+
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(
+        GatewayRecord record,
+        CredentialResolver resolver,
+        string identityDir)
     {
         if (_gatewayRegistry == null)
             return null;
 
-        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
-        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
         var credential = resolver.ResolveOperator(record, identityDir);
         if (credential != null)
             return credential;
@@ -1467,6 +1507,50 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         return null;
+    }
+
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupNodeCredential(
+        GatewayRecord record,
+        CredentialResolver resolver,
+        string identityDir)
+    {
+        var credential = resolver.ResolveNode(record, identityDir);
+        if (credential != null)
+            return credential;
+
+        var effectiveUrl = _settings?.GetEffectiveGatewayUrl();
+        if (string.IsNullOrWhiteSpace(effectiveUrl) ||
+            !string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        credential = resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath);
+        if (credential == null)
+            return null;
+
+        TryCopyLegacyIdentityToGateway(record.Id, identityDir);
+        return credential;
+    }
+
+    private static void TryCopyLegacyIdentityToGateway(string gatewayId, string identityDir)
+    {
+        var legacyIdentityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
+        var newIdentityPath = Path.Combine(identityDir, "device-key-ed25519.json");
+        if (!File.Exists(legacyIdentityPath) || File.Exists(newIdentityPath))
+            return;
+
+        try
+        {
+            if (!Directory.Exists(identityDir))
+                Directory.CreateDirectory(identityDir);
+            File.Copy(legacyIdentityPath, newIdentityPath, overwrite: false);
+            Logger.Info($"[GatewayRegistry] Copied legacy identity into active gateway {gatewayId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to copy legacy identity file for gateway {gatewayId}: {ex.Message}");
+        }
     }
 
     private void TryMigrateLegacyGatewaySettings(string gatewayUrl, IOpenClawLogger logger)

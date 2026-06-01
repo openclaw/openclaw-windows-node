@@ -67,7 +67,9 @@ public sealed partial class CompletePage : Page
                 }
                 if (args.LogPath != null)
                 {
-                    ViewLogLink.Content = $"View full log → {Path.GetFileName(args.LogPath)}";
+                    var displayPath = LogFileLauncher.ResolveRealPath(args.LogPath);
+                    ViewLogLink.Content = $"View full log → {displayPath}";
+                    ToolTipService.SetToolTip(ViewLogLink, displayPath);
                     ViewLogLink.Visibility = Visibility.Visible;
                 }
                 else
@@ -114,8 +116,7 @@ public sealed partial class CompletePage : Page
 
     private void ViewLog_Click(object sender, RoutedEventArgs e)
     {
-        if (_logPath != null && File.Exists(_logPath))
-            Process.Start(new ProcessStartInfo(_logPath) { UseShellExecute = true });
+        LogFileLauncher.RevealInExplorer(_logPath);
     }
 
     private static void LaunchTray()

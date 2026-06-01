@@ -80,6 +80,52 @@ internal static class WslInstallSupport
     public static bool SupportsDirectNamedInstall(Version version)
         => version.CompareTo(s_minDirectNamedInstallVersion) >= 0;
 
+    // Detects well-known environment problems reported by `wsl --status`
+    // (or by other wsl.exe commands that surface the same diagnostic
+    // strings). Returns a user-facing remediation message when the output
+    // matches a known pattern; returns false otherwise.
+    //
+    // Only match on text we've actually observed wsl.exe emit. Hex HRESULT
+    // codes are stable across UI languages and Windows builds; English
+    // sentences are not, and over-broad fallbacks just create false
+    // positives.
+    public static bool TryGetEnvironmentIssue(string output, out string message)
+    {
+        var text = Normalize(output);
+
+        // Firmware virtualization off (VT-x/AMD-V disabled in BIOS/UEFI).
+        // wsl.exe emits this when the Windows feature is installed but the
+        // CPU virtualization extension is turned off; remediation requires
+        // a trip into firmware settings, not `wsl --install`.
+        if (Contains(text, "virtualization is not enabled"))
+        {
+            message = "WSL2 requires hardware virtualization, but it is disabled in firmware. "
+                + "Enable VT-x/AMD-V (Intel VT or AMD SVM) in your computer's BIOS/UEFI settings, "
+                + "reboot, then retry setup.";
+            return true;
+        }
+
+        // Required Windows feature missing (Virtual Machine Platform and/or
+        // Hyper-V). 0x80370102 = HCS_E_SERVICE_NOT_AVAILABLE, emitted verbatim
+        // by wsl.exe as "The virtual machine could not be started because a
+        // required feature is not installed." The same remediation
+        // (`wsl --install --no-distribution`) addresses both features.
+        if (Contains(text, "0x80370102"))
+        {
+            message = "WSL2 needs the Windows 'Virtual Machine Platform' / Hyper-V platform "
+                + "support, which is not currently enabled. Run `wsl --install --no-distribution` "
+                + "from an elevated PowerShell (or enable 'Virtual Machine Platform' under 'Turn "
+                + "Windows features on or off'), reboot, then retry setup.";
+            return true;
+        }
+
+        message = string.Empty;
+        return false;
+
+        static bool Contains(string haystack, string needle)
+            => haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string[] BuildDirectInstallArgs(string baseDistro, string distroName, string installPath)
         =>
         [
@@ -404,7 +450,35 @@ public sealed class PreflightWslStep : SetupStep
 
         ctx.Logger.Info($"WSL version output: {NormalizeWslOutput(versionResult.Stdout).Trim()}");
         ctx.Logger.Info($"WSL direct named install is supported (version {wslVersion})");
+
+        // wsl --version can succeed even when the WSL2 platform itself is
+        // unusable (Virtual Machine Platform component disabled, hardware
+        // virtualization off in firmware, Hyper-V missing, ...). Surface
+        // that diagnostic now so the user gets an actionable message
+        // before pipeline reaches the actual `wsl --install` step.
+        var statusIssue = await DetectEnvironmentIssueAsync(ctx, ct);
+        if (statusIssue != null)
+            return StepResult.Terminal(statusIssue);
+
         return StepResult.Ok("WSL available");
+    }
+
+    internal static async Task<string?> DetectEnvironmentIssueAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var status = await ctx.Commands.RunAsync(
+            WslConstants.WslExePath,
+            ["--status"],
+            TimeSpan.FromSeconds(10),
+            ct: ct);
+
+        var combined = $"{status.Stdout}\n{status.Stderr}";
+        if (WslInstallSupport.TryGetEnvironmentIssue(combined, out var message))
+        {
+            ctx.Logger.Warn($"WSL environment issue detected: {NormalizeWslOutput(combined).Trim()}");
+            return message;
+        }
+
+        return null;
     }
 
     private static async Task<StepResult> InstallWslPlatformAsync(SetupContext ctx, CancellationToken ct)
@@ -621,7 +695,11 @@ public sealed class CreateWslInstanceStep : SetupStep
     {
         var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
         if (list.ExitCode != 0 || !WslInstallSupport.ContainsDistro(list.Stdout, distro))
-            return StepResult.Fail($"Fresh WSL install did not register expected distro '{distro}'.");
+        {
+            var environmentIssue = await PreflightWslStep.DetectEnvironmentIssueAsync(ctx, ct);
+            var baseMessage = $"Fresh WSL install did not register expected distro '{distro}'.";
+            return StepResult.Fail(environmentIssue != null ? $"{baseMessage} {environmentIssue}" : baseMessage);
+        }
 
         var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
         if (verbose.ExitCode != 0 || !WslInstallSupport.TryGetDistroVersion(verbose.Stdout, distro, out var version))

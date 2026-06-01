@@ -1,0 +1,36 @@
+<Project>
+
+  <PropertyGroup>
+    <OpenClawVCRuntimePackageVersion>1.0.5</OpenClawVCRuntimePackageVersion>
+    <OpenClawVCRuntimePackageRoot>$(NuGetPackageRoot)vcruntime.cefsharp.140\$(OpenClawVCRuntimePackageVersion)\vc_redist\</OpenClawVCRuntimePackageRoot>
+    <OpenClawVCRuntimeArch Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</OpenClawVCRuntimeArch>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(OpenClawVCRuntimeArch)' != ''">
+    <OpenClawVCRuntimeFiles Include="$(OpenClawVCRuntimePackageRoot)$(OpenClawVCRuntimeArch)\*.dll" />
+  </ItemGroup>
+
+  <Target Name="CopyOpenClawVCRuntimeToOutput"
+          AfterTargets="Build"
+          Condition="'$(OpenClawVCRuntimeArch)' != '' and '@(OpenClawVCRuntimeFiles)' != ''">
+    <Copy SourceFiles="@(OpenClawVCRuntimeFiles)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyOpenClawVCRuntimeToPublish"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' and '$(OpenClawVCRuntimeArch)' != '' and '@(OpenClawVCRuntimeFiles)' != ''">
+    <Copy SourceFiles="@(OpenClawVCRuntimeFiles)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="ValidateOpenClawVCRuntimePublished"
+          AfterTargets="CopyOpenClawVCRuntimeToPublish"
+          Condition="'$(PublishDir)' != '' and '$(OpenClawVCRuntimeArch)' != ''">
+    <Error Condition="!Exists('$(PublishDir)vcruntime140.dll')"
+           Text="vcruntime140.dll missing from $(PublishDir). Clean Windows installs cannot load libsodium.dll without the VC runtime." />
+  </Target>
+
+</Project>

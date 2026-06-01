@@ -12,4 +12,9 @@
     <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="GitVersion.MsBuild" Version="6.4.0" PrivateAssets="all" />
+    <PackageReference Include="VCRuntime.CefSharp.140" Version="1.0.5" PrivateAssets="all" ExcludeAssets="build" />
+  </ItemGroup>
+
 </Project>

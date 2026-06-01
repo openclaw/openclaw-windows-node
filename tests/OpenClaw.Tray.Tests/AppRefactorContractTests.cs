@@ -72,6 +72,19 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void Startup_NodeOnlyReconnect_UsesNodeCredentialAndLegacyIdentityFallback()
+    {
+        var source = ReadAppSources();
+        var connectMethod = ExtractMethod(source, "TryConnectGatewayIfCredentialAvailable");
+        var nodeCredentialMethod = ExtractMethod(source, "ResolveStartupNodeCredential");
+
+        Assert.Contains("ResolveStartupNodeCredential(record, resolver, identityDir)", connectMethod);
+        Assert.Contains("_connectionManager.ConnectNodeOnlyAsync(record.Id)", connectMethod);
+        Assert.Contains("resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath)", nodeCredentialMethod);
+        Assert.Contains("TryCopyLegacyIdentityToGateway(record.Id, identityDir)", nodeCredentialMethod);
+    }
+
+    [Fact]
     public void ToastActivation_RoutesOnUiThread()
     {
         var source = ReadAppSources();
@@ -127,7 +140,7 @@ public sealed class AppRefactorContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|void|bool|string\??|IntPtr)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|void|bool|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

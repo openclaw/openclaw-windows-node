@@ -1,5 +1,7 @@
 # 🦞 OpenClaw Windows Hub
 
+![OpenClaw Windows Node banner](docs/assets/readme-banner.jpg)
+
 A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered personal assistant.
 
 *Made with 🦞 love by Scott Hanselman and Molty*
@@ -65,15 +67,25 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
 ### Run Tray App
 
 ```powershell
-# Build and launch through the Windows App SDK activation path
+# Build and launch the unpackaged WinUI tray app
 .\run-app-local.ps1
 
 # If you already built, skip rebuild and launch the existing Debug output
 .\run-app-local.ps1 -NoBuild
 
-# Manual equivalent (replace win-x64 with win-arm64 on ARM64)
-winapp run ".\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64" --manifest ".\src\OpenClaw.Tray.WinUI\Package.appxmanifest" --debug-output
+# Run isolated from your normal tray settings so multiple worktrees can run together
+.\run-app-local.ps1 -Isolated
+
+# Alpha update testing from a Release build
+.\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
+
+# Optional: launch through WinAppCLI with Package.appxmanifest
+.\run-app-local.ps1 -UseWinApp -NoBuild
 ```
+
+The default path starts the unpackaged executable directly. `-UseWinApp` requires
+Microsoft WinAppCLI (`winget install Microsoft.WinAppCLI`) and is only needed when
+you want manifest/MSIX-adjacent launch validation.
 
 ### Run CLI WebSocket Validator
 

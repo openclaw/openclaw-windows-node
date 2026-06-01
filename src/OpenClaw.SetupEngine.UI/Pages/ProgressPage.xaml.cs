@@ -243,11 +243,7 @@ public sealed partial class ProgressPage : Page
 
     private void OpenLog_Click(object sender, RoutedEventArgs e)
     {
-        var logPath = _config?.LogPath;
-        if (!string.IsNullOrWhiteSpace(logPath) && File.Exists(logPath))
-        {
-            Process.Start(new ProcessStartInfo(logPath) { UseShellExecute = true });
-        }
+        LogFileLauncher.RevealInExplorer(_config?.LogPath);
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
