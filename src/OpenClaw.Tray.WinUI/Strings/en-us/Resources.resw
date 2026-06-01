@@ -2658,6 +2658,9 @@ On your gateway host (Mac/Linux), run:
   <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
     <value>Preview</value>
   </data>
+  <data name="VoiceSettingsPage_PiperPreviewLabel.Text" xml:space="preserve">
+    <value>Preview</value>
+  </data>
   <data name="VoiceSettingsPage_PiperPreviewButtonContent" xml:space="preserve">
     <value>Preview</value>
   </data>
@@ -2668,6 +2671,9 @@ On your gateway host (Mac/Linux), run:
     <value>Voice</value>
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
+    <value>Preview Voice</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceLabel.Text" xml:space="preserve">
     <value>Preview Voice</value>
   </data>
   <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">

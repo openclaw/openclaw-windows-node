@@ -2610,6 +2610,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
     <value>Aperçu</value>
   </data>
+  <data name="VoiceSettingsPage_PiperPreviewLabel.Text" xml:space="preserve">
+    <value>Aperçu</value>
+  </data>
   <data name="VoiceSettingsPage_PiperPreviewButtonContent" xml:space="preserve">
     <value>Aperçu</value>
   </data>
@@ -2620,6 +2623,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Voix</value>
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
+    <value>Aperçu de la voix</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceLabel.Text" xml:space="preserve">
     <value>Aperçu de la voix</value>
   </data>
   <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">

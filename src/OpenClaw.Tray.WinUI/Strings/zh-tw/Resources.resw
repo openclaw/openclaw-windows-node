@@ -2610,6 +2610,9 @@
   <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
     <value>預覽</value>
   </data>
+  <data name="VoiceSettingsPage_PiperPreviewLabel.Text" xml:space="preserve">
+    <value>預覽</value>
+  </data>
   <data name="VoiceSettingsPage_PiperPreviewButtonContent" xml:space="preserve">
     <value>預覽</value>
   </data>
@@ -2620,6 +2623,9 @@
     <value>語音</value>
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
+    <value>預覽語音</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceLabel.Text" xml:space="preserve">
     <value>預覽語音</value>
   </data>
   <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">

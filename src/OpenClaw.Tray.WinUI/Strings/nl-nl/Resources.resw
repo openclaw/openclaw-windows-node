@@ -2611,6 +2611,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="VoiceSettingsPage_PiperPreviewButton.Content" xml:space="preserve">
     <value>Voorbeeld</value>
   </data>
+  <data name="VoiceSettingsPage_PiperPreviewLabel.Text" xml:space="preserve">
+    <value>Voorbeeld</value>
+  </data>
   <data name="VoiceSettingsPage_PiperPreviewButtonContent" xml:space="preserve">
     <value>Voorbeeld</value>
   </data>
@@ -2621,6 +2624,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Stem</value>
   </data>
   <data name="VoiceSettingsPage_PreviewVoiceButton.Content" xml:space="preserve">
+    <value>Voorbeeld van stem</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoiceLabel.Text" xml:space="preserve">
     <value>Voorbeeld van stem</value>
   </data>
   <data name="VoiceSettingsPage_ElevenLabsApiKeyBox.Header" xml:space="preserve">
