@@ -12,6 +12,67 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ConnectionPageApproveCommandTests
 {
+    private static string ReadPlanSource()
+    {
+        var path = Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPagePlan.cs");
+        return File.ReadAllText(path);
+    }
+
+    private static string ReadConnectionPageSource()
+    {
+        var path = Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+        return File.ReadAllText(path);
+    }
+
+    private static string GetRepositoryRoot()
+    {
+        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
+        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
+            return env;
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "src")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        var callerFile = ThisFile.Path;
+        if (!string.IsNullOrEmpty(callerFile) && File.Exists(callerFile))
+        {
+            var probe = new DirectoryInfo(Path.GetDirectoryName(callerFile)!);
+            while (probe != null)
+            {
+                if (File.Exists(Path.Combine(probe.FullName, "openclaw-windows-node.slnx")) &&
+                    Directory.Exists(Path.Combine(probe.FullName, "src")))
+                {
+                    return probe.FullName;
+                }
+
+                probe = probe.Parent;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
+    }
+
+    private static class ThisFile
+    {
+        public static readonly string Path = Capture();
+        private static string Capture([System.Runtime.CompilerServices.CallerFilePath] string filePath = "")
+            => filePath;
+    }
+
     [Fact]
     public void NodeTrustApproveCommand_UsesNounFirstSubcommandBeforeNodeListArrives()
     {
@@ -62,6 +123,33 @@ public sealed class ConnectionPageApproveCommandTests
         var plan = BuildNodePairingPlan(null, PairingApprovalKind.DevicePair, nodeDeviceId);
 
         AssertShellSafeCommand("openclaw devices list", plan.NodeApproveCommand);
+    }
+
+    [Fact]
+    public void GatewayCredentialDisplay_PrefersOperatorCredentialOverNodeCredential()
+    {
+        var planSource = ReadPlanSource();
+        var pageSource = ReadConnectionPageSource();
+
+        Assert.Contains(
+            "snap.OperatorCredentialSource ?? snap.NodeCredentialSource",
+            planSource);
+        Assert.DoesNotContain(
+            "snap.NodeCredentialSource ?? snap.OperatorCredentialSource",
+            planSource);
+
+        Assert.Contains(
+            "snapshot.OperatorCredentialSource ?? snapshot.NodeCredentialSource",
+            pageSource);
+        Assert.DoesNotContain(
+            "snapshot.NodeCredentialSource ?? snapshot.OperatorCredentialSource",
+            pageSource);
+    }
+
+    private static void AssertContainsCli(string source, string expected, string message)
+    {
+        if (!source.Contains(expected, System.StringComparison.Ordinal))
+            Assert.Fail($"Expected source to contain `{expected}`. {message}");
     }
 
     [Fact]

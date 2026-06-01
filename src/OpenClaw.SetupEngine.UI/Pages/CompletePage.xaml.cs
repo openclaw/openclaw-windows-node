@@ -11,6 +11,8 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class CompletePage : Page
 {
+    private const string StartupRunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupRunValue = "OpenClawTray";
     private static readonly Regex s_urlRegex = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private string? _logPath;
 

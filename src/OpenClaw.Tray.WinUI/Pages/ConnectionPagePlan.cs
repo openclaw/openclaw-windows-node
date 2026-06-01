@@ -307,7 +307,7 @@ internal sealed record ConnectionPagePlan
         string name)
     {
         var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url ?? snap.GatewayUrl);
-        var sub = BuildConnectedDetailLine(rec, self);
+        var sub = BuildConnectedDetailLine(rec, self, snap);
 
         return new ConnectionPagePlan
         {
@@ -363,7 +363,7 @@ internal sealed record ConnectionPagePlan
             NodeApproveCommand = BuildNodeApproveCommand(snap),
             NodeErrorDetail = ExtractNodeErrorDetail(snap),
             ActiveGatewayDisplayName = name,
-            ActiveGatewayDetailLine = BuildConnectedDetailLine(rec, self),
+            ActiveGatewayDetailLine = BuildConnectedDetailLine(rec, self, snap),
             ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
             RelevantGatewayId = rec?.Id,
         };
@@ -667,16 +667,30 @@ internal sealed record ConnectionPagePlan
         return ConnectionCardPlanSanitizer.Sanitize(snap.NodeError!);
     }
 
-    private static string BuildConnectedDetailLine(GatewayRecord? rec, GatewaySelfInfo? self)
+    private static string BuildConnectedDetailLine(GatewayRecord? rec, GatewaySelfInfo? self, GatewayConnectionSnapshot snap)
     {
         var bits = new List<string>(4);
         var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url);
         if (!string.IsNullOrEmpty(url)) bits.Add(url);
         if (rec?.SshTunnel != null) bits.Add("via SSH tunnel");
+        var credential = FormatCredentialSource(snap.OperatorCredentialSource ?? snap.NodeCredentialSource);
+        if (!string.IsNullOrEmpty(credential)) bits.Add(credential);
         if (!string.IsNullOrWhiteSpace(self?.ServerVersion)) bits.Add($"v{self!.ServerVersion}");
         if (self?.UptimeMs is long uptime && uptime > 0)
             bits.Add($"up {FormatUptime(uptime)}");
         return string.Join(" • ", bits);
+    }
+
+    internal static string FormatCredentialSource(string? source)
+    {
+        return source switch
+        {
+            CredentialResolver.SourceNodeDeviceToken => "paired via node device token",
+            CredentialResolver.SourceDeviceToken => "paired via device token",
+            CredentialResolver.SourceSharedGatewayToken => "shared token",
+            CredentialResolver.SourceBootstrapToken => "bootstrap token",
+            _ => "",
+        };
     }
 
     private static int CountEnabledCapabilities(SettingsManager s)

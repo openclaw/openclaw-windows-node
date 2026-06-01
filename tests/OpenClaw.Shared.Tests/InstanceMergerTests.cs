@@ -549,4 +549,27 @@ public class InstanceMergerTests
         // not the one that only matched by host (p1).
         Assert.Equal("alpha", managedRow.Presence?.DeviceId);
     }
+
+    [Fact]
+    public void OfflineOrphanNode_HidesPlaceholderVersion()
+    {
+        var n = Node("stale-node", displayName: "Old Windows", isOnline: false);
+        n.Version = "1.0.0";
+
+        var result = InstanceMerger.Merge(new[] { n }, presence: null, Options());
+
+        Assert.Null(result[0].Version);
+    }
+
+    [Fact]
+    public void MatchedNode_KeepsPlaceholderVersion()
+    {
+        var p = Presence(deviceId: "node-x", host: "PC");
+        var n = Node("node-x", isOnline: true);
+        n.Version = "1.0.0";
+
+        var result = InstanceMerger.Merge(new[] { n }, new[] { p }, Options());
+
+        Assert.Equal("1.0.0", result[0].Version);
+    }
 }
