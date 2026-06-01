@@ -213,11 +213,12 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 var cb = new ComboBox
                 {
                     MinWidth = 0,
-                    Width = Props.IsCompact ? 180 : 200,
+                    Width = double.NaN,
                     Height = 28,
                     FontSize = 11,
                     Padding = new Thickness(8, 0, 4, 0),
                     CornerRadius = composerCornerRadius,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
                     VerticalAlignment = VerticalAlignment.Center,
                 };
 
@@ -278,11 +279,12 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }).Set(cb =>
         {
             cb.MinWidth = 0;
-            cb.Width = Props.IsCompact ? 170 : 200;
+            cb.Width = double.NaN;
             cb.Height = 28;
             cb.FontSize = 11;
             cb.Padding = new Thickness(8, 0, 4, 0);
             cb.CornerRadius = composerCornerRadius;
+            cb.HorizontalAlignment = HorizontalAlignment.Stretch;
         }).VAlign(VerticalAlignment.Center);
 
         var thinkingLevel = Props.CurrentThinkingLevel ?? "medium";
@@ -297,19 +299,26 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             .Set(cb =>
             {
                 cb.MinWidth = 0;
-                cb.Width = Props.IsCompact ? 95 : 160;
+                cb.Width = double.NaN;
                 cb.Height = 28;
                 cb.FontSize = 11;
                 cb.Padding = new Thickness(8, 0, 4, 0);
                 cb.CornerRadius = composerCornerRadius;
+                cb.HorizontalAlignment = HorizontalAlignment.Stretch;
             }).VAlign(VerticalAlignment.Center);
 
         // ComposerLayout 분기: ThreeRow = 3개 다 보임, InlinePill = 모델만, Minimal = 숨김.
         Element dropdownsRow = composerLayout switch
         {
             ChatComposerLayout.Minimal    => Empty(),
-            ChatComposerLayout.InlinePill => (FlexRow(modelCombo) with { ColumnGap = 6 }),
-            _                             => (FlexRow(channelCombo, modelCombo, reasoningCombo) with { ColumnGap = 6 }),
+            ChatComposerLayout.InlinePill => Grid([GridSize.Star()], [GridSize.Auto],
+                modelCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0)
+            ).HAlign(HorizontalAlignment.Stretch),
+            _                             => Grid([GridSize.Star(1.2), GridSize.Star(), GridSize.Star(0.62)], [GridSize.Auto],
+                channelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0),
+                modelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 1),
+                reasoningCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 2)
+            ).HAlign(HorizontalAlignment.Stretch),
         };
 
         // ── Row 2: multi-line composer textbox ─────────────────────────
