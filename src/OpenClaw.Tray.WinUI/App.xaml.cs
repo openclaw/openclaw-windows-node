@@ -32,7 +32,7 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
+    internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
     {
         FetchOnlyLatestRelease = true,
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
