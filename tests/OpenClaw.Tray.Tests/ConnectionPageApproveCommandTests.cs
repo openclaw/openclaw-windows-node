@@ -26,6 +26,14 @@ public sealed class ConnectionPageApproveCommandTests
         return File.ReadAllText(path);
     }
 
+    private static string ReadConnectionPageSource()
+    {
+        var path = Path.Combine(
+            GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+        return File.ReadAllText(path);
+    }
+
     private static string GetRepositoryRoot()
     {
         var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
@@ -145,6 +153,27 @@ public sealed class ConnectionPageApproveCommandTests
         AssertNoShellHostileChars(devBody, nameof(devBody));
     }
 
+    [Fact]
+    public void GatewayCredentialDisplay_PrefersOperatorCredentialOverNodeCredential()
+    {
+        var planSource = ReadPlanSource();
+        var pageSource = ReadConnectionPageSource();
+
+        Assert.Contains(
+            "snap.OperatorCredentialSource ?? snap.NodeCredentialSource",
+            planSource);
+        Assert.DoesNotContain(
+            "snap.NodeCredentialSource ?? snap.OperatorCredentialSource",
+            planSource);
+
+        Assert.Contains(
+            "snapshot.OperatorCredentialSource ?? snapshot.NodeCredentialSource",
+            pageSource);
+        Assert.DoesNotContain(
+            "snapshot.NodeCredentialSource ?? snapshot.OperatorCredentialSource",
+            pageSource);
+    }
+
     private static void AssertContainsCli(string source, string expected, string message)
     {
         if (!source.Contains(expected, System.StringComparison.Ordinal))
@@ -192,4 +221,3 @@ public sealed class ConnectionPageApproveCommandTests
         return source.Substring(bodyStart);
     }
 }
-

@@ -69,6 +69,7 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(OverallConnectionState.Connecting, _manager.CurrentSnapshot.OverallState);
         Assert.Equal("wss://test", _manager.ActiveGatewayUrl);
         Assert.Equal("gw-1", _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal("test", _manager.CurrentSnapshot.OperatorCredentialSource);
     }
 
     /// <summary>
@@ -519,6 +520,8 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Empty(_factory.CreatedCredentials);
         Assert.Equal(1, node.ConnectCount);
         Assert.Equal("wss://test", node.LastGatewayUrl);
+        Assert.Null(manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
     [Fact]
@@ -551,6 +554,7 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(1, tunnel.StartCount);
         Assert.Equal("host.example", tunnel.LastConfig?.Host);
         Assert.Equal("ws://localhost:45678", node.LastGatewayUrl);
+        Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
     [Fact]

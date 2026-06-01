@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using Microsoft.Win32;
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
 
@@ -20,7 +21,7 @@ public static class TrayArtifactCleanup
         var appDataDir = ctx.DataDir; // %APPDATA%\OpenClawTray
         var localDataDir = ctx.LocalDataDir;
 
-        // 1. Remove autostart registry key
+        // 1. Remove autostart entries
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(AutoStartKey, writable: true);
@@ -38,6 +39,11 @@ public static class TrayArtifactCleanup
         {
             logger.Warn($"[Uninstall] Failed to remove autostart registry key: {ex.Message}");
         }
+
+        if (WindowsStartupTaskRegistration.Unregister())
+            logger.Info("[Uninstall] Removed autostart scheduled task");
+        else
+            logger.Info("[Uninstall] Autostart scheduled task already absent or unavailable");
 
         // 2. Delete run.marker
         DeleteFileIfExists(Path.Combine(localDataDir, "run.marker"), "run.marker", logger);
