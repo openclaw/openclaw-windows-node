@@ -71,9 +71,11 @@ wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "ls -l /home/openclaw/.op
 # Verifies that openclaw.json is valid JSON without printing it.
 wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "python3 -m json.tool /home/openclaw/.openclaw/openclaw.json > /dev/null"
 
-# Prints the first 120 lines of openclaw.json for inspection.
-wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "sed -n '1,120p' /home/openclaw/.openclaw/openclaw.json"
+# Prints only the top-level config keys, not secret values.
+wsl.exe -d OpenClawGateway --user openclaw -- python3 -c "import json; data=json.load(open('/home/openclaw/.openclaw/openclaw.json')); print('\n'.join(sorted(data.keys())))"
 ```
+
+Do not paste or share the full `openclaw.json` file. It can contain gateway tokens, private endpoints, provider settings, or other secrets; redact those values before sharing diagnostics.
 
 ## Inspect gateway state
 
