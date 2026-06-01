@@ -21,7 +21,7 @@
                         Background="#20FF4444">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <Ellipse x:Name="LiveDot" Width="6" Height="6" Fill="#FFFF4444" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="LiveText" Text="Live" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Uid="AgentEventsPage_LiveText" x:Name="LiveText" Text="Live" FontSize="11" FontWeight="SemiBold"
                                    Foreground="#FFFF4444" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
@@ -52,7 +52,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Clear, Mode=OneTime}"
                               FontSize="14" IsTextScaleFactorEnabled="False"/>
-                    <TextBlock Text="Clear"/>
+                    <TextBlock x:Uid="AgentEventsPage_ClearLabel" Text="Clear"/>
                 </StackPanel>
             </Button>
         </Grid>

@@ -4144,7 +4144,7 @@
     <value>) 受下方設定隔離。</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
-    <value>代理直接在閘道上執行的命令則不受隔離。如果閘道位於這台電腦的 WSL 上,它們可能會存取您的 Windows 檔案、剪貼簿和網路 — 請使用閘道的執行核准。</value>
+    <value>代理直接在閘道上執行的命令則不受隔離。如果閘道位於這台電腦上,它們仍然可能存取您的 Windows 檔案、剪貼簿和網路 — 請檢查閘道的設定。</value>
   </data>
   <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
     <value>沙箱無法使用</value>
@@ -4550,4 +4550,263 @@
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>進階</value>
-  </data></root>
+  </data>
+  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="AgentEventsPage_ClearLabel.Text" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
+    <value>Enabled ({0})</value>
+  </data>
+  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
+    <value>Disabled ({0})</value>
+  </data>
+  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="SkillsPage_CountFormat" xml:space="preserve">
+    <value>({0}/{1} enabled)</value>
+  </data>
+  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
+    <value>Conversations this gateway is currently handling, grouped by channel.</value>
+  </data>
+  <data name="SessionsPage_EmptyStateDescription.Text" xml:space="preserve">
+    <value>Sessions appear here when a channel is connected and traffic is flowing.</value>
+  </data>
+  <data name="SessionsPage_RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Refresh sessions</value>
+  </data>
+  <data name="SessionsPage_RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh sessions</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open this session in Chat</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open in chat</value>
+  </data>
+  <data name="CronPage_JobCompleted" xml:space="preserve">
+    <value>Job completed</value>
+  </data>
+  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
+    <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
+    <value>Could not load bindings</value>
+  </data>
+  <data name="ConfigPage_CheckingConfigPermissions" xml:space="preserve">
+    <value>Checking config permissions</value>
+  </data>
+  <data name="ConfigPage_ConfigUnavailable" xml:space="preserve">
+    <value>Config unavailable</value>
+  </data>
+  <data name="ConfigPage_ConfigIsReadOnly" xml:space="preserve">
+    <value>Config is read-only</value>
+  </data>
+  <data name="Command_GoToConnection_Title" xml:space="preserve">
+    <value>Go to Connection</value>
+  </data>
+  <data name="Command_GoToConnection_Subtitle" xml:space="preserve">
+    <value>Gateway, node, saved gateways</value>
+  </data>
+  <data name="Command_GoToChat_Title" xml:space="preserve">
+    <value>Go to Chat</value>
+  </data>
+  <data name="Command_GoToChat_Subtitle" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="Command_GoToSessions_Title" xml:space="preserve">
+    <value>Go to Sessions</value>
+  </data>
+  <data name="Command_GoToSessions_Subtitle" xml:space="preserve">
+    <value>All sessions</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
+    <value>Go to Agent Events</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
+    <value>Agent event log</value>
+  </data>
+  <data name="Command_GoToSkills_Title" xml:space="preserve">
+    <value>Go to Skills</value>
+  </data>
+  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
+    <value>Registered skills</value>
+  </data>
+  <data name="Command_GoToCron_Title" xml:space="preserve">
+    <value>Go to Cron ({0})</value>
+  </data>
+  <data name="Command_GoToCron_Subtitle" xml:space="preserve">
+    <value>Scheduled tasks</value>
+  </data>
+  <data name="Command_GoToWorkspace_Title" xml:space="preserve">
+    <value>Go to Workspace ({0})</value>
+  </data>
+  <data name="Command_GoToWorkspace_Subtitle" xml:space="preserve">
+    <value>Workspace files</value>
+  </data>
+  <data name="Command_GoToChannels_Title" xml:space="preserve">
+    <value>Go to Channels</value>
+  </data>
+  <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
+    <value>Gateway channels</value>
+  </data>
+  <data name="Command_GoToInstances_Title" xml:space="preserve">
+    <value>Go to Instances</value>
+  </data>
+  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
+    <value>Gateway instances</value>
+  </data>
+  <data name="Command_GoToConfig_Title" xml:space="preserve">
+    <value>Go to Config</value>
+  </data>
+  <data name="Command_GoToConfig_Subtitle" xml:space="preserve">
+    <value>Gateway configuration</value>
+  </data>
+  <data name="Command_GoToUsage_Title" xml:space="preserve">
+    <value>Go to Usage</value>
+  </data>
+  <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
+    <value>Usage statistics</value>
+  </data>
+  <data name="Command_GoToBindings_Title" xml:space="preserve">
+    <value>Go to Bindings</value>
+  </data>
+  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
+    <value>Gateway bindings</value>
+  </data>
+  <data name="Command_GoToPermissions_Title" xml:space="preserve">
+    <value>Go to Permissions</value>
+  </data>
+  <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
+    <value>Capabilities, exec policy &amp; allowlists</value>
+  </data>
+  <data name="Command_GoToSettings_Title" xml:space="preserve">
+    <value>Go to Settings</value>
+  </data>
+  <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
+    <value>Application settings</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
+    <value>Go to Diagnostics</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Subtitle" xml:space="preserve">
+    <value>Logs, support bundle, device identity, developer tools</value>
+  </data>
+  <data name="Command_GoToInfo_Title" xml:space="preserve">
+    <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
+    <value>About this app</value>
+  </data>
+  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
+    <value>Open Chat Window</value>
+  </data>
+  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
+    <value>Open standalone chat</value>
+  </data>
+  <data name="Command_OpenDashboard_Title" xml:space="preserve">
+    <value>Open Dashboard</value>
+  </data>
+  <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
+    <value>Open web dashboard</value>
+  </data>
+  <data name="Command_ToggleNodeMode_Title" xml:space="preserve">
+    <value>Toggle Node Mode</value>
+  </data>
+  <data name="Command_ToggleCamera_Title" xml:space="preserve">
+    <value>Toggle Camera</value>
+  </data>
+  <data name="Command_ToggleCanvas_Title" xml:space="preserve">
+    <value>Toggle Canvas</value>
+  </data>
+  <data name="Command_ToggleScreenCapture_Title" xml:space="preserve">
+    <value>Toggle Screen Capture</value>
+  </data>
+  <data name="Command_ToggleBrowserControl_Title" xml:space="preserve">
+    <value>Toggle Browser Control</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOn" xml:space="preserve">
+    <value>Currently ON</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOff" xml:space="preserve">
+    <value>Currently OFF</value>
+  </data>
+  <data name="CommandCenter_AuthFailed" xml:space="preserve">
+    <value>Gateway authentication failed</value>
+  </data>
+  <data name="CommandCenter_NodePendingApproval" xml:space="preserve">
+    <value>Node is waiting for approval</value>
+  </data>
+  <data name="CommandCenter_GatewayConnectionError" xml:space="preserve">
+    <value>Gateway connection error</value>
+  </data>
+  <data name="CommandCenter_GatewayNotConnected" xml:space="preserve">
+    <value>Gateway is not connected</value>
+  </data>
+  <data name="CommandCenter_GatewayHealthStale" xml:space="preserve">
+    <value>Gateway health is stale</value>
+  </data>
+  <data name="CommandCenter_NoChannelsReported" xml:space="preserve">
+    <value>No channels reported</value>
+  </data>
+  <data name="CommandCenter_WaitingForGatewayHealth" xml:space="preserve">
+    <value>Waiting for gateway health</value>
+  </data>
+  <data name="CommandCenter_NoChannelsRunning" xml:space="preserve">
+    <value>No channels are currently running</value>
+  </data>
+  <data name="CommandCenter_NoNodesReported" xml:space="preserve">
+    <value>No nodes reported</value>
+  </data>
+  <data name="CommandCenter_UsageCostsMissing" xml:space="preserve">
+    <value>Some usage costs are missing</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
+    <value>Browser proxy auth may need a gateway token</value>
+  </data>
+  <data name="CommandCenter_SshTunnelPortNotListening" xml:space="preserve">
+    <value>SSH tunnel port is not listening</value>
+  </data>
+  <data name="CommandCenter_NoLocalGatewayListener" xml:space="preserve">
+    <value>No local gateway listener detected</value>
+  </data>
+  <data name="CommandCenter_BrowserProxySshForwardNotListening" xml:space="preserve">
+    <value>Browser proxy SSH forward is not listening</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
+    <value>Browser proxy host not detected</value>
+  </data>
+  <data name="CronPage_NewJobTitle" xml:space="preserve">
+    <value>New Job</value>
+  </data>
+  <data name="CronPage_CreateJobButton" xml:space="preserve">
+    <value>Create Job</value>
+  </data>
+  <data name="CronPage_EditJobTitle" xml:space="preserve">
+    <value>Edit Job</value>
+  </data>
+  <data name="CronPage_SaveChangesButton" xml:space="preserve">
+    <value>Save Changes</value>
+  </data>
+</root>

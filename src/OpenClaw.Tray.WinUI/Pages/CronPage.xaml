@@ -26,20 +26,20 @@
                      <ColumnDefinition Width="Auto"/>
                      <ColumnDefinition Width="Auto"/>
                  </Grid.ColumnDefinitions>
-                 <TextBlock Text="Cron Jobs" Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0" VerticalAlignment="Center"/>
+                 <TextBlock x:Uid="CronPage_CronJobs" Text="Cron Jobs" Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0" VerticalAlignment="Center"/>
                  <TextBlock x:Name="JobCountText" Text="(0)" VerticalAlignment="Center" Grid.Column="1" Margin="8,0,0,0"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                  <Button x:Name="RefreshButton" Grid.Column="3" Click="OnRefreshClick" Margin="0,0,8,0">
                      <StackPanel Orientation="Horizontal" Spacing="8">
                          <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Refresh, Mode=OneTime}" FontSize="14"/>
-                         <TextBlock Text="Refresh"/>
+                         <TextBlock x:Uid="CronPage_Refresh" Text="Refresh"/>
                      </StackPanel>
                  </Button>
                  <Button x:Name="NewJobButton" Grid.Column="4" Click="OnNewJobClick" Style="{StaticResource AccentButtonStyle}">
                      <StackPanel Orientation="Horizontal" Spacing="8">
                          <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Add, Mode=OneTime}" FontSize="14"/>
-                         <TextBlock Text="New job"/>
+                         <TextBlock x:Uid="CronPage_NewJob" Text="New job"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -64,13 +64,13 @@
          <!-- Store path (hidden, just for data) -->
          <TextBlock x:Name="StorePathText" Visibility="Collapsed"/>
 
-         <InfoBar x:Name="ConnectionInfoBar" Grid.Row="1"
+         <InfoBar x:Name="ConnectionInfoBar" x:Uid="CronPage_GatewayDisconnected" Grid.Row="1"
                   IsOpen="False" IsClosable="False" Severity="Warning"
                   Title="Gateway disconnected"
                   Message="Connect to a gateway to load cron jobs."
                   Margin="0,0,0,12">
              <InfoBar.ActionButton>
-                 <Button Content="Open Connection" Click="OnOpenConnectionClick"/>
+                 <Button x:Uid="CronPage_OpenConnection" Content="Open Connection" Click="OnOpenConnectionClick"/>
              </InfoBar.ActionButton>
          </InfoBar>
 
@@ -81,7 +81,7 @@
                 BorderThickness="1"
                 CornerRadius="8" Padding="20" Margin="0,0,0,12">
             <StackPanel Spacing="16">
-                <TextBlock x:Name="FormTitle" Text="New cron job" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock x:Name="FormTitle" x:Uid="CronPage_NewCronJob" Text="New cron job" Style="{StaticResource SubtitleTextBlockStyle}"/>
 
                 <!-- Row 1: Name + Schedule type -->
                 <Grid ColumnSpacing="12">
@@ -90,34 +90,34 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="4" Grid.Column="0">
-                        <TextBlock Text="Name" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <TextBox x:Name="FormName" PlaceholderText="Morning brief"/>
+                        <TextBlock x:Uid="CronPage_NAME" Text="Name" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBox x:Name="FormName" x:Uid="CronPage_MorningBrief" PlaceholderText="Morning brief"/>
                     </StackPanel>
                     <StackPanel Spacing="4" Grid.Column="1">
-                        <TextBlock Text="Schedule" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="CronPage_SCHEDULE" Text="Schedule" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <ComboBox x:Name="FormScheduleKind" SelectedIndex="0" HorizontalAlignment="Stretch"
                                   SelectionChanged="OnScheduleKindChanged">
-                            <ComboBoxItem Content="Every" Tag="every"/>
-                            <ComboBoxItem Content="At" Tag="at"/>
-                            <ComboBoxItem Content="Cron" Tag="cron"/>
+                            <ComboBoxItem x:Uid="CronPage_Every" Content="Every" Tag="every"/>
+                            <ComboBoxItem x:Uid="CronPage_At" Content="At" Tag="at"/>
+                            <ComboBoxItem x:Uid="CronPage_Cron" Content="Cron" Tag="cron"/>
                         </ComboBox>
                     </StackPanel>
                 </Grid>
 
                 <!-- Schedule presets (cron only) -->
                 <StackPanel x:Name="CronFields" Spacing="8">
-                    <TextBlock Text="Quick presets" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="CronPage_QUICKPRESETS" Text="Quick presets" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <ItemsControl x:Name="PresetGrid">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="8"/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
-                        <Button Content="Hourly" Tag="0 * * * *" Click="OnPresetClick"/>
-                        <Button Content="Daily 9am" Tag="0 9 * * *" Click="OnPresetClick"/>
-                        <Button Content="Daily 6pm" Tag="0 18 * * *" Click="OnPresetClick"/>
-                        <Button Content="Weekdays" Tag="0 9 * * 1-5" Click="OnPresetClick"/>
-                        <Button Content="Weekly" Tag="0 9 * * 1" Click="OnPresetClick"/>
+                        <Button x:Uid="CronPage_Hourly" Content="Hourly" Tag="0 * * * *" Click="OnPresetClick"/>
+                        <Button x:Uid="CronPage_Daily9am" Content="Daily 9am" Tag="0 9 * * *" Click="OnPresetClick"/>
+                        <Button x:Uid="CronPage_Daily6pm" Content="Daily 6pm" Tag="0 18 * * *" Click="OnPresetClick"/>
+                        <Button x:Uid="CronPage_Weekdays" Content="Weekdays" Tag="0 9 * * 1-5" Click="OnPresetClick"/>
+                        <Button x:Uid="CronPage_Weekly" Content="Weekly" Tag="0 9 * * 1" Click="OnPresetClick"/>
                     </ItemsControl>
 
                     <!-- Cron expression + timezone row -->
@@ -127,22 +127,22 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="4" Grid.Column="0">
-                            <TextBlock Text="Expression" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Uid="CronPage_EXPRESSION" Text="Expression" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                             <TextBox x:Name="FormCronExpr" PlaceholderText="0 9 * * *"
                                      FontFamily="Consolas"/>
                         </StackPanel>
                         <StackPanel Spacing="4" Grid.Column="1">
-                            <TextBlock Text="Timezone" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <ComboBox x:Name="FormTimezone" HorizontalAlignment="Stretch"
+                            <TextBlock x:Uid="CronPage_TIMEZONE" Text="Timezone" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <ComboBox x:Name="FormTimezone" x:Uid="CronPage_Optional" HorizontalAlignment="Stretch"
                                       PlaceholderText="Optional">
-                                <ComboBoxItem Content="America/New_York" Tag="America/New_York"/>
-                                <ComboBoxItem Content="America/Chicago" Tag="America/Chicago"/>
-                                <ComboBoxItem Content="America/Denver" Tag="America/Denver"/>
-                                <ComboBoxItem Content="America/Los_Angeles" Tag="America/Los_Angeles"/>
-                                <ComboBoxItem Content="Europe/London" Tag="Europe/London"/>
-                                <ComboBoxItem Content="Europe/Berlin" Tag="Europe/Berlin"/>
-                                <ComboBoxItem Content="Asia/Tokyo" Tag="Asia/Tokyo"/>
-                                <ComboBoxItem Content="UTC" Tag="UTC"/>
+                                <ComboBoxItem x:Uid="CronPage_AmericaNewYork" Content="America/New_York" Tag="America/New_York"/>
+                                <ComboBoxItem x:Uid="CronPage_AmericaChicago" Content="America/Chicago" Tag="America/Chicago"/>
+                                <ComboBoxItem x:Uid="CronPage_AmericaDenver" Content="America/Denver" Tag="America/Denver"/>
+                                <ComboBoxItem x:Uid="CronPage_AmericaLosAngeles" Content="America/Los_Angeles" Tag="America/Los_Angeles"/>
+                                <ComboBoxItem x:Uid="CronPage_EuropeLondon" Content="Europe/London" Tag="Europe/London"/>
+                                <ComboBoxItem x:Uid="CronPage_EuropeBerlin" Content="Europe/Berlin" Tag="Europe/Berlin"/>
+                                <ComboBoxItem x:Uid="CronPage_AsiaTokyo" Content="Asia/Tokyo" Tag="Asia/Tokyo"/>
+                                <ComboBoxItem x:Uid="CronPage_UTC" Content="UTC" Tag="UTC"/>
                             </ComboBox>
                         </StackPanel>
                     </Grid>
@@ -156,16 +156,16 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="4" Grid.Column="0">
-                            <TextBlock Text="Every" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Uid="CronPage_EVERY" Text="Every" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                             <TextBox x:Name="FormEveryValue" Text="30"
                                      InputScope="Number"/>
                         </StackPanel>
                         <StackPanel Spacing="4" Grid.Column="1">
-                            <TextBlock Text="Unit" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Uid="CronPage_UNIT" Text="Unit" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                             <ComboBox x:Name="FormEveryUnit" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                <ComboBoxItem Content="Minutes" Tag="60000"/>
-                                <ComboBoxItem Content="Hours" Tag="3600000"/>
-                                <ComboBoxItem Content="Days" Tag="86400000"/>
+                                <ComboBoxItem x:Uid="CronPage_Minutes" Content="Minutes" Tag="60000"/>
+                                <ComboBoxItem x:Uid="CronPage_Hours" Content="Hours" Tag="3600000"/>
+                                <ComboBoxItem x:Uid="CronPage_Days" Content="Days" Tag="86400000"/>
                             </ComboBox>
                         </StackPanel>
                     </Grid>
@@ -173,21 +173,21 @@
 
                 <!-- At fields -->
                 <StackPanel x:Name="AtFields" Spacing="4" Visibility="Collapsed">
-                    <TextBlock Text="Run at" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="CronPage_RUNAT" Text="Run at" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <CalendarDatePicker x:Name="FormAtDate" PlaceholderText="Date"
+                        <CalendarDatePicker x:Name="FormAtDate" x:Uid="CronPage_Date" PlaceholderText="Date"
                                             DateFormat="{}{month.abbreviated} {day.integer}, {year.full}"/>
-                        <TextBox x:Name="FormAtTime" PlaceholderText="3:30 PM" Width="120"
+                        <TextBox x:Name="FormAtTime" x:Uid="CronPage_330PM" PlaceholderText="3:30 PM" Width="120"
                                  InputScope="TimeHour"/>
                     </StackPanel>
-                    <CheckBox x:Name="FormDeleteAfterRun" Content="Delete job after it runs" IsChecked="True"
+                    <CheckBox x:Name="FormDeleteAfterRun" x:Uid="CronPage_DeleteJobAfterIt" Content="Delete job after it runs" IsChecked="True"
                               Margin="0,4,0,0"/>
                 </StackPanel>
 
                 <!-- Prompt -->
                 <StackPanel Spacing="4">
-                    <TextBlock Text="Prompt / payload" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBox x:Name="FormMessage" PlaceholderText="What should the agent do?"
+                    <TextBlock x:Uid="CronPage_PROMPTPAYLOAD" Text="Prompt / payload" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBox x:Name="FormMessage" x:Uid="CronPage_WhatShouldTheAgent" PlaceholderText="What should the agent do?"
                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" MaxHeight="140"/>
                 </StackPanel>
 
@@ -198,23 +198,23 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="4" Grid.Column="0">
-                        <TextBlock Text="Delivery" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="CronPage_DELIVERY" Text="Delivery" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <ComboBox x:Name="FormDeliveryMode" SelectedIndex="0" HorizontalAlignment="Stretch"
                                   SelectionChanged="OnDeliveryModeChanged">
-                            <ComboBoxItem Content="Silent (none)" Tag="none"/>
-                            <ComboBoxItem Content="Notify me (announce)" Tag="announce"/>
+                            <ComboBoxItem x:Uid="CronPage_SilentNone" Content="Silent (none)" Tag="none"/>
+                            <ComboBoxItem x:Uid="CronPage_NotifyMeAnnounce" Content="Notify me (announce)" Tag="announce"/>
                         </ComboBox>
                     </StackPanel>
                     <StackPanel x:Name="DeliveryChannelPanel" Spacing="4" Grid.Column="1" Visibility="Collapsed">
-                        <TextBlock Text="Channel" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <TextBox x:Name="FormDeliveryChannel" PlaceholderText="e.g. webchat"/>
+                        <TextBlock x:Uid="CronPage_CHANNEL" Text="Channel" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBox x:Name="FormDeliveryChannel" x:Uid="CronPage_EGWebchat" PlaceholderText="e.g. webchat"/>
                     </StackPanel>
                 </Grid>
 
                 <!-- Advanced options -->
                 <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>
-                        <TextBlock Text="Advanced options"
+                        <TextBlock x:Uid="CronPage_AdvancedOptions" Text="Advanced options"
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Expander.Header>
@@ -226,17 +226,17 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4" Grid.Column="0">
-                                <TextBlock Text="Session behavior" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock x:Uid="CronPage_SESSIONBEHAVIOR" Text="Session behavior" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <ComboBox x:Name="FormSessionTarget" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                    <ComboBoxItem Content="New session each run" Tag="isolated"/>
-                                    <ComboBoxItem Content="Resume main session" Tag="main"/>
+                                    <ComboBoxItem x:Uid="CronPage_NewSessionEachRun" Content="New session each run" Tag="isolated"/>
+                                    <ComboBoxItem x:Uid="CronPage_ResumeMainSession" Content="Resume main session" Tag="main"/>
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Spacing="4" Grid.Column="1">
-                                <TextBlock Text="Wake mode" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock x:Uid="CronPage_WAKEMODE" Text="Wake mode" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <ComboBox x:Name="FormWakeMode" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                    <ComboBoxItem Content="Now (immediate)" Tag="now"/>
-                                    <ComboBoxItem Content="Queue (wait for idle)" Tag="queue"/>
+                                    <ComboBoxItem x:Uid="CronPage_NowImmediate" Content="Now (immediate)" Tag="now"/>
+                                    <ComboBoxItem x:Uid="CronPage_QueueWaitForIdle" Content="Queue (wait for idle)" Tag="queue"/>
                                 </ComboBox>
                             </StackPanel>
                         </Grid>
@@ -251,8 +251,8 @@
 
                 <!-- Buttons -->
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
-                    <Button x:Name="FormCancelButton" Content="Cancel" Click="OnFormCancelClick"/>
-                    <Button x:Name="FormSaveButton" Content="Create job" Click="OnFormSaveClick"
+                    <Button x:Name="FormCancelButton" x:Uid="CronPage_Cancel" Content="Cancel" Click="OnFormCancelClick"/>
+                    <Button x:Name="FormSaveButton" x:Uid="CronPage_CreateJob" Content="Create job" Click="OnFormSaveClick"
                             Style="{StaticResource AccentButtonStyle}"/>
                 </StackPanel>
             </StackPanel>
@@ -268,7 +268,7 @@
                      HorizontalAlignment="Center" VerticalAlignment="Center"
                      Visibility="Visible">
              <ProgressRing IsActive="True" Width="22" Height="22"/>
-             <TextBlock Text="Loading cron jobs..."
+             <TextBlock x:Uid="CronPage_LoadingCronJobs" Text="Loading cron jobs..."
                         Style="{StaticResource BodyTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         VerticalAlignment="Center"/>
@@ -281,10 +281,10 @@
             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Cron, Mode=OneTime}"
                       FontSize="32" HorizontalAlignment="Center"
                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <TextBlock Text="No cron jobs configured"
+            <TextBlock x:Uid="CronPage_NoCronJobsConfigured" Text="No cron jobs configured"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock Text="Cron jobs will appear here when configured via the gateway."
+            <TextBlock x:Uid="CronPage_CronJobsWillAppear" Text="Cron jobs will appear here when configured via the gateway."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>

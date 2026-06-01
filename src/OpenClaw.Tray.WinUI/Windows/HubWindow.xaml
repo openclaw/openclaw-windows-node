@@ -77,7 +77,7 @@
                         Tapped="OnTitleBarStatusTapped">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <Ellipse x:Name="TitleStatusDot" Width="8" Height="8" VerticalAlignment="Center" Fill="Gray"/>
-                    <TextBlock x:Name="TitleStatusText" Text="Disconnected"
+                    <TextBlock x:Uid="TitleStatusText" x:Name="TitleStatusText" Text="Disconnected"
                                FontSize="11" VerticalAlignment="Center" MinWidth="80"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>

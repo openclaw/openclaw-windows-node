@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -330,8 +331,8 @@ public sealed partial class UsagePage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load usage data.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }
