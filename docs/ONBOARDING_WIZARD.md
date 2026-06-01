@@ -24,6 +24,8 @@ Displays the OpenClaw lobster icon, app title, and a brief description. If an ap
 ### Local setup progress
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
+The managed distro is locked down and is not intended to be a normal interactive Ubuntu profile. For sudo-style commands, root shells, and safe file-editing paths inside the distro, see [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md).
+
 ### Wizard
 Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The gateway controls the flow — steps can be:
 - **Note** — informational messages
