@@ -75,6 +75,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly object _gate = new();
     private readonly object _toolMetaSaveGate = new();
     private readonly string _toolMetaCacheFilePath;
+    private readonly string _attachmentSidecarFilePath;
     private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private long _toolMetaSaveVersion;
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
@@ -95,6 +96,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // Keyed by gateway sessionId (immutable UUID).  Persisted to disk
     // so that history reconstruction on restart can recover tool names.
     private Dictionary<string, List<CachedToolMeta>> _toolMetaCache;
+    // Per-thread sidecar of attachment metadata for sent user messages.
+    // Persisted to disk so that history reconstruction on restart can
+    // re-inject attachment chips that the gateway strips from history text.
+    private Dictionary<string, List<AttachmentSidecarEntry>> _attachmentSidecar;
     // Track recently-sent local user message texts so we can suppress
     // SSE echoes while still displaying messages from other clients.
     private readonly Dictionary<string, Queue<LocalSentText>> _localSentTexts = new();
@@ -156,9 +161,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _toolMetaCacheFilePath = !string.IsNullOrWhiteSpace(toolMetaCacheFilePath)
             ? toolMetaCacheFilePath
             : throw new ArgumentException("Tool metadata cache path is required.", nameof(toolMetaCacheFilePath));
+        var cacheDir = Path.GetDirectoryName(_toolMetaCacheFilePath) ?? "";
+        _attachmentSidecarFilePath = Path.Combine(cacheDir, "attachment-sidecar.json");
         _status = bridge.CurrentStatus;
         _persistedAbortedIds = LoadAbortedIds();
         _toolMetaCache = LoadToolMetaCache(_toolMetaCacheFilePath);
+        _attachmentSidecar = LoadAttachmentSidecar(_attachmentSidecarFilePath);
         _lastChatState = LoadLastChatState();
 
         // Seed models from whatever the bridge already knows about (a connect
@@ -219,6 +227,29 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     catch { /* skip un-decodable bytes */ }
                 }
             }
+
+            // Persist attachment metadata to the sidecar so that history-reload
+            // can re-inject attachment chips even after the process-local
+            // ImagePreviewCache has been cleared (e.g. app restart).
+            var sidecarEntry = new AttachmentSidecarEntry
+            {
+                TrimmedText = trimmed,
+                SentAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                Attachments = attachments!
+                    .Where(a => !string.IsNullOrEmpty(a.FileName))
+                    .Select(a => new AttachmentDisplay { FileName = a.FileName, IsImage = a.Type == "image" })
+                    .ToList()
+            };
+            lock (_gate)
+            {
+                if (!_attachmentSidecar.TryGetValue(threadId, out var threadEntries))
+                {
+                    threadEntries = new List<AttachmentSidecarEntry>();
+                    _attachmentSidecar[threadId] = threadEntries;
+                }
+                threadEntries.Add(sidecarEntry);
+            }
+            SaveAttachmentSidecar();
         }
 
         // Build the display text for the user bubble. When attachments are
@@ -503,7 +534,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // ActiveAssistantId here so the next assistant message
                             // starts a fresh entry instead of overwriting the previous.
                             rebuilt = rebuilt with { ActiveAssistantId = null, ActiveReasoningId = null };
-                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatUserMessageEvent(text), msgMeta);
+                            // Re-inject attachment chips from the sidecar so that chips
+                            // survive history reload and app restarts.
+                            var hydratedText = HydrateAttachmentsFromSidecarLocked(threadId, text, msg.Ts);
+                            rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatUserMessageEvent(hydratedText), msgMeta);
                             break;
 
                         case "assistant":
@@ -830,6 +864,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         timerToDispose?.Dispose();
         chatStateTimerToDispose?.Dispose();
         SaveToolMetaCache();
+        SaveAttachmentSidecar();
         _bridge.StatusChanged -= OnStatusChanged;
         _bridge.SessionsUpdated -= OnSessionsUpdated;
         _bridge.ChatMessageReceived -= OnChatMessageReceived;
@@ -2780,5 +2815,152 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Logger.Debug($"[IsMessageAborted] thread='{threadId}' id='{openClawId}' dictHasThread={found} setCount={set?.Count ?? 0} match={contains}");
             return contains;
         }
+    }
+
+    // ── Attachment sidecar persistence ────────────────────────────────
+
+    /// <summary>Single attachment indicator stored in the sidecar for one sent file.</summary>
+    internal sealed class AttachmentDisplay
+    {
+        public string FileName { get; set; } = "";
+        public bool IsImage { get; set; }
+    }
+
+    /// <summary>
+    /// One persisted record per user message that had attachments.
+    /// Keyed by (threadId → list) in <see cref="_attachmentSidecar"/>.
+    /// </summary>
+    internal sealed class AttachmentSidecarEntry
+    {
+        /// <summary>The trimmed message text sent to the gateway (without chip markers).</summary>
+        public string TrimmedText { get; set; } = "";
+        /// <summary>Unix milliseconds when the message was sent (for fuzzy match disambiguation).</summary>
+        public long SentAtMs { get; set; }
+        /// <summary>Attachment display metadata — filename and image flag only (no bytes).</summary>
+        public List<AttachmentDisplay> Attachments { get; set; } = new();
+    }
+
+    /// <summary>Max threads to keep in the attachment sidecar.</summary>
+    internal const int MaxSidecarThreads = 20;
+
+    /// <summary>Max attachment entries per thread in the sidecar.</summary>
+    internal const int MaxSidecarEntriesPerThread = 200;
+
+    private static Dictionary<string, List<AttachmentSidecarEntry>> LoadAttachmentSidecar(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return new();
+            var json = File.ReadAllText(filePath);
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<AttachmentSidecarEntry>>>(json)
+                   ?? new();
+        }
+        catch { return new(); }
+    }
+
+    private void SaveAttachmentSidecar()
+    {
+        try
+        {
+            Dictionary<string, List<AttachmentSidecarEntry>> snapshot;
+            lock (_gate)
+            {
+                snapshot = _attachmentSidecar.ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value.ToList(),
+                    StringComparer.Ordinal);
+            }
+
+            // Evict oldest threads if over the cap.
+            if (snapshot.Count > MaxSidecarThreads)
+            {
+                var toRemove = snapshot
+                    .OrderBy(kv => kv.Value.Count > 0 ? kv.Value[^1].SentAtMs : 0L)
+                    .Take(snapshot.Count - MaxSidecarThreads)
+                    .Select(kv => kv.Key)
+                    .ToList();
+                foreach (var k in toRemove) snapshot.Remove(k);
+            }
+
+            // Evict oldest per-thread entries if over the per-thread cap.
+            foreach (var kv in snapshot)
+            {
+                if (kv.Value.Count > MaxSidecarEntriesPerThread)
+                    kv.Value.RemoveRange(0, kv.Value.Count - MaxSidecarEntriesPerThread);
+            }
+
+            var json = System.Text.Json.JsonSerializer.Serialize(snapshot,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+            var dir = Path.GetDirectoryName(_attachmentSidecarFilePath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+            var tempPath = _attachmentSidecarFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, _attachmentSidecarFilePath, overwrite: true);
+            }
+            finally
+            {
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            }
+        }
+        catch { /* best-effort persistence */ }
+    }
+
+    /// <summary>Test-only: exposes the in-memory attachment sidecar for assertions.</summary>
+    internal IReadOnlyDictionary<string, List<AttachmentSidecarEntry>> AttachmentSidecarForTest
+    {
+        get { lock (_gate) return _attachmentSidecar; }
+    }
+
+    /// <summary>Test-only: inject a sidecar entry directly, simulating a previous send.</summary>
+    internal void InjectAttachmentSidecarEntryForTest(string threadId, AttachmentSidecarEntry entry)
+    {
+        lock (_gate)
+        {
+            if (!_attachmentSidecar.TryGetValue(threadId, out var list))
+            {
+                list = new List<AttachmentSidecarEntry>();
+                _attachmentSidecar[threadId] = list;
+            }
+            list.Add(entry);
+        }
+    }
+
+    /// <summary>
+    /// Matches a history user-message text against the attachment sidecar and,
+    /// if found, re-appends the zero-width-space chip markers so the timeline
+    /// renders attachment chips after a history reload or app restart.
+    /// </summary>
+    internal string HydrateAttachmentsFromSidecarLocked(string threadId, string text, long msgTsMs)
+    {
+        if (!_attachmentSidecar.TryGetValue(threadId, out var entries) || entries.Count == 0)
+            return text;
+
+        // Find the best matching entry: same trimmed text, closest timestamp.
+        // A 24-hour window prevents false positives for identical repeated texts.
+        const long WindowMs = 24L * 60 * 60 * 1000;
+        AttachmentSidecarEntry? best = null;
+        long bestDiff = long.MaxValue;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var e = entries[i];
+            if (!string.Equals(e.TrimmedText, text, StringComparison.Ordinal)) continue;
+            // If gateway didn't provide a timestamp, accept any text-match.
+            var diff = msgTsMs > 0 ? Math.Abs(e.SentAtMs - msgTsMs) : 0;
+            if (diff <= WindowMs && diff < bestDiff)
+            {
+                best = e;
+                bestDiff = diff;
+            }
+        }
+
+        if (best is null || best.Attachments.Count == 0) return text;
+
+        var chips = string.Join("\n", best.Attachments.Select(a =>
+            a.IsImage ? $"\u200B🖼️ {a.FileName}" : $"\u200B📎 {a.FileName}"));
+        return string.IsNullOrEmpty(text) ? chips : $"{text}\n{chips}";
     }
 }

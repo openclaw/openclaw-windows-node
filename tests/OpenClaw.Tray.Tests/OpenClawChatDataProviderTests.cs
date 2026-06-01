@@ -1,6 +1,7 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
+using System.IO;
 using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
@@ -68,7 +69,9 @@ public class OpenClawChatDataProviderTests
         CreateProvider(SessionInfo[]? initial = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
-        var provider = new OpenClawChatDataProvider(bridge);
+        // Use an isolated temp path so each test instance gets a clean sidecar/cache.
+        var tmpCache = Path.Combine(Path.GetTempPath(), "OpenClawChatDataProviderTests", Guid.NewGuid().ToString("N"), "tool-metadata.json");
+        var provider = new OpenClawChatDataProvider(bridge, post: null, tmpCache);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -1839,7 +1842,126 @@ public class OpenClawChatDataProviderTests
         Assert.Contains("test.txt", userEntry.Text);
     }
 
-    // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
+    // ── Attachment sidecar persistence and history hydration ──
+
+    [Fact]
+    public async Task SendMessageAsync_WithAttachment_RecordedInSidecar()
+    {
+        var (_, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        var attachment = new ChatAttachment
+        {
+            Type = "file",
+            MimeType = "text/plain",
+            FileName = "report.txt",
+            Content = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+        };
+        await provider.SendMessageAsync("main", "See attached", default, new[] { attachment });
+
+        var sidecar = provider.AttachmentSidecarForTest;
+        Assert.True(sidecar.TryGetValue("main", out var entries));
+        Assert.Single(entries);
+        Assert.Equal("See attached", entries[0].TrimmedText);
+        Assert.Single(entries[0].Attachments);
+        Assert.Equal("report.txt", entries[0].Attachments[0].FileName);
+        Assert.False(entries[0].Attachments[0].IsImage);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithImageAttachment_RecordedAsImageInSidecar()
+    {
+        var (_, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        var attachment = new ChatAttachment
+        {
+            Type = "image",
+            MimeType = "image/png",
+            FileName = "screenshot.png",
+            Content = Convert.ToBase64String(new byte[] { 0x89, 0x50 })
+        };
+        await provider.SendMessageAsync("main", "Look at this", default, new[] { attachment });
+
+        var sidecar = provider.AttachmentSidecarForTest;
+        Assert.True(sidecar.TryGetValue("main", out var entries));
+        Assert.Single(entries[0].Attachments);
+        Assert.True(entries[0].Attachments[0].IsImage);
+        Assert.Equal("screenshot.png", entries[0].Attachments[0].FileName);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_WithMatchingSidecarEntry_InjectsAttachmentChips()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        // Pre-populate the sidecar as if a previous session had sent this message with an attachment.
+        var sentAtMs = DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeMilliseconds();
+        provider.InjectAttachmentSidecarEntryForTest("main", new OpenClawChatDataProvider.AttachmentSidecarEntry
+        {
+            TrimmedText = "Check this file",
+            SentAtMs = sentAtMs,
+            Attachments = new List<OpenClawChatDataProvider.AttachmentDisplay>
+            {
+                new() { FileName = "data.csv", IsImage = false }
+            }
+        });
+
+        // History reload returns the message without attachment markers (as gateway does).
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "Check this file", Ts = sentAtMs },
+                new ChatMessageInfo { Role = "assistant", Text = "Got it.", Ts = sentAtMs + 1000, State = "final" }
+            }
+        });
+        snapshots.Clear();
+        await provider.LoadHistoryAsync("main", force: true);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var userEntry = timeline.Entries.First(e => e.Kind == ChatTimelineItemKind.User);
+        // Chip markers should have been re-injected.
+        Assert.Contains("data.csv", userEntry.Text);
+        Assert.Contains("\u200B📎", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_WithNoSidecarEntry_DoesNotModifyText()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "Plain message", Ts = 1000 },
+                new ChatMessageInfo { Role = "assistant", Text = "Response.", Ts = 2000, State = "final" }
+            }
+        });
+        snapshots.Clear();
+        await provider.LoadHistoryAsync("main", force: true);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var userEntry = timeline.Entries.First(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Plain message", userEntry.Text);
+    }
+
+    [Fact]
+    public void HydrateAttachmentsFromSidecarLocked_PastedMarkerText_NotHydrated()
+    {
+        // A message that contains what looks like attachment marker text but
+        // has no sidecar entry should NOT get additional chips injected.
+        var (_, provider, _, _) = CreateProvider();
+        const string spoofText = "\u200B📎 not-a-real-attachment.txt";
+        var result = provider.HydrateAttachmentsFromSidecarLocked("main", spoofText, 0);
+        // No sidecar entry for this text — text must be returned unchanged.
+        Assert.Equal(spoofText, result);
+    }
 
     [Fact]
     public async Task SessionsUpdated_WhileConnected_EagerlyLoadsHistory()
