@@ -28,7 +28,7 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 
 > **End-user installer?** See [docs/SETUP.md](docs/SETUP.md) for a step-by-step installation guide (no build required).
 >
-> **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for sudo/root command equivalents and safe file-editing instructions.
+> **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
 
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11

@@ -144,7 +144,7 @@ Download and install WebView2 from [Microsoft](https://developer.microsoft.com/m
 
 ### Need to inspect or edit the managed WSL gateway
 
-Local setup creates a locked-down app-owned `OpenClawGateway` distro rather than a general-purpose user Ubuntu profile. Use `wsl.exe -d OpenClawGateway --user root -- ...` for sudo-style admin commands, and use the WSL filesystem share or root shell for file edits. See [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md) for examples.
+Local setup creates a locked-down app-owned `OpenClawGateway` distro rather than a general-purpose user Ubuntu profile. Edit `openclaw.json` from inside WSL as the `openclaw` user, and reserve `wsl.exe -d OpenClawGateway --user root -- ...` for protected-file administration. See [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md) for examples.
 
 ### "Not yet paired" message on reconnect
 
