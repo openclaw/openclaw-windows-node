@@ -109,20 +109,13 @@ public sealed partial class ConnectionPage : Page
         var settings = CurrentApp.Settings;
         if (settings == null) return;
 
-        // Local-WSL install entry points. The hub only exposes
-        // OpenSetupAction on platforms where WSL tooling is wired up; if
-        // it's null we hide the entry points so the user isn't offered a
-        // button that does nothing.
+        // Local-WSL install entry points are only useful until setup has
+        // created its managed local WSL gateway record.
         //   • WelcomeLocalWslSetupCard — get-started CTA on the empty-state
         //     Welcome screen for first-run users.
         //   • AddLocalWslItem — third method tab inside the Add Gateway
         //     form, alongside Direct and Setup code.
-        var localSetupAvailable = true;
-        var localSetupVisibility = localSetupAvailable
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        WelcomeLocalWslSetupCard.Visibility = localSetupVisibility;
-        AddLocalWslItem.Visibility = localSetupVisibility;
+        UpdateLocalWslSetupVisibility();
 
         if (_connectionManager != null)
             _connectionManager.StateChanged += OnManagerStateChanged;
@@ -203,9 +196,27 @@ public sealed partial class ConnectionPage : Page
     {
         DispatcherQueue?.TryEnqueue(() =>
         {
+            UpdateLocalWslSetupVisibility();
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         });
+    }
+
+    private void UpdateLocalWslSetupVisibility()
+    {
+        var localSetupAvailable = !WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
+        var localSetupVisibility = localSetupAvailable
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        WelcomeLocalWslSetupCard.Visibility = localSetupVisibility;
+        AddLocalWslItem.Visibility = localSetupVisibility;
+
+        if (!localSetupAvailable && AddLocalWslItem.IsSelected)
+        {
+            AddDirectItem.IsSelected = true;
+            ShowAddPane("direct");
+        }
     }
 
     // ─── Plan apply ───────────────────────────────────────────────────

@@ -4,7 +4,7 @@ The onboarding wizard is now the V2 setup flow for installing a new app-owned lo
 
 ## Overview
 
-On first launch, the wizard appears only when there is no usable saved gateway connection. Users with any existing local or external gateway manage connections from the tray app's Connections tab and can start setup intentionally with **Install new WSL Gateway**.
+On first launch, the wizard appears only when there is no usable saved gateway connection. Users with existing gateways manage connections from the tray app's Connections tab. The local WSL setup affordance in Connections is shown only when setup has not already created an app-owned WSL gateway on this device.
 
 The V2 setup flow walks users through:
 

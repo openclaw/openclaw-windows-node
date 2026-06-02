@@ -1190,6 +1190,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Show "Reconfigure" if there's an existing setup, "Setup Guide" if fresh
         var hasExistingConfig = _settings != null
             && !StartupSetupState.RequiresSetup(_settings, IdentityDataPath, _gatewayRegistry);
+        var hasSetupManagedLocalWslGateway = WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
         var setupMenuLabel = hasExistingConfig
             ? LocalizationHelper.GetString("Menu_Reconfigure")
             : LocalizationHelper.GetString("Menu_SetupGuide");
@@ -1214,6 +1215,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UsageCost = _appState?.UsageCost,
             Settings = _settings,
             SetupMenuLabel = setupMenuLabel,
+            ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
         };
     }
 
