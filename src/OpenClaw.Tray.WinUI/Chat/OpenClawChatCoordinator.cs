@@ -87,11 +87,15 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
         var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post);
         bool coordinatorDisposed;
+        OpenClawChatDataProvider? overwrittenProvider = null;
         lock (_gate)
         {
             coordinatorDisposed = _disposed;
             if (!coordinatorDisposed)
+            {
+                overwrittenProvider = _provider;
                 _provider = newProvider;
+            }
         }
 
         if (coordinatorDisposed)
@@ -99,6 +103,8 @@ public sealed class OpenClawChatCoordinator : IDisposable
             newProvider.DisposeAsync().AsTask().GetAwaiter().GetResult();
             return;
         }
+
+        overwrittenProvider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     public Task SpeakChatTextAsync(string text)
