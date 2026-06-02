@@ -49,15 +49,17 @@ The installer also creates a Start Menu group with shortcuts for **OpenClaw Comp
 
 On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The default flow installs and configures a dedicated app-owned local WSL gateway:
 
-1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Set up locally** to install a new local WSL gateway.
+1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Install new WSL Gateway** to install a new local WSL gateway.
 
    If you already have a local or remote gateway, choose **Advanced setup** instead. This opens the tray app's Connections tab, where you can connect with an existing gateway URL, token, or setup code without installing a new local WSL gateway.
 
-2. **Local setup progress** — Installs a fresh app-owned `OpenClawGateway` WSL instance and connects Molty to it. This does not modify an existing user Ubuntu distro.
+2. **Capabilities** — Reviews the Windows node capabilities that can be enabled, such as system commands, canvas, screen capture, camera, location, browser automation, device controls, text-to-speech, and speech-to-text.
 
-3. **Gateway setup** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+3. **Local setup progress** — Installs a fresh app-owned `OpenClawGateway` WSL instance and connects Molty to it. This does not modify an existing user Ubuntu distro.
 
-4. **Permissions** — Reviews Windows system permissions needed for full functionality:
+4. **Gateway setup** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+
+5. **Permissions** — Reviews Windows system permissions needed for full functionality:
    - **Notifications** — for toast alerts
    - **Camera** — for camera capture
    - **Microphone** — for voice input
@@ -66,7 +68,7 @@ On first launch, Molty opens the onboarding wizard when there is no usable saved
 
    Each permission shows its current status. Click **Open Settings** next to any permission to jump directly to the relevant Windows Settings page.
 
-5. **All set** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
+6. **All set** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
 
 After the wizard, the tray icon turns green when connected. You can re-run the wizard or change settings anytime from the tray menu.
 
